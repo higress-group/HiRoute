@@ -263,7 +263,9 @@ impl LocalControlAdapter {
         if let NativeIdentity::ConnectorAccount(_) = identity
             && let (Ok(Some(checked)), Some(catalog_facts), Some(authority)) = (
                 self.retained_subscription_candidate_for_source(&source),
-                self.release_catalog.as_ref(),
+                self.current_catalog()
+                    .as_deref()
+                    .map(|snapshot| &snapshot.catalog),
                 self.cpa_sources.as_ref(),
             )
             && let Ok(batch) = authority.begin_routing_batch()

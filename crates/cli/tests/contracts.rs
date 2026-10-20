@@ -16,7 +16,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 94); // Full staged surface including Observation storage policy.
+    assert_eq!(commands.len(), 105); // Combined model-feed, trial-observation and storage-policy surface.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));
@@ -45,6 +45,7 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "system.status",
             "agents.scan",
             "agents.list",
+            "agents.previous-routing.preview",
             "agents.connect.preview",
             "agents.connect.apply",
             "agents.connect.status",
@@ -83,6 +84,12 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "decision.services.list",
             "decision.services.apply",
             "decision.services.test",
+            "models.feed.status",
+            "models.feed.refresh",
+            "models.feed.settings.apply",
+            "models.feed.remove.preview",
+            "models.feed.remove.apply",
+            "models.availability",
             "models.show",
             "prices.effective",
             "prices.override.preview",
@@ -93,6 +100,10 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "sessions.receipt",
             "sessions.status",
             "value.show",
+            "sessions.timeline",
+            "observation.plan-trust",
+            "observation.plan-trust.replay",
+            "observation.plan-trust.suggestions",
             "observation.storage.show",
             "observation.storage.set",
             "observation.plan-quality.samples",
@@ -368,6 +379,9 @@ fn gateway_show_waits_for_native_discovery_and_honors_control_timeout() {
                         Err(error) => panic!("{error}"),
                     }
                 };
+                // BSD accept inherits the listener's nonblocking mode. This peer uses
+                // blocking reads with a deadline while the client starts its handshake.
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();

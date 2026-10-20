@@ -437,7 +437,33 @@ async fn recover_precommit(
     })
     .await;
     match result {
-        Ok(Ok(())) => UpdateRecovery::ServiceAvailable,
+        Ok(Ok(())) => {
+            let client = sessions
+                .lock()
+                .await
+                .as_ref()
+                .map(|session| session.client.clone());
+            if let Some(client) = client
+                && client
+                    .with_timeout(std::time::Duration::from_secs(2))
+                    .query::<_, hiroute_application_api::SystemStatusV1>(
+                        "GetSystemStatus",
+                        "update-recovery-readiness",
+                        &serde_json::json!({}),
+                    )
+                    .await
+                    .is_ok_and(|response| {
+                        response.error.is_none()
+                            && response.data.is_some_and(|status| {
+                                status.daemon == "role_all" && status.gateway == "ready"
+                            })
+                    })
+            {
+                UpdateRecovery::ServiceAvailable
+            } else {
+                UpdateRecovery::RestartRequired
+            }
+        }
         Ok(Err(code)) if code == "UPGRADE_STOP_PENDING" => UpdateRecovery::StopPending,
         _ => UpdateRecovery::RestartRequired,
     }

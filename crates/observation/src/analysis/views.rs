@@ -5,7 +5,7 @@ use crate::{LocalObservationStore, query_v2::ObservationV2Error as Error};
 use hiroute_domain::*;
 use rusqlite::{Connection, params};
 
-pub(super) struct Row {
+pub(crate) struct Row {
     pub request: AnalysisRequestV1,
     pub anchor: String,
     pub predecessor: Option<String>,

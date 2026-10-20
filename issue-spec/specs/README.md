@@ -17,12 +17,12 @@ and performance evidence belongs to revision-bound validation records.
 | Install, open, configure, and update Desktop | [Getting started](getting-started/spec.md) | Service health, shell interaction, preferences, complete-package upgrade/recovery |
 | Find supported local model configuration | [Model discovery](model-discovery/spec.md) | Passive scan, explicit approval, exact native precedence, stale-source checks |
 | Connect and maintain model sources | [Model connections](model-connections/spec.md) | Catalog/custom endpoints, source identity, credentials, subscription modes, lifecycle |
-| Inspect model facts, scores, and prices | [Model facts and price policy](model-catalog-price/spec.md) | Version-bound metadata, native score settings, source overrides, frozen valuation |
+| Inspect model facts, scores, and prices | [Model facts and price policy](model-catalog-price/spec.md) | Embedded/signed metadata, withdrawal boundaries, scores, source overrides, frozen valuation |
 | Manage several Keys in one connection | [Credential pools](credential-pools/spec.md) | Ordered edits, current leases, isolated cooldown, protected input |
 | Author and publish reusable routes | [Routing plans](routing-plans/spec.md) | Identity, four modes, drafts, content/lifecycle, client budgets, installed consumers |
 | Keep a declared candidate order | [Fixed candidate order](ordered-routing/spec.md) | Fixed-model mode and permitted ContextHold preference |
 | Prefer explicitly free sources | [Free-first routing](free-first-routing/spec.md) | Free qualification, suggestions, explicit primary fallback |
-| Use economy or primary models for one task scope | [Smart saving](smart-saving-routing/spec.md) | Two-group threshold policy and per-turn recovery |
+| Try models with Regular/Primary routing | [Difficulty routing](smart-saving-routing/spec.md) | Thresholds, trust levels, evidence gates and per-turn recovery |
 | Connect a decision model or define categories | [Decision services](decision-services/spec.md) | Saved revisions, System One/custom v1, category/degree/competence policy |
 | Execute a model request with bounded relay | [Request routing](request-routing/spec.md) | Grant/Fixed scope, native controls, expressibility, continuity, pre-body relay |
 | Configure native coding Agents reversibly | [Agent connections](agent-connections/spec.md) | Independent model/Skill facets, provider differences, grant/restore ownership |

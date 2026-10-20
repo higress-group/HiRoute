@@ -141,6 +141,29 @@ impl ControlStore {
             .map_err(|_| port("compute.release.commit"))
     }
 
+    /// The daemon binds this revision to its captured immutable feed catalog snapshot.
+    pub fn activate_model_feed_generation(
+        &self,
+        workspace: &WorkspaceId,
+        generation: u64,
+        accepted_sequence: u64,
+    ) -> PortResult<()> {
+        let mut connection = self.connection.borrow_mut();
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| port("compute.feed.begin"))?;
+        install_dependency_revision_in(&transaction, workspace, "feed.model_data", generation)?;
+        install_dependency_revision_in(
+            &transaction,
+            workspace,
+            "feed.sequence",
+            accepted_sequence,
+        )?;
+        transaction
+            .commit()
+            .map_err(|_| port("compute.feed.commit"))
+    }
+
     pub fn put_compute_source(
         &self,
         expected_revision: u64,

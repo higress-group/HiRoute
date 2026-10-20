@@ -130,7 +130,7 @@ function splitCodexStatus(): AgentSnapshot {
   return snapshot;
 }
 
-function additionalAgent(configured: boolean, ecosystem: 'qoder' | 'pi' | 'dsh' = 'qoder'): AgentSnapshot {
+function additionalAgent(configured: boolean, ecosystem: 'qoder' | 'pi' | 'dsh' | 'opencode' = 'qoder'): AgentSnapshot {
   const context = `agent-context/${ecosystem}/sha256:${'a'.repeat(64)}`;
   return {
     trusted_authority: true, plans: { plans: [] },
@@ -150,7 +150,7 @@ function additionalAgent(configured: boolean, ecosystem: 'qoder' | 'pi' | 'dsh' 
   };
 }
 
-function additionalRouted(ecosystem: 'qoder' | 'pi' | 'dsh' = 'qoder'): AgentSnapshot {
+function additionalRouted(ecosystem: 'qoder' | 'pi' | 'dsh' | 'opencode' = 'qoder'): AgentSnapshot {
   const snapshot = additionalAgent(true, ecosystem);
   snapshot.plans = structuredClone(readyAgents.plans);
   const agent = modelAgent(snapshot, `agent_${ecosystem}_default`);
@@ -188,6 +188,7 @@ const control = {
   qoderConfigured: () => additionalAgent(true),
   qoderRouted: () => additionalRouted(),
   additionalRouted,
+  opencodeFresh:()=>additionalAgent(false,"opencode"),
   hermesFresh: () => hermesAgent(),
   hermesConfigured: () => hermesAgent(true),
 };

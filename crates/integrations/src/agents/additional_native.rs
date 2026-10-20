@@ -18,6 +18,12 @@ pub(super) fn parse_native_jsonc(bytes: &[u8]) -> Result<Value, QoderNativeError
     Ok(Document::parse(bytes)?.root.value)
 }
 
+pub(super) fn parse_opencode_jsonc(bytes: &[u8]) -> Result<Value, QoderNativeError> {
+    Ok(Document::parse_with_trailing_commas(bytes, true)?
+        .root
+        .value)
+}
+
 // This structure is serialized only into NativeAgentArtifactPort's encrypted restore envelope.
 // It deliberately has no Debug implementation or public JSON conversion.
 #[derive(Deserialize, Serialize)]
@@ -54,8 +60,10 @@ pub(super) fn validate_declaration(
 ) -> Result<(), QoderNativeError> {
     if kind == AgentKindV1::Qoder {
         qoder_provider::validate_model_route(provider_id, endpoint)?;
-    } else if !matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness)
-        || !endpoint.starts_with("http://")
+    } else if !matches!(
+        kind,
+        AgentKindV1::Pi | AgentKindV1::DeepseekHarness | AgentKindV1::OpenCode
+    ) || !endpoint.starts_with("http://")
         || !endpoint.ends_with("/v1")
     {
         return Err(qoder_error("additional endpoint"));
@@ -76,7 +84,10 @@ pub(super) fn validate_declaration(
         return Err(qoder_error("additional models"));
     }
     for model in models {
-        (if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
+        (if matches!(
+            kind,
+            AgentKindV1::Pi | AgentKindV1::DeepseekHarness | AgentKindV1::OpenCode
+        ) {
             model.validate_pi()
         } else {
             model.validate()
@@ -96,6 +107,18 @@ fn document(current: Option<&[u8]>) -> Result<Document<'_>, QoderNativeError> {
 fn native_root(kind: AgentKindV1, current: Option<&[u8]>) -> Result<Value, QoderNativeError> {
     if kind == AgentKindV1::DeepseekHarness {
         super::dsh_config::Patch::parse(current)?.model_root()
+    } else if kind == AgentKindV1::OpenCode {
+        let mut root = parse_opencode_jsonc(current.unwrap_or(b"{}"))?;
+        let object = root
+            .as_object_mut()
+            .ok_or_else(|| qoder_error("OpenCode root"))?;
+        if object.contains_key("providers") {
+            return Err(qoder_error("OpenCode provider layout"));
+        }
+        if let Some(providers) = object.remove("provider") {
+            object.insert("providers".into(), providers);
+        }
+        Ok(root)
     } else {
         Ok(document(current)?.root.value)
     }
@@ -118,13 +141,22 @@ fn edit_provider(
     if kind == AgentKindV1::DeepseekHarness {
         return super::dsh_config::Patch::parse(Some(bytes))?.edit_provider(id, provider);
     }
-    let document = document(Some(bytes))?;
-    if let Some(providers) = document.object(&document.root, "providers")? {
+    let document = if kind == AgentKindV1::OpenCode {
+        Document::parse_with_trailing_commas(bytes, true)?
+    } else {
+        document(Some(bytes))?
+    };
+    let key = if kind == AgentKindV1::OpenCode {
+        "provider"
+    } else {
+        "providers"
+    };
+    if let Some(providers) = document.object(&document.root, key)? {
         document.edit(&providers, id, provider)
     } else {
         document.edit(
             &document.root,
-            "providers",
+            key,
             Some(&serde_json::json!({(id):provider})),
         )
     }
@@ -140,6 +172,9 @@ pub(super) fn validate_configuration(
 ) -> Result<(), QoderNativeError> {
     validate_declaration(kind, provider_id, endpoint, models)?;
     let document = native_root(kind, current)?;
+    if kind == AgentKindV1::OpenCode && super::opencode::dynamic_keys(&document) {
+        return Err(qoder_error("OpenCode dynamic configuration keys"));
+    }
     let desired: BTreeSet<_> = models
         .iter()
         .map(|m| hiroute_domain::additional_model_provider_for(provider_id, models, m))
@@ -162,7 +197,7 @@ pub(super) fn validate_configuration(
             })
             .collect();
         for id in previous.owned_providers().keys() {
-            default_not_removed(&document, id, &retain)?;
+            default_not_removed(kind, &document, id, &retain)?;
         }
     }
     for id in desired {
@@ -176,10 +211,20 @@ pub(super) fn validate_configuration(
 }
 
 fn default_not_removed(
+    kind: AgentKindV1,
     document: &Value,
     provider: &str,
     retain: &BTreeSet<String>,
 ) -> Result<(), QoderNativeError> {
+    if kind == AgentKindV1::OpenCode {
+        return super::opencode::validate_references(
+            document,
+            provider,
+            &document["providers"][provider],
+            retain,
+            Some(&[]),
+        );
+    }
     let Some(model) = document.get("model") else {
         return Ok(());
     };
@@ -230,6 +275,8 @@ pub(super) fn configure(
         || {
             Zeroizing::new(if kind == AgentKindV1::DeepseekHarness {
                 b"[]\n".to_vec()
+            } else if kind == AgentKindV1::OpenCode {
+                br#"{"$schema":"https://opencode.ai/config.json"}"#.to_vec()
             } else {
                 b"{}".to_vec()
             })
@@ -243,7 +290,9 @@ pub(super) fn configure(
         bytes = edit_provider(kind, &bytes, &id, Some(&provider))?;
     }
     let restore = Restore {
-        schema: if kind == AgentKindV1::DeepseekHarness {
+        schema: if kind == AgentKindV1::OpenCode {
+            "hiroute.opencode-native-restore/v2"
+        } else if kind == AgentKindV1::DeepseekHarness {
             "hiroute.dsh-native-restore/v2"
         } else if kind == AgentKindV1::Pi {
             "hiroute.pi-native-restore/v2"
@@ -283,6 +332,11 @@ fn render_provider(
             })
             .collect::<Result<Vec<_>, _>>()?;
         qoder_provider::provider(endpoint, credential, models, protocol)?
+    } else if kind == AgentKindV1::OpenCode {
+        if models.len() != 1 {
+            return Err(qoder_error("OpenCode per-plan provider"));
+        }
+        super::opencode_provider(endpoint, &models[0], "hiroute-local", Some(credential))?
     } else {
         let models = models
             .iter()
@@ -317,6 +371,7 @@ impl Restore {
             }
             "hiroute.pi-native-restore/v1" | "hiroute.pi-native-restore/v2" => Ok(AgentKindV1::Pi),
             "hiroute.dsh-native-restore/v2" => Ok(AgentKindV1::DeepseekHarness),
+            "hiroute.opencode-native-restore/v2" => Ok(AgentKindV1::OpenCode),
             _ => Err(qoder_error("restore schema")),
         }
     }
@@ -433,7 +488,7 @@ impl Restore {
         let document = native_root(self.kind()?, current)?;
         if check_default {
             for id in self.owned_providers().keys() {
-                default_not_removed(&document, id, &BTreeSet::new())?;
+                default_not_removed(self.kind()?, &document, id, &BTreeSet::new())?;
             }
         }
         if current.is_none() && !self.original_exists {

@@ -23,6 +23,8 @@ mod model_connection_web;
 pub use model_connection_web::*;
 mod model_connections;
 pub use model_connections::*;
+mod model_feed;
+pub use model_feed::*;
 mod subscription_login;
 pub use subscription_login::*;
 mod observation;

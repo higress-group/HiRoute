@@ -17,6 +17,19 @@ pub(super) fn attach_file_capabilities(
     );
 }
 
+/// Recovery/file editing remains available when a selected native executable disappears.
+pub(super) fn attach_optional_file_capabilities(
+    installation: &mut SupportedAgentInstallationV1,
+    executable: Option<&Path>,
+    target: &Path,
+) {
+    attach_capabilities(
+        installation,
+        dependencies(executable, target),
+        "hiroute.native-files/v1",
+    );
+}
+
 /// Settings support is derived from the selected configuration target only. A concrete
 /// executable is located separately; its inode, digest, release or version is not a save gate.
 pub(super) fn attach_target_file_capabilities(
@@ -117,7 +130,36 @@ fn attach_capabilities(
 }
 
 #[cfg(unix)]
-fn dependencies(executable: Option<&Path>, target: &Path) -> Result<(CanonicalDigest, bool), ()> {
+pub(super) fn dependencies(
+    executable: Option<&Path>,
+    target: &Path,
+) -> Result<(CanonicalDigest, bool), ()> {
+    unix_dependencies(executable, target, None)
+}
+
+/// Native Skill checks already confirm these exact bytes and validate the native read receipt.
+/// A ctime-only bookkeeping change is not a new Skill; identity, permissions, links, size and
+/// mtime remain dependencies. Ordinary configuration/Preview keeps its existing version tuple.
+pub(super) fn content_bound_dependencies(
+    executable: Option<&Path>,
+    target: &Path,
+    confirmed_content: &CanonicalDigest,
+) -> Result<(CanonicalDigest, bool), ()> {
+    #[cfg(unix)]
+    return unix_dependencies(executable, target, Some(confirmed_content));
+    #[cfg(not(unix))]
+    {
+        let _ = confirmed_content;
+        dependencies(executable, target)
+    }
+}
+
+#[cfg(unix)]
+fn unix_dependencies(
+    executable: Option<&Path>,
+    target: &Path,
+    confirmed_content: Option<&CanonicalDigest>,
+) -> Result<(CanonicalDigest, bool), ()> {
     use std::os::unix::fs::MetadataExt;
     let file_identity = |metadata: &std::fs::Metadata| {
         (
@@ -182,13 +224,37 @@ fn dependencies(executable: Option<&Path>, target: &Path) -> Result<(CanonicalDi
         && file.as_ref().is_none_or(|metadata| {
             metadata.is_file() && !metadata.file_type().is_symlink() && metadata.nlink() == 1
         });
-    let digest = CanonicalDigest::of(&(
-        binary,
-        target,
-        file.as_ref().map(file_identity),
-        parent,
-        directory_identity(&parent_metadata),
-    ))
+    let digest = if let Some(content) = confirmed_content {
+        let skill_identity = file.as_ref().map(|metadata| {
+            (
+                metadata.dev(),
+                metadata.ino(),
+                metadata.uid(),
+                metadata.gid(),
+                metadata.mode(),
+                metadata.nlink(),
+                metadata.len(),
+                metadata.mtime(),
+                metadata.mtime_nsec(),
+            )
+        });
+        CanonicalDigest::of(&(
+            binary,
+            target,
+            skill_identity,
+            parent,
+            directory_identity(&parent_metadata),
+            content,
+        ))
+    } else {
+        CanonicalDigest::of(&(
+            binary,
+            target,
+            file.as_ref().map(file_identity),
+            parent,
+            directory_identity(&parent_metadata),
+        ))
+    }
     .map_err(|_| ())?;
     Ok((digest, replace))
 }
@@ -196,6 +262,85 @@ fn dependencies(executable: Option<&Path>, target: &Path) -> Result<(CanonicalDi
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn confirmed_skill_content_ignores_ctime_only_churn_and_retains_native_guards() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("SKILL.md");
+        std::fs::write(&target, b"original Skill body\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let content = CanonicalDigest::of_bytes(b"original Skill body\n");
+        let original = std::fs::metadata(&target).unwrap();
+        let strict = dependencies(None, &target).unwrap();
+        let confirmed = content_bound_dependencies(None, &target, &content).unwrap();
+        // Reproduce the observed native read: ctime changed while bytes, inode,
+        // access policy and mtime remained identical. chmod with the same policy
+        // provides this metadata event without depending on a macOS background service.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let after = loop {
+            std::fs::set_permissions(&target, original.permissions()).unwrap();
+            let after = std::fs::metadata(&target).unwrap();
+            if (original.ctime(), original.ctime_nsec()) != (after.ctime(), after.ctime_nsec()) {
+                break after;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "filesystem ctime did not advance"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        };
+        assert_eq!(original.modified().unwrap(), after.modified().unwrap());
+        assert_ne!(strict.0, dependencies(None, &target).unwrap().0);
+        assert_eq!(
+            confirmed,
+            content_bound_dependencies(None, &target, &content).unwrap()
+        );
+
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+        assert_ne!(
+            confirmed.0,
+            content_bound_dependencies(None, &target, &content)
+                .unwrap()
+                .0
+        );
+        std::fs::set_permissions(&target, original.permissions()).unwrap();
+        let parent_permissions = std::fs::metadata(root.path()).unwrap().permissions();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o750)).unwrap();
+        assert_ne!(
+            confirmed.0,
+            content_bound_dependencies(None, &target, &content)
+                .unwrap()
+                .0
+        );
+        std::fs::set_permissions(root.path(), parent_permissions).unwrap();
+
+        std::fs::write(&target, b"modified Skill body\n").unwrap();
+        std::fs::File::open(&target)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(original.modified().unwrap()))
+            .unwrap();
+        let changed = CanonicalDigest::of_bytes(b"modified Skill body\n");
+        assert_ne!(
+            confirmed.0,
+            content_bound_dependencies(None, &target, &changed)
+                .unwrap()
+                .0
+        );
+        std::fs::rename(&target, root.path().join("previous.md")).unwrap();
+        std::fs::write(&target, b"original Skill body\n").unwrap();
+        std::fs::set_permissions(&target, original.permissions()).unwrap();
+        std::fs::File::open(&target)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(original.modified().unwrap()))
+            .unwrap();
+        assert_ne!(
+            confirmed.0,
+            content_bound_dependencies(None, &target, &content)
+                .unwrap()
+                .0
+        );
+    }
 
     #[test]
     fn parent_sibling_churn_does_not_change_native_dependency() {
@@ -251,7 +396,10 @@ fn dependencies(_executable: Option<&Path>, _target: &Path) -> Result<(Canonical
 }
 
 #[cfg(windows)]
-fn dependencies(executable: Option<&Path>, target: &Path) -> Result<(CanonicalDigest, bool), ()> {
+pub(super) fn dependencies(
+    executable: Option<&Path>,
+    target: &Path,
+) -> Result<(CanonicalDigest, bool), ()> {
     use hiroute_platform::file_security::capture;
     use hiroute_platform::windows::security::{file_identity, file_link_count, open_identity};
     use std::os::windows::fs::MetadataExt;

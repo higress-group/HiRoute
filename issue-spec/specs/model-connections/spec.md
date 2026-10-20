@@ -103,26 +103,49 @@ report that model's execution restriction.
 
 ### Requirement: Registered endpoint facts remain server-owned
 
-Executable registered options MUST resolve from the client-version-bound
-ReleaseFacts manifest/registry/model-data embedded in the same build. Digests,
-cross-references, and product version are checked before use. A runtime cannot
-select or copy a second catalog from its data directory or treat schema-number
-suffixes as user-selectable metadata versions. Future independently downloadable
-catalogs require their own trust/update contract.
+Executable registered options MUST resolve from the client-version-bound ReleaseFacts manifest, registry and model data embedded in the same build, extended only by model records from a verified model feed under the feed requirements of model-catalog-price. Digests, cross-references and product version are checked before use. A runtime cannot select or copy any other catalog from its data directory, use a held feed copy before it is verified, or treat schema-number suffixes as user-selectable metadata versions.
 
-A registered check submits option ID, expected provenance, edit correlation,
-selected models, and protected input. Daemon resolves exact destination, protocol,
-authentication, static headers, identity, and billing; client-supplied overrides of
-registered facts MUST be rejected. Native API uses direct HiRoute adapters, not CPA.
-A product missing exact authentication or a supported adapter is metadata-only,
-not an executable option.
+Connectors, endpoint profiles, protocol endpoints, authentication semantics, secret slots, static headers, adapters, connection options and billing classes MUST come only from the embedded registry. A feed record becomes usable only when every reference resolves to an embedded registry entry, its offer matches the referenced endpoint profile's entitlement and billing class, and its required adapter revision is implemented by this build. A record whose references or adapter are unavailable in this build is presented as requiring the minimum client version it declares and is not an executable option.
 
-Saved provenance is historical evidence. New presentation, recheck, and publication
-resolve stable `connection_option_id` against the current embedded catalog and
-compare actual saved endpoint/auth/header/model/capability/credential-destination
-facts. A catalog digest change alone cannot invalidate compatible sources, enlarge
-saved endpoints/Key authority, or rewrite frozen publications/runs. An absent option
-or incompatible fact blocks only that source's new use with a real reason.
+A registered check submits option ID, expected provenance, edit correlation, selected models and protected input. The daemon resolves exact destination, protocol, authentication, static headers, identity and billing; client-supplied overrides of registered facts MUST be rejected. Native API uses direct HiRoute adapters, not CPA. A product missing exact authentication or a supported adapter is metadata-only, not an executable option.
+
+Saved provenance is historical evidence. For feed-supplied model facts it records the feed sequence that supplied them; each publication records the committed source-bundle tree identity that reproduces its records across squash merges. New presentation, recheck and publication resolve the stable `connection_option_id` against the current embedded catalog and the current verified feed records, and compare the actual saved endpoint, authentication, header, model, capability and credential-destination facts. A catalog or feed digest change alone cannot invalidate compatible sources, enlarge saved endpoints or Key authority, or rewrite frozen publications or runs. An absent option, a withdrawn feed record, a removed feed copy or an incompatible fact blocks only that source's new use, with a real reason. New use means a registered check, a save or edit of the source, offering the model for selection, and compiling or publishing a draft that selects the source. Execution of an already published revision, including a new session that uses it, a newly delegated Worker task and Continue of an existing task, uses the facts frozen in that revision and MUST NOT depend on the held feed copy or the current feed records, including after restart. Usage valued after a withdrawal or removal uses the current price facts, so a feed default price that is no longer present is unknown unless the user has set an override. When a later client embeds a model previously supplied by the feed, the embedded facts take over, and a compatible saved source continues without a new check.
+
+An unchanged saved embedded member retains its saved capabilities during lifecycle edits such as rename, removing another member and changing keys. Current-fact validation applies to newly added or rechecked members and to feed-only members, including withdrawal; a compatible embedded catalog revision alone does not force rechecking unchanged members.
+
+#### Scenario: New model on an embedded service
+
+- **WHEN** a verified feed adds a model bound to the embedded Moonshot endpoint profile, and the user checks a Moonshot key whose model directory lists that upstream ID
+- **THEN** the model is offered with the feed's tool-calling, reasoning and context facts, it saves and qualifies like an embedded model, and its saved provenance records the feed sequence.
+
+#### Scenario: Adapter not in this build
+
+- **WHEN** a feed record requires an adapter revision that the running client does not implement
+- **THEN** the model is shown as requiring the declared newer client, it cannot be selected, checked or published, and other records are unaffected.
+
+#### Scenario: Withdrawal after publication
+
+- **WHEN** a later verified feed withdraws a model that a published Plan revision already uses
+- **THEN** the published revision and its runs continue unchanged, and a new check or publication that would use that source is blocked with the reason that the feed record was withdrawn.
+
+#### Scenario: Absorbed by a later release
+
+- **WHEN** the user upgrades to a client whose embedded catalog includes a model previously supplied by the feed
+- **THEN** the embedded facts are used, and the compatible saved connection keeps working without a new check.
+
+#### Scenario: Removal and restart
+
+- **WHEN** a published Plan uses a feed-supplied model, the user removes the held copy and the service restarts
+- **THEN** new sessions and newly delegated Worker tasks through that published revision, and Continue of existing tasks, keep running with its frozen facts, while a recheck of the source, publishing a draft that selects it and selecting the model in an editor are blocked with the reason that its feed facts are no longer present.
+
+
+#### Scenario: Saved embedded member survives changed catalog capabilities
+
+- **WHEN** the user renames a saved registered source or removes another member after an embedded model context or reasoning fact changed
+- **THEN** the unchanged embedded member retains its saved capability facts and the edit succeeds; new/rechecked and withdrawn feed-only members still require current admission
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/142#issuecomment-6236436037
 
 ### Requirement: Directory access and inference evidence are independent
 
@@ -380,6 +403,38 @@ committed selection even offline. Unknown selection does not guess a mode.
 Published `ListCompute`/`GetCompute` keep their strict V2 response fields from the
 same projection; released CLI stays on that allowlist. The extension changes no
 request envelope or persisted source and requires no implicit mode migration.
+
+### Requirement: Model feed status and origin are visible and controllable
+
+Model management in every product UI host (macOS Desktop, the Windows shell and the web console) and the public CLI SHALL show the same model feed state: whether retrieval is enabled, the held publication's sequence and issue time, the highest accepted sequence, the time and classified result of the last retrieval attempt, verification state, and the counts of applied, ignored and newer-client-only records. Wherever model facts are shown for selection, each model SHALL show its origin, either embedded in the running client version or supplied by the hiroute.ai feed with its inclusion date. A model that requires a newer client SHALL show that version and SHALL NOT be selectable. Users SHALL be able to refresh now, turn retrieval off and remove the held copy. Turning retrieval off SHALL change the one service-owned setting, stop requests and keep the held verified copy in effect. Removing the held copy SHALL first show which saved sources would have new use blocked, noting that published revisions and runs stay unchanged and that the highest accepted sequence is kept so that an older publication cannot be applied afterwards, and SHALL apply only after confirmation. The backend SHALL expose featured entries and per-model availability (executable now, needs a saved connection, needs a newer client, or used by published Plans) through one query for product UI hosts and the public CLI, with help and schema discovery. These views SHALL NOT call a model or run a connection check.
+
+#### Scenario: Turn retrieval off
+
+- **WHEN** the user turns retrieval off while holding publication 42
+- **THEN** no further feed requests are made, publication 42 stays in effect, and status shows retrieval as off with sequence 42.
+
+#### Scenario: Remove the held copy
+
+- **WHEN** the user removes the held copy while one saved connection uses feed-supplied facts
+- **THEN** a preview names that connection and states that its published Plan revisions are unchanged; after confirmation, new use of that connection is blocked with a stated reason and the embedded catalog alone is shown.
+
+#### Scenario: CLI status
+
+- **WHEN** a user requests the feed status through the public CLI with JSON output
+- **THEN** the output carries the same fields as the product UI status, and the command is listed in help and schema discovery.
+
+#### Scenario: Newer client only
+
+- **WHEN** a featured model requires HiRoute 0.3.3 while 0.3.1 is running
+- **THEN** the model is listed with the required version, and selecting or checking it is not offered.
+
+#### Scenario: Same view in every host
+
+- **WHEN** the same service is opened in the Windows shell and in a browser through the web console
+- **THEN** both show the same feed state, model origins and featured entries, and neither host fetches the feed itself.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/142#issuecomment-6236437152
 
 ## Implementation references
 

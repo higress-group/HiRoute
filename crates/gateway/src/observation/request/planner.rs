@@ -20,7 +20,6 @@ impl RequestObservation {
             } => Some(plan_id.clone()),
             crate::server::core_runtime::profiles::PlannerRouteIdentityV2::Fixed { .. } => None,
         };
-        self.lock_state().agent_plan_id = plan_id.clone();
         let branch = serde_json::to_value(output.branch).unwrap_or(Value::Null);
         let (outcome, outcome_code) = match output.outcome {
             crate::server::core_runtime::profiles::PlannerOutcomeV1::Ready => {

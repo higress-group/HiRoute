@@ -65,6 +65,12 @@ impl WorkerExecutorAvailabilityRegistry {
             if check_installation(&selection.config).is_err() {
                 return unavailable(harness, State::Unavailable, Reason::ArtifactUnavailable);
             }
+            if harness == WorkerHarnessV1::OpenCode
+                && hiroute_integrations::opencode_native_format(&selection.config.harness_binary)
+                    .is_err()
+            {
+                return unavailable(harness, State::Unavailable, Reason::CapabilityUnverified);
+            }
             let ready = WorkerExecutorCapabilityAvailabilityV1 {
                 state: State::Ready,
                 reason: None,

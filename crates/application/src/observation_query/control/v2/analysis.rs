@@ -3,7 +3,7 @@ use hiroute_application_api::PriceTargetLocatorV1;
 use hiroute_domain::*;
 use std::collections::BTreeSet;
 
-enum AnalysisPriceCapture {
+pub(in crate::observation_query::control) enum AnalysisPriceCapture {
     Ready(AnalysisPricesV1, String),
     CurrencyChoices(Vec<String>),
 }
@@ -79,7 +79,7 @@ impl ObservationControl {
             .observation_analysis(reader, &q, None, Some(&capture), now)
     }
 
-    fn analysis_prices(
+    pub(in crate::observation_query::control) fn analysis_prices(
         &self,
         reader: &ObservationReaderContext,
         required: AnalysisPriceCaptureRequestV1,

@@ -1,4 +1,5 @@
 //! Physical `activity.db` plus an external content-object directory.
+pub(crate) mod agent_attribution;
 mod backfill;
 pub(crate) mod capacity;
 mod extensions;
@@ -37,6 +38,7 @@ use crate::writer::ObservationStoreError;
 type SessionReadTestHook = Box<dyn FnOnce(&LocalObservationStore) + Send>;
 
 pub struct LocalObservationStore {
+    pub(crate) timeline_cache: Mutex<crate::query_v2::routing_timeline::cache::TimelineCache>,
     pub(crate) maintenance_running: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub(crate) index_running: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub(crate) maintenance_errors: std::sync::atomic::AtomicU64,
@@ -126,6 +128,7 @@ impl LocalObservationStore {
             .execute_batch(capacity::SCHEMA)
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
         Ok(Self {
+            timeline_cache: Default::default(),
             maintenance_running: Default::default(),
             index_running: Default::default(),
             maintenance_errors: std::sync::atomic::AtomicU64::new(0),

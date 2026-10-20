@@ -295,12 +295,22 @@ impl LocalControlAdapter {
             }
             return Ok(());
         };
-        if let Some(record) = record
-            && !self.publication_is_installed(&record)?
-        {
-            target.activate_verified(&record).map_err(target_error)?;
+        if let Some(record) = record {
+            let publication = record
+                .verify()
+                .map_err(|_| invalid("publication.startup.record"))?;
+            // A retained Gateway target can already match after upgrade while
+            // the new attribution tables are still empty.
+            self.register_restored_agent_grants(
+                &record.workspace_id,
+                &publication,
+                &record.digest,
+            )?;
             if !self.publication_is_installed(&record)? {
-                return Err(invalid("publication.startup.identity"));
+                target.activate_verified(&record).map_err(target_error)?;
+                if !self.publication_is_installed(&record)? {
+                    return Err(invalid("publication.startup.identity"));
+                }
             }
         }
         Ok(())

@@ -1,5 +1,5 @@
 //! Bounded JSON-with-comments edits preserve every byte outside the selected object member.
-//! Qoder accepts comments. Duplicate keys and trailing commas are rejected, never normalized.
+//! Native syntax policy preserves each consumer's grammar; duplicate keys always fail.
 use std::ops::Range;
 
 use serde_json::{Map, Value};
@@ -12,6 +12,7 @@ pub(super) const LIMIT: usize = 1024 * 1024;
 pub(super) struct Document<'a> {
     bytes: &'a [u8],
     pub root: Node,
+    trailing_commas: bool,
 }
 
 pub(super) struct Node {
@@ -29,10 +30,21 @@ struct Member {
 
 impl<'a> Document<'a> {
     pub fn parse(bytes: &'a [u8]) -> Result<Self, QoderNativeError> {
+        Self::parse_with_trailing_commas(bytes, false)
+    }
+
+    pub fn parse_with_trailing_commas(
+        bytes: &'a [u8],
+        trailing_commas: bool,
+    ) -> Result<Self, QoderNativeError> {
         if bytes.len() > LIMIT || std::str::from_utf8(bytes).is_err() {
             return Err(invalid());
         }
-        let mut parser = Parser { bytes, pos: 0 };
+        let mut parser = Parser {
+            bytes,
+            pos: 0,
+            trailing_commas,
+        };
         // Match Qoder's BOM handling without changing the original bytes.
         if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
             parser.pos = 3;
@@ -42,7 +54,11 @@ impl<'a> Document<'a> {
         if parser.pos != bytes.len() || !root.value.is_object() {
             return Err(invalid());
         }
-        Ok(Self { bytes, root })
+        Ok(Self {
+            bytes,
+            root,
+            trailing_commas,
+        })
     }
 
     pub fn object(&self, parent: &Node, key: &str) -> Result<Option<Node>, QoderNativeError> {
@@ -52,6 +68,7 @@ impl<'a> Document<'a> {
         let mut parser = Parser {
             bytes: self.bytes,
             pos: member.value.start,
+            trailing_commas: self.trailing_commas,
         };
         let node = parser.value(0)?;
         if !node.value.is_object() {
@@ -88,7 +105,11 @@ impl<'a> Document<'a> {
                 }
             }
         } else if let Some(value) = value {
-            let mut insert = if object.members.is_empty() {
+            let trailing = object
+                .members
+                .last()
+                .is_some_and(|member| member.comma.is_some());
+            let mut insert = if object.members.is_empty() || trailing {
                 Vec::new()
             } else {
                 b",".to_vec()
@@ -97,6 +118,9 @@ impl<'a> Document<'a> {
             insert.extend(serde_json::to_vec(key).map_err(|_| invalid())?);
             insert.push(b':');
             insert.extend(serde_json::to_vec(value).map_err(|_| invalid())?);
+            if trailing {
+                insert.push(b',');
+            }
             insert.push(b'\n');
             edits.push((object.range.end - 1..object.range.end - 1, insert));
         }
@@ -105,7 +129,7 @@ impl<'a> Document<'a> {
         for (range, replacement) in edits {
             result.splice(range, replacement);
         }
-        Document::parse(&result)?;
+        Document::parse_with_trailing_commas(&result, self.trailing_commas)?;
         Ok(result)
     }
 }
@@ -113,6 +137,7 @@ impl<'a> Document<'a> {
 struct Parser<'a> {
     bytes: &'a [u8],
     pos: usize,
+    trailing_commas: bool,
 }
 
 impl Parser<'_> {
@@ -221,6 +246,10 @@ impl Parser<'_> {
                             break;
                         }
                         self.pos += 1;
+                        self.skip()?;
+                        if self.trailing_commas && self.bytes.get(self.pos) == Some(&b'}') {
+                            break;
+                        }
                     }
                 }
                 if self.bytes.get(self.pos) != Some(&b'}') {
@@ -241,6 +270,10 @@ impl Parser<'_> {
                             break;
                         }
                         self.pos += 1;
+                        self.skip()?;
+                        if self.trailing_commas && self.bytes.get(self.pos) == Some(&b']') {
+                            break;
+                        }
                     }
                 }
                 if self.bytes.get(self.pos) != Some(&b']') {
@@ -276,4 +309,48 @@ impl Parser<'_> {
 
 fn invalid() -> QoderNativeError {
     qoder_error("native settings JSON")
+}
+
+#[cfg(test)]
+mod syntax_tests {
+    use super::*;
+
+    #[test]
+    fn opencode_trailing_separators_survive_owned_edits() {
+        let input = b"{ // unrelated\n\"list\":[1,2,],\n\"provider\":{\"user\":{\"key\":true,},}, // preserve\n}";
+        assert!(Document::parse(input).is_err());
+        let document = Document::parse_with_trailing_commas(input, true).unwrap();
+        let providers = document
+            .object(&document.root, "provider")
+            .unwrap()
+            .unwrap();
+        let added = document
+            .edit(
+                &providers,
+                "managed",
+                Some(&serde_json::json!({"id":"route"})),
+            )
+            .unwrap();
+        assert!(String::from_utf8_lossy(&added).contains("// preserve"));
+        assert!(String::from_utf8_lossy(&added).contains("\"list\":[1,2,]"));
+        let document = Document::parse_with_trailing_commas(&added, true).unwrap();
+        let providers = document
+            .object(&document.root, "provider")
+            .unwrap()
+            .unwrap();
+        let removed = document.edit(&providers, "managed", None).unwrap();
+        let parsed = Document::parse_with_trailing_commas(&removed, true).unwrap();
+        assert_eq!(
+            parsed.root.value["provider"],
+            serde_json::json!({"user":{"key":true}})
+        );
+        assert!(String::from_utf8_lossy(&removed).contains("\"user\":{\"key\":true,}"));
+    }
+
+    #[test]
+    fn opencode_policy_never_admits_duplicate_or_empty_members() {
+        for input in [b"{\"a\":1,\"a\":2,}".as_slice(), b"{\"a\":[1,,]}", b"{,}"] {
+            assert!(Document::parse_with_trailing_commas(input, true).is_err());
+        }
+    }
 }

@@ -7,6 +7,7 @@ pub struct NativeWorkerContext {
     home: PathBuf,
     config_root: PathBuf,
     borrowed: bool,
+    opencode: Option<hiroute_integrations::OpenCodeNativeContext>,
 }
 
 impl NativeWorkerContext {
@@ -57,11 +58,17 @@ impl NativeWorkerContext {
         let home = home
             .map(PathBuf::from)
             .ok_or(DelegationErrorV1::CapabilityUnavailable)?;
+        if harness == WorkerHarnessV1::OpenCode {
+            let context = hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, lookup)
+                .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+            return Self::from_opencode(context);
+        }
         let (variable, default) = match harness {
             WorkerHarnessV1::CodexCli => ("CODEX_HOME", ".codex"),
             WorkerHarnessV1::ClaudeCode => ("CLAUDE_CONFIG_DIR", ".claude"),
             WorkerHarnessV1::Pi => ("PI_CODING_AGENT_DIR", ".pi/agent"),
             WorkerHarnessV1::DeepseekHarness => ("DSH_HOME", ".dsh"),
+            WorkerHarnessV1::OpenCode => return Err(DelegationErrorV1::CapabilityUnavailable),
             WorkerHarnessV1::QoderCli => {
                 let selected = lookup("QODER_CONFIG_DIR").map(PathBuf::from);
                 let context = hiroute_integrations::agents::QoderNativeContext::from_selected(
@@ -105,7 +112,22 @@ impl NativeWorkerContext {
             home,
             config_root,
             borrowed,
+            opencode: None,
         })
+    }
+
+    pub fn from_opencode(
+        context: hiroute_integrations::OpenCodeNativeContext,
+    ) -> Result<Self, DelegationErrorV1> {
+        context
+            .validate()
+            .map_err(|_| DelegationErrorV1::InvalidArguments)?;
+        let mut native = Self::borrowed(&context.home, &context.config_root)?;
+        native.opencode = Some(context);
+        Ok(native)
+    }
+    pub fn opencode(&self) -> Option<&hiroute_integrations::OpenCodeNativeContext> {
+        self.opencode.as_ref()
     }
 
     pub fn home(&self) -> &Path {

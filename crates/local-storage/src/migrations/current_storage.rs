@@ -57,8 +57,16 @@ pub(crate) fn acquire_startup_lock(root: &Path) -> Result<std::fs::File, LocalSt
         validate_owner_file(&path)?;
         file
     };
-    file.try_lock_exclusive()
-        .map_err(|_| LocalStorageError::InvalidData)?;
+    file.try_lock_exclusive().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::WouldBlock {
+            LocalStorageError::Io(error).with_recovery(
+                hiroute_host_runtime::StorageRecoveryCause::Locked,
+                hiroute_host_runtime::StorageRecoveryAction::RetryCurrent,
+            )
+        } else {
+            LocalStorageError::Io(error)
+        }
+    })?;
     Ok(file)
 }
 

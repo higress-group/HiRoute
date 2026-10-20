@@ -53,7 +53,7 @@ export function WorkerDependencies({
 }) {
   const zh = language === 'zh';
   const text = (cn: string, en: string) => zh ? cn : en;
-  const name = { codex_cli: 'Codex CLI', claude_code: 'Claude Code', qoder_cli: 'Qoder CLI', pi: 'Pi', deepseek_harness: 'DeepSeek Harness' }[harness];
+  const name = { codex_cli: 'Codex CLI', claude_code: 'Claude Code', qoder_cli: 'Qoder CLI', pi: 'Pi', deepseek_harness: 'DeepSeek Harness', opencode: 'OpenCode' }[harness];
   const components = workerDependencyComponents(harness);
   const [view, setView] = useState<WorkerDependenciesView | null>(null);
   const [selection, setSelection] = useState<WorkerDependencySelectionRequest | null>(null);
@@ -125,7 +125,7 @@ export function WorkerDependencies({
     setSelection(current => ({
       harness,
       cli_path: '',
-      ...((harness === 'qoder_cli' || harness === 'deepseek_harness') ? {} : { ...(harness === 'pi' ? {} : { adapter_path: '' }), node_path: null }),
+      ...((harness === 'qoder_cli' || harness === 'deepseek_harness' || harness === 'opencode') ? {} : { ...(harness === 'pi' ? {} : { adapter_path: '' }), node_path: null }),
       expected_selection_revision: view ? workerDependencyRevision(view, harness) : 0,
       ...current,
       ...patch,
@@ -141,7 +141,7 @@ export function WorkerDependencies({
     setError('');
     setNotice('');
     try {
-      const input = harness === 'qoder_cli'
+      const input = workerDependencyComponents(harness).length === 1
         ? { harness, cli_path: selection.cli_path, expected_selection_revision: selection.expected_selection_revision }
         : harness === 'pi' ? { harness, cli_path: selection.cli_path, node_path: selection.node_path, expected_selection_revision: selection.expected_selection_revision } : selection;
       const prepared = await invoke<Confirmation>('worker_dependencies_select_prepare', { input });
@@ -222,10 +222,12 @@ export function WorkerDependencies({
       {text('选择已安装的 Qoder CLI（qoder 或 qodercli）。需要登录时，请在终端正常启动该 CLI 并完成登录，再返回使用。', 'Select your installed Qoder CLI (qoder or qodercli). When sign-in is needed, start that CLI normally in a terminal and sign in, then return here.')} {' '}
       <a href="https://docs.qoder.com/cli/installation" target="_blank" rel="noreferrer" onClick={event => void openInstallationGuide(event)}>{text('官方安装与升级说明', 'Official installation and upgrade guide')}</a>
     </p>}
+    {harness === 'opencode' && <p className="field-help" data-opencode-installation-guide>{text('Worker 目前支持官方 npm 平台包中的 OpenCode 1.19.3。请选择包内的原生程序。', 'Workers currently support OpenCode 1.19.3 from its official npm platform package. Select the native executable inside that package.')}</p>}
     {harness === 'deepseek_harness' && <p className="field-help" data-dsh-installation-guide>{text('安装官方 dsh CLI 并检测安装位置。npm 安装需要受支持的 Node.js；任务通过原生 ACP 执行，无需连接组件。', 'Install the official dsh CLI and detect its location. npm installations need supported Node.js; tasks use native ACP with no adapter.')}</p>}
     {harness === 'pi' && <p className="field-help" data-pi-installation-guide>{text('使用官方 npm 安装的 Pi 和 Node.js。检测安装位置后，保存时会检查所需能力；也可查看安装命令。', 'Use the official npm installation of Pi and Node.js. Detect installation paths; saving checks the required capabilities. Installation commands are also available.')}</p>}
     {!view && <div className="option-panel"><div className="option-row"><div><strong>{text('检测本机安装', 'Detect local installation')}</strong><span>{harness === 'qoder_cli'
       ? text('查找当前环境中的 Qoder CLI。', 'Find Qoder CLI in the current environment.')
+      : components.length === 1 ? text(`查找当前环境中的 ${name}。`, `Find ${name} in the current environment.`)
       : harness === 'pi' ? text('查找 Pi 和 Node.js。', 'Find Pi and Node.js.') : text(`查找 ${name}、连接组件和必要的 Node.js。`, `Find ${name}, its adapter, and Node.js when required.`)}</span></div><button className="btn btn-primary" type="button" disabled={refreshing} onClick={() => void discover()}>{refreshing ? text('正在检测…', 'Detecting…') : text('一键检测', 'Detect')}</button></div></div>}
 
     {view && <div className={`callout ${state === 'configured' ? 'good' : state === 'found' ? '' : 'warn'}`}>

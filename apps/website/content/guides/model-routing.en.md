@@ -1,6 +1,6 @@
 # Use smart model routing
 
-Smart model routing selects and executes models according to the published configuration. Fixed model and Free first follow candidate order. Smart saving and Custom branches judge the task to select a model group and judge again for every new user message. For these two routing types, tool continuations reuse the frozen decision when HiRoute can identify the same turn, history is continuous, and the choice remains reusable.
+Smart model routing selects and executes models according to the published configuration. Fixed model and Free first follow candidate order. Difficulty routing and Custom branches judge the task to select a model group and judge again for every new user message. For these two routing types, tool continuations reuse the frozen decision when HiRoute can identify the same turn, history is continuous, and the choice remains reusable.
 
 When a new judgment selects the same group, HiRoute prefers the model from the previous turn if the conversation still matches and the model can serve the request. This includes a backup selected after another model failed, and helps reuse model context and prompt caches. If the group changes or the previous model cannot be reused, normal selection and automatic relay apply. This happens automatically, with no follow-up switching setting.
 
@@ -13,7 +13,7 @@ Create or edit a plan in Smart routing, then choose How to use models:
 | Type | When to use it | Behavior |
 | --- | --- | --- |
 | Fixed model | You need a predictable candidate order | Tries candidates in order, skipping models that lack required capabilities or are temporarily unavailable |
-| Smart saving | You want economy models for simple tasks and primary models for complex work | Chooses economy or primary using this turn's degree result and any applicable previous-stage score |
+| Difficulty routing | You want to lower cost by assigning simple tasks to a cheaper Regular model, with Primary for complex work | Chooses regular or primary using this turn's degree result and any applicable previous-stage score |
 | Custom branches | Tasks such as writing and reviewing need different models | Selects a task category, then regular or primary models within that branch |
 | Free first | You want free models attempted first | Tries free candidates in a fixed order, then either stops or uses an optional primary fallback |
 
@@ -38,16 +38,16 @@ To implement your own judgment and assessment, choose Connect custom extension f
 
 During real routing, the selected decision connection receives the complete current user content and allowed execution history. History includes user content, accepted assistant text, ordered tool names, and explicit coarse outcomes. The request body excludes system/developer prompts, tool arguments, tool-result bodies, and execution-model credentials. Assessment uses criteria frozen when the target stage executed. Incomplete visible history and an incomplete assessment target retain separate markers.
 
-## Configure Smart saving
+## Configure Difficulty routing
 
-1. Select Smart saving. Decision method defaults to Decision model; select the saved connection revision. You may instead choose Heuristic rules or Custom extension.
-2. Add models for explicit, bounded work to Economy models.
+1. Select Difficulty routing. Decision method defaults to Decision model; select the saved connection revision. You may instead choose Heuristic rules or Custom extension.
+2. Add models for explicit, bounded work to Regular models.
 3. Add models for complex tasks or protection after low competence to Primary models.
 4. Use Add model to add candidates to each group, then adjust their order. Open a model's reasoning settings when needed and apply or cancel the change.
 
-![Smart saving configuration](/decision-assets/config-en.png)
+![Difficulty routing configuration](/decision-assets/config-en.png)
 
-The main form needs only the decision method and two model groups. Judgment settings starts collapsed. The simple probability threshold defaults to **0.8** and the competence floor to **0.5**. Expand it to edit the simple/complex instructions separately from How competence is assessed, including assessment instructions and the 0 / 0.5 / 1 criteria. A higher simple threshold uses economy models more cautiously. An applicable complete previous-stage score below the competence floor selects primary for this turn.
+The main form needs only the decision method and two model groups. Judgment settings starts collapsed. The simple probability threshold defaults to **0.8** and the competence floor to **0.5**. Expand it to edit the simple/complex instructions separately from How competence is assessed, including assessment instructions and the 0 / 0.5 / 1 criteria. A higher simple threshold uses regular models more cautiously. An applicable complete previous-stage score below the competence floor selects primary for this turn.
 
 Simple probability describes this turn's task degree, not the probability that an execution model will answer correctly.
 
@@ -70,15 +70,15 @@ Each decision selects one task branch. Overlapping conditions follow the current
 
 ## Understand turn selection and failures
 
-In Smart saving and Custom branches, a task with two model groups selects regular or economy only when this turn's simple probability meets its threshold and no applicable low score is present. Otherwise, primary is selected. With defaults, simple probability **0.8** meets the threshold and competence **0.5** meets the floor; a score below **0.5** triggers protection.
+In Difficulty routing and Custom branches, a task with two model groups selects regular only when this turn's simple probability meets its threshold and no applicable low score is present. Otherwise, primary is selected. With defaults, simple probability **0.8** meets the threshold and competence **0.5** meets the floor; a score below **0.5** triggers protection.
 
 Protection requires a fresh, complete, valid assessment returned by this decision, bound to the preceding actual execution stage and compatible with the current category, published configuration, and assessment criteria. Missing, partial, cross-category, or unattributable scores cannot trigger protection. Unrated is not zero, and an old low score is not repeatedly applied.
 
-A new user turn chooses again, so an earlier upgrade does not lock subsequent turns to primary. The next turn still uses its degree result and applicable score; it does not reset to economy unconditionally. Prefer the current model applies only within the group selected for this turn. Tool continuations and replay inherit the choice when HiRoute can identify the same turn, history is continuous, and the frozen decision remains reusable. If compaction or history reconstruction breaks continuity or prevents reuse, HiRoute judges again.
+A new user turn chooses again, so an earlier upgrade does not lock subsequent turns to primary. The next turn still uses its degree result and applicable score; it does not reset to regular unconditionally. Prefer the current model applies only within the group selected for this turn. Tool continuations and replay inherit the choice when HiRoute can identify the same turn, history is continuous, and the frozen decision remains reusable. If compaction or history reconstruction breaks continuity or prevents reuse, HiRoute judges again.
 
-Candidate order provides failure relay. Exhausted regular or economy candidates continue to the primary group in the same task branch; exhausted primary candidates fail explicitly. A direct primary selection tries only primary candidates, without downgrading to regular or crossing task branches. A branch with one group fails when that group is exhausted. A failed candidate call is not a competence judgment and produces no zero score.
+Candidate order provides failure relay. Exhausted regular candidates continue to the primary group in the same task branch; exhausted primary candidates fail explicitly. A direct primary selection tries only primary candidates, without downgrading to regular or crossing task branches. A branch with one group fails when that group is exhausted. A failed candidate call is not a competence judgment and produces no zero score.
 
-If a two-group branch's category is valid but its degree result is unavailable, use that branch's primary group and record a degree judgment failure. If the whole decision fails, Smart saving uses heuristic rules; Custom branches uses the default branch's primary group, or regular when it has one group only.
+If a two-group branch's category is valid but its degree result is unavailable, use that branch's primary group and record a degree judgment failure. If the whole decision fails, Difficulty routing uses heuristic rules; Custom branches uses the default branch's primary group, or regular when it has one group only.
 
 All candidates must satisfy the request's text, image, tool, and context requirements. Once response delivery begins, HiRoute does not silently switch models within that response.
 
@@ -92,7 +92,7 @@ Maximum wait per request includes retries and streaming output and defaults to 1
 
 ## Inspect the outcome
 
-Open Model performance on the route to inspect stage samples and competence coverage by actual task branch, model group, model, and reasoning settings. Smart saving groups Economy / Primary. Custom branches groups positions such as Writing → Regular / Primary. The same model used in different groups is recorded separately.
+Open Model performance on the route to inspect stage samples and competence coverage by actual task branch, model group, model, and reasoning settings. Difficulty routing groups Regular / Primary. Custom branches groups positions such as Writing → Regular / Primary. The same model used in different groups is recorded separately.
 
 Model performance in Sessions exposes the same stage facts, including the actual model, competence, and assessment coverage for each stage.
 

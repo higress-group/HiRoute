@@ -6,13 +6,13 @@ application owns authorization, grants, publication and restore ordering; native
 leaves own effective configuration, model budgets and result interpretation.
 See the [Agent map](../../../../../docs/code-map/README.md) before changing owners.
 
-| Native boundary | Qoder | Pi | DSH |
-| --- | --- | --- | --- |
-| Selected user target | `QODER_CONFIG_DIR/settings.json` | `PI_CODING_AGENT_DIR/models.json` (effective HOME fallback) | `DSH_HOME/profiles/web/cordis.patch.yml` |
-| Model declaration / budget | [Qoder provider](../qoder_provider.rs), [Plan budget](../qoder_budget.rs) | [Shared provider renderer](../additional_native.rs), [Pi Plan budget](../qoder_budget.rs) | [Public YAML leaf](../dsh_config.rs), [shared budget](../qoder_budget.rs) |
-| Separate default dependency | `model.name` in the target file | `defaultProvider/defaultModel` in user `settings.json` | `agent-default-model` in Web and home patches; home provider shadowing is refused |
-| Ordinary Gateway authentication | Dedicated `/_hiroute/qoder/v1` bearer channel | `/v1`, fixed `X-HiRoute-Token` header; saved native auth may override ordinary Bearer | Fixed `X-HiRoute-Token` header; Responses base ends in `/v1`, Messages base does not |
-| Actual native acceptance | [Qoder journeys](../../../../../tools/product-e2e/tests/QODER_DELEGATION.md) | [Pi journeys](../../../../../tools/product-e2e/tests/PI_INTEGRATION.md) | [DSH journeys](../../../../../tools/product-e2e/tests/DSH_INTEGRATION.md) |
+| Native boundary | Qoder | Pi | DSH | OpenCode |
+| --- | --- | --- | --- | --- |
+| Selected user target | `QODER_CONFIG_DIR/settings.json` | `PI_CODING_AGENT_DIR/models.json` (effective HOME fallback) | `DSH_HOME/profiles/web/cordis.patch.yml` | Absolute `OPENCODE_CONFIG`, otherwise additive config directory or XDG config root; existing JSONC/JSON target |
+| Model declaration / budget | [Qoder provider](../qoder_provider.rs), [Plan budget](../qoder_budget.rs) | [Shared provider renderer](../additional_native.rs), [Pi Plan budget](../qoder_budget.rs) | [Public YAML leaf](../dsh_config.rs), [shared budget](../qoder_budget.rs) | [Singular provider renderer/context](../opencode.rs), shared Pi numeric budget policy |
+| Separate default dependency | `model.name` in the target file | `defaultProvider/defaultModel` in user `settings.json` | `agent-default-model` in Web and home patches; home provider shadowing is refused | Effective user-layer `model`, `small_model`, agent/mode models, provider overrides and allow/deny lists |
+| Ordinary Gateway authentication | Dedicated `/_hiroute/qoder/v1` bearer channel | `/v1`, fixed `X-HiRoute-Token` header; saved native auth may override ordinary Bearer | Fixed `X-HiRoute-Token` header; Responses base ends in `/v1`, Messages base does not | Both SDKs use `/v1` and fixed `X-HiRoute-Token`; inert SDK API-key placeholder |
+| Actual native acceptance | [Qoder journeys](../../../../../tools/product-e2e/tests/QODER_DELEGATION.md) | [Pi journeys](../../../../../tools/product-e2e/tests/PI_INTEGRATION.md) | [DSH journeys](../../../../../tools/product-e2e/tests/DSH_INTEGRATION.md) | [OpenCode journeys](../../../../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md) |
 
 Main-Agent configuration adds only selected Plan aliases. It leaves native defaults,
 purpose routing, extensions, hooks, MCP and Skills to their existing owners. The
@@ -24,8 +24,8 @@ A native provider name alone never grants ownership of an existing user entry.
 - [Native edits](../additional_native.rs) enforce the independent namespace,
   semantic ownership, default reference and encrypted restore binding.
 - [JSONC edits](../qoder_jsonc.rs) preserve unrelated bytes and comments. The name
-  is historical; it is the single bounded parser/editor for Qoder/Pi. DSH uses
-  its static YAML leaf below.
+  is historical; it is the single bounded parser/editor for Qoder/Pi/OpenCode. Only
+  OpenCode enables native object/array trailing commas. DSH uses its static YAML leaf below.
   Ambiguous duplicate keys, invalid JSON and oversized files fail closed. Line
   comments accept LF/CRLF; standalone CR and Unicode line separators are rejected
   because native readers disagree about where such comments end.
@@ -43,7 +43,7 @@ A native provider name alone never grants ownership of an existing user entry.
   keeps installed declarations compatible with publication changes and blocks a
   second mutation while the original operation has a pending tail. Only the exact active
   grant generation retained in the next publication owns a declaration. All affected
-  Qoder/Pi/DSH contexts are reported with their Plan ID/alias, declared/proposed context
+  Qoder/Pi/DSH/OpenCode contexts are reported with their Plan ID/alias, declared/proposed context
   and output, or a distinct missing/uncomputable reason. Sharing an upstream binding
   does not establish a Plan dependency.
 
@@ -60,7 +60,7 @@ retain the released closed error shape. This presentation flag is outside the
 change spec and confirmation digest and never grants write authority. `operations.find` emits
 these facts only when `include_model_budget_conflict=true`; omitted/false requests
 retain the old strict response shape. Existing operation inputs, grant formats,
-SQL schema and native settings formats are unchanged.
+SQL schema and existing native settings formats are unchanged by this diagnostic.
 
 The prepared local grant is written only to the private native provider, mode
 0600. Public journals contain no bearer or original native settings. Status reads
@@ -68,7 +68,8 @@ use the protected artifact port; restoration can still remove an owned secret
 following permission drift. Preserve existing Qoder journal/restore wire strings
 as registered recovery contracts; Pi/DSH use their current closed kinds. Current
 multi-provider writes produce V2 restore records; V1 remains a registered reader
-for historical single-provider writes.
+for historical single-provider writes. OpenCode has its own current V2 restore
+discriminator, retaining the same protected ownership and recovery engine.
 
 ## Adjustment and recovery
 

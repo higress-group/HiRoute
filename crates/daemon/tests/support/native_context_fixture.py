@@ -54,7 +54,7 @@ def prepare_skill(parent, name, scope, writer=write_new):
 
 def prepare(home, config, project, harness, suffix='', owned_files=None):
     """Add only new fixture-owned skills and neighbors; never replace existing files."""
-    assert harness in ('codex', 'claude', 'qoder', 'pi', 'dsh')
+    assert harness in ('codex', 'claude', 'qoder', 'pi', 'dsh', 'opencode')
     home, config, project = map(lambda path: Path(path).resolve(), (home, config, project))
     def owned_write(path, text, executable=False):
         write_new(path, text, executable)
@@ -64,7 +64,7 @@ def prepare(home, config, project, harness, suffix='', owned_files=None):
     skills = []
     for scope, parent in (
         ('user', home / '.agents/skills' if harness == 'codex' else config / 'skills'),
-        ('project', project / {'codex': '.agents/skills', 'claude': '.claude/skills', 'qoder': '.qoder/skills', 'pi': '.pi/skills', 'dsh': '.dsh/skills'}[harness]),
+        ('project', project / {'codex': '.agents/skills', 'claude': '.claude/skills', 'qoder': '.qoder/skills', 'pi': '.pi/skills', 'dsh': '.dsh/skills', 'opencode':'.opencode/skills'}[harness]),
     ):
         skills.append(prepare_skill(parent, 'native-context-' + scope + suffix, scope, owned_write))
     neighbor = config / ('native-context-neighbor' + suffix + '.txt')
@@ -151,6 +151,8 @@ def decision(fixture, body):
     assert harness != 'qoder' or not is_native_compaction(body), \
         'unexpected Qoder compaction in the ordinary Skill journey; check the native context budget'
     rendered = json.dumps(body)
+    if harness=='opencode' and any(signature in native_text(body).lower() for signature in ('title generator','generate a concise title','generate a short title')):
+        return dict(kind='text',text='Native context receipt',request_kind='title',continued=False)
     results = tool_results(body, harness)
     result_text = json.dumps(results.get('native_context_execute', ''))
     if CONTINUE_PROMPT in rendered:
@@ -182,8 +184,26 @@ def decision(fixture, body):
                     'expected native Skill directory was not loaded'
         assert 'Bash' in names, 'native Bash tool unavailable'
         name = 'Bash'
+    elif harness == 'opencode':
+        assert {'skill','bash'} <= names,'native OpenCode tools unavailable'
+        for skill in fixture['skills']:
+            call_id='native_context_skill_'+skill['scope']
+            if call_id not in results:
+                return dict(kind='tool',id=call_id,name='skill',arguments={'name':skill['name']})
+            loaded=results[call_id]
+            assert loaded.startswith('<skill_content name="'+skill['name']+'">')
+            assert '\nBase directory for this skill: '+str(Path(skill['skill']).parent)+'\n' in loaded
+            assert skill['contents'] in loaded,'native OpenCode Skill body mismatch'
+        edit=fixture['edit']
+        if 'native_context_read' not in results:
+            return dict(kind='tool',id='native_context_read',name='read',arguments={'filePath':edit['path']})
+        if 'native_context_edit' not in results:
+            assert edit['before'] in results['native_context_read'],'native read lost original edit content'
+            return dict(kind='tool',id='native_context_edit',name='edit',arguments={'filePath':edit['path'],'oldString':edit['before'],'newString':edit['after']})
+        assert Path(edit['path']).read_text().strip()==edit['after'],'native edit did not change the owned file'
+        name='bash'
     elif harness == 'dsh':
-        assert 'bash' in names and 'read' in names, 'native DSH tools unavailable'
+        assert 'bash'  in names and 'read' in names, 'native DSH tools unavailable'
         return dict(kind='tool',id='native_context_execute',name='bash', arguments={'command':' && '.join('/bin/cat '+shlex.quote(skill['skill'])+' && /bin/sh '+shlex.quote(skill['script']) for skill in fixture['skills']), 'description':'Read native Skills and run receipt scripts','timeoutMs':10000})
     elif harness == 'pi':
         assert 'bash' in names and 'read' in names, 'native Pi tools unavailable'
@@ -195,7 +215,7 @@ def decision(fixture, body):
                           + shlex.quote(skill['script']) for skill in fixture['skills'])
     arguments = ({'cmd': command, 'max_output_tokens': 2000, 'yield_time_ms': 1000}
                  if name == 'exec_command' else {'command': command, 'timeout_ms': 10000}
-                 if name == 'shell_command' else {'command': command, 'timeout': 10 if harness == 'pi' else 10000})
+                 if name == 'shell_command' else {'command': command, 'description':'Read Skills and execute receipt scripts', 'timeout': 10 if harness == 'pi' else 10000})
     return dict(kind='tool', id='native_context_execute', name=name, arguments=arguments)
 
 
@@ -211,7 +231,7 @@ def events(body, action, protocol):
         return [
             ('message_start', {'message': {'id': 'msg_native_context', 'type': 'message',
               'role': 'assistant', 'model': body['model'], 'content': [], 'stop_reason': None,
-              'stop_sequence': None, 'usage': {'input_tokens': 1, 'output_tokens': 0}}}),
+              'stop_sequence': None, 'usage': {'input_tokens': action.get('input_tokens',1), 'output_tokens': 0}}}),
             ('content_block_start', {'index': 0, 'content_block': initial}),
             ('content_block_delta', {'index': 0, 'delta': delta}),
             ('content_block_stop', {'index': 0}),

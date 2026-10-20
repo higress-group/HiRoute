@@ -15,6 +15,7 @@ export function HomeNavigation({
   serviceReady = false,
   onNavigate,
   onOpenSettings,
+  routingAttention = false,
 }: {
   language: Language;
   items: HomeNavigationItem[];
@@ -22,6 +23,7 @@ export function HomeNavigation({
   serviceTitle?: string;
   serviceLabel?: string;
   serviceReady?: boolean;
+  routingAttention?: boolean;
   onNavigate: (id: string) => void;
   onOpenSettings?: () => void;
 }) {
@@ -48,6 +50,7 @@ export function HomeNavigation({
           >
             <UiIcon name={item.icon} />
             <span>{item.label}</span>
+            {item.id === 'routing' && routingAttention && <i className="status-dot warn trust-attention-dot" role="img" aria-label={language === 'zh' ? '有可选路由建议' : 'Optional routing suggestions'} />}
           </button>
         ))}
       </nav>

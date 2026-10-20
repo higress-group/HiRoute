@@ -20,6 +20,12 @@ pub enum AgentFacetIntent<T> {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentModelSelectionV2 {
+    #[serde(rename = "opencode_additional")]
+    OpenCodeAdditional {
+        allowed_plan_ids: BTreeSet<AgentPlanId>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        plan_protocols: BTreeMap<AgentPlanId, crate::AgentIngressProtocolV1>,
+    },
     HermesDefault {
         plan_id: AgentPlanId,
         protocol: crate::AgentIngressProtocolV1,
@@ -70,6 +76,8 @@ pub enum AgentModelSurfaceV2 {
     QoderCli,
     PiCli,
     DshCli,
+    #[serde(rename = "opencode_cli")]
+    OpenCodeCli,
     HermesCli,
 }
 
@@ -123,7 +131,8 @@ impl AgentModelSelectionV2 {
             | Self::PiAdditional { plan_protocols, .. } => {
                 plan_protocols.get(id).copied().unwrap_or(fallback)
             }
-            Self::DshAdditional { plan_protocols, .. } => {
+            Self::DshAdditional { plan_protocols, .. }
+            | Self::OpenCodeAdditional { plan_protocols, .. } => {
                 plan_protocols.get(id).copied().unwrap_or(fallback)
             }
             _ => fallback,
@@ -138,6 +147,7 @@ impl AgentModelSelectionV2 {
             Self::QoderAdditional { .. }
             | Self::PiAdditional { .. }
             | Self::DshAdditional { .. }
+            | Self::OpenCodeAdditional { .. }
             | Self::HermesDefault { .. } => &[],
         }
     }
@@ -155,6 +165,9 @@ impl AgentModelSelectionV2 {
                 allowed_plan_ids, ..
             }
             | Self::DshAdditional {
+                allowed_plan_ids, ..
+            }
+            | Self::OpenCodeAdditional {
                 allowed_plan_ids, ..
             } => allowed_plan_ids.clone(),
             Self::ClaudeLauncher {
@@ -207,7 +220,8 @@ impl AgentModelSelectionV2 {
             },
             Self::QoderAdditional { plan_protocols, .. }
             | Self::PiAdditional { plan_protocols, .. }
-            | Self::DshAdditional { plan_protocols, .. } => {
+            | Self::DshAdditional { plan_protocols, .. }
+            | Self::OpenCodeAdditional { plan_protocols, .. } => {
                 if plan_protocols.keys().any(|id| !plans.contains(id))
                     || plan_protocols
                         .values()

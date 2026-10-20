@@ -24,6 +24,11 @@ pub(super) fn plan_quality_samples(options: &[String]) -> Result<Value, ErrorCod
         );
     }
     let mut query = hiroute_application_api::PlanQualitySamplesQuery {
+        execution_group: None,
+        selection_reason: None,
+        segment_ids: Vec::new(),
+        executor: None,
+        trust_row: None,
         include_routing_observations: true,
         competence: None,
         plan_id: None,
@@ -46,6 +51,25 @@ pub(super) fn plan_quality_samples(options: &[String]) -> Result<Value, ErrorCod
             "--plan-id" => query.plan_id = Some(next(options, &mut index)?),
             "--session-id" => query.session_id = Some(next(options, &mut index)?),
             "--segment-id" => query.segment_id = Some(next(options, &mut index)?),
+            "--segment-ids" => {
+                query.segment_ids = next(options, &mut index)?
+                    .split(',')
+                    .map(str::to_owned)
+                    .collect()
+            }
+            "--executor" => query.executor = Some(next(options, &mut index)?),
+            "--execution-group" => {
+                query.execution_group = Some(
+                    serde_json::from_value(Value::String(next(options, &mut index)?))
+                        .map_err(|_| ErrorCode::InvalidArguments)?,
+                )
+            }
+            "--selection-reason" => {
+                query.selection_reason = Some(
+                    serde_json::from_value(Value::String(next(options, &mut index)?))
+                        .map_err(|_| ErrorCode::InvalidArguments)?,
+                )
+            }
             "--plan-revision" => query.plan_revision = Some(parse_u64(options, &mut index)?),
             "--model" => query.model_configuration_id = Some(next(options, &mut index)?),
             "--from-ms" => query.from_ms = Some(parse_i64(options, &mut index)?),
@@ -74,7 +98,7 @@ pub(super) fn plan_quality_samples(options: &[String]) -> Result<Value, ErrorCod
         return Err(ErrorCode::InvalidArguments);
     }
     serde_json::to_value(ObservationReadRequestV2::new(
-        ObservationReadIntentV2::PlanQuality(query),
+        ObservationReadIntentV2::PlanQuality(Box::new(query)),
     ))
     .map_err(|_| ErrorCode::Internal)
 }

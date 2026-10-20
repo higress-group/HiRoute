@@ -4,6 +4,7 @@
 
 pub mod control;
 pub mod delegation;
+mod model_feed;
 mod release_catalog;
 #[cfg(any(unix, windows))]
 pub mod role_all;

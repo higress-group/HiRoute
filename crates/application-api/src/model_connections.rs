@@ -392,6 +392,9 @@ pub struct ModelConnectionCheckIssueV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConnectionCheckViewV1 {
+    /// IDs actually returned by this authenticated inventory check; catalog membership is separate.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observed_model_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inference_model_id: Option<String>,
     pub candidate: ComputeCandidateViewV2,

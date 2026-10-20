@@ -1,3 +1,6 @@
+import { ModelFeedPanel } from '../features/model-feed/ModelFeedPanel';
+import { newModelConnectionDraft } from '../features/model-connections/new-draft';
+import { modelConnectionBackend } from '../features/model-connections/backend';
 import { randomId } from '../random-id.ts';
 import { managementLoadFailureCopy, subscriptionFailureCopy } from '../features/models/subscription-copy';
 import { requestEditorReplacement } from '../ui/discard-guard';
@@ -119,31 +122,7 @@ function discoveredAgentName(agentId: string, language: 'zh' | 'en') {
   return language === 'zh' ? '本机 Agent' : 'Local agent';
 }
 
-export function newModelConnectionDraft(kind: 'known' | 'custom' | 'free' = 'custom'): ModelConnectionDraft {
-  const known = kind === 'known';
-  return {
-    entry_kind: kind === 'free' ? 'free_api_key' : known ? 'preset_api' : 'custom_api',
-    candidate_ref: null,
-    lineage_ref: `lineage/native/${randomId()}`,
-    display_name: '',
-    existing_source_id: null,
-    expected_source_revision: null,
-    edit_revision: 1,
-    check_id: '',
-    base_url: '',
-    base_kind: 'api_root',
-    request_path_override: null,
-    inventory_path_override: null,
-    protocol: 'chat_completions',
-    protocol_profile_id: 'profile/custom/chat_completions',
-    protocol_profile_revision: 1,
-    authentication: { kind: 'bearer' },
-    additional_endpoints: [],
-    provenance: { kind: 'user_configured', configuration_revision: 1 },
-    qualification: { free_access: null, evidence_ref: null },
-    models: [],
-  };
-}
+export { newModelConnectionDraft } from '../features/model-connections/new-draft';
 
 export function ModelManagementPage({
   language,
@@ -161,6 +140,7 @@ export function ModelManagementPage({
   agents = [],
   onOpenPlan,
   onCreatePlan,
+  onTryModel,
   tabs,
 }: {
   language: 'zh' | 'en';
@@ -177,6 +157,7 @@ export function ModelManagementPage({
   plans?: Plan[];
   agents?: Agent[];
   onOpenPlan?(planId: string): void;
+  onTryModel?(modelId: string | undefined, bindingId: string): void;
   onCreatePlan?(bindingId: string): void;
   tabs?: import('react').ReactNode;
 }) {
@@ -688,28 +669,7 @@ export function ModelManagementPage({
     setAddStage('scan');
   }, [startScanning, trustedAuthority, active]);
 
-  const backend = useMemo<ModelConnectionBackend>(() => ({
-    registerProtectedInput: secret => invoke<ProtectedInputRegistration>(
-      'register_protected_model_input',
-      { secret },
-    ),
-    releaseProtectedInput: input => invoke<void>('release_protected_model_input', { input }),
-    listConnectionOptions: () => invoke('compute_connection_options'),
-    checkModelConnection: request => invoke('check_model_connection', { request }),
-    checkRegisteredModelConnection: request => invoke('check_registered_model_connection', { request }),
-    cancelModelConnectionCheck: checkId => invoke('cancel_model_connection_check', { checkId }),
-    previewComputeSave: async change => {
-      // The editor may stay open across unrelated saves. Bind each new preview to
-      // current revisions, just like the existing-source editor; Apply still CASes
-      // this preview and the candidate retains its own source-revision binding.
-      const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
-      return invoke('preview_compute_save', {
-        change: { ...change, expected_revisions: current.revisions },
-      });
-    },
-    applyComputeSave: request => invoke('apply_compute_save', { request, language }),
-    getComputeSaveResult: operation => invoke('get_compute_save_result', { operation }),
-  }), [language]);
+  const backend = useMemo(() => modelConnectionBackend(language), [language]);
 
   function discardProtectedInputs() {
     const inputs = protectedInputs.current.splice(0);
@@ -1217,6 +1177,7 @@ export function ModelManagementPage({
     {(notice || modelNotice) && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{notice || modelNotice}</span></div></div>}
     {loading && <div className="empty-state" role="status"><div><span className="oc-spinner" /><p>{text.loading}</p></div></div>}
     {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{managementLoadFailureCopy(error, language).detail}</span><button className="btn" type="button" onClick={() => void refreshManagement()}>{managementLoadFailureCopy(error, language).retry}</button></div>}
+    {management && !management.sources.length && <ModelFeedPanel language={language} mutable={trustedAuthority} onChanged={() => void refreshManagement()} />}
     {management && !management.sources.length && !loading && !error && <div className="empty-state v3-empty"><div>
       <span className="empty-icon"><UiIcon name="models" /></span>
       <h3>{language === 'zh' ? '先连接一个模型' : 'Connect your first model'}</h3>
@@ -1238,6 +1199,7 @@ export function ModelManagementPage({
       onCredentialsSaved={() => setModelNotice(language === 'zh' ? '接入凭据已保存。' : 'Connection credentials saved.')}
       plans={plans}
       onOpenPlan={onOpenPlan}
+      onTryModel={onTryModel}
       onCreatePlan={onCreatePlan}
       onEditPrice={openPrice}
       onReauthorize={repairSubscription}

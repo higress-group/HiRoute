@@ -600,6 +600,17 @@ impl GatewayObservation {
                 authority_epoch: receipt.authority_epoch,
                 publication_revision: receipt.publication_revision,
                 publication_digest: receipt.publication_digest.to_string(),
+                // Turn-closing and assessment facts can precede this request's Planner run.
+                // Their trust comes from current admission, not later planner recording.
+                agent_plan_id: match &authorized.planner_policy().identity {
+                    crate::server::core_runtime::profiles::PlannerRouteIdentityV2::Plan {
+                        plan_id,
+                        ..
+                    } => Some(plan_id.clone()),
+                    crate::server::core_runtime::profiles::PlannerRouteIdentityV2::Fixed {
+                        ..
+                    } => None,
+                },
                 route: receipt.route.clone(),
                 plan_display_name: receipt.plan_display_name.as_ref().map(ToString::to_string),
                 served_model_id: receipt.served_model_id.to_string(),
@@ -666,6 +677,7 @@ pub(super) fn accepted_request_for_runtime_test() -> RequestObservation {
             authority_epoch: 1,
             publication_revision: 1,
             publication_digest: "sha256:runtime-test-publication".into(),
+            agent_plan_id: Some("plan/runtime-test".into()),
             route: hiroute_domain::ModelRequestRouteV2::Plan {
                 revision: 1,
                 semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"runtime-test-plan"),

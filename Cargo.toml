@@ -71,3 +71,9 @@ lto = "thin"
 # Keep application crates and their debug assertions at the normal dev settings.
 [profile.dev.package.sha2]
 opt-level = 3
+
+# Native Debug acceptance keeps the production observation read deadlines.
+# Compile SQLite's C amalgamation with optimization while preserving application
+# debug assertions and the normal per-checkout target directory.
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3

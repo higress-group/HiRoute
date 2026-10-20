@@ -17,7 +17,9 @@ mod observation;
 mod protected_prompt;
 mod quickstart;
 mod request_input;
+mod routing_timeline;
 mod service;
+mod trust;
 mod worker;
 
 use std::ffi::OsString;
@@ -145,6 +147,9 @@ where
     if let Some(execution) = quickstart::preview_command(&descriptor.command_id, options, &globals)
     {
         return execution;
+    }
+    if descriptor.command_id == "sessions.timeline" && options.iter().any(|o| o == "--follow") {
+        return routing_timeline::follow(options, globals);
     }
     match descriptor.command_id.as_str() {
         "schema.list" => execute_schema_list(options, globals.request_id),
@@ -383,9 +388,13 @@ fn command_payload(command_id: &str, options: &[String]) -> Result<Value, ErrorC
         "agents.check" => agent_check(options),
         "sessions.list" => observation::sessions_list(options),
         "sessions.show" => observation::session_show(options),
+        "sessions.timeline" => routing_timeline::payload(options),
         "sessions.receipt" => observation::session_receipt(options),
         "value.show" => observation::value_show(options),
         "observation.plan-quality.samples" => observation::plan_quality_samples(options),
+        "observation.plan-trust"
+        | "observation.plan-trust.replay"
+        | "observation.plan-trust.suggestions" => trust::payload(command_id, options),
         "observation.storage.show" => observation::capacity_get(options),
         "observation.storage.set" => observation::capacity_set(options),
         _ => control_plane::command_payload(command_id, options)
@@ -888,7 +897,7 @@ mod tests {
         assert_eq!(execution.exit_code, 0);
         assert_eq!(execution.stdout.lines().count(), 1);
         let value: Value = serde_json::from_str(&execution.stdout).unwrap();
-        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 61);
+        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 72);
         assert!(!execution.stdout.contains(HIDDEN_AGENT_GRANT_HELPER_VERB_V1));
     }
 

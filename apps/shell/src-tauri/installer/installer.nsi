@@ -390,6 +390,7 @@ Function PageLeaveReinstall
 FunctionEnd
 
 ; Fixed per-user program directory; never a standalone state directory.
+Page custom HiRouteHistoryNotice
 Page custom HiRouteOptions HiRouteOptionsLeave
 
 ; 6. Start menu shortcut page
@@ -515,6 +516,10 @@ Function .onInit
       File "/oname=$PLUGINSDIR\hiroute-package.json" "{{no-escape @key}}"
     !else if "{{this.[1]}}" == "standalone/package-manifest.json"
       File "/oname=$PLUGINSDIR\hiroute-package.json" "{{no-escape @key}}"
+    !else if "{{this.[1]}}" == "standalone\hirouted.exe"
+      File "/oname=$PLUGINSDIR\hirouted-preflight.exe" "{{no-escape @key}}"
+    !else if "{{this.[1]}}" == "standalone/hirouted.exe"
+      File "/oname=$PLUGINSDIR\hirouted-preflight.exe" "{{no-escape @key}}"
     !endif
   {{/each}}
   nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-preflight'
@@ -527,19 +532,19 @@ Function .onInit
   ${IfNot} ${Silent}
     !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
   ${EndIf}
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover'
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe"'
   Pop $0
   Pop $1
   ${If} $0 = 23
     Call HiRouteConfirmUnavailableRestore
     ${If} $HiRouteRestoreConsent = 1
-      nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover --allow-unavailable-agent-restore'
+      nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" --allow-unavailable-agent-restore'
       Pop $0
       Pop $1
     ${EndIf}
   ${EndIf}
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute needs installation recovery. Existing data and changed files are preserved." /SD IDOK
+    MessageBox MB_ICONSTOP "HiRoute needs installation recovery. Existing data and changed files are preserved. $1" /SD IDOK
     Abort
   ${EndIf}
   ${If} ${Silent}
@@ -854,6 +859,9 @@ Function .onInstFailed
     ${EndIf}
   ${EndIf}
   hiroute_rollback_registration_done:
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP "HiRoute could not safely restore the previous installation. Existing programs and data are preserved. $1" /SD IDOK
+  ${EndIf}
   SetErrorLevel 1
 FunctionEnd
 

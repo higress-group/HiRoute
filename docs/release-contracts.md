@@ -29,6 +29,23 @@ resumes the original batch; missing or replaced archive material is not permissi
 to initialize an empty store. Unfinished older conversion generations remain
 preserved for whole-group recovery.
 
+Installers retain the matching old program/resources through a protected handoff bound
+to the storage root and target daemon image. Linux managed services and Windows Tasks
+consume that record without relying on the shell's environment. New candidate preflight
+checks observable prerequisites before replacement; startup repeats admission under its
+writer barrier. The actual updater shipped by the supported source must be tested. In
+particular, v0.3.1 runs its own helper: a new helper does not retrofit its precommit checks.
+A format-changing release requires a verified source/transition route before publication;
+documentation or a rebuilt same-version updater is not that evidence.
+
+On startup refusal, the storage-owned cause/action is available through the native failure
+page and `hiroute service recovery --output json`. Current production recovery does
+not offer program-only original-version reinstallation. A changed/mixed/unknown group
+cannot authorize an old-service launch, including during Windows installer rollback.
+Recognized batches may resume with the current version; complete restoration uses the
+correct verified batch, retaining newer data and program separately. Missing essential
+material requires preservation and diagnosis, not blind retries or empty initialization.
+
 Startup does not enumerate, hash, copy or normalize historical Observation
 contents. The source manifest verifies copied recovery material and binds the
 sealed directory's native identity; it does not claim eager full-content integrity

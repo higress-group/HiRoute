@@ -1535,9 +1535,9 @@
       "authority": "api-docs.deepseek.com",
       "source_kind": "provider-documentation",
       "locator": "https://api-docs.deepseek.com/updates/",
-      "collected_on": "2026-09-25",
-      "bytes_digest": null,
-      "digest_state": "not-captured"
+      "collected_on": "2026-10-19",
+      "bytes_digest": "sha256:9abda5ba89b86be5d82ad045864dbe5047e0908b45c161d8a4631d4d5fcb6f18",
+      "digest_state": "captured"
     },
     {
       "source_key": "source-145",
@@ -3537,13 +3537,14 @@
       },
       "identity_stability": "rolling-alias",
       "lifecycle": "active",
-      "source_stability_note": "deepseek-flash serves V4.1 Flash on the direct API; deepseek-v4.1-flash is Alibaba Cloud Model Studio’s product-scoped upstream ID. The retired direct deepseek-v4-flash compatibility alias is not a current binding.",
+      "source_stability_note": "The DeepSeek official deepseek-flash rolling alias was updated to V4.1 Flash 1017 on 2026-10-17 without changing the API model name. Alibaba Cloud Model Studio uses its own deepseek-v4.1-flash ID; this official announcement does not establish the version served by Alibaba or other hosts. The retired direct deepseek-v4-flash compatibility alias is not a current binding.",
       "evidence_refs": [
         "source-007",
         "source-008",
         "source-010",
         "source-134",
         "source-135",
+        "source-144",
         "source-150",
         "source-171",
         "source-172"
@@ -6618,7 +6619,8 @@
         "source-007",
         "source-008",
         "source-009",
-        "source-010"
+        "source-010",
+        "source-144"
       ]
     },
     {

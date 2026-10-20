@@ -30,11 +30,14 @@ impl LocalControlAdapter {
                 AgentModelSelectionV2::QoderAdditional { .. }
                     | AgentModelSelectionV2::PiAdditional { .. }
                     | AgentModelSelectionV2::DshAdditional { .. }
+                    | AgentModelSelectionV2::OpenCodeAdditional { .. }
             )
         {
             return Ok(input);
         }
-        let kind = if class == SettingsAgentClass::Dsh {
+        let kind = if class == SettingsAgentClass::OpenCode {
+            hiroute_domain::AgentKindV1::OpenCode
+        } else if class == SettingsAgentClass::Dsh {
             hiroute_domain::AgentKindV1::DeepseekHarness
         } else if class == SettingsAgentClass::Pi {
             hiroute_domain::AgentKindV1::Pi
@@ -251,12 +254,22 @@ impl LocalControlAdapter {
             }
             AgentFacetIntent::Keep => unreachable!(),
         };
+        let (additional_dependencies, opencode_default_in_use) =
+            if kind == hiroute_domain::AgentKindV1::OpenCode {
+                let (digest, in_use) = self
+                    .scanner
+                    .opencode_model_facts(&provider_id, &models)
+                    .map_err(|_| ControlReadError::SnapshotChanged)?;
+                (Some(digest), in_use)
+            } else {
+                (None, false)
+            };
         let dsh_default_in_use = kind == hiroute_domain::AgentKindV1::DeepseekHarness
             && self
                 .scanner
                 .dsh_web_default_in_use(&provider_id, &models)
                 .map_err(|_| ControlReadError::Denied)?;
-        let qoder_model_conflict = if dsh_default_in_use
+        let qoder_model_conflict = if opencode_default_in_use || dsh_default_in_use
             || pi_settings
                 .as_ref()
                 .is_some_and(|settings| settings.removes_default(&provider_id, &models))
@@ -274,7 +287,7 @@ impl LocalControlAdapter {
             "schema":"qoder-model-facts/v1", "collaboration":input.facts.dependency_digest,
             "content":expected_content,"fingerprint":before_fingerprint,"publication":publication.digest,
             "grant":current_grant,"token":token_input_fingerprint,"provider":provider_id,"endpoint":endpoint,
-            "conflict":qoder_model_conflict,"models":models,"kind":kind,"pi_settings":pi_settings,"previous":previous.as_ref().map(|(op,_)| &op.operation_id),"restore":restore,
+            "conflict":qoder_model_conflict,"models":models,"additional_dependencies":additional_dependencies,"kind":kind,"pi_settings":pi_settings,"previous":previous.as_ref().map(|(op,_)| &op.operation_id),"restore":restore,
         })).map_err(|_| ControlReadError::Corrupt)?;
         let old_digest = input.facts.dependency_digest.clone();
         let mut capabilities = [
@@ -305,6 +318,7 @@ impl LocalControlAdapter {
                 state: CapabilityState::Proven,
                 adapter_contract: match kind {
                     hiroute_domain::AgentKindV1::Pi => "hiroute.pi-additional-model/v1",
+                    hiroute_domain::AgentKindV1::OpenCode => "hiroute.opencode-additional-model/v1",
                     hiroute_domain::AgentKindV1::DeepseekHarness => {
                         "hiroute.dsh-additional-model/v1"
                     }
@@ -322,7 +336,9 @@ impl LocalControlAdapter {
         input.facts.model = Some(SettingsModelFacts {
             common: SettingsModelCommonFacts {
                 ingress: protocol,
-                available_surfaces: [if kind == hiroute_domain::AgentKindV1::DeepseekHarness {
+                available_surfaces: [if kind == hiroute_domain::AgentKindV1::OpenCode {
+                    AgentModelSurfaceV2::OpenCodeCli
+                } else if kind == hiroute_domain::AgentKindV1::DeepseekHarness {
                     AgentModelSurfaceV2::DshCli
                 } else if kind == hiroute_domain::AgentKindV1::Pi {
                     AgentModelSurfaceV2::PiCli
@@ -350,6 +366,7 @@ impl LocalControlAdapter {
             target: SettingsModelTargetFacts::Additional {
                 kind,
                 pi_settings_content: pi_settings.map(|settings| settings.content_digest),
+                additional_dependencies,
                 provider_id,
                 endpoint,
                 models,

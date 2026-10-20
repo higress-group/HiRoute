@@ -6,6 +6,16 @@ use super::AgentTurnAttributionV1;
 #[derive(schemars::JsonSchema, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanQualitySamplesQuery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_group: Option<crate::ExecutionGroupV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_reason: Option<crate::ModelGroupReasonV1>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segment_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_row: Option<PlanTrustRowFilterV1>,
     #[serde(default, skip_serializing_if = "routing_observations_disabled")]
     pub include_routing_observations: bool,
     #[serde(default)]
@@ -35,6 +45,19 @@ pub struct PlanQualitySamplesQuery {
     pub limit: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+}
+
+/// Exact aggregate identity, including unknown values and across requested revisions.
+#[derive(schemars::JsonSchema, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanTrustRowFilterV1 {
+    pub branch_id: String,
+    pub group: Option<crate::ExecutionGroupV1>,
+    pub model_configuration_id: Option<String>,
+    pub reasoning_profile_id: Option<String>,
+    pub attribution: AgentTurnAttributionV1,
+    pub group_by_executor: bool,
+    pub executor: Option<String>,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, PartialEq, Serialize, Deserialize)]

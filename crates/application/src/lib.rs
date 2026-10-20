@@ -23,11 +23,13 @@ pub mod control;
 mod control_plane;
 pub mod delegation;
 pub mod model_catalog;
+pub mod model_feed;
 pub mod observation_query;
 pub mod prices;
 pub mod publication;
 pub mod routing;
 pub mod subscriptions;
+pub mod trust;
 
 pub use change::{
     ChangePreparationError, ConnectionOptionAuthorizationPort, ConnectionOptionAuthorizationV1,
@@ -97,6 +99,12 @@ impl ApplicationService {
             "GetEffectivePrices" | "PreviewPriceOverrideChange" | "ApplyPriceOverrideChange" => {
                 prices::dispatch(self, request)
             }
+            "GetModelFeedStatus"
+            | "RefreshModelFeed"
+            | "ApplyModelFeedSettings"
+            | "PreviewModelFeedRemoval"
+            | "ApplyModelFeedRemoval"
+            | "GetModelAvailability" => model_feed::dispatch(self, request),
             "ShowModel" => model_catalog::dispatch(self, request),
             "ListWorkPlans" => delegation::work_plans::dispatch(self, request),
             "SelectWorkerDependencies" => delegation::tasks::dispatch(self, request),
@@ -165,6 +173,9 @@ impl ApplicationService {
                 control_plane::agent_settings::preview(self, request)
             }
             "ApplyAgentConnectionRestore" => control_plane::agent_settings::apply(self, request),
+            "PreviewAgentPreviousRouting" => {
+                control_plane::agent_settings::previous_routing(self, request)
+            }
             "GetAgentConnectionStatus" => {
                 control_plane::dispatch_status_agent_connection(self, request)
             }
@@ -206,6 +217,19 @@ impl ApplicationService {
                 self.observation(request, ObservationOperation::CapacityUpdate)
             }
             "GetPlanQualitySamples" => self.observation(request, ObservationOperation::PlanQuality),
+            "GetRoutingTimeline" => {
+                self.observation(request, ObservationOperation::Trust("GetRoutingTimeline"))
+            }
+            "GetPlanTrust" => {
+                self.observation(request, ObservationOperation::Trust("GetPlanTrust"))
+            }
+            "GetPlanTrustReplay" => {
+                self.observation(request, ObservationOperation::Trust("GetPlanTrustReplay"))
+            }
+            "GetPlanTrustSuggestions" => self.observation(
+                request,
+                ObservationOperation::Trust("GetPlanTrustSuggestions"),
+            ),
             "PreviewSessionDeletion" => {
                 self.observation(request, ObservationOperation::DeletePreview)
             }
@@ -682,12 +706,14 @@ impl ApplicationService {
         )
         .with_prices(ports.prices.clone())
         .with_routing(ports.routing.clone());
-        let analysis_details = request
-            .payload
-            .get("intent")
-            .and_then(|intent| intent.get("view"))
-            .and_then(Value::as_str)
-            == Some("analysis");
+        let read_details = matches!(
+            request
+                .payload
+                .get("intent")
+                .and_then(|intent| intent.get("view"))
+                .and_then(Value::as_str),
+            Some("analysis" | "routing_timeline")
+        );
         let result = match operation {
             ObservationOperation::CapacityRead | ObservationOperation::CapacityUpdate => control
                 .capacity(
@@ -719,6 +745,9 @@ impl ApplicationService {
             ObservationOperation::Value => {
                 control.value(request.protected_grant.as_ref(), request.payload)
             }
+            ObservationOperation::Trust(operation) => {
+                control.read_v2(request.protected_grant.as_ref(), request.payload, operation)
+            }
             ObservationOperation::PlanQuality => {
                 control.plan_quality(request.protected_grant.as_ref(), request.payload)
             }
@@ -726,7 +755,7 @@ impl ApplicationService {
         match result {
             Ok(value) => succeeded(value, request.request_id),
             Err(error) => {
-                let details = if analysis_details {
+                let details = if read_details {
                     observation_read_failure(&error)
                 } else {
                     None
@@ -758,6 +787,7 @@ impl ApplicationService {
 
 #[derive(Clone, Copy)]
 enum ObservationOperation {
+    Trust(&'static str),
     CapacityRead,
     CapacityUpdate,
     DeletePreview,
@@ -804,6 +834,7 @@ fn map_control_error(error: control::ControlReadError) -> ErrorCode {
 fn map_observation_error(error: ObservationQueryError) -> ErrorCode {
     match error {
         ObservationQueryError::Unauthorized => ErrorCode::CapabilityDenied,
+        ObservationQueryError::ScopeTooLarge => ErrorCode::ScopeTooLarge,
         ObservationQueryError::NotFound => ErrorCode::ResourceNotFound,
         ObservationQueryError::InvalidQuery => ErrorCode::InvalidArguments,
         ObservationQueryError::Unavailable

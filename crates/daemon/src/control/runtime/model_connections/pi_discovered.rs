@@ -1,7 +1,11 @@
 //! Pi sources use the same closed prepare/save transaction as other native API discoveries.
 use super::*;
 use hiroute_application_api::{ComputeDiscoveryRefV1, ComputeScanItemV1};
-use hiroute_integrations::{DiscoveredAuthSource, PiApiSource};
+use hiroute_integrations::{DiscoveredAuthSource, NativeApiEcosystem, PiApiSource};
+
+#[cfg(all(test, unix))]
+#[path = "pi_discovered_tests.rs"]
+mod tests;
 
 pub(super) fn pi_discovery(source: &PiApiSource) -> ComputeDiscoveryRefV1 {
     ComputeDiscoveryRefV1 {
@@ -12,18 +16,10 @@ pub(super) fn pi_discovery(source: &PiApiSource) -> ComputeDiscoveryRefV1 {
 impl LocalControlAdapter {
     pub(in crate::control::runtime) fn native_compute_scan_items(
         &self,
-        dsh: bool,
+        ecosystem: NativeApiEcosystem,
     ) -> Result<Vec<ComputeScanItemV1>, hiroute_application::control::ControlReadError> {
-        let agent_id = if dsh {
-            "agent_dsh_default"
-        } else {
-            "agent_pi_default"
-        };
-        let sources = match if dsh {
-            self.scanner.dsh_api_sources()
-        } else {
-            self.scanner.pi_api_sources()
-        } {
+        let agent_id = ecosystem.agent_id();
+        let sources = match self.scanner.native_api_sources(ecosystem) {
             Ok(sources) => sources,
             Err(_) => {
                 return Ok(vec![ComputeScanItemV1 {
@@ -40,10 +36,10 @@ impl LocalControlAdapter {
                     inventory_eligible: false,
                     discovery: None,
                     actions_required: vec![
-                        if dsh {
-                            "check_dsh_configuration"
-                        } else {
-                            "check_pi_configuration"
+                        match ecosystem {
+                            NativeApiEcosystem::Pi => "check_pi_configuration",
+                            NativeApiEcosystem::Dsh => "check_dsh_configuration",
+                            NativeApiEcosystem::OpenCode => "check_opencode_configuration",
                         }
                         .into(),
                     ],
@@ -86,7 +82,7 @@ impl LocalControlAdapter {
                     connection_option_id: None,
                     endpoint_profile_id: None,
                     registered_base_url: None,
-                    observed_model_id: Some(source.model_id),
+                    observed_model_id: (!source.model_id.is_empty()).then_some(source.model_id),
                     model_configuration_id: None,
                     inventory_eligible: ready,
                     discovery,
@@ -108,7 +104,17 @@ impl LocalControlAdapter {
     ) -> Result<ComputeCandidateViewV2, ComputeManagementControlError> {
         let discovery = pi_discovery(&source);
         let evidence = source.evidence_digest.clone();
-        self.prepare_native_source_candidate(vec![source], discovery, evidence, prepare_id, false)
+        let catalog = self
+            .current_catalog()
+            .ok_or(ComputeManagementControlError::Unavailable)?;
+        self.prepare_native_source_candidate(
+            vec![source],
+            discovery,
+            evidence,
+            prepare_id,
+            false,
+            &catalog,
+        )
     }
 
     pub(super) fn prepare_native_point_candidate(
@@ -117,12 +123,18 @@ impl LocalControlAdapter {
         prepare_id: &str,
     ) -> Result<ComputeCandidateViewV2, ComputeManagementControlError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
-        let discovery = super::points::point_discovery(&point, catalog);
-        let evidence = super::point_catalog::point_evidence(catalog, &point)?;
-        self.prepare_native_source_candidate(point.sources, discovery, evidence, prepare_id, true)
+        let discovery = super::points::point_discovery(&point, &catalog);
+        let evidence = super::point_catalog::point_evidence(&catalog, &point)?;
+        self.prepare_native_source_candidate(
+            point.sources,
+            discovery,
+            evidence,
+            prepare_id,
+            true,
+            &catalog,
+        )
     }
 
     fn prepare_native_source_candidate(
@@ -132,6 +144,7 @@ impl LocalControlAdapter {
         evidence: hiroute_domain::CanonicalDigest,
         prepare_id: &str,
         grouped: bool,
+        catalog: &TrustedReleaseCatalog,
     ) -> Result<ComputeCandidateViewV2, ComputeManagementControlError> {
         let source = sources
             .first()
@@ -144,7 +157,7 @@ impl LocalControlAdapter {
             .protocol
             .ok_or(ComputeManagementControlError::DiscoveryNotImportable)?;
         use hiroute_application::ProtectedInputPort;
-        let dsh = source.source_ref.starts_with("dsh-source/");
+
         let (base_url, secret) = (if source.source_ref.starts_with("hermes-source/") {
             self.read_hermes_source(&source)
                 .map_err(|_| hiroute_integrations::AgentFilesystemScanError::SourceChanged)
@@ -174,10 +187,8 @@ impl LocalControlAdapter {
                     )
                 })
                 .map_err(|_| hiroute_integrations::AgentFilesystemScanError::SourceChanged)
-        } else if dsh {
-            self.scanner.read_dsh_api_source(&source)
         } else {
-            self.scanner.read_pi_api_source(&source)
+            self.scanner.read_native_api_source(&source)
         })
         .map_err(|_| ComputeManagementControlError::DiscoveryChanged)?;
         let credential = source
@@ -198,10 +209,11 @@ impl LocalControlAdapter {
             .map_err(|_| ComputeManagementControlError::Unavailable)?
             .insert(input_slot.clone(), credential.clone());
         let candidate_digest = hiroute_domain::CanonicalDigest::of(&(
-            if dsh {
-                "dsh-discovered-candidate/v1"
-            } else {
-                "pi-discovered-candidate/v1"
+            match NativeApiEcosystem::from_source(&source) {
+                Some(NativeApiEcosystem::Dsh) => "dsh-discovered-candidate/v1",
+                Some(NativeApiEcosystem::OpenCode) => "opencode-discovered-candidate/v1",
+                // Hermes/Claude retain the shared candidate identity used on main.
+                _ => "pi-discovered-candidate/v1",
             },
             &evidence,
             prepare_id,
@@ -226,13 +238,7 @@ impl LocalControlAdapter {
             .map_err(|_| ComputeManagementControlError::Conflict)?;
         let models = sources.iter().map(native_source_declaration).collect();
         let models = if grouped {
-            super::point_catalog::expand_models(
-                self.release_catalog
-                    .as_ref()
-                    .ok_or(ComputeManagementControlError::Unavailable)?,
-                &sources,
-                models,
-            )?
+            super::point_catalog::expand_models(catalog, &sources, models)?
         } else {
             models
         };
@@ -252,12 +258,10 @@ impl LocalControlAdapter {
                     .is_some_and(|c| c.field_selector == "env.ANTHROPIC_AUTH_TOKEN")
                 {
                     "Claude Code"
-                } else if dsh {
-                    "DSH"
-                } else if source.source_ref.starts_with("hermes-source/") {
-                    "Hermes"
                 } else {
-                    "Pi"
+                    NativeApiEcosystem::from_source(&source)
+                        .ok_or(ComputeManagementControlError::DiscoveryNotImportable)?
+                        .label()
                 },
                 source.provider_id
             ),
@@ -295,9 +299,9 @@ impl LocalControlAdapter {
                 free_access: None,
                 evidence_ref: None,
             },
-            runtime_fallback_denied_model_ids: super::runtime_fallback_denied_model_ids(
-                self.release_catalog.as_ref(),
-            ),
+            runtime_fallback_denied_model_ids: super::runtime_fallback_denied_model_ids(Some(
+                catalog,
+            )),
             models,
         };
         let credential = NativeModelConnectionCredentialV1::Protected {

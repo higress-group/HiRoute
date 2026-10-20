@@ -1,4 +1,4 @@
-mod analysis;
+pub(super) mod analysis;
 mod api_equivalent;
 use super::*;
 use hiroute_application_api::{ObservationReadIntentV2, ObservationReadRequestV2};
@@ -9,7 +9,7 @@ use hiroute_domain::ObservationReaderContext;
 const RELEASED_LOCAL_QUERY_SUBJECT: &str = "protected-local-observer";
 
 impl ObservationControl {
-    pub(super) fn read_v2(
+    pub(crate) fn read_v2(
         &self,
         grant: Option<&ProtectedClientGrantV2>,
         payload: Value,
@@ -90,6 +90,17 @@ impl ObservationControl {
             content,
             search,
         )?;
+        let suggestions_read = matches!(
+            &request.intent,
+            ObservationReadIntentV2::PlanTrustSuggestions(_)
+        );
+        let trust_read = matches!(
+            &request.intent,
+            ObservationReadIntentV2::RoutingTimeline(_)
+                | ObservationReadIntentV2::PlanTrust(_)
+                | ObservationReadIntentV2::PlanTrustReplay(_)
+                | ObservationReadIntentV2::PlanTrustSuggestions(_)
+        );
         let reader = if matches!(&request.intent, ObservationReadIntentV2::Analysis(_)) {
             reader.with_query_deadline(started + std::time::Duration::from_millis(500))
         } else {
@@ -110,6 +121,19 @@ impl ObservationControl {
                     )?)
                 };
                 serde_json::to_value(self.analysis_read(&reader, q, range.as_ref(), now)?)
+            }
+            ObservationReadIntentV2::PlanTrustSuggestions(_) => {
+                Ok(self.trust_suggestions(&reader, now)?)
+            }
+            ObservationReadIntentV2::PlanTrust(q) => Ok(self.trust_result(&reader, &q, None, now)?),
+            ObservationReadIntentV2::PlanTrustReplay(q) => {
+                if q.thresholds_millis.is_empty()
+                    || q.thresholds_millis.len() > 8
+                    || q.thresholds_millis.iter().any(|t| *t > 1000)
+                {
+                    return Err(ObservationQueryError::InvalidQuery);
+                }
+                Ok(self.trust_result(&reader, &q.scope, Some(&q.thresholds_millis), now)?)
             }
             ObservationReadIntentV2::Status(_) => {
                 serde_json::to_value(self.service.observed_maintenance_status(&reader, now)?)
@@ -147,6 +171,9 @@ impl ObservationControl {
             }
             ObservationReadIntentV2::Sessions(q) => {
                 serde_json::to_value(self.service.observed_sessions(&reader, &q, now)?)
+            }
+            ObservationReadIntentV2::RoutingTimeline(q) => {
+                serde_json::to_value(self.service.observed_routing_timeline(&reader, &q, now)?)
             }
             ObservationReadIntentV2::Timeline(q) => {
                 serde_json::to_value(self.service.observed_timeline(&reader, &q, now)?)
@@ -224,7 +251,15 @@ impl ObservationControl {
             .len()
             > 1024 * 1024
         {
-            return Err(ObservationQueryError::Unavailable);
+            return Err(if trust_read {
+                ObservationQueryError::ScopeTooLarge
+            } else {
+                ObservationQueryError::Unavailable
+            });
+        }
+        if trust_read && !suggestions_read && started.elapsed() > std::time::Duration::from_secs(1)
+        {
+            return Err(ObservationQueryError::ScopeTooLarge);
         }
         Ok(result)
     }

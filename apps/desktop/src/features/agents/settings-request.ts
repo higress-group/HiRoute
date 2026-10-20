@@ -49,6 +49,9 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
           preset_mappings: values.claudePresets,
         };
         break;
+      case 'opencode':
+        settings = { mode: 'opencode_additional', allowed_plan_ids: values.allowedPlanIds, plan_protocols: Object.fromEntries(values.allowedPlanIds.map(id => [id, values.planProtocols?.[id] ?? 'responses'])) };
+        break;
       case 'dsh':
         settings = { mode: 'dsh_additional', allowed_plan_ids: values.allowedPlanIds, plan_protocols: Object.fromEntries(values.allowedPlanIds.map(id => [id, values.planProtocols?.[id] ?? 'responses'])) };
         break;

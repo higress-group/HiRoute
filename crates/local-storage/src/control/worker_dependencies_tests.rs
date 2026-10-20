@@ -36,6 +36,7 @@ fn selection_operation(
         WorkerHarnessV1::QoderCli => "qoder_cli",
         WorkerHarnessV1::Pi => "pi",
         WorkerHarnessV1::DeepseekHarness => "deepseek_harness",
+        WorkerHarnessV1::OpenCode => "opencode",
     };
     let expected_revisions = RevisionSetV1 {
         target: change.before_revision,

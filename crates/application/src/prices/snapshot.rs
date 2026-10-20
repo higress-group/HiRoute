@@ -149,6 +149,10 @@ pub struct PriceSnapshotSlot {
     current: ArcSwapOption<PriceSnapshot>,
 }
 impl PriceSnapshotSlot {
+    /// Withdraw only the current index. Existing LogicalRequests keep their captured handle.
+    pub fn invalidate_current(&self) {
+        self.current.store(None);
+    }
     pub fn capture_current_price_snapshot(&self) -> PriceSnapshotHandle {
         self.current.load_full().map_or(
             PriceSnapshotHandle::Unavailable(PriceUnknownReasonV1::SnapshotUnavailable),

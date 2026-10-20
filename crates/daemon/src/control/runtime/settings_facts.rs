@@ -64,6 +64,7 @@ impl LocalControlAdapter {
             "agent_qoder_default" => SettingsAgentClass::Qoder,
             "agent_pi_default" => SettingsAgentClass::Pi,
             "agent_dsh_default" => SettingsAgentClass::Dsh,
+            "agent_opencode_default" => SettingsAgentClass::OpenCode,
             _ => return None,
         };
         Some(self.settings_context(class))
@@ -88,6 +89,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder,
             SettingsAgentClass::Pi,
             SettingsAgentClass::Dsh,
+            SettingsAgentClass::OpenCode,
         ]
         .into_iter()
         .find(|class| context == self.settings_context(*class))
@@ -128,7 +130,10 @@ impl LocalControlAdapter {
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         if matches!(
             class,
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh
+            SettingsAgentClass::Qoder
+                | SettingsAgentClass::Pi
+                | SettingsAgentClass::Dsh
+                | SettingsAgentClass::OpenCode
         ) {
             return self.attach_additional_model_facts(
                 spec,
@@ -345,6 +350,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
             }
@@ -413,7 +419,7 @@ impl LocalControlAdapter {
                 selected_collaboration_restore = Some(original.operation_id.clone());
             }
             let model = match class {
-                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh | SettingsAgentClass::Hermes => return Err(ControlReadError::Denied),
+                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh | SettingsAgentClass::Hermes | SettingsAgentClass::OpenCode => return Err(ControlReadError::Denied),
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => original
                     .plan
                     .external()
@@ -562,6 +568,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
             }
@@ -855,6 +862,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
             }

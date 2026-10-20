@@ -34,10 +34,17 @@ impl QoderFixture {
 
     fn with_agents(models: bool, kind: AgentKindV1, all: bool) -> Self {
         let pi = kind == AgentKindV1::Pi;
+        let opencode = kind == AgentKindV1::OpenCode;
         let root = tempfile::tempdir().unwrap();
         fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-        let config_root = home.join(if pi { "selected-pi" } else { "selected-qoder" });
+        let config_root = home.join(if opencode {
+            ".config/opencode"
+        } else if pi {
+            "selected-pi"
+        } else {
+            "selected-qoder"
+        });
         private_file(
             &config_root.join("settings.json"),
             b"native settings are opaque to HiRoute\n",
@@ -73,6 +80,18 @@ impl QoderFixture {
             layout.qoder_config_root = config_root.clone();
         } else {
             layout.qoder_executable = root.path().join("missing-qoder");
+        }
+        if opencode {
+            layout.opencode_executable = layout.qoder_executable.clone();
+            layout.qoder_config_root = home.join("selected-qoder");
+            layout.opencode_context = Some(
+                hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap(),
+            );
+            // Exercise the existing JSON target before a higher JSONC layer appears.
+            private_file(
+                &config_root.join("opencode.json"),
+                br#"{"$schema":"https://opencode.ai/config.json","instructions":["keep.md"]}"#,
+            );
         }
         if all {
             let package = root.path().join("all-pi-package");
@@ -113,12 +132,16 @@ impl QoderFixture {
             private_file(&scanner.pi_user_models_target(), br#"{"providers":{}}"#);
             private_file(&scanner.dsh_user_models_target(), b"[]\n");
         }
-        let native_config = if pi {
+        let native_config = if opencode {
+            scanner.opencode_user_models_target()
+        } else if pi {
             scanner.pi_user_models_target()
         } else {
             scanner.qoder_user_config_target()
         };
-        let skill = if pi {
+        let skill = if opencode {
+            scanner.opencode_user_skill_target()
+        } else if pi {
             scanner.pi_user_skill_target()
         } else {
             scanner.qoder_user_skill_target()
@@ -141,7 +164,9 @@ impl QoderFixture {
         if models {
             private_file(
                 &native_config,
-                if pi {
+                if opencode {
+                    br#"{"$schema":"https://opencode.ai/config.json","instructions":["keep.md"]}"#
+                } else if pi {
                     br#"{"providers":{"native":{"user":"preserved"}},"unknown":{"keep":true}}"#
                 } else {
                     br#"{"model":{"name":"native/default"},"providers":{"native":{"user":"preserved"}},"unknown":{"keep":true}}"#
@@ -151,7 +176,9 @@ impl QoderFixture {
         runtime.adapter.reconcile_startup_and_open().unwrap();
         let context = runtime
             .adapter
-            .settings_context_for_agent(if pi {
+            .settings_context_for_agent(if opencode {
+                "agent_opencode_default"
+            } else if pi {
                 "agent_pi_default"
             } else {
                 "agent_qoder_default"
@@ -697,6 +724,9 @@ fn qoder_borrowed_skill_restore_releases_only_the_reference_after_user_edits() {
 
 #[path = "settings_entry_qoder_model_tests.rs"]
 mod models;
+
+#[path = "settings_entry_opencode_tests.rs"]
+mod opencode;
 
 #[path = "settings_entry_model_budget_tests.rs"]
 mod budget_tests;

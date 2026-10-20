@@ -23,6 +23,12 @@ These assets identify third-party Agent integrations inside HiRoute. They do not
 - SHA-256: `5e1843cb50c4613855024453e76d5c06d2ca5562efebc12b4fcd80cf9ece1dd0`.
 - The SVG is copied without shape or color changes and appears beside the Qoder name to identify the integration. The mark belongs to Qoder and does not imply endorsement.
 
+## OpenCode
+
+- Artwork: the inline `Mark` in `BrandIcon.tsx`, from the official [OpenCode v1.19.3 logo component](https://github.com/anomalyco/opencode/blob/v1.19.3/packages/ui/src/components/logo.tsx).
+- The two path shapes and 16×20 proportions are preserved. Its neutral foreground and shadow follow the active HiRoute theme, with clear space inside the existing avatar.
+- Use the mark beside the accurate OpenCode name to identify the integration. OpenCode owns the mark; this use does not imply endorsement.
+
 ## Hermes
 
 - File: `hermes.svg`

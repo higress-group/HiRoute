@@ -12,12 +12,12 @@ conversations, executing a task or producing competence samples. Editing the con
 a new immutable revision; a published route keeps its selected revision until explicitly republished.
 The list shows the latest revision, while an already saved historical revision remains publishable.
 
-Smart saving defaults to the decision-model choice; users may explicitly choose heuristic rules or
-a custom extension. Economy and primary groups retain the existing candidate picker, ordering and
+Difficulty routing defaults to the decision-model choice; users may explicitly choose heuristic rules or
+a custom extension. Regular and Primary groups retain the existing candidate picker, ordering and
 reasoning controls. Judgment settings start collapsed: simple probability defaults to 0.8, competence
 floor to 0.5, and both degree and assessment prompts are editable.
 
-Every new user message decides again. Regular/economy requires this call's simple probability to meet
+Every new user message decides again. Regular requires this call's simple probability to meet
 the threshold with no applicable complete low score. Complex or fresh low competence selects primary.
 Only a fresh complete score bound to the preceding actual stage, in the same category and compatible
 with the published configuration and assessment criteria, can trigger protection. Missing/partial

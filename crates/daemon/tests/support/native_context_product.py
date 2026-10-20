@@ -24,6 +24,7 @@ from publication_process import plan_change
 import qoder_native_context
 import pi_native_context
 import dsh_native_context
+import opencode_native_context
 
 
 def save_context_source(product, upstream, variant='', context_tokens=None, protocol=None):
@@ -45,7 +46,7 @@ def native_context_budget(product):
 
 def selected_installation(harness):
     binary = Path(os.environ['HIROUTE_WORKER_' + harness.upper() + '_BINARY']).resolve(strict=True)
-    if harness in ('qoder','dsh'):
+    if harness in ('qoder','dsh','opencode'):
         return binary, None, None
     if harness == 'pi':
         return binary, None, Path(os.environ['HIROUTE_WORKER_NODE']).resolve(strict=True)
@@ -58,7 +59,11 @@ def prepare_product(product, harness, context_tokens=None):
     """Prepare a normal API source/Plan; Desktop can take over after product.stop()."""
     product.enable_debug_diagnostics()
     roots = {'codex': 'CODEX_HOME', 'claude': 'CLAUDE_CONFIG_DIR', 'qoder': 'QODER_CONFIG_DIR', 'pi': 'PI_CODING_AGENT_DIR', 'dsh':'DSH_HOME'}
-    if harness == 'qoder':
+    if harness == 'opencode':
+        native=opencode_native_context.select_context(product)
+        fixture=prepare(Path(product.env['HOME']),native,product.project,harness)
+        opencode_native_context.prepare_context(product,fixture)
+    elif harness == 'qoder':
         qoder_native_context.select_context(product)
         fixture = qoder_native_context.prepare_context(product)
     else:
@@ -68,10 +73,10 @@ def prepare_product(product, harness, context_tokens=None):
         dsh_native_context.prepare_context(product,fixture)
     if harness == 'pi':
         pi_native_context.prepare_context(product, fixture)
-    native = Path(product.env[roots[harness]])
+    native = Path(fixture['config'])
     product.worker_work = {'harness': {'codex': 'codex_cli', 'claude': 'claude_code',
-                                       'qoder': 'qoder_cli', 'pi': 'pi', 'dsh':'deepseek_harness'}[harness],
-                           'protocol': 'messages' if harness == 'claude' else (os.environ.get('HIROUTE_PRODUCT_AGENT_PROTOCOL', 'responses') if harness in ('pi', 'qoder', 'dsh') else 'responses')}
+                                       'qoder': 'qoder_cli', 'pi': 'pi', 'dsh':'deepseek_harness','opencode':'opencode'}[harness],
+                           'protocol': 'messages' if harness == 'claude' else (os.environ.get('HIROUTE_PRODUCT_AGENT_PROTOCOL', 'responses') if harness in ('pi', 'qoder', 'dsh', 'opencode') else 'responses')}
     assert product.worker_work['protocol'] in ('responses', 'messages')
     fixture['source_context_tokens'] = (context_tokens if context_tokens is not None
                                         else native_context_budget(product))
@@ -95,7 +100,7 @@ def prepare_product(product, harness, context_tokens=None):
         product.apply('routing apply', 'ApplyAgentPlanChange', preview, {'change': change}, 'native-worker-plan')
         product.plan_id = preview['plan_head']['reference']['plan_id']
         product.model_alias = preview['plan_head']['model_alias']
-        configuration = native / ('config.toml' if harness == 'codex' else 'cordis.patch.yml' if harness == 'dsh' else 'settings.json')
+        configuration = native / ('config.toml' if harness == 'codex' else 'cordis.patch.yml' if harness == 'dsh' else 'opencode.json' if harness=='opencode' else 'settings.json')
         if harness == 'codex':
             configuration.write_text('model = "gpt-5.5"\nmodel_provider = "native_context_ambient"\n'
                 '[model_providers.native_context_ambient]\nname = "Unreachable synthetic source"\n'
@@ -103,7 +108,7 @@ def prepare_product(product, harness, context_tokens=None):
                 'env_key = "NATIVE_CONTEXT_UNUSED_TOKEN"\nrequires_openai_auth = false\n')
         elif harness == 'qoder':
             qoder_native_context.install_project_conflict(fixture, upstream)
-        elif harness in ('pi','dsh'):
+        elif harness in ('pi','dsh','opencode'):
             pass  # Pi's conflict files and package resource receipt are prepared by its leaf.
         elif harness == 'claude':
             configuration.write_text(json.dumps({'env': {'ANTHROPIC_BASE_URL': 'http://127.0.0.1:9',
@@ -165,6 +170,8 @@ def assert_frozen_route(original_events, before, replacement, protocol=None):
 
 def exact_history(fixture):
     """Inspect only this synthetic context's native transcript directory, never auth."""
+    if fixture['harness'] == 'opencode':
+        return opencode_native_context.exact_history(fixture)
     if fixture['harness'] == 'dsh':
         return dsh_native_context.exact_history(fixture)
     if fixture['harness'] == 'pi':
@@ -240,11 +247,11 @@ def run(repository, candidate):
     repo = Path(repository).resolve()
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == candidate
     harness = os.environ['HIROUTE_PRODUCT_WORKER_HARNESS']
-    assert harness in ('codex', 'claude', 'qoder', 'pi', 'dsh')
+    assert harness in ('codex', 'claude', 'qoder', 'pi', 'dsh', 'opencode')
     product = Product(repo)
     # Headless services may explicitly select a non-default native configuration.
     # Mac Pilot intentionally uses its documented HOME/.codex and HOME/.claude roots.
-    if harness != 'qoder':
+    if harness not in ('qoder','opencode'):
         product.env['CODEX_HOME' if harness == 'codex' else 'PI_CODING_AGENT_DIR' if harness == 'pi' else 'DSH_HOME' if harness == 'dsh' else 'CLAUDE_CONFIG_DIR'] = str(
             Path(product.env['HOME']) / ('selected-' + harness + '-config'))
     upstream = replacement = None
@@ -256,9 +263,11 @@ def run(repository, candidate):
                                      for case in BUSINESS_CASES if case not in CORE_CASES])
     try:
         binary, adapter, node = selected_installation(harness)
-        if harness=='dsh':
+        if harness in ('dsh','opencode'):
             from agent_product_support import expose_native_installation
             expose_native_installation(product,harness,binary)
+        if harness == 'opencode':
+            project_boundary = opencode_native_context.prepare_project_boundary(product)
         stage = 'real-daemon-and-plan'
         fixture, upstream = prepare_product(product, harness,
                                              context_tokens=16_384 if harness == 'pi' else 32_768 if harness == 'qoder' else None)
@@ -268,6 +277,10 @@ def run(repository, candidate):
             report['source_output_tokens'] = 4096
             (product.root / 'native-context.json').write_text(json.dumps(fixture))
         configure_worker_installation(product, product.worker_work['harness'], adapter, binary, node)
+        if harness == 'opencode':
+            stage = 'opencode-project-admission'
+            report['project_ancestry_admission'] = opencode_native_context.assert_project_admission(
+                product, fixture, upstream, project_boundary)
         if harness == 'qoder':
             stage = 'unsupported-qoder-permissions'
             report['rejected_permission_modes'] = qoder_native_context.assert_restricted_modes_unavailable(product, upstream)
@@ -330,6 +343,10 @@ def run(repository, candidate):
                 'Continue replay sent another model request'
         report['cases'].append({'id': CORE_CASES[1], 'state': 'green'})
         attempts = events(product)
+        if harness == 'opencode':
+            assert not Path(project_boundary['imported']).exists(), 'native crossed its confirmed Git stop'
+            for path, original in project_boundary['protected'].items():
+                assert Path(path).read_bytes() == original, 'native changed foreign ancestor configuration/tool'
         if fixture.get('proxy_trap_events'):
             report['native_proxy_requests'] = len(Path(fixture['proxy_trap_events']).read_text().splitlines())
             assert report['native_proxy_requests'] == 0, 'native Worker used the user-configured proxy'

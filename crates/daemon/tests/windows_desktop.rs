@@ -80,7 +80,17 @@ fn run(program: &Path, args: &[&str], evidence: &Path, phase: &str) -> Vec<u8> {
         .stderr(File::create(error).unwrap())
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(150);
+    // NSIS wraps the product's 600-second install request plus extraction/hooks.
+    // Keep CLI and uninstall requests on their existing watchdog.
+    let seconds = if program
+        .file_name()
+        .is_some_and(|name| name == "installer.exe")
+    {
+        720
+    } else {
+        150
+    };
+    let deadline = Instant::now() + Duration::from_secs(seconds);
     loop {
         if let Some(status) = child.try_wait().unwrap() {
             assert!(status.success(), "native phase {phase} failed: {status}");

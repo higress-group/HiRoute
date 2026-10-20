@@ -124,6 +124,45 @@ impl ObservationQueryService {
         self.port.observed_sessions(reader, query, now_ms)
     }
 
+    pub fn observed_routing_timeline(
+        &self,
+        reader: &hiroute_domain::ObservationReaderContext,
+        query: &hiroute_domain::RoutingTimelineQueryV1,
+        now_ms: i64,
+    ) -> Result<hiroute_domain::RoutingTimelinePageV1, ObservationQueryError> {
+        reader.check(now_ms, false, false)?;
+        self.port.observed_routing_timeline(reader, query, now_ms)
+    }
+
+    pub fn observed_trust_generation(
+        &self,
+        reader: &hiroute_domain::ObservationReaderContext,
+        now_ms: i64,
+    ) -> Result<(u64, u64), ObservationQueryError> {
+        reader.check(now_ms, false, false)?;
+        self.port.observed_trust_generation(reader, now_ms)
+    }
+    pub fn observed_trust_suggestion_population(
+        &self,
+        reader: &hiroute_domain::ObservationReaderContext,
+        query: &hiroute_domain::TrustPopulationQueryV1,
+        now_ms: i64,
+    ) -> Result<hiroute_domain::TrustPopulationV1, ObservationQueryError> {
+        reader.check(now_ms, false, false)?;
+        self.port
+            .observed_trust_suggestion_population(reader, query, now_ms)
+    }
+
+    pub fn observed_trust_population(
+        &self,
+        reader: &hiroute_domain::ObservationReaderContext,
+        query: &hiroute_domain::TrustPopulationQueryV1,
+        now_ms: i64,
+    ) -> Result<hiroute_domain::TrustPopulationV1, ObservationQueryError> {
+        reader.check(now_ms, false, false)?;
+        self.port.observed_trust_population(reader, query, now_ms)
+    }
+
     pub fn observed_plan_quality_samples(
         &self,
         reader: &hiroute_domain::ObservationReaderContext,

@@ -174,6 +174,10 @@ impl ObservationCommitPort for LocalObservationStore {
                 }
             }
         }
+        // New authenticated ingestion alone establishes Agent attribution. Receipt
+        // rebuild/backfill must never assign identity to old observations.
+        super::agent_attribution::project(&transaction, envelope)
+            .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
         release_projection(&transaction, "fact_projection")?;
         insert_event(
             &transaction,

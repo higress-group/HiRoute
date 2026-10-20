@@ -472,6 +472,12 @@ impl LocalControlAdapter {
                 publication
                     .gateway_snapshot()
                     .map_err(|_| invalid("publication.activate.projection"))?;
+                self.register_operation_agent_grants(
+                    &record.workspace_id,
+                    operation,
+                    &operation.step(OperationStepKind::ApplySecrets).effects,
+                    &publication,
+                )?;
                 measure(
                     &diagnostics,
                     PublicationStage::PublicationInstall,

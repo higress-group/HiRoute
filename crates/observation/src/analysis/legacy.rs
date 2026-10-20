@@ -60,6 +60,10 @@ pub(crate) fn projected_comparison(
         reader,
         now,
     )?;
+    Ok(Some(aggregate(data)))
+}
+
+pub(super) fn aggregate(data: comparison::Comparison) -> ProjectedComparison {
     let mut result = ProjectedComparison {
         total: data.requests.len() as u64,
         compared: 0,
@@ -75,5 +79,5 @@ pub(crate) fn projected_comparison(
             result.baseline = result.baseline.and_then(|s| s.checked_add(c.reference?));
         }
     }
-    Ok(Some(result))
+    result
 }

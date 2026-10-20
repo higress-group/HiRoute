@@ -3,9 +3,9 @@
   "source_bundle": "assets/model-data/current/rating-seed.json",
   "source_bytes_digest": "sha256:2f3b02526a9263e756c3a94e4d74336aca36724abd984fbec4a0a89833619b9f",
   "metadata_catalog": "assets/model-data/current/inputs/metadata-catalog.json",
-  "metadata_catalog_bytes_digest": "sha256:333698f260889447e04aca82bfd3ea39700480008531e017a003009c1147accc",
+  "metadata_catalog_bytes_digest": "sha256:9b69fb47d9a0a87e3c5ef75446a4a6ad36890828841bb40a05c158a3546532ed",
   "client_discovery_runs": "assets/model-data/current/inputs/client-discovery-runs.json",
-  "client_discovery_runs_bytes_digest": "sha256:db429534051b2ad3aacc28b220b0676fb3f78aa92658ee6319fe70086af13ca7",
+  "client_discovery_runs_bytes_digest": "sha256:7412c6cc46c90fe0f11611e9dc28873bd316fb77a67a0fa2ee782a7b6ecbeb67",
   "snapshot_version": "hiroute-20260913/current-1",
   "method_revision": "preserved-explicit-native/v1",
   "evidence": {
@@ -773,6 +773,56 @@
             ],
             "billing_class": "subscription",
             "evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "source_model_key": "deepseek-v4-1-flash",
+      "model_configuration_id": "model.deepseek.v4-1-flash",
+      "publisher_id": "publisher.deepseek",
+      "native_capability": {
+        "kind": "fixed",
+        "profile": "provider-default"
+      },
+      "sources": [
+        "https://api-docs.deepseek.com/updates/"
+      ],
+      "collected_on": "2026-10-19",
+      "identity_note": "Directory intent for the official deepseek-flash rolling alias. The October 17 announcement does not identify the version executed by another hosting product. Account availability and the saved connection still require the normal registered-connection checks.",
+      "catalog_intent": {
+        "endpoint_capabilities": [
+          {
+            "capability_id": "cap.deepseek.v4-1-flash.official.chat",
+            "revision": 1,
+            "model_configuration_id": "model.deepseek.v4-1-flash",
+            "connector_id": "connector.deepseek.p0",
+            "connector_revision": 1,
+            "endpoint_profile_id": "endpoint.deepseek.official.global.v1",
+            "endpoint_profile_revision": 1,
+            "protocol_endpoint_id": "endpoint.deepseek.official.global.v1.chat",
+            "upstream_protocol": "chat_completions",
+            "upstream_model_id": "deepseek-flash",
+            "required_adapter_ref": "adapter.openai-chat.v1",
+            "required_adapter_revision": 1,
+            "evidence_digest": "sha256:7912d8c2c263cf0b9beea39d6085db85d84d437e6038d57a30356c2184143b74"
+          }
+        ],
+        "offers": [
+          {
+            "offer_id": "offer.deepseek.v4-1-flash.official",
+            "revision": 1,
+            "endpoint_profile_id": "endpoint.deepseek.official.global.v1",
+            "endpoint_profile_revision": 1,
+            "service_offering_id": "official-api",
+            "entitlement_id": "api-key",
+            "usage_scope": "account",
+            "region_id": "global",
+            "model_configuration_ids": [
+              "model.deepseek.v4-1-flash"
+            ],
+            "billing_class": "paid",
+            "evidence_digest": "sha256:7912d8c2c263cf0b9beea39d6085db85d84d437e6038d57a30356c2184143b74"
           }
         ]
       }

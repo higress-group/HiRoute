@@ -7,15 +7,20 @@ from pathlib import Path
 
 def expose_native_installation(product, harness, binary, node=None):
     """Expose selected native entries in the fixture's private PATH, never the host PATH."""
-    assert harness in ('pi', 'qoder', 'dsh')
+    assert harness in ('pi', 'qoder', 'dsh', 'opencode')
     assert harness != 'pi' or node is not None, 'Pi fixture requires its selected Node'
-    entries = [({'pi':'pi','qoder':'qodercli','dsh':'dsh'}[harness], binary)]
+    entries = [({'pi':'pi','qoder':'qodercli','dsh':'dsh','opencode':'opencode'}[harness], binary)]
     if harness == 'dsh':
         import shutil
         runtime = Path(shutil.which('node')).resolve(strict=True)
         entries.append(('node',runtime))
     if harness == 'pi':
         entries.append(('node', node))
+    if harness == 'opencode':
+        import shutil
+        ripgrep = shutil.which('rg')
+        assert ripgrep is not None, 'OpenCode product fixtures require installed ripgrep'
+        entries.append(('rg', Path(ripgrep).resolve(strict=True)))
     for name, path in entries:
         (product.root / 'bin' / name).symlink_to(Path(path).resolve(strict=True))
 

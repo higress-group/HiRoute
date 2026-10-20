@@ -9,18 +9,18 @@
     },
     {
       "path": "DATA-CARD.md",
-      "sha256": "b9cd7dd77b5d48b8201d2a0f03257590e063399adae845d37df06d4995e5c549",
-      "bytes": 8900
+      "sha256": "f7a7bafd2be9d13ec09c01716490c8adbd43a2f7ea8ba6c0b888cf9e2d03c8db",
+      "bytes": 10398
     },
     {
       "path": "README.md",
-      "sha256": "482493ecd5f70b67c241011f7e92f2521efd6fd4a7c858016703873177fd03dd",
-      "bytes": 8939
+      "sha256": "bc13abb550483e332cb16c9d7af235a38c689859a8406675b188b2dbe5d06672",
+      "bytes": 8951
     },
     {
       "path": "REPRODUCE.md",
-      "sha256": "0399329abfd550ccddb72cde626282b85f3d522db737d4719c1f9a0d12c78276",
-      "bytes": 5672
+      "sha256": "4156a61d958a5d6313a7cc5268f2c8d979fbad42d53207add6f11c350212f029",
+      "bytes": 6523
     },
     {
       "path": "analysis/context_eval.py",
@@ -81,6 +81,21 @@
       "path": "datasets/mathematics/labels.jsonl",
       "sha256": "890eb8d1d8f8a2c52db0cf5066b411565956ffd11f36abdd88abcb61a9545880",
       "bytes": 247770
+    },
+    {
+      "path": "diagnostics/connection-timing.json",
+      "sha256": "4305ad9de9906ea568bce2b0272d0f93760a48a2a3fb2d7942b82d4200dce2b9",
+      "bytes": 46198
+    },
+    {
+      "path": "diagnostics/connection_timing.py",
+      "sha256": "e26c77847a08e32f117fcc913ffdaaa89c34a2fe4f317832dc82189e025eb2cf",
+      "bytes": 7036
+    },
+    {
+      "path": "diagnostics/qwen-connection-timing.json",
+      "sha256": "4197c1c8ae2b16de8573fc7779c21d3f11b2f866f7c57651ed9323f604d774d8",
+      "bytes": 11572
     },
     {
       "path": "execution/README.md",
@@ -234,8 +249,8 @@
     },
     {
       "path": "main.md",
-      "sha256": "30b40d7b0f165615503b5f8a178919c42a61ede6acd05c89829bc59556d5272b",
-      "bytes": 67396
+      "sha256": "23aa59c4f9c237b90029c43eb98a24c6fd724bf1dd1d757d3dcc2bfd31d907b1",
+      "bytes": 66935
     },
     {
       "path": "policies/engineering-direct-explicit.json",

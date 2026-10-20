@@ -3,7 +3,7 @@
 //! These ports expose facts and durable records. Command validation, Preview digests, authority
 //! decisions, and machine-envelope semantics stay in [`crate::ApplicationService`].
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use hiroute_application_api::{
     AgentConnectSpecV1, AgentConnectionStatusRequestV1, AgentConnectionStatusV1,
@@ -101,6 +101,50 @@ pub trait ControlStatePort: Send + Sync {
     ) -> Result<ControlReadAttempt<u64>, ControlReadError> {
         Err(ControlReadError::Unavailable)
     }
+    fn trust_recovery_targets(
+        &self,
+        _plan_id: &str,
+    ) -> Result<Vec<crate::agent_connection::PreviousRoutingTargetV1>, ControlReadError> {
+        Ok(Vec::new())
+    }
+
+    fn trust_plan_ids(&self, _workspace: &WorkspaceId) -> Result<Vec<String>, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+
+    fn trust_context(
+        &self,
+        _workspace: &WorkspaceId,
+        _plan_id: &str,
+    ) -> Result<crate::trust::context::TrustContextV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn trust_primary_bindings(
+        &self,
+        _workspace: &WorkspaceId,
+        _plan_id: &str,
+        _revision: Option<u64>,
+        _branch_id: Option<&str>,
+    ) -> Result<Vec<String>, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn trust_task_population(
+        &self,
+        _workspace: &WorkspaceId,
+        _query: &hiroute_domain::TrustPopulationQueryV1,
+        _from_ms: i64,
+        _to_ms: i64,
+    ) -> Result<hiroute_domain::TrustTaskPopulationV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn trust_runs(
+        &self,
+        _workspace: &WorkspaceId,
+        _ids: &[String],
+    ) -> Result<BTreeMap<String, crate::trust::context::TrustRunV1>, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+
     fn snapshot(
         &self,
         workspace_id: &WorkspaceId,
@@ -243,6 +287,13 @@ pub trait ApplicationMutationPort: Send + Sync {
 /// Read-only facts needed by the typed AgentConnection planner and managed-launch endpoint.
 /// The daemon adapter owns filesystem/publication joins; Application owns every product decision.
 pub trait AgentConnectionControlPort: Send + Sync {
+    fn previous_routing_head(
+        &self,
+        _agent: &str,
+    ) -> Result<crate::agent_connection::PreviousRoutingHead, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+
     fn retry_settings_operation(
         &self,
         _request: &hiroute_application_api::AgentSettingsRetryV1,
@@ -587,6 +638,7 @@ pub struct ApplicationPorts {
     /// True only after the daemon has composed the Gateway and the combined role is ready.
     pub role_all_ready: bool,
     pub model_catalog: Option<Arc<dyn crate::model_catalog::ModelCatalogPort>>,
+    pub model_feed: Option<Arc<dyn crate::model_feed::ModelFeedPort>>,
     pub prices: Option<Arc<dyn crate::prices::SourcePriceControlPort>>,
     pub work_plans: Option<Arc<crate::delegation::work_plans::WorkPlanDirectory>>,
     pub delegation_tasks: Option<Arc<crate::delegation::tasks::DelegationTasks>>,
@@ -639,6 +691,7 @@ impl ApplicationPorts {
         Self {
             role_all_ready: false,
             model_catalog: None,
+            model_feed: None,
             prices: None,
             client_access: None,
             work_plans: None,
@@ -662,6 +715,10 @@ impl ApplicationPorts {
         self
     }
 
+    pub fn with_model_feed(mut self, port: Arc<dyn crate::model_feed::ModelFeedPort>) -> Self {
+        self.model_feed = Some(port);
+        self
+    }
     pub fn with_model_catalog(
         mut self,
         port: Arc<dyn crate::model_catalog::ModelCatalogPort>,

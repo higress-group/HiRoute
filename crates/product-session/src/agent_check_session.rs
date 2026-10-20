@@ -125,6 +125,7 @@ impl AgentCheckConfirmation {
             "agent_qoder_default" => "Qoder",
             "agent_pi_default" => "Pi",
             "agent_dsh_default" => "DeepSeek Harness",
+            "agent_opencode_default" => "OpenCode",
             _ => "Codex",
         };
         if self.request.scope == AgentCheckScopeV1::Live {
@@ -140,6 +141,7 @@ impl AgentCheckConfirmation {
                 AgentModelSurfaceV2::QoderCli => "Qoder CLI",
                 AgentModelSurfaceV2::PiCli => "Pi CLI",
                 AgentModelSurfaceV2::DshCli => "DeepSeek Harness",
+                AgentModelSurfaceV2::OpenCodeCli => "OpenCode",
                 AgentModelSurfaceV2::HermesCli => "Hermes",
             };
             let models = target.client_model_ids.join(", ");
@@ -279,7 +281,9 @@ impl AgentCheckInput {
         };
         let supported = match self.agent_id.as_str() {
             "agent_codex_default" | "agent_claude_default" => true,
-            "agent_pi_default" | "agent_dsh_default" => scope == AgentCheckScopeV1::Collaboration,
+            "agent_pi_default" | "agent_dsh_default" | "agent_opencode_default" => {
+                scope == AgentCheckScopeV1::Collaboration
+            }
             "agent_qoder_default" => matches!(
                 scope,
                 AgentCheckScopeV1::Collaboration | AgentCheckScopeV1::Live
@@ -391,7 +395,12 @@ mod tests {
 
     #[test]
     fn additional_agents_keep_collaboration_independent_and_require_explicit_live_targets() {
-        for agent in ["agent_qoder_default", "agent_pi_default"] {
+        for agent in [
+            "agent_qoder_default",
+            "agent_pi_default",
+            "agent_dsh_default",
+            "agent_opencode_default",
+        ] {
             let mut input = AgentCheckInput {
                 agent_id: agent.into(),
                 language: "en".into(),
@@ -463,6 +472,8 @@ mod tests {
             ("agent_claude_default", vec![AgentModelSurfaceV2::ClaudeCli]),
             ("agent_qoder_default", vec![AgentModelSurfaceV2::QoderCli]),
             ("agent_pi_default", vec![]),
+            ("agent_dsh_default", vec![]),
+            ("agent_opencode_default", vec![]),
         ] {
             for surface in [
                 AgentModelSurfaceV2::CodexCli,
@@ -470,6 +481,8 @@ mod tests {
                 AgentModelSurfaceV2::ClaudeCli,
                 AgentModelSurfaceV2::QoderCli,
                 AgentModelSurfaceV2::PiCli,
+                AgentModelSurfaceV2::DshCli,
+                AgentModelSurfaceV2::OpenCodeCli,
             ] {
                 let mut target = live_target();
                 target.surface = surface;

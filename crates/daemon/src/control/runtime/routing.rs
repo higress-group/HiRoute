@@ -332,8 +332,7 @@ impl LocalControlAdapter {
     > {
         use hiroute_application::model_catalog::{ModelRatings, RatingQueryError};
         let snapshot = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(RatingQueryError::SnapshotUnavailable)?
             .rating_snapshot()
             .clone();
@@ -359,8 +358,7 @@ impl LocalControlAdapter {
             None,
             || {
                 let catalog = self
-                    .release_catalog
-                    .as_ref()
+                    .current_catalog()
                     .ok_or(ControlReadError::Unavailable)?;
                 let provenance = catalog
                     .compute_catalog_provenance()
@@ -376,7 +374,7 @@ impl LocalControlAdapter {
                     )
                 };
                 let mut diagnostics =
-                    CandidateDiagnostics::new(&management.sources, &rows, catalog);
+                    CandidateDiagnostics::new(&management.sources, &rows, &catalog);
                 let needs_cpa = rows
                     .iter()
                     .any(|(source, _, _)| source.origin == SourceOrigin::Cpa)
@@ -700,7 +698,7 @@ impl LocalControlAdapter {
                             super::candidate_execution::materialize_connector_management_candidate(
                                 fact,
                                 registered,
-                                catalog,
+                                &catalog,
                                 cpa_targets,
                             )
                         }),
@@ -710,18 +708,18 @@ impl LocalControlAdapter {
                         {
                             super::candidate_execution::materialize_management_candidate(
                                 fact,
-                                Some(catalog),
+                                Some(&catalog),
                             )
                         } else {
                             super::candidate_execution::materialize_registered_management_candidate(
-                                fact, catalog,
+                                fact, &catalog,
                             )
                         }
                     }
                     hiroute_domain::ComputeManagementProvenanceV2::UserConfigured { .. } => {
                         super::candidate_execution::materialize_management_candidate(
                             fact,
-                            Some(catalog),
+                            Some(&catalog),
                         )
                     }
                 };
@@ -800,6 +798,12 @@ impl LocalControlAdapter {
                     .transpose()
                     .map_err(|_| ControlReadError::Corrupt)?;
                 let mut expected_revisions = revisions;
+                expected_revisions
+                    .dependencies
+                    .insert("feed.model_data".into(), catalog.generation);
+                expected_revisions
+                    .dependencies
+                    .insert("feed.sequence".into(), catalog.accepted_sequence);
                 expected_revisions
                     .dependencies
                     .insert("release.registry".into(), provenance.release_sequence);

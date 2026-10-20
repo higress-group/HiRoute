@@ -567,7 +567,7 @@ const scenarios = [
     await fresh(); await routing(); await click('新建智能路由');
     const fields = all('.plan-identity-fields input');
     setInput(fields[0], 'Continuous routing'); setInput(fields[1], 'Check routing without a follow-up setting');
-    for (const label of ['智能省钱', '自定义分支', '智能省钱', '自定义分支']) {
+    for (const label of ['按难度分流', '自定义分支', '按难度分流', '自定义分支']) {
       all('.mode-card').find(item => item.querySelector('strong')?.textContent === label).click();
       await pause(40);
       assert(!all('.plan-editor details').some(item => /追问设置|Follow-up settings/.test(item.textContent)), 'An empty retired follow-up section remains');
@@ -901,24 +901,25 @@ const scenarios = [
     assert(contextWindow.value === '32000' && !contextWindow.disabled && !button('发布更改').disabled, 'Checkpoint failure discarded or locked the local edit');
     assert(calls('preview_agent_settings').length === 0 && calls('check_agent_live').length === 0, 'Checkpoint failure implicitly changed an Agent connection or called a model');
   }),
-  scenario('desktop.routing.additional-budget-consumers', ['routing-editor', 'pi', 'dsh'], 'Both admission and checkpoint failures identify Pi/DSH and keep the route draft', async () => {
+  scenario('desktop.routing.additional-budget-consumers', ['routing-editor', 'pi', 'dsh', 'opencode'], 'Both admission and checkpoint failures identify installed additional consumers and keep the route draft', async () => {
     for (const checkpoint of [false, true]) {
       await fresh(() => {
         const plan = c().desktop.catalog.plans[0];
         const base = c().agents.agents[0];
-        for (const [id, mode] of [['agent_pi_default', 'pi_additional'], ['agent_dsh_default', 'dsh_additional']]) {
+        for (const [id, mode] of [['agent_pi_default', 'pi_additional'], ['agent_dsh_default', 'dsh_additional'], ['agent_opencode_default', 'opencode_additional']]) {
           c().agents.agents.push({ ...base, agent_id: id, context_id: `agent-context/${mode}/sha256:abc`, settings: { ...base.settings, current_selection: { mode, allowed_plan_ids: [plan.agent_plan_id] } } });
         }
         const conflict = { schema: 'hiroute.agent-model-budget-conflict/v1', blockers: [
           { agent_kind: 'pi', context_id: 'agent-context/pi/sha256:abc', plan_id: plan.agent_plan_id, model_alias: plan.model_alias, reason: 'capacity_reduced', declared: { context_window_tokens: 262144, max_output_tokens: 235929 }, proposed: { context_window_tokens: 262144, max_output_tokens: 131072 } },
           { agent_kind: 'deepseek_harness', context_id: 'agent-context/dsh/sha256:abc', plan_id: plan.agent_plan_id, model_alias: plan.model_alias, reason: 'capacity_reduced', declared: { context_window_tokens: 262144, max_output_tokens: 235929 }, proposed: { context_window_tokens: 262144, max_output_tokens: 131072 } },
+          { agent_kind: 'opencode', context_id: 'agent-context/opencode/sha256:abc', plan_id: plan.agent_plan_id, model_alias: plan.model_alias, reason: 'capacity_reduced', declared: { context_window_tokens: 262144, max_output_tokens: 235929 }, proposed: { context_window_tokens: 262144, max_output_tokens: 131072 } },
         ] };
         c().handlers.preview_plan_editor = checkpoint ? () => ({ state: 'applied', operation: operation() }) : () => { throw { source: 'backend', envelope: { error: { code: 'REVISION_CONFLICT', model_budget_conflict: conflict } } }; };
         c().handlers.observe_operation = () => ({ ...operation('rolled_back'), sequence: 2, safe_error_code: 'AGENT_MODEL_BUDGET_CONFLICT', model_budget_conflict: conflict });
       });
       await routing();
       const usage = document.querySelector('.plan-editor .agent-card-list');
-      assert(usage?.textContent.includes('Pi') && usage.textContent.includes('DeepSeek Harness') && !usage.textContent.includes('Qoder'), 'Where it is used omits the actual Pi/DSH connections or includes an unrelated Qoder');
+      assert(usage?.textContent.includes('Pi') && usage.textContent.includes('DeepSeek Harness') && usage.textContent.includes('OpenCode') && !usage.textContent.includes('Qoder'), 'Where it is used omits an installed additional consumer or includes an unrelated Qoder');
       const name = document.querySelector('.plan-identity-fields input');
       const draftName = 'Budget retained draft with a long route name';
       setInput(name, draftName);
@@ -930,7 +931,7 @@ const scenarios = [
       await click('发布更改');
       await until(() => (checkpoint ? feedback() : document.querySelector('.plan-editor [role="alert"]'))?.textContent.includes('最大输出 235,929 → 131,072'), 'typed output-budget rejection');
       const message = (checkpoint ? feedback() : document.querySelector('.plan-editor [role="alert"]')).textContent;
-      assert(message.includes('Pi') && message.includes('DeepSeek Harness') && !message.includes('Qoder') && message.includes('任务协作无需停用'), 'Recovery guidance misattributes the constraint');
+      assert(message.includes('Pi') && message.includes('DeepSeek Harness') && message.includes('OpenCode') && !message.includes('Qoder') && message.includes('任务协作无需停用'), 'Recovery guidance misattributes the constraint');
       assert(name.value === draftName && !name.disabled && !button('发布更改').disabled, 'Budget rejection discarded or locked the draft');
       assert(calls('preview_agent_settings').length === 0 && calls('check_agent_live').length === 0, 'Budget rejection implicitly changed native routes or called a model');
     }

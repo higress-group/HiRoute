@@ -75,6 +75,7 @@ impl AgentModelBudgetConflictV1 {
                     AgentKindV1::Qoder
                         | AgentKindV1::Pi
                         | AgentKindV1::DeepseekHarness
+                        | AgentKindV1::OpenCode
                         | AgentKindV1::Hermes
                 ) && blocker.context_id.starts_with("agent-context/")
                     && blocker.context_id.len() <= 256

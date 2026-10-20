@@ -19,6 +19,7 @@ impl LocalControlAdapter {
                                 | SettingsAgentClass::Qoder
                                 | SettingsAgentClass::Pi
                                 | SettingsAgentClass::Dsh
+                                | SettingsAgentClass::OpenCode
                                 | SettingsAgentClass::Hermes
                         )
                 })
@@ -46,7 +47,12 @@ impl LocalControlAdapter {
         if !matches!(spec.model, AgentFacetIntent::Keep)
             && matches!(
                 self.settings_agent_for_context(&request.context_id),
-                Some(SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh)
+                Some(
+                    SettingsAgentClass::Qoder
+                        | SettingsAgentClass::Pi
+                        | SettingsAgentClass::Dsh
+                        | SettingsAgentClass::OpenCode
+                )
             )
         {
             let intent = op

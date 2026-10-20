@@ -127,11 +127,12 @@ jobs:
     needs: selection
     if: needs.selection.outputs.frontend == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -147,7 +148,10 @@ jobs:
           name: desktop-console-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/desktop/dist
           if-no-files-found: error
+      - uses: ./.github/actions/ci-setup
       - name: Current metadata generation
+        env:
+          MODEL_FEED_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           python3 tools/model-metadata/close_model_metadata.py --check
           python3 tools/model-metadata/validate_catalog.py
@@ -156,6 +160,9 @@ jobs:
           python3 assets/model-data/current/generate.py --check
           python3 assets/release-facts/current/prepare-bundle.py
           python3 assets/release-facts/current/prepare-bundle.py --check
+          feed_args=()
+          if [[ -n "$MODEL_FEED_BASE" && "$MODEL_FEED_BASE" != "0000000000000000000000000000000000000000" ]]; then feed_args=(--base "$MODEL_FEED_BASE"); fi
+          cargo run -p hiroute-release-facts -- feed build --check "${feed_args[@]}"
           git diff --exit-code
       - name: Subscription acceptance harness safety
         run: |

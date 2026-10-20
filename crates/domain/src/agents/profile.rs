@@ -18,6 +18,8 @@ pub enum AgentKindV1 {
     Qoder,
     Pi,
     DeepseekHarness,
+    #[serde(rename = "opencode")]
+    OpenCode,
     Hermes,
 }
 
@@ -38,6 +40,14 @@ impl AgentKindV1 {
                 ConfigLayerV1::Process,
                 ConfigLayerV1::Launch,
                 ConfigLayerV1::Project,
+                ConfigLayerV1::User,
+            ],
+            Self::OpenCode => &[
+                ConfigLayerV1::Managed,
+                ConfigLayerV1::Process,
+                ConfigLayerV1::Local,
+                ConfigLayerV1::Project,
+                ConfigLayerV1::Launch,
                 ConfigLayerV1::User,
             ],
             Self::Pi | Self::DeepseekHarness | Self::Hermes => &[
@@ -62,6 +72,7 @@ impl AgentKindV1 {
             Self::Qoder => "qoder",
             Self::Pi => "pi",
             Self::DeepseekHarness => "deepseek_harness",
+            Self::OpenCode => "opencode",
             Self::Hermes => "hermes",
         }
     }
@@ -227,6 +238,7 @@ impl AgentProfileV1 {
             AgentKindV1::Qoder
                 | AgentKindV1::Pi
                 | AgentKindV1::DeepseekHarness
+                | AgentKindV1::OpenCode
                 | AgentKindV1::Hermes
         ) && (self.dynamic_catalog
             || self.static_catalog_fallback
@@ -273,6 +285,7 @@ impl AgentProfileV1 {
                 | AgentKindV1::Qoder
                 | AgentKindV1::Pi
                 | AgentKindV1::DeepseekHarness
+                | AgentKindV1::OpenCode
                 | AgentKindV1::Hermes,
                 Some(AgentIngressProtocolV1::Responses),
             )

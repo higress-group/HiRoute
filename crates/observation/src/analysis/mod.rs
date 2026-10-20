@@ -3,7 +3,10 @@
 mod comparison;
 mod cost;
 mod legacy;
+mod trust_cost;
+pub(crate) use legacy::ProjectedComparison;
 pub(crate) use legacy::projected_comparison;
+pub(crate) use trust_cost::trust_comparison;
 mod members;
 mod metadata;
 mod native;
@@ -14,6 +17,8 @@ mod read;
 #[cfg(test)]
 mod read_admission_tests;
 mod routing;
+pub(crate) use routing::transitions as routing_transitions;
+pub(crate) use views::Row as RoutingRow;
 mod schema;
 mod scope;
 mod selection;

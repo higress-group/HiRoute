@@ -1,0 +1,9 @@
+{
+  "schema": "hiroute.trust-levels/v1",
+  "levels": [
+    { "id": "trial", "threshold_millis": 900, "label": { "en": "Trial", "zh": "试用" } },
+    { "id": "familiar", "threshold_millis": 800, "label": { "en": "Familiar", "zh": "熟悉" } },
+    { "id": "trusted", "threshold_millis": 650, "label": { "en": "Trusted", "zh": "信任" } },
+    { "id": "hands_off", "threshold_millis": 500, "label": { "en": "Hands-off", "zh": "放手" } }
+  ]
+}

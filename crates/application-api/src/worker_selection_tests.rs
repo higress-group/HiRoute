@@ -119,11 +119,13 @@ fn native_acp_requires_only_cli_and_rejects_cross_form_fields() {
     let requests = [
         r#"{"harness":"qoder_cli","cli_path":"/opt/bin/qodercli","expected_selection_revision":0}"#,
         r#"{"harness":"deepseek_harness","cli_path":"/opt/bin/dsh","expected_selection_revision":0}"#,
+        r#"{"harness":"opencode","cli_path":"/opt/bin/opencode","expected_selection_revision":0}"#,
     ];
     #[cfg(windows)]
     let requests = [
         r#"{"harness":"qoder_cli","cli_path":"C:/opt/bin/qodercli","expected_selection_revision":0}"#,
         r#"{"harness":"deepseek_harness","cli_path":"C:/opt/bin/dsh","expected_selection_revision":0}"#,
+        r#"{"harness":"opencode","cli_path":"C:/opt/bin/opencode","expected_selection_revision":0}"#,
     ];
     let (adapter, node) = if cfg!(windows) {
         ("C:/opt/adapter", "C:/opt/node")
@@ -194,7 +196,8 @@ fn published_worker_harnesses_match_typed_discovery_selection_and_plan_bindings(
         "claude_code",
         "qoder_cli",
         "pi",
-        "deepseek_harness"
+        "deepseek_harness",
+        "opencode"
     ]);
     for declared in [
         &discover["properties"]["harness"]["enum"],

@@ -379,7 +379,8 @@ fn serve_probe_request(
             WorkerHarnessV1::CodexCli
             | WorkerHarnessV1::QoderCli
             | WorkerHarnessV1::Pi
-            | WorkerHarnessV1::DeepseekHarness => responses_stream(endpoint.model),
+            | WorkerHarnessV1::DeepseekHarness
+            | WorkerHarnessV1::OpenCode => responses_stream(endpoint.model),
             WorkerHarnessV1::ClaudeCode => messages_stream(endpoint.model),
         }
     };

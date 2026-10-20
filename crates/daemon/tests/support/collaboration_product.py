@@ -43,6 +43,14 @@ def apply_collaboration(product, context, intent, key):
 
 
 def run_main_agent(product, binary, upstream, fixture):
+    if HARNESS=='opencode':
+        from opencode_native_context import main_route
+        selector=main_route(product,upstream.base_url,upstream.model,upstream.token,fixture)
+        stdout=run_native_command(product,[str(binary),'run','--format','json','--model',selector,
+            fixture['main_marker']+': Read hiroute-collaboration and delegate the native receipt task.'],timeout=190,label='native OpenCode main Agent')
+        from additional_model_fixture import successful_native_result
+        successful_native_result(stdout,'MAIN-AGENT-COMPLETED-'+fixture['artifact']['receipt'],'opencode')
+        return
     if HARNESS == 'dsh':
         from dsh_native_context import main_route_patch
         from native_acp_client import prompt
@@ -142,7 +150,7 @@ def finish_collaboration(product, sources, restore, report, stage, primary_failu
 def run(repository, candidate):
     global HARNESS, AGENT
     HARNESS = os.environ.get('HIROUTE_PRODUCT_WORKER_HARNESS','qoder')
-    assert HARNESS in ('qoder','pi','dsh')
+    assert HARNESS in ('qoder','pi','dsh','opencode')
     AGENT = 'agent_' + HARNESS + '_default'
     repo = Path(repository).resolve()
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == candidate
@@ -167,7 +175,7 @@ def run(repository, candidate):
         fixture, worker_source = prepare_product(product, HARNESS)
         report['source_context_tokens'] = fixture['source_context_tokens']
         sources.append(worker_source)
-        configure_worker_installation(product, {'pi':'pi','qoder':'qoder_cli','dsh':'deepseek_harness'}[HARNESS], None, binary, node)
+        configure_worker_installation(product, {'pi':'pi','qoder':'qoder_cli','dsh':'deepseek_harness','opencode':'opencode'}[HARNESS], None, binary, node)
         if HARNESS == 'pi':
             # Main CLI follows native auth behavior; the Worker-only helper trap is
             # covered by the core journey, not executed by the main Agent fixture.
@@ -180,7 +188,7 @@ def run(repository, candidate):
                                    receipt='QODER-WORKER-' + secrets.token_hex(16))
         (product.root / 'native-context.json').write_text(json.dumps(fixture))
         worker_source.reply = worker_decision
-        skill = (Path(fixture['config']) / 'skills/hiroute-collaboration/SKILL.md' if HARNESS in ('pi','dsh') else
+        skill = (Path(fixture['config']) / 'skills/hiroute-collaboration/SKILL.md' if HARNESS in ('pi','dsh','opencode') else
                  qoder_native_context.prepare_collaboration_target(product))
         assert not skill.is_symlink(), 'user collaboration Skill is a symlink'
         before_skill = skill.read_bytes() if skill.exists() else None
@@ -217,6 +225,7 @@ def run(repository, candidate):
         wait_for_resumable_task(product, oracle.accepted['task_id'], oracle.accepted['run_id'])
         report.update(task_id=oracle.accepted['task_id'], run_id=oracle.accepted['run_id'],
                       native_session_id=(__import__('pi_native_context').exact_history(dict(fixture, receipt=fixture['artifact']['receipt']))[1] if HARNESS == 'pi'
+                                         else __import__('opencode_native_context').exact_history(fixture)[1] if HARNESS=='opencode'
                                          else __import__('dsh_native_context').exact_history(dict(fixture,receipt=fixture['artifact']['receipt']))[1] if HARNESS == 'dsh' else qoder_native_context.task_binding(fixture)),
                       main_requests=len(source_events(main_source)), worker_requests=len(source_events(worker_source)),
                       actual_user_skill_sha256=digest(skill), artifact_sha256=digest(fixture['artifact']['path']),

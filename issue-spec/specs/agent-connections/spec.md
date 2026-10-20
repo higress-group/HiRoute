@@ -15,7 +15,7 @@ Model settings own default/Fixed/allowed Plan routes; collaboration owns the sha
 Skill and explicit (default) or delegate_by_default trigger mode, never a caller
 Worker allowlist. Keeping another facet cannot read/validate its unused native files.
 Collaboration configuration needs neither active publication nor a plan; an empty
-runtime directory is a legitimate outcome. A collaboration-only Qoder context
+runtime directory is a legitimate outcome. A collaboration-only Qoder or OpenCode context
 cannot acquire a fake model grant/token/file effect or ingress capability merely
 because its model settings are absent/malformed.
 
@@ -28,6 +28,7 @@ The current native model surfaces are:
 | Qoder | Explicit supplementary Plan providers; native default remains independent | Selected normally logged-in native context |
 | Pi | Per-Plan owned members in user models.json | Selected native Skills/resources |
 | DSH | Public standard Web/home composition and per-Plan provider rows | Public native Skills/CLI capabilities |
+| OpenCode | Supplementary per-Plan native providers; defaults remain independent | Selected native user Skill/resource context |
 | Hermes | One selected effective profile default main model using a published Plan alias | Profile-local collaboration and independent management Skills |
 
 A Fixed route always retains exact source/account/physical model. Selecting a plan
@@ -36,6 +37,8 @@ never implies a Worker process or shared main-Agent ownership of that plan.
 HiRoute SHALL manage management and collaboration Skills as distinct resources alongside the model facet. Each uses keep, configure and restore, with omission meaning keep. Either Skill can be enabled first or both requested together. Changing or restoring one SHALL preserve the other and model settings. Restoring model settings SHALL preserve both Skills unless their own restore intents are selected. Ownership SHALL distinguish the effective file target and Skill identity, preserve shared references and identically borrowed files, and reject foreign content conflicts. Existing accepted operations and recovery references SHALL retain their original meanings. Collaboration owns delegation-trigger policy when both Skills are loaded. Disabling a Skill SHALL report externally retained content and required native reload rather than claim revocation of same-user CLI access.
 
 Management preparation is available for all listed Agent families and requires neither a Plan nor a model grant. Hermes collaboration follows the same independent intent and trigger policy as other supported initiators, without adding a Hermes Worker executor. Neither Skill preparation nor model routing creates a new CLI authority.
+
+Prior contract source: https://github.com/higress-group/HiRoute/issues/125#issuecomment-6186244519
 
 #### Scenario: Prepare Hermes management without model connection
 
@@ -62,8 +65,13 @@ Management preparation is available for all listed Agent families and requires n
 - **WHEN** a resource changes after Preview or a multi-resource operation is interrupted
 - **THEN** the existing stale/ownership and recovery rules apply to exact targets; no successful state hides unfinished effects or removes unrelated content.
 
+#### Scenario: Collaboration without model routing
+
+- **WHEN** a user enables collaboration while OpenCode continues to use its own model provider and no HiRoute Plan exists
+- **THEN** the owned Skill can be installed independently, no model grant/file effect is created, and the runtime directory truthfully contains no delegate target.
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/125#issuecomment-6186244519
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258607139
 
 ### Requirement: Settings bind current facts once through one transaction
 
@@ -303,7 +311,7 @@ plan catalog cannot imply one client effort changes all candidates.
 
 ### Requirement: Supplementary providers retain native defaults and exact protocols
 
-Qoder/Pi/DSH model configuration contains explicitly selected published Plan routes,
+Qoder/Pi/DSH/OpenCode model configuration MUST contain explicitly selected published Plan routes,
 one stable owned provider per plan and user-chosen Responses/Messages protocol.
 Recommendation considers all active/fallback candidates' native protocols and
 explains conversion, never overrides selection or starts paid calls. Protocol change
@@ -332,9 +340,17 @@ offline without native auth store/helpers/extensions/downloads/model calls. Chan
 selected CLI invalidates process-local proof, not a generic version-label whitelist.
 
 Every supplementary provider obeys [installed-budget protection](../routing-plans/spec.md)
-for surviving current grants, including Pi/DSH; completed service with pending file
+for surviving current grants, including Pi/DSH/OpenCode; completed service with pending file
 tail remains recoverable before conflicting publication. Scope/rotation/restoration
 never chooses a native default or takes over an unowned equal-name provider.
+
+#### Scenario: Referenced managed route retains its identity
+
+- **WHEN** a native model reference still selects an owned supplementary provider/model while its token is rotated
+- **THEN** rotation MUST retain that selector; removing it MUST report an actionable reference conflict before the file switch.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258609244
 
 ### Requirement: DSH configuration uses public static composition
 
@@ -359,7 +375,7 @@ native evidence. Model and collaboration restore remain independent.
 
 ### Requirement: Collaboration proofs distinguish preinstall from installed Skill
 
-Codex/Claude initial collaboration install uses user-triggered private-context proof
+Codex/Claude/OpenCode initial collaboration install MUST use user-triggered private-context proof
 of Skill loading and controlled read-only trusted HiRoute CLI, without daily config,
 upstream calls, or borrowing another client's proof. Current-client/installation/
 short-lived evidence binds Preview/Apply; missing/expired proof retains edits and
@@ -383,6 +399,32 @@ remain distinct. Closed diagnostics distinguish login missing, installed-Skill a
 drift/invalidity, context/dependency/check failure without raw output/paths/credentials.
 An auth challenge followed by collaboration proof cannot erase still-valid auth
 capability, nor grant unrequested Skill access to model settings.
+
+OpenCode checks use private native configuration/history and controlled upstream
+replies. The installed-Skill check loads the actual owned user resource path through
+the native resource loader and binds its exact path/body and generation to the
+nonce-correlated trusted public CLI result. It does not parse daily model settings,
+require a published Plan/model grant, or inject a copied substitute installed Skill.
+The real main-Agent journey separately proves native context use and delegated
+completion; prerequisite evidence alone cannot make that claim.
+
+#### Scenario: Collaboration without model routing
+
+- **WHEN** a user enables collaboration while OpenCode continues to use its own model provider and no HiRoute Plan exists
+- **THEN** the owned Skill can be installed independently, no model grant/file effect is created, and the runtime directory truthfully contains no delegate target.
+
+#### Scenario: Real delegated journey
+
+- **WHEN** OpenCode loads the actual installed user collaboration Skill and the user requests work through an available HiRoute Plan
+- **THEN** OpenCode invokes the trusted public CLI, retains the returned task identity, and obtains the actual Worker outcome rather than treating Skill installation as task completion.
+
+#### Scenario: Shadowed or edited resource
+
+- **WHEN** a same-named project Skill shadows the installed user Skill or the managed user Skill is edited
+- **THEN** verification cannot accept the substitute as the owned installed resource and restoration cannot overwrite user edits without resolving the ownership conflict.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258610209
 
 ### Requirement: Skill and reference maintenance never becomes Worker authority
 
@@ -569,6 +611,78 @@ HiRoute SHALL configure Hermes with a compact recognizable managed-provider iden
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/125#issuecomment-6219938656
+
+### Requirement: Previous routing is an ordinary scoped edit, separate from Restore
+
+Return to previous routing MUST follow the succeeded configuration journal chain
+within the current Agent context, including Codex's active root/profile slot. For
+each selected preset it skips unchanged resolved mappings and finds the mapping
+before that preset's latest change. Only selected presets are overlaid on current
+settings; unrelated presets retain their current mappings. This produces a draft
+for normal Preview/Apply, with manual-edit checks and no deletion of Plans/evidence.
+
+Traversal is bounded to 128 configurations and detects cycles. Missing history,
+context mismatch, a non-succeeded entry or the traversal bound yields an explicit
+unavailable reason. None is evidence of a previous native configuration. Restore
+to native remains a separate labelled action with its existing ownership rules.
+
+#### Scenario: Sonnet changes after the Opus trial starts
+
+- **WHEN** Opus is mapped to a trial and a later configuration changes only Sonnet
+- **THEN** returning Opus skips the unchanged Opus entry and restores its earlier
+  mapping while preserving the later Sonnet choice.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235502571
+
+### Requirement: OpenCode discovery preserves exact native context and scoped capabilities
+
+HiRoute MUST recognize OpenCode as an explicit Agent identity and selectable native ACP Harness through existing Desktop and public CLI surfaces on macOS, Linux and native Windows. Passive discovery MUST use bounded installation/configuration metadata without launching OpenCode, executing shims, authenticating, downloading, changing native files or making model requests. It MUST distinguish executable discovery, model-configuration capability, collaboration capability and Worker execution/Continue capability. It MUST resolve the selected context using native HOME/XDG and explicit OpenCode configuration-root semantics without guessing another account from executable location. An explicit selected installation remains selected when missing or unusable; no automatic candidate substitution is permitted. Worker selection uses the native OpenCode CLI, not a fictitious separate ACP adapter. Platform-specific launch dependencies MUST be explicit where the actual installation form requires them. Normal configuration actions MUST reuse the shared enable/edit/restore and Operation flow rather than introduce a separate OpenCode setup or verification workflow.
+
+#### Scenario: Partial discovery
+
+- **WHEN** one OpenCode configuration or installation candidate is unreadable while other candidates remain valid
+- **THEN** HiRoute reports the affected item as unavailable or unknown and preserves the other findings without running the client.
+
+#### Scenario: Missing selected installation
+
+- **WHEN** the explicitly selected OpenCode installation disappears or becomes unusable
+- **THEN** subsequent affected actions report the selected dependency failure and retain its identity instead of launching another PATH candidate.
+
+#### Scenario: Separate capabilities
+
+- **WHEN** OpenCode model configuration is supported but native ACP or Continue capability is unavailable
+- **THEN** model configuration remains usable and Worker/Continue availability is reported independently, without claiming model success from discovery.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258607139
+
+### Requirement: OpenCode supplementary model routes are native and reversibly owned
+
+HiRoute MUST configure explicitly selected published Plan aliases as supplementary OpenCode providers, one owned provider per Plan, with a selected Responses or Messages protocol. The ordinary OpenCode client MUST be able to select and use these aliases from saved native settings without transient route or credential injection. HiRoute MUST preserve native defaults, other providers, unrelated fields, comments and native extensions. Native provider-prefixed selectors MUST map to the original Plan alias without changing routing authority. Ordinary model grants MUST use the existing protected connection-grant channel, separate from upstream keys and Worker credentials. Configure, adjustment, token rotation and restore MUST use the shared ownership/dependency/recovery transaction, preserving original protected recovery material and rejecting unowned collisions or ambiguous JSON/JSONC composition. Effective configuration precedence and relevant native model/default references MUST be checked for the requested operation; conflicting higher-priority settings cannot produce a false connected/active claim. Restore MUST remove only owned effects and retain unrelated user edits; references to a removed managed model require actionable conflict handling. Context/output declarations MUST follow the selected Plan and OpenCode native compaction policy and participate in existing installed-budget protection. Saving configuration MUST NOT change the native default or perform paid inference.
+
+#### Scenario: Ordinary saved model use
+
+- **WHEN** the user saves selected Plan routes and then starts ordinary OpenCode and selects one of their native model entries
+- **THEN** requests use that exact Plan alias and selected protocol through the saved local grant, with native defaults and unrelated settings preserved.
+
+#### Scenario: Rotation and independent restore
+
+- **WHEN** the user rotates the model grant or restores OpenCode model settings while collaboration remains enabled
+- **THEN** rotation revokes the old grant for new requests and updates native consumption consistently; model restore preserves the collaboration Skill and unrelated native configuration.
+
+#### Scenario: Late configuration conflict
+
+- **WHEN** a relevant effective override, owned member or native default dependency changes after Preview
+- **THEN** Apply or the affected recovery path rejects stale authority without overwriting user changes, falsely claiming activation or bypassing the original pending Operation.
+
+#### Scenario: Budget change
+
+- **WHEN** publication would invalidate the native context/output declaration of a surviving installed OpenCode Plan route
+- **THEN** the shared publication guard reports the affected installed consumer rather than leaving a silently invalid native declaration.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258609244
 
 ## Implementation references
 

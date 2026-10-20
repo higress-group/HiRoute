@@ -124,7 +124,18 @@ fn validate_selection_for(
         .as_deref()
         .map(|path| normalize_required(Path::new(path), request.node_path.is_none()))
         .transpose()?;
-    let cli = normalize_required(Path::new(&request.cli_path), true)?;
+    let cli = if request.harness == WorkerHarnessV1::OpenCode {
+        let native = hiroute_integrations::opencode_native_executable(Path::new(&request.cli_path))
+            .map_err(|_| DelegationErrorV1::DependenciesInvalid)?
+            .ok_or(DelegationErrorV1::DependenciesMissing)?;
+        // Native launch uses an ordinary Windows drive path; selection binds the
+        // same canonical tuple as discovery and every other Worker harness.
+        #[cfg(windows)]
+        let native = normalize_required(&native, true)?;
+        native
+    } else {
+        normalize_required(Path::new(&request.cli_path), true)?
+    };
     #[cfg(windows)]
     let (adapter, cli) = {
         let mut adapter = adapter;
@@ -281,6 +292,9 @@ impl HarnessScan {
             directories.push(home.join(".local/bin"));
             if self.harness == WorkerHarnessV1::QoderCli {
                 directories.push(home.join(".qoder/bin"));
+            }
+            if self.harness == WorkerHarnessV1::OpenCode {
+                directories.push(home.join(".opencode/bin"));
             }
         }
         #[cfg(windows)]
@@ -528,7 +542,9 @@ impl HarnessScan {
         package_root: &Path,
         source: WorkerDependencyCandidateSourceV1,
     ) {
-        let adapter = if self.harness == WorkerHarnessV1::DeepseekHarness {
+        let adapter = if self.harness == WorkerHarnessV1::OpenCode {
+            "opencode"
+        } else if self.harness == WorkerHarnessV1::DeepseekHarness {
             "dsh"
         } else if self.harness == WorkerHarnessV1::Pi {
             "pi"
@@ -552,7 +568,7 @@ impl HarnessScan {
         self.add_discovered(
             if matches!(
                 self.harness,
-                WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+                WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness | WorkerHarnessV1::OpenCode
             ) {
                 WorkerDependencyComponentV1::Cli
             } else {
@@ -624,7 +640,9 @@ impl HarnessScan {
         ] {
             if (matches!(
                 self.harness,
-                WorkerHarnessV1::QoderCli | WorkerHarnessV1::DeepseekHarness
+                WorkerHarnessV1::QoderCli
+                    | WorkerHarnessV1::DeepseekHarness
+                    | WorkerHarnessV1::OpenCode
             ) && component != WorkerDependencyComponentV1::Cli)
                 || (self.harness == WorkerHarnessV1::Pi
                     && component == WorkerDependencyComponentV1::Adapter)
@@ -655,7 +673,12 @@ impl HarnessScan {
         if self.incomplete {
             hints.push(WorkerDependencyInstallHintV1 {
                 harness: self.harness,
-                component: if self.harness == WorkerHarnessV1::QoderCli {
+                component: if matches!(
+                    self.harness,
+                    WorkerHarnessV1::QoderCli
+                        | WorkerHarnessV1::DeepseekHarness
+                        | WorkerHarnessV1::OpenCode
+                ) {
                     WorkerDependencyComponentV1::Cli
                 } else {
                     WorkerDependencyComponentV1::Adapter
@@ -783,6 +806,7 @@ fn names(harness: WorkerHarnessV1) -> (&'static [&'static str], Option<&'static 
         WorkerHarnessV1::QoderCli => (&["qoder", "qodercli"], None),
         WorkerHarnessV1::Pi => (&["pi"], None),
         WorkerHarnessV1::DeepseekHarness => (&["dsh"], None),
+        WorkerHarnessV1::OpenCode => (&["opencode"], None),
     }
 }
 
@@ -793,6 +817,7 @@ fn package_name(harness: WorkerHarnessV1) -> Option<&'static Path> {
         WorkerHarnessV1::QoderCli => None,
         WorkerHarnessV1::Pi => Some(Path::new("@earendil-works/pi-coding-agent")),
         WorkerHarnessV1::DeepseekHarness => Some(Path::new("@deepseek-ai/dsh")),
+        WorkerHarnessV1::OpenCode => Some(Path::new("opencode-ai")),
     }
 }
 

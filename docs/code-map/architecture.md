@@ -30,7 +30,12 @@ host IPC, startup/reconnect, tray/login preference and NSIS hooks. The
 [Rust standalone transaction](../../crates/host-runtime/src/standalone_install)
 owns architecture-matched Task installation and current-schema journal recovery; the shell's separate
 inventory/finisher owns its program files and update outcome. Neither owns business
-transactions or exposes Local Control to WebView. The
+transactions or exposes Local Control to WebView.
+The native [current-package repair](../../crates/host-runtime/src/standalone_install/windows/repair.rs)
+matches the complete accepted package and owned Task before reapplying a prepared
+core journal forward. Generic rollback refuses possible storage writes before any
+manager effect. NSIS supplies the candidate to early shell recovery, preserving
+the original batch instead of forcing an older-program rollback. The
 [release catalog](../../apps/website/src/lib/releases.mjs) emits V3 and the registered
 Windows-free V2 projection for supported macOS readers. Public Windows artifacts
 are x64 NSIS installers only; headless x64/ARM64 archives stay internal. The
@@ -107,7 +112,7 @@ The name must fit any runtime root that supports `hiroute/control.sock`, includi
 | User step | Owners to follow | Representative guard |
 | --- | --- | --- |
 | Add an API connection and choose its models | [Connection directory](../../apps/desktop/src/features/model-connections/ConnectionDirectory.tsx), [form and draft ownership](../../apps/desktop/src/features/model-connections/README.md), [registered check](../../crates/daemon/src/control/runtime/model_connections/registered.rs) | The executable catalog supplies the complete directory. A source name survives check/save; per-product credentials stay in the dialog and protected input. Released public registered probes may omit the name and use the authenticated option label; the current Desktop check requires an explicit label. |
-| Discover a native source without executing it | [Native model connections](../../crates/integrations/src/model_connections), [Pi reader](../../crates/integrations/src/agents/pi_sources.rs), [DSH reader](../../crates/integrations/src/agents/dsh_sources.rs), [Hermes reader](../../crates/integrations/src/agents/hermes_sources.rs) | Shared [point grouping](../../crates/integrations/src/agents/native_points.rs) keeps scope/provider/address/protocol/authentication distinct; static scan never executes helpers |
+| Discover a native source without executing it | [Native model connections](../../crates/integrations/src/model_connections), [Pi reader](../../crates/integrations/src/agents/pi_sources.rs), [DSH reader](../../crates/integrations/src/agents/dsh_sources.rs), [OpenCode reader](../../crates/integrations/src/agents/opencode_sources.rs), [Hermes reader](../../crates/integrations/src/agents/hermes_sources.rs) | Shared [point grouping](../../crates/integrations/src/agents/native_points.rs) keeps scope/provider/address/protocol/authentication distinct; static scan never executes helpers |
 | Display, prepare and save the selected source | [Safe shared product projection](../../crates/product-session/src/commands/model_connection_web.rs), [V2 points/catalog qualification](../../crates/daemon/src/control/runtime/model_connections/points.rs), [daemon preparation](../../crates/daemon/src/control/runtime/model_connections/pi_discovered.rs) | Exact native/catalog provenance and explicit model selection remain visible; privileged locators stay private; stale facts cannot expand an accepted selection; legacy one-model handles retain their meaning |
 | Rename a connection, append models or remove saved configuration | [Shared lifecycle planner](../../crates/application/src/compute_management/mutations/lifecycle.rs), [transactional reference guards](../../crates/local-storage/src/control/compute/management/references.rs), [Desktop lifecycle dialog](../../apps/desktop/src/features/models/ConnectionLifecycleDialog.tsx) | Templates do not own credentials. Explicit append preserves saved members; enabled/disabled routes and retained recovery versions block removal. Removing the last model requires explicit connection deletion; owned secrets follow the same recoverable operation. |
 | Save Key order or use current Keys with an older plan | [Single-save edits](../../apps/desktop/src/features/models/model-draft.ts), [request admission](../../crates/gateway/src/core_runtime/credentials.rs), [current pool authority](../../crates/local-storage/src/control/compute/management/runtime_pool.rs), [safe Key masks](../../crates/daemon/src/control/runtime/model_connections/key_masks.rs) | A request owns its admitted Key IDs and order; later exact leases enforce current source/Key eligibility and generation. Admission retains closed permission denials in the existing request summary. Shared Plan content stays frozen. Masks are a separate authenticated query; saved plaintext never reaches Desktop. |
@@ -141,8 +146,9 @@ does not establish Agent convergence. Port selection belongs to the shared
 [listener store](../../crates/host-runtime/src/gateway_listener.rs), including Desktop.
 
 Follow discovery through an ordinary request using the saved source. The
-[Pi](../../tools/product-e2e/tests/PI_INTEGRATION.md) and
-[DSH](../../tools/product-e2e/tests/DSH_INTEGRATION.md) acceptance entries cover
+[Pi](../../tools/product-e2e/tests/PI_INTEGRATION.md),
+[DSH](../../tools/product-e2e/tests/DSH_INTEGRATION.md) and
+[OpenCode](../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md) acceptance entries cover
 Scan → Prepare → Save → restart → native use, including stale-source rejection.
 
 The shared product-session layer in `crates/product-session` owns Preview composition, confirmation permits, retry identity and protected-input lifetime. Desktop supplies its inherited-channel `HostAuthority` adapter in `apps/desktop/src-tauri/src/bootstrap/authority.rs`; native startup, updater and window authority stay with the Desktop host.
@@ -158,13 +164,14 @@ The shared product-session layer in `crates/product-session` owns Preview compos
 | Reference refresh | A checkpoint copies verified installed routing authority at the next revision through the normal publication writer. Preview pins revisions and content; disabled routes, drafts and held versions remain deletion blockers. | [Strict checkpoint](../../crates/domain/src/operation/publication_checkpoint.rs), [shared entry](../../crates/application/src/control_plane/publication_checkpoint.rs), [installed-state facts](../../crates/daemon/src/control/runtime/routing.rs) |
 | Profile deletion | Untouched proof binds the current store instance and exact marker; a stage directory alone cannot prove deletion never began. | [Profile lifecycle](../../crates/daemon/src/control/runtime/settings_profile_tests.rs) |
 | Worker/content lifetime | Result completion, process stop, body availability and permission to Continue are separate facts; cleanup requires exact ownership. | [Worker map](worker-context.md#state-and-lifetime), [managed-text contract](../../crates/observation/src/managed_text/README.md) |
-| Recovery and compatibility | Current producers have one ingestion contract. Registered legacy revoke tails retain their own ordering; frozen fixtures alone do not establish production upgrade support. | [Startup admission](../../crates/local-storage/src/migrations/startup_format.rs), [legacy-tail tests](../../crates/daemon/src/control/runtime/settings_profile_legacy_tests.rs), [compatibility registry](../../contracts/compatibility-support.v1.json) |
+| Recovery and compatibility | Current producers have one ingestion contract. Startup presenters prefer the current attempt's typed facts over an older writer's report; the Windows shell binds manager-start failures to a diagnostic boot/sequence watermark captured before startup. Registered legacy revoke tails retain their own ordering; frozen fixtures alone do not establish production upgrade support. | [Startup admission](../../crates/local-storage/src/migrations/startup_format.rs), [upgrade recovery action](../../crates/local-storage/src/migrations/startup_recovery.rs), [host failure facts](../../crates/host-runtime/src/storage_recovery.rs), [daemon failure projection](../../crates/daemon/src/control/startup_recovery.rs), [legacy-tail tests](../../crates/daemon/src/control/runtime/settings_profile_legacy_tests.rs), [compatibility registry](../../contracts/compatibility-support.v1.json) |
 
 ## Observation and conversation boundaries
 
 | Concern | Owner | What callers must preserve |
 | --- | --- | --- |
 | Native Agent session correlation | [Gateway identity resolver](../../crates/gateway/src/context_hold/identity.rs), [native input guide](../../crates/gateway/README.md#native-session-correlation) | One identity feeds ContextHold, decision history and observation; native IDs precede content inference, malformed or conflicting claims remain request-scoped |
+| Configured Agent attribution | [Publication join](../../crates/daemon/src/control/runtime/grant_attribution.rs), [persistent grant/session projection](../../crates/observation/src/store/agent_attribution.rs) | New authenticated writes resolve the exact grant generation to its server-owned Agent; rotation/restoration preserve prior attribution, conflicting Agents stay unlinked, and old receipt rebuilds do not backfill identity. Startup uses [verified historical candidates](../../crates/local-storage/src/control/agent_read.rs) best-effort; missing current proof stays unlinked without blocking journal recovery, and restoration registers completed ownership. Activation stays strict |
 | Named tool decision facts and request receipts | [Strict Gateway adapter](../../crates/integrations/src/gateway/mod.rs), [Product tool choice](../../crates/domain/src/observation/execution.rs), [receipt writer](../../crates/observation/src/receipt/mod.rs) | Preserve callable kind and name; Product's implicit Function encoding preserves historical digests. Each completed HTTP request closes independently of an unfinished Agent turn; [boundary regressions](../../crates/integrations/src/gateway/tests.rs) cover all tool choices |
 | Lifecycle acceptance of empty response end-stream frames | [Transport acceptance capture](../../crates/gateway/src/observation/content.rs), [Product lifecycle validation](../../crates/domain/src/observation/lifecycle.rs), [bounded receiver](../../crates/observation/src/writer/lifecycle.rs) | Successful zero-byte end-stream writes are real operational events with a zero byte count; identity remains strict. [Receiver regressions](../../crates/observation/src/writer/lifecycle_tests.rs) preserve continuous ACK through RequestFinished |
 | Capture completeness | [Content completeness](../../crates/observation/src/content/completeness.rs), [session query](../../crates/observation/src/query_v2/sessions.rs) | Aggregate every required request/direction; a finished stream or readable preview does not prove the session is complete |
@@ -211,6 +218,14 @@ primitives for managed files. The [borrowed native reader](../../crates/cpa-brid
 retains external file identity and permission facts through access-lease admission;
 it preserves readable native ACLs instead of adopting managed-file permissions.
 Follow these owners for elevated-account defaults or third-party file creation.
+The [Windows Apps registration exporter](../../crates/platform/src/windows/shell_registration.rs)
+admits a controlled `reg.exe` export under a held private temporary directory;
+the existing child Job gives that process private user-SID defaults. Its explicit
+environment binds both temporary-directory variables to the same private stage,
+so standard-user export never depends on the Windows-directory scratch fallback. It
+then publishes complete bytes with protected private permissions. A repeated
+preparation must match the retained export; changed material is preserved and
+refused. Unpublished system output never occupies a final recovery filename.
 Native client gates select the installed, pinned producer through
 [Windows acceptance](../../scripts/windows-headless-ci.ps1). Ordinary Agent
 recipes and official Qoder account recipes have separate inventories; the latter
@@ -246,3 +261,5 @@ and unique failure assertions. Keep recovery, cancellation, authorization and
 foreign-file preservation tests. Assign shared contracts and generated registries
 to one convergence owner. Use the [test map](testing.md) to select evidence; neither
 file size nor test churn alone justifies another abstraction or a broad rewrite.
+
+Trial cost reads use the internal admitted `TrustCostScopeV1`, joining retained analysis stage identity to Plan/revision/category/group before calling the shared per-attempt comparison engine. [Evidence-gap scenarios](../../crates/observation/src/store/tests/trust_cost_tests.rs) distinguish partial history from conflicting membership, pending projections from unresolved turns, and conservative coverage from paired subtotals. They preserve the general value query and frozen settlement contracts. Live timeline transition presentation adapts the same endpoint/time membership and classifier used by retained analysis; cache mutexes cover only taking and returning snapshots, never SQL or projection. [Real reader exhaustion](../../crates/daemon/src/control/runtime_timeline_retry_tests.rs) and [CLI follow](../../crates/cli/tests/routing_timeline_follow.rs) verify the structured failure boundary and retry recovery.

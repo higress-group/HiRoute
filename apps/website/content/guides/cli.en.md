@@ -43,7 +43,7 @@ Quickstart is read-only: it shows the current service, exact targets, reusable s
    ```
 
    Use repeated `--model-ref REF` for a subset. `--all-selectable` freezes concrete current refs; zero selectable models blocks saving. Preparation, save, provider checks and real native requests are different effects.
-3. Select returned binding IDs with `routing options --request-stdin` and `{}`. Create a fixed route with `--mode fixed_model --model BINDING_ID`, or go directly to smart saving:
+3. Select returned binding IDs with `routing options --request-stdin` and `{}`. Create a fixed route with `--mode fixed_model --model BINDING_ID`, or go directly to difficulty routing:
 
    ```sh
    hiroute routing preview --name 'Economy work' --purpose 'Routine and complex development' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route-apply.json
@@ -169,7 +169,7 @@ hiroute decision services test --request-stdin --output json < decision-test-req
 
 There is no separate `decision services preview` command. The first `apply` accepts `{schema_version, spec}` and only previews. To save, send the same `schema_version`, returned `data.normalized_spec`, `accept_digest` from `data.change_digest`, exact `data.expected_revisions`, and a stable idempotency key. `spec.desired_state` contains the connection ID, `expected_revision`, complete `service`, and a protected `input_slot` when supplying a new credential. `service: null` deletes an unreferenced connection.
 
-The list returns each connection's latest revision. A route selects a complete saved revision, checked by ID, revision, and content; historical revisions remain publishable. Smart saving uses editor `smart.classifier` and `smart.judgment`. Custom branches uses `branch_routing.classifier`, plan `branch_routing.judgment`, and each branch's regular `candidates`, `primary_candidates` (an empty array when no primary group is configured), and optional complete `judgment` override. An omitted override follows the plan; copying the whole set makes it independent, and clearing it restores defaults.
+The list returns each connection's latest revision. A route selects a complete saved revision, checked by ID, revision, and content; historical revisions remain publishable. Difficulty routing uses editor `smart.classifier` and `smart.judgment`. Custom branches uses `branch_routing.classifier`, plan `branch_routing.judgment`, and each branch's regular `candidates`, `primary_candidates` (an empty array when no primary group is configured), and optional complete `judgment` override. An omitted override follows the plan; copying the whole set makes it independent, and clearing it restores defaults.
 
 Saving r2 does not change a route pinned to r1. Select the new revision and publish through `routing preview/apply`. A test request uses `hiroute.classifier-decision-test/v1` with `classifier: {kind: "decision_service", service: <complete saved revision>}`. It sends fixed synthetic input to that exact connection revision, reads no real conversation, and produces no quality sample. Check `data.outcome` and `data.failure_code`; command success alone does not mean the test passed.
 

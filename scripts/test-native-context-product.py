@@ -26,6 +26,22 @@ class NativeContextOracleTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
+    def test_product_does_not_inherit_native_context_overrides(self):
+        keys = ('CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+                'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', 'CLAUDE_CODE_DISABLE_1M_CONTEXT',
+                'CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT',
+                'DISABLE_COMPACT', 'DISABLE_AUTO_COMPACT',
+                'OPENCODE_CONFIG', 'OPENCODE_CONFIG_DIR', 'OPENCODE_CONFIG_CONTENT',
+                'OPENCODE_DB')
+        with patch.dict(os.environ, {key: 'host-context-override' for key in keys}):
+            product = Product(REPO, root=self.root / 'isolated-context-product')
+        try:
+            self.assertTrue(all(key not in product.env for key in keys))
+            self.assertEqual(Path(product.env['CLAUDE_CONFIG_DIR']),
+                             product.root / 'home/.claude')
+        finally:
+            product.close()
+
     def test_product_listener_is_outside_the_hosts_outbound_ephemeral_range(self):
         product = Product(REPO, root=self.root / 'listener-product')
         try:

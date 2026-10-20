@@ -186,6 +186,24 @@ fn shutdown_interrupts_a_pending_daemon_ready_read() {
 
 #[test]
 fn startup_failure_frame_maps_storage_without_accepting_extra_payload() {
+    for (code, expected) in [
+        ("storage_access_denied", "DAEMON_STORAGE_ACCESS_DENIED"),
+        ("storage_locked", "DAEMON_STORAGE_LOCKED"),
+        ("storage_key_unavailable", "DAEMON_STORAGE_KEY_UNAVAILABLE"),
+    ] {
+        assert_eq!(
+            decode_startup_failure(&serde_json::json!({
+                "schema": "hiroute.daemon-startup-failure/v1", "code": code,
+            })),
+            Ok(Some(expected))
+        );
+    }
+    assert_eq!(
+        decode_startup_failure(&serde_json::json!({
+            "schema": "hiroute.daemon-startup-failure/v1", "code": "unknown_future_recovery_action",
+        })),
+        Err("DAEMON_READY_INVALID")
+    );
     assert_eq!(
         decode_startup_failure(&serde_json::json!({
             "schema": "hiroute.daemon-startup-failure/v1",

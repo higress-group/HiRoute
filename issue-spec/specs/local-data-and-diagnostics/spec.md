@@ -240,6 +240,83 @@ HiRoute SHALL preserve supported old Observation history unchanged in a protecte
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248902605
 
+### Requirement: Upgrade recovery actions come from whole-group storage admission
+
+Windows has no supported released predecessor in its first release. Generic complete-group recovery and native-state preservation remain required where applicable; an unpublished development build or simulated upgrade SHALL NOT establish historical release support or require an exhaustive historical acceptance matrix.
+
+HiRoute SHALL provide a bounded typed startup cause and storage-owned recovery action on macOS, Linux and Windows, including while the daemon or console is unavailable. Missing/invalid recovery packages, insufficient space, missing keys, access failures, unsupported/corrupt input and execution/unknown states SHALL retain their safely established meaning. Unknown values SHALL preserve material and SHALL NOT authorize downgrade. Stable legacy startup failure envelopes remain supported; a private bounded recovery report may carry additional safe facts without adding arbitrary error strings or filesystem authority.
+
+Current recovery actions SHALL be prerequisite correction and current-version retry, verified current-batch resume, verified complete-group restoration, or preservation and diagnosis. Program-only original-version reinstallation SHALL NOT be offered: no current production entry establishes the required whole-group compatibility proof. Missing packages, equal SQL markers, an unmoved Observation directory and absence of a backup SHALL NOT authorize downgrade. Diagnostics and transient lock files are not business data.
+
+Installers SHALL retain the complete matching previous program and resources before an admitted incompatible replacement. Ordinary current-format installation/repair SHALL NOT require unnecessary complete-program archival or Task/Apps export. Before allocating a standalone recovery archive for a changed candidate, preflight SHALL determine whether a history cutover is required. Repair with the exact same-version installed daemon image SHALL preserve existing recovery handoffs without requiring a newer preflight protocol from the old package; it SHALL NOT grant storage compatibility, downgrade authority or skip normal startup admission. Failed preparation SHALL discard only its own unpublished archive; a handoff that may have been published or consumed SHALL retain its recovery material even if later installation rollback succeeds. Native standalone startup SHALL obtain verified recovery input through an installation-owned storage-root and target-image-bound handoff rather than assume inheritance of the invoking shell's environment. The explicit absolute `HIROUTE_RECOVERY_PACKAGE` operator entry remains supported. Cleanup SHALL retain material still required by installation or storage recovery. Windows shell rollback SHALL refuse automatic original-program launch when storage has changed or cannot be established as compatible.
+
+The verified candidate SHALL check safely observable recovery/space prerequisites before installed-program replacement, and startup SHALL repeat authoritative admission under its writer barrier. Provisional checks SHALL NOT grant later write authority. Existing active-work waiting, cancellation, ownership and finite startup limits remain. A source release's actual shipped updater and any required transition sequence SHALL be validated; installing a new updater does not retroactively add checks to an old executable.
+
+Recovery presentation SHALL distinguish correcting prerequisites, current-batch resume, verified whole-group restoration and unavailable/unknown material. It SHALL identify the correct original batch rather than select a directory by presence, provide Chinese/English platform instructions, preserve newer data and its matching program separately before restoration, and require actual service readiness and a request before claiming successful restoration. Missing essential material SHALL lead to preservation and diagnostic/support guidance rather than a promise that retries, manual overwrite or an arbitrary older release will recover it.
+
+#### Scenario: Missing package does not authorize program-only downgrade
+
+- **WHEN** startup lacks a matching complete previous package
+- **THEN** consumers preserve all data, keys, programs and journals and provide diagnostic/support steps; they do not offer program-only downgrade without a production whole-group compatibility proof.
+
+#### Scenario: Windows stopped-service startup returns a typed failure
+
+- **WHEN** the shell starts a stopped service and the CLI returns failure after waiting for readiness
+- **THEN** a newly observed daemon startup failure supplies the bounded cause and admitted recovery action; unchanged, incomplete or unreadable previous diagnostics cannot replace the current manager failure. Non-storage failures do not borrow old storage advice.
+
+#### Scenario: Current-format repair requires no historical archive
+
+- **WHEN** a verified standalone candidate reports that no history cutover is required
+- **THEN** repeated installation or repair creates no complete old-package copies, imposes no archival space reserve and leaves existing recovery handoffs, backups and business data unchanged.
+
+#### Scenario: Changed or uncertain group
+
+- **WHEN** core migration/cutover has begun, an original authority changes, a phase is corrupt/unknown or a prior batch prevents proving compatibility
+- **THEN** no consumer offers unverified program-only downgrade and no installer automatically starts an older daemon; all generations and journals remain available for current-version recovery or the corresponding complete-group guide.
+
+#### Scenario: Prepared native installation after possible storage writes
+
+- **WHEN** Windows installation recovery observes storage cutover facts while a native install journal is still prepared
+- **THEN** generic rollback refuses before manager or file effects. Only an independently matched complete accepted current package and its owned native definition may reapply that journal forward; changed native entries or mismatched packages remain preserved and refused. The existing original source is not resealed or replaced, and a successful current repair does not imply that an older program can read the current group.
+
+#### Scenario: A retained source does not authorize blind resume
+
+- **WHEN** an original complete batch is verified but the current generation is damaged or its phase cannot be admitted
+- **THEN** its existence authorizes only the matching complete-group restoration target; it does not grant current-version resume. Resume after fresh Observation initialization failure requires successfully admitted core stores and an unpublished live Observation root, with the same verified original batch still available.
+
+#### Scenario: Managed standalone upgrade
+
+- **WHEN** Linux systemd or a Windows ordinary-user Task starts the installed candidate after an admitted format-changing upgrade
+- **THEN** the matching complete old package is retained and its protected handoff is verified against the storage root and candidate image; package cleanup cannot delete it prematurely and an unrelated terminal variable is not required for ordinary installer operation.
+
+#### Scenario: Complete Windows Desktop recovery material
+
+- **WHEN** verified candidate preflight requires a format-changing cutover over an existing Desktop
+- **THEN** preflight precedes installed-file replacement and retains both program namespaces, shell/uninstaller/inventory, the installation owner's complete native file map, verified native Task XML/definition/login choices and fixed current-user Apps registration. Space budgets combine allocations sharing a volume and keep separate volumes independent. Whole-group recovery restores those matching materials under the same ordinary account, with a batch-specific bilingual guide, import of the exact original Task and actual readiness/request verification. Instructions use published lifecycle commands and Task Scheduler rather than unpublished CLI installation verbs. A same-payload repair preserves the accepted original handoff instead of replacing it with the current program.
+
+#### Scenario: Prerequisite refusal and cancellation
+
+- **WHEN** preflight finds unavailable/unverified material or insufficient recovery space, or the user cancels while waiting for work
+- **THEN** replacement is not committed, the existing installation remains usable when verified, and the user receives the specific correction or cancellation state; startup rechecks races before any incompatible data mutation.
+
+#### Scenario: Failed startup without a console
+
+- **WHEN** the daemon cannot start or an upgrade batch is interrupted
+- **THEN** Desktop, the Windows bundled failure surface and the installed CLI expose the bounded cause and admitted recovery action without depending on the normal server; known resumable batches use the current program, while missing/substituted material never appears as a valid restore target.
+
+#### Scenario: Locate the exact admitted recovery material offline
+
+- **WHEN** a failure admits current-batch resume or complete-group restoration
+- **THEN** the failure surface displays the verified original batch ID, source directory and guide filenames. Windows explains the folder route from its displayed log directory; macOS provides the preserved-material action. Long portable names wrap without hiding content in Chinese and English. The offline CLI names the absolute source directory derived from its actual storage root. Missing/unsafe locations and unrecognized causes cannot grant located recovery or resume.
+
+#### Scenario: Correct a file prerequisite before considering restoration
+
+- **WHEN** the current failure establishes a file-use or access prerequisite, including while a complete original source is retained
+- **THEN** consumers offer correction followed by current-version retry, without borrowing that source as a reason to restore old data. A key/unsupported-format diagnostic may retain a complete-group target only when the storage owner revalidates that exact batch and the recorded cause matches the current failure; a diagnostic alone never grants original-program reinstall, current-batch resume or restoration of unverified material.
+
+Source Issue:
+- https://github.com/higress-group/HiRoute/issues/176
+
 ### Requirement: Optional capacity retention uses restrained observation maintenance
 
 HiRoute SHALL allow the local installation owner to save or disable one durable active-observation capacity threshold. The default threshold SHALL be 20 GB (20,000,000,000 bytes), including a fresh generation after old-history sealing. The owner may change it or explicitly disable capacity expiry; a disabled choice SHALL remain disabled across restart. Seven-day age retention remains independent. When enabled and exceeded, the existing lifecycle SHALL retire oldest eligible completed-request detail before seven days, preserving in-flight writes, live shared references, deletion/replay barriers, lawful non-content aggregates and recovery backups. Retained observations remain lossless; policy removals SHALL be distinct from representation savings and actual physical release. Accounting/reclamation SHALL use spaced bounded work, yielding and idle/failure/no-progress backoff rather than sustained high CPU or an unbounded catch-up loop. HiRoute SHALL report actual measured usage and pending/blocked release with its reason, without promising an instantaneous hard cap, reporting reusable pages as released, or dropping acknowledged writes. Changes/disabling affect uncommitted future retirement and do not restore already expired history.

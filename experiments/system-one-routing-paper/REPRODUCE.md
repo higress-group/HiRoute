@@ -24,6 +24,23 @@ archives for every campaign. `--check` separately compares the recomputed reduct
 with `reference-results.json`; that file does not supply parsing or scoring inputs.
 It also checks the separate MR010_b sensitivity. A mismatch fails the command.
 
+## Connection timing diagnostic
+
+The existing comparison table in Appendix C is reduced from curated numeric records:
+
+```sh
+python3 experiments/system-one-routing-paper/diagnostics/connection_timing.py
+python3 experiments/system-one-routing-paper/diagnostics/connection_timing.py --json
+```
+
+The first command reproduces the six-row setup-excluded latency table. The second
+prints all recorded timing cells and their median connection durations. The
+reducer excludes warmups, checks the original matched request pairs and the shared
+ten-context sample, and subtracts each call's own connection duration before
+aggregation. It contains no network execution. Qwen's 20 measured calls and two
+warmups complete the same-context comparison. The original 256-call end-to-end
+latency cells remain reproducible through `report`; they are a separate metric.
+
 ## What is reproduced
 
 - Matched engineering direct/three actions, component scores, cohorts, language

@@ -21,7 +21,7 @@ fn observation(kind: AgentKindV1, version: &str) -> AgentScanObservationV1 {
 #[test]
 fn agents_registry_binds_codex_to_responses_and_claude_to_messages() {
     let profiles = builtin_agent_profiles();
-    assert_eq!(profiles.len(), 6);
+    assert_eq!(profiles.len(), 7);
     for profile in &profiles {
         profile.validate().unwrap();
     }

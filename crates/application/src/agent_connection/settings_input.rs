@@ -54,6 +54,7 @@ pub enum SettingsModelTargetFacts {
     Additional {
         kind: hiroute_domain::AgentKindV1,
         pi_settings_content: Option<CanonicalDigest>,
+        additional_dependencies: Option<CanonicalDigest>,
         provider_id: String,
         endpoint: String,
         models: Vec<hiroute_domain::AdditionalAgentModelV1>,
@@ -142,6 +143,7 @@ impl AgentSettingsPlanningInput {
                     SettingsModelTargetFacts::Additional {
                         kind,
                         pi_settings_content,
+                        additional_dependencies,
                         provider_id,
                         endpoint,
                         models,
@@ -151,15 +153,19 @@ impl AgentSettingsPlanningInput {
                             AgentModelSelectionV2::QoderAdditional { .. }
                                 | AgentModelSelectionV2::PiAdditional { .. }
                                 | AgentModelSelectionV2::DshAdditional { .. }
+                                | AgentModelSelectionV2::OpenCodeAdditional { .. }
                         ) || matches!(settings, AgentModelSelectionV2::PiAdditional { .. })
                             != (*kind == hiroute_domain::AgentKindV1::Pi)
                             || matches!(settings, AgentModelSelectionV2::DshAdditional { .. })
                                 != (*kind == hiroute_domain::AgentKindV1::DeepseekHarness)
+                            || matches!(settings, AgentModelSelectionV2::OpenCodeAdditional { .. })
+                                != (*kind == hiroute_domain::AgentKindV1::OpenCode)
                         {
                             return Err(invalid());
                         }
                         SettingsModelAction::Additional(
                             pi_settings_content.clone(),
+                            additional_dependencies.clone(),
                             super::AdditionalModelFileAction::Configure {
                                 previous_operation: file.active_configuration.clone(),
                                 provider_id: provider_id.clone(),
@@ -244,9 +250,11 @@ impl AgentSettingsPlanningInput {
                     }
                     SettingsModelTargetFacts::Additional {
                         pi_settings_content,
+                        additional_dependencies,
                         ..
                     } => SettingsModelAction::Additional(
                         pi_settings_content.clone(),
+                        additional_dependencies.clone(),
                         super::AdditionalModelFileAction::Restore {
                             original_operation: operation.clone(),
                         },
@@ -399,7 +407,11 @@ impl AgentSettingsPlanningInput {
                                 change,
                             )?);
                         }
-                        SettingsModelAction::Additional(pi_settings_content, change) => {
+                        SettingsModelAction::Additional(
+                            pi_settings_content,
+                            additional_dependencies,
+                            change,
+                        ) => {
                             external.push(super::settings_additional_model_file_intent(
                                 control,
                                 &self.facts.context_id,
@@ -407,6 +419,7 @@ impl AgentSettingsPlanningInput {
                                 file.before_fingerprint.clone(),
                                 change,
                                 pi_settings_content,
+                                additional_dependencies,
                             )?);
                         }
                         SettingsModelAction::Claude(change) => {
@@ -530,7 +543,11 @@ impl AgentSettingsPlanningInput {
 
 enum SettingsModelAction {
     Hermes(super::HermesModelFileAction),
-    Additional(Option<CanonicalDigest>, super::AdditionalModelFileAction),
+    Additional(
+        Option<CanonicalDigest>,
+        Option<CanonicalDigest>,
+        super::AdditionalModelFileAction,
+    ),
     Codex(CodexModelFileAction),
     Claude(ClaudeModelFileAction),
 }

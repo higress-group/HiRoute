@@ -37,7 +37,7 @@ test('detection recommends but never invents a persisted selection', () => {
   assert.deepEqual(detected.selected, []);
 });
 
-for (const native of ['qoder_cli','deepseek_harness']) test(`${native} recommends and recognizes a saved native CLI without adapter or Node fields`, () => {
+for (const native of ['qoder_cli','deepseek_harness','opencode']) test(`${native} recommends and recognizes a saved native CLI without adapter or Node fields`, () => {
   const selected = { harness: native, cli_path: '/bin/qodercli' };
   const detected = view({
     selection_revisions: [{ harness: native, revision: 7 }],
@@ -58,7 +58,7 @@ for (const native of ['qoder_cli','deepseek_harness']) test(`${native} recommend
   assert.equal(workerDependencySelectionState(saved, native), 'configured');
 });
 
-for (const native of ['qoder_cli','deepseek_harness']) test(`a missing selected ${native} CLI stays incomplete and does not fall back to a discovered installation`, () => {
+for (const native of ['qoder_cli','deepseek_harness','opencode']) test(`a missing selected ${native} CLI stays incomplete and does not fall back to a discovered installation`, () => {
   const selected = { harness: native, cli_path: '/old/qoder' };
   const detected = view({
     selection_revisions: [{ harness: native, revision: 7 }],

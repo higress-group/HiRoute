@@ -104,7 +104,20 @@ fn isolated_agent_home_inner(
         hiroute_domain::CLAUDE_CONTEXT_CONFLICT_ENVIRONMENT
             .iter()
             .copied(),
-    ) {
+    )
+    // OpenCode selectors must follow this child's private HOME, rather than the
+    // host agent's XDG roots, inline configuration or nonresumable database.
+    .chain([
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_STATE_HOME",
+        "OPENCODE_CONFIG",
+        "OPENCODE_CONFIG_DIR",
+        "OPENCODE_CONFIG_CONTENT",
+        "OPENCODE_DB",
+        "OPENCODE_TEST_MANAGED_CONFIG_DIR",
+    ]) {
         command.env_remove(name);
     }
     let status = command.status().unwrap();

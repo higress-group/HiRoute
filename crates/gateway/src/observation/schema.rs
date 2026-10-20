@@ -227,6 +227,8 @@ pub enum ExecutionFactV1 {
     },
     AgentTurnFinished {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        opening_cause: Option<hiroute_domain::AgentTurnOpeningCauseV1>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         branch_execution: Option<hiroute_domain::BranchExecutionV1>,
         agent_turn_id: String,
         segment_id: String,

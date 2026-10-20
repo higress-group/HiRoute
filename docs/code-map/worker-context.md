@@ -15,7 +15,7 @@ a prerequisite, not a model call, installed Skill invocation or resumable task.
 | Configure, edit and restore models | [Settings transaction](../../crates/application/src/agent_connection/settings), [typed facts](../../crates/daemon/src/control/runtime/settings_facts), [Desktop Agent feature](../../apps/desktop/src/features/agents/README.md) | [Additional native provider guide](../../crates/integrations/src/agents/additional_native/README.md), [saved-model journey](../../crates/daemon/tests/support/additional_model_product.py), [Windows ordinary Pi/DSH clients](../../crates/daemon/tests/support/windows_user_models.rs), [Windows Qoder official-account journey](../../crates/daemon/tests/support/windows_qoder_user_models.rs) |
 | Enable, edit or disable task collaboration independently | [CLI intent workflow](../../crates/cli/src/collaboration.rs), [Skill effects](../../crates/application/src/agent_connection), [shared session checks](../../crates/product-session/src/agent_check_session.rs) | [CLI workflow regressions](../../crates/cli/src/collaboration/tests.rs), [real main-Agent → public CLI → Worker journey](../../crates/daemon/tests/support/collaboration_product.py) |
 
-Qoder/Pi/DSH saved models use one owned provider per Plan with an explicit
+Qoder/Pi/DSH/OpenCode saved models use one owned provider per Plan with an explicit
 Responses/Messages choice. [Route grants](../../crates/domain/src/agents/model_grant.rs)
 and [Gateway trust](../../crates/gateway/src/publication/trust.rs) preserve alias,
 protocol and receipt authority across publication/restart. `work.protocol` is the
@@ -24,6 +24,17 @@ report the actual installed consumers; [safe conflict facts](../../crates/domain
 retain rejection identity through compensation and client observation.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
+OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps
+the physical JSON/JSONC file verified by existing recovery markers;
+[effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)
+also feed the shared configured/drift status.
+Its [bounded Markdown reference reader](../../crates/integrations/src/agents/opencode_resources.rs)
+adds native user Agent/Mode selectors to the same settings dependency checks;
+removal requires complete references, while retaining selectors permits grant rotation.
+Worker project ancestry uses the [native Git boundary check](../../crates/integrations/src/agents/opencode_project.rs)
+with the filtered child HOME/XDG/PATH and shared bounded probe process. Both configuration
+and resource inspection require a confirmed Git stop or the filesystem root within the
+existing bound; an invalid marker or unavailable Git cannot truncate admission.
 
 Hermes uses an [explicit effective profile](../../crates/integrations/src/agents/hermes/README.md)
 and one default main-model Plan. Desktop keeps Hermes in the common Agent list;
@@ -51,7 +62,7 @@ the existing local Worker CLI and does not become a Worker executor.
 | Resolve resources and construct a run | [Installation](../../crates/daemon/src/delegation/installation.rs), [native context](../../crates/daemon/src/delegation/profile/native_context.rs), [profile guide](../../crates/daemon/src/delegation/profile/README.md) | Effective instance HOME/config root supplies resources; per-run overrides supply route, credential and permission policy |
 | Project native context/output budgets | [Shared budget policy](../../crates/domain/src/agents/additional_model.rs), [native projection](../../crates/integrations/src/agents/qoder_budget.rs) | Preserve the frozen Plan's active-candidate/protocol bounds; Gateway output capping alone cannot prove native compaction limits |
 | Admit and attribute model requests | [Run authority](../../crates/daemon/src/delegation/run_authority.rs), [Gateway dispatch](../../crates/gateway/src/dispatch/run.rs) | Sealed Plan, live run, harness, protocol and observation identity must agree |
-| Confirm the native session/model | [ACP model confirmation](../../crates/daemon/src/delegation/acp/model.rs), [ACP driver](../../crates/daemon/src/delegation/acp/mod.rs) | Confirm the exact native model before prompt; missing capability cannot silently change the route |
+| Confirm the native session/model | [ACP model confirmation](../../crates/daemon/src/delegation/acp/model.rs), [ACP driver](../../crates/daemon/src/delegation/acp/mod.rs) | Confirm typed mode before the final typed model for OpenCode; confirm the exact native model before prompt; missing capability cannot silently change the route |
 | Continue the same task | [History binding](../../crates/daemon/src/delegation/profile/native_history.rs), [resume](../../crates/daemon/src/delegation/executor/resume.rs) | Restore the exact frozen context/session with a fresh credential; never select the newest history or start a replacement conversation |
 | Start, cancel and finalize processes | [Executor](../../crates/daemon/src/delegation/executor.rs), [OS launcher](../../crates/daemon/src/delegation/local_worker/README.md), [finalization](../../crates/daemon/src/delegation/finalization.rs) | Explicit argv/environment/materials and owned process identity; stopping and successful task completion are separate facts |
 | Read, hide, expire or clean up content | [Reads](../../crates/daemon/src/control/runtime/delegation_reads.rs), [Continue admission](../../crates/daemon/src/control/runtime/delegation_continue.rs), [maintenance](../../crates/daemon/src/control/runtime/delegation_maintenance.rs), [native cleanup](../../crates/daemon/src/delegation/native_cleanup.rs) | Saved progress is independent of execution/cleanup state; current content permission and exact cleanup ownership still apply; borrowed history is not a deletion target |
@@ -65,6 +76,12 @@ the existing local Worker CLI and does not become a Worker executor.
 | Qoder | HOME/QODER_CONFIG_DIR and project Skills | Selected native ACP CLI; [profile](../../crates/daemon/src/delegation/profile/qoder.rs) | Borrowed opaque history, exact ACP load; [Qoder guide](../../tools/product-e2e/tests/QODER_DELEGATION.md) |
 | Pi | HOME/PI_CODING_AGENT_DIR, project and installed package Skills | Selected npm CLI + Node, bundled SDK→ACP bridge; [profile](../../crates/daemon/src/delegation/profile/pi.rs) | Task-owned v3 transcript, validated before open; [Pi guide](../../tools/product-e2e/tests/PI_INTEGRATION.md) |
 | DeepSeek Harness (DSH) | HOME/DSH_HOME, project and custom Skill roots | Selected native ACP CLI and public run patch; [profile](../../crates/daemon/src/delegation/profile/dsh.rs) | Task-owned opaque history, exact ACP resume; [DSH guide](../../tools/product-e2e/tests/DSH_INTEGRATION.md) |
+| OpenCode | HOME/XDG, explicit config and additive resource roots, project Skills | Selected native ACP binary; [profile](../../crates/daemon/src/delegation/profile/opencode.rs) | Borrowed opaque SQLite history, bounded format admission and exact ACP load; [OpenCode guide](../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md) |
+
+OpenCode's passive Agent and Worker discovery also inspect the official installer's
+`~/.opencode/bin` directory when a GUI launch lacks its shell PATH. Agent discovery
+keeps the PATH entry first; a saved explicit installation never falls back to a
+different binary. This does not grant a Worker selection or native-format capability.
 
 The [profile guide](../../crates/daemon/src/delegation/profile/README.md) owns startup
 flags, credential delivery, native tool permissions and resource restrictions.
@@ -84,6 +101,10 @@ image and trusted helper handles. UNC and device aliases remain outside this con
 capture output in private files and retain the process Job until all owned tools
 stop. Follow those owners for shell, environment, timeout or background-session
 differences rather than duplicating ecosystem lifecycle code.
+OpenCode's isolated collaboration probe pins the system Windows PowerShell and
+quotes the public CLI for that shell. The native tool ID `bash` does not imply
+Git Bash. Its npm locator uses the shared declared-producer reader after PATH
+resolution, then selects the unique native platform package without running a shim.
 
 The Windows [Qoder collaboration probe](../../crates/integrations/src/agents/qoder_probe.rs)
 retains the actual Skill directory and file before launching the client. Its
@@ -211,9 +232,12 @@ has started, cancellation still needs owned-process stop evidence. Startup may
 settle the old revision-2 `Cancelling` record only when the exact record proves
 that preparation, process binding and prompt intent never occurred.
 
-Codex [startup coordination](../../crates/daemon/src/delegation/lifecycle/startup.rs)
-serializes only same-daemon, same borrowed-root spawn/initialize, releasing before
-session creation or prompt. An unconfirmed initializer retains occupancy until
+The shared [startup coordinator](../../crates/daemon/src/delegation/lifecycle/startup.rs)
+protects same-daemon Codex borrowed-root initialization and OpenCode database
+initialization. OpenCode rechecks the captured configuration and read-only database
+admission after waiting on its frozen database path. Coordination ends at successful
+ACP initialize, before session creation/load or prompt; tasks remain concurrent.
+An unconfirmed initializer retains occupancy until
 [owned stop](../../crates/daemon/src/delegation/lifecycle.rs) verifies its exact process.
 Retry Cancel through the existing task action; residual acknowledgement or daemon
 restart is not proof that the original processes stopped. Other roots and clients
@@ -237,3 +261,10 @@ Mac `desktop-pilot --all-targets` compile gate; ignored native targets need expl
 execution. Shared Product Session filters are `commands::worker_tasks::tests`,
 `session::checks::tests` and `commands::model_connection_web::tests`; zero selected
 tests prove nothing about those consumers.
+
+The OpenCode native Windows leaf is
+[`windows_opencode_business.rs`](../../crates/daemon/tests/support/windows_opencode_business.rs),
+selected by `actual_windows_opencode_worker_native_history_and_cancellation` in
+[`windows_headless.rs`](../../crates/daemon/tests/windows_headless.rs). It shares the
+public routing/Worker receipt oracle and Job cancellation assertions with existing
+Windows acceptance; it adds no alternative production lifecycle.

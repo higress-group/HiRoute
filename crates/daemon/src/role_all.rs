@@ -426,12 +426,14 @@ pub fn start_role_all(config: RoleAllConfig) -> Result<RoleAllHandle, RoleAllErr
     config
         .diagnostics
         .stage_begin(StartupStage::PublicationReconcile);
+    let (storage_failure, storage_failures) = std::sync::mpsc::channel();
     let runtime = ProductionControlRuntime::prepare_for_role_all_with_codex_desktop_engine(
         &config.storage_root,
         catalog,
         cpa.clone(),
         config.codex_desktop_engine.clone(),
         hiroute_local_storage::StorageStartupOptions {
+            startup_failure: Some(storage_failure),
             gateway_lkg: Some(config.gateway_lkg.clone()),
             upgrade_progress: config.upgrade_progress.clone(),
             recovery_package: std::env::var_os("HIROUTE_RECOVERY_PACKAGE")
@@ -439,7 +441,10 @@ pub fn start_role_all(config: RoleAllConfig) -> Result<RoleAllHandle, RoleAllErr
             ..Default::default()
         },
     )
-    .map_err(|error| RoleAllError::Component("Storage", error));
+    .map_err(|error| match storage_failures.try_iter().last() {
+        Some(recovery) => RoleAllError::StorageRecovery(Box::new(recovery)),
+        None => RoleAllError::Component("Storage", error),
+    });
     let runtime = match runtime {
         Ok(runtime) => {
             config
@@ -848,6 +853,8 @@ pub enum RoleAllError {
     StandaloneProxyUnavailable,
     #[error("role=all configuration is invalid")]
     InvalidConfiguration,
+    #[error("storage startup recovery required: {0:?}")]
+    StorageRecovery(Box<hiroute_host_runtime::StorageRecovery>),
     #[error("{0} component failed: {1}")]
     Component(&'static str, String),
     #[error("{0} did not stop before the role=all deadline")]

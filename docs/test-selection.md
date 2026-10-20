@@ -122,7 +122,17 @@ provider or credential override can substitute for this fifth journey.
 Record all five journey outcomes and their revision, not only the
 Cargo exit code. Python fixture tests check the oracle, not the installed Agent journey.
 
-Shared `native_context_*` fixtures select `worker_native_context` and `qoder_delegation`;
+The OpenCode entry selects all seven tests in `opencode_delegation`: saved ordinary
+Responses/Messages routes and independent restore, the installed user Skill calling
+the public HiRoute CLI, native Worker tools with exact Continue for both protocols,
+concurrent routing/cancellation and missing-history refusal, stale-safe static API
+import, and automatic native compaction plus auxiliary calls on the frozen route.
+The [OpenCode journey guide](../tools/product-e2e/tests/OPENCODE_INTEGRATION.md)
+defines the selected official installation, isolated context and per-case evidence.
+Run every required case; a successful build or an ignored test does not replace it.
+
+Shared `native_context_*` fixtures retain their registered Codex/Claude, Qoder,
+Pi, DeepSeek Harness and OpenCode native consumers;
 `worker_product_support` and shared delegation/runtime setup retain all known Worker
 consumers. Qoder-only fixtures and collaboration settings select the Qoder gate without
 adding the old Codex/Claude lifecycle/read journeys. Registered journey guides and files

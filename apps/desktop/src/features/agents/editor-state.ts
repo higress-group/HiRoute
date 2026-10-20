@@ -21,6 +21,14 @@ export type AgentEditorValues = {
   hermesProtocol: 'chat_completions' | 'responses' | 'messages';
 };
 
+/** Apply a recovered selection to the ordinary editor without touching collaboration. */
+export function withModelSelection(values: AgentEditorValues, selection: import('./types').AgentModelSelection): AgentEditorValues {
+  if (selection.mode === 'claude_launcher') return { ...values, fixedModels: selection.fixed_models, claudePresets: selection.preset_mappings };
+  if (selection.mode === 'hermes_default') return { ...values, hermesPlanId: selection.plan_id, hermesProtocol: selection.protocol };
+  if (selection.mode === 'codex_default') return { ...values, fixedModels: selection.fixed_models, nativeModelMode: selection.native_model_mode, allowedPlanIds: selection.allowed_plan_ids, defaultChoice: selection.default_selection };
+  return { ...values, allowedPlanIds: selection.allowed_plan_ids, planProtocols: selection.plan_protocols ?? {} };
+}
+
 export const EMPTY_EDITOR_VALUES: AgentEditorValues = {
   fixedModels: [],
   nativeModelMode: 'hiroute_only',
@@ -39,10 +47,20 @@ export const EMPTY_EDITOR_VALUES: AgentEditorValues = {
 const preserve = (): AgentClaudePresetChoice => ({ kind: 'preserve_native' });
 
 export function editorFingerprint(value: AgentEditorValues): string {
+  // Compare settings rather than JSON map insertion order or seed-only metadata.
+  // Preserve array order except for the set of allowed Plan identities.
   return JSON.stringify({
-    ...value,
+    fixedModels: value.fixedModels,
+    nativeModelMode: value.nativeModelMode,
     allowedPlanIds: [...value.allowedPlanIds].sort(),
-  });
+    planProtocols: value.planProtocols,
+    defaultChoice: value.defaultChoice,
+    claudePresets: value.claudePresets,
+    triggerMode: value.triggerMode,
+    hermesPlanId: value.hermesPlanId,
+    hermesProtocol: value.hermesProtocol,
+  }, (_key, item: unknown) => item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 }
 
 export function codexDefaultChoiceValid(
@@ -81,7 +99,7 @@ export function agentEditorSeed(
   const currentModel = facet === 'model' ? agentModelStatus(agent)?.current_selection : undefined;
   const codex = currentModel?.mode === 'codex_default' ? currentModel : undefined;
   const claude = currentModel?.mode === 'claude_launcher' ? currentModel : undefined;
-  const qoder = (currentModel?.mode === 'qoder_additional' || currentModel?.mode === 'pi_additional' || currentModel?.mode === 'dsh_additional') ? currentModel : undefined;
+  const qoder = (currentModel?.mode === 'qoder_additional' || currentModel?.mode === 'pi_additional' || currentModel?.mode === 'dsh_additional' || currentModel?.mode === 'opencode_additional') ? currentModel : undefined;
   const collaboration = facet === 'collaboration'
     && selection
     && 'trigger_mode' in selection
@@ -99,7 +117,7 @@ export function agentEditorSeed(
     fixedModels: currentModel && 'fixed_models' in currentModel ? currentModel.fixed_models : [],
     nativeModelMode: codex?.native_model_mode ?? 'hiroute_only',
     allowedPlanIds: codex?.allowed_plan_ids ?? qoder?.allowed_plan_ids
-      ?? (initialPlan && (ecosystem === 'codex' || ecosystem === 'qoder' || ecosystem === 'pi' || ecosystem === 'dsh') ? [initialPlan] : []),
+      ?? (initialPlan && (ecosystem === 'codex' || ecosystem === 'qoder' || ecosystem === 'pi' || ecosystem === 'dsh' || ecosystem === 'opencode') ? [initialPlan] : []),
     defaultChoice: codex?.default_selection ?? (initialPlan && ecosystem === 'codex'
       ? { kind: 'plan', plan_id: initialPlan } : { kind: 'preserve_native' }),
     claudePresets: claude?.preset_mappings ?? {
@@ -130,7 +148,7 @@ export function agentModelFormInvalid(agent: Agent | undefined, editorValues: Ag
   if (agentEcosystem(agent.agent_id) === 'hermes') {
     return !agent.native_target || !enabledPlanIds.includes(editorValues.hermesPlanId);
   }
-  if (['qoder', 'pi', 'dsh'].includes(agentEcosystem(agent.agent_id) ?? '')) {
+  if (['qoder', 'pi', 'dsh', 'opencode'].includes(agentEcosystem(agent.agent_id) ?? '')) {
     return editorValues.allowedPlanIds.length === 0
       || editorValues.allowedPlanIds.some(id => !enabledPlanIds.includes(id));
   }

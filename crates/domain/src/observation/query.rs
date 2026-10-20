@@ -292,6 +292,17 @@ pub trait ObservationQueryPort: Send + Sync {
         Err(ObservationQueryError::Unavailable)
     }
 
+    fn observed_trust_cost(
+        &self,
+        _reader: &super::ObservationReaderContext,
+        _scope: &super::TrustCostScopeV1,
+        _reference: &super::ApiEquivalentPriceV1,
+        _prices: &[super::ApiEquivalentPriceV1],
+        _now_ms: i64,
+    ) -> Result<super::ApiEquivalentValueReportV1, ObservationQueryError> {
+        Err(ObservationQueryError::Unavailable)
+    }
+
     fn observed_api_equivalent_value(
         &self,
         _reader: &super::ObservationReaderContext,
@@ -403,6 +414,40 @@ pub trait ObservationQueryPort: Send + Sync {
         Err(ObservationQueryError::Unavailable)
     }
 
+    fn observed_routing_timeline(
+        &self,
+        _reader: &super::ObservationReaderContext,
+        _query: &super::RoutingTimelineQueryV1,
+        _now_ms: i64,
+    ) -> Result<super::RoutingTimelinePageV1, ObservationQueryError> {
+        Err(ObservationQueryError::Unavailable)
+    }
+
+    fn observed_trust_generation(
+        &self,
+        _reader: &super::ObservationReaderContext,
+        _now_ms: i64,
+    ) -> Result<(u64, u64), ObservationQueryError> {
+        Err(ObservationQueryError::Unavailable)
+    }
+    fn observed_trust_suggestion_population(
+        &self,
+        _reader: &super::ObservationReaderContext,
+        _query: &super::TrustPopulationQueryV1,
+        _now_ms: i64,
+    ) -> Result<super::TrustPopulationV1, ObservationQueryError> {
+        Err(ObservationQueryError::Unavailable)
+    }
+
+    fn observed_trust_population(
+        &self,
+        _reader: &super::ObservationReaderContext,
+        _query: &super::TrustPopulationQueryV1,
+        _now_ms: i64,
+    ) -> Result<super::TrustPopulationV1, ObservationQueryError> {
+        Err(ObservationQueryError::Unavailable)
+    }
+
     fn observed_plan_quality_samples(
         &self,
         _reader: &super::ObservationReaderContext,
@@ -495,6 +540,8 @@ pub struct SessionDeletionOutcomeV1 {
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum ObservationQueryError {
+    #[error("observation scope is too large; narrow the time window")]
+    ScopeTooLarge,
     #[error("observation query is not authorized")]
     Unauthorized,
     #[error("observation resource was not found")]

@@ -9,6 +9,7 @@ import { formatCacheHit, formatCacheHitCoverage, formatTokenCount, usageValue, t
 import { safeDiagnosticCode } from '../error-code';
 import { observationRead as read } from './observation-client';
 import { PlanQuality } from './PlanQuality';
+import { RoutingTimeline, type TimelineAvailability, type TimelineRequest } from './RoutingTimeline';
 type Page<T> = { next_cursor: string | null } & T;
 type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; last_request_at_ms: number; correlation_kind: CorrelationKind; content_completeness: string };
 type RoutingContext = { state: 'recorded' | 'unavailable' | 'conflicted'; display_name: string | null; name_state: 'recorded' | 'unavailable'; plan_id?: string | null; plan_revision?: string | null };
@@ -66,7 +67,12 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   const [facts, setFacts] = useState<SafeFact[]>([]);
   const [factsRequest, setFactsRequest] = useState<string | null>(null);
   const [factsOpen, setFactsOpen] = useState(false);
+  const [sessionView, setSessionView] = useState<'timeline' | 'conversation' | null>(null);
+  const [requestPicked, setRequestPicked] = useState(false);
+  const [routing, setRouting] = useState<TimelineAvailability>('loading');
+  const [qualityPlan, setQualityPlan] = useState<string | null>(null);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [compact, setCompact] = useState(false);
   const [factsError, setFactsError] = useState('');
   const [factCursor, setFactCursor] = useState<string | null>(null);
   const [factPartial, setFactPartial] = useState(false);
@@ -87,6 +93,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     setBusy(false); setTimelineError('');
     setSession(null); setRequests([]); setReadingRequests([]); setRequest(null);
     setRequestCursor(null); setFocusedRequest(null); setAnchor(null); setFactsOpen(false);
+    setRequestPicked(false);
   }
   function changeOnlySwitch(value: boolean) {
     if (keywordTimer.current !== null) { window.clearTimeout(keywordTimer.current); keywordTimer.current = null; }
@@ -139,7 +146,8 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     if (!cursor) {
       timelineQuery.current = { from_ms: 0, to_ms: Date.now() + 1 };
       const initialRequest = hit?.request_id ?? exactRequest ?? null;
-      setFocusedRequest(exactRequest ?? null);
+      setFocusedRequest(exactRequest ?? null); setSessionView(hit || exactRequest ? 'conversation' : null);
+      setRequestPicked(false);
       setSession(id); setRequests([]); setReadingRequests(initialRequest ? [initialRequest] : []); setRequest(initialRequest); setAnchor(hit ?? null);
       setFactsOpen(false); setFacts([]); setFactsError(''); setFactCursor(null); setFactPartial(false);
       setFocusedSummary(sessions.find(item => item.session_id === id) ?? null);
@@ -264,12 +272,21 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     if ((factsOpen || selectedRequest?.within_request_fallback === true) && request) void loadFacts();
   }, [factsOpen, request, selectedRequest?.within_request_fallback]);
 
+  // A failed read keeps the tab so its explanation and Retry stay reachable; only a confirmed empty read hides it.
+  const routed = routing === 'turns' || routing === 'blocked' || routing === 'unavailable';
+  const pane = routed ? sessionView ?? 'timeline' : 'conversation';
+  // Loading the first conversation request does not mean the person picked a timeline turn.
+  const routingRequestId = requestPicked ? request : focusedRequest ?? anchor?.request_id ?? (sessionView === 'conversation' ? request : null);
+  const selectTimelineRequest = (item: TimelineRequest) => {
+    setRequestPicked(true); setRequest(item.request_id); setReadingRequests([item.request_id]); setAnchor(null);
+    setRequests(current => current.some(r => r.request_id === item.request_id) ? current : [...current, { request_id: item.request_id, started_at_ms: item.started_at_ms, outcome: item.outcome, native_turn_id: null, within_request_fallback: null, final_native_model: item.native_model, between_turn_model_change: null, previous_native_turn_id: null, previous_turn_model: null, turn_final_native_model: null }].sort((a, b) => a.started_at_ms - b.started_at_ms));
+  };
   return <ProductPage
     title={text('会话', 'Sessions')}
     subtitle={text('查看 Agent 实际经过 HiRoute 的对话、请求内回退和运行事实', 'View agent conversations, in-request fallbacks and run details captured by HiRoute')}
-    actions={<>{onReturnToQuality && <button className="btn btn-quiet" type="button" onClick={onReturnToQuality}><UiIcon name="arrowLeft" />{text('返回模型表现', 'Back to model performance')}</button>}{partial && <span className="badge warn">{text('部分正文暂不可搜索', 'Some content is not searchable yet')}</span>}</>}
+    actions={<>{session && <button className="btn" type="button" aria-pressed={compact} onClick={() => setCompact(value => !value)}>{compact ? text('退出紧凑视图', 'Exit compact view') : text('紧凑视图', 'Compact view')}</button>}{onReturnToQuality && <button className="btn btn-quiet" type="button" onClick={onReturnToQuality}><UiIcon name="arrowLeft" />{text('返回模型表现', 'Back to model performance')}</button>}{partial && <span className="badge warn">{text('部分正文暂不可搜索', 'Some content is not searchable yet')}</span>}</>}
     flush={!emptyFirstUse}
-    className="sessions-page"
+    className={`sessions-page${active && compact && session ? ' is-compact' : ''}`}
   >
     <Toast notice={toast} />
     {!listLoaded && listBusy && <div className="empty-state" role="status"><div><span className="oc-spinner" /><p>{text('正在读取本机会话…', 'Reading local sessions…')}</p></div></div>}
@@ -302,16 +319,23 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
       <section className="session-transcript">
         {session ? <article className="session-detail">
           <div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => { timelineGeneration.current++; factGeneration.current++; setSession(null); setRequest(null); setFactsOpen(false); if (!listLoaded) void load(); }}><UiIcon name="arrowLeft" />{text('返回会话列表', 'Back to sessions')}</button></div>
-          <header className="transcript-head"><div><h2><ContentExcerpt session={session} language={language} fallback={text('会话正文', 'Conversation')} limit={56} revision={refreshVersion + reload} onModel={model => setSessionModels(current => current[session] === model ? current : { ...current, [session]: model })} onRoute={route => setSessionRoutes(current => current[session] === route ? current : { ...current, [session]: route })} /></h2><p>{[agentName(selectedSummary?.agent_id), sessionRoutes[session], selectedSummary ? sessionTimeLabel(selectedSummary.last_request_at_ms, language) : undefined].filter(Boolean).join(' · ')}</p></div><div className="transcript-actions"><button className="btn" type="button" disabled={!request} onClick={() => factsOpen ? setFactsOpen(false) : openFacts()}><UiIcon name="activity" />{factsOpen ? text('收起运行记录', 'Hide run record') : text('运行记录', 'Run record')}</button>{!factsOpen && <button className="icon-btn" type="button" aria-label={text('清理此会话', 'Clear this session')} disabled={busy} onClick={() => { setCleanupError(''); setCleanupOpen(true); }}><UiIcon name="trash" /></button>}</div></header>
+          <header className="transcript-head"><div><h2><ContentExcerpt session={session} language={language} fallback={text('会话正文', 'Conversation')} limit={56} revision={refreshVersion + reload} onModel={model => setSessionModels(current => current[session] === model ? current : { ...current, [session]: model })} onRoute={route => setSessionRoutes(current => current[session] === route ? current : { ...current, [session]: route })} /></h2><p>{[agentName(selectedSummary?.agent_id), sessionRoutes[session], selectedSummary ? sessionTimeLabel(selectedSummary.last_request_at_ms, language) : undefined].filter(Boolean).join(' · ')}</p></div><div className="transcript-actions">{routed && <div className="segmented session-view-tabs" role="group" aria-label={text('会话视图', 'Session view')}>{([['timeline', text('路由时间线', 'Routing timeline')], ['conversation', text('对话', 'Conversation')]] as const).map(([value, label]) => <button key={value} type="button" className={`segment${pane === value ? ' active' : ''}`} aria-pressed={pane === value} onClick={() => setSessionView(value)}>{label}</button>)}</div>}<button className="btn" type="button" disabled={!request} onClick={() => factsOpen ? setFactsOpen(false) : openFacts()}><UiIcon name="activity" />{factsOpen ? text('收起运行记录', 'Hide run record') : text('运行记录', 'Run record')}</button>{!factsOpen && <button className="icon-btn" type="button" aria-label={text('清理此会话', 'Clear this session')} disabled={busy} onClick={() => { setCleanupError(''); setCleanupOpen(true); }}><UiIcon name="trash" /></button>}</div></header>
           {focusedRequest && focusedRequest === request && <div className="callout session-detail-feedback session-request-focus" data-request-id={focusedRequest} role="status"><UiIcon name="activity" /><div><strong>{selectedRequest ? text('已定位所选请求', 'Selected request') : timelineError ? text('所选请求不可用', 'Selected request unavailable') : text('正在定位所选请求…', 'Locating selected request…')}</strong>{selectedRequest && <p>{new Date(selectedRequest.started_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}{selectedRequest.final_native_model && ' · ' + selectedRequest.final_native_model}<br />{text('下方包含本次请求的历史对话和回复。', 'The content below includes this request’s conversation history and response.')}</p>}</div><button className="btn" type="button" onClick={() => void timeline(session)}>{text('查看完整会话', 'View full session')}</button></div>}
           {timelineError && <div className="callout bad session-detail-feedback" role="alert" data-error-code={timelineError}><UiIcon name="warning" /><div><strong>{text('会话详情没有刷新', 'The session details were not refreshed')}</strong><p>{requests.length ? text('已加载的请求仍然保留。', 'Previously loaded requests are still available.') : text('暂时无法读取这条会话。', 'This session is temporarily unavailable.')}</p><button className="btn" type="button" onClick={() => void timeline(session, null, undefined, focusedRequest)}>{text('重试', 'Retry')}</button></div></div>}
-          <Disclosure className="native-details session-model-performance" label={text('模型表现', 'Model performance')} language={language} onOpenChange={setQualityOpen}><PlanQuality key={session} sessionId={session} language={language} compact active={active && qualityOpen} refreshVersion={refreshVersion + reload} onOpenEvidence={(targetSession, targetRequest) => void timeline(targetSession, null, undefined, targetRequest)} /></Disclosure>
-          {requests.length > 1 && <Disclosure className="native-details request-timeline" label={text(`请求记录（${requests.length}）`, `Requests (${requests.length})`)} language={language}><nav className="native-list" aria-label={text('请求时间线', 'Request timeline')}>{requests.map((item, index) => <button className={`list-row${request === item.request_id ? ' active' : ''}`} key={item.request_id} aria-current={request === item.request_id ? 'true' : undefined} onClick={() => { setRequest(item.request_id); setReadingRequests([item.request_id]); setAnchor(null); }}><span className="row-main"><span className="row-title">{text('请求', 'Request')} {index + 1}</span><span className="row-meta">{item.routing_context?.state === 'recorded' && item.routing_context.display_name ? item.routing_context.display_name : item.final_native_model ?? text('路由未记录', 'Route not recorded')}{item.within_request_fallback === true ? text(' · 请求内回退', ' · Request fallback') : item.between_turn_model_change === true ? text(' · 跨轮切换', ' · Turn change') : ''}</span></span></button>)}{requestCursor && <button className="btn" disabled={busy} onClick={() => void timeline(session, requestCursor)}>{text('加载更多请求', 'Load more requests')}</button>}</nav></Disclosure>}
-          {displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
+          <div className={`session-routing-and-conversation show-${pane}`}>
+          <Disclosure className="native-details session-model-performance" label={text('本会话的模型表现', 'Model performance in this session')} language={language} onOpenChange={setQualityOpen}><PlanQuality key={session} sessionId={session} language={language} compact active={active && qualityOpen} refreshVersion={refreshVersion + reload} onOpenEvidence={(targetSession, targetRequest) => void timeline(targetSession, null, undefined, targetRequest)} /></Disclosure>
+          <div className="session-pane" hidden={pane !== 'timeline'}><RoutingTimeline key={session} session={session} language={language} active={active} displayed={pane === 'timeline'} refreshVersion={refreshVersion + reload} requestId={routingRequestId} onOpenPerformance={setQualityPlan} onAvailability={setRouting} onSelectRequest={selectTimelineRequest} onViewConversation={item => { selectTimelineRequest(item); setSessionView('conversation'); }} /></div>
+          <section className="routing-conversation" hidden={pane !== 'conversation'} aria-label={text('对话', 'Conversation')}>
+          {requests.length > 1 && <Disclosure className="native-details request-timeline" label={text(`请求记录（${requests.length}）`, `Requests (${requests.length})`)} language={language}><nav className="native-list" aria-label={text('请求时间线', 'Request timeline')}>{requests.map((item, index) => <button className={`list-row${request === item.request_id ? ' active' : ''}`} key={item.request_id} aria-current={request === item.request_id ? 'true' : undefined} onClick={() => { setRequestPicked(true); setRequest(item.request_id); setReadingRequests([item.request_id]); setAnchor(null); }}><span className="row-main"><span className="row-title">{text('请求', 'Request')} {index + 1}</span><span className="row-meta">{item.routing_context?.state === 'recorded' && item.routing_context.display_name ? item.routing_context.display_name : item.final_native_model ?? text('路由未记录', 'Route not recorded')}{item.within_request_fallback === true ? text(' · 请求内回退', ' · Request fallback') : item.between_turn_model_change === true ? text(' · 跨轮切换', ' · Turn change') : ''}</span></span></button>)}{requestCursor && <button className="btn" disabled={busy} onClick={() => void timeline(session, requestCursor)}>{text('加载更多请求', 'Load more requests')}</button>}</nav></Disclosure>}
+          {displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setRequestPicked(true); setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
+          </section></div>
         </article> : <div className="empty-state session-no-selection"><div><span className="empty-icon"><UiIcon name="sessions" /></span><h3>{text('选择一个会话', 'Select a session')}</h3></div></div>}
       </section>
       {factsOpen && <RuntimeFacts language={language} summary={selectedRequest ? { outcome: selectedRequest.outcome, finalModel: selectedRequest.final_native_model, modelFallback: selectedRequest.within_request_fallback } : undefined} facts={facts} partial={factPartial} busy={factsBusy} error={factsError} contentState={selectedContentState} usage={<ObservationValue session={session} language={language} />} next={Boolean(factCursor)} onNext={() => void loadFacts(factsError ? null : factCursor)} onClose={() => setFactsOpen(false)} onClear={() => { setCleanupError(''); setCleanupOpen(true); }} />}
     </div>}
+    <Dialog open={Boolean(qualityPlan)} title={text('Plan 模型表现', 'Plan model performance')} closeLabel={text('关闭模型表现', 'Close model performance')} onClose={() => setQualityPlan(null)}>
+      {qualityPlan && <PlanQuality planId={qualityPlan} language={language} active={active} refreshVersion={refreshVersion + reload} onOpenEvidence={(targetSession, targetRequest) => { setQualityPlan(null); void timeline(targetSession, null, undefined, targetRequest); }} />}
+    </Dialog>
     <Dialog open={cleanupOpen && Boolean(session)} title={text('选择清理范围', 'Choose what to clear')} description={selectedSummary ? `${agentName(selectedSummary.agent_id)} · ${sessionTimeLabel(selectedSummary.last_request_at_ms, language)}` : text('当前会话', 'Current session')} closeLabel={text('关闭清理范围', 'Close cleanup options')} closeDisabled={busy} onClose={() => { if (!busy) { setCleanupOpen(false); setCleanupError(''); } }} footer={<><button className="btn" type="button" disabled={busy} onClick={() => { setCleanupOpen(false); setCleanupError(''); }}>{text('取消', 'Cancel')}</button><button className="btn btn-danger" type="button" disabled={busy} onClick={() => void clearSession(cleanupScope)}>{busy ? text('正在读取影响范围…', 'Reading impact…') : text('继续', 'Continue')}</button></>}>
       <div className="option-panel" role="radiogroup" aria-label={text('清理范围', 'Cleanup scope')} aria-disabled={busy}>
         <label className="check-row"><input type="radio" name="session-cleanup-scope" value="content_only" disabled={busy} checked={cleanupScope === 'content_only'} onChange={() => { setCleanupScope('content_only'); setCleanupError(''); }} /><div><strong>{text('只清理正文', 'Clear content only')}</strong><span>{text('删除问题、回答和工具内容，保留运行记录。', 'Remove prompts, answers and tool content; keep the run record.')}</span></div></label>
@@ -577,7 +601,7 @@ async function completeTitlePart(requestId: string, contentId: string, signal: A
   return { text: null, incomplete: true };
 }
 
-async function firstRequestTitle(requestId: string, signal: AbortSignal, state: TitleScanState): Promise<string | null> {
+async function firstRequestTitle(requestId: string, signal: AbortSignal, state: TitleScanState, latest = false): Promise<string | null> {
   let cursor: string | null = null;
   const contents: Content[] = [];
   const seen = new Set<string>();
@@ -601,6 +625,7 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
     groups.set(key, group);
   }
   const messages = [...groups.values()].sort((left, right) => (left[0]?.message_ordinal ?? 0) - (right[0]?.message_ordinal ?? 0));
+  if (latest) messages.reverse();
   for (const message of messages) {
     message.sort((left, right) => (left.part_ordinal ?? 0) - (right.part_ordinal ?? 0));
     const parts: string[] = [];
@@ -618,7 +643,8 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
   return null;
 }
 
-export function ContentExcerpt({ session, hit, language, fallback = '', limit = 160, revision = 0, onCompleteness, onContentState, onModel, onRoute }: { session?: string; hit?: Hit; language: 'zh' | 'en'; fallback?: string; limit?: number; revision?: number | string; onCompleteness?: (incomplete: boolean) => void; onContentState?: (state: ContentState) => void; onModel?: (model: string) => void; onRoute?: (route: string) => void }) {
+/** `request` shows that request's latest user message, e.g. the message that opened an agent turn. */
+export function ContentExcerpt({ session, request, hit, language, fallback = '', limit = 160, revision = 0, onCompleteness, onContentState, onModel, onRoute }: { session?: string; request?: string; hit?: Hit; language: 'zh' | 'en'; fallback?: string; limit?: number; revision?: number | string; onCompleteness?: (incomplete: boolean) => void; onContentState?: (state: ContentState) => void; onModel?: (model: string) => void; onRoute?: (route: string) => void }) {
   const node = useRef<HTMLSpanElement>(null);
   const [value, setValue] = useState('');
   const [invalidation, setInvalidation] = useState(0);
@@ -638,6 +664,11 @@ export function ContentExcerpt({ session, hit, language, fallback = '', limit = 
             if (page.state === 'deleted') onContentState?.('cleared');
             else if (incomplete) onContentState?.('partial');
           }
+          return;
+        }
+        if (request) {
+          const title = await firstRequestTitle(request, controller.signal, { sawContent: false, allDeleted: true, incomplete: false }, true);
+          if (!controller.signal.aborted && title !== null) setValue(excerpt(title, limit));
           return;
         }
         if (!session) return;
@@ -684,6 +715,6 @@ export function ContentExcerpt({ session, hit, language, fallback = '', limit = 
     const observer = new IntersectionObserver(entries => { if (!started && entries.some(e => e.isIntersecting)) { started = true; void load(); } });
     if (node.current) observer.observe(node.current);
     return () => { controller.abort(); observer.disconnect(); };
-  }, [session, hit?.request_id, hit?.content_id, hit?.original_text_offset, invalidation, limit, revision]);
+  }, [session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset, invalidation, limit, revision]);
   return <span ref={node}>{value || fallback || (hit ? (language === 'zh' ? '查看命中正文' : 'Open matching content') : '')}</span>;
 }

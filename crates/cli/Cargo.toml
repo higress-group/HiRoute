@@ -24,6 +24,7 @@ hiroute-diagnostics = { path = "../diagnostics" }
 hiroute-platform = { path = "../platform" }
 
 [dev-dependencies]
+hiroute-observation = { path = "../observation", features = ["test-support"] }
 hiroute-application = { path = "../application" }
 hiroute-daemon = { path = "../daemon" }
 hiroute-domain = { path = "../domain" }

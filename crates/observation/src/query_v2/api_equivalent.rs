@@ -190,19 +190,54 @@ impl crate::LocalObservationStore {
         tx.commit()?;
         check_visibility(&db, visibility)?;
         reader.check(now_ms, false, false)?;
-        let retention = q.from_ms < retained;
-        let complete =
-            total > 0 && compared == total && !retention && actual.is_some() && baseline.is_some();
-        let difference = if complete {
-            baseline
-                .zip(actual)
-                .and_then(|(b, a)| i64::try_from(i128::from(b) - i128::from(a)).ok())
-        } else {
-            None
-        };
-        let overflow = (compared > 0 && (actual.is_none() || baseline.is_none()))
-            || (complete && difference.is_none());
-        Ok(ApiEquivalentValueReportV1 {
+        Ok(comparison_report(
+            q,
+            reference,
+            prices,
+            now_ms,
+            retained,
+            crate::analysis::ProjectedComparison {
+                total,
+                compared,
+                actual,
+                baseline,
+                used,
+                excluded,
+            },
+        ))
+    }
+}
+
+pub(super) fn comparison_report(
+    q: &ObservationValueQueryV2,
+    reference: &ApiEquivalentPriceV1,
+    prices: &[ApiEquivalentPriceV1],
+    now_ms: i64,
+    retained: i64,
+    comparison: crate::analysis::ProjectedComparison,
+) -> ApiEquivalentValueReportV1 {
+    let crate::analysis::ProjectedComparison {
+        total,
+        compared,
+        actual,
+        baseline,
+        used,
+        excluded,
+    } = comparison;
+    let currency = q.currency.as_deref().expect("admitted currency");
+    let retention = q.from_ms < retained;
+    let complete =
+        total > 0 && compared == total && !retention && actual.is_some() && baseline.is_some();
+    let difference = if complete {
+        baseline
+            .zip(actual)
+            .and_then(|(b, a)| i64::try_from(i128::from(b) - i128::from(a)).ok())
+    } else {
+        None
+    };
+    let overflow = (compared > 0 && (actual.is_none() || baseline.is_none()))
+        || (complete && difference.is_none());
+    ApiEquivalentValueReportV1 {
             schema: "hiroute.api-equivalent-value/v1".into(),
             from_ms: q.from_ms,
             to_ms: q.to_ms,
@@ -233,9 +268,9 @@ impl crate::LocalObservationStore {
                 "The reference values accepted usage at the selected model's rates; equal output or quality is not established. ",
                 "This does not reprice historical receipts or prove a bill or cash saving. ",
                 "Missing/expired evidence is not zero; subtotals cover paired complete requests only.").into(),
-        })
-    }
+        }
 }
+
 struct Comparison {
     complete: bool,
     actual: Option<u64>,

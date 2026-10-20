@@ -2,13 +2,13 @@
 //! The fixture shares the calling gate's one disposable installed Windows product and
 //! uses public management throughout. Only the independent model endpoints are controlled.
 #[path = "windows_worker_cancel.rs"]
-mod cancel;
+pub(super) mod cancel;
 #[path = "windows_worker_dependency_selection.rs"]
 mod dependency_selection;
 #[path = "windows_worker_failure_diagnostics.rs"]
 mod failure_diagnostics;
 #[path = "windows_worker_oracle.rs"]
-mod oracle;
+pub(super) mod oracle;
 
 pub(crate) use dependency_selection::discovery_environment;
 
@@ -446,16 +446,31 @@ fn read_optional(path: &Path) -> Option<Vec<u8>> {
     }
 }
 
-fn write_new(path: &Path, bytes: &[u8]) {
+pub(super) fn write_new(path: &Path, bytes: &[u8]) {
     hiroute_platform::durable::write_private_new(path, bytes).unwrap();
     security::verify_owner_only(path, false).unwrap();
 }
-fn selected(variable: &str) -> PathBuf {
+pub(super) fn selected(variable: &str) -> PathBuf {
     std::env::var_os(variable)
         .map(PathBuf::from)
         .filter(|path| path.is_absolute() && path.is_file())
         .unwrap_or_else(|| panic!("{variable} must select the fixed actual native client"))
 }
+pub(super) fn select_native(
+    product: &InstalledProduct,
+    discovered: &Value,
+    harness: hiroute_application_api::WorkerHarnessV1,
+    binary: &Path,
+) {
+    let selection = dependency_selection::select_native(discovered, harness, binary);
+    command(
+        product,
+        &["worker", "dependencies", "select"],
+        Some(&serde_json::to_value(&selection.request).unwrap()),
+        Duration::from_secs(120),
+    );
+}
+
 fn select_pi(product: &InstalledProduct) {
     let discovered = cli(
         product,
@@ -548,7 +563,7 @@ fn select_pi(product: &InstalledProduct) {
     );
     assert_eq!(replay["data"]["selected"], selected["data"]["selected"]);
 }
-fn exec_args<'a>(
+pub(crate) fn exec_args<'a>(
     plan: &'a str,
     workspace: &'a Path,
     prompt: &'a Path,
@@ -575,7 +590,11 @@ fn same_identity(current: &Value, expected: &Value) {
         assert_eq!(current[field], expected[field]);
     }
 }
-fn wait_result(product: &InstalledProduct, accepted: Value, worker: &oracle::Oracle) -> Value {
+pub(super) fn wait_result(
+    product: &InstalledProduct,
+    accepted: Value,
+    worker: &oracle::Oracle,
+) -> Value {
     let task = accepted["data"]["task_id"].as_str().unwrap();
     let run = accepted["data"]["run_id"].as_str().unwrap();
     let deadline = Instant::now() + Duration::from_secs(180);
@@ -697,7 +716,7 @@ fn apply_settings(product: &InstalledProduct, verb: &str, spec: &Value, key: &st
         operation
     );
 }
-fn command(
+pub(super) fn command(
     product: &InstalledProduct,
     args: &[&str],
     payload: Option<&Value>,

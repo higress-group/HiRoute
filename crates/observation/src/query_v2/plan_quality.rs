@@ -11,7 +11,9 @@ use crate::LocalObservationStore;
 
 /// Both projections share the same scope and transaction. Detail filters never
 /// enter this CTE, so pagination and drill-down cannot change the full-scope mean.
-const SCOPE: &str = "
+/// The small safe-event catalog excludes known unrelated payloads before opening
+/// content carriers; absent projections retain the original reasoning lookup.
+pub(super) const SCOPE: &str = "
     SELECT q.*,
       json_extract(q.branch_execution_json,'$.group') AS execution_group,
       json_extract(q.branch_execution_json,'$.candidate_index') AS candidate_index,
@@ -34,10 +36,12 @@ const SCOPE: &str = "
       ) AS native_model,
       (SELECT json_extract(p.body_json,'$.fact.reasoning_profile_id')
        FROM execution_fact_events e
-       JOIN observation_sensitive_payloads_v2 p ON p.id='fact:'||e.envelope_digest
+       LEFT JOIN observation_safe_facts_v2 f ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest
+       CROSS JOIN observation_sensitive_payloads_v2 p ON p.id='fact:'||e.envelope_digest
        JOIN logical_requests r ON r.workspace_id=e.workspace_id AND r.request_id=e.request_id
        WHERE e.workspace_id=q.workspace_id AND r.session_id=q.session_id
          AND e.request_id IN(q.last_request_id,q.first_request_id)
+         AND (f.body_json IS NULL OR json_extract(f.body_json,'$.event_kind')='candidate_decision')
          AND json_extract(p.body_json,'$.fact.kind')='candidate_decision'
          AND json_extract(p.body_json,'$.fact.model_configuration_id')=q.model_configuration_id
          AND json_extract(p.body_json,'$.fact.profile_digest')=q.profile_digest
@@ -60,7 +64,9 @@ const SCOPE: &str = "
           AND t.delete_scope='content_only'))
 ";
 
-const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_id,q.plan_revision,
+// Event IDs belong to producer streams; the trigger request also binds the
+// assessment lookup and lets it use the existing request index.
+pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_id,q.plan_revision,
                         q.selected_branch_id,q.executed_branch_id,q.model_configuration_id,
                         q.profile_digest,q.attribution,q.first_turn_id,q.first_turn_ordinal,
                         q.last_observed_turn_id,q.last_observed_turn_ordinal,q.first_at_ms,
@@ -96,6 +102,7 @@ const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_id,q.plan_r
                  LEFT JOIN observation_run_links l ON l.workspace_id=q.workspace_id
                     AND l.request_id=q.first_request_id
                  LEFT JOIN execution_fact_events e ON e.workspace_id=q.workspace_id
+                    AND e.request_id=q.assessment_trigger_request_id
                     AND e.event_id=q.assessment_event_id
                  LEFT JOIN observation_sensitive_payloads_v2 p
                     ON p.id='fact:'||e.envelope_digest";
@@ -188,12 +195,24 @@ impl LocalObservationStore {
             .map(serde_json::to_string)
             .transpose()
             .map_err(|_| ObservationV2Error::Invalid)?;
+        let detail = SAMPLE_SELECT.replace("ORDER BY chosen.sequence DESC LIMIT 1)", "ORDER BY chosen.sequence DESC LIMIT 1) AS selection").replace("FROM quality q", ", CASE WHEN l.conflicted=0 THEN json_extract(l.body_json,'$.harness_id') WHEN l.request_id IS NULL THEN (SELECT s.agent_id FROM sessions s WHERE s.workspace_id=q.workspace_id AND s.session_id=q.session_id) END AS executor FROM quality q");
         let mut rows = {
             let sql = format!(
                 "WITH quality AS ({SCOPE})
-                 {SAMPLE_SELECT}
+                 {detail}
                  WHERE (:segment IS NULL OR q.segment_id=:segment)
                    AND (:model IS NULL OR q.model_configuration_id=:model)
+                   AND (:execution_group IS NULL OR q.execution_group=:execution_group)
+                   AND (:selection_reason IS NULL OR json_extract(selection,'$.selection_reason')=:selection_reason)
+                   AND (json_array_length(:segments)=0 OR q.segment_id IN (SELECT value FROM json_each(:segments)))
+                   AND (:executor IS NULL OR executor=:executor)
+                   AND (:trust_row IS NULL OR (
+                     COALESCE(q.executed_branch_id,q.selected_branch_id)=json_extract(:trust_row,'$.branch_id')
+                     AND q.execution_group IS json_extract(:trust_row,'$.group')
+                     AND q.model_configuration_id IS json_extract(:trust_row,'$.model_configuration_id')
+                     AND q.reasoning_profile_id IS json_extract(:trust_row,'$.reasoning_profile_id')
+                     AND q.attribution=json_extract(:trust_row,'$.attribution')
+                     AND (json_extract(:trust_row,'$.group_by_executor')=0 OR executor IS json_extract(:trust_row,'$.executor'))))
                    AND (:unrated=0 OR q.reliable_score IS NULL)
                    AND (:gt IS NULL OR q.reliable_score>:gt)
                    AND (:lt IS NULL OR q.reliable_score<:lt)
@@ -223,6 +242,11 @@ impl LocalObservationStore {
                         ":plan": query.plan_id, ":session": query.session_id,
                         ":revision": query.plan_revision.and_then(|v| i64::try_from(v).ok()),
                         ":runs": runs, ":segment": query.segment_id,
+                        ":execution_group": query.execution_group.map(|g| match g { hiroute_domain::ExecutionGroupV1::Regular => "regular", hiroute_domain::ExecutionGroupV1::Primary => "primary" }),
+                        ":selection_reason": query.selection_reason.map(|r| serde_json::to_value(r).expect("enum").as_str().expect("enum string").to_owned()),
+                        ":segments": serde_json::to_string(&query.segment_ids).map_err(|_| ObservationV2Error::Invalid)?,
+                        ":executor": query.executor,
+                        ":trust_row": query.trust_row.as_ref().map(serde_json::to_string).transpose().map_err(|_| ObservationV2Error::Invalid)?,
                         ":model": query.model_configuration_id, ":unrated": query.unrated_only,
                         ":gt": query.score_gt, ":lt": query.score_lt,
                         ":competence": query.competence.map(|v| match v { hiroute_domain::PlanCompetenceFilter::BelowFloor => "below_floor", hiroute_domain::PlanCompetenceFilter::MeetsFloor => "meets_floor" }),
@@ -274,16 +298,10 @@ impl LocalObservationStore {
     }
 }
 
-fn summarize(
-    transaction: &Transaction<'_>,
-    reader: &ObservationReaderContext,
-    query: &PlanQualitySamplesQuery,
-    from_ms: i64,
-    to_ms: i64,
-    runs: &Option<String>,
-) -> Result<PlanQualitySummary, ObservationV2Error> {
-    let sql = format!(
-        "WITH quality AS ({SCOPE})
+pub(super) fn summary_sql() -> String {
+    // Aggregate projected names once per stage; flattening repeats the correlated lookups.
+    format!(
+        "WITH quality AS MATERIALIZED ({SCOPE})
          SELECT plan_revision,
            CASE WHEN executed_branch_id IS NULL THEN selected_branch_id END,
            executed_branch_id,model_configuration_id,profile_digest,attribution,
@@ -295,7 +313,18 @@ fn summarize(
            executed_branch_id,model_configuration_id,profile_digest,attribution,execution_group,candidate_index
          ORDER BY plan_revision DESC,executed_branch_id,model_configuration_id,profile_digest,attribution
          LIMIT 1001"
-    );
+    )
+}
+
+fn summarize(
+    transaction: &Transaction<'_>,
+    reader: &ObservationReaderContext,
+    query: &PlanQualitySamplesQuery,
+    from_ms: i64,
+    to_ms: i64,
+    runs: &Option<String>,
+) -> Result<PlanQualitySummary, ObservationV2Error> {
+    let sql = summary_sql();
     let scope_params = named_params! {
         ":workspace": reader.workspace().as_str(), ":from": from_ms, ":to": to_ms,
         ":plan": query.plan_id, ":session": query.session_id,
@@ -384,7 +413,7 @@ pub(crate) fn routing_reason(
         .optional()?)
 }
 
-fn sample(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanQualitySample> {
+pub(super) fn sample(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanQualitySample> {
     let assessment_event_id: Option<String> = row.get(21)?;
     let assessment = assessment_event_id
         .map(|event_id| {
@@ -452,7 +481,22 @@ fn validate(query: &PlanQualitySamplesQuery) -> Result<(), ObservationV2Error> {
                 .plan_revision
                 .is_some_and(|revision| revision != e.plan_revision)
     });
-    if query.plan_id.is_none() && query.session_id.is_none()
+    let trust_invalid = query.trust_row.as_ref().is_some_and(|row| {
+        !identifier(&row.branch_id)
+            || [
+                &row.model_configuration_id,
+                &row.reasoning_profile_id,
+                &row.executor,
+            ]
+            .into_iter()
+            .flatten()
+            .any(|v| !identifier(v))
+    });
+    if trust_invalid
+        || query.segment_ids.len() > 200
+        || query.segment_ids.iter().any(|id| !identifier(id))
+        || query.executor.as_ref().is_some_and(|id| !identifier(id))
+        || query.plan_id.is_none() && query.session_id.is_none()
         || query.limit == 0
         || query.limit > 200
         || query.plan_revision == Some(0)

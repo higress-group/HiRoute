@@ -8,7 +8,9 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
-        let discovery = if class == SettingsAgentClass::Dsh {
+        let discovery = if class == SettingsAgentClass::OpenCode {
+            self.scanner.opencode_settings_discovery()
+        } else if class == SettingsAgentClass::Dsh {
             self.scanner.dsh_settings_discovery()
         } else if class == SettingsAgentClass::Pi {
             self.scanner.pi_settings_discovery()
@@ -190,7 +192,13 @@ impl LocalControlAdapter {
     pub(in crate::control::runtime) fn qoder_collaboration_probe_target(
         &self,
     ) -> Result<QoderCollaborationProbeTarget, ControlReadError> {
-        let class = SettingsAgentClass::Qoder;
+        self.additional_collaboration_probe_target(SettingsAgentClass::Qoder)
+    }
+
+    pub(in crate::control::runtime) fn additional_collaboration_probe_target(
+        &self,
+        class: SettingsAgentClass,
+    ) -> Result<QoderCollaborationProbeTarget, ControlReadError> {
         let context = self.settings_context(class);
         let record = self
             .stores_lock()

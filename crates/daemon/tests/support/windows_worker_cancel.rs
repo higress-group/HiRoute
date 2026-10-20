@@ -19,6 +19,26 @@ use windows_sys::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, WaitForSingleObject,
 };
 
+pub(super) fn opencode_command(workspace: &Path, nonce: &str) -> String {
+    use base64::Engine;
+    let literal = |text: &str| {
+        format!(
+            "Buffer.from('{}','base64').toString('utf8')",
+            base64::engine::general_purpose::STANDARD.encode(text)
+        )
+    };
+    // OpenCode exposes its Windows shell as bash even when it selects PowerShell
+    // or cmd. Reuse the runner's pinned Node in PATH; encode user paths so this
+    // one native command crosses all three shells without interpreting them.
+    format!(
+        "node.exe -e \"const fs=require('fs');fs.writeFileSync({},{});setTimeout(()=>fs.writeFileSync({},{}),60000)\"",
+        literal(workspace.join("cancel-started.txt").to_str().unwrap()),
+        literal(&format!("started-{nonce}")),
+        literal(workspace.join("cancel-late.txt").to_str().unwrap()),
+        literal(&format!("late-{nonce}")),
+    )
+}
+
 pub(super) struct CancellationReceipts {
     pub late: Vec<PathBuf>,
     pub residual_task: String,
@@ -30,6 +50,25 @@ pub(super) fn verify(
     plan: &str,
     nonce: &str,
 ) -> CancellationReceipts {
+    verify_for(product, workspace, plan, nonce, "pi")
+}
+
+pub(crate) fn verify_opencode(
+    product: &InstalledProduct,
+    workspace: &Path,
+    plan: &str,
+    nonce: &str,
+) {
+    let _ = verify_for(product, workspace, plan, nonce, "opencode");
+}
+
+fn verify_for(
+    product: &InstalledProduct,
+    workspace: &Path,
+    plan: &str,
+    nonce: &str,
+    harness: &str,
+) -> CancellationReceipts {
     let executors = command(
         product,
         &["worker", "executors"],
@@ -40,12 +79,14 @@ pub(super) fn verify(
         .as_array()
         .unwrap()
         .iter()
-        .find(|executor| executor["harness"] == "pi")
+        .find(|executor| executor["harness"] == harness)
         .unwrap();
     assert_eq!(pi["start_approve_all"]["state"], "ready");
     assert_eq!(pi["cancel"]["state"], "ready");
-    assert_eq!(pi["continue_session"]["state"], "unknown");
-    assert_eq!(pi["continue_session"]["reason"], "capability_unverified");
+    if harness == "pi" {
+        assert_eq!(pi["continue_session"]["state"], "unknown");
+        assert_eq!(pi["continue_session"]["reason"], "capability_unverified");
+    }
     let prompt = workspace.join("cancel-task.txt");
     write_new(
         &prompt,
@@ -174,6 +215,12 @@ pub(super) fn verify(
     );
     assert_eq!(rejected["error"]["code"], "REVISION_CONFLICT");
     assert_eq!(rejected["status"], json!("conflict"));
+    if harness == "opencode" {
+        return CancellationReceipts {
+            late: vec![late],
+            residual_task: String::new(),
+        };
+    }
     let (residual_late, residual_task) = residual(product, workspace, plan, nonce);
     CancellationReceipts {
         late: vec![late, residual_late],

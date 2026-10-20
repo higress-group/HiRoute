@@ -9,13 +9,14 @@ import pi from './assets/pi.svg';
 import dsh from './assets/providers/deepseek.svg';
 import hermes from './assets/hermes.svg';
 
-export type BrandKind = 'codex' | 'claude-code' | 'qoder' | 'pi' | 'dsh' | 'hermes' | 'agent' | 'model';
+export type BrandKind = 'codex' | 'claude-code' | 'qoder' | 'pi' | 'dsh' | 'hermes' | 'opencode' | 'agent' | 'model';
 
 export function agentBrandFromId(agentId: string): BrandKind {
   const normalized = agentId.toLowerCase();
   if (normalized.includes('codex')) return 'codex';
   if (normalized.includes('claude')) return 'claude-code';
   if (normalized.includes('qoder')) return 'qoder';
+  if (normalized.includes('opencode')) return 'opencode';
   if (normalized === 'agent_dsh_default') return 'dsh';
   if (normalized === 'agent_pi_default') return 'pi';
   if (normalized === 'agent_hermes_default') return 'hermes';
@@ -56,6 +57,15 @@ export function BrandIcon({
   if (kind === 'qoder' || kind === 'pi' || kind === 'dsh' || kind === 'hermes') {
     return <span className={classes} data-size={size} data-brand={kind} {...accessibility}>
       <img src={kind === 'hermes' ? hermes : kind === 'pi' ? pi : kind === 'dsh' ? dsh : qoder} alt="" />
+    </span>;
+  }
+
+  if (kind === 'opencode') {
+    return <span className={classes} data-size={size} data-brand={kind} {...accessibility}>
+      <svg viewBox="0 0 16 20" fill="none" aria-hidden="true">
+        <path d="M12 16H4V8H12V16Z" fill="currentColor" opacity=".3" />
+        <path d="M12 4H4V16H12V4ZM16 20H0V0H16V20Z" fill="currentColor" />
+      </svg>
     </span>;
   }
 

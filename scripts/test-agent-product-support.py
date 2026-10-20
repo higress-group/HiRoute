@@ -128,6 +128,17 @@ class ObservationReadRetryTests(unittest.TestCase):
 
 
 class NativeInstallationTests(unittest.TestCase):
+    def test_opencode_gets_only_the_native_ripgrep_dependency_in_its_private_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / 'bin').mkdir()
+            cli = root / 'selected-cli'; cli.write_text('fixture'); cli.chmod(0o700)
+            rg = root / 'selected-rg'; rg.write_text('fixture'); rg.chmod(0o700)
+            with patch('shutil.which', return_value=str(rg)):
+                expose_native_installation(SimpleNamespace(root=root), 'opencode', cli)
+            self.assertEqual((root / 'bin/rg').resolve(), rg)
+            self.assertEqual({p.name for p in (root / 'bin').iterdir()}, {'rg', 'opencode'})
+
     def test_selected_cli_and_required_runtime_share_the_private_fixture_path(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

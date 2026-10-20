@@ -22,6 +22,9 @@ LIVE_PROMPT = 'Reply with exactly HIROUTE_LIVE_CHECK_OK. Do not use tools or per
 
 def select_model_context(product, harness="qoder"):
     product.additional_harness = harness
+    if harness == "opencode":
+        from opencode_native_context import select_context
+        return select_context(product)
     if harness == "pi":
         config = Path(product.env["HOME"]) / ".pi/agent"
         config.mkdir(mode=0o700, parents=True)
@@ -41,6 +44,9 @@ def select_model_context(product, harness="qoder"):
 
 class OwnedModelSettings:
     def __new__(cls, config, foreign_endpoint, harness="qoder"):
+        if harness == 'opencode':
+            from opencode_native_context import OpenCodeModelSettings
+            return OpenCodeModelSettings(config,foreign_endpoint)
         if harness == 'dsh':
             from dsh_native_context import DshModelSettings
             return DshModelSettings(config, foreign_endpoint)
@@ -194,6 +200,8 @@ class PersistedRouteOracle:
 def native_command(product, binary, selector, prompt):
     # Ordinary settings precedence remains active. In particular, no --settings,
     # --setting-sources or credential environment can hide a persistence defect.
+    if getattr(product,'additional_harness','qoder')=='opencode':
+        return [str(binary),'run','--format','json','--model',selector,prompt]
     if getattr(product, 'additional_harness', 'qoder') == 'pi':
         provider, model = selector.split('/',1)
         return [os.environ['HIROUTE_WORKER_NODE'], str(binary), '--provider', provider, '--model', model,
@@ -205,6 +213,13 @@ def native_command(product, binary, selector, prompt):
 
 
 def successful_native_result(stdout, receipt, harness='qoder'):
+    if harness=='opencode':
+        rows=[json.loads(line) for line in stdout.decode().splitlines() if line.startswith('{')]
+        assert not any(r.get('type')=='error' for r in rows),'native OpenCode returned an error'
+        texts=[r for r in rows if r.get('type')=='text']
+        assert len(texts)==1 and texts[0]['part']['text'].strip()==receipt,'native OpenCode receipt mismatch'
+        assert any(r.get('type')=='step_finish' for r in rows),'native OpenCode did not finish'
+        return texts[0]['sessionID']
     if harness == 'pi':
         rows = [json.loads(line) for line in stdout.decode().splitlines() if line.startswith('{')]
         headers = [r for r in rows if r.get('type') == 'session']

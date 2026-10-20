@@ -4,6 +4,8 @@ use hiroute_domain::{
     GatewayNativeReasoningValueV1, GatewayReasoningControlKindV1, NativeReasoningCapabilityV1,
     NativeReasoningRenderConventionV1,
 };
+#[path = "candidate_execution_tests/feed_lifecycle.rs"]
+mod feed_lifecycle;
 #[path = "candidate_execution_tests/native_protocol_profiles.rs"]
 mod native_protocol_profiles;
 

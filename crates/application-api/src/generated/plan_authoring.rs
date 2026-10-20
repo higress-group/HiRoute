@@ -114,7 +114,7 @@ fn definitions() -> Value {
             "schema":{"const":"hiroute.plan-editor/v2"},"display_name":{"type":"string","maxLength":128},"purpose":{"type":"string","maxLength":512},
             "custom_alias":{"type":"string","maxLength":64},"mode":{"enum":["fixed_model","smart_saving","custom_branches","free_first"]},"branch_routing":{"oneOf":[{"type":"null"},routing]},
             "candidates":reference("candidates"),"smart":smart,"free":free,"delegation_enabled":{"type":"boolean"},"requirements":requirements,"limits":limits,
-            "work":object(&["harness","protocol"],json!({"harness":{"enum":["codex_cli","claude_code","qoder_cli","pi","deepseek_harness"]},"protocol":{"enum":["responses","messages"]}}))
+            "work":object(&["harness","protocol"],json!({"harness":{"enum":["codex_cli","claude_code","qoder_cli","pi","deepseek_harness","opencode"]},"protocol":{"enum":["responses","messages"]}}))
         }),
     );
     let draft = object(

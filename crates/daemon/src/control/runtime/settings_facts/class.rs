@@ -10,6 +10,7 @@ pub(in crate::control::runtime) enum SettingsAgentClass {
     Pi,
     Dsh,
     Hermes,
+    OpenCode,
 }
 
 impl SettingsAgentClass {
@@ -24,6 +25,7 @@ impl SettingsAgentClass {
             Self::Qoder => "agent_qoder_default",
             Self::Pi => "agent_pi_default",
             Self::Dsh => "agent_dsh_default",
+            Self::OpenCode => "agent_opencode_default",
             Self::Hermes => "agent_hermes_default",
         }
     }
@@ -35,6 +37,7 @@ impl SettingsAgentClass {
             Self::Qoder => "qoder",
             Self::Pi => "pi",
             Self::Dsh => "dsh",
+            Self::OpenCode => "opencode",
             Self::Hermes => "hermes",
         }
     }
@@ -50,6 +53,7 @@ impl SettingsAgentClass {
             Self::Qoder => scanner.qoder_user_config_target(),
             Self::Pi => scanner.pi_user_models_target(),
             Self::Dsh => scanner.dsh_user_models_target(),
+            Self::OpenCode => scanner.opencode_user_models_target(),
             Self::Hermes => return None,
         })
     }
@@ -61,6 +65,7 @@ impl SettingsAgentClass {
             Self::Qoder => "skill-root/agent_qoder_default",
             Self::Pi => "skill-root/agent_pi_default",
             Self::Dsh => "skill-root/agent_dsh_default",
+            Self::OpenCode => "skill-root/agent_opencode_default",
             Self::Hermes => "skill-root/hermes-explicit-target-required",
         }
     }
@@ -94,6 +99,10 @@ impl SettingsAgentClass {
             Self::Hermes => {
                 return Err(hiroute_domain::OperationValidationError::UnregisteredEffectPlan);
             }
+            Self::OpenCode => (
+                hiroute_integrations::OPENCODE_PROFILE_ID_V1,
+                hiroute_integrations::OPENCODE_INTEGRATION_PROFILE_REF_V1,
+            ),
             Self::Dsh => (
                 hiroute_integrations::DSH_PROFILE_ID_V1,
                 hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,

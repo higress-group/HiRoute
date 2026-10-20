@@ -382,6 +382,15 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "List discovered Agent installations and connection state."
     ),
     command!(
+        "agents.previous-routing.preview",
+        ["agents", "previous-routing", "preview"],
+        "PreviewAgentPreviousRouting",
+        ["CLI-068", "APP-068"],
+        Released,
+        Query,
+        "Recover selected previous mappings as an ordinary Agent settings draft."
+    ),
+    command!(
         "agents.show",
         ["agents", "show"],
         "GetAgent",
@@ -895,6 +904,60 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "List effective model configurations joined to registered source inventory."
     ),
     command!(
+        "models.feed.status",
+        ["models", "feed", "status"],
+        "GetModelFeedStatus",
+        ["CLI-059", "APP-059"],
+        Released,
+        Query,
+        "Show the verified model feed, retrieval setting and last attempt."
+    ),
+    command!(
+        "models.feed.refresh",
+        ["models", "feed", "refresh"],
+        "RefreshModelFeed",
+        ["CLI-060", "APP-060"],
+        Released,
+        Apply,
+        "Retrieve and verify the model feed now."
+    ),
+    command!(
+        "models.feed.settings.apply",
+        ["models", "feed", "settings", "apply"],
+        "ApplyModelFeedSettings",
+        ["CLI-061", "APP-061"],
+        Released,
+        Apply,
+        "Change service-owned model feed retrieval and disclosure settings."
+    ),
+    command!(
+        "models.feed.remove.preview",
+        ["models", "feed", "remove", "preview"],
+        "PreviewModelFeedRemoval",
+        ["CLI-062", "APP-062"],
+        Released,
+        Query,
+        "Preview saved sources affected by removing the held model feed."
+    ),
+    command!(
+        "models.feed.remove.apply",
+        ["models", "feed", "remove", "apply"],
+        "ApplyModelFeedRemoval",
+        ["CLI-063", "APP-063"],
+        Released,
+        Apply,
+        "Remove the held feed while retaining its highest accepted sequence."
+    ),
+    command!(
+        "models.availability",
+        ["models", "availability"],
+        "GetModelAvailability",
+        ["CLI-064", "APP-064"],
+        Released,
+        Query,
+        "Show model origins, announcements and current local availability."
+    ),
+    command!(
         "models.show",
         ["models", "show"],
         "ShowModel",
@@ -1037,6 +1100,42 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         Released,
         Query,
         "Read recorded token, cache and valuation totals with coverage."
+    ),
+    command!(
+        "sessions.timeline",
+        ["sessions", "timeline"],
+        "GetRoutingTimeline",
+        ["CLI-069", "APP-069"],
+        Released,
+        Query,
+        "Read agent turns with selection, historical protection, score, requests and costs; --follow streams changed turns."
+    ),
+    command!(
+        "observation.plan-trust",
+        ["observation", "plan-trust"],
+        "GetPlanTrust",
+        ["CLI-065", "APP-065"],
+        Released,
+        Query,
+        "Read complete-scoring coverage and competence for a Plan revision."
+    ),
+    command!(
+        "observation.plan-trust.replay",
+        ["observation", "plan-trust", "replay"],
+        "GetPlanTrustReplay",
+        ["CLI-066", "APP-066"],
+        Released,
+        Query,
+        "Replay exact thresholds over a complete retained population; estimates are not predictions."
+    ),
+    command!(
+        "observation.plan-trust.suggestions",
+        ["observation", "plan-trust", "suggestions"],
+        "GetPlanTrustSuggestions",
+        ["CLI-067", "APP-067"],
+        Released,
+        Query,
+        "Read optional evidence-based trust suggestions without changing a Plan."
     ),
     command!(
         "observation.storage.show",

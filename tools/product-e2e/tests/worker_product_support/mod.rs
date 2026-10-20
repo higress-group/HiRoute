@@ -15,6 +15,27 @@ const REQUIRED_INSTALLATIONS: [&str; 5] = [
 ];
 
 pub fn run_real_worker_scenario(mode: &str, expected_scenario: &str) {
+    let opencode_script = match mode {
+        "HIROUTE_PRODUCT_OPENCODE_CORE" | "HIROUTE_PRODUCT_OPENCODE_MESSAGES" => {
+            Some("native_context_product.py")
+        }
+        "HIROUTE_PRODUCT_OPENCODE_MODELS" => Some("additional_model_product.py"),
+        "HIROUTE_PRODUCT_OPENCODE_MAIN" => Some("collaboration_product.py"),
+        "HIROUTE_PRODUCT_OPENCODE_BOUNDARIES" => Some("native_context_boundaries.py"),
+        "HIROUTE_PRODUCT_OPENCODE_DISCOVERY" => Some("pi_discovery_product.py"),
+        "HIROUTE_PRODUCT_OPENCODE_COMPACTION" => Some("native_compaction_product.py"),
+        _ => None,
+    };
+    if let Some(script) = opencode_script {
+        run_scenario(
+            script,
+            mode,
+            expected_scenario,
+            &["opencode"],
+            &["HIROUTE_WORKER_OPENCODE_BINARY"],
+        );
+        return;
+    }
     let dsh_script = match mode {
         "HIROUTE_PRODUCT_DSH_CORE" => Some("native_context_product.py"),
         "HIROUTE_PRODUCT_DSH_BOUNDARIES" => Some("native_context_boundaries.py"),
@@ -145,6 +166,9 @@ fn run_scenario(
             command.args(["--harness", harness]);
         }
         command.env(mode, "1");
+        if mode == "HIROUTE_PRODUCT_OPENCODE_MESSAGES" {
+            command.env("HIROUTE_PRODUCT_AGENT_PROTOCOL", "messages");
+        }
         let output = command
             .output()
             .expect("run the real Worker product scenario");
@@ -201,22 +225,28 @@ fn assert_scenario(output: Output, scenario: &str, harness: &str, candidate: &st
             "worker.context.tool-summary-route",
             "worker.context.compaction-route",
         ],
-        "pi-worker-compaction-route" => &["worker.context.compaction-route"],
-        "pi-static-source-import" | "dsh-static-source-import" => &[
+        "pi-worker-compaction-route" | "opencode-worker-compaction-route" => {
+            &["worker.context.compaction-route"]
+        }
+        "pi-static-source-import"
+        | "dsh-static-source-import"
+        | "opencode-static-source-import" => &[
             "agent.sources.effective-static-import",
             "agent.sources.changed-source-rejected",
             "agent.sources.imported-route-usable",
         ],
         "qoder-main-agent-delegation"
         | "pi-main-agent-delegation"
-        | "dsh-main-agent-delegation" => &[
+        | "dsh-main-agent-delegation"
+        | "opencode-main-agent-delegation" => &[
             "agent.collaboration.user-skill",
             "agent.collaboration.public-worker-delegation",
             "agent.collaboration.disable-owned-skill",
         ],
         "qoder-persisted-model-routes"
         | "pi-persisted-model-routes"
-        | "dsh-persisted-model-routes" => &[
+        | "dsh-persisted-model-routes"
+        | "opencode-persisted-model-routes" => &[
             "agent.models.persisted-routes",
             "agent.models.credential-rotation",
             "agent.models.independent-restore",

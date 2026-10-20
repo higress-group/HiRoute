@@ -12,6 +12,7 @@ pub mod collaboration_artifact;
 pub mod compute;
 pub mod gateway;
 pub mod model_connections;
+pub mod model_feed;
 pub mod release_facts;
 
 pub use agents::*;

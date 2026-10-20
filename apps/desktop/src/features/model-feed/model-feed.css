@@ -1,0 +1,19 @@
+.model-feed-panel { display: grid; gap: 8px; min-width: 0; padding: 10px 20px; border-bottom: 1px solid var(--divider); }
+.model-feed-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; min-width: 0; }
+.model-feed-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; min-width: 0; flex: 1 1 280px; }
+.model-feed-title strong { font-size: calc(14px * var(--hr-text-scale)); font-weight: 650; }
+.model-feed-title span { color: var(--text-muted); font-size: calc(12px * var(--hr-text-scale)); overflow-wrap: anywhere; }
+.model-feed-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); font-size: calc(13px * var(--hr-text-scale)); cursor: pointer; }
+.model-feed-toggle input { width: 15px; height: 15px; accent-color: var(--accent); }
+.model-feed-actions .btn[aria-expanded='true'] .icon { transform: rotate(180deg); }
+.model-feed-details { display: grid; gap: 6px; justify-items: start; padding: 4px 0 6px; }
+.model-feed-details p { margin: 0; color: var(--text-soft); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; overflow-wrap: anywhere; }
+.model-feed-details .field-help { color: var(--text-muted); font-size: calc(12px * var(--hr-text-scale)); }
+.model-feed-panel > .callout, .model-feed-panel > .field-error { margin: 0; }
+.model-feed-disclosure { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; margin-block: 0; padding: 8px 8px 8px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-soft); }
+.model-feed-disclosure p { flex: 1 1 260px; color: var(--text-soft); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; }
+.model-feed-disclosure .actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.model-feed-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.model-feed-checkbox { display: flex; gap: 8px; align-items: flex-start; margin-top: 16px; }
+
+.hr-models-page .models-feature { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 0; }

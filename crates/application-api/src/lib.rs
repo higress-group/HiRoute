@@ -15,6 +15,8 @@ mod agent_settings;
 mod agent_settings_preview;
 pub use agent_discovery::*;
 pub use agent_settings_preview::*;
+mod previous_routing;
+pub use previous_routing::*;
 mod classifier_diagnostic;
 mod classifier_diagnostic_c;
 pub use classifier_diagnostic_c::*;
@@ -44,6 +46,8 @@ mod compute_management_view;
 pub use compute_key_masks::*;
 mod generated;
 mod model_catalog;
+mod model_feed;
+pub use model_feed::*;
 mod model_connections;
 mod observation_v2;
 pub use model_catalog::*;
@@ -267,7 +271,7 @@ mod protocol_tests {
     #[test]
     fn p0_registry_and_staging_invariants_remain_closed() {
         let commands = planned_commands();
-        assert_eq!(commands.len(), 94);
+        assert_eq!(commands.len(), 105);
         assert_eq!(
             commands
                 .iter()
@@ -315,7 +319,7 @@ mod protocol_tests {
             CommandLifecycle::Released
         );
         let release = release_manifest();
-        assert_eq!(release.commands.len(), 61);
+        assert_eq!(release.commands.len(), 72);
         assert!(release.commands.iter().all(|command| {
             command.lifecycle == CommandLifecycle::Released
                 && command.positive.state == CoverageState::Executable

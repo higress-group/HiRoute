@@ -11,7 +11,9 @@ use super::support::{Fixture, fact_channel, offer_fact, open_store, writer};
 
 mod routing_observations;
 mod routing_observations_released;
+mod routing_timeline_protection;
 mod summary;
+mod trust;
 
 const PLAN: &str = "plan/codex-daily";
 const MODEL: &str = "model/config-a";
@@ -72,6 +74,7 @@ fn finished_for_model_with_status(
     status: AgentTurnStatusV1,
 ) -> ExecutionFactV1 {
     ExecutionFactV1::AgentTurnFinished {
+        opening_cause: None,
         branch_execution: None,
         agent_turn_id: turn.into(),
         segment_id: segment.into(),
@@ -130,6 +133,11 @@ fn assessment_for_model(
 
 fn query(plan_revision: Option<u64>) -> PlanQualitySamplesQuery {
     PlanQualitySamplesQuery {
+        execution_group: None,
+        selection_reason: None,
+        segment_ids: Vec::new(),
+        executor: None,
+        trust_row: None,
         include_routing_observations: false,
         competence: None,
         plan_id: Some(PLAN.into()),
@@ -612,3 +620,7 @@ fn request_retention_drops_expired_score_and_marks_a_continuing_segment_partial(
     assert!(!sample.execution_evidence_available);
     assert!(sample.assessment.is_none());
 }
+
+mod routing_timeline;
+mod timeline_boundaries;
+mod timeline_cache;

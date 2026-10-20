@@ -63,7 +63,12 @@ impl ProductDaemon {
         Self::start_inner(root, proxy, None)
     }
 
-    pub fn start_with_cpa(root: &Path, proxy: SocketAddr, binary: &Path, sha256_hex: &str) -> Self {
+    pub fn start_with_codex_cpa(
+        root: &Path,
+        proxy: SocketAddr,
+        binary: &Path,
+        sha256_hex: &str,
+    ) -> Self {
         Self::start_inner(root, proxy, Some((binary, sha256_hex)))
     }
 
@@ -116,6 +121,13 @@ impl ProductDaemon {
             .stderr(Stdio::piped());
         if let Some((binary, sha256_hex)) = cpa {
             command
+                // This fixture exposes a Codex subscription only. Keep Claude's
+                // passive Keychain-source anchor absent even though model fixtures
+                // have a separate, existing Claude settings directory.
+                .env(
+                    "CLAUDE_SECURESTORAGE_CONFIG_DIR",
+                    root.join("home/unconfigured-claude-secure-store"),
+                )
                 .arg("--cpa-binary")
                 .arg(binary)
                 .arg("--cpa-sha256")

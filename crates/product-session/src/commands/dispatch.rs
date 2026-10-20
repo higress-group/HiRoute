@@ -581,6 +581,64 @@ pub async fn dispatch(
             let value = model_reference_query(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
+        "model_feed_status" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {}
+            let _: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = model_feed_status(window, state).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "model_feed_refresh" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {}
+            let _: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = model_feed_refresh(window, state).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "model_feed_settings_apply" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: ModelFeedSettingsRequestV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = model_feed_settings_apply(window, state, input.input).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "model_feed_remove_preview" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {}
+            let _: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = model_feed_remove_preview(window, state).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "model_feed_remove_apply" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: ModelFeedRemoveRequestV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = model_feed_remove_apply(window, state, input.input).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "model_availability" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {}
+            let _: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = model_availability(window, state).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "effective_price_query" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -612,6 +670,17 @@ pub async fn dispatch(
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
             let value = retry_agent_settings(window, state, input.input).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_agent_previous_routing" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: AgentPreviousRoutingQueryV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = preview_agent_previous_routing(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "preview_agent_settings" => {

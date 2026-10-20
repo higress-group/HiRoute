@@ -92,7 +92,10 @@ impl LocalControlAdapter {
         // Only historical clients ever owned sealed collaboration credentials.
         if matches!(
             class,
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh
+            SettingsAgentClass::Qoder
+                | SettingsAgentClass::Pi
+                | SettingsAgentClass::Dsh
+                | SettingsAgentClass::OpenCode
         ) {
             return Ok(());
         }
@@ -124,6 +127,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(error());
             }
@@ -141,6 +145,7 @@ impl LocalControlAdapter {
                 SettingsAgentClass::Qoder
                 | SettingsAgentClass::Pi
                 | SettingsAgentClass::Dsh
+                | SettingsAgentClass::OpenCode
                 | SettingsAgentClass::Hermes => {
                     return Err(error());
                 }
