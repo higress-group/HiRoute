@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-model-feed-status"
+description = "Enables the model_feed_status command without any pre-configured scope."
+commands.allow = ["model_feed_status"]
+
+[[permission]]
+identifier = "deny-model-feed-status"
+description = "Denies the model_feed_status command without any pre-configured scope."
+commands.deny = ["model_feed_status"]

@@ -338,7 +338,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
     proxy.set_nonblocking(true).unwrap();
     let proxy_address = proxy.local_addr().unwrap();
     let mut daemon =
-        ProductDaemon::start_with_cpa(directory.path(), proxy_address, &binary, &sha256);
+        ProductDaemon::start_with_codex_cpa(directory.path(), proxy_address, &binary, &sha256);
 
     let candidates = succeeded(
         daemon
@@ -633,7 +633,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
     drop(stores);
 
     let restarted =
-        ProductDaemon::start_with_cpa(directory.path(), proxy_address, &binary, &sha256);
+        ProductDaemon::start_with_codex_cpa(directory.path(), proxy_address, &binary, &sha256);
     let restarted_snapshot = succeeded(
         restarted
             .client
@@ -878,7 +878,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
 
     fs::set_permissions(&binary, fs::Permissions::from_mode(0o600)).unwrap();
     let runtime_unavailable =
-        ProductDaemon::start_with_cpa(directory.path(), proxy_address, &binary, &sha256);
+        ProductDaemon::start_with_codex_cpa(directory.path(), proxy_address, &binary, &sha256);
     let runtime_snapshot = succeeded(
         runtime_unavailable
             .client
@@ -910,7 +910,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
     fs::write(&auth_path, br#"{"auth_mode":"chatgpt"}"#).unwrap();
     fs::set_permissions(&auth_path, fs::Permissions::from_mode(0o600)).unwrap();
     let invalid_auth =
-        ProductDaemon::start_with_cpa(directory.path(), proxy_address, &binary, &sha256);
+        ProductDaemon::start_with_codex_cpa(directory.path(), proxy_address, &binary, &sha256);
     let invalid_auth_snapshot = succeeded(
         invalid_auth
             .client
@@ -935,7 +935,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
     let unavailable_auth_path = directory.path().join("home/.codex/auth.unavailable");
     fs::rename(&auth_path, &unavailable_auth_path).unwrap();
     let needs_auth =
-        ProductDaemon::start_with_cpa(directory.path(), proxy_address, &binary, &sha256);
+        ProductDaemon::start_with_codex_cpa(directory.path(), proxy_address, &binary, &sha256);
     let auth_snapshot = succeeded(
         needs_auth
             .client
@@ -958,7 +958,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
     fs::rename(unavailable_auth_path, auth_path).unwrap();
     corrupt_saved_display_name(directory.path(), &source_id);
     let mismatched =
-        ProductDaemon::start_with_cpa(directory.path(), proxy_address, &binary, &sha256);
+        ProductDaemon::start_with_codex_cpa(directory.path(), proxy_address, &binary, &sha256);
     let mismatch_snapshot = succeeded(
         mismatched
             .client

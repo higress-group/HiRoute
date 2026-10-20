@@ -1,7 +1,7 @@
 //! Additive model settings through the public transaction and real native artifact store.
 use super::*;
 
-fn model_spec(fixture: &QoderFixture) -> serde_json::Value {
+pub(super) fn model_spec(fixture: &QoderFixture) -> serde_json::Value {
     let publication = fixture
         .runtime
         .adapter
@@ -26,7 +26,7 @@ fn model_spec(fixture: &QoderFixture) -> serde_json::Value {
         .unwrap();
     json!({"schema_version":{"major":2,"minor":0},"context_id":fixture.context,"model":{"intent":"configure","settings":{"mode":"qoder_additional","allowed_plan_ids":[plan.agent_plan_id]}}})
 }
-fn model_status(fixture: &QoderFixture) -> serde_json::Value {
+pub(super) fn model_status(fixture: &QoderFixture) -> serde_json::Value {
     let result = fixture.service.dispatch_wire(request(
         "GetAgentConnectionStatus",
         json!({"schema_version":{"major":2,"minor":0},"context_id":fixture.context}),
@@ -35,7 +35,10 @@ fn model_status(fixture: &QoderFixture) -> serde_json::Value {
     assert!(result.error.is_none(), "{result:?}");
     result.data.unwrap()
 }
-fn restore_spec(fixture: &QoderFixture, status: &serde_json::Value) -> serde_json::Value {
+pub(super) fn restore_spec(
+    fixture: &QoderFixture,
+    status: &serde_json::Value,
+) -> serde_json::Value {
     json!({"schema_version":{"major":2,"minor":0},"context_id":fixture.context,"model":{"intent":"restore","restore_point_ref":status["restore_point_ref"]}})
 }
 
@@ -638,9 +641,16 @@ fn qoder_pending_file_tail_keeps_collaboration_preview_independent_and_retries_e
     ) {
         return;
     }
-    let fixture = QoderFixture::with_models(true);
+    pending_file_tail_retries_exact_operation(AgentKindV1::Qoder);
+}
+
+pub(super) fn pending_file_tail_retries_exact_operation(kind: AgentKindV1) {
+    let fixture = QoderFixture::with_kind(true, kind);
     let before = fs::read(&fixture.native_config).unwrap();
-    let spec = model_spec(&fixture);
+    let mut spec = model_spec(&fixture);
+    if kind == AgentKindV1::OpenCode {
+        spec["model"]["settings"]["mode"] = json!("opencode_additional");
+    }
     let mut ports = fixture
         .runtime
         .application_ports()
@@ -747,6 +757,33 @@ fn qoder_pending_file_tail_keeps_collaboration_preview_independent_and_retries_e
     assert_eq!(model_status(&fixture)["state"], "pending");
     private_file(&fixture.native_config, &before);
     let request_body = json!({"schema":"hiroute.agent-settings-retry/v1","context_id":fixture.context,"operation_id":id});
+    if kind == AgentKindV1::OpenCode {
+        let resource = fixture
+            .native_config
+            .parent()
+            .unwrap()
+            .join("agents/late.md");
+        private_file(
+            &resource,
+            b"---\nmodel: daily/default\n---\nConcurrent native resource\n",
+        );
+        let resumed = fixture.service.dispatch_wire(request(
+            "ApplyAgentConnectionChange",
+            request_body.clone(),
+            None,
+        ));
+        assert!(
+            resumed.error.is_some()
+                || resumed
+                    .data
+                    .as_ref()
+                    .is_some_and(|data| data["state"] != "succeeded"),
+            "{resumed:?}"
+        );
+        assert_eq!(fs::read(&fixture.native_config).unwrap(), before);
+        assert_eq!(model_status(&fixture)["state"], "pending");
+        fs::remove_file(resource).unwrap();
+    }
     for _ in 0..2 {
         let resumed = fixture.service.dispatch_wire(request(
             "ApplyAgentConnectionChange",

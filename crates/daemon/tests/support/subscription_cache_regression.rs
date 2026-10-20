@@ -10,7 +10,7 @@ fn cache_fixture() -> (tempfile::TempDir, TcpListener, ProductDaemon) {
     let (binary, sha256) = install_subscription_fixture(directory.path());
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     proxy.set_nonblocking(true).unwrap();
-    let daemon = ProductDaemon::start_with_cpa(
+    let daemon = ProductDaemon::start_with_codex_cpa(
         directory.path(),
         proxy.local_addr().unwrap(),
         &binary,

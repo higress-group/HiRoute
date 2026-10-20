@@ -15,6 +15,8 @@ type Counts = {
   unavailable_per_requested: number | null; suppressed_per_opportunity: number | null; suppressed_per_c_decision: number | null;
 };
 export type RoutingSummary = {
+  plan_id: string | null; session_id: string | null; plan_revision: number | null;
+  requested_from_ms: number | null; requested_to_ms: number | null;
   coverage: string; covered_from_ms: number; covered_to_ms: number; retained_decisions: number;
   known_non_c_decisions: number; legacy_or_unknown_decisions: number; unknown_scope_decisions: number; missing_projection_events: number; scan_limited: boolean;
   cohorts: { cohort: { protocol: string; content_digest: string; bundle_digest: string; scope_id: string; standard: string; provider: string; model: string; simple_threshold_millis: number; competence_floor_millis: number }; counts: Counts }[];

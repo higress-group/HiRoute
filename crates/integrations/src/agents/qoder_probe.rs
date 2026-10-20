@@ -456,7 +456,10 @@ impl QoderCollaborationProbe {
     }
 }
 
-fn confirmed_skill(path: &Path, expected: &CanonicalDigest) -> Result<String, QoderNativeError> {
+pub(super) fn confirmed_skill(
+    path: &Path,
+    expected: &CanonicalDigest,
+) -> Result<String, QoderNativeError> {
     let metadata =
         fs::symlink_metadata(path).map_err(|_| qoder_error("installed user Skill missing"))?;
     if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 128 * 1024 {
@@ -472,7 +475,7 @@ fn confirmed_skill(path: &Path, expected: &CanonicalDigest) -> Result<String, Qo
         .map_err(|_| qoder_error("installed user Skill encoding"))
 }
 
-fn skill_body(content: &str) -> Result<String, QoderNativeError> {
+pub(super) fn skill_body(content: &str) -> Result<String, QoderNativeError> {
     content
         .strip_prefix("---\n")
         .and_then(|text| text.split_once("\n---\n"))
@@ -609,7 +612,7 @@ fn shell_quote(path: &Path) -> Result<String, QoderNativeError> {
     ))
 }
 
-fn cli_command(cli: &Path) -> Result<String, QoderNativeError> {
+pub(super) fn cli_command(cli: &Path) -> Result<String, QoderNativeError> {
     // Qoder 1.1.65's Bash tool uses Git Bash on Windows, independently of its
     // separate PowerShell tool. The resolved native image already passed the
     // shared ordinary-drive projection; retain that same identity when making
@@ -642,7 +645,7 @@ fn cli_command(cli: &Path) -> Result<String, QoderNativeError> {
 }
 
 #[cfg(unix)]
-fn cli_baseline(cli: &Path, root: &Path) -> Result<String, QoderNativeError> {
+pub(super) fn cli_baseline(cli: &Path, root: &Path) -> Result<String, QoderNativeError> {
     let output = private_file(&root.join("cli.private"))?;
     let observer = output
         .try_clone()
@@ -713,7 +716,7 @@ fn cli_baseline(cli: &Path, root: &Path) -> Result<String, QoderNativeError> {
 }
 
 #[cfg(windows)]
-fn cli_baseline(cli: &Path, root: &Path) -> Result<String, QoderNativeError> {
+pub(super) fn cli_baseline(cli: &Path, root: &Path) -> Result<String, QoderNativeError> {
     let mut command = Command::new(cli);
     command
         .args(["schema", "list", "--output", "json"])

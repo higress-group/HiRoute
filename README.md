@@ -31,7 +31,7 @@
   </a>
 </p>
 
-Keep using Codex, Claude Code, Qoder, Pi or DeepSeek Harness. With a smart-saving plan, HiRoute
+Keep using Codex, Claude Code, Qoder, Pi or DeepSeek Harness. With a difficulty-routing plan, HiRoute
 judges each new message: routine work such as reading code or gathering facts can go to an
 economical model, while design decisions and difficult fixes stay with your subscription or
 primary model. Subscriptions, API keys and local models are managed in one place, and each
@@ -60,7 +60,7 @@ runs locally as a Desktop application or a headless CLI and daemon.
 | **Keep handoffs bounded** | Enforce capability requirements, ordered candidates, and explicit exhaustion instead of silently changing behavior. |
 | **Learn from execution** | Retain the task category, actual model group and candidate, tool outcomes, accepted output, and optional stage competence for later decisions. |
 
-HiRoute currently provides four routing modes: fixed model, smart saving, custom branches, and free first.
+HiRoute currently provides four routing modes: fixed model, difficulty routing, custom branches, and free first.
 Each mode uses the plan's ordered candidates for bounded failover. It also provides agent work plans
 and Worker delegation; local session, usage, cost, and competence views; and a custom extension API
 for connecting your own decision service.
@@ -94,7 +94,7 @@ and [CLI reference](docs/standalone-cli.md) for service lifecycle and machine-re
 2. For model-based judgment, open **Models → Decision models** and connect Bailian,
    OpenRouter Jev, TypeSafe, or a compatible endpoint. Built-in connections need no self-hosted
    Jev service.
-3. Create and publish a routing plan, using smart saving or custom task branches when needed.
+3. Create and publish a routing plan, using difficulty routing or custom task branches when needed.
 4. Connect an Agent client, or expose a Worker plan for delegated tasks.
 5. Inspect sessions and model performance to understand the task category, actual model group,
    and execution result.
@@ -122,11 +122,11 @@ HiRoute supplies the published conditions and scoring criteria, applies your thr
 and chooses the model group and ordered candidates.
 Configure these connections in **Models → Decision models**; you do not need to deploy an extension.
 
-**Smart saving** has one task scope with economy and primary model groups. Economy is selected
+**Difficulty routing** has one task scope with regular and primary model groups. Regular is selected
 when this turn's simple-task probability meets your threshold and no applicable, complete
 assessment falls below the competence floor. Otherwise HiRoute selects primary. Missing or
 partial scores stay unrated. An old low score does not lock future turns to primary, and a new
-turn does not automatically return to economy: HiRoute judges the current work again.
+turn does not automatically return to regular: HiRoute judges the current work again.
 
 **Custom branches** separate task categories such as drafting and review. HiRoute first uses
 the category choice, then the simple/complex degree within that category to choose its regular
@@ -144,7 +144,7 @@ The principle is:
 
 > **Competence blocks risky cost-cutting; complexity creates opportunities to save.**
 
-Smart saving also supports heuristic rules. A custom extension is optional: use it when you
+Difficulty routing also supports heuristic rules. A custom extension is optional: use it when you
 want to own the model integration, judgment, scoring, and context trimming. The official
 [Jev extension](decision-extensions/extensions/jev-decider/README.md) is one implementation
 of that boundary. Start with [decision models and the routing mechanism](decision-extensions/README.md),

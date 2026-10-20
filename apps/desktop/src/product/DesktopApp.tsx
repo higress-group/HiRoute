@@ -1,3 +1,8 @@
+import type { Options } from '../plan-editor';
+import { TrialQuickStart } from '../features/trial/TrialQuickStart';
+import { NewModels } from '../features/trial/NewModels';
+import { useTrustSuggestions } from '../features/trust/use-trust-suggestions';
+import { startupFailureText } from '../storage-recovery';
 import { randomId } from '../random-id.ts';
 import { hostCapabilities } from '../host/index.ts';
 import { HostNotices } from '../host/ConsoleUi';
@@ -107,6 +112,8 @@ export function DesktopApp() {
   const preferences = usePresentationPreferences();
   const { language } = preferences;
   const home = useDesktopHome();
+  const [trialIntent, setTrialIntent] = useState<{ modelId?: string; bindingId?: string } | null>(null);
+  const trialOpen = Boolean(trialIntent);
   const [page, setPage] = useState<Page>('home');
   const [modelTab, setModelTab] = useState<'general' | 'decisions'>('general');
   const [decisionIntent, setDecisionIntent] = useState<DecisionIntent | null>(null);
@@ -119,6 +126,7 @@ export function DesktopApp() {
   const [operation, setOperation] = useState<DesktopOperation | null>(null);
   const [operationPresentation, setOperationPresentation] = useState<OperationPresentation>({ kind: 'background' });
   const [observing, setObserving] = useState(true);
+  const trustSuggestions = useTrustSuggestions(observing && Boolean(home.desktopSnapshot), `${refreshVersion}:${home.desktopSnapshot?.catalog.plans.map(p => `${p.agent_plan_id}:${p.head.head_revision}`).join(',') ?? ''}`, page === 'home');
   const [operationRecoveryPending, setOperationRecoveryPending] = useState(false);
   const [pollingRevision, setPollingRevision] = useState(0);
   const [operationError, setOperationError] = useState('');
@@ -172,6 +180,7 @@ export function DesktopApp() {
 
   const serviceStatus = deriveHomeServiceStatus(home.reads.service);
   const startupFailure = home.startup?.state === 'failed' ? home.startup : null;
+  const startupMessage = startupFailureText(startupFailure?.code, startupFailure?.storage_recovery, language, 'macos');
   const upgradePhase = home.startup?.state === 'starting' ? home.startup.upgrade_phase : undefined;
   const upgradePhaseText = upgradePhase ? ({
     source_check: language === 'zh' ? '正在校验存储格式' : 'Checking storage format',
@@ -306,9 +315,24 @@ export function DesktopApp() {
     setOperationError('');
   }, [home.desktopSnapshot?.pending?.idempotency_key, home.desktopSnapshot?.pending?.operation_id, operation]);
 
+  // The trial wizard is a full page: entering it resolves the current page's editor, so while it is
+  // open its inline connection is the only model editor. Leaving follows that editor's guard too.
+  async function openTrial(intent: { modelId?: string; bindingId?: string }) {
+    const scope = editorScope(page);
+    if (scope && !await requestEditorReplacement(scope)) return;
+    setTrialIntent(intent);
+  }
+  async function leaveTrial() {
+    if (!trialIntent) return true;
+    if (!await requestEditorReplacement('models') || !await requestEditorReplacement('routing')) return false;
+    setTrialIntent(null);
+    return true;
+  }
+
   async function navigate(id: string) {
     if (!navigation.some(item => item.id === id)) return;
     setNotice('');
+    if (!await leaveTrial()) return;
     await openPageSafely(id as Page);
   }
 
@@ -501,6 +525,43 @@ export function DesktopApp() {
     }
   }
 
+  async function reviewTrustAction(planId: string, branchId: string) {
+    if (trustSuggestions.status !== 'ready') return;
+    const report = trustSuggestions.plans.find(p => p.plan_id === planId);
+    const plan = home.desktopSnapshot?.catalog.plans.find(p => p.agent_plan_id === planId);
+    const branch = report?.branches.find(b => b.branch_id === branchId);
+    if (!plan || !report || !branch) return;
+    if (report.active_revision !== plan.agent_plan_revision) {
+      await showRouting({ key: `trust/${randomId()}`, plan, initialView: 'performance' }); return;
+    }
+    const suggestion = branch.suggestion;
+    if (suggestion.kind === 'return_to_previous_routing' && report.previous_routing?.length) {
+      setAgentIntent({ key: `agents/${randomId()}`, agentId: report.previous_routing[0].agent });
+      await openPageSafely('agents'); return;
+    }
+    if (suggestion.kind === 'explore_division') {
+      await showRouting({ key: `division/${randomId()}`, plan, initialView: 'performance', initialDivisionBranch: branchId }); return;
+    }
+    if ('threshold_millis' in suggestion) {
+      let authoring;
+      try {
+        const options = await invoke<Options>('plan_editor_options', { input: { authoring: { plan_id: planId }, include_unavailable: true } });
+        if (!options.authoring || options.authoring.expected_head_revision !== plan.head.head_revision) throw Error('CHANGE_PREVIEW_STALE');
+        authoring = options.authoring;
+      } catch { await showRouting({ key: `trust/${randomId()}`, plan, initialView: 'performance' }); return; }
+      const editor = structuredClone(authoring.editor);
+      if (editor.mode === 'smart_saving' && branchId === 'smart_saving') editor.smart.judgment.degree.simple_threshold_millis = suggestion.threshold_millis;
+      else {
+        const selected = editor.branch_routing?.branches.find(b => b.id === branchId);
+        if (!selected || !editor.branch_routing) return;
+        selected.judgment = structuredClone(selected.judgment ?? editor.branch_routing.judgment);
+        selected.judgment.degree.simple_threshold_millis = suggestion.threshold_millis;
+      }
+      await showRouting({ key: `trust/${randomId()}`, plan, initialContent: editor }); return;
+    }
+    await showRouting({ key: `trust/${randomId()}`, plan });
+  }
+
   async function handleHomeAction(action: HomeAction) {
     if (action.kind === 'retry-read') {
       void home.refreshDomain(action.domain);
@@ -545,7 +606,7 @@ export function DesktopApp() {
     }
     if (action.kind === 'open-plan') {
       const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === action.planId);
-      if (plan) showRouting({ key: plan.agent_plan_id, plan });
+      if (plan) showRouting({ key: plan.agent_plan_id, plan, initialView: action.performance ? 'performance' : 'configuration' });
       else setNotice(text.targetMissing);
       return;
     }
@@ -619,46 +680,55 @@ export function DesktopApp() {
       }}>
         <div className="window-controls" data-tauri-drag-region aria-hidden="true" />
         <div className="titlebar-main" data-tauri-drag-region>
-          <div className="window-title"><span>{text.pages[page]}</span></div>
+          <div className="window-title"><span>{trialOpen ? (language === 'zh' ? '试用新模型' : 'Try a new model') : text.pages[page]}</span></div>
         </div>
       </header>
       <HomeNavigation
         language={language}
         items={navigation}
         current={page}
+        routingAttention={trustSuggestions.plans.length > 0}
         serviceLabel={navigationLabel}
         serviceReady={serviceOperational}
         onNavigate={id => void navigate(id)}
-        onOpenSettings={() => void openPageSafely('settings')}
+        onOpenSettings={() => void (async () => { if (await leaveTrial()) await openPageSafely('settings'); })()}
       />
       <main className="main">
         <HostNotices language={language} />
         {notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="info" /><span>{notice}</span></div></div>}
         {upgradePhaseText && <div className="callout" role="status" aria-live="polite"><UiIcon name="info" /><div><strong>{upgradePhaseText}</strong><p>{language === 'zh' ? '请等待升级完成；请保留原数据与完整安装包。' : 'Wait for the upgrade to finish. Keep the original data and complete installation package.'}</p></div></div>}
-        {startupFailure && <div className="callout bad" role="alert" data-error-code={startupFailure.code}>
+        {startupFailure && <div className="callout bad startup-recovery" role="alert" data-error-code={startupFailure.code}>
           <UiIcon name="warning" />
           <div>
             <strong>{language === 'zh' ? '本机服务启动失败' : 'Local service failed to start'}</strong>
-            <p>{startupFailure.code === 'DAEMON_UPGRADE_SOURCE_UNSUPPORTED'
-                ? (language === 'zh' ? '此数据格式尚无经过验证的升级与恢复路径。请保留原数据并使用对应旧版本，勿清空目录重试。' : 'This data format has no verified upgrade and recovery path. Keep the data and use its matching previous version.')
-              : startupFailure.backup_directory
-              ? (language === 'zh' ? '请保留当前数据目录，按升级备份中的《恢复说明.md》恢复整组数据，并覆盖安装说明指定的旧版本。恢复会舍弃备份之后的新数据。' : 'Keep the current data directory. Follow the recovery guide in the upgrade backup to restore the complete data set and install the specified previous version. Changes made after the backup will be lost.')
-              : (language === 'zh' ? `启动阶段失败（${startupFailure.code ?? 'STARTUP_FAILED'}）。请保留现有数据，打开恢复目录查看日志并备份。` : `Startup failed (${startupFailure.code ?? 'STARTUP_FAILED'}). Keep the existing data; open the recovery directory to inspect logs and back it up.`)}</p>
-            {startupFailure.backup_directory && <p>{language === 'zh' ? '升级备份：' : 'Upgrade backup: '}{startupFailure.backup_directory}</p>}
+            <p>{startupMessage.reason}</p>
+            <p>{startupMessage.instructions}</p>
+            {startupMessage.backupBatch && <div className="recovery-location">
+              <p><strong>{language === 'zh' ? '已校验的原批次：' : 'Verified original batch: '}</strong><code>{startupMessage.backupBatch}</code></p>
+              <p><strong>{language === 'zh' ? '恢复目录：' : 'Recovery directory: '}</strong><code>{startupMessage.backupDirectory}</code></p>
+              <p>{startupMessage.locationHint}</p>
+            </div>}
             {startupFailure.recovery_available && <button className="btn" type="button" onClick={() => {
               void invoke('open_startup_recovery_directory').catch(() => setNotice(language === 'zh' ? '无法安全打开恢复目录，请检查目录权限后重试。' : 'The recovery directory could not be opened safely. Check its permissions and try again.'));
-            }}>{startupFailure.backup_directory ? (language === 'zh' ? '打开升级备份与恢复说明' : 'Open upgrade backup and recovery guide') : (language === 'zh' ? '打开恢复目录' : 'Open recovery directory')}</button>}
+            }}>{startupFailure.backup_directory ? (language === 'zh' ? '查看保留的恢复材料与说明' : 'Inspect preserved recovery material and guide') : (language === 'zh' ? '打开数据目录' : 'Open data directory')}</button>}
+            <button className="btn" type="button" onClick={() => {
+              void invoke('open_diagnostic_directory').catch(() => setNotice(language === 'zh' ? '无法安全打开诊断目录，请保留数据并联系支持。' : 'The diagnostic directory could not be opened safely. Keep your data and contact support.'));
+            }}>{language === 'zh' ? '打开诊断目录' : 'Open diagnostics'}</button>
           </div>
         </div>}
 
-        <div hidden={page !== 'home'}><Home
+        {trialIntent && <div className="trial-page-host"><TrialQuickStart onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)} snapshot={home.desktopSnapshot} operation={operation} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); await home.refreshAll(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
+        <div hidden={trialOpen || page !== 'home'}><Home
             language={language}
             reads={home.reads}
             operation={homeOperation}
+            trustSuggestions={trustSuggestions}
+            onTrustAction={(plan, branch) => void reviewTrustAction(plan, branch)}
+            newModels={<NewModels language={language} mutable={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)} active={page === 'home'} plans={home.desktopSnapshot?.catalog.plans ?? []} refreshVersion={refreshVersion} onTry={modelId => void openTrial({ modelId })} onOpenPlan={planId => { const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId); if (plan) void showRouting({ key: `models/${randomId()}`, plan, initialView: 'performance' }); }} />}
             hasTasks={taskRead.status === 'ready' && taskRead.tasks.length > 0}
             onAction={handleHomeAction}
           /></div>
-        {visited.has('models') && <div hidden={page !== 'models' || modelTab !== 'general'}><ModelManagementPage
+        {visited.has('models') && <div hidden={trialOpen || page !== 'models' || modelTab !== 'general'}><ModelManagementPage
             key={modelIntent.key}
             language={language}
             active={page === 'models' && modelTab === 'general'}
@@ -678,9 +748,10 @@ export function DesktopApp() {
               const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId);
               if (plan) void showRouting({ key: plan.agent_plan_id, plan });
             }}
+            onTryModel={(modelId, bindingId) => void openTrial({ modelId, bindingId })}
             onCreatePlan={bindingId => void showRouting({ key: `routing/${randomId()}`, initialBindingId: bindingId })}
           /></div>}
-        {visited.has('models') && <div hidden={page !== 'models' || modelTab !== 'decisions'}><DecisionServicesPage
+        {visited.has('models') && <div hidden={trialOpen || page !== 'models' || modelTab !== 'decisions'}><DecisionServicesPage
           language={language} active={page === 'models' && modelTab === 'decisions'}
           mutable={!!home.desktopSnapshot?.trusted_authority && !!home.desktopSnapshot?.service.mutation_available}
           tabs={modelTabs} intent={decisionIntent}
@@ -690,7 +761,7 @@ export function DesktopApp() {
           onReturn={returningToRoute ? () => void openPageSafely('routing') : undefined}
           onUse={returningToRoute ? useDecisionInRoute : undefined}
         /></div>}
-        {visited.has('routing') && <div hidden={page !== 'routing'}><RoutingPage
+        {visited.has('routing') && <div hidden={trialOpen || page !== 'routing'}><RoutingPage
             key={routingIntent.key}
             language={language}
             active={page === 'routing'}
@@ -702,13 +773,15 @@ export function DesktopApp() {
             busy={refreshing}
             onOpenServices={addDecisionForRoute}
             initialEditor={routingIntent.editor}
+            suggestionPlanIds={trustSuggestions.plans.map(p => p.plan_id)}
+            onTryModel={() => void openTrial({})}
             notice={routingIntent.notice}
             onRefresh={async () => { setObserving(true); await home.refreshDesktop(); setRefreshVersion(v => v + 1); }}
             onOpenAgent={agentId => { void (async () => { if (!await allowPageChange('agents')) return; setAgentIntent({ key: `agents/${randomId()}`, agentId }); openPage('agents'); })(); }}
             onOpenSession={(sessionId, requestId) => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId, requestId, returnToQuality: true }); openPage('sessions'); })(); }}
             onOperation={value => acceptOperation(value, { kind: 'routing' })}
           /></div>}
-        {visited.has('agents') && <div hidden={page !== 'agents'}><Agents
+        {visited.has('agents') && <div hidden={trialOpen || page !== 'agents'}><Agents
             key={agentIntent.key}
             language={language}
             active={page === 'agents'}
@@ -741,7 +814,7 @@ export function DesktopApp() {
               })();
             }}
           /></div>}
-        {visited.has('sessions') && <div hidden={page !== 'sessions'}><Sessions
+        {visited.has('sessions') && <div hidden={trialOpen || page !== 'sessions'}><Sessions
             key={sessionIntent.key}
             active={page === 'sessions'}
             initialSession={sessionIntent.sessionId ?? null}
@@ -751,7 +824,7 @@ export function DesktopApp() {
             language={language}
             onOpenAgents={() => void openPageSafely('agents')}
           /></div>}
-        <div hidden={page !== 'settings'}><SettingsPage
+        <div hidden={trialOpen || page !== 'settings'}><SettingsPage
           active={page === 'settings'}
           language={language}
           languagePreference={preferences.languagePreference}

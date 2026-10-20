@@ -1,0 +1,19 @@
+{
+  "$id": "hiroute://contracts/cli/model-feed-remove.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "accepted_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "also_disable_retrieval": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "accepted_digest",
+    "also_disable_retrieval"
+  ],
+  "type": "object"
+}

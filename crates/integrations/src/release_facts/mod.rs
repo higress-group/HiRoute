@@ -98,6 +98,7 @@ impl TrustedReleaseCatalog {
             model_data_digest,
             release_facts: manifest,
             current_release_model_data: data,
+            feed_facts: None,
         })
     }
 }

@@ -5,7 +5,7 @@ import { ModelManagementPage } from '../../../src/product/ModelManagementPage';
 import { PresentationRoot } from '../../../src/ui';
 import type { ManagementSnapshot } from '../../../src/features/models/types';
 import type { SubscriptionCandidate, SubscriptionCheckResult } from '../../../src/features/subscriptions/types';
-import { readyManagement } from './product-fixtures';
+import { idleModelFeedStatus, readyManagement } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
 const pending: SubscriptionCandidate = {
@@ -74,6 +74,7 @@ mockIPC(async (command, payload) => {
     case 'prepare_discovered_model_connection': return prepared;
     case 'preview_compute_save': return { spec: { desired_state: args.change }, accept_digest: 'sha256:component', expected_revisions: control.management.revisions };
     case 'apply_compute_save': return { operation: saveOperation };
+    case 'model_feed_status': return structuredClone(idleModelFeedStatus);
     case 'get_compute_save_result': return { disposition: 'saved', source_id: control.management.sources[0]?.source_id };
     default: throw new Error(`Unexpected component command: ${command}`);
   }

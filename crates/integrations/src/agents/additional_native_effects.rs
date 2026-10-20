@@ -145,6 +145,7 @@ fn stage(
         Some("agent_qoder_default") => AgentKindV1::Qoder,
         Some("agent_pi_default") => AgentKindV1::Pi,
         Some("agent_dsh_default") => AgentKindV1::DeepseekHarness,
+        Some("agent_opencode_default") => AgentKindV1::OpenCode,
         _ => return Err(error(PortErrorCode::InvalidData, "additional.native.kind")),
     };
     let edit = additional_native::configure(

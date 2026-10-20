@@ -12,7 +12,7 @@ export function ConnectionDirectory({ options, loading, language, free, onSelect
   language: 'zh' | 'en';
   free: boolean;
   onSelect: (option: ComputeConnectionOption) => void;
-  onCustom: () => void;
+  onCustom?: () => void;
   onReload: () => void;
 }) {
   const zh = language === 'zh';
@@ -55,6 +55,6 @@ export function ConnectionDirectory({ options, loading, language, free, onSelect
       <ProviderIcon optionId={item.products[0].option.connection_option_id} language={language} /><strong>{item.name}</strong><span>{item.products.length > 1 ? (zh ? `${item.products.length} 种接入方式` : `${item.products.length} options`) : billingLabel(item.products[0].option.billing_class)}</span>
     </button>)}</div> : <div className="connection-directory-empty" role="status"><p>{options.length ? (zh ? '没有找到匹配的服务' : 'No matching service') : (zh ? '暂时无法读取服务目录' : 'The service directory is unavailable')}</p>{options.length ? <button type="button" className="btn" onClick={() => { setQuery(''); setBilling('all'); }}>{zh ? '清除筛选' : 'Clear filters'}</button> : <button type="button" className="btn" onClick={onReload}>{zh ? '重新读取' : 'Reload'}</button>}</div>}
     {(query || billing !== 'all') && <p className="field-help" role="status">{zh ? `显示 ${visible.length} / ${directory.length} 家供应商` : `Showing ${visible.length} of ${directory.length} providers`}</p>}
-    {!free && <button className="connection-custom-entry" type="button" onClick={onCustom}><UiIcon name="plus" /><span><strong>{zh ? '自定义 API' : 'Custom API'}</strong><span>{zh ? '连接代理服务、本地模型或其他兼容服务' : 'Connect a proxy, local models or another compatible service'}</span></span><UiIcon name="chevronRight" /></button>}
+    {!free && onCustom && <button className="connection-custom-entry" type="button" onClick={onCustom}><UiIcon name="plus" /><span><strong>{zh ? '自定义 API' : 'Custom API'}</strong><span>{zh ? '连接代理服务、本地模型或其他兼容服务' : 'Connect a proxy, local models or another compatible service'}</span></span><UiIcon name="chevronRight" /></button>}
   </section>;
 }

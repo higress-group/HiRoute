@@ -291,6 +291,27 @@ $tasks=@(Get-ScheduledTask | Where-Object {
     return json.loads(ps(script))
 
 
+def admit_test_profile(request, home, localappdata):
+    # These native ACL cases create only tempfile-owned artifacts. They can share
+    # a logged-on account with an installed product without touching its profile.
+    artifact_cases = {
+        'windows_artifact_restart_restores_original_content_and_native_acl',
+        'windows_acl_change_loses_compensation_ownership_even_with_equal_content',
+        'windows_backup_authentication_binds_native_permission_facts',
+        'windows_owned_directory_cleanup_preserves_user_additions_and_replacements',
+    }
+    prefix = 'control::windows_artifacts_tests::'
+    if (request['binary'] == 'hiroute_local_storage.exe' and not request['ignored']
+            and request['case'] in {prefix + name for name in artifact_cases}):
+        return 'temporary_artifact_component'
+    # Never manufacture HOME or remove an existing installation to make a gate pass.
+    for path in (localappdata / 'HiRoute/cli', home / '.local/share/hiroute/standalone.json',
+                 home / '.local/bin/hiroute.exe'):
+        if path.exists():
+            raise ValueError('Disposable installed-product gate found an existing installation')
+    return 'disposable_installation_profile'
+
+
 def worker(request):
     config = request['config']
     root = plain(config['root'])
@@ -403,12 +424,8 @@ def worker(request):
             result.update(passed=True, assessment='preparation_only', archival=archived,
                           inspection_sha256=digest(parent / 'result.json'))
             return 0
-        # Never manufacture HOME or remove an existing installation to make a gate pass.
         home = Path.home()
-        for path in (Path(os.environ['LOCALAPPDATA']) / 'HiRoute/cli',
-                     home / '.local/share/hiroute/standalone.json', home / '.local/bin/hiroute.exe'):
-            if path.exists():
-                raise ValueError('Disposable installed-product gate found an existing installation')
+        result['execution_scope'] = admit_test_profile(request, home, Path(os.environ['LOCALAPPDATA']))
         if (request['binary'] == 'windows_desktop.exe' and
                 request['case'] == 'actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data'):
             profile_helper(request).require_fresh_nsis_packages(home)
@@ -448,7 +465,8 @@ def worker(request):
                     child.wait(timeout=30)
                     raise TimeoutError('Whole test process exceeded its watchdog')
                 diagnostics = Path(os.environ['LOCALAPPDATA']) / 'HiRoute/cli/diagnostics'
-                for path in diagnostics.rglob('*.jsonl'):
+                for path in (diagnostics.rglob('*.jsonl') if
+                             result['execution_scope'] == 'disposable_installation_profile' else ()):
                     try:
                         if path.stat().st_size <= 8 * 1024 * 1024:
                             name = hashlib.sha256(str(path.relative_to(diagnostics)).encode()).hexdigest()[:16]

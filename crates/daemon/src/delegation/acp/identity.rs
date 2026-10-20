@@ -12,6 +12,7 @@ pub enum AcpNativeIdentityContract {
     ClaudeSessionV1,
     QoderSessionV1,
     DshSessionV1,
+    OpenCodeSessionV1,
 }
 
 impl AcpNativeIdentityContract {
@@ -26,7 +27,8 @@ impl AcpNativeIdentityContract {
             Self::CodexThreadV1
             | Self::ClaudeSessionV1
             | Self::QoderSessionV1
-            | Self::DshSessionV1 => {
+            | Self::DshSessionV1
+            | Self::OpenCodeSessionV1 => {
                 if !valid_id(acp_id) {
                     return Err(DelegationErrorV1::ProtocolFailed);
                 }
@@ -44,7 +46,8 @@ impl AcpNativeIdentityContract {
             Self::CodexThreadV1
             | Self::ClaudeSessionV1
             | Self::QoderSessionV1
-            | Self::DshSessionV1 => {
+            | Self::DshSessionV1
+            | Self::OpenCodeSessionV1 => {
                 valid_id(&binding.acp_session_id)
                     && binding.native_session_id.as_deref() == Some(binding.acp_session_id.as_str())
             }

@@ -798,7 +798,8 @@
                 "claude_code",
                 "qoder_cli",
                 "pi",
-                "deepseek_harness"
+                "deepseek_harness",
+                "opencode"
               ]
             },
             "protocol": {

@@ -194,6 +194,40 @@ pub(super) fn decode_succeeded_agent(
 }
 
 impl ControlStore {
+    /// Best-effort historical candidates for observation attribution only. The caller must
+    /// still prove every current managed publication grant from the returned operations.
+    /// This does not relax the strict journal readers used for execution or recovery.
+    pub fn agent_attribution_recovery_candidates(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> PortResult<(Vec<SucceededAgentOperationV1>, u64)> {
+        let connection = self.connection.borrow();
+        let mut statement = connection
+            .prepare(
+                "SELECT operation_json FROM operations WHERE workspace_id=?1
+             AND operation_kind='ApplyAgentConnectionChange' AND state='succeeded'
+             ORDER BY rowid DESC",
+            )
+            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.query"))?;
+        let rows = statement
+            .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
+            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.query"))?;
+        let mut verified = Vec::new();
+        let mut rejected = 0_u64;
+        for row in rows {
+            let encoded =
+                row.map_err(|_| port(PortErrorCode::Corrupt, "control.agent-read.row"))?;
+            match decode_succeeded_agent(&connection, &encoded) {
+                Ok(operation) => verified.push(operation),
+                Err(error) if error.code == PortErrorCode::Corrupt => {
+                    rejected = rejected.saturating_add(1);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Ok((verified, rejected))
+    }
+
     pub fn succeeded_agent_operations_for_kind(
         &self,
         workspace: &WorkspaceId,

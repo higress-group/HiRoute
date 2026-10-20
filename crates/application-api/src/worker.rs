@@ -132,6 +132,7 @@ pub fn plan_worker_dependency_selection(
         WorkerHarnessV1::ClaudeCode => "claude_code",
         WorkerHarnessV1::QoderCli => "qoder_cli",
         WorkerHarnessV1::Pi => "pi",
+        WorkerHarnessV1::OpenCode => "opencode",
         WorkerHarnessV1::DeepseekHarness => "deepseek_harness",
     };
     let spec = ChangeSpecV1 {
@@ -257,7 +258,7 @@ impl WorkerDependenciesViewV1 {
             .collect::<BTreeSet<_>>();
         self.schema == WORKER_DEPENDENCIES_VIEW_SCHEMA_V1
             && !self.selection_revisions.is_empty()
-            && self.selection_revisions.len() <= 5
+            && self.selection_revisions.len() <= 6
             && revisions.len() == self.selection_revisions.len()
             && selections.len() == self.selected.len()
             && self.selected.iter().all(|selection| {
@@ -269,7 +270,7 @@ impl WorkerDependenciesViewV1 {
                 )
                 .is_ok()
             })
-            && self.candidates.len() <= 5 * 64
+            && self.candidates.len() <= 6 * 64
             && self.candidates.iter().all(|candidate| {
                 absolute_path(&candidate.path)
                     && candidate
@@ -378,12 +379,13 @@ pub struct WorkerExecutorAvailabilityListV1 {
 impl WorkerExecutorAvailabilityListV1 {
     pub fn valid(&self) -> bool {
         self.schema == WORKER_EXECUTOR_AVAILABILITY_SCHEMA_V1
-            && self.executors.len() == 5
+            && self.executors.len() == 6
             && self.executors[0].harness == WorkerHarnessV1::CodexCli
             && self.executors[1].harness == WorkerHarnessV1::ClaudeCode
             && self.executors[2].harness == WorkerHarnessV1::QoderCli
             && self.executors[3].harness == WorkerHarnessV1::Pi
             && self.executors[4].harness == WorkerHarnessV1::DeepseekHarness
+            && self.executors[5].harness == WorkerHarnessV1::OpenCode
             && self
                 .executors
                 .iter()
@@ -1196,6 +1198,7 @@ mod tests {
                 executor(WorkerHarnessV1::QoderCli),
                 executor(WorkerHarnessV1::Pi),
                 executor(WorkerHarnessV1::DeepseekHarness),
+                executor(WorkerHarnessV1::OpenCode),
             ],
         };
         assert!(response.valid());

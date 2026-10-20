@@ -17,6 +17,8 @@ pub struct BorrowedNativeContext {
     pub home: PathBuf,
     pub config_root: PathBuf,
     pub workspace: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opencode: Option<hiroute_integrations::OpenCodeNativeContext>,
 }
 
 #[derive(Eq, PartialEq, Serialize, Deserialize)]
@@ -50,6 +52,7 @@ impl TaskSessionRoot {
             home: canonical_context_path(home, false)?,
             config_root: canonical_context_path(config_root, true)?,
             workspace: canonical_context_path(workspace, false)?,
+            opencode: None,
         };
         if context.config_root.starts_with(&self.path) {
             return Err(DelegationErrorV1::InvalidArguments);
@@ -69,6 +72,60 @@ impl TaskSessionRoot {
     /// format. Malformed, replaced or mismatched metadata never selects a recovery reader.
     pub fn borrowed_context(&self) -> Result<Option<BorrowedNativeContext>, DelegationErrorV1> {
         read_context(&self.path, self.harness).map(|value| value.map(|value| value.context))
+    }
+
+    pub fn bind_opencode_context(
+        &self,
+        native: &hiroute_integrations::OpenCodeNativeContext,
+        workspace: &Path,
+    ) -> Result<(), DelegationErrorV1> {
+        if !self.newly_created || self.harness != WorkerHarnessV1::OpenCode {
+            return Err(DelegationErrorV1::Conflict);
+        }
+        let mut native = native.clone();
+        native.home = canonical_context_path(&native.home, false)?;
+        for root in [
+            &mut native.config_root,
+            &mut native.data_root,
+            &mut native.cache_root,
+            &mut native.state_root,
+        ] {
+            *root = canonical_context_path(root, true)?;
+        }
+        if let Some(root) = &mut native.extra_config_root {
+            *root = canonical_context_path(root, true)?;
+        }
+        // Files are selectors, not directories. Resolve their existing parent prefix only.
+        for file in std::iter::once(&mut native.database).chain(native.config_file.iter_mut()) {
+            let name = file
+                .file_name()
+                .ok_or(DelegationErrorV1::InvalidArguments)?
+                .to_owned();
+            *file = canonical_context_path(
+                file.parent().ok_or(DelegationErrorV1::InvalidArguments)?,
+                true,
+            )?
+            .join(name);
+        }
+        validate_opencode_paths(&native, &self.path)?;
+        let context = BorrowedNativeContext {
+            home: native.home.clone(),
+            config_root: native.config_root.clone(),
+            workspace: canonical_context_path(workspace, false)?,
+            opencode: Some(native),
+        };
+        if context.config_root.starts_with(&self.path) {
+            return Err(DelegationErrorV1::InvalidArguments);
+        }
+        write_owned_json(
+            &self.path,
+            CONTEXT_FILE,
+            &ContextDescriptor {
+                version: 2,
+                harness: self.harness,
+                context,
+            },
+        )
     }
 
     /// Match the task's persisted ACP identity before attempting Continue. For borrowed Codex/Qoder,
@@ -122,6 +179,7 @@ pub(super) fn read_context(
                             WorkerHarnessV1::QoderCli
                                 | WorkerHarnessV1::Pi
                                 | WorkerHarnessV1::DeepseekHarness
+                                | WorkerHarnessV1::OpenCode
                         ) =>
                 {
                     Ok(None)
@@ -133,10 +191,22 @@ pub(super) fn read_context(
         Ok(_) => {}
     }
     let descriptor: ContextDescriptor = read_owned_json(root, CONTEXT_FILE)?;
-    if descriptor.version != 1 || descriptor.harness != harness {
+    if descriptor.harness != harness
+        || if harness == WorkerHarnessV1::OpenCode {
+            descriptor.version != 2 || descriptor.context.opencode.is_none()
+        } else {
+            descriptor.version != 1 || descriptor.context.opencode.is_some()
+        }
+    {
         return Err(DelegationErrorV1::ResumeUnavailable);
     }
     let context = &descriptor.context;
+    if let Some(native) = &context.opencode {
+        if native.home != context.home || native.config_root != context.config_root {
+            return Err(DelegationErrorV1::ResumeUnavailable);
+        }
+        validate_opencode_paths(native, root)?;
+    }
     for (path, missing) in [
         (&context.home, false),
         (&context.config_root, true),
@@ -223,6 +293,18 @@ fn verify_borrowed_history(
     native_session_id: &str,
 ) -> Result<(), DelegationErrorV1> {
     validate_session_id(native_session_id)?;
+    if context.harness == WorkerHarnessV1::OpenCode {
+        let native = context
+            .context
+            .opencode
+            .as_ref()
+            .ok_or(DelegationErrorV1::ResumeUnavailable)?;
+        let metadata = std::fs::symlink_metadata(&native.database)
+            .map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(DelegationErrorV1::ResumeUnavailable);
+        }
+    }
     if context.harness == WorkerHarnessV1::Pi {
         pi_transcript(root, context, native_session_id)?;
     }
@@ -418,3 +500,58 @@ fn write_owned_json<T: Serialize + DeserializeOwned + PartialEq>(
 #[cfg(test)]
 #[path = "native_history_tests.rs"]
 mod tests;
+
+fn validate_opencode_paths(
+    native: &hiroute_integrations::OpenCodeNativeContext,
+    root: &Path,
+) -> Result<(), DelegationErrorV1> {
+    let invalid = || DelegationErrorV1::ResumeUnavailable;
+    native.validate().map_err(|_| invalid())?;
+    // The child appends `opencode` to each XDG selector. A canonical leaf with another name
+    // cannot be reconstructed by taking its parent; reject it on New and persisted Continue.
+    for path in [
+        &native.config_root,
+        &native.data_root,
+        &native.cache_root,
+        &native.state_root,
+    ] {
+        if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_none_or(|name| {
+                if cfg!(windows) {
+                    !name.eq_ignore_ascii_case("opencode")
+                } else {
+                    name != "opencode"
+                }
+            })
+        {
+            return Err(invalid());
+        }
+    }
+    for path in [
+        &native.home,
+        &native.config_root,
+        &native.data_root,
+        &native.cache_root,
+        &native.state_root,
+    ]
+    .into_iter()
+    .chain(native.extra_config_root.iter())
+    {
+        if path.starts_with(root)
+            || canonical_context_path(path, true).map_err(|_| invalid())? != *path
+        {
+            return Err(invalid());
+        }
+    }
+    for path in std::iter::once(&native.database).chain(native.config_file.iter()) {
+        let parent = path.parent().ok_or_else(invalid)?;
+        if path.starts_with(root)
+            || canonical_context_path(parent, true).map_err(|_| invalid())? != parent
+        {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}

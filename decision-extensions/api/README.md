@@ -54,7 +54,7 @@ A `refinement` is a further judgment within the chosen category. In current rout
 
 The payloads below come from the [canonical examples](decision-examples.json). Numbers are illustrative. Both language editions use the same payloads; the Chinese instructions and user messages are valid example input, not protocol identifiers.
 
-Smart saving submits one `ordinal` definition. The first request has no previous stage to assess, so `assessment_target` is `null`.
+Difficulty routing submits one `ordinal` definition. The first request has no previous stage to assess, so `assessment_target` is `null`.
 
 Request (save as `request.json`):
 
@@ -108,7 +108,7 @@ Return HTTP `200`, `Content-Type: application/json` and this response:
 }
 ```
 
-The extension reports a **0.93** probability for `simple`. HiRoute compares it with the plan's threshold, **0.8** by default. With no competence protection applying here, HiRoute selects the economy group. The extension does not return a group or model ID. Omit `assessment` when there is no assessment target.
+The extension reports a **0.93** probability for `simple`. HiRoute compares it with the plan's threshold, **0.8** by default. With no competence protection applying here, HiRoute selects the regular group. The extension does not return a group or model ID. Omit `assessment` when there is no assessment target.
 
 ## Request fields
 
@@ -359,7 +359,7 @@ Omit `assessment` when `assessment_target` is `null`. Preserve a valid zero scor
 | Condition | HiRoute behavior |
 | --- | --- |
 | `choice` outside the allowed set, or an invalid overall response | Decision failure; use the plan fallback described below |
-| Missing or invalid smart-saving `ordinal` probabilities | Use primary and record complexity as unavailable |
+| Missing or invalid difficulty-routing `ordinal` probabilities | Use primary and record complexity as unavailable |
 | Valid category but missing or invalid required `refinement` | Keep the category, use its primary group and record complexity as unavailable |
 | Missing, invalid or untargeted optional assessment | Do not use that assessment; a valid current decision remains usable |
 | Assessment with `partial: true` | Record partial evidence; do not trigger competence protection |
@@ -368,11 +368,11 @@ If your upstream answers complexity questions for several categories at once, co
 
 ## How HiRoute acts on the result
 
-For a category with two groups, HiRoute selects regular/economy models when the current `P(simple)` reaches the configured threshold (default **0.8**) and no applicable fresh score is below the competence floor (default **0.5**). Otherwise it selects primary. Protection requires a complete valid assessment of the actual preceding stage, matching the current category, published plan version and rubric. Saved scores are not reused as new low scores on later requests. A single-group category records competence without a primary group to upgrade to.
+For a category with two groups, HiRoute selects regular models when the current `P(simple)` reaches the configured threshold (default **0.8**) and no applicable fresh score is below the competence floor (default **0.5**). Otherwise it selects primary. Protection requires a complete valid assessment of the actual preceding stage, matching the current category, published plan version and rubric. Saved scores are not reused as new low scores on later requests. A single-group category records competence without a primary group to upgrade to.
 
 Each new user message triggers a fresh decision. Recognized tool continuations and same-turn replay inherit a frozen decision while it remains reusable; discontinuous history or a decision that cannot be inherited triggers another call. The extension should process each request without requiring the user text to change.
 
-HiRoute tries eligible models in the selected group in order. Exhausting regular models can lead to the same category's primary group; selecting primary directly stays within that group. Candidate failures do not create zero competence scores. A whole decision failure uses heuristic rules for smart saving, or the custom plan's default category with its primary group when available.
+HiRoute tries eligible models in the selected group in order. Exhausting regular models can lead to the same category's primary group; selecting primary directly stays within that group. Candidate failures do not create zero competence scores. A whole decision failure uses heuristic rules for difficulty routing, or the custom plan's default category with its primary group when available.
 
 ## Context, timeouts and call boundaries
 

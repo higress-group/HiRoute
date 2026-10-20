@@ -101,6 +101,62 @@ Installation fails if `/Applications/HiRoute.app`, `~/Applications/HiRoute.app`,
 Desktop Local Control exists. Stop and uninstall standalone before switching in the other
 direction.
 
+## Storage upgrade recovery
+
+Before replacing an installed program, the verified candidate performs read-only
+preflight. When a history-format cutover is required, the installer retains the
+complete original program/resources and installation records in private service
+state; the daemon receives that handoff directly, including under systemd.
+Current-format repair skips this archival copy and its extra space reserve.
+Repeating the exact same-version installed daemon also preserves existing handoffs
+without requiring a newer preflight helper from an older package; normal storage
+admission still runs when the service starts. Failed
+preparation removes only its unpublished copy; once the handoff may have been
+consumed, its material is retained even after later installation rollback.
+Do not delete `upgrade-packages`, `upgrade-package.json`, sealed history or
+`storage.upgrade-backups` to make room for an upgrade. Budget their disk use.
+
+If startup fails, use `hiroute service recovery --output json` even while Local
+Control is unavailable. It reports the storage-owned cause and action plus the
+startup diagnostic location. Missing packages do not authorize program-only
+downgrade. Preserve data, keys, programs and journals; follow diagnostic/support
+steps when necessary material is unavailable. A resumable batch uses the current
+program. Whole-group recovery uses that batch's `RECOVERY.md`, `恢复说明.md` and,
+when present, `PROGRAM-LOCATIONS.md`: stop the service and automatic restarts,
+preserve newer data/program separately, restore all stores/keys/Observation and
+recorded auxiliary files, then restore the matching program/resources and service
+registration at their recorded locations. Reload the manager and verify actual
+Control/Gateway readiness and a real request. Installation-command success alone
+is insufficient.
+
+Explicit headless operators may still provide the absolute complete old-package
+directory via `HIROUTE_RECOVERY_PACKAGE` on the daemon's first sealing startup.
+For systemd, first stop the failed service with `hiroute service stop --output json`.
+Run `systemctl --user edit ai.hiroute.cli.service` and add a temporary override:
+
+```ini
+[Service]
+Environment="HIROUTE_RECOVERY_PACKAGE=/absolute/path/to/verified-complete-old-package"
+```
+
+Use the actual retained package path, then run `systemctl --user daemon-reload`
+and `hiroute service start --output json`. Inspect `hiroute service recovery
+--output text` if startup still refuses. After successful cutover, remove only
+this temporary `Environment` entry, reload the manager, restart the service and
+verify actual readiness and a request. Preserve unrelated overrides; do not use
+`systemctl revert` to discard them.
+
+Set it on the foreground daemon's actual invocation when running without a manager. Exporting a variable in a shell and calling systemctl
+does not deliver it to the managed daemon. Ordinary installer upgrades use their
+protected handoff instead. Missing keys, unverified sources and unknown phases
+require preservation and diagnosis/support; repeated restarts cannot recreate them.
+The exact unchanged-program repair path does not require a new preflight protocol;
+changing program bytes requires a candidate that implements the supported checks.
+
+A format change preserves configuration, credentials and routing and seals old
+HiRoute observations. Current history/statistics start at cutover; native Agent
+history is unchanged. New current-format records survive ordinary restarts.
+
 ## Start and verify real readiness
 
 ```sh
@@ -175,7 +231,7 @@ Quickstart is read-only: it shows the current service, exact targets, reusable s
    ```
 
    Use repeated `--model-ref REF` for a subset. `--all-selectable` freezes concrete current refs; zero selectable models blocks saving. Preparation, save, provider checks and real native requests are different effects.
-3. Select returned binding IDs with `routing options --request-stdin` and `{}`. Create a fixed route with `--mode fixed_model --model BINDING_ID`, or go directly to smart saving:
+3. Select returned binding IDs with `routing options --request-stdin` and `{}`. Create a fixed route with `--mode fixed_model --model BINDING_ID`, or go directly to difficulty routing:
 
    ```sh
    hiroute routing preview --name 'Economy work' --purpose 'Routine and complex development' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route-apply.json
@@ -544,7 +600,7 @@ Query real candidates instead of hand-writing an internal binding:
 printf '{}\n' | hiroute routing options --request-stdin --output json > routing-options.json
 ```
 
-For the ordinary path, use Quickstart convenience inputs above and shared authoring defaults. The following advanced JSON example demonstrates an explicitly chosen fixed policy; its limits are not product defaults, and it is not required before smart saving:
+For the ordinary path, use Quickstart convenience inputs above and shared authoring defaults. The following advanced JSON example demonstrates an explicitly chosen fixed policy; its limits are not product defaults, and it is not required before difficulty routing:
 
 ```json
 {
@@ -1235,14 +1291,14 @@ Plans use the existing `routing preview/apply` transaction with `hiroute.plan-ed
 | `smart_saving` | `smart.classifier`, `smart.economy`, `smart.primary` and `smart.judgment` |
 | `custom_branches` | `branch_routing.classifier`, `branch_routing.branches`, `branch_routing.default_branch_id` and `branch_routing.judgment` |
 
-Smart saving and custom branches judge the group again for each new user message,
+Difficulty routing and custom branches judge the group again for each new user message,
 then prefer a valid held candidate only within that group. This is automatic.
 The optional deprecated `reselect_on_user_message` field is accepted as a no-op
 for supported older callers; new requests can omit it. Serialized legacy values
 may remain in readback to preserve sealed Plan and publication consistency.
 
 `classifier` is `{kind: "decision_service", service: <complete saved connection revision>}`
-for a decision model or custom extension. Only Smart saving may instead use
+for a decision model or custom extension. Only Difficulty routing may instead use
 `{kind: "local_rules"}`. Publication verifies the connection ID, revision and full content
 against its saved immutable version; there is no inline `rest` connection.
 

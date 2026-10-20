@@ -27,7 +27,10 @@ fn shared_management_and_collaboration_coexist_for_all_existing_agent_families()
     layout.codex_executable = executable.clone();
     layout.claude_executable = executable.clone();
     layout.qoder_executable = executable.clone();
-    layout.dsh_executable = executable;
+    layout.dsh_executable = executable.clone();
+    layout.opencode_executable = executable;
+    layout.opencode_context =
+        Some(hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap());
     let package = root.path().join("pi-package");
     private_file(&package.join("package.json"),br#"{"name":"@earendil-works/pi-coding-agent","version":"1.0.2","bin":{"pi":"dist/bundle/cli.js"}}"#);
     private_file(&package.join("dist/index.js"), b"fixture resource SDK");
@@ -71,6 +74,7 @@ fn shared_management_and_collaboration_coexist_for_all_existing_agent_families()
         SettingsAgentClass::Qoder,
         SettingsAgentClass::Pi,
         SettingsAgentClass::Dsh,
+        SettingsAgentClass::OpenCode,
     ] {
         let context = runtime.adapter.settings_context(class);
         let model = class.native_path(&runtime.adapter.scanner).unwrap();

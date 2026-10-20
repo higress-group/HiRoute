@@ -857,6 +857,7 @@ impl TransactionPlanV1 {
         change.after_selection.validated_launch()?;
         let harness = change.after_selection.harness;
         let resource = match harness {
+            crate::delegation::WorkerHarnessV1::OpenCode => "worker-dependency-selection/opencode",
             crate::delegation::WorkerHarnessV1::QoderCli => "worker-dependency-selection/qoder_cli",
             crate::delegation::WorkerHarnessV1::Pi => "worker-dependency-selection/pi",
             crate::delegation::WorkerHarnessV1::DeepseekHarness => {

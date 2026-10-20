@@ -27,6 +27,7 @@ pub(super) fn parse_dependencies_discover(
                     "claude_code" => WorkerHarnessV1::ClaudeCode,
                     "qoder_cli" => WorkerHarnessV1::QoderCli,
                     "pi" => WorkerHarnessV1::Pi,
+                    "opencode" => WorkerHarnessV1::OpenCode,
                     "deepseek_harness" => WorkerHarnessV1::DeepseekHarness,
                     _ => return Err(ErrorCode::InvalidArguments),
                 };

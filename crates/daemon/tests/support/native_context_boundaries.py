@@ -6,6 +6,7 @@ edits, deletion API, or private execution port. This entry never builds binaries
 import qoder_native_context
 import pi_native_context
 import dsh_native_context
+import opencode_native_context
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import copy
@@ -59,6 +60,9 @@ def prepare_heartbeat(fixture, role):
         'printf "%s\\n" ' + shlex.quote(receipt) + ' > ' + shlex.quote(paths['done']),
         'printf "%s\\n" ' + shlex.quote(receipt), '',
     )), True)
+    if fixture['harness']=='opencode':
+        fixture['edit']=dict(fixture['edit'],path=str(root/'native-edit.txt'),after=role+'-'+fixture['edit']['after'])
+        write_new(Path(fixture['edit']['path']),fixture['edit']['before']+'\n')
     fixture['receipt'] = receipt
     fixture['boundary'] = dict(paths, role=role, script=str(script),
                                marker='NATIVE-CONTEXT-WORKER-' + role)
@@ -67,6 +71,10 @@ def prepare_heartbeat(fixture, role):
 
 def boundary_decision(fixture, body):
     """Two source oracles reject cross-routing and execute actual native shell children."""
+    if fixture['harness']=='opencode':
+        from native_context_fixture import native_text
+        if any(signature in native_text(body).lower() for signature in ('title generator','generate a concise title','generate a short title')):
+            return decision(fixture,body)
     state = fixture['boundary']
     assert state['marker'] in json.dumps(body), 'task reached the other task source'
     results = tool_results(body, fixture['harness'])
@@ -86,6 +94,9 @@ def boundary_decision(fixture, body):
     if fixture['harness'] in ('claude', 'qoder'):
         assert 'Bash' in names, 'native Bash tool unavailable'
         name, arguments = 'Bash', {'command': command, 'timeout': 120000}
+    elif fixture['harness']=='opencode':
+        assert 'bash' in names
+        name,arguments='bash',{'command':command,'description':'Run owned heartbeat script','timeout':120000}
     elif fixture['harness'] == 'dsh':
         assert 'bash' in names
         name,arguments='bash',{'command':command,'description':'Run the owned heartbeat script','timeoutMs':120000}
@@ -147,6 +158,9 @@ def assert_source_routing(upstream):
 
 
 def transcript_snapshot(fixture):
+    if fixture['harness']=='opencode':
+        root=Path(fixture['database']).parent
+        return {str(p):digest(p) for p in root.glob('opencode.db*') if p.is_file() and not p.is_symlink()}
     root = (qoder_native_context.history_directory(fixture) if fixture['harness'] == 'qoder'
             else dsh_native_context.history_directory(fixture) if fixture['harness'] == 'dsh' else pi_native_context.history_directory(fixture) if fixture['harness'] == 'pi' else Path(fixture['config']) / ('sessions' if fixture['harness'] == 'codex' else 'projects'))
     paths = list(root.rglob('*.jsonl'))
@@ -245,7 +259,7 @@ def run(repository, candidate, harness):
         install_oracle(neighbor_source, neighbor)
         neighbor_plan = publish_neighbor(product, neighbor_source)
         binary, adapter, node = selected_installation(harness)
-        if harness=='dsh':
+        if harness in ('dsh','opencode'):
             from agent_product_support import expose_native_installation
             expose_native_installation(product,harness,binary)
         configure_worker_installation(product, product.worker_work['harness'], adapter, binary, node)
@@ -283,14 +297,15 @@ def run(repository, candidate, harness):
             assert_preserved(fixture)
         cancelled = dict(target, receipt=target['boundary']['marker'])
         target_history = (qoder_native_context.cancelled_history(cancelled, runs[0]['run_id'])
-                          if harness == 'qoder' else dsh_native_context.cancelled_history(cancelled,runs[0]['run_id'])
+                          if harness == 'qoder' else opencode_native_context.cancelled_history(cancelled,runs[0]['run_id'])
+                          if harness=='opencode' else dsh_native_context.cancelled_history(cancelled,runs[0]['run_id'])
                           if harness == 'dsh' else exact_history(cancelled))
         wait_for_resumable_task(product, runs[1]['task_id'], runs[1]['run_id'])
         neighbor_history = exact_history(neighbor)
         assert target_history[1] != neighbor_history[1], 'concurrent tasks shared a native session'
         report['native_session_ids'] = [target_history[1], neighbor_history[1]]
         for history in (target_history, neighbor_history):
-            text = Path(history[0]).read_text()
+            text = (Path(history[0]).read_bytes().decode('utf-8',errors='replace') if harness=='opencode' else Path(history[0]).read_text())
             assert all(source.token not in text for source in upstreams), 'source credential entered native history'
         report['cases'].append({'id': CASES[1], 'state': 'green'})
         report['task_ids'] = [run['task_id'] for run in runs]
@@ -329,6 +344,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('repository')
     parser.add_argument('candidate')
-    parser.add_argument('--harness', choices=('codex', 'claude', 'qoder', 'pi', 'dsh'), required=True)
+    parser.add_argument('--harness', choices=('codex', 'claude', 'qoder', 'pi', 'dsh', 'opencode'), required=True)
     args = parser.parse_args()
     run(args.repository, args.candidate, args.harness)

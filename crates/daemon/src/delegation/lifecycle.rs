@@ -215,7 +215,7 @@ pub(crate) async fn execute(
     let terminal_checkpoint = ClaudeHistoryCheckpoint::capture(&request.profile, &input)
         .map(|history| Arc::new(LiveTerminalCheckpoint::new(journal.clone(), history)));
     let startup = match startup::StartupPermit::acquire(
-        request.profile.codex_initialization_root(),
+        request.profile.native_initialization_root(),
         input.deadline,
         &input.cancellation,
     )
@@ -229,6 +229,13 @@ pub(crate) async fn execute(
     };
     // Waiting for another native initializer does not preserve stale launch authority.
     journal.before_launch()?;
+    if let Err(error) = request
+        .profile
+        .validate_native_initialization(matches!(&input.session, super::acp::AcpSessionStart::New))
+    {
+        let _ = journal.execution_failed(error);
+        return Err(error);
+    }
     // Dropped launch futures must finitely release acquired resources in the platform backend.
     let launch_nonce = request.launch_nonce.clone();
     let worker = tokio::select! {

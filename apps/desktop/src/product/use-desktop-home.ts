@@ -51,7 +51,7 @@ function observationRequest(view: string, query: object) {
 }
 
 export function useDesktopHome() {
-  const [startup, setStartup] = useState<{ state: 'starting' | 'ready' | 'failed'; code?: string; recovery_available: boolean; backup_directory?: string; upgrade_phase?: 'source_check' | 'backup' | 'conversion' | 'validation' | 'service_recovery' } | null>(null);
+  const [startup, setStartup] = useState<{ state: 'starting' | 'ready' | 'failed'; code?: string; storage_recovery?: unknown; recovery_available: boolean; backup_directory?: string; upgrade_phase?: 'source_check' | 'backup' | 'conversion' | 'validation' | 'service_recovery' } | null>(null);
   const [service, setService] = useState<DomainReadSlot<HomeService>>(loading);
   const [compute, setCompute] = useState<DomainReadSlot<HomeCompute>>(loading);
   const [plans, setPlans] = useState<DomainReadSlot<HomePlans>>(loading);

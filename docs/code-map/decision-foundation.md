@@ -4,7 +4,7 @@
 [Gateway map](../../crates/gateway/README.md) · [Decision API v1](../../decision-extensions/api/README.md)
 
 Built-in decision models and custom extensions supply judgments. HiRoute owns
-routing policy and execution. Smart saving uses one task scope and economy/primary
+routing policy and execution. Difficulty routing uses one task scope and regular/primary
 groups; custom routing first selects a task category, then its regular/optional
 primary group. Tool selection is [protocol documentation only](../../decision-extensions/api/decision-design.md),
 with no current runtime or product entry.
@@ -98,7 +98,11 @@ capacity pressure and stale optional writes degrade to independent routing witho
 an inherited decision or assessment target. The [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
 also verifies that the live main request can finish and continue its tools while
 observation failures leave delivered model output intact. Native identity parsing
-remains a separate boundary; this fallback does not prove subdialog isolation.
+remains a separate boundary; this fallback does not prove subdialog isolation. Message-prefix continuity is
+separate from system-instruction validity: [history entry](../../crates/gateway/src/context_hold/store.rs)
+distinguishes continuing, shortened, otherwise rewritten and unavailable checkpoints. [Turn history](../../crates/gateway/src/agent_turn_history/store.rs)
+records the opening cause on completion; [timeline projection](../../crates/observation/src/query_v2/routing_timeline/projection.rs)
+prefers it over legacy ledger inference.
 
 The planner always prefers a valid held candidate within the newly selected group,
 including an in-group backup; retired follow-up fields survive only at serialized
@@ -146,3 +150,11 @@ and [CLI entry tests](../../crates/cli/src/lib.rs) must remain aligned.
 Documentation fixtures and native windows with constructed observation records
 illustrate the product. Neither capture method proves live-provider behavior or
 answer quality; acceptance records must identify the actual revision and scenario.
+
+The session timeline uses a [read-specific selection](../../crates/domain/src/observation/routing_timeline.rs)
+to expose opening historical-protection evidence while preserving the stored decision.
+The [protection evidence guard](../../apps/desktop/src/features/trust/protection-evidence.ts)
+checks complete matching Plan, revision, time and branch scope before placing a
+released-decision count beside protected stages. Product requirements belong to
+[smart-saving routing](../../issue-spec/specs/smart-saving-routing/spec.md) and
+[session history](../../issue-spec/specs/session-history/spec.md).

@@ -42,6 +42,22 @@ enum PreparedPlan {
 }
 
 impl PreparedTransactionV1 {
+    /// A composition owner may add a current-facts fence to a sealed plan. Existing checks
+    /// always run first; this cannot replace the planner's authority or recovery validation.
+    pub fn with_current_facts_check(
+        mut self,
+        check: impl FnOnce() -> Result<(), TransactionError> + Send + 'static,
+    ) -> Self {
+        let previous = self.revalidate.take();
+        self.revalidate = Some(Box::new(move || {
+            if let Some(previous) = previous {
+                previous()?;
+            }
+            check()
+        }));
+        self
+    }
+
     pub(crate) fn for_setup(
         request: ApplyRequestV1,
         reproduced_digest: CanonicalDigest,

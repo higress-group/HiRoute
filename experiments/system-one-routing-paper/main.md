@@ -337,18 +337,18 @@ In these observed workloads, three-question routing costs about **USD 0.084–0.
 
 These amounts cover decision calls only, not executor work, dataset construction or review. Qwen runs on a subscription Token Plan and is reported in tokens; we do not derive a comparable per-request USD cost from that allowance or claim a measured dollar saving relative to Qwen. The evaluated backend identities and versions are disclosed, but this public draft does not name the hosted Jev access service, which limits exact reproduction of billing and transport conditions.
 
-### Client-observed latency and scalar consistency
+### Client-observed latency excluding connection setup (n=10 per cell)
 
-| Backend | Format | Median client latency | p95 client latency |
+| Backend | Format | Median latency | p95 latency |
 |---|---|---:|---:|
-| Jev 1.13 | Direct | 948 ms | 1,030 ms |
-| Jev 1.13 | Decomposed | 911 ms | 1,040 ms |
-| Jev 1.14 | Direct | 935 ms | 1,040 ms |
-| Jev 1.14 | Decomposed | 899 ms | 1,077 ms |
-| Qwen 3.8 Flash | Direct | 740 ms | 1,654 ms |
-| Qwen 3.8 Flash | Decomposed | 1,328 ms | 1,769 ms |
+| Jev 1.13 | Direct | 504 ms | 595 ms |
+| Jev 1.13 | Decomposed | 468 ms | 533 ms |
+| Jev 1.14 | Direct | 489 ms | 637 ms |
+| Jev 1.14 | Decomposed | 468 ms | 571 ms |
+| Qwen 3.8 Flash | Direct | 466 ms | 710 ms |
+| Qwen 3.8 Flash | Decomposed | 992 ms | 1,530 ms |
 
-This descriptive post-run table includes all 128 inputs and two repeats per cell, and p95 uses the nearest-rank definition. Jev was reached through a hosted decision API over a proxy, while Qwen used its Token Plan endpoint, so absolute differences include transport, scheduling and service effects. The sample does not show that System One is universally faster; Qwen direct has the lowest median in this campaign. The three native questions do not require serial round trips.
+### Scalar consistency
 
 Native Jev historical scalars differ by at most 0.01 from the expectations reconstructed from the displayed probabilities. Qwen's generated scalar differs by more than 0.05 in seven of 256 decomposed responses, by up to 0.7. In a post-run sensitivity check, replacing only the scalar with that expectation would change three Qwen actions in the determinate main panel, each from correct enhanced-tier protection to an incorrect standard-tier selection. The reported main results keep the supplied scalars, with no arithmetic repair, modal-grade substitution or threshold calibration. This is why generated numerical reports and native decision outputs need separate consistency checks.
 

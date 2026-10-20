@@ -836,6 +836,7 @@ mod tests {
                     unavailable(hiroute_domain::delegation::WorkerHarnessV1::QoderCli),
                     unavailable(hiroute_domain::delegation::WorkerHarnessV1::Pi),
                     unavailable(hiroute_domain::delegation::WorkerHarnessV1::DeepseekHarness),
+                    unavailable(hiroute_domain::delegation::WorkerHarnessV1::OpenCode),
                 ],
             })
         }
@@ -908,7 +909,8 @@ mod tests {
                 "claude_code",
                 "qoder_cli",
                 "pi",
-                "deepseek_harness"
+                "deepseek_harness",
+                "opencode"
             ]
         );
 

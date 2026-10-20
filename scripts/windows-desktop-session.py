@@ -5,6 +5,8 @@ Uses the installed NSIS product, Windows UI Automation and window screenshots.
 It never injects browser scripts, creates a login or changes native data roots.
 """
 import json
+import base64
+import hashlib
 import ctypes
 import os
 from pathlib import Path
@@ -457,13 +459,20 @@ def prepared_installer_replacement(request, pm, helper, activity, manifest, root
         raise ValueError('Only the exact prepared shell installation can be resumed')
     prior = manifest(root / 'bundles' / request['from_product'])
     marker = facts['marker']['record']
-    previous = helper.plain(Path(marker['install_root']))
-    if (previous != Path(pending.get('previous_package') or '') or not previous.name.endswith(prior['source_revision'][:12])
+    previous = helper.plain(Path(pending.get('previous_package') or ''))
+    if (not previous.name.endswith(prior['source_revision'][:12])
             or previous.parent != Path.home() / '.local/lib/hiroute'):
         raise ValueError('The retained previous package does not match the requested product')
     for name in ('hiroute.exe', 'hirouted.exe'):
         if helper.digest(previous / name) != prior['files'][name]['sha256']:
             raise ValueError('The retained previous product changed')
+    active=helper.plain(Path(marker['install_root']))
+    accepted=prior if active==previous else pm
+    if active.parent!=previous.parent or not active.name.endswith(accepted['source_revision'][:12]):
+        raise ValueError('The current installation marker is outside the admitted old/current pair')
+    for name in ('hiroute.exe','hirouted.exe'):
+        if helper.digest(active/name)!=accepted['files'][name]['sha256']:
+            raise ValueError('The current installation marker points at a substituted product')
     programs = helper.plain(Path(facts['programs']['path']))
     shell = helper.plain(programs / 'hiroute-shell.exe')
     if (helper.digest(shell) != pm['shell_sha256'] or pending.get('new', {}).get('hiroute-shell.exe') != pm['shell_sha256']
@@ -611,12 +620,224 @@ def admit_nsis_install(request, helper, activity, manifest, root):
         raise ValueError('Fresh Desktop installation must not adopt an existing product')
 
 
+# The shell's installer adapter permits one 600-second native install request.
+# NSIS also extracts files and runs its prepare/commit hooks outside that request.
+# Keep this specific whole-installer watchdog outside that product deadline;
+# ordinary public CLI/UI actions retain their existing bounds.
+NSIS_INSTALL_TIMEOUT = 720
+
+
+def nsis_install(installer, run, locations):
+    """Wait for the actual NSIS child and retain bounded phase/timing evidence.
+
+    Observing a committed marker is never a substitute for installer exit. On
+    timeout stop only our owned NSIS process; its product transaction remains
+    available for inspection and normal recovery, without automatic replay.
+    """
+    observed = {
+        'shell': locations['shell_state'] / 'install-pending.json',
+        'standalone': locations['data'] / 'service/install-journal.json',
+        'installation': locations['data'] / 'standalone.json',
+        'outcome': locations['shell_state'] / 'update-outcome.json',
+    }
+    started = time.monotonic()
+    evidence = dict(watchdog_seconds=NSIS_INSTALL_TIMEOUT, events=[])
+    signatures = {}
+
+    def record(final=None):
+        changed = {}
+        for name, path in observed.items():
+            try:
+                info = path.stat()
+                signature = (info.st_mtime_ns, info.st_size)
+                if signature == signatures.get(name):
+                    continue
+                signatures[name] = signature
+                value = dict(present=True, bytes=info.st_size)
+                if info.st_size <= 1024 * 1024:
+                    with path.open('rb') as source:
+                        data = source.read(1024 * 1024 + 1)
+                    try:
+                        row = json.loads(data)
+                        value.update({k: row[k] for k in ('phase', 'status')
+                                      if isinstance(row.get(k), str) and len(row[k]) <= 64})
+                    except (ValueError, TypeError):
+                        value['incomplete_read'] = True
+                changed[name] = value
+            except FileNotFoundError:
+                if signatures.get(name) != 'absent':
+                    signatures[name] = 'absent'
+                    changed[name] = dict(present=False)
+            except OSError:
+                if signatures.get(name) != 'unavailable':
+                    signatures[name] = 'unavailable'
+                    changed[name] = dict(unavailable=True)
+        if changed and len(evidence['events']) < 256:
+            evidence['events'].append(dict(elapsed_seconds=round(time.monotonic()-started, 3),
+                                           changes=changed))
+        if final is not None:
+            evidence.update(final, elapsed_seconds=round(time.monotonic()-started, 3))
+        (run / 'installer-process.json').write_text(json.dumps(evidence, indent=2), encoding='utf-8')
+
+    with (run / 'installer.stdout').open('xb') as out, (run / 'installer.stderr').open('xb') as err:
+        child = subprocess.Popen([str(installer), '/S'], stdin=subprocess.DEVNULL, stdout=out, stderr=err)
+        evidence['pid'] = child.pid
+        while True:
+            code = child.poll()
+            record()
+            if code is not None:
+                record(dict(exit_code=code, timed_out=False))
+                if code:
+                    raise subprocess.CalledProcessError(code, [str(installer), '/S'])
+                return evidence
+            if time.monotonic()-started >= NSIS_INSTALL_TIMEOUT:
+                record(dict(timed_out=True))
+                child.kill()
+                child.wait(timeout=30)
+                raise subprocess.TimeoutExpired([str(installer), '/S'], NSIS_INSTALL_TIMEOUT)
+            time.sleep(0.5)
+
+
+def failure_page_languages(run, shell, pid, cause):
+    import shutil
+    observed=ui_action(run,dict(desktop_action='snapshot'),shell,pid)
+    deadline=time.monotonic()+75
+    languages=[]
+    reasons={'locked':('另一个 HiRoute 实例','Another HiRoute instance'),
+             'unsupported_format':('这组数据的格式没有经过验证','This data format has no verified upgrade path'),
+             'installer_recovery':('安装尚未完成','Installation is incomplete')}
+    for index in range(2):
+        while True:
+            names='\n'.join(n.get('name','') for n in observed.get('nodes',[]))
+            zh,en=reasons[cause]
+            language='zh' if zh in names else 'en' if en in names else None
+            if language is not None:break
+            if time.monotonic()>=deadline:raise ValueError('The native failure page did not expose the current cause')
+            time.sleep(1)
+            observed=ui_action(run,dict(desktop_action='snapshot'),shell,pid)
+        prefix={'locked':'locked','unsupported_format':'format','installer_recovery':'installer-recovery'}[cause]
+        shutil.copyfile(run/'window.png',run/(prefix+'-'+language+'.png'))
+        shutil.copyfile(run/'ui.json',run/(prefix+'-'+language+'.json'))
+        if cause=='installer_recovery':
+            if ('SHELL_INSTALL_RECOVERY_REQUIRED' not in names
+                    or ('相同版本及构建' if language=='zh' else 'same version and build') not in names
+                    or ('寻求支持' if language=='zh' else 'obtain support') not in names
+                    or any(n.get('name') in ('重试','Try again') and not n.get('offscreen') for n in observed.get('nodes',[]))
+                    or 'RECOVERY.md' in names):
+                raise ValueError('The incomplete installation page borrowed storage advice or lost its exact repair/support path')
+        languages.append(language)
+        if index==0:
+            buttons=[n for n in observed['nodes'] if n.get('name') in ('English','中文') and n.get('type')=='ControlType.Button' and not n.get('offscreen')]
+            if len(buttons)!=1:raise ValueError('The actual failure-page language control is unavailable')
+            observed=ui_action(run,dict(desktop_action='invoke'),shell,pid,buttons[0])
+    if set(languages)!={'zh','en'}:raise ValueError('Both native failure-page languages were not observed')
+    return languages
+
+
+def startup_ui_context(request, product, pm, helper, activity, root):
+    observation = request.get('observation_run')
+    if not re.fullmatch(r'[a-f0-9]{32}',observation or ''):
+        raise ValueError('The native lock UI case requires a recent current-product inspection')
+    inspected = root/'runs'/observation
+    before_request = helper.bounded_json(inspected/'request.json')
+    before_result = helper.bounded_json(inspected/'result.json')
+    if (before_request.get('operation') != 'inspect' or before_request['product'] != request['product']
+            or not before_result.get('passed') or before_result.get('administrator') is not False
+            or before_request['config']['user'] != request['config']['user']
+            or before_request['config']['session_id'] != request['config']['session_id']
+            or time.time()-(inspected/'result.json').stat().st_mtime>3600):
+        raise ValueError('The native lock UI inspection is stale or belongs to another product/account')
+    roots,facts,shell = installed(helper,product,pm)
+    if any(Path(p.get('ExecutablePath') or '') == shell for p in activity.get('processes', [])):
+        raise ValueError('Quit the installed Desktop before the bounded native UI case')
+    install=Path(facts['marker']['record']['install_root'])
+    allowed={install/'hirouted.exe',install/'libexec/cliproxyapi.exe'}
+    task=json.loads(facts['definition']['text']).get('name','')
+    if (not re.fullmatch(r'HiRoute-[a-f0-9]{64}',task)
+            or any(Path(p.get('ExecutablePath') or '') not in allowed for p in activity.get('processes',[]))
+            or any(t.get('TaskName')!=task for t in activity.get('tasks',[]))):
+        raise ValueError('Preserve unrelated product activity before the bounded native UI fixture')
+    if not desktop_state().get('interactive'):
+        raise ValueError('The existing input desktop is unavailable; no lock fixture was created')
+    return roots,facts,shell
+
+
+def locked_startup_ui(request, run, product, pm, helper, activity, root, file_use=False):
+    """Own one bounded lock fixture, inspect both real languages, then reopen normally."""
+    import shutil
+    roots,facts,shell = startup_ui_context(request,product,pm,helper,activity,root)
+    cli = Path(facts['marker']['record']['install_root'])/'hiroute.exe'
+    def command(args,label):
+        done=subprocess.run([str(cli),*args],capture_output=True,timeout=150,creationflags=0x08000000)
+        (run/(label+'.stdout')).write_bytes(done.stdout);(run/(label+'.stderr')).write_bytes(done.stderr)
+        if done.returncode:raise ValueError('The current-product fixture command failed: '+label)
+        return json.loads(done.stdout)
+    if command(['system','status','--output','json'],'before-system').get('data',{}).get('gateway') != 'ready':
+        raise ValueError('The current Gateway must be healthy before the native lock fixture')
+    command(['service','stop','--output','json'],'fixture-stop')
+    storage=roots['state']/'storage'
+    report=helper.plain(storage/'startup-recovery.json')
+    report_before=helper.digest(report) if report.exists() else None
+    kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+    from ctypes import wintypes
+    kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+    kernel.CreateFileW.restype=wintypes.HANDLE;kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+    target=storage/('live/control.db' if file_use else 'startup.lock')
+    handle=kernel.CreateFileW(str(helper.plain(target)),0,0,None,3,0x00200000,None)
+    if handle==wintypes.HANDLE(-1).value:raise ctypes.WinError(ctypes.get_last_error())
+    child=None
+    languages=[]
+    failure=None
+    try:
+        child=subprocess.Popen([str(shell)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        time.sleep(15)
+        languages=failure_page_languages(run,shell,child.pid,'locked')
+        offline=command(['service','recovery','--output','json'],'locked-offline-recovery').get('data',{}).get('recovery',{})
+        if offline.get('cause')!='locked' or offline.get('action')!='retry_current' or offline.get('backup_batch'):
+            raise ValueError('A correctable native file-use prerequisite did not offer current-version retry')
+    except Exception as error:
+        failure=error
+    finally:
+        kernel.CloseHandle(handle)
+        if child is not None and child.poll() is None:
+            try:
+                ui_action(run,dict(desktop_action='quit'),shell,child.pid)
+                child.wait(timeout=20)
+            except Exception:
+                if child.poll() is None:child.terminate();child.wait(timeout=20)
+    recovery_file=helper.plain(storage/'startup-recovery.json')
+    unchanged=(helper.digest(recovery_file) if recovery_file.exists() else None)==report_before
+    if not file_use and not unchanged and failure is None:
+        failure=ValueError('A non-writer lock failure overwrote the previous recovery report')
+    # Follow the visible instruction: release the file use and reopen this same
+    # complete version. Keep business readiness separate from the window result.
+    reopened=subprocess.Popen([str(shell)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    try:
+        time.sleep(15)
+        ui_action(run,dict(desktop_action='snapshot'),shell,reopened.pid)
+        shutil.copyfile(run/'window.png',run/'reopened-current.png')
+        if command(['system','status','--output','json'],'reopened-system').get('data',{}).get('gateway')!='ready':
+            raise ValueError('Reopening the current version did not restore actual Gateway readiness')
+    finally:
+        if reopened.poll() is None:
+            try:ui_action(run,dict(desktop_action='quit'),shell,reopened.pid);reopened.wait(timeout=20)
+            except Exception:
+                if reopened.poll() is None:reopened.terminate();reopened.wait(timeout=20)
+    if failure is not None:raise failure
+    return dict(native_entry='real standard-user '+('current-Control file-use' if file_use else 'locked-startup')+' page and current-version reopen',languages=languages,
+                recovery_report_unchanged=unchanged,gateway_ready_after_reopen=True)
+
+
 def execute(request, run, product, pm, helper, activity, manifest, root):
     if activity.get('administrator_groups') is not False:
         raise ValueError('Native Desktop evidence requires a standard account, not a filtered administrator')
     action = request['desktop_action']
-    if action not in ('install', 'installer-resume', 'installer-quarantine', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'network-probe'):
+    if action not in ('install', 'installer-resume', 'installer-quarantine', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'):
         raise ValueError('Unknown native Desktop action')
+    if action == 'recovery-lock-ui':
+        return locked_startup_ui(request,run,product,pm,helper,activity,root)
+    if action == 'recovery-file-use-ui':
+        return locked_startup_ui(request,run,product,pm,helper,activity,root,file_use=True)
     if action == 'desktop-state':
         return dict(native_entry='read-only input desktop inspection', state=desktop_state())
     if action == 'native-files':
@@ -635,6 +856,13 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
                 files[relative] = dict(exists=True, sha256=helper.digest(path), bytes=path.stat().st_size)
             else:
                 files[relative] = dict(exists=True, inventory=helper.inventory(path))
+        # Compare these before/after an upgrade or restoration without invoking
+        # Codex in between. Calls themselves legitimately append native history.
+        for relative in ('.codex/sessions','.codex/history.jsonl'):
+            path=helper.plain(Path.home()/relative)
+            if not path.exists():files[relative]=dict(exists=False)
+            elif path.is_dir():files[relative]=dict(exists=True,inventory=helper.inventory(path))
+            else:files[relative]=dict(exists=True,sha256=helper.digest(path),bytes=path.stat().st_size)
         (run / 'native-files.json').write_text(json.dumps(files, indent=2), encoding='utf-8')
         return dict(native_entry='read-only native configuration inventory', files=files)
     if action == 'installer-resume':
@@ -646,11 +874,11 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
     if action == 'install':
         admit_nsis_install(request, helper, activity, manifest, root)
         previous = request.get('from_product')
-        with (run / 'installer.stdout').open('xb') as out, (run / 'installer.stderr').open('xb') as err:
-            done = subprocess.run([str(product / 'installer.exe'), '/S'], stdin=subprocess.DEVNULL,
-                                  stdout=out, stderr=err, timeout=150, check=True)
+        timing = nsis_install(product / 'installer.exe', run,
+                              helper.locations(Path.home(), Path(os.environ['LOCALAPPDATA'])))
         _, after, _ = installed(helper, product, pm)
-        return dict(native_entry='NSIS /S', exit_code=done.returncode, installation=after,
+        return dict(native_entry='NSIS /S', exit_code=timing['exit_code'], installation=after,
+                    elapsed_seconds=timing['elapsed_seconds'],
                     upgrade_from=previous, recovery_from=request.get('recover_product'),
                     installer_sha256=pm['files']['installer.exe']['sha256'])
     roots, facts, shell = installed(helper, product, pm)

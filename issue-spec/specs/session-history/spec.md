@@ -52,6 +52,50 @@ Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connect
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
 
+### Requirement: Managed Agent attribution uses persistent authenticated grant ownership
+
+New observation writes SHALL associate a session with an Agent only through the exact authenticated workspace, grant ID and generation mapped to a server-resolved Agent connection. The product SHALL persist that mapping from a verified connection transaction and matching publication before admitting its traffic. It SHALL remain available across reconfiguration, grant rotation, native-setting restoration and restart, so retained sessions keep their recorded Agent. Registration and receipt rebuilding SHALL NOT backfill old observations without attribution evidence. User-Agent strings, shared Plans, model aliases and client-supplied session IDs SHALL NOT establish Agent ownership.
+
+Startup attribution recovery SHALL register only verifiable ownership. Missing proof for a managed Agent grant in the current publication SHALL leave new observations unlinked and produce bounded diagnostics without blocking startup or journal recovery. A current authenticated service-completion receipt may prove ownership while the transaction's native-file tail remains pending; the exact journal and grant proofs still apply. After journal recovery completes the operation, publication restoration SHALL register the now-verifiable ownership for new sessions. Unverifiable historical connection operations SHALL be skipped with bounded diagnostics. Recovery SHALL NOT backfill unlinked historical sessions. Publication activation SHALL retain strict transaction and grant validation.
+
+A session receiving mapped grants from different Agents SHALL retain an attribution conflict and display as unlinked. Repeated or later matching evidence cannot clear the conflict. Missing mappings remain unknown. Full fact deletion or retention expiry SHALL erase the session attribution evidence with those facts; content-only deletion preserves it. Worker run relations retain their existing verified authority and semantics.
+
+#### Scenario: Reconfiguration and rotation preserve old attribution
+
+- **WHEN** a configured Agent sends a request, its grant rotates or its native settings are restored, and the observation store reopens
+- **THEN** the retained session keeps its original Agent and new mapped grants can associate new sessions without consulting the old native files.
+
+#### Scenario: Conflicting and missing grant ownership
+
+- **WHEN** two Agents' authenticated grants appear in one session, or a request has no registered mapping
+- **THEN** conflicting ownership remains unlinked across later requests and reopening, while absent evidence is not guessed from other request metadata.
+
+#### Scenario: Released connections survive startup recovery
+
+- **WHEN** a data directory created by supported v0.3.1 with Claude Code and Codex connected starts the current build, including an unrelated historical operation that cannot be verified
+- **THEN** startup succeeds, new sessions use the verified current grants to identify their Agents, and unlinked old sessions remain unlinked; missing current-grant proof produces bounded diagnostics and leaves observations unlinked without blocking startup.
+
+#### Scenario: Agent settings interrupted before service completion
+
+- **WHEN** Agent settings activation is interrupted after the target installation or active-publication commit but before its service-completion receipt is saved
+- **THEN** startup remains available to complete journal recovery, missing proof does not fabricate attribution, and subsequent restoration associates new sessions once ownership is verified; accepted managed settings complete exactly, unrelated user native files remain unchanged, and previously unlinked observations remain unlinked.
+
+#### Scenario: Committed service with a pending native-file tail
+
+- **WHEN** the service publication is committed but an independent user edit leaves the Agent's native-file tail pending
+- **THEN** startup accepts only the exact authenticated current-service receipt and journal as grant provenance, preserves the user file and pending-tail state, and does not export the unfinished connection grant; without that proof startup still permits journal recovery while attribution remains unknown.
+
+#### Scenario: Old observations and Worker relations remain unchanged
+
+- **WHEN** grant ownership is first registered, historical receipts are rebuilt, or a verified Worker run emits new observations
+- **THEN** old sessions are not retrospectively assigned an Agent and Worker request/run associations retain their existing meaning.
+
+Source Issue:
+- https://github.com/higress-group/HiRoute/issues/182
+
+Source SPEC comment:
+- https://github.com/higress-group/HiRoute/issues/182#issuecomment-6292812078
+
 ### Requirement: Captured content preserves actual request and response attribution
 
 Sessions MUST present received requests and ultimately accepted responses using
@@ -230,6 +274,11 @@ body stays unavailable and cannot be rebuilt from a score explanation. Public
 read-only facts, help/schema discovery, and cursor without content/model calls.
 Competence is stage performance, not task acceptance rate or universal model ranking.
 
+#### Scenario: Read routing evidence beside unrelated retained facts
+
+- **WHEN** a Plan-quality read includes routing observations and the workspace retains many unrelated safe facts
+- **THEN** routing-decision selection does not scan every unrelated safe body. Its result, completeness rules and existing read deadline stay unchanged. Reopening an existing store may add a rebuildable index without changing retained bytes or the schema marker; malformed retained JSON remains preserved and the affected read fails rather than claiming complete evidence.
+
 ### Requirement: Expose Hermes connection state and recorded execution models
 
 HiRoute SHALL expose the managed Hermes profile's saved connection scope/Plan/protocol and preparation/operation state through existing CLI status queries and Desktop views. Routed Hermes requests SHALL be readable through the existing public execution queries with their recorded Plan, branch and actual execution model. Saved configuration, configuration-operation state and recorded execution SHALL remain distinguishable; the current Plan or an installed adapter SHALL NOT substitute for historical execution or unobserved live conversation selection. Existing session-history attribution and query-access contracts remain authoritative.
@@ -376,6 +425,181 @@ idempotency and deletion boundaries remain effective.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235111513
+
+### Requirement: Trial evidence discloses scoring coverage and execution scope
+
+Trust reports MUST scope by Plan, revision, time and optional category. Rows retain
+execution group, exact nullable model/reasoning identity and attribution; optional
+executor grouping distinguishes the main Agent, delegated Harness and unknown.
+Mixed identity cannot be credited to a single model. Complete and partial scores
+are classified first. A stage without a score is awaiting assessment only when no
+later turn exists and its Worker task is not terminal; other unscored stages stay
+unscored. Coverage is complete scores divided by executions; competence is complete
+scores meeting their frozen floor divided by complete scores. Partial, awaiting
+and unscored stages enter coverage's denominator, not competence's denominator.
+
+Reports disclose protection triggers, availability relay, recorded request duration
+and output rate where available, contributing sessions and retained excerpts.
+Exact-row drill-down preserves null identity and optional executor filters while
+leaving the full-scope quality summary unchanged. Rolling aliases, dynamic routes
+and unknown identities state that evidence may mix provider versions. Announcements
+split earlier/day/later evidence without certifying an executed version.
+
+Executor task outcomes are a separate population: tasks first submitted within the
+selected Plan/revision/time scope, using the latest run state, including tasks with
+no execution stage. Missing latest-run evidence is unknown. Continued tasks are
+identified independently. Completion is neither competence nor delivery acceptance;
+completion without a complete score remains unscored. Different executors are not
+ranked because their task populations differ. Unavailable cost comparisons are
+explicitly unavailable, never zero or a claimed saving.
+
+The cost comparison SHALL select requests by the disclosed Plan revision, category and Regular group through retained stage identity and reuse the existing per-attempt API-equivalent calculation. Missing/nonunique Primary or saved currency and genuinely dirty/missing request projections make it unavailable until ready; known out-of-scope membership cannot block the selected scope. Partial history alone does not invalidate proven membership; request-level usage and price completeness still apply. Closed mixed/unknown/conflicting membership is an explicit gap. A request without closed-turn membership remains pending while its physical session has retained activity within five minutes; after five minutes without activity it becomes unresolved evidence, without asserting task completion. Late facts reclassify the request on the next read, including after reopen. Unresolved normal requests in the Plan/time window that cannot be ruled out of the selected scope remain in its conservative denominator without an invented revision/group. They count once as missing and excluded (excluded stage gaps are a subset of missing), prevent complete coverage and full-scope amounts/difference, and allow only paired complete-request subtotals. No compared evidence is unknown, never zero. Decision traffic remains outside this population; generic comparison and settlement meanings stay unchanged. The view SHALL disclose the conservative denominator and overlapping missing/excluded counts, and SHALL NOT imply cash savings.
+
+#### Scenario: Completed Worker without an assessment
+
+- **WHEN** a Worker succeeds but its model stage has no complete assessment
+- **THEN** task completion and unscored execution are reported separately; neither
+  supplies competence evidence for raising trust.
+
+#### Scenario: Interrupted and late trial cost evidence
+
+- **WHEN** a report contains partial capture, mixed membership and an unclosed turn beyond the inactivity bound, then receives a late closing fact
+- **THEN** it discloses conservative missing/excluded counts and paired subtotals, reclassifies late evidence without duplication and keeps genuinely dirty request projections unavailable until catch-up.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235188590
+
+### Requirement: The routing timeline re-emits late evidence without duplicates
+
+Session detail MUST show actual agent-turn selection, boundary, group, model/reasoning, probability/threshold, continuations, relays, assessments and request usage/cost beside retained conversation. New AgentTurnFinished writes SHALL record an optional opening cause, preserved across tool continuation and completion: continuing message history with an appended user message means UserMessage, independently of whether the prior decision can be inherited; fewer canonical messages than an existing comparable checkpoint means HistoryShortened; an equal or greater count with a changed prefix means HistoryRewrite; absent checkpoints (first entry, expiry, eviction, contention or disabled tracking) mean NoComparableHistory; other boundaries, including a Plan change without an appended user message, mean Other. System/developer instructions are excluded from the message count; changing only those instructions does not rewrite message history even if it invalidates a hold preference.
+
+Explicit causes override legacy hints. UserMessage displays New message. HistoryShortened displays Context rebuilt and is attributed to compaction by the owner-selected step-count heuristic. A step is one canonical request message, not a token, tool or timeline turn. Details disclose that a shorter rewind or shared-scope background/subagent request can also satisfy this heuristic. HistoryRewrite and Other remain unknown. NoComparableHistory displays New message only for the first session turn. Without the field, legacy inference displays New message for the first session turn or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. A retained tail with a known later ordinal is not the first session turn. Invalidation alone never proves compaction. Unknown headings omit the badge and details disclose the gap. Supported old bytes and authenticated digests remain readable unchanged; unreleased experimental digests are not admitted.
+
+The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools and timing SHALL NOT establish native provenance. Issue #185 separately tracks shared-history background/subagent isolation and active-turn conflicts; this repair does not infer subdialog identity or claim isolation is fixed. The legend states that a turn keeps its model to preserve cache and new messages or rebuilt context trigger fresh judgment.
+
+The opening request supplies stable display identity before completion. Late assessments and valuations update that turn. Incremental cursors MUST be authenticated and bound to reader, session, page size and retained visibility; pagination freezes fact, valuation and link positions until its changed page is consumed. Reconnect deduplicates equal content digests. Cleared or expired scope invalidates the cursor. Unknown usage/cost remains unknown; per-model currency and valuation basis are preserved.
+
+Reads retain shared authorization, a 500 ms storage deadline, and explicit retryable scope errors beyond 10,000 requests, 50,000 facts or a 1 MiB response. Cache locks cover only take/return, never database reads, projection or serialization. Visible Desktop timelines refresh every two seconds; hidden views stop polling and catch up when shown. A storage timeout stops automatic retries until explicit Retry. Busy readers quietly honor the bounded retry hint while retaining content. CLI --follow emits NDJSON through the same query, preserves terminal errors, remains interruptible while busy and retries at most three consecutive transient unavailable failures. Live and retained readers use recorded endpoint/start-time membership and the same retained transition classifier; unrelated timestamp ties stay unassigned.
+
+#### Scenario: Assessment arrives during pagination
+
+- **WHEN** an earlier turn receives a score after the first page was delivered
+- **THEN** the remaining frozen page is delivered first, followed by the updated
+  earlier turn once; reconnect cannot duplicate its unchanged projection.
+
+#### Scenario: Fresh decision on continuing history
+
+- **WHEN** an old turn without an opening-cause field has a fresh opening decision recording ContextHoldApplied or ContextHoldInvalidated
+- **THEN** the turn shows a new-message boundary; a group change is never labelled as compaction.
+
+#### Scenario: Unknown and retained-tail boundaries
+
+- **WHEN** a later turn lacks continuity evidence or only inherits a decision, including a retained tail with a known later ordinal
+- **THEN** its boundary remains unknown, its heading omits the badge and its details disclose the missing evidence.
+
+#### Scenario: Background message satisfies the same rule
+
+- **WHEN** the client appends a background message carrying fresh-decision and continuing-history evidence
+- **THEN** the new-message boundary applies with an explicit disclosure that the gateway does not establish human authorship.
+
+#### Scenario: Shorter history uses the compaction heuristic
+
+- **WHEN** the current canonical message-step count is smaller than an existing comparable checkpoint, including a compacted replacement or shorter rewind
+- **THEN** the recorded HistoryShortened cause displays Context rebuilt with compaction attribution and its limitation; equal-length or growing prefix edits and unavailable checkpoints remain unknown after the first session turn.
+
+#### Scenario: System instructions change without rewriting messages
+
+- **WHEN** the system instructions change while messages still extend the prior checkpoint
+- **THEN** message history remains continuing even if the hold preference is invalidated; an appended user message can start a new-message turn.
+
+#### Scenario: Recorded cause overrides legacy inference
+
+- **WHEN** a turn contains an explicit opening cause and an old-style ledger hint suggests another cause
+- **THEN** the explicit cause wins, remains stable through tool continuation and reopening, and absent legacy fields retain their previous canonical bytes.
+
+#### Scenario: New user message after a Plan revision
+
+- **WHEN** messages continue the prior history and append a user message after the Plan changes or without an inheritable prior decision
+- **THEN** the turn records UserMessage and displays New message while obtaining a fresh decision; a Plan change without an appended user message remains Other.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235190304
+
+### Requirement: Model performance compares a model across executing Agents
+
+For a model and reasoning configuration in scope, the model performance view SHALL be able to group its stage evidence by executing Agent. The executing Agent is the main Agent of a connected session, or the executor of a delegated task such as DeepSeek Harness, and each group SHALL name the Plan that produced it. Each group SHALL show stages, scored and unrated counts, competence rate and observed duration on the same definitions as the rest of the view, and SHALL drill down to its sessions or tasks. For a Plan with task delegation enabled, the view SHALL also show delegated task outcomes in scope: submitted, completed, failed, cancelled and continued. These SHALL use the existing task projections. Task outcomes SHALL be shown separately from competence: a completed task without a complete valid score SHALL count as unscored, not as competent, and task completion SHALL NOT be presented as delivery acceptance. An executing Agent's name does not identify its installed version, and evidence from one executing Agent SHALL NOT be presented as evidence for another. Single-group custom branches SHALL show their recorded assessments under these definitions even though they do not judge difficulty. The view SHALL state that the groups handled different tasks, and SHALL NOT rank Agents or harnesses. Unknown executing identity SHALL remain a separate group.
+
+#### Scenario: Same model in two Agents
+
+- **WHEN** DeepSeek V4.1 Flash served stages in Claude Code through a difficulty-routing Plan and in DeepSeek Harness through a delegation Plan
+- **THEN** the view shows one group per executing Agent with its Plan, rates and counts, together with the note that the tasks differ, and opening a group lists its sessions or tasks.
+
+#### Scenario: Delegated task outcomes
+
+- **WHEN** a delegation Plan's scope contains eleven tasks, of which ten completed and one was cancelled
+- **THEN** the view shows those outcome counts from the task projections, and selecting cancelled opens that task.
+
+#### Scenario: Unknown executor
+
+- **WHEN** some stages lack a recorded executing identity
+- **THEN** those stages appear in a separate unknown group and are not merged into either Agent.
+
+#### Scenario: Completed but unscored task
+
+- **WHEN** a delegated task completed and its only stage has no complete valid score
+- **THEN** the view counts the task as completed and its stage as unscored, and the competence rate does not change.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6236472910
+
+### Requirement: Routing timelines explain historical protection at the opening selection
+
+The session routing-timeline read and public CLI follow output MUST expose the opening selection's recorded historical-protection outcome, previous stage score and competence floor when available, and applicability probability when valid. The result distinguishes applied protection, released protection, protection retained because judgment was unavailable, and protection not needed. Unconsidered or unrecorded evidence remains explicit; it MUST NOT imply a release or zero probability. The lane marks released protection distinctly from an ordinary simple-task selection. Selected-turn details explain the current task's simple probability and threshold, the previous stage score and floor, and whether the earlier problem still matters, ending with the actual recorded group. The previous score comes from the opening decision, not the selected turn's later assessment. Continuations inherit the opening selection and are not additional protection decisions. Existing selection, read and follow meanings remain unchanged. This view does not alter routing, stored facts or assessment semantics. Labels use plain capability names and exclude internal protocol labels, digests and question identifiers.
+
+#### Scenario: Protection applied
+
+- **WHEN** an opening selection records simple probability 0.94 at threshold 0.90, previous score 0.30 below floor 0.50, applicability probability 0.99 and applied protection
+- **THEN** the timeline marks protection and explains that the problem still matters and this turn went to Primary
+
+#### Scenario: Protection released
+
+- **WHEN** the same simple and low-score inputs have applicability probability 0.05 and recorded released protection
+- **THEN** the lane marks released protection and explains that the problem no longer matters and Regular continued
+
+#### Scenario: Judgment unavailable
+
+- **WHEN** the record retains protection because applicability judgment was unavailable
+- **THEN** the timeline explains the unavailable judgment and retained Primary protection without inventing a probability
+
+#### Scenario: No protection and missing evidence differ
+
+- **WHEN** a record says protection was not needed, or historical-protection evidence is absent or unconsidered
+- **THEN** the view distinguishes those states and never calls missing evidence released protection
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253018980
+
+### Requirement: Long routing timelines provide a navigable overview
+
+Above the routing lanes, session detail MUST provide a compact overview with one chronological mark per retained agent turn. Marks use the same Regular and Primary colors as the lanes and identify recorded low scores or failures, protection, and released protection. An outline shows the visible lane interval and follows scrolling, resizing and newly received turns. Activating a mark scrolls its turn into the lane viewport and selects it without changing routing or calling a model. The overview stays within the supported small window and has one Tab stop with roving focus across its chronologically ordered marks. Arrow keys move focus, Home and End reach the first and last mark, and Enter or Space selects the focused turn. Each mark retains a readable accessible label. Tab leaves the overview without visiting every mark. Chronological keyboard access through the lanes remains available; the overview is not the sole accessible path to a turn. Unknown groups and unavailable evidence remain distinct. Existing live-arrival handling, explicit-selection retention and reduced-motion preferences still apply.
+
+#### Scenario: Forty-turn overview
+
+- **WHEN** a session has forty retained Regular and Primary turns with low-score, failure, protection and release evidence
+- **THEN** forty chronological marks reflect that evidence and the visible-interval outline matches the lanes
+
+#### Scenario: Navigate and resize
+
+- **WHEN** a user activates an offscreen mark and resizes to the smallest supported window
+- **THEN** the selected turn becomes visible, details match it, the outline follows the viewport and the page has no horizontal overflow
+
+#### Scenario: Keyboard and live append
+
+- **WHEN** turns arrive while the user navigates overview marks or lane controls by keyboard
+- **THEN** the overview keeps one Tab stop and its readable labels, arrow navigation and activation work, and chronological lane focus and live-follow or explicit-selection behavior remain available as matching marks are added
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253019758
 
 ## Implementation references
 

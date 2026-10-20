@@ -288,6 +288,9 @@ impl AgentModelSettingsStatusV2 {
                 *surface == AgentModelSurfaceV2::HermesCli
             }
             AgentModelSelectionV2::DshAdditional { .. } => *surface == AgentModelSurfaceV2::DshCli,
+            AgentModelSelectionV2::OpenCodeAdditional { .. } => {
+                *surface == AgentModelSurfaceV2::OpenCodeCli
+            }
             AgentModelSelectionV2::PiAdditional { .. } => *surface == AgentModelSurfaceV2::PiCli,
             AgentModelSelectionV2::QoderAdditional { .. } => {
                 *surface == AgentModelSurfaceV2::QoderCli

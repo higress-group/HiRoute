@@ -1,0 +1,22 @@
+{
+  "$id": "hiroute://contracts/cli/model-feed-settings.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "minProperties": 1,
+  "properties": {
+    "acknowledge_disclosure": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "retrieval_enabled": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    }
+  },
+  "required": [],
+  "type": "object"
+}

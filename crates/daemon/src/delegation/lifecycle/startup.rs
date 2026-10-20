@@ -1,4 +1,4 @@
-//! In-memory startup ownership for a borrowed Codex root, never a task concurrency limit.
+//! In-memory native initialization ownership, never a task concurrency limit.
 use super::*;
 use crate::delegation::acp::AcpSessionBinding;
 use std::collections::BTreeMap;

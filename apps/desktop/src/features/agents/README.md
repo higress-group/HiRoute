@@ -16,7 +16,7 @@ to their production owners and executable contracts.
 | [ecosystems.ts](ecosystems.ts) | Explicit current Agent identity, display name, brand and surface labels. Unknown discovered identities have no settings editor. |
 | [editor-state.ts](editor-state.ts) | Draft initialization, dirty comparison and local form completeness. Only a trusted first connection can preselect a sole enabled route. Existing mappings, including unavailable choices, are retained. |
 | [settings-request.ts](settings-request.ts) | Ecosystem-specific intent construction, independent model/management/collaboration restore intents, token changes that retain the saved selection, and capability-based prerequisite check selection. |
-| [AgentModelEditor.tsx](AgentModelEditor.tsx) | Explicit composition of [Codex](CodexModelEditor.tsx), [Claude](ClaudeModelEditor.tsx) and [Qoder](AdditionalModelEditor.tsx) forms and their saved-selection summary. Codex allowlist/default/native retention, Claude preset mappings and Qoder additional routes remain different concepts. |
+| [AgentModelEditor.tsx](AgentModelEditor.tsx) | Explicit composition of [Codex](CodexModelEditor.tsx), [Claude](ClaudeModelEditor.tsx) and [supplementary route](AdditionalModelEditor.tsx) forms and their saved-selection summary. Codex allowlist/default/native retention, Claude preset mappings and supplementary routes remain different concepts. |
 | [AgentSettingsFeedback.tsx](AgentSettingsFeedback.tsx) | Presentation of authoritative Preview blockers. |
 | [HermesModelEditor.tsx](HermesModelEditor.tsx), [HermesRootFields.tsx](HermesRootFields.tsx) | One Plan/protocol and explicit effective profile; root fields are shared with source scan. Automatic adapter preparation and unobserved native loading stay distinct. |
 | [collaboration-check-feedback.ts](collaboration-check-feedback.ts) | Versioned collaboration-check failures become safe login, Skill recovery and retry guidance; native output is never display text. |
@@ -25,8 +25,8 @@ to their production owners and executable contracts.
 | [mutation-feedback.ts](mutation-feedback.ts) | Submitted, pre-apply cancelled and uncertain outcomes; truthful disable/recovery messages. |
 | [Agents page](../../agents.tsx) | Snapshot refresh, selected Agent/tab, in-memory draft and mode, discard guard, native calls, Operation handoff, confirmation-dependent copy effect and task-history composition. |
 
-Qoder, Pi and DSH share the additional-route editor and explicitly selected Plan IDs
-through `qoder_additional`, `pi_additional` and `dsh_additional`. It does not
+Qoder, Pi, DSH and OpenCode share the additional-route editor and explicitly selected Plan IDs
+through `qoder_additional`, `pi_additional`, `dsh_additional` and `opencode_additional`. It does not
 edit the native default or show native catalogs, fixed-source choices or import controls.
 Hermes selects one default main-model Plan. Its management Skill has independent
 prepare/restore controls and needs no model connection or published Plan. Model
@@ -73,7 +73,10 @@ keeps the model routes. Token updates retain the saved ecosystem-specific select
 Task collaboration remains independently usable without any model connection or
 published Plan: its form submits `model: keep`. DSH configures the standard Web profile model picker; global provider shadowing is
 reported by the backend before Apply. Each selected Plan has its own provider and
-user-selected Responses/Messages protocol.
+user-selected Responses/Messages protocol. OpenCode uses its saved native model picker;
+its native default and small-model choices remain independent. Relevant native references
+are backend Preview facts: removing a referenced selector retains the draft and explains
+how to change that reference before restoring.
 
 Both model-capable status and actual
 collaboration-only status retain this path. Capability and installed-Skill checks
@@ -83,7 +86,10 @@ Context IDs bind requests and are not user-facing configuration scopes. Show onl
 readable locations already supplied by the native projection (native configuration and Skill directories/files); do not infer a path from an opaque context ID.
 The Plan editor owns its single-CLI installation selection through
 [WorkerDependencies](../WorkerDependencies.tsx); `qoder` and `qodercli` paths are presented
-as returned by discovery, without adapter or Node placeholders.
+as returned by discovery, without adapter or Node placeholders. OpenCode also selects
+only its native executable. Its Worker format prerequisite is separate from ordinary
+model configuration and collaboration capability; installation guidance names the
+supported official package without adding a setup wizard.
 
 The page owns interaction state so changing forms does not create another submission or
 Operation store. The native session owns confirmation, protected token registration and
@@ -139,7 +145,8 @@ additional enable/save steps or model-verification badges on the settings page.
 | First enable, exact existing selections, unknown state and discard protection | [agent-editor-state.test.mjs](../../../tests/agent-editor-state.test.mjs) |
 | Correct ecosystem intent, independent restores, saved-selection token rotation and unsupported identity rejection | [agent-settings-request.test.mjs](../../../tests/agent-settings-request.test.mjs) |
 | Collaboration without a model or published Plan, prerequisite failure/retry and restore; independent single-CLI selection | `qoder.collaboration.enable-without-model`, `qoder.collaboration.retry-and-restore`, `qoder.installation.single-cli` in the browser scenarios; [status projection](../../../tests/agent-status.test.mjs) |
-| Additional routes, cancelled drafts, unavailable saved routes, token rotation and independent restores | `qoder.routing.additional-plans`, `qoder.routing.adjust-and-restore`; the native [settings session](../../../src-tauri/src/agent_session.rs) and [check session](../../../src-tauri/src/agent_check_session.rs) retain protected-boundary tests. Browser IPC does not prove native settings preservation or real provider calls. |
+| Additional routes, cancelled drafts, unavailable saved routes, token rotation and independent restores | `qoder.routing.additional-plans`, `qoder.routing.adjust-and-restore`, `opencode.routing.additional-plans`, `opencode.routing.default-in-use`; the native [settings session](../../../src-tauri/src/agent_session.rs) and [check session](../../../src-tauri/src/agent_check_session.rs) retain protected-boundary tests. Browser IPC does not prove native settings preservation or real provider calls. |
+| OpenCode native-only installation selection and independent saved Harness choices | `opencode.installation.single-cli` in the [routing browser scenarios](../../../tests/v3/browser/routing-worker-scenarios.mjs). |
 | Submission uncertainty and restore-first feedback | [agent-mutation-feedback.test.mjs](../../../tests/agent-mutation-feedback.test.mjs) |
 | Same successful Operation and fresh target before copying; discovery versus applicability | [codex-launch.test.mjs](../../../tests/codex-launch.test.mjs), [codex-surfaces.test.mjs](../../../tests/codex-surfaces.test.mjs) |
 | Reachable forms, cancellation, mappings and native clipboard IPC selection | [Agent browser scenarios](../../../tests/v3/browser/agent-trust-scenarios.mjs), [clipboard.test.mjs](../../../tests/clipboard.test.mjs) |

@@ -64,7 +64,7 @@ impl RunObservationMetadata {
             || !valid_observation_reference(&value.publication_ref)
             || !matches!(
                 value.harness_id.as_str(),
-                "codex" | "claude" | "qoder" | "pi" | "dsh"
+                "codex" | "claude" | "qoder" | "pi" | "dsh" | "opencode"
             )
             || [
                 &value.native_session_id,
@@ -463,7 +463,7 @@ mod tests {
             }
         }
 
-        for harness in ["codex", "claude", "qoder"] {
+        for harness in ["codex", "claude", "qoder", "pi", "dsh", "opencode"] {
             let authority = GatewayRequestAuthority::new(empty_global())
                 .with_run_request_authority(Arc::new(Authority(verified_for_harness(
                     Arc::new(Safety(AtomicUsize::new(0))),

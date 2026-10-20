@@ -29,6 +29,7 @@ export function AgentModelEditor(props: AgentModelEditorProps) {
     case 'hermes': return <HermesModelEditor {...props} />;
     case 'codex': return <CodexModelEditor {...props} />;
     case 'claude': return <ClaudeModelEditor {...props} />;
+    case 'opencode':
     case 'dsh':
     case 'pi':
     case 'qoder': return <AdditionalModelEditor {...props} />;
@@ -53,6 +54,7 @@ export function modelSelectionSummary(selection: AgentModelSelection | null | un
         ? text('三个档位共用：', 'All presets use: ') + (planName(sharedPlan) ?? text('当前路由不可用', 'Current route unavailable'))
         : Object.entries(selection.preset_mappings).map(([preset, choice]) => `${preset[0].toUpperCase() + preset.slice(1)}: ${choice.kind === 'plan' ? planName(choice.plan_id) ?? text('当前路由不可用', 'Current route unavailable') : text('保留原生', 'Native')}`).join(' · ');
     }
+    case 'opencode_additional':
     case 'dsh_additional':
     case 'pi_additional':
     case 'qoder_additional':

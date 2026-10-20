@@ -11,6 +11,8 @@ pub(crate) mod control;
 mod login_item;
 mod model_journal;
 mod planner;
+mod previous_routing;
+pub use previous_routing::*;
 mod restore;
 mod revocation;
 mod settings;

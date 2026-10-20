@@ -183,7 +183,7 @@ export type HomeAction =
   | { kind: 'create-plan'; returnTo: 'home' }
   | { kind: 'configure-agent'; returnTo: 'home'; agentId?: string; contextId?: string; facet?: 'model' | 'collaboration' }
   | { kind: 'open-source'; returnTo: 'home'; sourceId: string; bindingId?: string }
-  | { kind: 'open-plan'; returnTo: 'home'; planId: string }
+  | { kind: 'open-plan'; returnTo: 'home'; planId: string; performance?: boolean }
   | { kind: 'open-draft'; returnTo: 'home'; draftId: string; planId?: string }
   | { kind: 'open-session'; returnTo: 'home'; sessionId: string; requestId?: string }
   | { kind: 'open-task'; returnTo: 'home'; taskId: string; runId?: string; sessionId?: string; agentId?: 'codex' | 'claude-code' }

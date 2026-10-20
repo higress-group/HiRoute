@@ -8,6 +8,22 @@ pub struct AgentOperationInputView<'a> {
     pub grants: &'a [AgentAccessGrantMutationV1],
 }
 
+impl AgentOperationInputView<'_> {
+    /// Read the server-resolved subject only from a validated, digest-bound Agent
+    /// control envelope. Ordinary routing operations have no Agent subject.
+    pub fn connection_subject(
+        &self,
+    ) -> Result<Option<AgentConnectionTransactionSubjectV1>, OperationValidationError> {
+        if matches!(
+            self.spec.command_id.as_str(),
+            "agents.connect.apply" | "agents.restore.apply" | "agents.settings.apply"
+        ) {
+            agent_connection::validate_plan(self.spec, self.control, &[], &[], self.external)?;
+        }
+        agent_connection::subject_projection(self.spec, self.control)
+    }
+}
+
 pub trait AgentOperationRead {
     fn agent_input(&self) -> AgentOperationInputView<'_>;
     fn operation_id(&self) -> &OperationId;

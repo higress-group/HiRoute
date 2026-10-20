@@ -49,6 +49,7 @@ pub struct RequestObservationMetadata {
     pub authority_epoch: u64,
     pub publication_revision: u64,
     pub publication_digest: String,
+    pub agent_plan_id: Option<String>,
     pub route: hiroute_domain::ModelRequestRouteV2,
     pub plan_display_name: Option<String>,
     pub served_model_id: String,
@@ -89,7 +90,6 @@ pub(super) struct RequestObservationState {
         String,
         crate::runtime::stream_capture::PendingCapture,
     )>,
-    pub(super) agent_plan_id: Option<String>,
     pub(super) candidates: BTreeMap<String, CandidateObservation>,
     pub(super) pending_attempt: Option<AttemptObservation>,
     pub(super) current_attempt: Option<AttemptObservation>,
@@ -898,6 +898,7 @@ impl RequestObservation {
             };
         self.emit_execution(
             ExecutionFactV1::AgentTurnFinished {
+                opening_cause: Some(turn.opening_cause),
                 branch_execution: turn.branch_execution.clone(),
                 agent_turn_id: turn.agent_turn_id.clone(),
                 segment_id: turn.segment_id.clone(),

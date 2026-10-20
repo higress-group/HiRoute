@@ -46,9 +46,93 @@ pub struct StorageStartupOptions {
     pub recovery_package: Option<std::path::PathBuf>,
     pub upgrade_progress:
         Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageUpgradePhase>>,
+    /// Per-attempt typed facts also reach the caller when admission cannot
+    /// acquire the writer lock or write a recovery file.
+    pub startup_failure: Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageRecovery>>,
+}
+impl StorageStartupOptions {
+    pub fn report_failure(&self, recovery: hiroute_host_runtime::StorageRecovery) {
+        if let Some(sender) = &self.startup_failure {
+            let _ = sender.send(recovery);
+        }
+    }
 }
 
 impl LocalStorageSet {
+    /// Retain the storage-owner disposition if fresh Observation initialization
+    /// fails after the coordinated core stores opened. `self` keeps their startup
+    /// writer exclusion alive while the original batch is verified.
+    pub fn record_observation_startup_failure(
+        &self,
+        storage: &Path,
+        cause: hiroute_host_runtime::StorageRecoveryCause,
+    ) -> hiroute_host_runtime::StorageRecovery {
+        migrations::startup_recovery::publish_failure(
+            storage,
+            LocalStorageError::InvalidData.with_recovery(
+                cause,
+                if cause == hiroute_host_runtime::StorageRecoveryCause::MigrationFailed
+                    && matches!(std::fs::symlink_metadata(storage.join("observation")),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+                {
+                    hiroute_host_runtime::StorageRecoveryAction::ResumeCurrent
+                } else {
+                    hiroute_host_runtime::StorageRecoveryAction::PreserveAndDiagnose
+                },
+            ),
+        )
+        .recovery()
+    }
+
+    /// Provisional read-only checks; startup repeats admission under its writer lock.
+    pub fn preflight_upgrade(
+        storage: &Path,
+        package: &Path,
+        seal: bool,
+    ) -> Result<u64, LocalStorageError> {
+        if !storage.exists() {
+            return Ok(0);
+        }
+        migrations::validate_startup_format(storage)?;
+        if !seal {
+            return Ok(0);
+        }
+        LocalSecretStore::migration_binding(
+            &storage.join("live/secrets.db"),
+            &storage.join("master-key"),
+        )?
+        .ok_or(LocalStorageError::Locked)?;
+        migrations::validate_owner_file(&storage.join("observation-hmac-key"))?;
+        if std::fs::metadata(storage.join("observation-hmac-key"))?.len() != 32 {
+            return Err(LocalStorageError::Locked);
+        }
+        match std::fs::symlink_metadata(package) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(LocalStorageError::InvalidData.with_recovery(
+                    hiroute_host_runtime::StorageRecoveryCause::InvalidPackage,
+                    hiroute_host_runtime::StorageRecoveryAction::PreserveAndDiagnose,
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(LocalStorageError::Io(error).with_recovery(
+                    hiroute_host_runtime::StorageRecoveryCause::MissingPackage,
+                    hiroute_host_runtime::StorageRecoveryAction::PreserveAndDiagnose,
+                ));
+            }
+            Err(error) => return Err(LocalStorageError::Io(error)),
+        }
+        backup::source_snapshot::preflight_space(
+            storage,
+            None,
+            &StorageStartupOptions {
+                preserve_observation_source: true,
+                recovery_package: Some(package.to_path_buf()),
+                ..Default::default()
+            },
+        )
+    }
+
     /// A published source link also protects the intentionally absent live root
     /// between the old-directory rename and fresh Observation initialization.
     pub fn observation_cutover_pending(storage_root: &Path) -> bool {
@@ -82,17 +166,23 @@ impl LocalStorageSet {
         options: &StorageStartupOptions,
     ) -> Result<Self, LocalStorageError> {
         let storage_root = storage_root.as_ref();
-        migrations::prepare_storage_root(storage_root)?;
-        migrations::validate_startup_format(storage_root)?;
-        let startup_lock = std::sync::Arc::new(migrations::acquire_startup_lock(storage_root)?);
-        migrations::validate_startup_format(storage_root)?;
-        Self::open_locked_stores(
-            authority,
-            barrier,
-            storage_root,
-            startup_lock,
-            Some(options),
-        )
+        let result = (|| {
+            migrations::prepare_storage_root(storage_root)?;
+            let startup_lock = std::sync::Arc::new(migrations::acquire_startup_lock(storage_root)?);
+            hiroute_host_runtime::StorageRecovery::clear(storage_root)?;
+            let result = migrations::validate_startup_format(storage_root).and_then(|()| {
+                Self::open_locked_stores(
+                    authority,
+                    barrier,
+                    storage_root,
+                    startup_lock.clone(),
+                    Some(options),
+                )
+            });
+            result
+                .map_err(|error| migrations::startup_recovery::publish_failure(storage_root, error))
+        })();
+        result.inspect_err(|error: &LocalStorageError| options.report_failure(error.recovery()))
     }
 
     // SQL coordinator component harness only: unsupported formats never pass through the
@@ -596,6 +686,11 @@ pub enum LocalStorageError {
         "UPGRADE_SOURCE_UNSUPPORTED: this source format has no validated upgrade and recovery path"
     )]
     UpgradeSourceUnsupported,
+    #[error("storage upgrade requires recovery: {recovery:?}: {source}")]
+    Recovery {
+        recovery: Box<hiroute_host_runtime::StorageRecovery>,
+        source: Box<LocalStorageError>,
+    },
     #[error("stable storage upgrade failed at {stage}: {source}")]
     UpgradeStage {
         stage: &'static str,
@@ -624,6 +719,48 @@ fn prepare_owner_directory(path: &Path) -> Result<(), LocalStorageError> {
 }
 
 impl LocalStorageError {
+    pub fn recovery(&self) -> hiroute_host_runtime::StorageRecovery {
+        use hiroute_host_runtime::{
+            StorageRecovery, StorageRecoveryAction as A, StorageRecoveryCause as C,
+        };
+        match self {
+            Self::Recovery { recovery, .. } => recovery.as_ref().clone(),
+            Self::UpgradeStage { source, .. } => {
+                let mut report = source.recovery();
+                if report.cause == C::UnknownState {
+                    report.cause = C::MigrationFailed;
+                }
+                report
+            }
+            Self::UpgradeSourceUnsupported => {
+                StorageRecovery::new(C::UnsupportedFormat, A::PreserveAndDiagnose)
+            }
+            Self::Permission => StorageRecovery::new(C::AccessDenied, A::RetryCurrent),
+            Self::Locked | Self::Crypto => {
+                StorageRecovery::new(C::MissingKey, A::PreserveAndDiagnose)
+            }
+            Self::Io(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || (cfg!(windows) && matches!(e.raw_os_error(), Some(32 | 33))) =>
+            {
+                StorageRecovery::new(C::Locked, A::RetryCurrent)
+            }
+            Self::Io(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                StorageRecovery::new(C::AccessDenied, A::RetryCurrent)
+            }
+            _ => StorageRecovery::new(C::UnknownState, A::PreserveAndDiagnose),
+        }
+    }
+    pub(crate) fn with_recovery(
+        self,
+        cause: hiroute_host_runtime::StorageRecoveryCause,
+        action: hiroute_host_runtime::StorageRecoveryAction,
+    ) -> Self {
+        Self::Recovery {
+            recovery: Box::new(hiroute_host_runtime::StorageRecovery::new(cause, action)),
+            source: Box::new(self),
+        }
+    }
     pub(crate) fn at_upgrade_stage(self, stage: &'static str) -> Self {
         Self::UpgradeStage {
             stage,

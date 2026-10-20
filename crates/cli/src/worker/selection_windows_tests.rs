@@ -122,6 +122,11 @@ fn ordinary_inputs_bind_the_same_native_files_and_canonical_digest_without_mutat
 
 #[test]
 fn canonical_completed_selection_replays_before_missing_file_inspection() {
+    canonical_selection_replays(WorkerHarnessV1::CodexCli);
+    canonical_selection_replays(WorkerHarnessV1::OpenCode);
+}
+
+fn canonical_selection_replays(harness: WorkerHarnessV1) {
     use hiroute_application::ApplicationService;
     use hiroute_daemon::control::{ProductionControlRuntime, start_control};
     let fixture = Fixture::new();
@@ -129,9 +134,10 @@ fn canonical_completed_selection_replays_before_missing_file_inspection() {
     let adapter = fixture.file("manual-adapter.js", b"export {};");
     let node = fixture.file("manual-node.exe", b"metadata-only fixture");
     let ordinary = WorkerDependenciesSelectRequestV1 {
-        harness: WorkerHarnessV1::CodexCli,
-        adapter_path: Some(adapter.to_str().unwrap().into()),
-        node_path: Some(node.to_str().unwrap().into()),
+        harness,
+        adapter_path: (harness == WorkerHarnessV1::CodexCli)
+            .then(|| adapter.to_str().unwrap().into()),
+        node_path: (harness == WorkerHarnessV1::CodexCli).then(|| node.to_str().unwrap().into()),
         expected_selection_revision: 0,
         ..request(&cli)
     };

@@ -10,13 +10,16 @@ const BUNDLED_MODEL_DATA: &[u8] =
     include_bytes!("../../../assets/release-facts/current/bundle/model-data.json");
 
 pub(crate) fn load_production_release_catalog() -> Result<TrustedReleaseCatalog, String> {
-    TrustedReleaseCatalog::load_bundled_release_facts(
+    let catalog = TrustedReleaseCatalog::load_bundled_release_facts(
         BUNDLED_MANIFEST,
         BUNDLED_MANIFEST,
         BUNDLED_REGISTRY,
         BUNDLED_MODEL_DATA,
     )
-    .map_err(|error| format!("ReleaseFacts verification failed: {error}"))
+    .map_err(|error| format!("ReleaseFacts verification failed: {error}"))?;
+    #[cfg(feature = "integration-test-hooks")]
+    let catalog = crate::model_feed::product_fixture::catalog(catalog)?;
+    Ok(catalog)
 }
 
 #[cfg(test)]

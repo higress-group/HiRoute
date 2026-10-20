@@ -5,7 +5,10 @@ pub(super) fn identity_contract(
 ) -> Result<AcpNativeIdentityContract, DelegationErrorV1> {
     if matches!(
         input.harness,
-        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+        WorkerHarnessV1::QoderCli
+            | WorkerHarnessV1::Pi
+            | WorkerHarnessV1::DeepseekHarness
+            | WorkerHarnessV1::OpenCode
     ) && !input.native_context.is_borrowed()
     {
         return Err(DelegationErrorV1::CapabilityUnavailable);
@@ -18,6 +21,7 @@ pub(super) fn identity_contract(
             | WorkerHarnessV1::QoderCli
             | WorkerHarnessV1::Pi
             | WorkerHarnessV1::DeepseekHarness
+            | WorkerHarnessV1::OpenCode
     ) && input.permission_policy != WorkerPermissionPolicyV1::ApproveAll
     {
         return Err(DelegationErrorV1::CapabilityUnavailable);
@@ -28,5 +32,6 @@ pub(super) fn identity_contract(
         WorkerHarnessV1::QoderCli => AcpNativeIdentityContract::QoderSessionV1,
         WorkerHarnessV1::Pi => AcpNativeIdentityContract::ExplicitResponseMetadata,
         WorkerHarnessV1::DeepseekHarness => AcpNativeIdentityContract::DshSessionV1,
+        WorkerHarnessV1::OpenCode => AcpNativeIdentityContract::OpenCodeSessionV1,
     })
 }

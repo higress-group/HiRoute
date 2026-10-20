@@ -2,6 +2,130 @@ use super::*;
 
 const SESSION: &str = "71a2b020-312e-49cd-b084-924cbb3642ad";
 
+#[cfg(unix)]
+#[test]
+fn opencode_review_rejects_unprojectable_xdg_roots_for_new_and_continue() {
+    use std::os::unix::fs::symlink;
+    for index in 0..4 {
+        let storage = crate::test_support::private_tempdir();
+        let home = storage.path().canonicalize().unwrap().join("home");
+        let workspace = storage.path().canonicalize().unwrap().join("workspace");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        let mut native =
+            hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
+        let selected = [
+            &mut native.config_root,
+            &mut native.data_root,
+            &mut native.cache_root,
+            &mut native.state_root,
+        ]
+        .into_iter()
+        .nth(index)
+        .unwrap();
+        let borrowed = home.join("borrowed-root");
+        fs::create_dir_all(&borrowed).unwrap();
+        fs::create_dir_all(selected.parent().unwrap()).unwrap();
+        symlink(&borrowed, &*selected).unwrap();
+        let session = TaskSessionRoot::prepare(
+            storage.path(),
+            &WorkspaceId::default(),
+            "root",
+            "task",
+            WorkerHarnessV1::OpenCode,
+            SessionRootUse::New,
+        )
+        .unwrap();
+        assert!(
+            session.bind_opencode_context(&native, &workspace).is_err(),
+            "XDG root {index}"
+        );
+
+        // A descriptor produced by the old binding code must also fail before a Continue launch.
+        *[
+            &mut native.config_root,
+            &mut native.data_root,
+            &mut native.cache_root,
+            &mut native.state_root,
+        ][index] = borrowed.clone();
+        if index == 1 {
+            native.database = borrowed.join("opencode.db");
+        }
+        write_owned_json(
+            session.path(),
+            CONTEXT_FILE,
+            &ContextDescriptor {
+                version: 2,
+                harness: WorkerHarnessV1::OpenCode,
+                context: BorrowedNativeContext {
+                    home: home.clone(),
+                    config_root: native.config_root.clone(),
+                    workspace,
+                    opencode: Some(native),
+                },
+            },
+        )
+        .unwrap();
+        assert!(
+            session.borrowed_context().is_err(),
+            "Continue XDG root {index}"
+        );
+        assert!(borrowed.is_dir());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn opencode_xdg_directory_links_preserve_the_admitted_child_roots() {
+    use std::os::unix::fs::symlink;
+    let storage = crate::test_support::private_tempdir();
+    let base = storage.path().canonicalize().unwrap();
+    let home = base.join("home");
+    let workspace = base.join("workspace");
+    fs::create_dir_all(&home).unwrap();
+    fs::create_dir_all(&workspace).unwrap();
+    let native = hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
+    for (index, path) in [
+        &native.config_root,
+        &native.data_root,
+        &native.cache_root,
+        &native.state_root,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let actual = base.join(format!("selected-{index}/opencode"));
+        fs::create_dir_all(&actual).unwrap();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        symlink(&actual, path).unwrap();
+    }
+    let session = TaskSessionRoot::prepare(
+        &base,
+        &WorkspaceId::default(),
+        "root",
+        "task",
+        WorkerHarnessV1::OpenCode,
+        SessionRootUse::New,
+    )
+    .unwrap();
+    session.bind_opencode_context(&native, &workspace).unwrap();
+    let bound = session
+        .borrowed_context()
+        .unwrap()
+        .unwrap()
+        .opencode
+        .unwrap();
+    for (source, admitted) in [
+        (&native.config_root, &bound.config_root),
+        (&native.data_root, &bound.data_root),
+        (&native.cache_root, &bound.cache_root),
+        (&native.state_root, &bound.state_root),
+    ] {
+        assert_eq!(&fs::canonicalize(source).unwrap(), admitted);
+        assert_eq!(admitted.parent().unwrap().join("opencode"), *admitted);
+    }
+}
+
 fn canonical(path: &Path) -> PathBuf {
     super::super::super::native_context::native_path(&fs::canonicalize(path).unwrap())
 }

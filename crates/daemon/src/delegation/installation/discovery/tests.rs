@@ -67,6 +67,48 @@ fn pi_discovers_path_node_without_an_adapter() {
 }
 
 #[test]
+fn opencode_discovers_the_official_home_entry_without_selecting_or_executing_it() {
+    let root = tempfile::tempdir().unwrap();
+    let home = fs::canonicalize(root.path()).unwrap();
+    let cli = home.join(".opencode/bin/opencode");
+    make_file(&cli, 0o700);
+    let missing = home.join("explicitly-selected-but-missing");
+    let source = StaticSelection(Some(WorkerInstallationSelection {
+        config: WorkerInstallationConfig {
+            harness: WorkerHarnessV1::OpenCode,
+            harness_binary: missing.clone(),
+            adapter: None,
+            node_binary: None,
+        },
+        revision: 4,
+    }));
+    let view = discover_with_environment(
+        &source,
+        &WorkerDependenciesDiscoverRequestV1 {
+            harness: Some(WorkerHarnessV1::OpenCode),
+        },
+        &ScanEnvironment {
+            path: Some(OsString::new()),
+            home: Some(home),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(view.candidates.iter().any(|candidate| {
+        candidate.path == cli.to_string_lossy()
+            && candidate.state == WorkerDependencyCandidateStateV1::Found
+            && candidate.source == WorkerDependencyCandidateSourceV1::Common
+    }));
+    assert!(
+        view.candidates
+            .iter()
+            .all(|candidate| { candidate.component == WorkerDependencyComponentV1::Cli })
+    );
+    assert_eq!(view.selected[0].cli_path, missing.to_string_lossy());
+    assert_eq!(view.selection_revisions[0].revision, 4);
+}
+
+#[test]
 #[cfg(unix)]
 fn pi_resume_checks_its_own_capability_instead_of_new_session_admission() {
     let root = tempfile::tempdir().unwrap();
@@ -356,24 +398,37 @@ fn shared_scan_budget_marks_the_view_incomplete() {
     for index in 0..=MAX_DIRECTORY_ENTRIES {
         fs::create_dir_all(npx.join(format!("entry-{index:03}"))).unwrap();
     }
-    let view = discover_with_environment(
-        &StaticSelection(None),
-        &WorkerDependenciesDiscoverRequestV1 {
-            harness: Some(WorkerHarnessV1::CodexCli),
-        },
-        &ScanEnvironment {
-            path: None,
-            home: Some(root.path().join("home")),
-            npm_prefix: None,
-            npm_cache: Some(root.path().join("cache")),
-        },
-    )
-    .unwrap();
-    assert!(
-        view.install_hints
+    for (harness, component) in [
+        (
+            WorkerHarnessV1::CodexCli,
+            WorkerDependencyComponentV1::Adapter,
+        ),
+        (WorkerHarnessV1::OpenCode, WorkerDependencyComponentV1::Cli),
+        (
+            WorkerHarnessV1::DeepseekHarness,
+            WorkerDependencyComponentV1::Cli,
+        ),
+    ] {
+        let view = discover_with_environment(
+            &StaticSelection(None),
+            &WorkerDependenciesDiscoverRequestV1 {
+                harness: Some(harness),
+            },
+            &ScanEnvironment {
+                path: None,
+                home: Some(root.path().join("home")),
+                npm_prefix: None,
+                npm_cache: Some(root.path().join("cache")),
+            },
+        )
+        .unwrap();
+        let hint = view
+            .install_hints
             .iter()
-            .any(|hint| hint.reason_code == "worker.dependencies.scan_incomplete")
-    );
+            .find(|hint| hint.reason_code == "worker.dependencies.scan_incomplete")
+            .unwrap();
+        assert_eq!(hint.component, component, "{harness:?}");
+    }
 }
 
 #[test]

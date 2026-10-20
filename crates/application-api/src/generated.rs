@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 mod compute_discovery;
 mod delegation;
+mod model_feed;
 mod native_protocol;
 mod plan_authoring;
 mod subscription_login;
@@ -141,7 +142,7 @@ fn machine_envelope_v2_schema() -> Value {
                 "type": "object", "additionalProperties": false,
                 "required": ["agent_kind", "context_id", "plan_id", "model_alias", "reason", "declared", "proposed"],
                 "properties": {
-                    "agent_kind": { "enum": ["qoder", "pi", "deepseek_harness"] },
+                    "agent_kind": { "enum": ["qoder", "pi", "deepseek_harness", "opencode"] },
                     "context_id": { "type": "string", "pattern": "^agent-context/[A-Za-z0-9/_:-]{1,242}$" },
                     "plan_id": { "type": "string", "minLength": 1, "maxLength": 256 },
                     "model_alias": { "type": "string", "pattern": "^(hiroute/[0-9a-f]{16}|[a-z0-9][a-z0-9._-]{0,63})$" },
@@ -378,6 +379,18 @@ fn value_query_schema() -> Value {
 pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
     let mut files = BTreeMap::from([
         (
+            "routing-timeline-selection.v1.schema.json",
+            pretty_json(&{
+                let mut schema = serde_json::to_value(schemars::schema_for!(
+                    hiroute_domain::RoutingTimelineSelectionV1
+                ))
+                .expect("timeline selection schema");
+                schema["$id"] =
+                    json!("hiroute://contracts/cli/routing-timeline-selection.v1.schema.json");
+                schema
+            }),
+        ),
+        (
             "console-launch-request.v1.schema.json",
             pretty_json(
                 &json!({"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"hiroute://contracts/cli/console-launch-request.v1.schema.json","type":"object","additionalProperties":false,"properties":{"loopback_only":{"type":"boolean","default":false}}}),
@@ -563,6 +576,7 @@ pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
     files.extend(plan_authoring::files());
     files.extend(native_protocol::files());
     files.extend(compute_discovery::files());
+    files.extend(model_feed::files());
     let file_digests = files
         .iter()
         .map(|(path, contents)| {
@@ -593,6 +607,38 @@ pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn budget_schema_accepts_exactly_the_typed_installed_consumers() {
+        let schema = machine_envelope_v2_schema();
+        let kinds = schema["$defs"]["model_budget_blocker"]["properties"]["agent_kind"]["enum"]
+            .as_array()
+            .unwrap();
+        for kind in [
+            "codex",
+            "claude_code",
+            "qoder",
+            "pi",
+            "deepseek_harness",
+            "opencode",
+        ] {
+            let wire = json!({
+                "schema": "hiroute.agent-model-budget-conflict/v1",
+                "blockers": [{
+                    "agent_kind": kind,
+                    "context_id": "agent-context/native/sha256:abc",
+                    "plan_id": "plan/free",
+                    "model_alias": "free.plan",
+                    "reason": "capacity_reduced",
+                    "declared": {"context_window_tokens": 262144, "max_output_tokens": 235929},
+                    "proposed": {"context_window_tokens": 262144, "max_output_tokens": 131072}
+                }]
+            });
+            let conflict: hiroute_domain::AgentModelBudgetConflictV1 =
+                serde_json::from_value(wire).unwrap();
+            assert_eq!(kinds.contains(&json!(kind)), conflict.is_valid(), "{kind}");
+        }
+    }
 
     #[test]
     fn generated_contract_set_is_complete_and_stably_ordered() {
@@ -629,6 +675,11 @@ mod tests {
                 "local-control.v2.schema.json",
                 "machine-envelope.v2.schema.json",
                 "manifest.v1.json",
+                "model-availability.v1.schema.json",
+                "model-feed-removal-preview.v1.schema.json",
+                "model-feed-remove.v1.schema.json",
+                "model-feed-settings.v1.schema.json",
+                "model-feed-status.v1.schema.json",
                 "operation-cancel-request.v1.schema.json",
                 "operation-lookup.v1.schema.json",
                 "plan-content-change.v2.schema.json",
@@ -638,6 +689,7 @@ mod tests {
                 "planned-manifest.v1.json",
                 "prepare-discovered-model-connection-request.v1.schema.json",
                 "publication-checkpoint-change.v1.schema.json",
+                "routing-timeline-selection.v1.schema.json",
                 "session-list-query.v1.schema.json",
                 "session-lookup.v1.schema.json",
                 "setup-apply-request.v1.schema.json",

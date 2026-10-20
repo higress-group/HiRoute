@@ -395,7 +395,7 @@ const scenarios = [
   }],
   ['historical stages expose actual group and candidate position without inferring a relay', async () => {
     const positions = [
-      ['smart_saving', 'regular', 1, '省钱'], ['writing', 'regular', 1, '常规'],
+      ['smart_saving', 'regular', 1, '常规'], ['writing', 'regular', 1, '常规'],
       ['writing', 'primary', 1, '主力'], ['smart_saving', 'primary', 0, '主力'],
     ];
     await fresh(control => {

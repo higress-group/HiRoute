@@ -70,6 +70,32 @@ class CompactionOracle:
                     text='compacted-' + self.fixture['receipt'])
 
 
+class OpenCodeCompactionOracle(CompactionOracle):
+    def __init__(self,fixture,model):
+        super().__init__(fixture,model)
+        self.title_requests=0
+    def reply(self,_fixture,body):
+        assert body.get('model')==self.model,'OpenCode auxiliary request changed the frozen model'
+        text=native_text(body)
+        if any(signature in text.lower() for signature in ('title generator','generate a concise title','generate a short title')):
+            self.title_requests+=1
+            return dict(kind='text',request_kind='title',text='Native compaction receipt',input_tokens=30)
+        # Pinned native agent system instruction, independent of call order.
+        if 'You are a context summarization agent.' in text:
+            assert self.compact_requests==0 and self.main_requests==1
+            assert self.tool_receipt in text,'compaction lost the independently executed tool receipt'
+            self.compact_requests+=1
+            return dict(kind='text',request_kind='compact',text=self.summary_receipt+': Executed '+self.tool_receipt,input_tokens=30)
+        self.main_requests+=1
+        assert self.main_requests<=3
+        if self.main_requests==1:
+            assert self.fixture['compaction_prompt'] in text
+            return dict(kind='tool',request_kind='main',id='native_compaction_tool',name='bash',
+                arguments={'command':'/bin/sh '+shlex.quote(self.fixture['compaction_script']),'description':'Execute compaction receipt tool','timeout':10000},input_tokens=31000)
+        assert self.compact_requests==1 and self.summary_receipt in text,'native continuation did not consume its summary'
+        return dict(kind='text',request_kind='main',input_tokens=30,text='compacted-'+self.fixture['receipt'])
+
+
 def assert_native_compaction(path, summary_receipt):
     rows = [json.loads(line) for line in Path(path).read_text().splitlines() if line]
     boundaries = [row.get('compactMetadata', {}) for row in rows if row.get('subtype') == 'compact_boundary']
@@ -144,7 +170,7 @@ def run(repository, candidate):
     harness = os.environ.get('HIROUTE_PRODUCT_WORKER_HARNESS','qoder')
     recovery = os.environ.get('HIROUTE_PRODUCT_PI_RECOVERY') == '1'
     assert not recovery or harness == 'pi'
-    assert harness in ('qoder','pi')
+    assert harness in ('qoder','pi','opencode')
     cases = CASES if harness == 'qoder' else (CASES[1],)
     repo = Path(repository).resolve()
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == candidate
@@ -156,10 +182,10 @@ def run(repository, candidate):
                   required_cases=list(cases), selected_cases=list(cases), cases=[],
                   evidence_limit='Real Plan/admission/profile/native Worker/Gateway; controlled upstream; no Desktop verdict')
     try:
-        fixture, upstream = prepare_product(product, harness, context_tokens=32768 if harness == 'pi' else CONTEXT_TOKENS)
+        fixture, upstream = prepare_product(product, harness, context_tokens=32768 if harness in ('pi','opencode') else CONTEXT_TOKENS)
         report['source_context_tokens'] = fixture['source_context_tokens']
         binary, _, node = selected_installation(harness)
-        configure_worker_installation(product, 'pi' if harness == 'pi' else 'qoder_cli', None, binary, node)
+        configure_worker_installation(product, {'pi':'pi','qoder':'qoder_cli','opencode':'opencode'}[harness], None, binary, node)
         if harness == 'qoder':
             project_settings = product.project / '.qoder/settings.json'
             settings = json.loads(project_settings.read_text())
@@ -170,7 +196,7 @@ def run(repository, candidate):
         fixture['recovery'] = recovery
         fixture['compaction_prompt'] = 'QODER-COMPACTION-' + secrets.token_hex(12)
         fixture['compaction_script'] = str(product.project / 'native-compaction-receipt.sh')
-        oracle = (PiCompactionOracle if harness == 'pi' else CompactionOracle)(fixture, upstream.model)
+        oracle = ({'pi':PiCompactionOracle,'qoder':CompactionOracle,'opencode':OpenCodeCompactionOracle}[harness])(fixture, upstream.model)
         script = Path(fixture['compaction_script'])
         # Pi's compactor estimates actual recent messages as well as provider usage.
         # Two genuine large tool outputs leave an older receipt to summarize and
@@ -196,7 +222,7 @@ def run(repository, candidate):
         assert 'compacted-' + fixture['receipt'] in result['result'], 'missing compacted Worker result'
         wait_for_resumable_task(product, first['task_id'], first['run_id'])
         history = exact_history(fixture)
-        report['native_compaction_boundaries'] = (assert_pi_compaction(history[0], oracle.summary_receipt, recovery) if harness == 'pi' else assert_native_compaction(history[0], oracle.summary_receipt))
+        report['native_compaction_boundaries'] = ({'native_summary_received':oracle.compact_requests==1} if harness=='opencode' else assert_pi_compaction(history[0], oracle.summary_receipt, recovery) if harness == 'pi' else assert_native_compaction(history[0], oracle.summary_receipt))
         report['recovery_context_edit'] = recovery
         if recovery:
             assert fixture.get('length_prefix_observed'), 'length stop was not an accepted Worker stream'
@@ -204,16 +230,24 @@ def run(repository, candidate):
         stage = 'continue-native-compacted-history'
         command = ('worker continue --task ' + first['task_id'] + ' --expected-latest-run ' + first['run_id'] +
                    ' --run-timeout 120 --no-wait --submission-key qoder-compaction-continue --file - --output json')
+        if harness=='opencode':
+            product.stop();product.start()
         _, accepted = worker_cli(product, command, 'Continue the same native task using its compacted summary.')
         continued = accepted['data']
         result = wait_for_worker_result(product, continued['run_id'], timeout=150)
         assert 'compacted-' + fixture['receipt'] in result['result']
         wait_for_resumable_task(product, first['task_id'], continued['run_id'])
         assert exact_history(fixture) == history, 'compacted Continue changed the exact native session'
-        assert oracle.main_requests == ((5 if recovery else 4) if harness == 'pi' else 3) and oracle.compact_requests == 1 and oracle.tool_summary_requests == (0 if harness == "pi" else 1), \
-            'required native request kinds missing'
         attempts = source_events(upstream)
-        assert [event.get('request_kind') for event in attempts] == ((['main','main','length','compact','main','main'] if recovery else ['main','main','compact','main','main']) if harness == 'pi' else ['main', 'tool_summary', 'compact', 'main', 'main']), attempts
+        if harness=='opencode':
+            assert oracle.main_requests==3 and oracle.compact_requests==1
+            assert [e.get('request_kind') for e in attempts if e.get('request_kind')!='title']==['main','compact','main','main']
+            assert oracle.title_requests>0,'no actual auxiliary title request was observed'
+            report['native_compaction_boundaries']['summary_consumed_after_restart']=True
+            report['title_requests']=oracle.title_requests
+        else:
+            assert oracle.main_requests == ((5 if recovery else 4) if harness == 'pi' else 3) and oracle.compact_requests == 1 and oracle.tool_summary_requests == (0 if harness == "pi" else 1), 'required native request kinds missing'
+            assert [event.get('request_kind') for event in attempts] == ((['main','main','length','compact','main','main'] if recovery else ['main','main','compact','main','main']) if harness == 'pi' else ['main', 'tool_summary', 'compact', 'main', 'main']), attempts
         assert all(event['state'] == 'green' and event['model'] == upstream.model for event in attempts)
         assert_preserved(fixture)
         if harness == 'qoder':

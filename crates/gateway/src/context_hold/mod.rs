@@ -16,7 +16,7 @@ pub(crate) use history::visible_history;
 pub(crate) use history::{HistoryEvidence, visible_history_with_replay};
 pub(crate) use identity::{ContextIdentityFacts, identity_facts};
 pub(crate) use store::{
-    ContextHoldKey, ContextHoldStore, HoldCompletion, HoldTicket, PreparedHold,
+    ContextHoldKey, ContextHoldStore, HistoryContinuity, HoldCompletion, HoldTicket, PreparedHold,
 };
 
 pub(crate) struct ContextRequest<'a> {

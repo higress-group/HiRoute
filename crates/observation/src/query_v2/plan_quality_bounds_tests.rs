@@ -1,0 +1,355 @@
+use super::{plan_quality::summary_sql, routing_observations::SUMMARY_SQL};
+use crate::WriterCycleOutcome;
+use crate::store::tests::support::{
+    Fixture, fact_channel, finished, offer_fact, open_store, request_facts, writer,
+};
+use hiroute_domain::CanonicalDigest;
+use rusqlite::{Connection, StatementStatus, functions::FunctionFlags, named_params, types::Value};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+const PLAN: &str = "plan/codex-daily";
+
+fn seed() -> (
+    tempfile::TempDir,
+    std::sync::Arc<crate::LocalObservationStore>,
+) {
+    let root = tempfile::tempdir().unwrap();
+    let store = open_store(root.path());
+    let fixture = Fixture::new("quality-read-work");
+    let channel = fact_channel(&fixture, 256 * 1024);
+    let writer = writer(&store);
+    for fact in request_facts(&fixture, "attempt-bounds", finished("attempt-bounds"), 1000) {
+        assert!(matches!(
+            offer_fact(&writer, &channel, fact),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    {
+        let db = store.connection.lock();
+        // Many stages can share one request across compaction boundaries. Keep
+        // native-name and reasoning attribution in the aggregate being measured.
+        db.execute("WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<128)
+            INSERT INTO plan_quality_segments(workspace_id,segment_id,session_id,plan_id,plan_revision,
+              selected_branch_id,executed_branch_id,model_configuration_id,profile_digest,attribution,
+              first_at_ms,last_at_ms,first_request_id,last_request_id,score,assessment_partial)
+            SELECT ?1,'stage-'||i,?2,?3,17,'writing','writing','model-a',?4,'single',1000,1100,?5,?5,0.8,0 FROM n",
+            rusqlite::params![fixture.workspace.as_str(),fixture.session.as_str(),PLAN,
+                CanonicalDigest::of_bytes(b"profile-a").to_string(),fixture.request.as_str()]).unwrap();
+        // Retained execution facts need not all have a safe projection. They
+        // belong to other requests and must not multiply this Plan's lookup work.
+        db.execute_batch(
+            "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<8192)
+            INSERT INTO execution_fact_events
+            SELECT workspace_id,session_id,turn_id,'unrelated-'||i,producer_id,producer_epoch,
+              'retained-unrelated',i,'event-unrelated-'||i,envelope_json,'digest-unrelated-'||i
+            FROM (SELECT * FROM execution_fact_events LIMIT 1),n;",
+        )
+        .unwrap();
+    }
+    drop(writer);
+    (root, store)
+}
+
+fn measured(db: &Connection, sql: &str) -> (Vec<Vec<Value>>, i32) {
+    measured_result(db, sql).unwrap()
+}
+
+fn measured_result(db: &Connection, sql: &str) -> rusqlite::Result<(Vec<Vec<Value>>, i32)> {
+    let mut statement = db.prepare(sql)?;
+    let columns = statement.column_count();
+    let rows = statement
+        .query_map(
+            named_params! {
+                ":workspace":"personal/default", ":plan":PLAN, ":session":Option::<String>::None,
+                ":revision":17, ":from":0, ":to":5000, ":runs":Option::<String>::None,
+            },
+            |row| {
+                (0..columns)
+                    .map(|i| row.get(i))
+                    .collect::<rusqlite::Result<Vec<Value>>>()
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok((rows, statement.get_status(StatementStatus::VmStep)))
+}
+
+#[test]
+fn quality_summary_bounds_repeated_execution_projection_work() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    let sql = summary_sql();
+    let (rows, bounded) = measured(&db, &sql);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0][6], Value::Text("native-a".into()));
+    assert_eq!(rows[0][7], Value::Text("reasoning-high".into()));
+    assert_eq!(rows[0][8], Value::Integer(128));
+    // Negative control: the former flattened CTE repeats correlated execution
+    // lookups inside the aggregate. Compare VM work, never machine wall time.
+    let (previous_rows, previous) = measured(&db, &sql.replace("AS MATERIALIZED (", "AS ("));
+    assert_eq!(rows, previous_rows);
+    assert!(
+        bounded * 4 < previous * 3,
+        "summary used {bounded} VM steps; repeated projections used {previous}"
+    );
+}
+
+#[test]
+fn routing_summary_bounds_unrelated_execution_history_work() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    let (rows, bounded) = measured(&db, SUMMARY_SQL);
+    assert_eq!(
+        rows.len(),
+        1,
+        "the one real route decision must remain included"
+    );
+    // Reproduce the former query without either optimization. The new partial
+    // filter also helps a reorderable join, so retaining it is no longer a
+    // negative control for the workspace execution scan.
+    let previous_sql = SUMMARY_SQL
+        .replace("CROSS JOIN execution_fact_events", "JOIN execution_fact_events")
+        .replace("          AND CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') ELSE 'route_decision' END='route_decision'\n", "");
+    let (previous_rows, previous) = measured(&db, &previous_sql);
+    assert_eq!(rows, previous_rows);
+    assert!(
+        bounded * 4 < previous,
+        "routing summary used {bounded} VM steps; workspace event scan used {previous}"
+    );
+}
+
+#[test]
+fn routing_summary_bounds_unrelated_safe_projection_work() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    let (before, baseline) = measured(&db, SUMMARY_SQL);
+    db.execute_batch(
+        "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<8192)
+         INSERT INTO observation_safe_facts_v2
+         SELECT workspace_id,'unrelated-'||i,'digest-unrelated-'||i,
+           json_set(body_json,'$.event_kind','request_started')
+         FROM (SELECT * FROM observation_safe_facts_v2 LIMIT 1),n;",
+    )
+    .unwrap();
+    let (after, retained) = measured(&db, SUMMARY_SQL);
+    assert_eq!(after, before);
+    assert!(
+        retained < baseline * 2 + 1000,
+        "routing summary grew from {baseline} to {retained} VM steps for unrelated safe history"
+    );
+}
+
+#[test]
+fn routing_index_reopen_preserves_malformed_safe_bytes_and_failed_read() {
+    let (root, store) = seed();
+    let schema_version_before: String = store
+        .connection
+        .lock()
+        .query_row(
+            "SELECT value FROM observation_meta WHERE key='schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let retained = {
+        let db = store.connection.lock();
+        db.execute_batch(
+            "DROP INDEX IF EXISTS observation_safe_route_decisions;
+            UPDATE observation_safe_facts_v2 SET body_json='{' WHERE rowid=(
+              SELECT rowid FROM observation_safe_facts_v2
+              WHERE json_extract(body_json,'$.event_kind')='route_decision' LIMIT 1);",
+        )
+        .unwrap();
+        let mut statement = db.prepare("SELECT workspace_id,request_id,original_digest,body_json FROM observation_safe_facts_v2 ORDER BY rowid").unwrap();
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    assert!(retained.iter().any(|row| row.3 == "{"));
+    drop(store);
+    for _ in 0..2 {
+        let reopened = open_store(root.path());
+        let db = reopened.connection.lock();
+        let mut statement = db.prepare("SELECT workspace_id,request_id,original_digest,body_json FROM observation_safe_facts_v2 ORDER BY rowid").unwrap();
+        let after = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(after, retained);
+        assert!(db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='observation_safe_route_decisions')", [], |row| row.get::<_, bool>(0)).unwrap());
+        assert!(
+            measured_result(&db, SUMMARY_SQL)
+                .unwrap_err()
+                .to_string()
+                .contains("malformed JSON")
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT value FROM observation_meta WHERE key='schema_version'",
+                [],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+            schema_version_before
+        );
+    }
+}
+
+#[test]
+fn quality_reasoning_filters_known_unrelated_payloads_before_opening_them() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    let reads = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&reads);
+    db.create_scalar_function(
+        "quality_payload_probe",
+        1,
+        FunctionFlags::SQLITE_UTF8,
+        move |ctx| {
+            count.fetch_add(1, Ordering::Relaxed);
+            ctx.get::<String>(0)
+        },
+    )
+    .unwrap();
+    let sql = summary_sql().replace("p.body_json", "quality_payload_probe(p.body_json)");
+    let (rows, _) = measured(&db, &sql);
+    let bounded = reads.swap(0, Ordering::Relaxed);
+    let unfiltered = sql.replace(
+        "LEFT JOIN observation_safe_facts_v2 f ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest", ""
+    ).replace(
+        "AND (f.body_json IS NULL OR json_extract(f.body_json,'$.event_kind')='candidate_decision')", ""
+    );
+    let (previous_rows, _) = measured(&db, &unfiltered);
+    let previous = reads.swap(0, Ordering::Relaxed);
+    assert_eq!(rows, previous_rows);
+    assert!(
+        bounded * 2 < previous,
+        "reasoning opened {bounded} payload expressions; unfiltered read opened {previous}"
+    );
+
+    // A missing safe projection remains a gap, not permission to invent a
+    // different profile. Retain the original payload lookup as its fallback.
+    db.execute("DELETE FROM observation_safe_facts_v2", [])
+        .unwrap();
+    assert_eq!(measured(&db, &sql).0, rows);
+    db.execute("DELETE FROM observation_sensitive_payloads_v2", [])
+        .unwrap();
+    let deleted = measured(&db, &sql).0;
+    assert_eq!(
+        deleted[0][7],
+        Value::Null,
+        "deleted reasoning must stay unavailable"
+    );
+}
+
+#[test]
+fn quality_identity_reads_use_covering_request_and_exact_payload_lookup() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    let plan = |sql: &str| {
+        let mut statement = db.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        statement
+            .raw_query()
+            .mapped(|row| row.get::<_, String>(3))
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    let summary = plan(&summary_sql());
+    assert!(
+        summary
+            .iter()
+            .any(|step| step.starts_with("SEARCH e USING COVERING INDEX")
+                && step.contains("workspace_id=? AND request_id=?")),
+        "reasoning identity lookup must not open the event payload row: {summary:?}"
+    );
+    let routing = plan(SUMMARY_SQL);
+    assert!(
+        routing
+            .iter()
+            .any(|step| step.starts_with("SEARCH e USING INDEX")
+                && step.contains("workspace_id=? AND request_id=? AND envelope_digest=?")),
+        "routing identity lookup must locate the exact retained event: {routing:?}"
+    );
+}
+
+#[test]
+fn quality_request_index_rebuild_preserves_existing_event_bytes_on_reopen() {
+    let (root, store) = seed();
+    let schema_version_before: String = store
+        .connection
+        .lock()
+        .query_row(
+            "SELECT value FROM observation_meta WHERE key='schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let before = {
+        let db = store.connection.lock();
+        let mut statement = db.prepare("SELECT request_id,envelope_json,envelope_digest FROM execution_fact_events ORDER BY rowid").unwrap();
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        // An existing released store has the request and session indexes but
+        // no covering payload index. Reopening must add it without rewriting
+        // immutable event identities or their original content carriers.
+        db.execute_batch("DROP INDEX IF EXISTS execution_facts_request_payload")
+            .unwrap();
+        rows
+    };
+    drop(store);
+    for _ in 0..2 {
+        let reopened = open_store(root.path());
+        let db = reopened.connection.lock();
+        let mut statement = db.prepare("SELECT request_id,envelope_json,envelope_digest FROM execution_fact_events ORDER BY rowid").unwrap();
+        let after = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(after, before);
+        assert!(db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='execution_facts_request_payload')", [], |row| row.get::<_, bool>(0)).unwrap());
+        assert_eq!(
+            db.query_row(
+                "SELECT value FROM observation_meta WHERE key='schema_version'",
+                [],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+            schema_version_before
+        );
+    }
+}

@@ -13,6 +13,8 @@ use std::path::Path;
 use std::process::Child;
 use std::time::{Duration, Instant};
 
+use hiroute_domain::delegation::NativeDependencyFailureReasonV1 as Reason;
+
 pub struct NativeProbeProcess {
     child: Child,
     #[cfg(unix)]
@@ -125,6 +127,69 @@ impl Drop for NativeProbeProcess {
     fn drop(&mut self) {
         let _ = self.stop();
     }
+}
+
+/// Shared bounded one-shot output capture; the caller selects the command/environment.
+#[cfg(unix)]
+pub(super) fn capture(
+    mut command: std::process::Command,
+    _inherit: bool,
+    timeout: std::time::Duration,
+    output_limit: usize,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, Reason> {
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+    let start = Instant::now();
+    let capture = tempfile::NamedTempFile::new().map_err(|_| Reason::Unavailable)?;
+    let child = command
+        .stdin(Stdio::null())
+        .stdout(capture.reopen().map_err(|_| Reason::Unavailable)?)
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|_| Reason::Unavailable)?;
+    let mut child = super::NativeProbeProcess::new(child);
+    let result = (|| {
+        loop {
+            if start.elapsed() >= timeout {
+                return Err(Reason::Timeout);
+            }
+            match child.observe().map_err(|_| Reason::Unavailable)? {
+                Some(true) => break,
+                Some(false) => return Err(Reason::ProcessFailed),
+                None => {}
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        super::native_probe_process::read_bounded(capture.path(), output_limit)
+            .map_err(|_| Reason::InvalidOutput)
+    })();
+    // A failed check also stops and accounts for its owned scope before returning.
+    child.stop().map_err(|_| Reason::CleanupFailed)?;
+    result
+}
+
+#[cfg(windows)]
+pub(super) fn capture(
+    command: std::process::Command,
+    inherit: bool,
+    timeout: std::time::Duration,
+    output_limit: usize,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, Reason> {
+    super::windows_runtime::bounded(&command, inherit, timeout, output_limit).map_err(|error| {
+        if super::windows_runtime::cleanup_unknown(&error) {
+            Reason::CleanupFailed
+        } else if super::windows_runtime::process_exit_code(&error).is_some() {
+            Reason::ProcessFailed
+        } else {
+            match error.kind() {
+                std::io::ErrorKind::TimedOut => Reason::Timeout,
+                std::io::ErrorKind::InvalidData => Reason::InvalidOutput,
+                _ => Reason::Unavailable,
+            }
+        }
+    })
 }
 
 /// Rechecks the limit during the final read, including children that write and exit between polls.

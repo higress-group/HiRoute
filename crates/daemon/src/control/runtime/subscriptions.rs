@@ -973,8 +973,7 @@ impl LocalControlAdapter {
         kind: CpaAccountKind,
     ) -> PortResult<ComputeCandidateTargetV2> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or_else(|| unavailable("subscription.catalog.unavailable"))?;
         let resolved = catalog
             .resolve_connection_option(kind.connection_option_id())

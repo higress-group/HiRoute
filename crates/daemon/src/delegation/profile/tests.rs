@@ -40,7 +40,7 @@ fn isolated_worker_profiles_can_resolve_standard_tools() {
             profile.native_selected_model_id(),
             "hiroute/1234567890abcdef"
         );
-        assert!(profile.codex_initialization_root().is_none());
+        assert!(profile.native_initialization_root().is_none());
         let path = profile.env.get("PATH").expect("worker PATH");
         let entries: Vec<_> = std::env::split_paths(path.as_str()).collect();
         assert!(entries.iter().all(|entry| entry.is_absolute()));
@@ -207,9 +207,10 @@ fn try_request_in_context(
             WorkerHarnessV1::CodexCli | WorkerHarnessV1::ClaudeCode => {
                 Some(Path::new("/trusted/adapter"))
             }
-            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness => {
-                None
-            }
+            WorkerHarnessV1::QoderCli
+            | WorkerHarnessV1::Pi
+            | WorkerHarnessV1::DeepseekHarness
+            | WorkerHarnessV1::OpenCode => None,
         },
         harness_binary,
         node_binary,
@@ -477,11 +478,11 @@ fn borrowed_codex_keeps_daily_config_and_routes_before_startup_with_task_owned_m
     .unwrap();
     assert_eq!(first.env["HOME"].as_str(), daily_home.to_str().unwrap());
     assert_eq!(
-        first.codex_initialization_root(),
+        first.native_initialization_root(),
         Some(config_root.as_path())
     );
     assert_eq!(
-        continued.codex_initialization_root(),
+        continued.native_initialization_root(),
         Some(config_root.as_path())
     );
     assert_eq!(
@@ -619,7 +620,7 @@ fn borrowed_claude_enables_skills_without_expanding_restricted_permissions() {
         )
         .unwrap();
         assert_eq!(profile.env["HOME"].as_str(), "/instance-home");
-        assert!(profile.codex_initialization_root().is_none());
+        assert!(profile.native_initialization_root().is_none());
         assert_eq!(profile.env["CLAUDE_CONFIG_DIR"].as_str(), "/native-claude");
         assert_eq!(
             profile.env["CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST"].as_str(),

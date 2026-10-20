@@ -11,6 +11,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod recovery;
+
 const INVENTORY: &str = "shell-package.json";
 const PENDING: &str = "install-pending.json";
 #[derive(Serialize, Deserialize)]
@@ -172,14 +174,83 @@ pub(super) fn validate_installed() -> io::Result<()> {
     }
     Ok(())
 }
-pub(super) fn prepare(manifest: &Path) -> io::Result<()> {
+fn same_repair_payload(
+    pending: &BTreeMap<String, String>,
+    requested: &BTreeMap<String, String>,
+) -> bool {
+    !requested.is_empty()
+        && requested
+            .iter()
+            .all(|(name, hash)| pending.get(name) == Some(hash))
+        && pending.keys().all(|name| {
+            requested.contains_key(name)
+                || matches!(
+                    name.as_str(),
+                    "uninstall.exe" | "shell-install.json" | INVENTORY
+                )
+        })
+}
+pub(super) fn recover_for_candidate(manifest: &Path, daemon: &Path, allow: bool) -> io::Result<()> {
+    let layout =
+        hiroute_host_runtime::StandaloneLayout::from_environment().map_err(|_| invalid())?;
+    if has_pending()?
+        && pending()?.phase == Phase::Prepared
+        && hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())?
+    {
+        return prepare(manifest, daemon);
+    }
+    windows::recover_pending()?;
+    rollback(allow)
+}
+pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<()> {
     windows::preflight()?;
     let package: Package = read(manifest, false)?;
     package.validate()?;
     if package.target != "x86_64-pc-windows-msvc" {
         return Err(invalid());
     }
+    let daemon_digest = &package
+        .files
+        .get("bin/hirouted.exe")
+        .ok_or_else(invalid)?
+        .sha256;
+    if hash(daemon)? != *daemon_digest {
+        return Err(invalid());
+    }
     if has_pending()? {
+        let layout =
+            hiroute_host_runtime::StandaloneLayout::from_environment().map_err(|_| invalid())?;
+        if hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())? {
+            let value = pending()?;
+            let mut requested: BTreeMap<String, String> = package
+                .files
+                .iter()
+                .map(|(name, item)| {
+                    (
+                        format!("standalone/{}", Package::relative(name)),
+                        item.sha256.clone(),
+                    )
+                })
+                .collect();
+            requested.insert("standalone/package-manifest.json".into(), hash(manifest)?);
+            requested.insert("hiroute-shell.exe".into(), hash(&std::env::current_exe()?)?);
+            if value.phase != Phase::Prepared || !same_repair_payload(&value.new, &requested) {
+                return Err(invalid());
+            }
+            // Re-running the exact current installer continues its existing
+            // journal forward. Never replace its retained original rollback set.
+            for name in value.old.keys().chain(value.new.keys()) {
+                let path = root()?.join(name);
+                if present(&path)? {
+                    let actual = hash(&path)?;
+                    if value.old.get(name) != Some(&actual) && value.new.get(name) != Some(&actual)
+                    {
+                        return Err(invalid());
+                    }
+                }
+            }
+            return Ok(());
+        }
         rollback(false)?;
     }
     let root = root()?;
@@ -259,20 +330,19 @@ pub(super) fn prepare(manifest: &Path) -> io::Result<()> {
     for (name, expected) in &old {
         backup_file(&root.join(name), &backups.join(name), expected)?;
     }
-    write(
-        &data.join(PENDING),
-        &Pending {
-            schema: "hiroute.windows-shell-transaction/v1".into(),
-            phase: Phase::Prepared,
-            old,
-            new,
-            service_active,
-            previous_package,
-            previous_autostart,
-            console_desired,
-            shell_login,
-        },
-    )
+    let value = Pending {
+        schema: "hiroute.windows-shell-transaction/v1".into(),
+        phase: Phase::Prepared,
+        old,
+        new,
+        service_active,
+        previous_package,
+        previous_autostart,
+        console_desired,
+        shell_login,
+    };
+    recovery::prepare(&value, &package, daemon)?;
+    write(&data.join(PENDING), &value)
 }
 /// NSIS overlays files, so old content-hashed assets must leave the package's
 /// closed file set before the Rust package reader admits the new payload.
@@ -350,6 +420,12 @@ pub(super) fn commit() -> io::Result<()> {
     record_generated()?;
     let mut value = pending()?;
     let root = root()?;
+    let actual_inventory = if present(&root.join(INVENTORY))? {
+        Some(hash(&root.join(INVENTORY))?)
+    } else {
+        None
+    };
+    prepare_inventory(&value.old, &mut value.new, actual_inventory.as_deref())?;
     for (name, expected) in &value.new {
         if hash(&root.join(name))? != *expected {
             return Err(invalid());
@@ -378,6 +454,24 @@ pub(super) fn commit() -> io::Result<()> {
     write(&data()?.join(PENDING), &value)?;
     complete_commit(&data()?, &value.old)?;
     cleanup_committed();
+    Ok(())
+}
+
+fn prepare_inventory(
+    old: &BTreeMap<String, String>,
+    new: &mut BTreeMap<String, String>,
+    actual: Option<&str>,
+) -> io::Result<()> {
+    if actual.is_some_and(|hash| {
+        old.get(INVENTORY).map(String::as_str) != Some(hash)
+            && new.get(INVENTORY).map(String::as_str) != Some(hash)
+    }) {
+        return Err(invalid());
+    }
+    // A failed publication can leave this generated digest in the prepared
+    // journal while the old inventory is still present. It is metadata about
+    // the inventory, never a member of that inventory's own closed file set.
+    new.remove(INVENTORY);
     Ok(())
 }
 
@@ -414,6 +508,11 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
         complete_commit(&data()?, &value.old)?;
         cleanup_committed();
         return Ok(());
+    }
+    let layout =
+        hiroute_host_runtime::StandaloneLayout::from_environment().map_err(|_| invalid())?;
+    if hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())? {
+        return Err(io::Error::other("STORAGE_UPGRADE_RECOVERY_REQUIRED"));
     }
     windows::recover_pending()?;
     // Validate the complete replacement set before restoring the first file.
@@ -523,9 +622,10 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
         super::service::manager(&["service", "start", "--output", "json"])
             .map_err(|_| invalid())?;
     }
+    let service_available = value.service_active && super::service::available_blocking();
     write(
         &data()?.join("update-outcome.json"),
-        &serde_json::json!({"schema":"hiroute.windows-shell-update-outcome/v1","status":"failed","code":"UPGRADE_INSTALL_FAILED","service_available":value.service_active}),
+        &serde_json::json!({"schema":"hiroute.windows-shell-update-outcome/v1","status":"failed","code":"UPGRADE_INSTALL_FAILED","service_available":service_available}),
     )?;
     clear(&data()?, &value.old)?;
     cleanup_committed();
@@ -563,6 +663,52 @@ mod tests {
         }
     }
 
+    #[test]
+    fn forward_storage_repair_requires_the_exact_prepared_payload() {
+        let pending = BTreeMap::from([
+            ("hiroute-shell.exe".into(), "shell-new".into()),
+            ("standalone/hirouted.exe".into(), "daemon-new".into()),
+            ("uninstall.exe".into(), "generated".into()),
+        ]);
+        let mut request = pending.clone();
+        request.remove("uninstall.exe");
+        assert!(same_repair_payload(&pending, &request));
+        request.insert("standalone/hirouted.exe".into(), "daemon-old".into());
+        assert!(!same_repair_payload(&pending, &request));
+        assert!(!same_repair_payload(&pending, &BTreeMap::new()));
+    }
+
+    #[test]
+    fn retrying_inventory_publication_accepts_only_old_or_admitted_new_metadata_without_self_hashing()
+     {
+        let old = BTreeMap::from([(INVENTORY.into(), "a".repeat(64))]);
+        let payload = BTreeMap::from([("hiroute-shell.exe".into(), "b".repeat(64))]);
+        let bytes = serde_json::to_vec(&Inventory {
+            schema: "hiroute.windows-shell-package/v1".into(),
+            files: payload.clone(),
+        })
+        .unwrap();
+        let published = format!("{:x}", Sha256::digest(&bytes));
+        for actual in [old[INVENTORY].as_str(), published.as_str()] {
+            let mut new = payload.clone();
+            new.insert(INVENTORY.into(), published.clone());
+            prepare_inventory(&old, &mut new, Some(actual)).unwrap();
+            assert_eq!(new, payload);
+            assert_eq!(
+                serde_json::to_vec(&Inventory {
+                    schema: "hiroute.windows-shell-package/v1".into(),
+                    files: new
+                })
+                .unwrap(),
+                bytes
+            );
+        }
+        let mut changed = payload.clone();
+        changed.insert(INVENTORY.into(), published);
+        let before = changed.clone();
+        assert!(prepare_inventory(&old, &mut changed, Some(&"c".repeat(64))).is_err());
+        assert_eq!(changed, before);
+    }
     #[test]
     fn committed_manual_repair_replaces_stale_failure_before_retiring_journal() {
         let temporary = PayloadDirectory::new();

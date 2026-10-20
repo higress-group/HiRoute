@@ -29,7 +29,8 @@
       "harness": {
         "enum": [
           "qoder_cli",
-          "deepseek_harness"
+          "deepseek_harness",
+          "opencode"
         ]
       }
     }
@@ -56,7 +57,8 @@
         "claude_code",
         "qoder_cli",
         "pi",
-        "deepseek_harness"
+        "deepseek_harness",
+        "opencode"
       ]
     },
     "node_path": {

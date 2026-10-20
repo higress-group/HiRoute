@@ -15,7 +15,7 @@ impl ConnectionOptionAuthorizationPort for LocalControlAdapter {
         &self,
         connection_option_id: &str,
     ) -> PortResult<Option<ConnectionOptionAuthorizationV1>> {
-        let Some(catalog) = self.release_catalog.as_ref() else {
+        let Some(catalog) = self.current_catalog() else {
             return Ok(None);
         };
         let Ok(resolved) = catalog.resolve_connection_option(connection_option_id) else {
@@ -58,7 +58,7 @@ impl ConnectionOptionAuthorizationPort for LocalControlAdapter {
         currency: &str,
         target_rule_id: Option<&str>,
     ) -> PortResult<bool> {
-        let Some(catalog) = self.release_catalog.as_ref() else {
+        let Some(catalog) = self.current_catalog() else {
             return Ok(false);
         };
         let model_data = catalog.model_data();
@@ -86,8 +86,7 @@ impl ConnectionOptionAuthorizationPort for LocalControlAdapter {
         binding_id: &str,
     ) -> PortResult<Option<CredentialPoolIdentityV1>> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or_else(|| unavailable("release.catalog.missing"))?;
         let (source, binding) = {
             let stores = self.stores_lock()?;
@@ -130,8 +129,7 @@ impl ConnectionOptionAuthorizationPort for LocalControlAdapter {
         explicit_materialization: bool,
     ) -> PortResult<Option<RegisteredComputeSourceMaterializationV1>> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or_else(|| unavailable("release.catalog.missing"))?;
         for candidate in self
             .registered_compute_candidates()

@@ -20,6 +20,7 @@ pub fn configure(command: &mut Command, home: &Path) {
             "QODER_",
             "PI_",
             "DSH_",
+            "OPENCODE_",
             "XDG_",
         ]
         .iter()

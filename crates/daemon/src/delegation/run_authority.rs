@@ -282,6 +282,7 @@ fn build_entry(
                 hiroute_domain::delegation::WorkerHarnessV1::QoderCli => "qoder",
                 hiroute_domain::delegation::WorkerHarnessV1::Pi => "pi",
                 hiroute_domain::delegation::WorkerHarnessV1::DeepseekHarness => "dsh",
+                hiroute_domain::delegation::WorkerHarnessV1::OpenCode => "opencode",
             },
             task.session
                 .as_ref()

@@ -72,20 +72,9 @@ fn decode_startup_failure(value: &serde_json::Value) -> Result<Option<&'static s
     if failure.schema != "hiroute.daemon-startup-failure/v1" {
         return Err("DAEMON_READY_INVALID");
     }
-    Ok(Some(match failure.code {
-        StartupFailureCode::StorageUnavailable => "DAEMON_STORAGE_UNREADABLE",
-        StartupFailureCode::UpgradeSourceUnsupported => "DAEMON_UPGRADE_SOURCE_UNSUPPORTED",
-        StartupFailureCode::UpgradeStorageFailed => "DAEMON_UPGRADE_STORAGE_FAILED",
-        StartupFailureCode::ReleaseFactsInvalid => "DAEMON_RELEASE_INVALID",
-        StartupFailureCode::DependencyUnavailable => "DAEMON_DEPENDENCY_UNAVAILABLE",
-        StartupFailureCode::GatewayUnavailable => "DAEMON_GATEWAY_UNAVAILABLE",
-        StartupFailureCode::ControlUnavailable => "DAEMON_CONTROL_UNAVAILABLE",
-        StartupFailureCode::Cancelled => "DAEMON_START_CANCELLED",
-        StartupFailureCode::InvalidConfiguration
-        | StartupFailureCode::WorkerRejected
-        | StartupFailureCode::ReadyChannelFailed
-        | StartupFailureCode::Internal => "DAEMON_START_FAILED",
-    }))
+    Ok(Some(hiroute_host_runtime::startup_failure_host_code(
+        failure.code,
+    )))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

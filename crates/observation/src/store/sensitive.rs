@@ -15,6 +15,8 @@ struct Marker {
 pub(crate) fn migrate(transaction: &Connection) -> Result<(), Error> {
     transaction.execute_batch(
         "CREATE TABLE IF NOT EXISTS observation_safe_facts_v2(workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,original_digest TEXT NOT NULL,body_json TEXT NOT NULL,PRIMARY KEY(workspace_id,request_id,original_digest));
+         CREATE INDEX IF NOT EXISTS observation_safe_route_decisions ON observation_safe_facts_v2(workspace_id)
+           WHERE CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.event_kind') ELSE 'route_decision' END='route_decision';
          CREATE TABLE IF NOT EXISTS observation_request_tombstones_v2(workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,deleted_ms INTEGER NOT NULL,PRIMARY KEY(workspace_id,request_id));
          CREATE TABLE IF NOT EXISTS observation_sensitive_payloads_v2(
             id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,session_id TEXT NOT NULL,

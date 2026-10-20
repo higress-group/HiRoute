@@ -10,6 +10,7 @@ mod maintenance;
 mod native;
 #[cfg(test)]
 mod tests;
+mod trust;
 
 type Result<T> = std::result::Result<T, DelegationErrorV1>;
 

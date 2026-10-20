@@ -304,6 +304,35 @@ The separately named hiroute.historical-applicability-test/v1 and its result rem
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
 
+### Requirement: Division drafts disclose the change in protection
+
+Model performance MAY open separate editable unpublished division drafts without
+saving, publishing, changing Agent mappings or starting a Worker. A branch draft
+uses the former Primary for design/planning and the trial model for implementation,
+with editable conditions and an optional Primary group for implementation. It
+copies the trial's decision and competence policy.
+
+A delegated draft requires explicit executor selection, shows dependency results
+and orders DeepSeek Harness first for DeepSeek models without preselection. Both
+single-group task categories use the trial model and retain assessment policy.
+Before publication a summary derived from the draft MUST distinguish two-group
+next-turn Primary protection from single-group/Worker low-score recording without
+an upgrade group. Parent models and other executors do not rescue that Worker.
+Completed tasks are not competence results. Evidence from previously routed trial
+stages does not validate work that only Primary handled.
+
+Two-group protection explanations follow the copied judgment settings. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Other decision services retain unconditional low-score protection. Published routing follows its frozen settings; editor explanations describe the next publication.
+
+#### Scenario: Keep Primary for implementation
+
+- **WHEN** the user enables Primary protection for the implementation category
+- **THEN** the draft contains that two-group category and its publication summary
+  describes next-turn protection; an unchecked single-group category states that
+  low scores are recorded without an upgrade.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235189421
+
 ## Implementation references
 
 - [Decision domain](../../../crates/domain/src/routing/decision.rs) and

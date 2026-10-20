@@ -159,6 +159,7 @@ impl LocalControlAdapter {
             .unwrap_or_default()
             .into_iter()
             .chain(self.scanner.dsh_api_sources().unwrap_or_default())
+            .chain(self.scanner.opencode_api_sources().unwrap_or_default())
             .chain(
                 self.hermes_source_facts()
                     .map(|facts| facts.sources)

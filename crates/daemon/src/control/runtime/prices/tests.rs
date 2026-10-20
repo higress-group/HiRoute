@@ -86,7 +86,7 @@ fn seed_source(runtime: &ProductionControlRuntime, billing: BillingClass) -> Sou
         ),
         _ => panic!("unsupported price test billing class"),
     };
-    let c = runtime.adapter.release_catalog.as_ref().unwrap();
+    let c = runtime.adapter.current_catalog().unwrap();
     let candidate = c
         .authorize_compute_discovery(RegisteredComputeDiscoveryFactV1 {
             agent_id: "agent.claude-code".into(),

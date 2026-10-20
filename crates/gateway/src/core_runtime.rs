@@ -1159,7 +1159,9 @@ impl ProductionGatewayRuntime {
             });
             let cleanup_eligible = hold_ticket
                 .as_ref()
-                .filter(|ticket| !ticket.message_history_continues)
+                .filter(|ticket| {
+                    ticket.history_continuity != crate::context_hold::HistoryContinuity::Continuing
+                })
                 .and(planner_input.previous_success_candidate_id.as_ref())
                 .and_then(|previous| {
                     let first = frozen_candidates.first()?;

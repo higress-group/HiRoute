@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { TrustAttention } from '../trust/TrustAttention';
+import type { TrustSuggestionsRead } from '../trust/use-trust-suggestions';
+import { useState, type ReactNode } from 'react';
 import { ContentExcerpt } from '../Sessions';
 import { agentBrandFromId, BrandIcon, Disclosure, formatMoney, ProductPage, UiIcon } from '../../ui';
 import { deriveHomePrimaryMode, visibleData } from './state';
@@ -6,7 +8,7 @@ import type { HomeProps, HomeReads } from './types';
 import { formatCacheHit, formatCacheHitCoverage, formatTokenCount } from '../usage-presentation';
 
 /** v3-shell + occami-core DOM. Only the real read model supplies values. */
-export function Home({ language, reads, onAction, hasTasks = false }: HomeProps & { hasTasks?: boolean }) {
+export function Home({ language, reads, onAction, hasTasks = false, trustSuggestions, newModels, onTrustAction }: HomeProps & { hasTasks?: boolean; trustSuggestions?: TrustSuggestionsRead; newModels?: ReactNode; onTrustAction?(planId: string, branchId: string): void }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const mode = deriveHomePrimaryMode(reads);
   const compute = visibleData(reads.compute), plans = visibleData(reads.plans), agents = visibleData(reads.agents);
@@ -48,6 +50,8 @@ export function Home({ language, reads, onAction, hasTasks = false }: HomeProps 
     return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en', { month: '2-digit', day: '2-digit' });
   };
   const openStep = (index: number) => onAction({kind: index === 0 ? done[0] ? 'view-models' : 'connect-models' : index === 1 ? done[1] ? 'view-routing' : 'create-plan' : 'view-agents', returnTo: 'home'});
+  // Returning users see what changed first: new models, then suggestions, then recent work.
+  const attention = trustSuggestions && <TrustAttention onAct={onTrustAction} read={trustSuggestions} language={language} names={Object.fromEntries((plans?.plans ?? []).map(plan => [plan.planId, plan.displayName]))} onOpen={planId => onAction({kind:'open-plan',returnTo:'home',planId,performance:true})} />;
   return <ProductPage title={text('首页', 'Home')} subtitle={recent.length ? text('近期使用与需要你处理的事', 'Recent work and things that need your attention') : undefined}>
     <div className="home-wrap v3-home" data-home-mode={mode}>
       {!!errors.length && <div className="callout bad home-read-error" role="alert"><UiIcon name="warning" /><div><strong>{text('部分信息暂时无法读取', 'Some information is temporarily unavailable')}</strong><p>{text('已有数据会保留；首次读取完成前不会把当前状态当作首次使用。', 'Existing data is retained. The app will not treat this as first use until the initial reads finish.')}</p><div className="actions">{errors.map(domain => <button className="btn btn-quiet" key={domain} type="button" onClick={() => onAction({kind:'retry-read', domain})}>{text('重试', 'Retry')} {domainLabels[domain]}</button>)}</div></div></div>}
@@ -61,6 +65,8 @@ export function Home({ language, reads, onAction, hasTasks = false }: HomeProps 
         </button>)}</section>
         {complete && <section className="surface v3-ready"><UiIcon name={activityUnavailable ? 'warning' : 'check'} /><div><strong>{activityUnavailable ? text('模型与路由配置可继续使用', 'Model and routing setup remains available') : text('配置已保存', 'Configuration saved')}</strong><p>{activityUnavailable ? text('会话记录恢复后会在这里显示。', 'Session history will appear here after it becomes available again.') : text('还没有会话记录，不需要在 HiRoute 中再开始一次对话。', 'No sessions yet. You do not need to start another chat in HiRoute.')}</p></div></section>}
       </> : <>
+        {newModels}
+        {attention}
         <section className="surface"><header className="surface-header"><h2>{text('近期会话', 'Recent sessions')}</h2><button className="btn btn-quiet" type="button" onClick={() => onAction({kind:'view-all-sessions',returnTo:'home'})}>{text('查看全部', 'View all')} <UiIcon name="chevronRight" /></button></header>
           <div className="native-list">{recent.map((session,index) => { const sessionId = session.sessionId; const occurredAt = timeLabel(session.occurredAtMs, session.occurredAtLabel); const fallbackTitle = session.title || [session.agentName, occurredAt].filter(Boolean).join(' · ') || text('会话记录', 'Session'); return <button type="button" className="list-row v3-recent" key={sessionId ?? index} disabled={!sessionId} onClick={() => sessionId && onAction({kind:'open-session',sessionId,returnTo:'home'})}>
             <BrandIcon kind={session.agentName ? agentBrandFromId(session.agentName) : 'agent'} size="medium" />
@@ -80,6 +86,7 @@ export function Home({ language, reads, onAction, hasTasks = false }: HomeProps 
           <p>{value.coverage === 'complete' && value.pending === 0 && !value.provisional && value.unknownTrafficRequests === 0 ? text('Token 来自已记录的上游用量；金额是独立估算，不代表供应商账单。', 'Tokens come from recorded upstream usage; monetary values are separate estimates, not provider bills.') : text('部分用量或请求仍未知；已知 Token 与金额分别展示，不把缺失项当作零。', 'Some usage or requests remain unknown. Known tokens and monetary estimates stay separate; missing values are not zero.')}</p>
         </div></Disclosure>}
       </>}
+      {!recent.length && <>{newModels}{attention}</>}
       {hasTasks && <button className="v3-text-link" type="button" onClick={() => onAction({kind:'view-all-tasks',returnTo:'home'})}><UiIcon name="agent" />{text('查看任务记录', 'View task history')}<UiIcon name="arrow" /></button>}
     </div>
   </ProductPage>;

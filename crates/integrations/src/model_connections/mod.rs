@@ -642,6 +642,7 @@ where
         };
         let candidate = self.candidates.register_compute_candidate(facts)?;
         Ok(ModelConnectionCheckViewV1 {
+            observed_model_ids: observation.model_ids.clone(),
             inference_model_id: draft.inference_model_id.clone(),
             candidate,
             target: target.candidate_target,

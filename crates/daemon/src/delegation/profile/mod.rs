@@ -19,6 +19,7 @@ mod claude_runtime;
 mod codex;
 mod dsh;
 mod native_context;
+mod opencode;
 mod pi;
 mod qoder;
 pub use native_context::NativeWorkerContext;
@@ -75,7 +76,8 @@ pub struct CandidateWorkerProfile {
     permission_policy: WorkerPermissionPolicyV1,
     native_session_mode: String,
     native_selected_model_id: String,
-    codex_initialization_root: Option<PathBuf>,
+    native_initialization_root: Option<PathBuf>,
+    opencode_startup: Option<opencode::StartupAdmission>,
 }
 
 pub use super::platform::WorkerPlatformCapabilities;
@@ -166,6 +168,8 @@ impl CandidateWorkerProfile {
             (WorkerHarnessV1::QoderCli, WorkerPermissionPolicyV1::ApproveAll) => "yolo",
             (WorkerHarnessV1::Pi, WorkerPermissionPolicyV1::ApproveAll) => "approve-all",
             (WorkerHarnessV1::Pi, _) => return Err(DelegationErrorV1::CapabilityUnavailable),
+            (WorkerHarnessV1::OpenCode, WorkerPermissionPolicyV1::ApproveAll) => opencode::MODE,
+            (WorkerHarnessV1::OpenCode, _) => return Err(DelegationErrorV1::CapabilityUnavailable),
             (WorkerHarnessV1::DeepseekHarness, WorkerPermissionPolicyV1::ApproveAll) => "",
             (WorkerHarnessV1::DeepseekHarness, _) => {
                 return Err(DelegationErrorV1::CapabilityUnavailable);
@@ -250,6 +254,7 @@ impl CandidateWorkerProfile {
             WorkerHarnessV1::QoderCli => qoder::render(&input, &private_root)?,
             WorkerHarnessV1::Pi => pi::render(&input)?,
             WorkerHarnessV1::DeepseekHarness => dsh::render(&input)?,
+            WorkerHarnessV1::OpenCode => opencode::render(&input, env["PATH"].as_str())?,
         };
         env.extend(rendered.env);
         let (executable, args) = match launch {
@@ -305,9 +310,16 @@ impl CandidateWorkerProfile {
             permission_policy: input.permission_policy,
             native_session_mode: native_session_mode.to_owned(),
             native_selected_model_id: rendered.native_model_id,
-            codex_initialization_root: (input.harness == WorkerHarnessV1::CodexCli
-                && input.native_context.is_borrowed())
-            .then(|| input.native_context.config_root().to_owned()),
+            native_initialization_root: rendered
+                .opencode_startup
+                .as_ref()
+                .map(|admission| admission.root().to_owned())
+                .or_else(|| {
+                    (input.harness == WorkerHarnessV1::CodexCli
+                        && input.native_context.is_borrowed())
+                    .then(|| input.native_context.config_root().to_owned())
+                }),
+            opencode_startup: rendered.opencode_startup,
         })
     }
 
@@ -333,8 +345,18 @@ impl CandidateWorkerProfile {
 
     /// The installation owner has already bound the canonical effective native root.
     /// Never derive this coordination key from cwd, a model alias, or mutable child env.
-    pub(crate) fn codex_initialization_root(&self) -> Option<&Path> {
-        self.codex_initialization_root.as_deref()
+    pub(crate) fn native_initialization_root(&self) -> Option<&Path> {
+        self.native_initialization_root.as_deref()
+    }
+
+    pub(crate) fn validate_native_initialization(
+        &self,
+        new_session: bool,
+    ) -> Result<(), DelegationErrorV1> {
+        if let Some(admission) = &self.opencode_startup {
+            admission.validate(&self.cwd, new_session)?;
+        }
+        Ok(())
     }
 
     /// Compatibility check for callers that require a native Harness profile. Restricted
@@ -394,6 +416,7 @@ struct RenderedHarnessProfile {
     adapter_bootstrap: Option<PathBuf>,
     native_args: Vec<PathBuf>,
     native_model_id: String,
+    opencode_startup: Option<opencode::StartupAdmission>,
 }
 
 fn secret_str(secret: &ProtectedSecret) -> Result<&str, DelegationErrorV1> {

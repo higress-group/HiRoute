@@ -49,7 +49,7 @@ test('Agent presentation follows configuration and recovery rather than model ve
 
 import { agentModelPlanIds } from '../src/features/agents/status.ts';
 test('plan usage covers every typed model selection and excludes restored connections', () => {
- for (const mode of ['qoder_additional', 'pi_additional', 'dsh_additional']) {
+ for (const mode of ['qoder_additional', 'pi_additional', 'dsh_additional', 'opencode_additional']) {
   assert.deepEqual(agentModelPlanIds({ mode, allowed_plan_ids: ['plan/free', 'plan/free'] }), ['plan/free']);
  }
  assert.deepEqual(agentModelPlanIds({ mode: 'codex_default', allowed_plan_ids: ['plan/free'], default_selection: { kind: 'plan', plan_id: 'plan/default' } }), ['plan/free', 'plan/default']);

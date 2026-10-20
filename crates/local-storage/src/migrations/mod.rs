@@ -18,6 +18,7 @@ mod current_storage;
 mod observation_source;
 mod recovery_package;
 mod startup_format;
+pub(crate) mod startup_recovery;
 pub(crate) use startup_format::validate_startup_format;
 #[cfg(test)]
 mod stopped_read_tests;
@@ -45,6 +46,7 @@ mod worker_dependencies_v24;
 mod worker_dependencies_v24_tests;
 mod worker_dependencies_v26;
 mod worker_dependencies_v27;
+mod worker_dependencies_v30;
 mod worker_instance_v19;
 
 #[cfg(test)]
@@ -53,7 +55,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 29;
+pub const LATEST_SCHEMA_VERSION: u32 = 30;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -470,7 +472,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | LATEST_SCHEMA_VERSION
         ) || (set.target_schema_version() == 24
             && [
                 set.control.manifest(),
@@ -866,6 +868,8 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
              CREATE UNIQUE INDEX secret_owner_fingerprint_idx
              ON secret_entries(owner_scope, fingerprint) WHERE purpose != 'http-header';"),
         (DatabaseKind::Control | DatabaseKind::Runtime, 29) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 30) => Ok(worker_dependencies_v30::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 30) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }

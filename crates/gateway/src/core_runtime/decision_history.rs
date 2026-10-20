@@ -5,7 +5,7 @@ use super::{
     ProductionGatewayRuntime, RequestObservation, model_ir, profiles,
 };
 use crate::agent_turn_history::{AgentTurnHistorySnapshot, TurnDecisionInputs};
-use crate::context_hold::{HoldTicket, PreparedHold};
+use crate::context_hold::{HistoryContinuity, HoldTicket, PreparedHold};
 use crate::replay::ReplayStore;
 use std::time::Instant;
 
@@ -49,16 +49,16 @@ impl ProductionGatewayRuntime {
         ) else {
             return Ok(DecisionHistory::detached());
         };
-        let message_history_continues = prepared_hold
-            .as_ref()
-            .is_some_and(PreparedHold::message_history_continues);
+        let history_continuity = prepared_hold.as_ref().map_or(
+            HistoryContinuity::NoCheckpoint, PreparedHold::history_continuity,
+        );
         let begin = self.agent_turn_history.begin_with_context(
             key,
             plan,
             request,
             replay,
             TurnDecisionInputs {
-                message_history_continues,
+                history_continuity,
                 reselect_on_user_message: true,
             },
             Instant::now(),
@@ -120,7 +120,7 @@ impl ProductionGatewayRuntime {
                 drop(guard);
                 return Ok(DecisionHistory::detached());
             };
-            if ticket.message_history_continues != message_history_continues {
+            if ticket.history_continuity != history_continuity {
                 drop(guard);
                 return Ok(DecisionHistory::detached());
             }

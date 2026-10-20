@@ -991,6 +991,15 @@ def compile_candidate():
     data = copy.deepcopy(old["data"])
     apply_current_provider_limits(data, maintenance, metadata_catalog)
     for reference in maintenance.get("reference_models", []):
+        if "source_model_key" in reference:
+            # Directory intent does not qualify an account or an endpoint binding.
+            # Keep the source catalog's conditional qualification unchanged and
+            # derive facts here instead of maintaining a second model definition.
+            reference = copy.deepcopy(reference)
+            source_model = keyed(metadata_catalog["models"], "model_key")[reference["source_model_key"]]
+            reference["model"] = runtime_model_definition(
+                source_model, reference["model_configuration_id"], reference["publisher_id"]
+            )
         identity = reference["model"]["model_configuration_id"]
         if identity in seen or not reference["sources"]:
             raise ValueError("duplicate or unsourced reference model")

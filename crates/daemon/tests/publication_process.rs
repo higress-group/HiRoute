@@ -64,6 +64,16 @@ fn real_process_recovery_preserves_independent_agent_edits() {
 }
 
 #[test]
+fn agent_settings_recover_after_target_before_service_receipt() {
+    run_script_case("publication_agent_recovery.py", Some("after_target"));
+}
+
+#[test]
+fn agent_settings_recover_after_active_before_service_receipt() {
+    run_script_case("publication_agent_recovery.py", Some("after_active"));
+}
+
+#[test]
 fn real_process_v2_plan_content_and_alias_recover_exactly() {
     run_script("plan_content_process.py");
 }
@@ -123,6 +133,12 @@ fn installed_standalone_cli_completes_the_headless_management_loop() {
 #[cfg(target_os = "linux")]
 fn installed_cli_quickstart_reuses_resources_and_exact_apply_files() {
     run_standalone_script("quickstart_product.py");
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn installed_feed_withdrawal_preserves_published_sessions_workers_and_continue() {
+    run_standalone_script("model_feed_product.py");
 }
 
 /// Runs only on request: five isolated one-candidate Plan publishes through the production

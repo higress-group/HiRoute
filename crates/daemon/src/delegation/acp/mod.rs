@@ -411,6 +411,26 @@ async fn run_session(
     updates.lock().unwrap_or_else(|e| e.into_inner()).session =
         Some(binding.acp_session_id.clone());
     journal.session_bound(&binding)?;
+    let typed_mode = input.identity_contract == AcpNativeIdentityContract::OpenCodeSessionV1;
+    let config_options = if typed_mode {
+        let expected = input
+            .native_session_mode
+            .as_deref()
+            .ok_or(DelegationErrorV1::CapabilityUnavailable)?;
+        Some(
+            model::ensure_mode(
+                &connection,
+                &binding.acp_session_id,
+                config_options.as_deref(),
+                expected,
+                &input.cancellation,
+                input.deadline,
+            )
+            .await?,
+        )
+    } else {
+        config_options
+    };
     if let Some(expected_model) = input.expected_model.as_deref() {
         model::ensure_model(
             &connection,
@@ -422,7 +442,7 @@ async fn run_session(
         )
         .await?;
     }
-    if let Some(native_session_mode) = input.native_session_mode {
+    if let Some(native_session_mode) = input.native_session_mode.filter(|_| !typed_mode) {
         let mode_available = modes.as_ref().is_some_and(|modes| {
             modes
                 .available_modes
@@ -651,3 +671,6 @@ mod notification_tests;
 mod security_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod opencode_tests;

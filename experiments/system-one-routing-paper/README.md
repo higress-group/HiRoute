@@ -114,7 +114,7 @@ separation, numerical settings, usage charges and transport differences remain
 explicit. These disclosure limits constrain exact regeneration and service-level
 reproduction. They do not convert AI review into independent human review.
 
-Original labels and reported main tables are retained. Any proposed relabeling or
+Original labels and reported decision-quality tables are retained. Any proposed relabeling or
 analysis change must be explicit and separate from the frozen results. Private
 reviewer submissions, invitation links, identity mappings, authentication details
 and workstation configuration are not part of the public research materials.

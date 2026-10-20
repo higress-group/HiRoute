@@ -54,8 +54,8 @@ def worker_decision(fixture, body):
     if fixture.get('harness') == 'dsh':
         return dict(kind='tool',id='delegated_artifact',name='bash',
             arguments={'command':command,'description':'Write delegated receipt','timeoutMs':10000})
-    return dict(kind='tool', id='delegated_artifact', name='bash' if fixture.get('harness') == 'pi' else 'Bash',
-                arguments={'command': command, 'timeout': 10 if fixture.get('harness') == 'pi' else 10000})
+    return dict(kind='tool', id='delegated_artifact', name='bash' if fixture.get('harness') in ('pi','opencode') else 'Bash',
+                arguments={'command': command, 'description':'Write delegated receipt', 'timeout': 10 if fixture.get('harness') == 'pi' else 10000})
 
 
 class MainAgentOracle:
@@ -78,7 +78,7 @@ class MainAgentOracle:
         assert self.fixture['main_marker'] in rendered, 'Worker request reached the main Agent source'
         results = tool_results(body, self.fixture.get('harness', 'qoder'))
         names = {item.get('name') for item in body.get('tools', [])}
-        if self.fixture.get('harness') == 'dsh':
+        if self.fixture.get('harness') in ('dsh','opencode'):
             assert {'skill','bash'} <= names, 'native DSH Skill/bash tools unavailable'
             if 'main_skill' not in results:
                 assert 'hiroute-collaboration' in rendered, 'installed user collaboration Skill not discovered'
@@ -108,7 +108,7 @@ class MainAgentOracle:
             return self.bash('main_plans', shlex.quote(self.cli) + ' worker plans --output json')
         directory = output_envelope(results['main_plans'])
         plans = [plan for plan in directory['plans'] if plan['agent_plan_id'] == self.fixture['plan_id']]
-        assert len(plans) == 1 and plans[0]['harness'] == {'pi':'pi','dsh':'deepseek_harness','qoder':'qoder_cli'}[self.fixture.get('harness','qoder')] and plans[0]['availability'] == 'ready', \
+        assert len(plans) == 1 and plans[0]['harness'] == {'pi':'pi','dsh':'deepseek_harness','qoder':'qoder_cli','opencode':'opencode'}[self.fixture.get('harness','qoder')] and plans[0]['availability'] == 'ready', \
             'the public directory did not offer the published Qoder Worker Plan'
         if 'main_exec' not in results:
             prompt = 'Use ' + ' and '.join(item['name'] for item in self.fixture['skills']) + \
@@ -169,6 +169,8 @@ class MainAgentOracle:
         if self.fixture.get("harness") == "dsh":
             return dict(kind="tool",id=call_id,name="bash",
                 arguments={"command":command,"description":"Use public HiRoute CLI","timeoutMs":timeout})
+        if self.fixture.get("harness")=="opencode":
+            return dict(kind="tool",id=call_id,name="bash",arguments={"command":command,"description":"Use public HiRoute CLI","timeout":timeout})
         pi = self.fixture.get("harness") == "pi"
         return dict(kind="tool", id=call_id, name="bash" if pi else "Bash",
                     arguments={"command":command,"timeout":timeout / 1000 if pi else timeout})

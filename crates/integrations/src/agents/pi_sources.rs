@@ -480,3 +480,65 @@ impl FilesystemAgentScannerV1 {
         Ok((items, material))
     }
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeApiEcosystem {
+    Pi,
+    Dsh,
+    OpenCode,
+}
+impl NativeApiEcosystem {
+    pub const ALL: [Self; 3] = [Self::Pi, Self::Dsh, Self::OpenCode];
+    pub fn agent_id(self) -> &'static str {
+        match self {
+            Self::Pi => "agent_pi_default",
+            Self::Dsh => "agent_dsh_default",
+            Self::OpenCode => "agent_opencode_default",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pi => "Pi",
+            Self::Dsh => "DSH",
+            Self::OpenCode => "OpenCode",
+        }
+    }
+    pub fn from_source(source: &NativeApiSource) -> Option<Self> {
+        Self::from_selector(match source.source_ref.split_once('/')?.0 {
+            "pi-source" => "pi.api-key",
+            "dsh-source" => "dsh.api-key",
+            "opencode-source" => "opencode.api-key",
+            _ => return None,
+        })
+    }
+    pub fn from_selector(selector: &str) -> Option<Self> {
+        match selector {
+            "pi.api-key" => Some(Self::Pi),
+            "dsh.api-key" => Some(Self::Dsh),
+            "opencode.api-key" => Some(Self::OpenCode),
+            _ => None,
+        }
+    }
+}
+impl FilesystemAgentScannerV1 {
+    pub fn native_api_sources(
+        &self,
+        ecosystem: NativeApiEcosystem,
+    ) -> Result<Vec<NativeApiSource>, Error> {
+        match ecosystem {
+            NativeApiEcosystem::Pi => self.pi_api_sources(),
+            NativeApiEcosystem::Dsh => self.dsh_api_sources(),
+            NativeApiEcosystem::OpenCode => self.opencode_api_sources(),
+        }
+    }
+    pub fn read_native_api_source(
+        &self,
+        source: &NativeApiSource,
+    ) -> Result<(Zeroizing<String>, ProtectedSecret), Error> {
+        match NativeApiEcosystem::from_source(source).ok_or(Error::InvalidConfig)? {
+            NativeApiEcosystem::Pi => self.read_pi_api_source(source),
+            NativeApiEcosystem::Dsh => self.read_dsh_api_source(source),
+            NativeApiEcosystem::OpenCode => self.read_opencode_api_source(source),
+        }
+    }
+}

@@ -33,12 +33,13 @@ pub(crate) use discovery::{
     validate_selection,
 };
 
-const WORKER_HARNESSES: [WorkerHarnessV1; 5] = [
+const WORKER_HARNESSES: [WorkerHarnessV1; 6] = [
     WorkerHarnessV1::CodexCli,
     WorkerHarnessV1::ClaudeCode,
     WorkerHarnessV1::QoderCli,
     WorkerHarnessV1::Pi,
     WorkerHarnessV1::DeepseekHarness,
+    WorkerHarnessV1::OpenCode,
 ];
 
 #[derive(Clone, Debug)]
@@ -308,7 +309,10 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         )?;
         if matches!(
             installation.harness,
-            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+            WorkerHarnessV1::QoderCli
+                | WorkerHarnessV1::Pi
+                | WorkerHarnessV1::DeepseekHarness
+                | WorkerHarnessV1::OpenCode
         ) && input.run.configuration.permission_policy
             != hiroute_domain::delegation::WorkerPermissionPolicyV1::ApproveAll
         {
@@ -384,11 +388,15 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             }
             let identity = match (|| {
                 let context = NativeWorkerContext::from_environment(installation.harness)?;
-                session.bind_borrowed_context(
-                    context.home(),
-                    context.config_root(),
-                    &input.workspace_path,
-                )?;
+                if let Some(opencode) = context.opencode() {
+                    session.bind_opencode_context(opencode, &input.workspace_path)?;
+                } else {
+                    session.bind_borrowed_context(
+                        context.home(),
+                        context.config_root(),
+                        &input.workspace_path,
+                    )?;
+                }
                 session.create_ownership_marker(&roots.sessions, &native.root)
             })() {
                 Ok(identity) => identity,
@@ -471,13 +479,20 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
                     session.verify_native_session(native_session_id)?;
                 }
                 (
-                    NativeWorkerContext::borrowed(&context.home, &context.config_root)?,
+                    if let Some(opencode) = context.opencode {
+                        NativeWorkerContext::from_opencode(opencode)?
+                    } else {
+                        NativeWorkerContext::borrowed(&context.home, &context.config_root)?
+                    },
                     context.workspace,
                 )
             }
             None if matches!(
                 installation.harness,
-                WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+                WorkerHarnessV1::QoderCli
+                    | WorkerHarnessV1::Pi
+                    | WorkerHarnessV1::DeepseekHarness
+                    | WorkerHarnessV1::OpenCode
             ) =>
             {
                 return Err(DelegationErrorV1::ResumeUnavailable);
@@ -510,12 +525,15 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         }
         let qoder_budget = (matches!(
             installation.harness,
-            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+            WorkerHarnessV1::QoderCli
+                | WorkerHarnessV1::Pi
+                | WorkerHarnessV1::DeepseekHarness
+                | WorkerHarnessV1::OpenCode
         ))
         .then(|| {
             if matches!(
                 installation.harness,
-                WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+                WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness | WorkerHarnessV1::OpenCode
             ) {
                 hiroute_integrations::agents::pi_plan_token_budget(
                     &input.compiled_plan.body.materialized,

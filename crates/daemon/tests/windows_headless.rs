@@ -23,6 +23,8 @@ mod windows_management_business;
 mod windows_model_ratings;
 #[path = "support/windows_native_protocols.rs"]
 mod windows_native_protocols;
+#[path = "support/windows_opencode_business.rs"]
+mod windows_opencode_business;
 #[path = "support/windows_packaged_foreground.rs"]
 mod windows_packaged_foreground;
 #[path = "support/windows_qoder_daemon_diagnostic.rs"]
@@ -90,9 +92,12 @@ impl InstalledProduct {
             "product gate must not replace an existing stable entry"
         );
         security::ensure_private_directory(&layout.data_root).unwrap();
+        let mut entropy = [0u8; 16];
+        getrandom::fill(&mut entropy).unwrap();
+        let nonce: String = entropy.iter().map(|byte| format!("{byte:02x}")).collect();
         let root = layout
             .data_root
-            .join(format!("Windows headless 测试 {}", std::process::id()));
+            .join(format!("Windows headless 测试 {nonce}"));
         security::create_owner_only_directory(&root).unwrap();
         if windows_execution_host::selected() {
             assert!(
@@ -1141,4 +1146,37 @@ fn actual_windows_installed_management_commands() {
 #[ignore = "requires the verified complete production Windows package"]
 fn actual_windows_packaged_foreground_subscription_lifecycle() {
     windows_packaged_foreground::run();
+}
+
+/// Focused native OpenCode coverage; the standard Windows runner owns execution.
+#[test]
+#[ignore = "requires the pinned official OpenCode Windows native package"]
+fn actual_windows_opencode_worker_native_history_and_cancellation() {
+    let product = InstalledProduct::create();
+    let context = windows_opencode_business::Context::prepare(&product);
+    let mut first = product.start_with_environment(false, context.variables());
+    gateway_ready(first.listen);
+    let journey = windows_opencode_business::Journey::run(&product);
+    context.preserved();
+    lifecycle::stop(
+        &product.layout.lifecycle_endpoint(),
+        &product.daemon,
+        Duration::from_secs(30),
+    )
+    .unwrap();
+    first.wait(true);
+    let mut recovered = product.start_with_environment(true, context.variables());
+    gateway_ready(recovered.listen);
+    journey.recovered(&product);
+    context.preserved();
+    lifecycle::stop(
+        &product.layout.lifecycle_endpoint(),
+        &product.daemon,
+        Duration::from_secs(30),
+    )
+    .unwrap();
+    recovered.wait(true);
+    println!(
+        "Windows native OpenCode: public Plan and installation selection, actual Skill/tool receipts, Job cancellation, daemon restart and exact Continue; borrowed native configuration preserved"
+    );
 }

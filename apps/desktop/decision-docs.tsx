@@ -27,7 +27,7 @@ Object.assign(window, { __DECISION_DOCS__: { samples, captureCalls }, __TAURI_IN
   },
 } });
 const label = view === 'decision-models' ? text('决策模型', 'Decision models')
-  : view === 'config' ? text('智能省钱', 'Smart saving')
+  : view === 'config' ? text('按难度分流', 'Difficulty routing')
   : view === 'custom-branches' ? text('自定义分支', 'Custom branches')
   : text('模型表现', 'Model performance');
 const compact = view === 'session' || view === 'quality-session';

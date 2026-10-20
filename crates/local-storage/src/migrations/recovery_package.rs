@@ -18,7 +18,13 @@ pub(super) fn previous_desktop(storage: &Path) -> Result<Option<PathBuf>, LocalS
         .ancestors()
         .find(|p| p.extension().is_some_and(|ext| ext == "app"))
     else {
-        return Ok(None);
+        return match hiroute_host_runtime::RetainedRecoveryPackage::read(storage)? {
+            Some(package) => {
+                package.verify(&executable)?;
+                Ok(Some(package.package_root))
+            }
+            None => Ok(None),
+        };
     };
     let data = storage.parent().ok_or(LocalStorageError::InvalidData)?;
     let directory = data.join("updates");

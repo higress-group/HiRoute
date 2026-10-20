@@ -95,7 +95,8 @@ impl AgentModelGrantV2 {
                     AgentModelSelectionV2::CodexDefault { .. }
                         | AgentModelSelectionV2::QoderAdditional { .. }
                         | AgentModelSelectionV2::PiAdditional { .. }
-                        | AgentModelSelectionV2::DshAdditional { .. },
+                        | AgentModelSelectionV2::DshAdditional { .. }
+                        | AgentModelSelectionV2::OpenCodeAdditional { .. },
                     AgentIngressProtocolV1::Responses
                 ) | (
                     AgentModelSelectionV2::ClaudeLauncher { .. },
@@ -369,7 +370,8 @@ impl AgentModelGrantV2 {
                     AgentModelSelectionV2::CodexDefault { .. }
                         | AgentModelSelectionV2::QoderAdditional { .. }
                         | AgentModelSelectionV2::PiAdditional { .. }
-                        | AgentModelSelectionV2::DshAdditional { .. },
+                        | AgentModelSelectionV2::DshAdditional { .. }
+                        | AgentModelSelectionV2::OpenCodeAdditional { .. },
                     AgentIngressProtocolV1::Responses
                 ) | (
                     AgentModelSelectionV2::ClaudeLauncher { .. },

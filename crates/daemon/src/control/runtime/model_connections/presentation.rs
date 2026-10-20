@@ -86,8 +86,7 @@ impl LocalControlAdapter {
             .price_control_facts()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
         let evaluated_at_ms = prices
             .evaluated_at
@@ -155,7 +154,7 @@ impl LocalControlAdapter {
                         self.retained_subscription_candidate_for_source(source)?
                             .filter(|checked| {
                                 self.subscription_logical_target(kind).is_ok_and(|target| {
-                                    trusted_subscription(catalog, source, checked, &target, kind)
+                                    trusted_subscription(&catalog, source, checked, &target, kind)
                                 })
                             })
                             .and_then(|_| {
@@ -197,7 +196,7 @@ impl LocalControlAdapter {
                         billing_class,
                         price_contexts: Vec::new(),
                         runtime_availability: connector_model_runtime_availability(
-                            catalog,
+                            &catalog,
                             source,
                             model,
                             CpaAccountKind::from_candidate(&source.last_candidate_ref)
@@ -283,7 +282,7 @@ impl LocalControlAdapter {
                             ComputeManagementModelRuntimeAvailabilityFactV1::BindingAndKeys,
                             |model| {
                                 connector_model_runtime_availability(
-                                    catalog,
+                                    &catalog,
                                     management_source,
                                     model,
                                     CpaAccountKind::from_candidate(

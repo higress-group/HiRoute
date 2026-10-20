@@ -167,6 +167,52 @@
     "host_only": false
   },
   {
+    "name": "model_feed_status",
+    "args": [],
+    "result": "Result<ModelFeedStatusV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "model_feed_refresh",
+    "args": [],
+    "result": "Result<ModelFeedStatusV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "model_feed_settings_apply",
+    "args": [
+      {
+        "name": "input",
+        "type": "ModelFeedSettingsRequestV1"
+      }
+    ],
+    "result": "Result<ModelFeedStatusV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "model_feed_remove_preview",
+    "args": [],
+    "result": "Result<ModelFeedRemovalPreviewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "model_feed_remove_apply",
+    "args": [
+      {
+        "name": "input",
+        "type": "ModelFeedRemoveRequestV1"
+      }
+    ],
+    "result": "Result<ModelFeedStatusV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "model_availability",
+    "args": [],
+    "result": "Result<ModelAvailabilityResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
     "name": "effective_price_query",
     "args": [
       {
@@ -436,6 +482,17 @@
       }
     ],
     "result": "Result<AgentSnapshot, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_agent_previous_routing",
+    "args": [
+      {
+        "name": "input",
+        "type": "AgentPreviousRoutingQueryV1"
+      }
+    ],
+    "result": "Result<AgentPreviousRoutingPreviewV1, DesktopFailure>",
     "host_only": false
   },
   {

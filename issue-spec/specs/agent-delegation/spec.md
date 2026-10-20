@@ -10,9 +10,8 @@ and exact native-session continuation.
 
 ### Requirement: Supported Harnesses share one lifecycle
 
-The current supported list, used by plan editing and executor availability in the
-same stable order, is Codex CLI, Claude Code, Qoder CLI, Pi, and DeepSeek Harness
-(DSH). Native differences do not duplicate admission, run authority, result, or
+HiRoute MUST use the same stable supported Harness order in plan editing and executor
+availability: Codex CLI, Claude Code, Qoder CLI, Pi, DeepSeek Harness (DSH), and OpenCode. Native differences do not duplicate admission, run authority, result, or
 retention workflows. Installation, protocol, policy, and Continue capabilities are
 separate; being listed cannot promise every action is available.
 
@@ -21,6 +20,14 @@ required for new work. A main Agent may retain its own model provider and use on
 collaboration. A fixed single-model plan is sufficient, and ordinary model calls
 never start an Agent process. Goals, needed context/files, constraints, and acceptance
 criteria are explicit; a Worker cannot assume the complete main conversation.
+
+#### Scenario: Native-only OpenCode installation
+
+- **WHEN** OpenCode is selected as the execution Harness
+- **THEN** installation selection MUST require its native CLI only and retain independent saved choices for other Harnesses; no fictitious ACP adapter or Node field is required.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258607139
 
 ### Requirement: Local submissions require product intent, not caller credentials
 
@@ -79,8 +86,9 @@ Lowering capacity preserves existing work and limits only later admission.
 
 ### Requirement: Native resource context is borrowed, routing is per run
 
-Workers use the product instance's effective HOME and explicit native roots
-(CODEX_HOME, CLAUDE_CONFIG_DIR, QODER_CONFIG_DIR, PI_CODING_AGENT_DIR, DSH_HOME), including
+Workers MUST use the product instance's effective HOME and explicit native roots
+(CODEX_HOME, CLAUDE_CONFIG_DIR, QODER_CONFIG_DIR, PI_CODING_AGENT_DIR, DSH_HOME,
+and the selected OpenCode HOME/XDG/config/data selectors), including
 isolated Pilot contexts. Installation paths cannot choose a different user's root
 or recover a hidden daily HOME. Existing user/project Skills are discovered by the
 native client; directory existence or prompt echo is not invocation evidence.
@@ -92,6 +100,14 @@ deduplicating and rejecting empty/relative entries; it cannot inherit the whole
 environment, upstream tokens, or shell startup scripts. Private launch materials and
 same-UID execution are not a sandbox. Concurrent routes keep credentials/settings/
 process cleanup isolated.
+
+#### Scenario: Borrowed resources and real tools
+
+- **WHEN** a supported OpenCode Worker executes a coding task requiring an existing user/project Skill, read, edit and shell tools
+- **THEN** the native resources are actually invoked, expected file/shell effects occur, and every admitted model request remains bound to the run and its frozen route without changing shared settings.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258611907
 
 ### Requirement: Codex startup overrides precede its native auth/catalog checks
 
@@ -220,6 +236,38 @@ materials were retained. Every Continue receives a new run/admission time/creden
 not today's replacement plan. Failed admission preserves the previous successful
 task and recovery qualification.
 
+OpenCode binds one exact native/ACP session ID and the original canonical workspace,
+resource/config/data/database locations and frozen route. Continue uses native
+load with fresh credentials and mode/model confirmation, including after daemon
+restart. It MUST NOT replay, fork, choose newest history, migrate/repair opaque
+history or create a replacement session on failure. Borrowed history remains outside
+HiRoute recursive cleanup. Root exit, ACP cancel acknowledgement or closed stdio
+alone cannot prove the owned tool chain and loopback listener stopped; existing
+process-group/Windows Job finalization and uncertain-cleanup rules apply.
+
+#### Scenario: Exact Continue after restart
+
+- **WHEN** a completed OpenCode task is continued after the HiRoute daemon restarts and current defaults or Plan publication have changed
+- **THEN** the original workspace/resource context/session and frozen route are used with a new credential; newly published defaults do not create a replacement conversation.
+
+#### Scenario: Missing or unusable history
+
+- **WHEN** the bound OpenCode history is absent, inaccessible, incompatible or cannot be loaded by the selected native client
+- **THEN** Continue fails explicitly without session/new, newest-session selection, history mutation or replay of previous work.
+
+#### Scenario: Concurrent cancellation
+
+- **WHEN** one of two independent OpenCode Worker runs is cancelled while a native shell tool is active
+- **THEN** the cancelled run stops its owned execution and listener with actual cleanup evidence, while the neighboring task retains its session, credentials and progress.
+
+#### Scenario: Content retention
+
+- **WHEN** HiRoute hides or expires an OpenCode task body while native user history remains present
+- **THEN** existing visibility/Continue policy remains authoritative and cleanup does not delete or reimport the borrowed native history.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258613091
+
 ### Requirement: Task projections are durable and consistent across clients
 
 Instance task list is newest-latest-admission first with exclusive cursor, bounded
@@ -271,7 +319,7 @@ terminal state. Idle save checks do not write until progress exists.
 
 ### Requirement: Executor availability is a prerequisite, not a behavior probe
 
-Availability is independent of plans/main-Agent configuration and returns all five
+Availability MUST be independent of plans/main-Agent configuration and return all six
 Harnesses with ready/unavailable/unknown plus closed reasons. Basic paths/executability
 and Pi's explicitly bounded offline SDK checks establish only start-approve-all
 prerequisites. Cancel-ready indicates an entry, not confirmed stop. Without a real
@@ -293,6 +341,56 @@ version/continuation. Unregistered obsolete digest/profile records are isolated 
 task rather than blocking startup, and may conservatively retain durable occupancy.
 Real Exec/Continue reports actual spawn/handshake/model/mode/load/timeout stages.
 Environment variables or a successful installation query are not execution evidence.
+
+OpenCode Worker/Continue format admission is a separate bounded capability. Its
+initial supported producer is the official npm platform package for 1.19.3, identified
+through adjacent package/layout/platform metadata without launching a shim or
+fingerprinting a binary. Standalone, unknown or ambiguous installations remain
+unavailable for this action without disabling independent model/Skill configuration.
+
+#### Scenario: Separate capabilities
+
+- **WHEN** OpenCode model configuration is supported but native ACP or Continue capability is unavailable
+- **THEN** model configuration remains usable and Worker/Continue availability is reported independently, without claiming model success from discovery.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258607139
+
+### Requirement: OpenCode Worker execution binds native ACP to one frozen route
+
+HiRoute MUST execute an explicitly selected OpenCode native ACP installation through its existing Worker admission, run-authority and execution lifecycle. A run MUST use the frozen Plan alias, selected Responses/Messages protocol, exact native model selector and fresh run credential. Both new and restored sessions MUST confirm the exact model through typed ACP config options before prompt intent; missing or contradictory model capability fails explicitly without native-provider fallback. Native resource roots, project rules and user/project Skills are borrowed; per-run settings MUST NOT rewrite daily configuration or copy ambient upstream credentials. All admitted main, small/title and compaction model calls MUST stay on the frozen route and use the Plan-derived native context/output budget. Effective project/managed settings and native extensions MUST NOT override routing, authentication, budget or permissions; an unenforceable composition fails before model work. The initial Worker surface supports native Skill/read/search/edit/shell under approve-all; native nested delegation, external MCP and executable plugins/custom tools are excluded, and unsupported restricted policies MUST NOT be upgraded silently. Native terminal errors and cancellations MUST NOT become successful assistant results. The ACP-internal HTTP listener MUST stay local, protected as necessary for per-run ownership, and within the same owned lifecycle; no separately managed persistent server is introduced.
+
+The selected native context freezes HOME, XDG roots, optional absolute OPENCODE_CONFIG, additive OPENCODE_CONFIG_DIR and the exact database selector. Supported existing history is admitted by a bounded read-only native migration-ID set check before startup, without decoding or migrating conversations. Missing history may be initialized for new work only. Typed primary mode selection MUST complete before final model confirmation from the latest config options. Unknown late configuration, native schema/conversion writes, organization/managed sources or executable custom composition fail before launch.
+
+Concurrent OpenCode starts sharing one native database MUST coordinate only native initialization and final read-only history/composition admission. Release that coordination after successful ACP initialize, before New/Load or prompt, and preserve the existing deadline, cancellation, live-authority and uncertain-cleanup boundaries. Do not prewarm, repair or migrate history or serialize whole task execution.
+
+#### Scenario: Exact model before work
+
+- **WHEN** a new OpenCode ACP session reports a different current model than the task-selected provider/alias
+- **THEN** HiRoute selects and confirms the exact expected model before prompting, or fails the run without model work if that cannot be established.
+
+#### Scenario: Borrowed resources and real tools
+
+- **WHEN** a supported OpenCode Worker executes a coding task requiring an existing user/project Skill, read, edit and shell tools
+- **THEN** the native resources are actually invoked, expected file/shell effects occur, and every admitted model request remains bound to the run and its frozen route without changing shared settings.
+
+#### Scenario: Auxiliary routing and compaction
+
+- **WHEN** native title/small-model work or context compaction occurs during an OpenCode Worker task
+- **THEN** those model requests use the frozen authorized route and native budget rather than ambient provider defaults or another model account.
+
+#### Scenario: Unenforceable overrides
+
+- **WHEN** project or managed configuration or an enabled executable extension conflicts with the required route, credential, tool or budget boundary
+- **THEN** the affected Worker action reports a scoped capability/configuration failure before model work, without disabling unrelated Agent configuration capabilities.
+
+#### Scenario: Native provider failure
+
+- **WHEN** OpenCode reports a model authentication or inference failure through its ACP response
+- **THEN** the run records failure with bounded safe diagnostics instead of accepting error-shaped assistant prose or an ordinary success result.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258611907
 
 ## Implementation references
 

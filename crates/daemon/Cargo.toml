@@ -6,9 +6,13 @@ license.workspace = true
 rust-version.workspace = true
 
 [features]
-integration-test-hooks = []
+integration-test-hooks = [
+    "hiroute-gateway/e2e-test-control",
+    "hiroute-integrations/test-support",
+]
 
 [dependencies]
+fs2.workspace = true
 bytes.workspace = true
 hyper = { version = "=1.11.1", features = ["server", "http1"] }
 hyper-util = { version = "=0.1.20", features = ["tokio"] }
@@ -53,6 +57,9 @@ name = "hirouted"
 path = "src/control/bin.rs"
 
 [dev-dependencies]
+hiroute-observation = { path = "../observation", features = ["test-support"] }
+base64.workspace = true
+hiroute-integrations = { path = "../integrations", features = ["test-support"] }
 fs2.workspace = true
 hiroute-client-core = { path = "../client-core" }
 tokio = { workspace = true, features = ["test-util"] }
@@ -62,7 +69,6 @@ tokio-util.workspace = true
 command-fds = "0.3.3"
 
 [target.'cfg(windows)'.dev-dependencies]
-base64.workspace = true
 hiroute-platform-test-support = { path = "../platform/test-support" }
 windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_UI_Shell"] }
 windows-sys = { version = "0.61.2", features = [

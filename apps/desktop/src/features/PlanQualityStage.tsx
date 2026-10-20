@@ -40,9 +40,10 @@ export type PlanQualitySample = {
   assessment?: Assessment | null;
 };
 
-export function PlanQualityStage({ sample, modelName, language, onOpenEvidence }: {
+export function PlanQualityStage({ sample, modelName, activeRevision, language, onOpenEvidence }: {
   sample: PlanQualitySample;
   modelName: string;
+  activeRevision?: number | null;
   language: 'zh' | 'en';
   onOpenEvidence?: (sessionId: string, requestId: string) => void;
 }) {
@@ -61,7 +62,8 @@ export function PlanQualityStage({ sample, modelName, language, onOpenEvidence }
       </div>
       <div className="quality-score"><strong>{reliable ? assessment.score.toFixed(2) + ' / 1' : text('未评分', 'Unrated')}</strong><span>{text('胜任度', 'Competence')}</span></div>
     </div>
-    <div className="quality-stage-meta">{new Date(sample.last_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')} · {text('计划版本 r' + sample.plan_revision, 'Plan r' + sample.plan_revision)}</div>
+    {reliable && assessment.reason && <p className="quality-reason">{assessment.reason}</p>}
+    <div className="quality-stage-meta">{new Date(sample.last_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}{activeRevision != null && sample.plan_revision !== activeRevision && <> · {text('历史版本 ' + sample.plan_revision, 'Earlier version ' + sample.plan_revision)}</>}</div>
     {sample.branch_execution && <p className="quality-coverage">{text('实际执行', 'Actual execution')} · {qualityGroupLabel(branch, sample.branch_execution.group, language)} · {text('候选 ', 'Candidate ')}{sample.branch_execution.candidate_index + 1} · {text('当时胜任下限 ', 'Execution competence floor ')}{sample.branch_execution.policy.floor_millis / 1000}</p>}
     {sample.upgrade && <div className="callout"><UiIcon name="route" /><span>{text(`已触发主力保护 · 当时评分 ${sample.upgrade.decision.score} 低于下限 ${sample.upgrade.decision.floor_millis / 1000}`, `Triggered primary protection · score ${sample.upgrade.decision.score} below floor ${sample.upgrade.decision.floor_millis / 1000}`)}</span></div>}
     <Disclosure className="quality-assessment-details" label={assessment ? text('查看评分依据', 'View assessment evidence') : text('阶段详情', 'Stage details')} language={language}>
@@ -78,7 +80,7 @@ export function PlanQualityStage({ sample, modelName, language, onOpenEvidence }
       {assessment && <>
         <p className="quality-coverage">{text('评分覆盖轮次 ' + assessment.target_from_ordinal + '–' + assessment.target_through_ordinal, 'Assessed turns ' + assessment.target_from_ordinal + '–' + assessment.target_through_ordinal)}</p>
         <p className="quality-coverage">{text('原始评分', 'Raw score')} · {assessment.score}{assessment.assessed_at_ms != null && <> · {new Date(assessment.assessed_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}</>}</p>
-        {assessment.reason && <p className="quality-reason">{assessment.reason}</p>}
+        {assessment.partial && assessment.reason && <p className="quality-reason">{assessment.reason}</p>}
       </>}
       <div className="quality-flags">
         {sample.history_partial && <span className="badge warn no-dot">{text('历史记录不完整', 'Incomplete history')}</span>}

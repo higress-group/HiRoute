@@ -2,6 +2,8 @@
 
 //! Explicit, offline ReleaseFacts compiler. No build script invokes this crate.
 
+pub mod feed;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};

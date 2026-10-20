@@ -68,6 +68,11 @@ export async function runShellHostScenarios(client,baseUrl,output) {
       await navigate(client,new URL('/@fs'+shellIndex,baseUrl).href,{width,height});await waitFor(client,'Boolean(document.querySelector("#explanation")?.textContent)');
       const box=await evaluate(client,`(()=>{const e=document.querySelector('.shell-status section'),b=e.getBoundingClientRect();return{left:b.left,right:b.right,overflow:e.scrollWidth>e.clientWidth+1,theme:document.querySelector('#root').dataset.theme,button:[...document.querySelectorAll('button')].filter(b=>!b.hidden).map(b=>({width:b.getBoundingClientRect().width,height:b.getBoundingClientRect().height}))};})()`);
       assert(box.left>=0&&box.right<=width+1&&!box.overflow&&box.theme===theme&&box.button.every(b=>b.width>35&&b.height>25),'Shell startup layout failed: '+JSON.stringify(box));
+      if(phase==='failed') {
+        const state=await evaluate(client,`({heading:document.querySelector('#phase').textContent,text:document.querySelector('#explanation').textContent,retry:!document.querySelector('#retry').hidden,recovery:!document.querySelector('#recovery-material').hidden})`);
+        assert(state.heading===(language==='zh'?'安装尚未完成':'Installation is incomplete')&&!state.retry&&!state.recovery,'Installer recovery borrowed service/storage failure actions: '+JSON.stringify(state));
+        assert(state.text.includes(language==='zh'?'相同版本及构建':'same version and build')&&state.text.includes(language==='zh'?'寻求支持':'obtain support'),'Installer recovery did not identify the exact retry or missing-installer fallback');
+      }
       if(phase==='listener-unavailable') {
         const state=await evaluate(client,`(()=>{const recovery=document.querySelector('#console-recovery');const main=document.querySelector('.shell-status');main.scrollTop=0;return{heading:document.querySelector('#phase').textContent,visible:recovery&&!recovery.hidden,steps:recovery?.textContent,top:document.querySelector('h1').getBoundingClientRect().top,commands:recovery?.querySelector('pre')?.textContent};})()`);
         assert(state.visible&&state.heading===(language==='zh'?'本机控制台尚未就绪':'The local console is unavailable')&&state.top>=0,'Healthy service was described as a startup failure or clipped: '+JSON.stringify(state));

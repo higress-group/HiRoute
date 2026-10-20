@@ -93,6 +93,15 @@ fn frame_u64(mac: &mut HmacSha256, kind: &[u8], value: u64) {
     frame(mac, kind, &value.to_be_bytes());
 }
 
+/// Continuity of visible messages, independent of system-instruction changes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HistoryContinuity {
+    Continuing,
+    Shortened,
+    Rewritten,
+    NoCheckpoint,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct HoldTicket {
     key: ContextHoldKey,
@@ -100,7 +109,7 @@ pub(crate) struct HoldTicket {
     cycle: u64,
     value_version: u64,
     checkpoint_revision: u64,
-    pub(crate) message_history_continues: bool,
+    pub(crate) history_continuity: HistoryContinuity,
     pub(crate) hint: Option<HoldPreferenceV1>,
     /// Last fully delivered candidate in this exact route scope, even when
     /// rebuilt history invalidates the stronger continuity hint.
@@ -117,11 +126,14 @@ pub(crate) struct PreparedHold {
 }
 
 impl PreparedHold {
-    pub(crate) fn message_history_continues(&self) -> bool {
-        self.snapshot.is_some_and(|snapshot| {
-            self.measured.message_count >= snapshot.message_count
-                && self.measured.prefix_digest == Some(snapshot.history_digest)
-        })
+    pub(crate) fn history_continuity(&self) -> HistoryContinuity {
+        match self.snapshot {
+            None => HistoryContinuity::NoCheckpoint,
+            Some(snapshot) if self.measured.message_count >= snapshot.message_count
+                && self.measured.prefix_digest == Some(snapshot.history_digest) => HistoryContinuity::Continuing,
+            Some(snapshot) if self.measured.message_count < snapshot.message_count => HistoryContinuity::Shortened,
+            Some(_) => HistoryContinuity::Rewritten,
+        }
     }
 }
 
@@ -247,11 +259,32 @@ impl ContextHoldStore {
         self.commit(self.prepare(key, history, now)?, now)
     }
 
+    #[cfg(test)]
+    fn begin_with_measure(
+        &self,
+        key: ContextHoldKey,
+        history: &HistoryEvidence<'_>,
+        now: Instant,
+        measure: impl FnOnce(Option<usize>) -> Option<HistoryDigests>,
+    ) -> Option<HoldTicket> {
+        self.commit(self.prepare_with_measure(key, history, now, measure)?, now)
+    }
+
     pub(crate) fn prepare(
         &self,
         key: ContextHoldKey,
         history: &HistoryEvidence<'_>,
         now: Instant,
+    ) -> Option<PreparedHold> {
+        self.prepare_with_measure(key, history, now, |prefix| history.measure(prefix))
+    }
+
+    fn prepare_with_measure(
+        &self,
+        key: ContextHoldKey,
+        history: &HistoryEvidence<'_>,
+        now: Instant,
+        measure: impl FnOnce(Option<usize>) -> Option<HistoryDigests>,
     ) -> Option<PreparedHold> {
         self.key?;
         let snapshot = {
@@ -263,7 +296,7 @@ impl ContextHoldStore {
 
         // Scan visible history outside the mutex, retaining only the stored
         // prefix checkpoint and the final digest.
-        let measured = history.measure(snapshot.map(|entry| entry.message_count))?;
+        let measured = measure(snapshot.map(|entry| entry.message_count))?;
         Some(PreparedHold {
             key,
             snapshot,
@@ -339,7 +372,13 @@ impl ContextHoldStore {
                 cycle,
                 value_version,
                 checkpoint_revision,
-                message_history_continues,
+                history_continuity: if message_history_continues {
+                    HistoryContinuity::Continuing
+                } else if measured.message_count < snapshot.message_count {
+                    HistoryContinuity::Shortened
+                } else {
+                    HistoryContinuity::Rewritten
+                },
                 hint,
                 previous_success,
                 cleaned_prefix_len,
@@ -388,7 +427,7 @@ impl ContextHoldStore {
             cycle: 1,
             value_version: 0,
             checkpoint_revision: 1,
-            message_history_continues: false,
+            history_continuity: HistoryContinuity::NoCheckpoint,
             hint: None,
             previous_success: None,
             cleaned_prefix_len: None,

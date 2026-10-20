@@ -129,10 +129,24 @@ and delegates installation to the canonical `scripts/install-standalone.py`. Wit
 no stable package for the host architecture it fails closed; it never selects a
 preview or unlisted candidate and never starts the service automatically.
 
+## Model feed
+
+The website build validates the generated model feed with the shared Rust admission
+code and Node structural checks. The validated payload travels in its own artifact,
+outside `dist`. Only the production deploy checks the current HTTPS publication and
+stages the exact payload at `/model-feed/v1.json` before upload. PR builds publish
+nothing. An unchanged payload writes no feed file, so the served object stays intact.
+Before the first feed-capable release, the JSON null payload skips publication and
+ordinary website deployment continues. No feed signing key or client public key is
+required; the fixed HTTPS origin and production pipeline are the trust boundary.
+
+See the [feed maintainer guide](../../assets/model-feed/README.md) for regeneration,
+sequence rules and release compatibility. OSS upload credentials are described below.
+
 ## OSS deployment
 
 The `website` workflow builds on pull requests. Pushes to `main` and explicit
-dispatches deploy through the `website-production` GitHub environment. Configure
+dispatches on `main` deploy through the `website-production` GitHub environment. Configure
 the same secret names as the Higress website:
 
 - `ACCESS_KEYID`
@@ -152,5 +166,5 @@ referenced release object exists with matching size and SHA metadata; broken lin
 therefore fail deployment without replacing the currently served site.
 
 DNS, HTTPS, custom-domain routing, bucket read policy, and the rule that missing
-`/releases/*` objects return a real 404 remain infrastructure configuration outside
-this repository. Verify those once `hiroute.ai` is connected to the bucket.
+`/releases/*` and `/model-feed/*` objects return a real 404 without redirects remain
+infrastructure configuration outside this repository. Verify those once `hiroute.ai` is connected to the bucket.

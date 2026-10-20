@@ -6,10 +6,7 @@ impl ModelCatalogPort for LocalControlAdapter {
         &self,
         query: ModelCatalogQueryV1,
     ) -> Result<ModelCatalogResultV1, ErrorCode> {
-        let catalog = self
-            .release_catalog
-            .as_ref()
-            .ok_or(ErrorCode::DaemonUnavailable)?;
+        let catalog = self.current_catalog().ok_or(ErrorCode::DaemonUnavailable)?;
         let snapshot = catalog.rating_snapshot();
         match query {
             ModelCatalogQueryV1::Reference {

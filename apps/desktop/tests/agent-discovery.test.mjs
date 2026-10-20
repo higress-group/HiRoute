@@ -10,7 +10,9 @@ test('custom targets survive a new reader but confer no discovered context or wr
   assert.equal(saveAgentDiscoveryTargets([target], storage), true);
   assert.deepEqual(loadAgentDiscoveryTargets(storage), [target]);
   const rows = agentPageEntries([]);
-  assert.equal(rows.length, 6);
+  assert.equal(rows.length, 7);
+  assert.ok(rows.some(row => row.agent_id === "agent_opencode_default"));
+  assert.ok(rows.some(row => row.agent_id === "agent_hermes_default"));
   for (const row of rows) {
     assert.equal(agentDiscoveryState(row), 'not_discovered');
     assert.equal(row.context_id, null); assert.equal(row.settings, null);

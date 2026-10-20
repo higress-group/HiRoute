@@ -65,6 +65,16 @@ impl Oracle {
         Self::start(move |body, ledger| {
             ledger.worker_stage = Some(WorkerStage::ModelRequest);
             let text = native_text(body);
+            if [
+                "title generator",
+                "generate a concise title",
+                "generate a short title",
+            ]
+            .iter()
+            .any(|part| text.to_lowercase().contains(part))
+            {
+                return text_reply(body, "Native task receipt");
+            }
             if text.contains(RESIDUAL) {
                 ledger.worker_stage = Some(WorkerStage::ResidualRequest);
                 println!("Windows public residual checkpoint: stage=oracle-request-observed");
@@ -113,13 +123,17 @@ impl Oracle {
                 let quote = |text: &str| format!("'{}'", text.replace('\'', "'\\''"));
                 let path =
                     |name: &str| quote(&workspace.join(name).to_string_lossy().replace('\\', "/"));
-                let command = format!(
-                    "printf '%s\\n' {} > {} && sleep 60 && printf '%s\\n' {} > {}",
-                    quote(&format!("started-{nonce}")),
-                    path("cancel-started.txt"),
-                    quote(&format!("late-{nonce}")),
-                    path("cancel-late.txt")
-                );
+                let command = if shell_timeout_is_millis(body) {
+                    super::cancel::opencode_command(&workspace, &nonce)
+                } else {
+                    format!(
+                        "printf '%s\\n' {} > {} && sleep 60 && printf '%s\\n' {} > {}",
+                        quote(&format!("started-{nonce}")),
+                        path("cancel-started.txt"),
+                        quote(&format!("late-{nonce}")),
+                        path("cancel-late.txt")
+                    )
+                };
                 return function_reply(
                     body,
                     "worker_cancel",
@@ -170,13 +184,20 @@ impl Oracle {
             if let Some(output) = correlated(body, "worker_skill") {
                 ledger.worker_stage = Some(WorkerStage::SkillResult);
                 ledger.worker_skill_results += 1;
-                assert!(
-                    contents
-                        .lines()
-                        .filter(|line| !line.trim().is_empty())
-                        .all(|line| output.contains(line)),
-                    "Worker must load the actual project Skill, not a prompt copy"
-                );
+                if tool(body, "skill").is_some() {
+                    assert!(
+                        output.contains(&format!("skill-contents-{nonce}")),
+                        "OpenCode must load the actual native project Skill body"
+                    );
+                } else {
+                    assert!(
+                        contents
+                            .lines()
+                            .filter(|line| !line.trim().is_empty())
+                            .all(|line| output.contains(line)),
+                        "Worker must load the actual project Skill, not a prompt copy"
+                    );
+                }
                 return function_reply(
                     body,
                     "worker_write",
@@ -184,11 +205,26 @@ impl Oracle {
                     json!({"path":artifact,"content":format!("{receipt}\n")}),
                 );
             }
-            assert!(
-                text.contains(&format!("skill-discovery-{nonce}")),
-                "native project Skill discovery receipt is absent"
-            );
-            function_reply(body, "worker_skill", "read", json!({"path":skill}))
+            if tool(body, "skill").is_some() {
+                // OpenCode 1.19.3 advertises Skills in model context while the
+                // tool's description stays static. Match the shared native oracle.
+                assert!(
+                    text.contains(&format!("skill-discovery-{nonce}")),
+                    "native OpenCode Skill discovery receipt is absent"
+                );
+                function_reply(
+                    body,
+                    "worker_skill",
+                    "skill",
+                    json!({"name":"windows-worker-receipt"}),
+                )
+            } else {
+                assert!(
+                    text.contains(&format!("skill-discovery-{nonce}")),
+                    "native project Skill discovery receipt is absent"
+                );
+                function_reply(body, "worker_skill", "read", json!({"path":skill}))
+            }
         })
     }
 
@@ -571,7 +607,17 @@ fn tool<'a>(body: &'a Value, name: &str) -> Option<&'a Value> {
         .iter()
         .find(|tool| tool["name"] == name || tool["function"]["name"] == name)
 }
-fn function_reply(body: &Value, id: &str, name: &str, arguments: Value) -> http::Reply {
+fn shell_timeout_is_millis(body: &Value) -> bool {
+    let Some(declaration) = tool(body, "bash") else {
+        return false;
+    };
+    declaration
+        .get("parameters")
+        .or_else(|| declaration["function"].get("parameters"))
+        .and_then(|schema| schema["properties"]["timeout"]["description"].as_str())
+        .is_some_and(|description| description.to_ascii_lowercase().contains("milliseconds"))
+}
+fn function_reply(body: &Value, id: &str, name: &str, mut arguments: Value) -> http::Reply {
     let declaration =
         tool(body, name).expect("actual native client must declare the selected tool");
     assert_ne!(
@@ -581,6 +627,22 @@ fn function_reply(body: &Value, id: &str, name: &str, arguments: Value) -> http:
     let parameters = declaration
         .get("parameters")
         .or_else(|| declaration["function"].get("parameters"));
+    // Follow the actual native declaration; Pi uses path, OpenCode uses filePath.
+    if parameters.is_some_and(|schema| schema["properties"].get("filePath").is_some())
+        && let Some(path) = arguments.as_object_mut().unwrap().remove("path")
+    {
+        arguments["filePath"] = path;
+    }
+    if name == "bash"
+        && parameters.is_some_and(|schema| schema["properties"].get("description").is_some())
+    {
+        arguments["description"] = json!("Produce the bounded native acceptance receipt");
+    }
+    // OpenCode 1.19.3 no longer declares a description argument; its timeout
+    // still uses milliseconds. Pi's timeout remains in seconds.
+    if name == "bash" && shell_timeout_is_millis(body) {
+        arguments["timeout"] = json!(120000);
+    }
     if let Some(required) = parameters.and_then(|schema| schema["required"].as_array()) {
         assert!(
             required
@@ -662,6 +724,36 @@ fn stream(body: &Value, id: &str, item: Value) -> http::Reply {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_timeout_follows_declared_units_without_a_description_argument() {
+        for (description, expected) in [
+            ("Optional timeout in milliseconds", 120000),
+            ("Optional timeout in seconds", 120),
+        ] {
+            let body = json!({"tools":[{"type":"function","name":"bash","parameters":{
+                "type":"object","properties":{"command":{"type":"string"},
+                    "timeout":{"type":"number","description":description}},
+                "required":["command"]}}]});
+            let reply = function_reply(
+                &body,
+                "worker_cancel",
+                "bash",
+                json!({"command":"native-receipt","timeout":120}),
+            );
+            let event: Value = String::from_utf8(reply.body)
+                .unwrap()
+                .lines()
+                .filter_map(|line| line.strip_prefix("data: "))
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .find(|event| event["type"] == "response.output_item.done")
+                .unwrap();
+            let arguments: Value =
+                serde_json::from_str(event["item"]["arguments"].as_str().unwrap()).unwrap();
+            assert_eq!(arguments["timeout"], expected);
+            assert!(arguments.get("description").is_none());
+        }
+    }
 
     #[test]
     fn a_prompt_or_unrelated_or_error_tool_result_cannot_supply_a_native_receipt() {

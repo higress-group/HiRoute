@@ -258,7 +258,10 @@ impl LocalControlAdapter {
             ModelAction::Configure => {
                 let file_applied = if matches!(
                     class,
-                    SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh
+                    SettingsAgentClass::Qoder
+                        | SettingsAgentClass::Pi
+                        | SettingsAgentClass::Dsh
+                        | SettingsAgentClass::OpenCode
                 ) {
                     hiroute_integrations::additional_native_configuration_is_applied(
                         &self.artifacts,
@@ -306,6 +309,27 @@ impl LocalControlAdapter {
                         )
                         .map_err(super::map_port)?
                 };
+                let file_applied = file_applied
+                    && (class != SettingsAgentClass::OpenCode || {
+                        use hiroute_application::agent_connection::{
+                            AdditionalModelFileAction, decode_settings_additional_model_file,
+                        };
+                        let payload = decode_settings_additional_model_file(intent)
+                            .map_err(super::map_port)?;
+                        let AdditionalModelFileAction::Configure {
+                            provider_id,
+                            models,
+                            ..
+                        } = payload.change
+                        else {
+                            return Err(ControlReadError::Corrupt);
+                        };
+                        // Recheck effective ownership/allowlists, without treating unrelated
+                        // document changes as drift or rejecting a retained default selector.
+                        self.scanner
+                            .opencode_model_facts(&provider_id, &models)
+                            .is_ok()
+                    });
                 let [mutation] = operation.plan.agent_access_grants() else {
                     return Err(ControlReadError::Corrupt);
                 };
@@ -423,6 +447,10 @@ impl LocalControlAdapter {
                             hiroute_domain::AgentModelSelectionV2::PiAdditional { .. },
                             SettingsAgentClass::Pi,
                         ) => [hiroute_domain::AgentModelSurfaceV2::PiCli].into(),
+                        (
+                            hiroute_domain::AgentModelSelectionV2::OpenCodeAdditional { .. },
+                            SettingsAgentClass::OpenCode,
+                        ) => [hiroute_domain::AgentModelSurfaceV2::OpenCodeCli].into(),
                         (
                             hiroute_domain::AgentModelSelectionV2::DshAdditional { .. },
                             SettingsAgentClass::Dsh,
@@ -569,7 +597,8 @@ fn model_intent(
             }
             super::settings_facts::SettingsAgentClass::Qoder
             | super::settings_facts::SettingsAgentClass::Pi
-            | super::settings_facts::SettingsAgentClass::Dsh => {
+            | super::settings_facts::SettingsAgentClass::Dsh
+            | super::settings_facts::SettingsAgentClass::OpenCode => {
                 super::native_additional_model::is_settings_additional_model(intent)
             }
         })
@@ -585,7 +614,7 @@ fn model_action(
             hiroute_application::agent_connection::HermesModelFileAction::Configure { .. } => Ok(ModelAction::Configure),
             hiroute_application::agent_connection::HermesModelFileAction::Restore { .. } => Ok(ModelAction::Restore),
         },
-        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi | super::settings_facts::SettingsAgentClass::Dsh => {
+        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi | super::settings_facts::SettingsAgentClass::Dsh | super::settings_facts::SettingsAgentClass::OpenCode => {
             match hiroute_application::agent_connection::settings_additional_model_file_for_operation(
                 operation, intent,
             )?
@@ -640,7 +669,10 @@ fn model_endpoint_matches_runtime(
             ClaudeModelFileAction::Configure { gateway_base_url: endpoint, .. }
                 if endpoint == gateway_base_url
         )),
-        SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
+        SettingsAgentClass::Qoder
+        | SettingsAgentClass::Pi
+        | SettingsAgentClass::Dsh
+        | SettingsAgentClass::OpenCode => {
             let endpoint = super::native_additional_model::additional_model_endpoint(
                 additional_model_kind(intent)?,
                 gateway_base_url,

@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+semver.workspace = true
 getrandom.workspace = true
 hiroute-domain = { path = "../domain" }
 hiroute-application = { path = "../application" }
@@ -14,6 +15,7 @@ hiroute-gateway = { path = "../gateway" }
 hiroute-platform = { path = "../platform" }
 http.workspace = true
 reqwest = { version = "=0.13.4", features = ["blocking"] }
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
@@ -21,6 +23,9 @@ thiserror.workspace = true
 toml_edit = "=0.25.13"
 zeroize.workspace = true
 tempfile.workspace = true
+
+[features]
+test-support = []
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["process", "signal"] }

@@ -260,6 +260,7 @@ export type ComputeCandidateView = {
 };
 
 export type ModelConnectionCheckView = {
+  observed_model_ids?: string[];
   inference_model_id?: string | null;
   candidate: ComputeCandidateView;
   target: {
@@ -381,6 +382,7 @@ export type ModelConnectionBackend = {
 };
 
 export type ModelConnectionFormProps = {
+  allowCustom?: boolean;
   existingNames?: string[];
   appendTo?: import('../models/types').ManagedSource;
   savedSource?: import('../models/types').ManagedSource;

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-model-availability"
+description = "Enables the model_availability command without any pre-configured scope."
+commands.allow = ["model_availability"]
+
+[[permission]]
+identifier = "deny-model-availability"
+description = "Denies the model_availability command without any pre-configured scope."
+commands.deny = ["model_availability"]

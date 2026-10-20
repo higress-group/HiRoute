@@ -16,6 +16,7 @@ pub fn additional_model_kind(intent: &ExternalEffectIntentV1) -> PortResult<Agen
         Some("agent_qoder_default") => Ok(AgentKindV1::Qoder),
         Some("agent_pi_default") => Ok(AgentKindV1::Pi),
         Some("agent_dsh_default") => Ok(AgentKindV1::DeepseekHarness),
+        Some("agent_opencode_default") => Ok(AgentKindV1::OpenCode),
         _ => Err(invalid()),
     }
 }
@@ -23,6 +24,7 @@ fn schema(kind: AgentKindV1) -> &'static str {
     match kind {
         AgentKindV1::Pi => PI_SCHEMA,
         AgentKindV1::DeepseekHarness => "hiroute.settings-dsh-model-file/v1",
+        AgentKindV1::OpenCode => "hiroute.settings-opencode-model-file/v1",
         _ => QODER_SCHEMA,
     }
 }
@@ -50,6 +52,8 @@ pub struct AdditionalModelFilePayload {
     pub change: AdditionalModelFileAction,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pi_settings_content: Option<CanonicalDigest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_dependencies: Option<CanonicalDigest>,
 }
 
 /// A stable, context-owned namespace. It never adopts an existing unowned provider.
@@ -65,23 +69,29 @@ pub fn settings_additional_model_file_intent(
     before_fingerprint: Option<CanonicalDigest>,
     change: AdditionalModelFileAction,
     pi_settings_content: Option<CanonicalDigest>,
+    additional_dependencies: Option<CanonicalDigest>,
 ) -> Result<ExternalEffectIntentV1, OperationValidationError> {
     if control.transaction() != AgentConnectionTransactionKindV1::Settings {
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }
     let payload = AdditionalModelFilePayload {
-        schema: schema(if control.subject().agent_id() == "agent_dsh_default" {
-            AgentKindV1::DeepseekHarness
-        } else if control.subject().agent_id() == "agent_pi_default" {
-            AgentKindV1::Pi
-        } else {
-            AgentKindV1::Qoder
-        })
+        schema: schema(
+            if control.subject().agent_id() == "agent_opencode_default" {
+                AgentKindV1::OpenCode
+            } else if control.subject().agent_id() == "agent_dsh_default" {
+                AgentKindV1::DeepseekHarness
+            } else if control.subject().agent_id() == "agent_pi_default" {
+                AgentKindV1::Pi
+            } else {
+                AgentKindV1::Qoder
+            },
+        )
         .into(),
         context_id: context_id.into(),
         expected_content,
         change,
         pi_settings_content,
+        additional_dependencies,
     };
     let intent = ExternalEffectIntentV1::from_agent_connection_planner(
         control,
@@ -111,6 +121,11 @@ pub fn decode_settings_additional_model_file(
     let value = intent.desired();
     let kind = additional_model_kind(intent)?;
     let (agent, profile, integration) = match kind {
+        AgentKindV1::OpenCode => (
+            "agent_opencode_default",
+            "opencode-responses-v1",
+            "builtin/opencode-responses/v1",
+        ),
         AgentKindV1::DeepseekHarness => (
             "agent_dsh_default",
             "dsh-responses-v1",
@@ -140,6 +155,7 @@ pub fn decode_settings_additional_model_file(
         serde_json::from_value(value["payload"].clone()).map_err(|_| invalid())?;
     if payload.schema != schema(kind)
         || (kind == AgentKindV1::Pi) != payload.pi_settings_content.is_some()
+        || (kind == AgentKindV1::OpenCode) != payload.additional_dependencies.is_some()
         || !super::settings::identity(&payload.context_id)
     {
         return Err(invalid());
@@ -156,7 +172,10 @@ pub fn decode_settings_additional_model_file(
                 || models.is_empty()
                 || models.len() > 256
                 || models.iter().any(|model| {
-                    (if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
+                    (if matches!(
+                        kind,
+                        AgentKindV1::Pi | AgentKindV1::DeepseekHarness | AgentKindV1::OpenCode
+                    ) {
                         model.validate_pi()
                     } else {
                         model.validate()
@@ -207,6 +226,9 @@ pub fn settings_additional_model_file_for_operation(
                     }
                     | AgentModelSelectionV2::DshAdditional {
                         allowed_plan_ids, ..
+                    }
+                    | AgentModelSelectionV2::OpenCodeAdditional {
+                        allowed_plan_ids, ..
                     },
             },
             AdditionalModelFileAction::Configure {
@@ -227,6 +249,12 @@ pub fn settings_additional_model_file_for_operation(
                         settings: AgentModelSelectionV2::DshAdditional { .. }
                     }
                 ) != (kind == AgentKindV1::DeepseekHarness)
+                || matches!(
+                    &spec.model,
+                    AgentFacetIntent::Configure {
+                        settings: AgentModelSelectionV2::OpenCodeAdditional { .. }
+                    }
+                ) != (kind == AgentKindV1::OpenCode)
             {
                 return Err(invalid());
             }
@@ -258,7 +286,10 @@ fn local_endpoint(value: &str, kind: AgentKindV1) -> bool {
         .or_else(|| value.strip_prefix("http://[::1]:"))
         .and_then(|rest| {
             rest.strip_suffix(
-                if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
+                if matches!(
+                    kind,
+                    AgentKindV1::Pi | AgentKindV1::DeepseekHarness | AgentKindV1::OpenCode
+                ) {
                     "/v1"
                 } else {
                     hiroute_domain::QODER_MODEL_BASE_PATH

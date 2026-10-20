@@ -79,7 +79,8 @@
           "enum": [
             "qoder",
             "pi",
-            "deepseek_harness"
+            "deepseek_harness",
+            "opencode"
           ]
         },
         "context_id": {

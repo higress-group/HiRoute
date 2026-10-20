@@ -1,7 +1,7 @@
 export type ModelBudgetConflict = {
   schema: 'hiroute.agent-model-budget-conflict/v1';
   blockers: {
-    agent_kind: 'qoder' | 'pi' | 'deepseek_harness'; context_id: string;
+    agent_kind: 'qoder' | 'pi' | 'deepseek_harness' | 'opencode'; context_id: string;
     plan_id: string; model_alias: string;
     reason: 'capacity_reduced' | 'plan_missing' | 'budget_unavailable';
     declared: { context_window_tokens: number; max_output_tokens: number };
@@ -19,7 +19,7 @@ export function modelBudgetConflict(error: unknown): ModelBudgetConflict | null 
     && positive(value.context_window_tokens) && positive(value.max_output_tokens);
   if (value?.schema !== 'hiroute.agent-model-budget-conflict/v1' || !Array.isArray(value.blockers) || !value.blockers.length) return null;
   const valid = value.blockers.every(blocker => blocker
-    && ['qoder', 'pi', 'deepseek_harness'].includes(blocker.agent_kind)
+    && ['qoder', 'pi', 'deepseek_harness', 'opencode'].includes(blocker.agent_kind)
     && typeof blocker.context_id === 'string' && /^agent-context\/[A-Za-z0-9/_:-]{1,242}$/.test(blocker.context_id)
     && typeof blocker.plan_id === 'string' && /^[A-Za-z0-9/_:-]{1,256}$/.test(blocker.plan_id)
     && typeof blocker.model_alias === 'string' && /^(?:hiroute\/[0-9a-f]{16}|[a-z0-9][a-z0-9._-]{0,63})$/.test(blocker.model_alias)
@@ -45,7 +45,7 @@ export function planErrorMessage(error: unknown, language: 'zh' | 'en'): string 
   const conflict = modelBudgetConflict(error);
   if (conflict && planErrorCode(error) === 'AGENT_MODEL_BUDGET_CONFLICT') {
     const zh = language === 'zh';
-    const names = { qoder: 'Qoder', pi: 'Pi', deepseek_harness: 'DeepSeek Harness' };
+    const names = { qoder: 'Qoder', pi: 'Pi', deepseek_harness: 'DeepSeek Harness', opencode: 'OpenCode' };
     const number = (value: number) => value.toLocaleString('en-US');
     const blockers = conflict.blockers.map(blocker => {
       const changes: string[] = [];

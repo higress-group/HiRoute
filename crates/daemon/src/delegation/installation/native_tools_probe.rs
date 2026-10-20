@@ -86,6 +86,7 @@ impl ToolsFixture {
             WorkerHarnessV1::QoderCli => ".qoder",
             WorkerHarnessV1::Pi => ".pi",
             WorkerHarnessV1::DeepseekHarness => ".dsh",
+            WorkerHarnessV1::OpenCode => ".opencode",
         };
         // Codex's .agents user root is the actual KnownFolder on Windows, not an
         // environment-selected probe HOME. Use its supported private CODEX_HOME user root.

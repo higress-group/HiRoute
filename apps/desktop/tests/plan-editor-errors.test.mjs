@@ -9,14 +9,14 @@ test('backend envelope is decoded without exposing payloads or stack traces', ()
 });
 test('all live consumers and both capacity dimensions are shown without native payloads', () => {
  const blocker = (kind, context) => ({ agent_kind: kind, context_id: `agent-context/${context}/sha256:abc`, plan_id: 'plan/free', model_alias: 'free.plan', reason: 'capacity_reduced', declared: { context_window_tokens: 262144, max_output_tokens: 235929 }, proposed: { context_window_tokens: 262144, max_output_tokens: 131072 } });
- const conflict = { schema: 'hiroute.agent-model-budget-conflict/v1', blockers: [blocker('pi', 'pi'), blocker('deepseek_harness', 'dsh')] };
+ const conflict = { schema: 'hiroute.agent-model-budget-conflict/v1', blockers: [blocker('pi', 'pi'), blocker('deepseek_harness', 'dsh'), blocker('opencode', 'opencode')] };
  const error = { envelope: { error: { code: 'REVISION_CONFLICT', details: 'private-native-config', model_budget_conflict: conflict } } };
  assert.equal(planErrorCode(error), 'AGENT_MODEL_BUDGET_CONFLICT');
  const message = planErrorMessage(error, 'zh');
- assert.match(message, /Pi「free.plan」.*最大输出 235,929 → 131,072.*DeepSeek Harness「free.plan」/);
+ assert.match(message, /Pi「free.plan」.*最大输出 235,929 → 131,072.*DeepSeek Harness「free.plan」.*OpenCode「free.plan」/);
  assert.doesNotMatch(message, /Qoder|private-native-config|上下文 262/);
  assert.match(message, /取消接入受影响计划.*任务协作无需停用.*输入已保留/);
- assert.match(planErrorMessage({ safe_error_code: 'AGENT_MODEL_BUDGET_CONFLICT', model_budget_conflict: conflict }, 'en'), /Pi.*max output.*DeepSeek Harness/);
+ assert.match(planErrorMessage({ safe_error_code: 'AGENT_MODEL_BUDGET_CONFLICT', model_budget_conflict: conflict }, 'en'), /Pi.*max output.*DeepSeek Harness.*OpenCode/);
  const contextOnly = { ...conflict, blockers: [{ ...blocker('qoder', 'qoder'), proposed: { context_window_tokens: 32000, max_output_tokens: 235929 } }] };
  assert.match(planErrorMessage({ code: 'QODER_MODEL_BUDGET_CONFLICT', model_budget_conflict: contextOnly }, 'zh'), /Qoder.*上下文 262,144 → 32,000/);
  for (const reason of ['plan_missing', 'budget_unavailable']) {

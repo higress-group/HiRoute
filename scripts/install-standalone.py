@@ -409,6 +409,8 @@ def service_bytes(paths, daemon, cpa, cpa_digest):
             f"ExecStart={quote(daemon)} --role all --standalone --cpa-binary {quote(cpa)} --cpa-sha256 {cpa_digest}\n"
             "Restart=on-failure\nRestartSec=2\nTimeoutStopSec=45\n"
             f"Environment=HOME={quote(home)}\nEnvironment={quote('PATH=' + native_path)}\n"
+            f"Environment={quote('XDG_STATE_HOME=' + str(paths['state'].parent))}\n"
+            f"Environment={quote('XDG_RUNTIME_DIR=' + str(paths['runtime']))}\n"
             "NoNewPrivileges=true\nPrivateTmp=true\n\n[Install]\nWantedBy=default.target\n"
         )
         path = home / ".config/systemd/user/ai.hiroute.cli.service"
@@ -696,6 +698,154 @@ def console_component(paths, desired):
     return staged_file(destination, (json.dumps(config, sort_keys=True) + "\n").encode(), 0o600), destination
 
 
+def candidate_preflight(program, storage, package):
+    # Only our verified, short-lived helper may be killed. Never buffer arbitrary
+    # child diagnostics or start a business service for a provisional check.
+    try:
+        child = subprocess.Popen([str(program), "--upgrade-preflight", "--storage-root", str(storage), "--recovery-package", str(package)], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            code = child.wait(timeout=15)
+            body = child.stdout.read(16 * 1024 + 1)
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+            child.stdout.close()
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError("candidate upgrade preflight is unavailable; the installed program was not replaced. Preserve data and use the verified transition route or startup diagnostics") from error
+    try:
+        report = load_json_bytes(body)
+    except (ValueError, UnicodeError) as error:
+        raise ValueError("candidate cannot perform the required upgrade preflight; use the supported transition release") from error
+    fields = {"schema", "history_cutover_required", "required_bytes", "available_bytes", "recovery"}
+    if (len(body) > 16 * 1024 or not isinstance(report, dict) or set(report) != fields
+            or report["schema"] != "hiroute.upgrade-preflight/v1"
+            or type(report["history_cutover_required"]) is not bool
+            or any(type(report[name]) is not int or not 0 <= report[name] <= 2**64 - 1 for name in ("required_bytes", "available_bytes"))):
+        raise ValueError("candidate upgrade preflight is invalid; the installed program was not replaced. Preserve data and use the verified transition route")
+    if code or report["recovery"] is not None:
+        recovery = report["recovery"]
+        cause = recovery.get("cause") if isinstance(recovery, dict) else "unknown_state"
+        allowed = {"missing_package", "invalid_package", "insufficient_space", "access_denied", "locked", "missing_key", "unsupported_format", "namespace_unavailable", "migration_failed", "unknown_state"}
+        raise ValueError("upgrade preflight refused: " + (cause if cause in allowed else "unknown_state") + "; the installed program was not replaced. Preserve data and old packages, correct the prerequisite before retrying")
+    return report
+
+
+@contextmanager
+def retain_recovery_package(paths, current, target_daemon, version):
+    """Preserve the complete installed program/resources before replacement.
+
+    This handoff goes to the daemon through its private state directory, so
+    systemd/launchd does not depend on inheriting the invoking shell's environment.
+    """
+    if current is None:
+        yield None
+        return
+    old_program, old_resources, _service = validate_marker(paths, current)
+    # Repeating the exact installed writer introduces no new format boundary.
+    # Older packages need not implement this candidate's provisional protocol.
+    # This grants no data compatibility advice and leaves every handoff intact;
+    # the daemon still performs its normal authoritative startup admission.
+    if current["version"] == version and digest(target_daemon) == digest(old_program / "hirouted"):
+        yield None
+        return
+    # This provisional call determines cutover before allocating any archive.
+    # A cutover repeats preflight with the complete retained program/resources.
+    report = candidate_preflight(target_daemon, paths["state"] / "storage", old_program)
+    if not report["history_cutover_required"]:
+        yield None
+        return
+    def footprint(path):
+        metadata = path.lstat()
+        if path.is_symlink() or not (path.is_file() or path.is_dir()):
+            raise ValueError("recovery package contains an unsafe entry")
+        if path.is_dir():
+            return sum(footprint(entry) for entry in path.iterdir())
+        return metadata.st_size
+    required = footprint(old_program) + footprint(old_resources) + 256 * 1024 * 1024
+    if shutil.disk_usage(paths["state"]).free < required:
+        raise ValueError("Insufficient space on the service-state volume for the matching old package; free unrelated space before retrying")
+    parent = paths["state"] / "upgrade-packages"
+    parent.mkdir(mode=0o700, exist_ok=True)
+    if parent.is_symlink() or not parent.is_dir():
+        raise ValueError("unsafe recovery package directory")
+    retained = Path(tempfile.mkdtemp(prefix="old-package-", dir=parent))
+    retained_identity = retained.stat()
+    handoff = None
+    try:
+        files = {}
+        def copy_verified_tree(source, target, prefix):
+            source_fd = os.open(source, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                target.mkdir(mode=0o700)
+                for name in os.listdir(source_fd):
+                    metadata = os.stat(name, dir_fd=source_fd, follow_symlinks=False)
+                    relative = prefix + "/" + name
+                    if stat.S_ISDIR(metadata.st_mode):
+                        copy_verified_tree(source / name, target / name, relative)
+                    elif stat.S_ISREG(metadata.st_mode):
+                        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=source_fd)
+                        try:
+                            before = os.fstat(fd)
+                            if (before.st_dev, before.st_ino) != (metadata.st_dev, metadata.st_ino):
+                                raise ValueError("old package changed before preservation")
+                            hashed = hashlib.sha256()
+                            with os.fdopen(os.open(target / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as output:
+                                remaining = before.st_size
+                                while remaining:
+                                    chunk = os.read(fd, min(remaining, 64 * 1024))
+                                    if not chunk:
+                                        raise ValueError("old package was truncated during preservation")
+                                    output.write(chunk)
+                                    hashed.update(chunk)
+                                    remaining -= len(chunk)
+                                if os.read(fd, 1):
+                                    raise ValueError("old package grew during preservation")
+                                after = os.fstat(fd)
+                                if (before.st_size, before.st_mtime_ns, before.st_mode) != (after.st_size, after.st_mtime_ns, after.st_mode):
+                                    raise ValueError("old package changed during preservation")
+                                os.fchmod(output.fileno(), stat.S_IMODE(before.st_mode))
+                                output.flush()
+                                os.fsync(output.fileno())
+                            files[relative] = hashed.hexdigest()
+                        finally:
+                            os.close(fd)
+                    else:
+                        raise ValueError("old recovery package contains a link or special entry")
+                    if len(files) > 6000:
+                        raise ValueError("old recovery package has too many entries")
+            finally:
+                os.close(source_fd)
+        for source, name in ((old_program, "program"), (old_resources, "resources")):
+            copy_verified_tree(source, retained / name, name)
+        locations = retained / "restore-locations.json"
+        metadata = retained / "installation"
+        metadata.mkdir(mode=0o700)
+        restore_files = {}
+        for source, name in ((paths["marker"], "standalone.json"), (_service, "service-definition")):
+            if source.exists():
+                target = metadata / name
+                shutil.copy2(source, target)
+                files["installation/" + name] = digest(target)
+                restore_files["installation/" + name] = str(source)
+        links = {str(paths["bin"] / name): str(old_program / name) for name in ("hiroute", "hirouted")}
+        locations.write_text(json.dumps({"schema": "hiroute.standalone-program-restore/v1", "program": str(old_program), "resources": str(old_resources), "files": restore_files, "links": links}, sort_keys=True) + "\n")
+        locations.chmod(0o600)
+        files["restore-locations.json"] = digest(locations)
+        record = {"schema": "hiroute.retained-recovery-package/v1", "storage_root": str(paths["state"] / "storage"), "package_root": str(retained), "target_daemon_sha256": digest(target_daemon), "files": files}
+        candidate_preflight(target_daemon, paths["state"] / "storage", retained)
+        handoff = staged_file(paths["state"] / "upgrade-package.json", (json.dumps(record, sort_keys=True) + "\n").encode(), 0o600)
+        yield handoff
+    finally:
+        # A moved handoff may already have been consumed by a daemon or batch.
+        # Retain it even after later transaction rollback. Delete only this
+        # invocation's still-unpublished copy, never previous recovery material.
+        if handoff is None or handoff.exists():
+            metadata = retained.lstat()
+            if (metadata.st_dev, metadata.st_ino) == (retained_identity.st_dev, retained_identity.st_ino):
+                remove_path(retained)
+
+
 def install(args):
     home = Path(os.environ.get("HOME", ""))
     if not home.is_absolute() or not home.is_dir():
@@ -779,30 +929,33 @@ def install(args):
                     (staged_link(entry, version_root / name), entry)
                 )
 
-            if current is not None:
-                old_install_root, old_resource_root, _old_service = validate_marker(
-                    paths, current
-                )
-                if old_install_root != version_root:
-                    staged_components.append((None, old_install_root))
-                if old_resource_root != resource_root:
-                    staged_components.append((None, old_resource_root))
+            with retain_recovery_package(paths, current, staged_bin / "hirouted", version) as handoff:
+                if handoff is not None:
+                    staged_components.insert(0, (handoff, paths["state"] / "upgrade-package.json"))
+                if current is not None:
+                    old_install_root, old_resource_root, _old_service = validate_marker(
+                        paths, current
+                    )
+                    if old_install_root != version_root:
+                        staged_components.append((None, old_install_root))
+                    if old_resource_root != resource_root:
+                        staged_components.append((None, old_resource_root))
 
-            marker = {
-                "schema_version": MARKER_SCHEMA,
-                "version": version,
-                "target": manifest["target"],
-                "install_root": str(version_root),
-                "service_definition": str(service_path),
-                "installed_skills": [str(path) for path in skills],
-                "cpa_binary": str(cpa),
-                "cpa_sha256": manifest["cpa"]["sha256"],
-            }
-            marker_content = (json.dumps(marker, indent=2, sort_keys=True) + "\n").encode()
-            staged_components.append(
-                (staged_file(paths["marker"], marker_content, 0o600), paths["marker"])
-            )
-            replace_components(staged_components)
+                marker = {
+                    "schema_version": MARKER_SCHEMA,
+                    "version": version,
+                    "target": manifest["target"],
+                    "install_root": str(version_root),
+                    "service_definition": str(service_path),
+                    "installed_skills": [str(path) for path in skills],
+                    "cpa_binary": str(cpa),
+                    "cpa_sha256": manifest["cpa"]["sha256"],
+                }
+                marker_content = (json.dumps(marker, indent=2, sort_keys=True) + "\n").encode()
+                staged_components.append(
+                    (staged_file(paths["marker"], marker_content, 0o600), paths["marker"])
+                )
+                replace_components(staged_components)
         finally:
             for staged_component, _destination in staged_components:
                 if staged_component is not None and (

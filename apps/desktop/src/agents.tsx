@@ -2,13 +2,14 @@ import { SecretTransportWarning } from './host/ConsoleUi';
 import { AgentDiscoveryFeedback } from './features/agents/AgentDiscoveryFeedback';
 import { AgentSkillDetails } from './features/agents/AgentSkillDetails';
 import { loadAgentDiscoveryTargets, saveAgentDiscoveryTargets } from './features/agents/discovery';
+import { PreviousRouting } from './features/agents/PreviousRouting';
 import { CodexAccessPanel } from './features/agents/CodexAccessPanel';
 import { confirmedCodexLaunchCommand, type PendingCodexLaunchCopy } from './features/agents/codex-launch';
 import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon, copyText } from './ui';
 import { confirmDiscard, useDiscardGuard } from './ui/discard-guard';
 import React, { useEffect, useRef, useState } from 'react';
 import { invoke } from './host';
-import { agentEditorSeed, agentModelFormInvalid, editorFingerprint, EMPTY_EDITOR_VALUES, type AgentEditorValues } from './features/agents/editor-state';
+import { agentEditorSeed, withModelSelection, agentModelFormInvalid, editorFingerprint, EMPTY_EDITOR_VALUES, type AgentEditorValues } from './features/agents/editor-state';
 import { AgentSettingsFeedback } from './features/agents/AgentSettingsFeedback';
 import { AgentModelEditor, modelSelectionSummary } from './features/agents/AgentModelEditor';
 import { HermesRootFields } from './features/agents/HermesRootFields';
@@ -251,6 +252,7 @@ export function Agents({
     setBaselineCodexMode(mode);
     setPendingLaunchCopy(null);
     setBaseline(editorFingerprint(seed));
+    return true;
   }
   async function change(agent: Agent, facet: Facet, restore: boolean, source: HTMLElement | null) {
     if (busy || !mutationAllowed || !snapshot?.trusted_authority || !agent.context_id || !agentEcosystem(agent.agent_id) || (!restore && !selectionKnown)) return;
@@ -597,6 +599,14 @@ export function Agents({
                   : text('适配资源需要修复；请检查自己的文件编辑后重新保存配置。', 'Adapter resources need repair. Review your file edits and save the settings again.')}</p>}
                 {Boolean(selectedModel?.native_adapter?.known_channel_models?.length) && <p className="field-help" data-hermes-known-overrides>{text('已配置的通道模型覆盖', 'Configured channel model overrides')} · {selectedModel?.native_adapter?.known_channel_models?.join(', ')}. {text('需要改用 HiRoute 的通道，请通过 Hermes 的 /model 调整选择。', 'Use Hermes /model in a channel that should switch to HiRoute.')}</p>}
                 <Disclosure className="native-details" label={text('连接详情与恢复', 'Connection details and recovery')} language={language}><dl>{selected.version && <div><dt>{text('版本', 'Version')}</dt><dd>{selected.version}</dd></div>}{selectedModel?.state === 'configured' && modelSelection && <div><dt>{text('本机接入令牌', 'Local access token')}</dt><dd><input className="input" type="password" value="••••••••••••••••" readOnly aria-label={text('当前令牌已隐藏', 'Current token hidden')} /></dd></div>}</dl>{selectedModel?.restore_point_ref && selected.agent_id === 'agent_codex_default' && selected.codex_access?.selected_mode !== 'profile' && <label className="field-label">{text('恢复时选择原生模型（可选）', 'Native model on restore (optional)')}<input list="codex-native-restore-models" value={restoreNativeModel} onChange={event => { setRestoreNativeModel(event.target.value); setPreview(null); }} placeholder={text('保留原设置', 'Keep original setting')} disabled={busy || !mutable} /><datalist id="codex-native-restore-models">{nativeRestoreOptions.map(model => <option key={model.client_model_id} value={model.client_model_id}>{model.display_name}</option>)}</datalist></label>}{selectedModel?.state === 'configured' && modelSelection && <div className="actions" data-agent-token-controls><button className="btn" disabled={busy || !mutable} onClick={() => { setTokenEditing(true); setTokenDraft(''); setActionError(''); }}>{text('修改令牌', 'Change token')}</button><button className="btn" disabled={busy || !mutable} onClick={event => void changeToken(selected, true, event.currentTarget)}>{text('重新生成', 'Regenerate')}</button></div>}{tokenEditing && selectedModel?.state === 'configured' && modelSelection && <form className="agent-token-form" onSubmit={event => { event.preventDefault(); void changeToken(selected, false, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}><SecretTransportWarning language={language} /><label className="field"><span className="field-label">{text('新令牌', 'New token')}</span><input className="input" type="password" autoComplete="new-password" value={tokenDraft} onChange={event => setTokenDraft(event.target.value)} minLength={16} maxLength={128} pattern="[A-Za-z0-9._~\\-]{16,128}" required disabled={busy} /><span className="field-help">{text('16–128 位英文字母、数字及 . _ ~ -；保存后原令牌立即失效，无需重新接入。', 'Use 16–128 letters, numbers, or . _ ~ -. The old token stops working after save; reconnecting is unnecessary.')}</span></label><div className="actions"><button className="btn btn-primary" type="submit" disabled={busy || !mutable}>{text('保存令牌', 'Save token')}</button><button className="btn" type="button" disabled={busy} onClick={() => { setTokenEditing(false); setTokenDraft(''); }}>{text('取消', 'Cancel')}</button></div></form>}<div className="actions">{selectedCollaboration?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'collaboration', true, event.currentTarget)}>{text('停用任务路由', 'Disable task routing')}</button>}</div></Disclosure>
+                {!editor && modelSelection && <PreviousRouting key={selected.agent_id} agent={selected.agent_id} language={language} disabled={busy || selectedPending || !mutable}
+                  onDraft={async (selection, context, source) => {
+                    if (context !== selected.context_id || !(await open(selected, 'model', source))) return;
+                    setEditorValues(value => withModelSelection(value, selection));
+                    setSelectionKnown(true);
+                    setNotice(text('已载入之前的映射草稿，请审阅后保存。', 'Earlier mappings loaded as a draft. Review before saving.'));
+                  }}
+                  onRestore={selectedModel?.restore_point_ref ? source => void change(selected, 'model', true, source) : undefined} />}
                 {!editor && loadError && <div className="callout warn agent-feedback agent-inline-feedback" role="alert" data-error-code={loadError}><UiIcon name="warning" /><div><strong>{text('状态刷新失败', 'Status refresh failed')}</strong><p>{text('当前仍显示上次读取的结果。', 'The last loaded result is still shown.')}</p><button className="btn" type="button" onClick={() => void refresh()}>{text('重试', 'Retry')}</button></div></div>}
                 {!editor && blockedPreview}
                 {!editor && notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{notice}</span></div></div>}

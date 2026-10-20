@@ -129,6 +129,49 @@ group/world 可写的 Skill 父目录会导致安装在写入前失败。同一�
 若存在 `/Applications/HiRoute.app`、`~/Applications/HiRoute.app` 或活动 Desktop Local
 Control，安装会失败。反向切换时也应先停止并卸载 standalone。
 
+## 存储升级与恢复
+
+已校验的新程序在替换前先做只读预检。确实需要历史格式切换时，安装器才在私有服务状态目录
+保留完整原版程序、资源与安装记录；daemon 直接读取交接记录，systemd 启动也适用，
+不依赖终端继承变量。同格式修复不复制历史程序包，也不要求这份副本的额外预留空间。
+重装同版本、同一 daemon 镜像时也保留原交接记录，不要求旧包支持新增预检协议；
+服务启动仍执行原有存储校验，不因此获得旧版兼容或降级权限。
+准备失败只清理本次未发布的副本；交接记录可能已被读取后，即使后续安装回滚，也保留材料。请为恢复材料预留空间，不要删除 upgrade-packages、
+upgrade-package.json、封存历史或 storage.upgrade-backups 来绕过空间检查。
+
+服务无法启动时，也可运行 `hiroute service recovery --output json` 查看存储方确定的
+原因、恢复动作与诊断位置。缺包不允许单独重装旧程序或原地降级；请保留数据、密钥、
+完整程序和记录，必要材料缺失时按诊断与支持指引处理。可继续的原批次使用当前版本恢复。必须整组还原时，
+按对应批次的《恢复说明.md》、RECOVERY.md 及可用的 PROGRAM-LOCATIONS.md，停止服务
+和自动重启，先另存新版数据及配套程序，再还原全部数据库、密钥、Observation 和记录的
+辅助文件，最后还原原版程序、资源、安装记录与服务注册。重新加载管理器后确认实际
+Control/Gateway 就绪及一次真实请求；不能只看安装命令退出成功。
+
+显式无界面运维仍支持在首次封存启动时用 HIROUTE_RECOVERY_PACKAGE 提供完整旧包的
+绝对目录。变量必须传给真正的前台 daemon，或写入服务管理器支持的环境配置；在终端
+export 后调用 systemctl 不代表后台进程收到了变量。正常安装器使用受保护交接记录。
+缺少密钥、原材料不可校验或阶段不明时应保留材料并诊断/求助，反复重启不能重建缺失数据。
+修复同一份未变化的程序不要求新增预检协议；程序字节发生变化时，需要候选支持预检。
+
+格式切换保留配置、凭据和路由，封存旧 HiRoute 历史，当前历史和统计从切换后开始；
+原生 Agent 历史不变，当前格式的新记录在正常重启后继续保留。
+
+
+使用 systemd 手工补充旧恢复包时，先运行 `hiroute service stop --output json`
+停止失败服务，再运行 `systemctl --user edit ai.hiroute.cli.service`，添加临时配置：
+
+```ini
+[Service]
+Environment="HIROUTE_RECOVERY_PACKAGE=/absolute/path/to/verified-complete-old-package"
+```
+
+将路径替换为实际校验过的完整旧包目录。运行 `systemctl --user daemon-reload`，
+再运行 `hiroute service start --output json`。仍被拒绝时，运行
+`hiroute service recovery --output text` 查看原因、下一步与诊断目录。
+升级成功后，只移除此临时环境项，重新加载并重启服务，确认实际就绪和一次请求。
+保留其它用户配置，不要用 `systemctl revert` 一并删除它们。仅在终端导出变量，
+不会把该变量交给 systemd 管理的进程。
+
 ## 启动并确认真实就绪
 
 ```sh
@@ -197,7 +240,7 @@ Quickstart 只读当前服务、准确的配置目标、可复用的模型来源
    ```
 
    只选部分模型时重复使用 `--model-ref REF`。`--all-selectable` 会固定为本次候选中的具体模型列表，不会自动扩展到后来发现的模型；没有可选模型时不能保存。准备凭据、保存、供应商检查和原生 Agent 的真实请求是不同效果。
-3. 用 `routing options --request-stdin` 输入 `{}`，获取当前绑定 ID。可选择 `--mode fixed_model --model BINDING_ID`，也可直接创建省钱组合：
+3. 用 `routing options --request-stdin` 输入 `{}`，获取当前绑定 ID。可选择 `--mode fixed_model --model BINDING_ID`，也可直接创建按难度分流组合：
 
    ```sh
    hiroute routing preview --name '日常省钱' --purpose '处理日常和复杂开发任务' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route-apply.json
@@ -506,7 +549,7 @@ jq '{action:"result",operation:.operation}' subscription-operation.json \
 printf '{}\n' | hiroute routing options --request-stdin --output json > routing-options.json
 ```
 
-日常使用优先采用上面的 Quickstart 参数和共享默认值。下面的高级 JSON 示例展示一种显式选择的固定策略；其中的限制不是产品默认值，也不是启用省钱路由前必须创建的临时计划：
+日常使用优先采用上面的 Quickstart 参数和共享默认值。下面的高级 JSON 示例展示一种显式选择的固定策略；其中的限制不是产品默认值，也不是启用按难度分流路由前必须创建的临时计划：
 
 ```json
 {
@@ -998,13 +1041,13 @@ hiroute decision services test --request-stdin --output json < decision-test-req
 | `smart_saving` | `smart.classifier`、`smart.economy`、`smart.primary` 与 `smart.judgment` |
 | `custom_branches` | `branch_routing.classifier`、`branch_routing.branches`、`branch_routing.default_branch_id` 与 `branch_routing.judgment` |
 
-智能省钱和自定义分支会在每条新用户消息到来时重新判断模型组，然后只在选中的组内
+按难度分流和自定义分支会在每条新用户消息到来时重新判断模型组，然后只在选中的组内
 优先沿用仍有效的上一轮模型。这个行为自动生效。可选字段 `reselect_on_user_message`
 已废弃；为兼容受支持的旧版调用方，仍接受该字段，但它不影响路由，新请求可以省略。
 读取结果中可能仍包含旧值，以保持密封 Plan 和发布数据的一致性。
 
 决策模型和自定义扩展都使用 `classifier: {kind: "decision_service", service: <完整已保存连接版本>}`。
-只有智能省钱可改用 `{kind: "local_rules"}`。发布按连接 ID、revision 和完整内容核对
+只有按难度分流可改用 `{kind: "local_rules"}`。发布按连接 ID、revision 和完整内容核对
 已保存的不可变版本，不接受 `rest` 直配。
 
 判断设置包含 `degree: {simple_threshold_millis, instructions, simple, complex}` 和

@@ -132,7 +132,7 @@ pub(crate) struct AgentTurnTicket {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct TurnDecisionInputs {
-    pub(crate) message_history_continues: bool,
+    pub(crate) history_continuity: crate::context_hold::HistoryContinuity,
     pub(crate) reselect_on_user_message: bool,
 }
 
@@ -173,6 +173,7 @@ pub(crate) struct AcceptedExecution {
 
 #[derive(Clone, Debug)]
 pub(crate) struct CompletedAgentTurn {
+    pub(crate) opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) agent_turn_id: String,
     pub(crate) segment_id: String,

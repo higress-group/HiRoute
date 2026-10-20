@@ -19,19 +19,61 @@ pub(super) async fn ensure_model(
     cancellation: &CancellationToken,
     deadline: Instant,
 ) -> Result<(), DelegationErrorV1> {
-    let model = model_selector(config_options)?;
-    if model.current_value.to_string() == expected_model {
-        return Ok(());
+    ensure_select(
+        connection,
+        session_id,
+        config_options,
+        "model",
+        expected_model,
+        cancellation,
+        deadline,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub(super) async fn ensure_mode(
+    connection: &ConnectionTo<Agent>,
+    session_id: &str,
+    config_options: Option<&[SessionConfigOption]>,
+    expected_mode: &str,
+    cancellation: &CancellationToken,
+    deadline: Instant,
+) -> Result<Vec<SessionConfigOption>, DelegationErrorV1> {
+    ensure_select(
+        connection,
+        session_id,
+        config_options,
+        "mode",
+        expected_mode,
+        cancellation,
+        deadline,
+    )
+    .await
+}
+
+async fn ensure_select(
+    connection: &ConnectionTo<Agent>,
+    session_id: &str,
+    config_options: Option<&[SessionConfigOption]>,
+    id: &str,
+    expected: &str,
+    cancellation: &CancellationToken,
+    deadline: Instant,
+) -> Result<Vec<SessionConfigOption>, DelegationErrorV1> {
+    let model = selector(config_options, id)?;
+    if model.current_value.to_string() == expected {
+        return Ok(config_options.unwrap_or_default().to_vec());
     }
     let available = match &model.options {
         SessionConfigSelectOptions::Ungrouped(options) => options
             .iter()
-            .any(|option| option.value.to_string() == expected_model),
+            .any(|option| option.value.to_string() == expected),
         SessionConfigSelectOptions::Grouped(groups) => groups.iter().any(|group| {
             group
                 .options
                 .iter()
-                .any(|option| option.value.to_string() == expected_model)
+                .any(|option| option.value.to_string() == expected)
         }),
         _ => false,
     };
@@ -39,14 +81,18 @@ pub(super) async fn ensure_model(
         return Err(DelegationErrorV1::CapabilityUnavailable);
     }
     let response = super::phase(
-        "set-model",
+        if id == "mode" {
+            "set-mode"
+        } else {
+            "set-model"
+        },
         cancellation,
         deadline,
         connection
             .send_request(SetSessionConfigOptionRequest::new(
                 session_id.to_owned(),
-                "model",
-                expected_model,
+                id.to_owned(),
+                expected,
             ))
             .block_task(),
     )
@@ -55,23 +101,24 @@ pub(super) async fn ensure_model(
         DelegationErrorV1::ProtocolFailed => DelegationErrorV1::CapabilityUnavailable,
         error => error,
     })?;
-    if model_selector(Some(&response.config_options))?
+    if selector(Some(&response.config_options), id)?
         .current_value
         .to_string()
-        != expected_model
+        != expected
     {
         return Err(DelegationErrorV1::CapabilityUnavailable);
     }
-    Ok(())
+    Ok(response.config_options)
 }
 
-fn model_selector(
-    options: Option<&[SessionConfigOption]>,
-) -> Result<&SessionConfigSelect, DelegationErrorV1> {
+fn selector<'a>(
+    options: Option<&'a [SessionConfigOption]>,
+    id: &str,
+) -> Result<&'a SessionConfigSelect, DelegationErrorV1> {
     let mut models = options
         .unwrap_or_default()
         .iter()
-        .filter(|option| option.id.to_string() == "model");
+        .filter(|option| option.id.to_string() == id);
     let Some(option) = models.next() else {
         return Err(DelegationErrorV1::CapabilityUnavailable);
     };

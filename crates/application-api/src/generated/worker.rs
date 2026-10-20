@@ -244,7 +244,7 @@ pub(super) fn dependencies_discover() -> Value {
         "$id": "hiroute://contracts/cli/worker-dependencies-discover-request.v1.schema.json",
         "type": "object",
         "additionalProperties": false,
-        "properties": {"harness": {"enum": ["codex_cli", "claude_code", "qoder_cli", "pi", "deepseek_harness"]}}
+        "properties": {"harness": {"enum": ["codex_cli", "claude_code", "qoder_cli", "pi", "deepseek_harness","opencode"]}}
     })
 }
 
@@ -256,13 +256,13 @@ pub(super) fn dependencies_select() -> Value {
         "additionalProperties": false,
         "required": ["harness", "cli_path", "expected_selection_revision"],
         "properties": {
-            "harness": {"enum": ["codex_cli", "claude_code", "qoder_cli", "pi", "deepseek_harness"]},
+            "harness": {"enum": ["codex_cli", "claude_code", "qoder_cli", "pi", "deepseek_harness","opencode"]},
             "adapter_path": {"type": "string", "minLength": 1, "maxLength": 4096},
             "cli_path": {"type": "string", "minLength": 1, "maxLength": 4096},
             "node_path": {"type": "string", "minLength": 1, "maxLength": 4096},
             "expected_selection_revision": {"type": "integer", "minimum": 0, "maximum": u64::MAX}
         },
-        "if": {"properties": {"harness": {"enum": ["qoder_cli", "deepseek_harness"]}}},
+        "if": {"properties": {"harness": {"enum": ["qoder_cli", "deepseek_harness","opencode"]}}},
         "then": {"properties": {"adapter_path": false, "node_path": false}},
         "else": {"if": {"properties": {"harness": {"const": "pi"}}},
             "then": {"required": ["node_path"], "properties": {"adapter_path": false}},

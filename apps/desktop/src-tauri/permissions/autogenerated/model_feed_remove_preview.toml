@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-model-feed-remove-preview"
+description = "Enables the model_feed_remove_preview command without any pre-configured scope."
+commands.allow = ["model_feed_remove_preview"]
+
+[[permission]]
+identifier = "deny-model-feed-remove-preview"
+description = "Denies the model_feed_remove_preview command without any pre-configured scope."
+commands.deny = ["model_feed_remove_preview"]

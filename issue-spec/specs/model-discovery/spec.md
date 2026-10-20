@@ -86,6 +86,17 @@ remain non-importable. Provider and model identities remain visible separately.
 DSH's static composition uses its own native reader through the same prepare/save
 workflow; it must not be guessed from Pi rules.
 
+OpenCode uses its bounded native static reader through that same workflow. Require
+explicit nonempty model declarations, a known supported SDK/protocol/endpoint and
+representable options. Resolve literal or unambiguous environment/file API keys
+using native precedence: supported stored API keys follow environment-derived keys,
+while explicit provider options win at SDK construction. Ignore HiRoute-owned
+providers. OAuth, executable helpers/SDKs, plugin-dependent auth, unresolved remote
+configuration and ambiguous substitution remain non-importable without execution.
+Configuration and selected credential/reference facts bind preparation and save.
+Missing catalog/capability evidence stays unknown. OpenCode Go remains an ordinary
+API-key source, with no new subscription, CPA, login, refresh or quota authority.
+
 The frontend submits opaque discovery/preparation identities. Daemon preparation
 re-reads the native source and binds endpoint, raw model ID, credential, and native
 source/catalog snapshot. Save rechecks those facts and rejects a stale source or
@@ -98,6 +109,29 @@ tool, streaming, or reasoning constants cannot be promoted to verified capabilit
   snapshot changes after preparation
 - **THEN** save MUST reject the stale candidate without modifying the source,
   and the user can rescan/prepare through the same protected path.
+
+#### Scenario: Static source import
+
+- **WHEN** the user selects an explicitly configured OpenCode API provider with a known endpoint/protocol, explicit models and a safely resolvable API key
+- **THEN** the shared prepare/save workflow creates the selected ordinary API source without model inference, native configuration edits or credential exposure.
+
+#### Scenario: Unsupported dynamic source
+
+- **WHEN** a provider requires executing code, a plugin/authentication helper, OAuth-only credentials or unresolved configuration composition
+- **THEN** the candidate explains its unsupported import capability while independent installations/providers remain discoverable; no helper, login or refresh is executed.
+
+#### Scenario: Stale source
+
+- **WHEN** the selected effective endpoint, model declaration or credential changes between protected preparation and Save
+- **THEN** Save rejects the stale candidate and preserves the native source and any existing saved connection.
+
+#### Scenario: Go source boundary
+
+- **WHEN** an OpenCode Go API-key source is added manually or imported through a supported static declaration
+- **THEN** it follows ordinary API-source ownership and routing rather than introducing subscription/CPA lifecycle or claiming unverified account/model availability.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258614406
 
 ### Requirement: Discover configured Hermes model sources through existing scan flows
 

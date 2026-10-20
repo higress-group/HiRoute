@@ -81,6 +81,10 @@ fn layout_with_claude_version(root: &Path, claude_version: &str) -> AgentFilesys
     write_executable(&codex, "codex-cli diagnostic-build");
     write_executable(&claude, &format!("{claude_version} (Claude Code)"));
     AgentFilesystemLayoutV1 {
+        opencode_context: Some(
+            crate::agents::OpenCodeNativeContext::from_lookup(root, |_| None).unwrap(),
+        ),
+        opencode_executable: root.join("missing-opencode"),
         codex_executable: codex,
         codex_desktop_executable: None,
         claude_executable: claude,
@@ -1053,3 +1057,6 @@ mod layer_tests;
 
 #[path = "filesystem_tests/managed_launch.rs"]
 mod managed_launch_tests;
+
+#[path = "filesystem_tests/opencode.rs"]
+mod opencode_tests;

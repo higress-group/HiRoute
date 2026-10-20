@@ -17,7 +17,7 @@ environment; preserving command search paths does not import upstream credential
 New tasks bind their effective home, native config root and canonical workspace
 once in the task-owned metadata directory. Continue reads that descriptor instead
 of resolving today's environment. Only Codex/Claude accept the registered legacy
-private-root path when the descriptor is absent; Qoder requires it. A damaged
+private-root path when the descriptor is absent; Qoder/OpenCode require it. A damaged
 descriptor must fail rather than fall back.
 `TaskSessionRoot` still owns HiRoute metadata and the frozen Codex alias catalog.
 The borrowed native config/history tree is never a launcher material or cleanup
@@ -147,6 +147,57 @@ restoration and process startup are separate capabilities. This module does not
 add ecosystem scanning/import, general Agent launch, a new execution backend or a
 plugin framework. ACP model/session verification remains in [ACP](../acp/mod.rs),
 and the OS launcher owns executable material permissions and process cleanup.
+
+## OpenCode native ACP and opaque history
+
+[OpenCode rendering](opencode.rs) launches the selected native executable with
+`acp --cwd`, an explicit loopback hostname and an ephemeral authenticated listener.
+Stdio ACP, its listener and native tools share the existing process-group/Job owner;
+there is no separately managed server. No Node runtime or ACP adapter is selected.
+
+The context descriptor additionally freezes OpenCode's XDG config/data/cache/state
+roots, optional absolute config file, additive config directory and exact database
+path. Canonical XDG roots must retain the `opencode` leaf used by the child's XDG
+projection. A link resolving to another leaf name is refused on New and Continue,
+so admission and the child cannot address different directories. Extra config
+directories use their explicit selector and are not subject to this leaf rule.
+Existing borrowed history is checked read-only against the audited native
+migration-ID set before launch. Initial format admission uses adjacent official
+npm platform-package metadata for 1.19.3; it does not run a shim, fingerprint a
+binary, decode sessions or migrate history. A new absent database may be initialized
+by OpenCode, while Continue requires the existing bound database and exact ACP ID.
+Other installation forms can retain independent configuration/Skill capabilities.
+
+OpenCode shares the existing daemon-local native initialization permit, keyed by
+the frozen database path. Final database/composition admission runs after waiting;
+the captured configuration digest must still match. The permit ends at successful
+ACP initialize, before New/Load or prompt, so cold schema creation cannot race
+between participating Workers while their tasks can still execute concurrently.
+Cancellation, deadline, fresh authority and uncertain-stop handling stay shared.
+There is no native database prewarming, repair or persistent lock file.
+
+One task provider supplies the frozen raw Plan alias, protocol and context/output
+bounds through a final native overlay. Main, small, title, summary and compaction
+models share that selector, with a fresh run token and stateless Responses.
+The shared typed ACP helper confirms the primary mode first, then confirms the
+model from the latest typed config options before New/Load prompt intent.
+
+The supported static composition preserves native project rules and user/project
+Skills. Approve-all admits native read/search/edit/shell/Skill; nested tasks, external
+MCP, plugins and custom executable tools are excluded. Existing nonempty tool/agent
+directories, late remote/organization/managed settings or unsupported agent overrides
+fail before launch. Native LSP/formatter execution is disabled. The bounded reader
+rechecks dependencies without rewriting daily configuration or copying credentials.
+Project inspection stops at a Git root only after bounded native `rev-parse` checks
+in the same filtered HOME/XDG/PATH as the Worker. Invalid `.git`/worktree pointers,
+unavailable or rejecting Git, and unconfirmed roots make this Worker unavailable;
+they cannot hide ancestor configuration or custom tools. Final admission rechecks
+the boundary after waiting for native initialization, using the captured child PATH.
+This permission boundary is not an OS sandbox for approve-all shell commands.
+
+The [native acceptance guide](../../../../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md)
+separates saved ordinary model use, the installed shared Skill, frozen Worker
+execution, real compaction/auxiliary requests, cancellation and exact Continue.
 
 ## Pi resources and SDK transport
 

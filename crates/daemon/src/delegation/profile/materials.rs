@@ -359,7 +359,10 @@ fn legacy_native_history(
     // Qoder has only the borrowed-context contract, never a private legacy reader.
     if matches!(
         harness,
-        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+        WorkerHarnessV1::QoderCli
+            | WorkerHarnessV1::Pi
+            | WorkerHarnessV1::DeepseekHarness
+            | WorkerHarnessV1::OpenCode
     ) {
         return Err(DelegationErrorV1::ResumeUnavailable);
     }
@@ -379,7 +382,10 @@ fn legacy_native_history(
     let durable_root = root.join(match harness {
         WorkerHarnessV1::CodexCli => "sessions",
         WorkerHarnessV1::ClaudeCode => "projects",
-        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness => {
+        WorkerHarnessV1::QoderCli
+        | WorkerHarnessV1::Pi
+        | WorkerHarnessV1::DeepseekHarness
+        | WorkerHarnessV1::OpenCode => {
             return Err(DelegationErrorV1::ResumeUnavailable);
         }
     });
@@ -424,7 +430,8 @@ fn legacy_native_history(
                 WorkerHarnessV1::ClaudeCode => file_name == claude_name,
                 WorkerHarnessV1::QoderCli
                 | WorkerHarnessV1::Pi
-                | WorkerHarnessV1::DeepseekHarness => {
+                | WorkerHarnessV1::DeepseekHarness
+                | WorkerHarnessV1::OpenCode => {
                     return Err(DelegationErrorV1::ResumeUnavailable);
                 }
             };

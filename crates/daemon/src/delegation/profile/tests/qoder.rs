@@ -81,7 +81,7 @@ fn native_qoder_uses_selected_cli_shared_resources_and_only_transient_managed_ro
         profile.identity_contract,
         AcpNativeIdentityContract::QoderSessionV1
     );
-    assert!(profile.codex_initialization_root().is_none());
+    assert!(profile.native_initialization_root().is_none());
     assert!(profile.session_meta.is_empty());
     assert_eq!(
         profile.native_selected_model_id(),

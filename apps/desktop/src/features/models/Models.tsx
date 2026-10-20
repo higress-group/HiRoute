@@ -1,3 +1,5 @@
+import { ModelOriginDetails } from '../model-feed/ModelOriginDetails';
+import { ModelFeedPanel } from '../model-feed/ModelFeedPanel';
 import { SecretTransportWarning } from '../../host/ConsoleUi';
 import { ProviderIcon } from '../../ui/ProviderIcon';
 import { connectionName } from '../../ui/provider-identity';
@@ -5,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import type { Plan } from '../../plan-editor';
 import { branchSelections } from '../decision-services/types';
-import { Dialog, UiIcon } from '../../ui';
+import { Dialog, Disclosure, UiIcon } from '../../ui';
 import { confirmDiscard, useDiscardGuard } from '../../ui/discard-guard';
 import type { PriceDisplay } from '../model-reference/types';
 import { clientOperationId } from '../model-connections/state';
@@ -37,6 +39,7 @@ type Props = {
   onCredentialsSaved?(): void;
   plans?: Plan[];
   onOpenPlan?(planId: string): void;
+  onTryModel?(modelId: string | undefined, bindingId: string): void;
   onCreatePlan?(bindingId: string): void;
   onEditPrice?(source: ManagedSource, model: ManagedModel): void;
   onReauthorize?(sourceId: string): void;
@@ -337,6 +340,7 @@ export function Models(props: Props) {
     : null;
 
   return <section className="models-feature" aria-label={text('我的模型', 'My models')}>
+    <ModelFeedPanel language={props.language} mutable={props.mutable} onChanged={() => { void props.onRefresh(); }} />
     <div className={`split-view oc-models${detailOpen ? ' oc-model-detail-open' : ''}`}>
       <aside className="master-pane" aria-label={text('模型列表', 'Model list')}>
         <div className="master-toolbar">
@@ -379,6 +383,8 @@ export function Models(props: Props) {
             <div className="detail-identity"><ProviderIcon optionId={source.display_template_id ?? source.connection_identity?.connection_option_id} language={props.language} /><div><h2>{model?.display_name ?? source.display_name}</h2><p>{sourceLabel}</p></div></div>
             <StatusBadge value={status} reason={reason} subscription={access === 'subscription'} language={props.language} />
           </div>
+
+          {model?.catalog_configuration_id && <ModelOriginDetails modelId={model.catalog_configuration_id} language={props.language} />}
 
           {status === 'available' && <p className="field-help">{text('接入就绪仅表示本地路由条件满足，不代表上游推理或工具调用已验证。', 'Connection ready means local routing conditions are met; upstream inference and tool calls are not verified by this status.')}</p>}
 
@@ -426,6 +432,7 @@ export function Models(props: Props) {
 
           {model && <section className="detail-section">
             <div className="detail-section-head"><h3>{text('用于这些路由', 'Used in these routes')}</h3></div>
+            {props.onTryModel && <button className="btn" type="button" disabled={!props.mutable || submitting} onClick={() => props.onTryModel?.(model.catalog_configuration_id, model.binding_id)}>{text('试用这个模型', 'Try this model')}</button>}
             {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}{plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && model && <button className="btn" type="button" onClick={() => props.onCreatePlan?.(model.binding_id)}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
           </section>}
 

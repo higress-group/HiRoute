@@ -629,6 +629,7 @@ pub(super) const fn harness_key(harness: WorkerHarnessV1) -> &'static str {
         WorkerHarnessV1::ClaudeCode => "claude_code",
         WorkerHarnessV1::QoderCli => "qoder_cli",
         WorkerHarnessV1::Pi => "pi",
+        WorkerHarnessV1::OpenCode => "opencode",
         WorkerHarnessV1::DeepseekHarness => "deepseek_harness",
     }
 }
@@ -639,6 +640,7 @@ fn parse_harness(value: &str) -> PortResult<WorkerHarnessV1> {
         "claude_code" => Ok(WorkerHarnessV1::ClaudeCode),
         "qoder_cli" => Ok(WorkerHarnessV1::QoderCli),
         "pi" => Ok(WorkerHarnessV1::Pi),
+        "opencode" => Ok(WorkerHarnessV1::OpenCode),
         "deepseek_harness" => Ok(WorkerHarnessV1::DeepseekHarness),
         _ => Err(port(
             PortErrorCode::Corrupt,

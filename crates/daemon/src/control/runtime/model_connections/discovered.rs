@@ -97,8 +97,7 @@ impl LocalControlAdapter {
         request: PrepareDiscoveredModelConnectionRequestV1,
     ) -> Result<ComputeCandidateViewV2, ComputeManagementControlError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
         let discoveries = self
             .refresh_discovery()
@@ -116,7 +115,7 @@ impl LocalControlAdapter {
                 && (discovery.claude_configuration.is_some()
                     || discovery.configuration_issue.is_some()
                     || discovery.discovered_credential.is_some());
-            match authorized_compute_discovery(catalog, discovery) {
+            match authorized_compute_discovery(&catalog, discovery) {
                 Ok(Some(candidate)) => authorized.push(candidate),
                 Ok(None) => {}
                 Err(ControlReadError::Corrupt) => {
@@ -136,9 +135,10 @@ impl LocalControlAdapter {
                 .unwrap_or_default()
                 .into_iter()
                 .chain(self.scanner.dsh_api_sources().unwrap_or_default())
+                .chain(self.scanner.opencode_api_sources().unwrap_or_default())
                 .collect();
             let mut sources = sources;
-            sources.extend(self.claude_api_point_sources().unwrap_or_default());
+            sources.extend(self.claude_api_point_sources(&catalog).unwrap_or_default());
             sources.extend(
                 self.hermes_source_facts()
                     .map(|facts| facts.sources)
@@ -147,7 +147,7 @@ impl LocalControlAdapter {
             let native_exists = !sources.is_empty();
             if let Some(point) = hiroute_integrations::native_api_connection_points(sources)
                 .into_iter()
-                .find(|point| super::points::point_discovery(point, catalog) == request.discovery)
+                .find(|point| super::points::point_discovery(point, &catalog) == request.discovery)
             {
                 return self.prepare_native_point_candidate(point, &request.prepare_id);
             }
@@ -160,6 +160,7 @@ impl LocalControlAdapter {
                 .unwrap_or_default()
                 .into_iter()
                 .chain(self.scanner.dsh_api_sources().unwrap_or_default())
+                .chain(self.scanner.opencode_api_sources().unwrap_or_default())
                 .find(|source| super::pi_discovered::pi_discovery(source) == request.discovery)
             {
                 return self.prepare_native_api_candidate(source, &request.prepare_id);
@@ -250,8 +251,7 @@ impl LocalControlAdapter {
         prepare_id: &str,
     ) -> Result<NativeModelConnectionDraftV1, ComputeManagementControlError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
         let provenance = catalog
             .compute_catalog_provenance()
@@ -365,7 +365,7 @@ impl LocalControlAdapter {
                 evidence_ref: None,
             },
             runtime_fallback_denied_model_ids: super::runtime_fallback_denied_model_ids(Some(
-                catalog,
+                &catalog,
             )),
             models: vec![NativeModelDeclarationV1 {
                 upstream_model_id: UPSTREAM_MODEL_ID.into(),

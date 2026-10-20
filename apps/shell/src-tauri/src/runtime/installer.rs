@@ -96,6 +96,35 @@ fn preflight() -> Result<(), String> {
     }
     Ok(())
 }
+fn prepare_failure(error: &std::io::Error) -> String {
+    if error.to_string() == "UPGRADE_REGISTRATION_UNAVAILABLE" {
+        return "UPGRADE_REGISTRATION_UNAVAILABLE: The installed Windows Apps registration could not be retained or no longer matches the retained copy. No installed program was replaced. Keep the installed version, all data and recovery material. Repair the known installation with its matching complete installer under the same account; if ownership or the correct registration is unclear, preserve both copies and contact support. / 无法保留已安装程序的 Windows 应用注册，或其内容与保留副本不符。本次尚未替换已安装程序。请保留当前版本、全部数据与恢复材料；使用配套完整安装器在同一账户修复已知安装，无法确认归属或正确注册时请保留两份材料并联系支持。".into();
+    }
+    if error.to_string() == "UPGRADE_TASK_REGISTRATION_UNAVAILABLE" {
+        return "UPGRADE_TASK_REGISTRATION_UNAVAILABLE: The previous HiRoute Task could not be verified or retained. No installed program was replaced. Keep all data and the exact previous installer. If its Task is missing, repair it with that matching installer under the same account; if ownership is unclear, preserve the registration and contact support. / 无法验证或保留旧版 HiRoute 任务，本次尚未替换已安装程序。请保留全部数据与配套旧安装器；若原任务缺失，用该安装器在同一账户修复，无法确认任务归属时保留注册并联系支持。".into();
+    }
+    if let Some(failure) = error
+        .get_ref()
+        .and_then(|error| error.downcast_ref::<hiroute_host_runtime::UpgradePreflightFailure>())
+    {
+        return failure.to_string();
+    }
+    if let Some(failure) = error
+        .get_ref()
+        .and_then(|error| error.downcast_ref::<windows::ReplacementSpaceFailure>())
+    {
+        return failure.to_string();
+    }
+    match error.kind() {
+        std::io::ErrorKind::PermissionDenied => "UPGRADE_ACCESS_DENIED: Close the owning HiRoute instance and check access to this account's installation/recovery folders. Preserve data; do not apply blanket permission changes. / 请关闭占用该安装的 HiRoute 实例并检查本账户安装与恢复目录的访问权限，保留数据，不要批量修改权限。",
+        std::io::ErrorKind::StorageFull => "UPGRADE_INSUFFICIENT_SPACE: The program/recovery volume ran out of space. Keep history and recovery packages; free unrelated files before retrying. / 程序与恢复材料所在磁盘空间不足，请保留历史与恢复包，释放无关文件后再试。",
+        std::io::ErrorKind::WouldBlock => "UPGRADE_FILES_IN_USE: Close the owning HiRoute instance before retrying. No installed program was replaced by this preparation. / 请关闭占用该安装的 HiRoute 实例后再试，本次准备尚未替换已安装的程序。",
+        _ => "INSTALL_PREPARATION_FAILED: Installation preparation could not be verified. Keep all data, programs, installation journals and diagnostics. Close owned instances and check file access and free space, then retry the same complete current installer. If it still fails, preserve the material and contact support; do not delete data or try an arbitrary older installer. / 无法验证安装准备状态。请保留全部数据、程序、安装记录和诊断；关闭占用实例，检查文件访问与空间，再运行同一当前版完整安装器。仍失败时保留现场并联系支持，不要删除数据或尝试任意旧安装器。",
+    }.into()
+}
+fn interrupted_installation_hint() -> &'static str {
+    "INSTALL_CURRENT_REPAIR_REQUIRED: Keep all data, complete installer/program files and installation journals. Close files in use; check access and free space. Rerun the same complete current installer. Do not install an older version over these data. If it still fails, preserve all material and contact support. Verify actual service/Gateway readiness afterward. / 请保留全部数据、完整安装器/程序及安装记录。解除文件占用，检查访问权限和空间，再运行同一当前版完整安装器，不要用旧版覆盖这组数据；仍失败时保留全部材料并联系支持，之后核对服务和 Gateway 实际就绪。"
+}
 fn request(cli: &std::path::Path, verb: &str, value: Value) -> Result<Value, String> {
     let bytes = serde_json::to_vec(&value).map_err(|_| "INSTALL_REQUEST_INVALID")?;
     let (success, value) = service::execute_reply(
@@ -236,30 +265,55 @@ pub fn run_if_requested() -> Option<i32> {
         );
     }
     if verb == "--installer-prepare" {
-        let result = if args.len() == 2 {
-            super::install_transaction::prepare(std::path::Path::new(&args[1]))
+        let result = if args.len() == 3 {
+            super::install_transaction::prepare(
+                std::path::Path::new(&args[1]),
+                std::path::Path::new(&args[2]),
+            )
         } else {
             Err(std::io::ErrorKind::InvalidInput.into())
         };
-        return Some(if result.is_ok() { 0 } else { 1 });
+        return Some(match result {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("{}", prepare_failure(&error));
+                1
+            }
+        });
     }
     if matches!(
         verb.as_str(),
         "--installer-rollback" | "--installer-recover"
     ) {
         let allow = args
-            .get(1)
+            .last()
             .is_some_and(|arg| arg == "--allow-unavailable-agent-restore");
-        if args.len() > 2 || (args.len() == 2 && !allow) {
+        let candidate =
+            verb == "--installer-recover" && (args.len() == 3 || args.len() == 4 && allow);
+        if !candidate && (args.len() > 2 || (args.len() == 2 && !allow)) {
             return Some(1);
         }
-        let result =
-            windows::recover_pending().and_then(|()| super::install_transaction::rollback(allow));
+        let result = if candidate {
+            super::install_transaction::recover_for_candidate(
+                std::path::Path::new(&args[1]),
+                std::path::Path::new(&args[2]),
+                allow,
+            )
+        } else {
+            windows::recover_pending().and_then(|()| super::install_transaction::rollback(allow))
+        };
         let _ = super::updater::resume_admission();
         return Some(match result {
             Ok(()) => 0,
             Err(error) if error.to_string() == "AGENT_CONTROL_UNAVAILABLE" => 23,
-            Err(_) => 1,
+            Err(_) => {
+                let _ = writeln!(
+                    std::io::stdout().lock(),
+                    "{}",
+                    interrupted_installation_hint()
+                );
+                1
+            }
         });
     }
     let result = if args.iter().skip(1).any(|a| {
@@ -297,7 +351,7 @@ pub fn run_if_requested() -> Option<i32> {
             } else {
                 1
             },
-            error,
+            format!("{error}\n{}", interrupted_installation_hint()),
         ),
     };
     let _ = writeln!(std::io::stdout().lock(), "{text}");

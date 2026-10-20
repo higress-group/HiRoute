@@ -1,0 +1,500 @@
+{
+  "$defs": {
+    "ApplicabilityReasonV1": {
+      "enum": [
+        "no_target",
+        "partial_target",
+        "pending",
+        "dispatch_not_started",
+        "answered",
+        "invalid_output",
+        "timeout",
+        "unavailable",
+        "rejected_input",
+        "authentication_rejected",
+        "rate_limited",
+        "endpoint_rejected",
+        "required_question_missing"
+      ],
+      "type": "string"
+    },
+    "ApplicabilityStateV1": {
+      "enum": [
+        "not_requested",
+        "valid",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "BranchExecutionPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "criteria_digest": {
+          "description": "Digest of the effective frozen standard, for built-in and custom decisions.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "floor_millis": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "floor_millis"
+      ],
+      "type": "object"
+    },
+    "ClassifierFallbackReasonV1": {
+      "enum": [
+        "timeout",
+        "unavailable",
+        "rejected_input",
+        "invalid_output"
+      ],
+      "type": "string"
+    },
+    "CompetenceProtectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "floor_millis": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "from_group": {
+          "$ref": "#/$defs/ExecutionGroupV1"
+        },
+        "score": {
+          "type": "number"
+        },
+        "segment_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "segment_id",
+        "score",
+        "floor_millis",
+        "from_group"
+      ],
+      "type": "object"
+    },
+    "ComplexityDecisionSourceV1": {
+      "enum": [
+        "inherited",
+        "external_classifier",
+        "user_phrase",
+        "builtin_rules",
+        "unresolved"
+      ],
+      "type": "string"
+    },
+    "ComplexityReasonCodeV1": {
+      "enum": [
+        "INHERITED_TOOL_CONTINUATION",
+        "INHERITED_TASK_ROOT",
+        "USER_COMPLEX_PHRASE",
+        "DEEP_REASONING",
+        "MULTI_FILE_SCOPE",
+        "MULTI_CONSTRAINT",
+        "IMPLEMENTATION_ACTION",
+        "FAILURE_OR_DIFF_STRUCTURE",
+        "HUMAN_LENGTH_MEDIUM",
+        "HUMAN_LENGTH_LARGE",
+        "TASK_CONTEXT_UNRESOLVED",
+        "TASK_LANGUAGE_FALLBACK",
+        "CLASSIFIER_ASSESSMENT_INVALID"
+      ],
+      "type": "string"
+    },
+    "DecisionProtocolV1": {
+      "enum": [
+        "system_one_legacy",
+        "system_one_c",
+        "custom_extension_v1",
+        "local_rules"
+      ],
+      "type": "string"
+    },
+    "ExecutionGroupV1": {
+      "enum": [
+        "regular",
+        "primary"
+      ],
+      "type": "string"
+    },
+    "HistoricalProtectionActionV1": {
+      "enum": [
+        "not_considered",
+        "not_needed",
+        "applied",
+        "suppressed",
+        "retained_unavailable"
+      ],
+      "type": "string"
+    },
+    "ModelGroupReasonV1": {
+      "enum": [
+        "simple_task",
+        "complex_task",
+        "low_competence",
+        "degree_unavailable",
+        "single_group",
+        "decision_fallback",
+        "availability_relay",
+        "heuristic"
+      ],
+      "type": "string"
+    },
+    "ProtectionEligibilityV1": {
+      "enum": [
+        "invalid_boundary",
+        "no_target",
+        "partial_target",
+        "unrated",
+        "different_plan",
+        "different_category",
+        "different_policy",
+        "ambiguous_attribution",
+        "single_group",
+        "eligible"
+      ],
+      "type": "string"
+    },
+    "RoutingObservationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicability_boundary_millis": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "applicability_probability": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "applicability_reason": {
+          "$ref": "#/$defs/ApplicabilityReasonV1"
+        },
+        "applicability_requested": {
+          "type": "boolean"
+        },
+        "applicability_state": {
+          "$ref": "#/$defs/ApplicabilityStateV1"
+        },
+        "bundle_digest": {
+          "type": "string"
+        },
+        "competence_floor_millis": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "content_digest": {
+          "type": "string"
+        },
+        "eligibility": {
+          "$ref": "#/$defs/ProtectionEligibilityV1"
+        },
+        "model": {
+          "type": "string"
+        },
+        "prior_removed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "prior_retained": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protection_action": {
+          "$ref": "#/$defs/HistoricalProtectionActionV1"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "request_bytes": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "simple_probability": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "simple_threshold_millis": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stage_removed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stage_retained": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "standard": {
+          "type": "string"
+        },
+        "target_complete": {
+          "type": "boolean"
+        },
+        "target_segment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "protocol",
+        "content_digest",
+        "bundle_digest",
+        "provider",
+        "model",
+        "standard",
+        "target_complete",
+        "eligibility",
+        "applicability_requested",
+        "applicability_state",
+        "applicability_reason",
+        "protection_action",
+        "simple_threshold_millis",
+        "competence_floor_millis",
+        "applicability_boundary_millis",
+        "request_bytes",
+        "prior_retained",
+        "prior_removed",
+        "stage_retained",
+        "stage_removed"
+      ],
+      "type": "object"
+    },
+    "RoutingTimelineProtectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicability_boundary_millis": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "applicability_probability": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "competence_floor_millis": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "outcome": {
+          "$ref": "#/$defs/HistoricalProtectionActionV1"
+        },
+        "previous_score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "outcome",
+        "competence_floor_millis",
+        "applicability_boundary_millis"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "hiroute://contracts/cli/routing-timeline-selection.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Opening-decision read view. Persisted BranchDecisionV1 remains unchanged.",
+  "properties": {
+    "branch_id": {
+      "type": "string"
+    },
+    "classification_duration_micros": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "competence_trigger": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CompetenceProtectionV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "complexity_score": {
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "decision_protocol": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionProtocolV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "decision_source": {
+      "$ref": "#/$defs/ComplexityDecisionSourceV1"
+    },
+    "execution_group": {
+      "$ref": "#/$defs/ExecutionGroupV1"
+    },
+    "fallback_reason": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ClassifierFallbackReasonV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "fallback_used": {
+      "type": "boolean"
+    },
+    "historical_protection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RoutingTimelineProtectionV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "matched_user_phrase_ids": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "payload_digest": {
+      "type": "string"
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BranchExecutionPolicyV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reason_codes": {
+      "items": {
+        "$ref": "#/$defs/ComplexityReasonCodeV1"
+      },
+      "type": "array"
+    },
+    "routing_observation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RoutingObservationV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "selection_reason": {
+      "$ref": "#/$defs/ModelGroupReasonV1"
+    },
+    "simple_probability": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "simple_threshold_millis": {
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "strategy_id": {
+      "type": "string"
+    },
+    "threshold": {
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "execution_group",
+    "selection_reason",
+    "strategy_id",
+    "schema_version",
+    "payload_digest",
+    "branch_id",
+    "decision_source",
+    "reason_codes",
+    "matched_user_phrase_ids",
+    "fallback_used"
+  ],
+  "title": "RoutingTimelineSelectionV1",
+  "type": "object"
+}

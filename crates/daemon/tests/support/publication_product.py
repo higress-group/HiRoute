@@ -179,10 +179,14 @@ finally:
         self.diagnostics_args = []
         self.env = {k: v for k, v in os.environ.items()
                     if not k.startswith(('ANTHROPIC_', 'HIROUTE_', 'OPENAI_', 'AWS_', 'AZURE_',
-                                         'GOOGLE_', 'VERTEX_', 'QODER_'))
+                                         'GOOGLE_', 'VERTEX_', 'QODER_', 'OPENCODE_'))
                     and k not in ('CODEX_CONFIG', 'CODEX_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN',
                                   'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'CLAUDE_CODE_USE_BEDROCK',
                                   'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY',
+                                  'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+                                  'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', 'CLAUDE_CODE_DISABLE_1M_CONTEXT',
+                                  'CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT',
+                                  'DISABLE_COMPACT', 'DISABLE_AUTO_COMPACT',
                                   'DEEPSEEK_API_KEY', 'GROQ_API_KEY', 'MISTRAL_API_KEY',
                                   'XAI_API_KEY', 'CEREBRAS_API_KEY')}
         self.env.update(HOME=str(home), CODEX_HOME=str(home / '.codex'),

@@ -124,8 +124,20 @@ pub(super) fn select(discovered: &Value, cli: &Path, node: &Path) -> Selection {
         .expect("actual discovery must report the Pi selection revision")
         .revision;
     let mut held = Vec::new();
-    let cli_path = candidate(&view, WorkerDependencyComponentV1::Cli, cli, &mut held);
-    let node_path = candidate(&view, WorkerDependencyComponentV1::Node, node, &mut held);
+    let cli_path = candidate(
+        &view,
+        WorkerHarnessV1::Pi,
+        WorkerDependencyComponentV1::Cli,
+        cli,
+        &mut held,
+    );
+    let node_path = candidate(
+        &view,
+        WorkerHarnessV1::Pi,
+        WorkerDependencyComponentV1::Node,
+        node,
+        &mut held,
+    );
     let request = WorkerDependenciesSelectRequestV1 {
         harness: WorkerHarnessV1::Pi,
         adapter_path: None,
@@ -158,8 +170,45 @@ pub(super) fn select(discovered: &Value, cli: &Path, node: &Path) -> Selection {
     }
 }
 
+pub(super) fn select_native(discovered: &Value, harness: WorkerHarnessV1, cli: &Path) -> Selection {
+    let view: WorkerDependenciesViewV1 =
+        serde_json::from_value(discovered["data"].clone()).unwrap();
+    assert!(view.valid());
+    let revision = view
+        .selection_revisions
+        .iter()
+        .find(|row| row.harness == harness)
+        .unwrap()
+        .revision;
+    let mut held = Vec::new();
+    let request = WorkerDependenciesSelectRequestV1 {
+        harness,
+        cli_path: candidate(
+            &view,
+            harness,
+            WorkerDependencyComponentV1::Cli,
+            cli,
+            &mut held,
+        ),
+        adapter_path: None,
+        node_path: None,
+        expected_selection_revision: revision,
+    };
+    assert!(request.valid());
+    let ordinary = WorkerDependenciesSelectRequestV1 {
+        cli_path: cli.to_str().unwrap().to_owned(),
+        ..request.clone()
+    };
+    Selection {
+        request,
+        ordinary,
+        _held: held,
+    }
+}
+
 fn candidate(
     view: &WorkerDependenciesViewV1,
+    harness: WorkerHarnessV1,
     component: WorkerDependencyComponentV1,
     pinned: &Path,
     held: &mut Vec<File>,
@@ -170,7 +219,7 @@ fn candidate(
     held.push(pin);
     let mut matches = Vec::new();
     for row in &view.candidates {
-        if row.harness != WorkerHarnessV1::Pi
+        if row.harness != harness
             || row.component != component
             || row.state != WorkerDependencyCandidateStateV1::Found
         {

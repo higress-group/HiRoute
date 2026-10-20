@@ -125,12 +125,12 @@ const scenarios = [
     assert(cli && !document.querySelector('#worker-qoder_cli-adapter') && !document.querySelector('#worker-qoder_cli-node'), 'Qoder did not render exactly its one CLI input');
     assert(!document.querySelector('.worker-dependencies').textContent.includes('Node.js'), 'Qoder advertised an unnecessary runtime');
     assert(document.querySelector('[data-qoder-installation-guide] a').href === 'https://docs.qoder.com/cli/installation', 'Official installation guidance is missing');
-    setInput(cli, '/home/fixture/.local/bin/qodercli'); await tick();
+    setInput(cli, '/opt/hiroute-fixtures/bin/qodercli'); await tick();
     assert(!button('使用此安装').disabled, 'A standalone Qoder CLI required adapter placeholders');
     button('使用此安装').click();
     await until(() => document.querySelector('.worker-dependencies .badge.good'), 'Qoder selection persisted');
     const request = trace().requests.find(item => item.command === 'worker_dependencies_select_prepare').payload.input;
-    assert(request.harness === 'qoder_cli' && request.cli_path === '/home/fixture/.local/bin/qodercli', 'The selected CLI did not cross the public boundary');
+    assert(request.harness === 'qoder_cli' && request.cli_path === '/opt/hiroute-fixtures/bin/qodercli', 'The selected CLI did not cross the public boundary');
     assert(!('adapter_path' in request) && !('node_path' in request), 'Qoder request did not omit unsupported components');
     assert(calls('worker_dependencies_select_prepare') === 1 && calls('worker_dependencies_select_confirm') === 1, 'One click did not commit exactly once');
     containingButton('Claude Code').click();
@@ -141,6 +141,42 @@ const scenarios = [
     await until(() => button('更换或高级设置'), 'saved Qoder installation');
     button('更换或高级设置').click(); await tick();
     assert(document.querySelector('#worker-qoder_cli-cli')?.value === request.cli_path, 'Switching away lost the Qoder installation');
+  }),
+  scenario('opencode.installation.single-cli', ['opencode'], 'OpenCode saves one CLI and switching execution Agents retains their independent installations', async () => {
+    if (!document.querySelector('#worker-claude_code-cli')) {
+      containingButton('Claude Code').click();
+      await until(() => button('更换或高级设置'), 'Claude installation before switching');
+      button('更换或高级设置').click(); await tick();
+    }
+    const previousClaude = document.querySelector('#worker-claude_code-cli').value;
+    trace().commands.length = 0; trace().requests.length = 0;
+    containingButton('OpenCode').click();
+    await until(() => button('一键检测'), 'OpenCode detection action');
+    assert(document.querySelector('.v3-executor.selected [data-brand="opencode"] svg'), 'OpenCode executor is missing its official mark');
+    assert(calls('worker_dependencies_select_prepare') === 0, 'Choosing OpenCode saved an installation implicitly');
+    button('一键检测').click();
+    await until(() => button('使用此安装'), 'single CLI recommendation');
+    button('高级设置').click(); await tick();
+    const cli = document.querySelector('#worker-opencode-cli');
+    assert(cli && !document.querySelector('#worker-opencode-adapter') && !document.querySelector('#worker-opencode-node'), 'OpenCode did not render exactly its one CLI input');
+    assert(!document.querySelector('.worker-dependencies').textContent.includes('Node.js'), 'OpenCode advertised an unnecessary runtime');
+    assert(document.querySelector('[data-opencode-installation-guide]')?.textContent.includes('1.19.3'),'OpenCode supported installation is not explained');
+    setInput(cli, '/opt/hiroute-fixtures/bin/opencode'); await tick();
+    assert(!button('使用此安装').disabled, 'A standalone OpenCode required adapter placeholders');
+    button('使用此安装').click();
+    await until(() => document.querySelector('.worker-dependencies .badge.good'), 'OpenCode selection persisted');
+    const request = trace().requests.find(item => item.command === 'worker_dependencies_select_prepare').payload.input;
+    assert(request.harness === 'opencode' && request.cli_path === '/opt/hiroute-fixtures/bin/opencode', 'The selected CLI did not cross the public boundary');
+    assert(!('adapter_path' in request) && !('node_path' in request), 'OpenCode request did not omit unsupported components');
+    assert(calls('worker_dependencies_select_prepare') === 1 && calls('worker_dependencies_select_confirm') === 1, 'One click did not commit exactly once');
+    containingButton('Claude Code').click();
+    await until(() => button('更换或高级设置'), 'existing Claude installation');
+    button('更换或高级设置').click(); await tick();
+    assert(document.querySelector('#worker-claude_code-cli')?.value === previousClaude, 'OpenCode replaced the previously saved Claude installation');
+    containingButton('OpenCode').click();
+    await until(() => button('更换或高级设置'), 'saved OpenCode installation');
+    button('更换或高级设置').click(); await tick();
+    assert(document.querySelector('#worker-opencode-cli')?.value === request.cli_path, 'Switching away lost the OpenCode installation');
   }),
   ...[['pi', 'Pi'], ['qoder_cli', 'Qoder CLI']].map(([harness, title]) =>
     scenario(`routing.protocol.${harness.replace("_cli", "")}-reselection`, ['route-save'], `${title} retains an explicit protocol when reselected and saved`, async () => {
