@@ -238,10 +238,12 @@ The Plan model-performance protection card MUST show how many historical low-sco
 
 The view MUST offer last-24-hours, default last-seven-days and all-retained scopes. For every period, the stage and routing-decision reads MUST use the same captured explicit interval with its lower bound inside the retention boundary and a bounded read margin. Reads taken at different instants MUST NOT make an otherwise complete matching release count unavailable at the normal seven-day edge. Actual effective-interval mismatches still show unavailable. Changing the displayed period does not narrow the full active-revision evidence used for suggestions.
 
+The routing release aggregate SHALL remain the result of the base read paired with the trust report. Later detail score/model filters and pagination SHALL NOT replace it with a separately clipped aggregate, even after the bounded read margin has elapsed. A grouping, period or revision change, explicit refresh or retry SHALL capture a fresh interval and reread both sources together. Actual scope mismatches remain unavailable.
+
 #### Scenario: Inspect every period inside the retention boundary
 
 - **WHEN** the user opens the default last-seven-days view or selects all retained records or the last 24 hours, and the two complete evidence reads occur at different instants
-- **THEN** both use the same explicit retained interval, the protection card shows the aligned release count, and grouping and detail navigation preserve that interval.
+- **THEN** both use the same explicit retained interval and the protection card shows the aligned release count; detail navigation preserves the pair and grouping captures a fresh paired interval.
 
 #### Scenario: Aligned complete evidence
 
@@ -257,6 +259,11 @@ The view MUST offer last-24-hours, default last-seven-days and all-retained scop
 
 - **WHEN** there are no recorded historical-protection observations, or a complete matching recorded cohort has zero releases
 - **THEN** missing evidence is unavailable with a reason, whereas the complete matching recorded cohort shows zero
+
+#### Scenario: Filter and paginate after the read margin expires
+
+- **WHEN** the default seven-day or all-retained view remains open for more than one minute, then the user selects low-score stages and loads another page
+- **THEN** the release count stays bound to the original paired base read; grouping afterward refreshes both sources with one new interval.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253018308

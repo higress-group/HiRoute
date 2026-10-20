@@ -57,12 +57,14 @@ export function PlanQuality({
   // A detail filter or next page must retain exactly the same time window.
   const window = useMemo(() => {
     return planQualityWindow(period, Date.now());
-  }, [planId, sessionId, planRevision, period, version, refreshVersion, reload, active]);
+  }, [planId, sessionId, planRevision, period, version, refreshVersion, reload, active, groupBy]);
+  const pairedWindow = useRef<typeof window | null>(null);
   const revision = version === 'current' ? planRevision || null : version === 'all' ? null : Number(version);
 
-  async function load(next: string | null = null) {
+  async function load(next: string | null = null, captureRouting = false) {
     if (!active || (!planId && !sessionId)) return;
     const epoch = ++generation.current;
+    if (captureRouting) pairedWindow.current = window;
     setBusy(true); setError('');
     try {
       const page = await observationRead<Page>('plan_quality', {
@@ -74,9 +76,11 @@ export function PlanQuality({
         competence: score === 'high' ? 'meets_floor' : score === 'low' ? 'below_floor' : null,
         unrated_only: score === 'unrated', limit: 20, cursor: next,
       });
+      // Aggregate routing evidence belongs to the base read paired with PlanTrust.
+      // Detail reads can be clipped by a later retention clock and must not replace it.
+      if (captureRouting && pairedWindow.current === window) setRoutingSummary(page.routing_observations ?? null);
       if (epoch !== generation.current) return;
       setSummary(page.summary);
-      setRoutingSummary(page.routing_observations ?? null);
       const stages = selected && !selected.execution && !selected.trustRow ? [] : page.samples;
       setSamples(current => next ? [...current, ...stages] : stages);
       setCursor(selected && !selected.execution && !selected.trustRow ? null : page.next_cursor ?? null);
@@ -101,12 +105,14 @@ export function PlanQuality({
   useEffect(() => {
     setSummary(EMPTY_SUMMARY);
     setRoutingSummary(null);
+    pairedWindow.current = null;
+    return () => { pairedWindow.current = null; };
   }, [planId, sessionId, revision, window]);
 
   useEffect(() => {
     if (!active) { generation.current++; setBusy(false); return; }
     setSamples([]); setExecutionModels({}); setCursor(null); setLoaded(false);
-    void load();
+    void load(null, pairedWindow.current !== window);
     return () => { generation.current++; };
   }, [planId, sessionId, revision, score, selected?.key, window, active]);
 
@@ -196,7 +202,7 @@ export function PlanQuality({
         <button className="btn btn-quiet quality-refresh" type="button" disabled={busy} onClick={() => setReload(value => value + 1)}><UiIcon name="refresh" />{text('刷新', 'Refresh')}</button>
       </div>
     </div>
-    {trust.error && <div className="callout warn" role="alert" data-error-code={trust.error}><span>{trust.error.toLowerCase().includes('scope_too_large') ? text('证据超过读取上限。建议需要本版本的全部保留记录；缩短显示时间不一定能减少建议计算范围。', 'Evidence exceeds the read limit. Suggestions need the full retained version; narrowing the displayed window may not reduce that scope.') : text('证据暂时无法读取，当前档位未改变。', 'Evidence is unavailable. Your trust level has not changed.')}</span><button className="btn" type="button" onClick={trust.retry}>{text('重试', 'Retry')}</button></div>}
+    {trust.error && <div className="callout warn" role="alert" data-error-code={trust.error}><span>{trust.error.toLowerCase().includes('scope_too_large') ? text('证据超过读取上限。建议需要本版本的全部保留记录；缩短显示时间不一定能减少建议计算范围。', 'Evidence exceeds the read limit. Suggestions need the full retained version; narrowing the displayed window may not reduce that scope.') : text('证据暂时无法读取，当前档位未改变。', 'Evidence is unavailable. Your trust level has not changed.')}</span><button className="btn" type="button" onClick={() => setReload(value => value + 1)}>{text('重试', 'Retry')}</button></div>}
     {trustScope && !report && !trust.error && <p className="quality-status" role="status">{text('正在读取完整范围的证据…', 'Reading the complete evidence scope…')}</p>}
     {report && <TrustSuggestions report={report} language={language} onThreshold={onThreshold} onDivision={onDivision} onOpenAgent={onOpenAgent} />}
     {report && groupBy === 'model' && <TrustTiles report={report} language={language} />}

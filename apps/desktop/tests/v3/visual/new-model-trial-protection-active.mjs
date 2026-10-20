@@ -78,7 +78,7 @@ try {
       await click('[role="tab"]',lang==='zh'?'模型表现':'Model performance');
       for(const period of ['seven_days','all','one_day']) {
         await evaluate(client,`(()=>{const s=document.querySelector('.quality-filters select');s.value=${JSON.stringify(period)};s.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
-        await waitFor(client,`!!document.querySelector('.trust-release')`);
+        await waitFor(client,`document.querySelector('.trust-release')?.dataset.releaseState==='available'`);
         assert.equal(await evaluate(client,`document.querySelector('.trust-release').dataset.releaseState`),'available',`${period} must use one retained interval`);
         assert.ok(await evaluate(client,`document.querySelector('.trust-release').textContent.includes(${JSON.stringify(lang==='zh'?'解除 5 次':'5 protections released')})`));
         const scope=await evaluate(client,`(()=>{const xs=window.trialTrace.filter(x=>x.command==='observation_read').map(x=>x.payload.request.intent),t=xs.filter(x=>x.view==='plan_trust').at(-1).query,q=xs.filter(x=>x.view==='plan_quality'&&x.query.include_routing_observations).at(-1).query;return {trust:[t.from_ms,t.to_ms],quality:[q.from_ms,q.to_ms]};})()`);
@@ -94,6 +94,32 @@ try {
       await waitFor(client,`document.querySelector('.trust-release')?.dataset.releaseState==='available'`);
       assert.equal(await evaluate(client,`document.querySelector('.quality-filters select').value`),'one_day');
       assert.ok(await evaluate(client,fits));
+    });
+    await check(`aged-retained-window-${name}`,async()=>{
+      for (const period of ['seven_days','all']) {
+        await load('view=editor&release-evidence=retention');
+        await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`);
+        await click('[role="tab"]',lang==='zh'?'模型表现':'Model performance');
+        await evaluate(client,`(()=>{const s=document.querySelector('.quality-filters select');s.value=${JSON.stringify(period)};s.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+        await waitFor(client,`document.querySelector('.trust-release')?.dataset.releaseState==='available'`);
+        const trustCount=await evaluate(client,`trialTrace.filter(x=>x.payload?.request?.intent?.view==='plan_trust').length`);
+        await evaluate(client,`window.advanceRetentionClock(120_000);true`);
+        await click('.trust-protection button',lang==='zh'?'查看全部低分阶段':'View all low-score stages');
+        await waitFor(client,`!!document.querySelector('.quality-more:not(:disabled)')`);
+        assert.equal(await evaluate(client,`document.querySelector('.trust-release').dataset.releaseState`),'available','filter preserves paired base summary after retention moves');
+        await click('.quality-more',lang==='zh'?'加载更多阶段':'Load more stages');
+        await waitFor(client,`!document.querySelector('.quality-more')`);
+        assert.ok(await evaluate(client,`document.querySelector('.trust-release').textContent.includes(${JSON.stringify(lang==='zh'?'解除 5 次':'5 protections released')})`),'pagination preserves the paired count');
+        assert.equal(await evaluate(client,`trialTrace.filter(x=>x.payload?.request?.intent?.view==='plan_trust').length`),trustCount,'filters do not refresh the aggregate scope');
+        await click('.segmented button',lang==='zh'?'按执行 Agent':'By execution agent');
+        await waitFor(client,`!!document.querySelector('[data-execution-group="executor"]')`);
+        await evaluate(client,`window.advanceRetentionClock(120_000);true`);
+        await click('.segmented button',lang==='zh'?'按模型':'By model');
+        await waitFor(client,`document.querySelector('.trust-release')?.dataset.releaseState==='available'`);
+        const scope=await evaluate(client,`(()=>{const xs=trialTrace.filter(x=>x.command==='observation_read').map(x=>x.payload.request.intent),t=xs.filter(x=>x.view==='plan_trust').at(-1).query,q=xs.filter(x=>x.view==='plan_quality'&&x.query.include_routing_observations).at(-1).query;return {trust:[t.from_ms,t.to_ms],quality:[q.from_ms,q.to_ms],now:Date.now()};})()`);
+        assert.deepEqual(scope.trust,scope.quality);
+        assert.equal(scope.trust[1],scope.now+1,'group changes capture a fresh interval');
+      }
     });
     await check(`history-outcomes-${name}`,async()=>{
       await load('view=timeline&turns=40&protection=1');
