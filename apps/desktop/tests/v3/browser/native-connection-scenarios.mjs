@@ -55,6 +55,14 @@ export function nativeConnectionScenarios({ fresh, click, until, text, calls, co
       await c().callHost('observation_read', {}).catch(() => {});
       await until(() => document.querySelector('[data-connection-state="restart_required"]'), 'failed maintenance state');
       assert(!document.querySelector('.native-connection-recovery button'), 'Failed maintenance offered unsafe channel reuse');
+      c().desktop.native_connection = 'recovery_required';
+      await c().callHost('observation_read', {}).catch(() => {});
+      await until(() => document.querySelector('.native-connection-recovery button'), 'retry after pending stop');
+      c().handlers.desktop_snapshot = () => { throw { source: 'native', code: 'DAEMON_UNAVAILABLE' }; };
+      c().handlers.recover_native_connection = () => { throw { source: 'native', code: 'DAEMON_START_FAILED' }; };
+      await click('恢复本机连接');
+      await until(() => text().includes('当前无法确认本机服务状态'), 'failed restart cannot claim a responsive daemon');
+      assert(!document.querySelector('.native-connection-recovery').textContent.includes('本机服务仍可响应'), 'Old reachability was displayed as current after a failed restart');
     }),
   ];
 }

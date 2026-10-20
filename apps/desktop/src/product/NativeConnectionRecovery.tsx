@@ -3,8 +3,8 @@ import { invoke } from '../host/index.ts';
 import { safeDiagnosticCode } from '../error-code';
 import type { NativeConnectionStatus } from '../native-connection';
 
-export function NativeConnectionRecovery({ status, language, onRecovered, onRefresh }: {
-  status?: NativeConnectionStatus; language: 'zh' | 'en'; onRecovered: () => Promise<void>; onRefresh: () => Promise<void>;
+export function NativeConnectionRecovery({ status, language, serviceResponsive, onRecovered, onRefresh }: {
+  status?: NativeConnectionStatus; language: 'zh' | 'en'; serviceResponsive: boolean; onRecovered: () => Promise<void>; onRefresh: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -20,7 +20,7 @@ export function NativeConnectionRecovery({ status, language, onRecovered, onRefr
   }
   return <div className="callout bad native-connection-recovery" role="alert" data-connection-state={status}>
     <div><strong>{status === 'not_owned' ? text('本机服务由其他入口管理', 'Local service managed elsewhere') : text('本机可信连接已失效', 'Trusted local connection lost')}</strong>
-      <p>{status === 'not_owned' ? text('本机服务正由其他入口管理，当前窗口无法读取受保护记录。请从该入口正常退出服务，再重新打开 HiRoute。', 'The local service is managed by another entry. This window cannot read protected records. Quit the service normally from that entry, then reopen HiRoute.') : text('本机服务仍可响应，但记录读取和需要授权的操作暂时不可用。恢复会在现有工作完成后重新连接，保留已保存的数据。', 'The local service still responds, but records and protected actions are unavailable. Restore reconnects after existing work finishes and keeps saved data.')}</p>
+      <p>{status === 'not_owned' ? text('本机服务正由其他入口管理，当前窗口无法读取受保护记录。请从该入口正常退出服务，再重新打开 HiRoute。', 'The local service is managed by another entry. This window cannot read protected records. Quit the service normally from that entry, then reopen HiRoute.') : !serviceResponsive ? text('当前无法确认本机服务状态。恢复会检查原服务的状态并保留已保存的数据，不会强制结束运行中的工作。', 'The current local service state cannot be confirmed. Restore checks the original service and keeps saved data without forcibly stopping running work.') : text('本机服务仍可响应，但记录读取和需要授权的操作暂时不可用。恢复会在现有工作完成后重新连接，保留已保存的数据。', 'The local service still responds, but records and protected actions are unavailable. Restore reconnects after existing work finishes and keeps saved data.')}</p>
       {busy && <p role="status">{text('正在安全恢复本机连接…', 'Restoring the local connection safely…')}</p>}
       {error && <p data-error-code={error}>{error === 'AUTHORITY_RECOVERY_WORK_ACTIVE'
         ? text('仍有请求或任务运行，已保留当前服务。请等它们完成后再次恢复。', 'Requests or tasks are still running. The service was kept running; restore again after they finish.')

@@ -704,7 +704,7 @@ export function DesktopApp() {
         <HostNotices language={language} />
         {notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="info" /><span>{notice}</span></div></div>}
         {upgradePhaseText && <div className="callout" role="status" aria-live="polite"><UiIcon name="info" /><div><strong>{upgradePhaseText}</strong><p>{language === 'zh' ? '请等待升级完成；请保留原数据与完整安装包。' : 'Wait for the upgrade to finish. Keep the original data and complete installation package.'}</p></div></div>}
-        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} onRefresh={home.refreshDesktop} onRecovered={async () => { await home.refreshAll(); setRefreshVersion(value => value + 1); }} />
+        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} serviceResponsive={home.reads.service.status === 'ready'} onRefresh={home.refreshDesktop} onRecovered={async () => { await home.refreshAll(); setRefreshVersion(value => value + 1); }} />
         {startupFailure && <div className="callout bad startup-recovery" role="alert" data-error-code={startupFailure.code}>
           <UiIcon name="warning" />
           <div>
