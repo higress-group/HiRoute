@@ -229,3 +229,28 @@ fn model_defaults_backup_restores_preferences_and_authenticated_management_effec
         .unwrap();
     assert_eq!(foreign_keys, 0);
 }
+
+#[test]
+fn model_defaults_current_schema_missing_table_is_refused_without_reinitialization() {
+    let root = tempdir().unwrap();
+    drop(LocalStorageSet::open_for_daemon_startup(root.path()).unwrap());
+    let path = root.path().join("live/control.db");
+    {
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch("DROP TABLE compute_source_defaults;")
+            .unwrap();
+    }
+    assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name='compute_source_defaults'",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        0
+    );
+}
