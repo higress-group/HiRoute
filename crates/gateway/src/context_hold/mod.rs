@@ -15,7 +15,9 @@ use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 pub(crate) use history::visible_history;
 pub(crate) use history::{HistoryEvidence, visible_history_with_replay};
 pub(crate) use identity::{ContextIdentityFacts, identity_facts};
-pub(crate) use store::{ContextHoldKey, ContextHoldStore, HoldCompletion, HoldTicket};
+pub(crate) use store::{
+    ContextHoldKey, ContextHoldStore, HoldCompletion, HoldTicket, PreparedHold,
+};
 
 pub(crate) struct ContextRequest<'a> {
     pub(crate) ingress: IngressProtocol,
@@ -25,13 +27,13 @@ pub(crate) struct ContextRequest<'a> {
     pub(crate) replay: &'a ReplayStore,
 }
 
-pub(crate) fn begin_context(
+pub(crate) fn prepare_context(
     store: &ContextHoldStore,
     observation_key: &[u8; 32],
     authorized: &AuthorizedRequestPlan,
     input: ContextRequest<'_>,
     now: Instant,
-) -> (ContextIdentityFacts, Option<HoldTicket>) {
+) -> (ContextIdentityFacts, Option<PreparedHold>) {
     let ContextRequest {
         ingress,
         headers,
@@ -56,7 +58,7 @@ pub(crate) fn begin_context(
     let ticket = store.digest_key().and_then(|hold_key| {
         let history = visible_history_with_replay(request, &hold_key, Some(replay))?;
         let key = ContextHoldKey::from_request(authorized, ingress, &identity, &hold_key)?;
-        store.begin(key, &history, now)
+        store.prepare(key, &history, now)
     });
     (identity, ticket)
 }

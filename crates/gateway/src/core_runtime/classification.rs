@@ -322,7 +322,12 @@ impl ProductionGatewayRuntime {
         let call_deadline = fixed_deadline.min(request.overall_deadline);
         let fixed_timeout_wins = fixed_deadline < request.overall_deadline;
 
-        let latest_user = resolve_latest_user(request.request, request.replay)?;
+        let (latest_user, local_input_unavailable) =
+            match resolve_latest_user(request.request, request.replay) {
+                Ok(user) => (user, false),
+                Err(ClassificationError::Resource) => (None, true),
+                Err(error) => return Err(error),
+            };
         ensure_source_active(request.overall_deadline, &request.cancellation)?;
         let (local_decision, facts) = ComplexityV1::decide(
             latest_user.as_ref().map(|value| value.text.as_str()),
@@ -330,6 +335,7 @@ impl ProductionGatewayRuntime {
             strategy,
         )
         .map_err(|_| ClassificationError::Integrity)?;
+        drop(latest_user);
 
         if local_decision.decision_source == ComplexityDecisionSourceV1::Inherited
             || strategy.classifier_kind == CompiledClassifierKindV1::LocalRules
@@ -343,63 +349,76 @@ impl ProductionGatewayRuntime {
         }
 
         let mut routing_observation = None;
-        let result = match request.classifier {
-            Some(classifier) => {
-                let prepared = if classifier.system_one_model.is_some() {
-                    system_one::request_template(classifier, request.request, request.history)
-                } else {
-                    classifier_request_template(request.request, request.history, classifier)
-                        .map_err(|_| CallFailure::RejectedInput)
-                };
-                match prepared {
-                    Err(error) => Err(error),
-                    Ok(prepared) => {
-                        routing_observation = prepared.routing_observation.clone();
-                        if let Some(o) = routing_observation.as_mut()
-                            && o.applicability_requested
-                        {
-                            o.applicability_requested = false;
-                            o.applicability_state =
-                                hiroute_domain::ApplicabilityStateV1::NotRequested;
-                            o.applicability_reason =
-                                hiroute_domain::ApplicabilityReasonV1::DispatchNotStarted;
-                        }
-                        let target_trimmed = prepared.target_partial;
-                        match ensure_call_active(
-                            call_deadline,
-                            request.overall_deadline,
-                            &request.cancellation,
-                        ) {
-                            Ok(()) => {
-                                let result = self
-                                    .call_classifier(
-                                        classifier,
-                                        prepared,
-                                        &mut routing_observation,
-                                        request.replay,
-                                        request.publication_revision,
-                                        call_deadline,
-                                        request.overall_deadline,
-                                        fixed_timeout_wins,
-                                        request.cancellation.clone(),
-                                    )
-                                    .await?;
-                                result.map(|mut response| {
-                                    if let Some(assessment) = response.assessment.as_mut() {
-                                        assessment.partial |= target_trimmed;
-                                    }
-                                    response
-                                })
+        let result = if local_input_unavailable {
+            // Optional judgment projection must not consume the model request's
+            // remaining memory or reject content that Replay can still forward.
+            Err(CallFailure::Unavailable)
+        } else {
+            match request.classifier {
+                Some(classifier) => {
+                    let prepared = if classifier.system_one_model.is_some() {
+                        system_one::request_template(classifier, request.request, request.history)
+                    } else {
+                        classifier_request_template(request.request, request.history, classifier)
+                            .map_err(|_| CallFailure::RejectedInput)
+                    };
+                    match prepared {
+                        Err(error) => Err(error),
+                        Ok(prepared) => {
+                            routing_observation = prepared.routing_observation.clone();
+                            if let Some(o) = routing_observation.as_mut()
+                                && o.applicability_requested
+                            {
+                                o.applicability_requested = false;
+                                o.applicability_state =
+                                    hiroute_domain::ApplicabilityStateV1::NotRequested;
+                                o.applicability_reason =
+                                    hiroute_domain::ApplicabilityReasonV1::DispatchNotStarted;
                             }
-                            Err(ClassificationError::Deadline) if fixed_timeout_wins => {
-                                Err(CallFailure::Timeout)
+                            let target_trimmed = prepared.target_partial;
+                            match ensure_call_active(
+                                call_deadline,
+                                request.overall_deadline,
+                                &request.cancellation,
+                            ) {
+                                Ok(()) => {
+                                    let result = match self
+                                        .call_classifier(
+                                            classifier,
+                                            prepared,
+                                            &mut routing_observation,
+                                            request.replay,
+                                            request.publication_revision,
+                                            call_deadline,
+                                            request.overall_deadline,
+                                            fixed_timeout_wins,
+                                            request.cancellation.clone(),
+                                        )
+                                        .await
+                                    {
+                                        Ok(result) => result,
+                                        Err(ClassificationError::Resource) => {
+                                            Err(CallFailure::Unavailable)
+                                        }
+                                        Err(error) => return Err(error),
+                                    };
+                                    result.map(|mut response| {
+                                        if let Some(assessment) = response.assessment.as_mut() {
+                                            assessment.partial |= target_trimmed;
+                                        }
+                                        response
+                                    })
+                                }
+                                Err(ClassificationError::Deadline) if fixed_timeout_wins => {
+                                    Err(CallFailure::Timeout)
+                                }
+                                Err(error) => return Err(error),
                             }
-                            Err(error) => return Err(error),
                         }
                     }
                 }
+                None => Err(CallFailure::Unavailable),
             }
-            None => Err(CallFailure::Unavailable),
         };
         ensure_source_active(request.overall_deadline, &request.cancellation)?;
         let classification_duration_micros =

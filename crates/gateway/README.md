@@ -91,6 +91,19 @@ raw IDs are not persisted and existing observations are not rewritten.
 covers the real listener and observation boundary across Responses and Messages,
 plus OpenCode's native identity across Chat Completions and shared cache affinity.
 
+[decision_history.rs](src/core_runtime/decision_history.rs) admits optional routing
+history before the prepared ContextHold checkpoint can advance. A shared identity
+can still contain native main, auxiliary or child requests. If its lease is busy,
+history capacity is exhausted, or the checkpoint becomes stale, the request runs
+with empty partial history and no inherited decision or assessment target. It
+cannot overwrite the live request's hold. Optional write/observation failures do
+not reject or replace the model response; authorization, Replay integrity and
+source cancellation/deadlines still apply. This is best-effort context degradation,
+not a native subdialog identity guarantee.
+[history_bypass.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
+covers same-identity overlap across the supported native identity families, main
+tool continuation, capacity exhaustion and observation faults through the listener.
+
 ## Decision operation
 
 [core_runtime/classification.rs](src/core_runtime/classification.rs) owns the

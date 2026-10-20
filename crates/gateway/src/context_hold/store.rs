@@ -11,6 +11,7 @@ use sha2::Sha256;
 use crate::server::core_runtime::profiles::HoldPreferenceV1;
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
+use super::history::HistoryDigests;
 use super::{ContextIdentityFacts, HistoryEvidence};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -105,6 +106,23 @@ pub(crate) struct HoldTicket {
     /// rebuilt history invalidates the stronger continuity hint.
     pub(crate) previous_success: Option<HoldPreferenceV1>,
     pub(crate) cleaned_prefix_len: Option<usize>,
+}
+
+/// A read-only continuity scan. It cannot invalidate a live request's checkpoint.
+pub(crate) struct PreparedHold {
+    key: ContextHoldKey,
+    snapshot: Option<BeginSnapshot>,
+    instruction_digest: [u8; 32],
+    measured: HistoryDigests,
+}
+
+impl PreparedHold {
+    pub(crate) fn message_history_continues(&self) -> bool {
+        self.snapshot.is_some_and(|snapshot| {
+            self.measured.message_count >= snapshot.message_count
+                && self.measured.prefix_digest == Some(snapshot.history_digest)
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -219,15 +237,25 @@ impl ContextHoldStore {
         self.key
     }
 
+    #[cfg(test)]
     pub(crate) fn begin(
         &self,
         key: ContextHoldKey,
         history: &HistoryEvidence<'_>,
         now: Instant,
     ) -> Option<HoldTicket> {
+        self.commit(self.prepare(key, history, now)?, now)
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        key: ContextHoldKey,
+        history: &HistoryEvidence<'_>,
+        now: Instant,
+    ) -> Option<PreparedHold> {
         self.key?;
         let snapshot = {
-            let mut inner = self.inner.lock();
+            let mut inner = self.inner.try_lock()?;
             inner.purge_expired_bounded(now, self.idle_ttl);
             inner.remove_if_expired(&key, now, self.idle_ttl);
             inner.entries.get(&key).map(BeginSnapshot::from)
@@ -236,7 +264,22 @@ impl ContextHoldStore {
         // Scan visible history outside the mutex, retaining only the stored
         // prefix checkpoint and the final digest.
         let measured = history.measure(snapshot.map(|entry| entry.message_count))?;
-        let mut inner = self.inner.lock();
+        Some(PreparedHold {
+            key,
+            snapshot,
+            instruction_digest: history.instruction_digest,
+            measured,
+        })
+    }
+
+    pub(crate) fn commit(&self, prepared: PreparedHold, now: Instant) -> Option<HoldTicket> {
+        let PreparedHold {
+            key,
+            snapshot,
+            instruction_digest,
+            measured,
+        } = prepared;
+        let mut inner = self.inner.try_lock()?;
         inner.remove_if_expired(&key, now, self.idle_ttl);
         if let Some(snapshot) = snapshot {
             let (current_cycle, current_value_version) = {
@@ -250,8 +293,8 @@ impl ContextHoldStore {
             };
             let message_history_continues = measured.message_count >= snapshot.message_count
                 && measured.prefix_digest == Some(snapshot.history_digest);
-            let continues = snapshot.instruction_digest == history.instruction_digest
-                && message_history_continues;
+            let continues =
+                snapshot.instruction_digest == instruction_digest && message_history_continues;
             let checkpoint_revision = snapshot.checkpoint_revision.checked_add(1)?;
             let cycle = if continues {
                 current_cycle
@@ -281,7 +324,7 @@ impl ContextHoldStore {
                 entry.cycle = cycle;
                 entry.checkpoint_revision = checkpoint_revision;
                 entry.value_version = value_version;
-                entry.instruction_digest = history.instruction_digest;
+                entry.instruction_digest = instruction_digest;
                 entry.message_count = measured.message_count;
                 entry.history_digest = measured.complete_digest;
                 entry.hint_valid &= continues;
@@ -315,7 +358,7 @@ impl ContextHoldStore {
             cycle: 1,
             checkpoint_revision: 1,
             value_version: 0,
-            instruction_digest: history.instruction_digest,
+            instruction_digest,
             message_count: measured.message_count,
             history_digest: measured.complete_digest,
             preference: None,
@@ -369,7 +412,9 @@ impl ContextHoldStore {
         cleaned_prefix_len: Option<usize>,
         now: Instant,
     ) -> HoldCompleteOutcome {
-        let mut inner = self.inner.lock();
+        let Some(mut inner) = self.inner.try_lock() else {
+            return HoldCompleteOutcome::CapacityMiss;
+        };
         inner.purge_expired_bounded(now, self.idle_ttl);
         let key = &ticket.key;
         inner.remove_if_expired(key, now, self.idle_ttl);

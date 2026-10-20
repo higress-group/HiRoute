@@ -157,6 +157,7 @@ pub(crate) enum AgentTurnBegin {
 pub(crate) enum AgentTurnHistoryError {
     TurnContextUnavailable,
     SessionTurnConflict,
+    NoUserTurn,
     Resource,
     Integrity,
 }

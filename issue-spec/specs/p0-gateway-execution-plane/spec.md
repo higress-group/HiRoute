@@ -116,6 +116,33 @@ It does not read Observation disk/SQLite or add another branch/cache state machi
 Concurrent same-session/late CAS rejects unsafe updates. LRU/TTL/restart yields
 explicit partial history without blocking independent requests.
 
+History is optional routing context, not model-request admission. A same-scope
+request already in flight, unavailable continuation, exhausted/busy history store,
+or request without a real user turn SHALL execute independently with empty visible
+history, `history_partial=true`, and no inherited decision or prior-stage assessment.
+ContextHold scans SHALL NOT advance shared checkpoints before history admission;
+rejected side-path admission cannot invalidate the live request's completion or
+tool continuation. A stale/failed optional decision write relinquishes its history
+and hold write authority while retaining the request's validated routing decision.
+Such failures SHALL NOT become `SESSION_TURN_CONFLICT`, `TURN_CONTEXT_UNAVAILABLE`,
+or history-capacity HTTP errors. Optional judgment projection/transport resource
+failure uses the published decision fallback. Current authorization, canonical
+request/Replay integrity, source cancellation/deadline, and execution eligibility
+remain mandatory. Observation/capture failure cannot replace, truncate, retry, or
+delay delivery of the accepted model response; any lost history remains partial.
+
+#### Scenario: Native auxiliary request overlaps the main tool turn
+
+- **WHEN** two authorized requests share one native session identity while the first model response is still in flight
+- **THEN** the second is classified and executed independently without modifying the first history checkpoint, and both can deliver their complete responses.
+- **AND** the first request's subsequent valid tool continuation can retain its decision.
+
+#### Scenario: Optional state or observation is unavailable
+
+- **WHEN** bounded history cannot admit a request, a history write is stale, or observation/capture is full, slow, failing or panicking
+- **THEN** the authorized model request still completes through normal routing, optional writes cannot overwrite another request, and unavailable context is disclosed without inventing an assessment target.
+- **AND** an unauthorized request still cannot invoke the classifier or model.
+
 Decision preparation, narrow header Secret lease, Replay/history, DNS/connect/write/
 read share the earlier of classifier timeout and source absolute deadline/cancel.
 One call supplies selection/optional prior-stage assessment under

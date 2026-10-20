@@ -215,6 +215,12 @@ partial response, stale completion, or eviction cannot overwrite newer checkpoin
 The default process-local budget is 50,000,000 bytes with one-hour idle TTL, refreshed
 on valid entry but not on completion; no fixed count or absolute TTL substitutes.
 Restart/expiry/eviction/unavailable cache returns to normal routing without blocking.
+Checkpoint preparation is read-only until optional decision-history admission
+succeeds. Requests sharing an in-flight history scope use independent routing with
+explicit partial history; they cannot advance its ContextHold checkpoint or inherit
+its pending decision. Busy/capacity/stale optional state never rejects an otherwise
+valid model request or changes an already accepted model response. This degradation
+does not establish separate native main/auxiliary/subagent identities.
 
 For smart-saving and custom-branch Plans, a valid retained candidate MUST be
 prioritized whenever its origin group is the freshly selected or inherited group,

@@ -223,8 +223,11 @@ impl AgentTurnHistoryStore {
         let latest = analyzed
             .turns
             .last()
-            .ok_or(AgentTurnHistoryError::Integrity)?;
-        let mut inner = self.inner.lock();
+            .ok_or(AgentTurnHistoryError::NoUserTurn)?;
+        let mut inner = self
+            .inner
+            .try_lock()
+            .ok_or(AgentTurnHistoryError::Resource)?;
         inner.purge_expired(now, self.idle_ttl);
         if inner
             .entries
@@ -599,7 +602,10 @@ impl AgentTurnHistoryStore {
         ticket: &AgentTurnTicket,
         decision: BranchDecisionV1,
     ) -> Result<(), AgentTurnHistoryError> {
-        let mut inner = self.inner.lock();
+        let mut inner = self
+            .inner
+            .try_lock()
+            .ok_or(AgentTurnHistoryError::Resource)?;
         let entry = matching_entry_mut(&mut inner, ticket)?;
         if !ticket.new_turn || entry.active.decision.is_some() {
             return Err(AgentTurnHistoryError::Integrity);

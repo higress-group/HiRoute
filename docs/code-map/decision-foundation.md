@@ -92,6 +92,13 @@ continuations reuse the frozen decision only while history and authority permit.
 [ContextHold](../../crates/gateway/src/context_hold/store.rs) binds exact route,
 version, protocol, authorization and session; unrelated plan publication does not
 invalidate that route, and each request still reauthorizes.
+[Optional history admission](../../crates/gateway/src/core_runtime/decision_history.rs)
+owns the history lease before a prepared ContextHold checkpoint changes. Conflicts,
+capacity pressure and stale optional writes degrade to independent routing without
+an inherited decision or assessment target. The [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
+also verifies that the live main request can finish and continue its tools while
+observation failures leave delivered model output intact. Native identity parsing
+remains a separate boundary; this fallback does not prove subdialog isolation.
 
 The planner always prefers a valid held candidate within the newly selected group,
 including an in-group backup; retired follow-up fields survive only at serialized

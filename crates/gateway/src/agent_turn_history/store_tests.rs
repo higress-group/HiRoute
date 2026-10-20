@@ -986,6 +986,35 @@ fn segment_extends_only_for_the_same_executed_identity() {
 }
 
 #[test]
+fn busy_history_admission_and_decision_write_return_without_waiting() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(64 * 1024, Duration::from_secs(60));
+    let key = store.scope_key("workspace", "busy").unwrap();
+    let now = Instant::now();
+    let request = request(vec![text(MessageRole::User, "hello")]);
+    {
+        let _lock = store.inner.lock();
+        assert!(matches!(
+            store.begin(key.clone(), plan(1), &request, &replay, now),
+            Err(AgentTurnHistoryError::Resource)
+        ));
+    }
+    let (ticket, history) = new_turn(store.begin(key, plan(1), &request, &replay, now).unwrap());
+    {
+        let _lock = store.inner.lock();
+        assert_eq!(
+            store.commit_decision(&ticket, decision("smart_saving_simple")),
+            Err(AgentTurnHistoryError::Resource)
+        );
+    }
+    drop(history);
+    store
+        .commit_decision(&ticket, decision("smart_saving_simple"))
+        .unwrap();
+    store.abort(&ticket);
+}
+
+#[test]
 fn pending_request_conflicts_and_stale_ticket_cannot_commit() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(64 * 1024, Duration::from_secs(60));

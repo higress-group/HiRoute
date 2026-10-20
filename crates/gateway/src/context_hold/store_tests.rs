@@ -81,6 +81,69 @@ fn preference(id: &str) -> HoldPreferenceV1 {
 }
 
 #[test]
+fn preparing_an_interleaved_history_cannot_invalidate_the_live_completion() {
+    let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
+    let now = Instant::now();
+    let first = begin(&store, 1, 9, &[1], now).unwrap();
+    let background = history_request(2, &[8]);
+    let history = super::super::visible_history(&background, &HISTORY_KEY).unwrap();
+    let prepared = store.prepare(key(1), &history, now).unwrap();
+    assert!(!prepared.message_history_continues());
+    drop(prepared);
+    assert_eq!(
+        store.complete(&first, preference("main"), now),
+        HoldCompleteOutcome::Applied
+    );
+    let continued = begin(&store, 1, 9, &[1, 2], now).unwrap();
+    assert_eq!(continued.hint.unwrap().candidate_id, "main");
+}
+
+#[test]
+fn a_stale_prepared_history_cannot_overwrite_the_winning_checkpoint() {
+    let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
+    let now = Instant::now();
+    let request = history_request(9, &[1]);
+    let history = super::super::visible_history(&request, &HISTORY_KEY).unwrap();
+    let stale = store.prepare(key(1), &history, now).unwrap();
+    let winner = begin(&store, 1, 9, &[2], now).unwrap();
+    assert!(store.commit(stale, now).is_none());
+    assert_eq!(
+        store.complete(&winner, preference("winner"), now),
+        HoldCompleteOutcome::Applied
+    );
+    assert_eq!(
+        begin(&store, 1, 9, &[2, 3], now)
+            .unwrap()
+            .hint
+            .unwrap()
+            .candidate_id,
+        "winner"
+    );
+}
+
+#[test]
+fn a_busy_hold_store_skips_optional_reads_and_writes() {
+    let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
+    let now = Instant::now();
+    let first = begin(&store, 1, 9, &[1], now).unwrap();
+    let request = history_request(9, &[1, 2]);
+    let history = super::super::visible_history(&request, &HISTORY_KEY).unwrap();
+    let prepared = store.prepare(key(1), &history, now).unwrap();
+    let lock = store.inner.lock();
+    assert!(store.prepare(key(1), &history, now).is_none());
+    assert!(store.commit(prepared, now).is_none());
+    assert_eq!(
+        store.complete(&first, preference("skipped"), now),
+        HoldCompleteOutcome::CapacityMiss
+    );
+    drop(lock);
+    assert_eq!(
+        store.complete(&first, preference("main"), now),
+        HoldCompleteOutcome::Applied
+    );
+}
+
+#[test]
 fn append_and_repeat_keep_while_rebuild_clears() {
     let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
     let now = Instant::now();
