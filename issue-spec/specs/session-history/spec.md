@@ -52,6 +52,30 @@ Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connect
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
 
+### Requirement: Managed Agent attribution uses persistent authenticated grant ownership
+
+New observation writes SHALL associate a session with an Agent only through the exact authenticated workspace, grant ID and generation mapped to a server-resolved Agent connection. The product SHALL persist that mapping from a verified connection transaction and matching publication before admitting its traffic. It SHALL remain available across reconfiguration, grant rotation, native-setting restoration and restart, so retained sessions keep their recorded Agent. Registration and receipt rebuilding SHALL NOT backfill old observations without attribution evidence. User-Agent strings, shared Plans, model aliases and client-supplied session IDs SHALL NOT establish Agent ownership.
+
+A session receiving mapped grants from different Agents SHALL retain an attribution conflict and display as unlinked. Repeated or later matching evidence cannot clear the conflict. Missing mappings remain unknown. Full fact deletion or retention expiry SHALL erase the session attribution evidence with those facts; content-only deletion preserves it. Worker run relations retain their existing verified authority and semantics.
+
+#### Scenario: Reconfiguration and rotation preserve old attribution
+
+- **WHEN** a configured Agent sends a request, its grant rotates or its native settings are restored, and the observation store reopens
+- **THEN** the retained session keeps its original Agent and new mapped grants can associate new sessions without consulting the old native files.
+
+#### Scenario: Conflicting and missing grant ownership
+
+- **WHEN** two Agents' authenticated grants appear in one session, or a request has no registered mapping
+- **THEN** conflicting ownership remains unlinked across later requests and reopening, while absent evidence is not guessed from other request metadata.
+
+#### Scenario: Old observations and Worker relations remain unchanged
+
+- **WHEN** grant ownership is first registered, historical receipts are rebuilt, or a verified Worker run emits new observations
+- **THEN** old sessions are not retrospectively assigned an Agent and Worker request/run associations retain their existing meaning.
+
+Source Issue:
+- https://github.com/higress-group/HiRoute/issues/182
+
 ### Requirement: Captured content preserves actual request and response attribution
 
 Sessions MUST present received requests and ultimately accepted responses using

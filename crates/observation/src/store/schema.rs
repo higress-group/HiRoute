@@ -123,6 +123,7 @@ fn create_schema_v5(connection: &Connection) -> Result<(), ObservationStoreError
     );
     for ddl in [
         BASE_SCHEMA_V2,
+        super::agent_attribution::SCHEMA,
         VALUE_SCHEMA_V2,
         auxiliary.as_str(),
         EXECUTION_FACT_SCHEMA_V3,
@@ -140,6 +141,9 @@ fn create_schema_v5(connection: &Connection) -> Result<(), ObservationStoreError
 fn create_schema_v2(connection: &Connection) -> Result<(), ObservationStoreError> {
     connection
         .execute_batch(BASE_SCHEMA_V2)
+        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
+    connection
+        .execute_batch(super::agent_attribution::SCHEMA)
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
     connection
         .execute_batch(VALUE_SCHEMA_V2)
