@@ -1,13 +1,9 @@
 use super::*;
 use hiroute_application::compiler::{FreeCandidateEvidenceV1, OrderingPriceFactV1};
 use hiroute_domain::{
-    ComputeCredentialSelectionV2, ComputeManagementFactBasisV2, ComputeManagementProvenanceV2,
-    ConnectionOrigin, MaterializationState,
+    ComputeCredentialSelectionV2, ComputeManagementProvenanceV2, ConnectionOrigin,
+    MaterializationState,
 };
-use hiroute_integrations::{
-    NativeCandidateFactBasisV1, NativeCandidateFactValueV1, NativeModelCapabilityDeclarationV1,
-};
-
 pub(in crate::control::runtime) fn materialize_registered_management_candidate(
     fact: &ComputeManagementCompilationFactV2,
     catalog: &TrustedReleaseCatalog,
@@ -94,6 +90,7 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
         .find(|reasoning| reasoning.model_configuration_id == model_id)?
         .clone();
     let effective = hiroute_integrations::compute::resolve_managed_defaults(
+        catalog,
         &fact.capabilities,
         &fact.default_preferences,
         &capability,
@@ -345,11 +342,4 @@ fn registered_native_protocol_profiles(
         ConnectorRuntimeKind::BuiltinNative,
         &faces,
     )
-}
-
-fn catalog_fact<T>(value: T) -> NativeCandidateFactValueV1<T> {
-    NativeCandidateFactValueV1 {
-        value: Some(value),
-        basis: NativeCandidateFactBasisV1::RegisteredCatalog,
-    }
 }

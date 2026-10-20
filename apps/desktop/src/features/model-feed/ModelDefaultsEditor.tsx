@@ -49,7 +49,7 @@ export function ModelDefaultsEditor({ source, bindingId, language, mutable, onAp
   return <section className="detail-section model-defaults-editor">
     <h3>{zh ? '能力默认值' : 'Capability defaults'}</h3>
     <p className="field-help">{zh ? '默认值用于之后的检查与发布；已有路由和会话保留原来的执行配置。保留值使用这次接入原先保存的值。' : 'Defaults apply to later checks and publications. Existing routes and sessions retain their execution settings. Preserved values use the facts saved with this connection.'}</p>
-    {model && <><p className="field-help">{zh ? `信息核对日期：${view?.reviewed_on}` : `Evidence reviewed: ${view?.reviewed_on}`}</p><dl>{Object.entries(model.fields).map(([key, field]) => {
+    {model && <><p className="field-help">{zh ? `资料日期：${view?.reviewed_on}` : `Official information as of: ${view?.reviewed_on}`}</p><dl>{Object.entries(model.fields).map(([key, field]) => {
       const name = key as Field; const selected = draft[name]?.intent ?? field.intent;
       return <div className="model-default-field" key={name}><dt><label htmlFor={`model-default-${name}`}>{labels[name]}</label></dt><dd><strong>{format(field.effective_value)}</strong><span className="field-help">{field.origin === 'preserved' ? (zh ? '接入中保留的值' : 'Preserved in connection') : field.origin === 'website_cache' ? (zh ? '官网 / 本机缓存' : 'Website / local cache') : (zh ? '内置默认值' : 'Embedded default')}</span><select id={`model-default-${name}`} className="input" value={selected} disabled={!mutable || busy} onChange={event => {
         const policy: Preference = event.target.value === 'follow_official' && field.locator ? {intent:'follow_official',locator:field.locator} : {intent:'preserve_saved'};

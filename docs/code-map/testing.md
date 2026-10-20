@@ -411,3 +411,11 @@ still require consumer investigation. Repository ignore rules select publication
 regressions; optional ignored skills are not public-checkout test dependencies.
 See [instruction ownership](../../.agents/README.md)
 for pinned generation and actual host discovery, including the shared validation skill.
+
+Complete-model-data regressions cover [canonical wire identity](../../crates/integrations/src/model_feed/validation.rs),
+[manual versus scoped defaults](../../crates/integrations/src/compute/defaults.rs),
+[source/default commit and restart](../../crates/local-storage/src/control/compute/management/tests/defaults.rs),
+[price activation races](../../crates/daemon/src/control/runtime/prices/tests.rs), and
+[slow shared-session reads](../../crates/product-session/src/commands/model_feed/tests.rs).
+The installed HTTPS lifecycle uses complete v2 publications, exact documented cache components,
+frozen main/Worker/Continue execution, removal, restart and embedded absorption.

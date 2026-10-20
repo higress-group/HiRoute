@@ -142,7 +142,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       </button>; })}</div>
       {others.length > 0 && <label className="trial-other-model"><span>{t('试用其他模型', 'Try another model')}</span><select className="input" value={cards.some(m => m.model_configuration_id === trialId) ? '' : trialId} onChange={e => e.target.value && chooseTrial(e.target.value)}><option value="">{t('从全部模型中选择', 'Choose from all models')}</option>{others.map(m => <option key={m.model_configuration_id} value={m.model_configuration_id} disabled={m.availability.kind === 'needs_newer_client'}>{m.display_name}{m.availability.kind === 'needs_newer_client' ? ` · HiRoute ${m.availability.version}+` : ''}</option>)}</select></label>}
       {trial && <div className="trial-model-facts">
-        {trial.catalog?.origin.kind === 'feed' && <p className="field-help">{t(`模型信息来源：hiroute.ai 模型目录（${shortDate(trial.catalog.origin.included_on, language)} 收录，内容已校验）。`, `Model information: the hiroute.ai model directory (added ${shortDate(trial.catalog.origin.included_on, language)}, content validated).`)}</p>}
+        {trial.catalog?.origin.kind === 'feed' && <p className="field-help">{t(`模型信息来源：hiroute.ai 模型目录（${shortDate(trial.catalog.origin.as_of, language)} 资料日期，内容已校验）。`, `Model information: the hiroute.ai model directory (information as of ${shortDate(trial.catalog.origin.as_of, language)}, content validated).`)}</p>}
         {rollingIdentity(trial.identity_stability) && <p className="field-help">{t('供应商可能更新同名模型；后续证据可能混合多个版本。', 'The provider may update this model alias; later evidence may mix versions.')}</p>}
       </div>}
       {connectionPicker('trial')}

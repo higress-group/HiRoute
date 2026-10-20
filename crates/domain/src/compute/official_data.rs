@@ -186,7 +186,16 @@ impl OfficialModelDataV1 {
                 .iter()
                 .map(|h| h.connection_option_id.as_str()),
         )?;
+        let mut price_scopes = BTreeSet::new();
         for price in &self.pricing_facts {
+            if !price_scopes.insert((
+                &price.product_key,
+                &price.model_key,
+                &price.upstream_model_id,
+                &price.currency,
+            )) {
+                return Err(ComputeContractError::DuplicateIdentity);
+            }
             if !products.contains(price.product_key.as_str())
                 || !canonical.contains(price.model_key.as_str())
                 || price.currency.len() != 3

@@ -162,16 +162,21 @@ impl ModelFeedService {
             revision: selected.data_revision,
             digest: selected.data_digest,
         };
+        let qualification =
+            CanonicalDigest::of(embedded.registry()).map_err(|_| "feed_qualification_digest")?;
         if state
             .selected_data
             .as_ref()
             .is_some_and(|old| old != &selected)
+            || state.selected_data.is_some()
+                && state.qualification_digest.as_ref() != Some(&qualification)
         {
             state.generation = state
                 .generation
                 .checked_add(1)
                 .ok_or("feed_generation_overflow")?;
         }
+        state.qualification_digest = Some(qualification);
         state.selected_data = Some(selected);
         if refused.is_none() {
             store.commit(&state)?;

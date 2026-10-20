@@ -1,5 +1,5 @@
 //! Public model-feed control views. Retrieval and persistence belong to the daemon.
-use hiroute_domain::{CanonicalDigest, PlanExecutionRef};
+use hiroute_domain::CanonicalDigest;
 use serde::{Deserialize, Serialize};
 
 pub const MODEL_FEED_DISCLOSURE: &str = "Model information from hiroute.ai, retrieved automatically without account or usage identifiers. Turn it off here.";
@@ -65,31 +65,22 @@ pub struct ModelFeedStatusV2 {
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModelFeedAffectedSourceV1 {
-    pub source_id: String,
-    pub display_name: String,
-    pub model_configuration_ids: Vec<String>,
-    pub published_revisions: Vec<PlanExecutionRef>,
-}
-#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct ModelFeedRemovalPreviewV2 {
     pub impact: Vec<ModelFeedDefaultImpactV2>,
     pub total: usize,
     pub next_cursor: Option<String>,
     pub complete: bool,
-    pub published_plan_count: usize,
-    pub sources: Vec<ModelFeedAffectedSourceV1>,
-    pub published_revisions: Vec<PlanExecutionRef>,
+    pub published_revision_count: usize,
+    pub sources: Vec<ModelFeedAffectedSourceV2>,
     pub retained_sequence: Option<u64>,
     pub retrieval_enabled: bool,
     pub digest: CanonicalDigest,
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ModelFactOriginV1 {
+pub enum ModelFactOriginV2 {
     Embedded { client_version: String },
-    Feed { sequence: u64, included_on: String },
+    Feed { sequence: u64, as_of: String },
     Published,
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -124,7 +115,7 @@ pub struct AvailableModelFactsV1 {
 pub struct AvailableModelV2 {
     pub model_configuration_id: String,
     pub display_name: String,
-    pub origin: ModelFactOriginV1,
+    pub origin: ModelFactOriginV2,
     pub identity_stability: Option<String>,
     pub availability: ModelAvailabilityV2,
     pub binding_ids: Vec<String>,
@@ -170,5 +161,14 @@ pub struct ModelFeedDefaultImpactV2 {
     pub binding_id: String,
     pub model_configuration_id: String,
     pub changes: std::collections::BTreeMap<String, serde_json::Value>,
-    pub published_revisions: Vec<PlanExecutionRef>,
+    pub published_revision_count: usize,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelFeedAffectedSourceV2 {
+    pub source_id: String,
+    pub display_name: String,
+    pub model_configuration_ids: Vec<String>,
+    pub published_revision_count: usize,
 }

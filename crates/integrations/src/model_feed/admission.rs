@@ -157,7 +157,8 @@ pub fn admit(
         embedded_digest: embedded.model_data_provenance().2.clone(),
         registry_digest: embedded.registry_provenance().2.clone(),
     };
-    embedded.with_feed(&result)?;
+    let selected = embedded.with_feed(&result)?;
+    reconcile_prices(&selected)?;
     Ok(result)
 }
 
@@ -349,4 +350,62 @@ impl TrustedReleaseCatalog {
             .as_ref()
             .map_or(&[], |facts| facts.featured.as_slice())
     }
+}
+
+fn reconcile_prices(catalog: &TrustedReleaseCatalog) -> Result<(), FeedError> {
+    let Some(data) = catalog.complete_official_data() else {
+        return Ok(());
+    };
+    for cap in &catalog.model_data().model_endpoint_capabilities {
+        let scopes = crate::compute::matching_endpoint_metadata(catalog, cap);
+        for price in data.pricing_facts.iter().filter(|p| {
+            scopes.iter().any(|b| {
+                b.product_key == p.product_key
+                    && b.model_key == p.model_key
+                    && b.upstream_model_id == p.upstream_model_id
+            })
+        }) {
+            let [schedule] = price.schedules.as_slice() else {
+                continue;
+            };
+            if price.price_state != "exact"
+                || schedule.application != "whole-request"
+                || schedule.condition.len() != 1
+                || schedule
+                    .condition
+                    .get("kind")
+                    .and_then(serde_json::Value::as_str)
+                    != Some("unconditional")
+            {
+                continue;
+            }
+            let component = |keys: &[&str]| {
+                keys.iter()
+                    .find_map(|key| schedule.rates.get(*key))
+                    .and_then(|value| hiroute_domain::TokenRateV1::parse_decimal(value).ok())
+            };
+            let input = component(&["input", "input-cache-miss"]);
+            let output = component(&["output"]);
+            for legacy in catalog.model_data().price_rates.iter().filter(|r| {
+                r.model_configuration_id == cap.model_configuration_id
+                    && r.currency == price.currency
+                    && r.schedule.is_none()
+                    && catalog.model_data().offers.iter().any(|o| {
+                        o.offer_id == r.offer_ref
+                            && o.endpoint_profile_id == cap.endpoint_profile_id
+                    })
+            }) {
+                if input.as_ref().is_some_and(|v| {
+                    v != &hiroute_domain::TokenRateV1::known(legacy.input_micros_per_million)
+                }) || output.as_ref().is_some_and(|v| {
+                    v != &hiroute_domain::TokenRateV1::known(legacy.output_micros_per_million)
+                }) {
+                    return Err(FeedError::validation(
+                        "conflicting scoped documented and runtime prices",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }

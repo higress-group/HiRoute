@@ -1,8 +1,12 @@
 //! Resolve current defaults only after the caller has established exact source/endpoint authority.
+use super::TrustedReleaseCatalog;
 use hiroute_domain::*;
+mod scoped;
+pub use scoped::*;
 use std::collections::BTreeMap;
 
 pub fn resolve_managed_defaults(
+    catalog: &TrustedReleaseCatalog,
     saved: &ComputeManagedCapabilitiesV2,
     preferences: &BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
     capability: &ModelEndpointCapabilityV1,
@@ -14,6 +18,7 @@ pub fn resolve_managed_defaults(
     {
         return Err(ComputeContractError::InvalidModelData);
     }
+    let official = official_capability_defaults(catalog, capability, model, reasoning);
     let mut result = saved.clone();
     macro_rules! resolve {
         ($field:ident, $key:ident, $value:expr) => {
@@ -37,29 +42,29 @@ pub fn resolve_managed_defaults(
             };
             if follow {
                 result.$field = ComputeManagementFactValueV2 {
-                    value: Some($value),
-                    basis: ComputeManagementFactBasisV2::RegisteredCatalog,
+                    value: $value,
+                    basis: if $value.is_some() {
+                        ComputeManagementFactBasisV2::RegisteredCatalog
+                    } else {
+                        ComputeManagementFactBasisV2::Unknown
+                    },
                 };
             }
         };
     }
-    resolve!(tool, Tool, model.capabilities.tool);
-    resolve!(vision, Vision, model.capabilities.vision);
-    resolve!(streaming, Streaming, model.capabilities.streaming);
-    resolve!(
-        context_tokens,
-        ContextTokens,
-        model.capabilities.context_tokens
-    );
+    resolve!(tool, Tool, official.tool.value);
+    resolve!(vision, Vision, official.vision.value);
+    resolve!(streaming, Streaming, official.streaming.value);
+    resolve!(context_tokens, ContextTokens, official.context_tokens.value);
     resolve!(
         max_output_tokens,
         MaxOutputTokens,
-        model.capabilities.max_output_tokens
+        official.max_output_tokens.value
     );
     resolve!(
         native_reasoning,
         NativeReasoning,
-        reasoning.capability.clone()
+        official.native_reasoning.value.clone()
     );
     result
         .validate()
@@ -111,7 +116,8 @@ mod tests {
         };
         let original = saved.clone();
         let effective =
-            resolve_managed_defaults(&saved, &BTreeMap::new(), cap, model, reason).unwrap();
+            resolve_managed_defaults(&catalog, &saved, &BTreeMap::new(), cap, model, reason)
+                .unwrap();
         assert_eq!(
             effective.context_tokens.value,
             Some(model.capabilities.context_tokens)
@@ -138,7 +144,8 @@ mod tests {
                 ModelDefaultPreferenceV1::PreserveSaved,
             ),
         ]);
-        let reset = resolve_managed_defaults(&saved, &preferences, cap, model, reason).unwrap();
+        let reset =
+            resolve_managed_defaults(&catalog, &saved, &preferences, cap, model, reason).unwrap();
         assert_eq!(reset.vision.value, Some(model.capabilities.vision));
         assert_eq!(reset.context_tokens.value, Some(1234));
         let mut wrong = locator;
@@ -147,6 +154,41 @@ mod tests {
             ModelDefaultFieldV1::Vision,
             ModelDefaultPreferenceV1::FollowOfficial { locator: wrong },
         );
-        assert!(resolve_managed_defaults(&saved, &preferences, cap, model, reason).is_err());
+        assert!(
+            resolve_managed_defaults(&catalog, &saved, &preferences, cap, model, reason).is_err()
+        );
     }
+}
+
+/// A withdrawn or mismatched exact default never falls back to the saved default value.
+/// Ambiguous legacy provenance may retain its saved meaning until explicitly changed.
+pub fn without_current_defaults(
+    saved: &ComputeManagedCapabilitiesV2,
+    preferences: &BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
+    clear_implicit: bool,
+) -> ComputeManagedCapabilitiesV2 {
+    let mut result = saved.clone();
+    macro_rules! clear {
+        ($name:ident,$field:ident) => {
+            if matches!(
+                preferences.get(&ModelDefaultFieldV1::$field),
+                Some(ModelDefaultPreferenceV1::FollowOfficial { .. })
+            ) || clear_implicit
+                && !preferences.contains_key(&ModelDefaultFieldV1::$field)
+                && saved.$name.basis == ComputeManagementFactBasisV2::RegisteredCatalog
+            {
+                result.$name = ComputeManagementFactValueV2 {
+                    value: None,
+                    basis: ComputeManagementFactBasisV2::Unknown,
+                };
+            }
+        };
+    }
+    clear!(tool, Tool);
+    clear!(vision, Vision);
+    clear!(streaming, Streaming);
+    clear!(context_tokens, ContextTokens);
+    clear!(max_output_tokens, MaxOutputTokens);
+    clear!(native_reasoning, NativeReasoning);
+    result
 }

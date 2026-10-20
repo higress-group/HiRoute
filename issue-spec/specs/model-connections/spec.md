@@ -103,49 +103,67 @@ report that model's execution restriction.
 
 ### Requirement: Registered endpoint facts remain server-owned
 
-Executable registered options MUST resolve from the client-version-bound ReleaseFacts manifest, registry and model data embedded in the same build, extended only by model records from a verified model feed under the feed requirements of model-catalog-price. Digests, cross-references and product version are checked before use. A runtime cannot select or copy any other catalog from its data directory, use a held feed copy before it is verified, or treat schema-number suffixes as user-selectable metadata versions.
+Executable registered options MUST resolve from the client-version-bound ReleaseFacts registry and the selected validated official model snapshot, with embedded model data as the documented offline fallback. Manifest identity, digests, cross-references and supported schemas SHALL be checked before use. An arbitrary data-directory catalog, an unvalidated held copy or a schema suffix SHALL not become a selectable source of execution authority.
 
-Connectors, endpoint profiles, protocol endpoints, authentication semantics, secret slots, static headers, adapters, connection options and billing classes MUST come only from the embedded registry. A feed record becomes usable only when every reference resolves to an embedded registry entry, its offer matches the referenced endpoint profile's entitlement and billing class, and its required adapter revision is implemented by this build. A record whose references or adapter are unavailable in this build is presented as requiring the minimum client version it declares and is not an executable option.
+Connectors, endpoint/protocol profiles, authentication, secret slots, static headers, adapters, connection options and billing classes SHALL remain owned by the installed registry. A model binding becomes executable only when its exact references and required adapter are implemented, its offer matches the endpoint's entitlement/billing scope, and the existing source/account checks permit use. Descriptive-only models remain queryable. A known minimum compatible client SHALL be shown when available; otherwise the missing adapter or qualification SHALL be stated without inventing a version.
 
-A registered check submits option ID, expected provenance, edit correlation, selected models and protected input. The daemon resolves exact destination, protocol, authentication, static headers, identity and billing; client-supplied overrides of registered facts MUST be rejected. Native API uses direct HiRoute adapters, not CPA. A product missing exact authentication or a supported adapter is metadata-only, not an executable option.
+A registered check SHALL submit option identity, expected provenance, edit correlation, selected models and protected input. The daemon SHALL resolve exact destination, protocol, authentication, headers, identity and billing and reject client-supplied overrides of registered authority. Native API uses direct HiRoute adapters. Public endpoint hints may prefill a new editable connection, but a metadata refresh SHALL NOT rewrite a saved destination or expand Key permissions.
 
-Saved provenance is historical evidence. For feed-supplied model facts it records the feed sequence that supplied them; each publication records the committed source-bundle tree identity that reproduces its records across squash merges. New presentation, recheck and publication resolve the stable `connection_option_id` against the current embedded catalog and the current verified feed records, and compare the actual saved endpoint, authentication, header, model, capability and credential-destination facts. A catalog or feed digest change alone cannot invalidate compatible sources, enlarge saved endpoints or Key authority, or rewrite frozen publications or runs. An absent option, a withdrawn feed record, a removed feed copy or an incompatible fact blocks only that source's new use, with a real reason. New use means a registered check, a save or edit of the source, offering the model for selection, and compiling or publishing a draft that selects the source. Execution of an already published revision, including a new session that uses it, a newly delegated Worker task and Continue of an existing task, uses the facts frozen in that revision and MUST NOT depend on the held feed copy or the current feed records, including after restart. Usage valued after a withdrawal or removal uses the current price facts, so a feed default price that is no longer present is unknown unless the user has set an override. When a later client embeds a model previously supplied by the feed, the embedded facts take over, and a compatible saved source continues without a new check.
+Saved source/binding identity, selected membership, credentials, target and historical admission provenance SHALL survive compatible metadata updates. A catalog-derived capability SHALL resolve from the current selected snapshot for new authoring/publication. A catalog digest change or a compatible change of context limit, tool/vision/streaming support or supported reasoning values alone SHALL NOT invalidate an otherwise legal saved connection. Existing user-declared values SHALL retain their source-local meaning and editable authority. Refresh SHALL neither fabricate a successful connection check nor overwrite historical save evidence.
 
-An unchanged saved embedded member retains its saved capabilities during lifecycle edits such as rename, removing another member and changing keys. Current-fact validation applies to newly added or rechecked members and to feed-only members, including withdrawal; a compatible embedded catalog revision alone does not force rechecking unchanged members.
+New selection, check, recheck and publication SHALL qualify against one current snapshot. A withdrawn model, unsupported adapter, invalid source/account, or previously selected reasoning setting that is no longer supported SHALL produce a specific unavailable/conflict reason. The user SHALL be able to review a valid replacement; the service SHALL NOT silently change reasoning choice, drop selected members or publish a replacement Plan. Renaming a source, removing another member or changing Keys SHALL preserve unchanged saved model values and identity; newly added/rechecked members receive current admission. Withdrawal SHALL not prevent an otherwise legal removal/disable action.
 
-#### Scenario: New model on an embedded service
+Already published revisions SHALL keep their compiled model facts, candidate order and reasoning configuration. Their existing runs, new sessions, newly delegated Workers and Continue SHALL not depend on the mutable catalog or held copy, including after restart. Current authorization, cancellation and credential revocation still apply. Applying new capability defaults to execution SHALL use normal preview/publication. New logical requests through old publications still obtain current source-scoped valuation independently of frozen execution; settled history remains unchanged.
 
-- **WHEN** a verified feed adds a model bound to the embedded Moonshot endpoint profile, and the user checks a Moonshot key whose model directory lists that upstream ID
-- **THEN** the model is offered with the feed's tool-calling, reasoning and context facts, it saves and qualifies like an embedded model, and its saved provenance records the feed sequence.
+When a later client includes downloaded facts, the selected data revision and actual connection compatibility SHALL govern reuse; embedded presence alone SHALL not suppress newer official data or force a new connection check. A saved member that has no usable current official facts after withdrawal or cache removal SHALL report the actual new-use limitation, without erasing its identity or frozen publications.
 
-#### Scenario: Adapter not in this build
+#### Scenario: Existing registered model receives new limits
 
-- **WHEN** a feed record requires an adapter revision that the running client does not implement
-- **THEN** the model is shown as requiring the declared newer client, it cannot be selected, checked or published, and other records are unaffected.
+- **WHEN** a compatible official update changes a saved model's catalog-derived context limit while endpoint, account and adapter remain valid
+- **THEN** the model remains selectable with the new default for authoring; source/binding IDs, Keys and membership are preserved and no connection check is claimed.
 
-#### Scenario: Withdrawal after publication
+#### Scenario: Preserve manual and ambiguous capabilities
 
-- **WHEN** a later verified feed withdraws a model that a published Plan revision already uses
-- **THEN** the published revision and its runs continue unchanged, and a new check or publication that would use that source is blocked with the reason that the feed record was withdrawn.
+- **WHEN** a saved custom/native declaration has explicit or indistinguishable retained user values while catalog defaults change
+- **THEN** those values remain intact; catalog refresh does not convert them into registered authority or discard the connection.
 
-#### Scenario: Absorbed by a later release
+#### Scenario: Previously selected reasoning is removed
 
-- **WHEN** the user upgrades to a client whose embedded catalog includes a model previously supplied by the feed
-- **THEN** the embedded facts are used, and the compatible saved connection keeps working without a new check.
+- **WHEN** a refreshed supported-reasoning set excludes the value selected by a new draft
+- **THEN** new publication explains the unsupported selection and requires an explicit valid choice; the existing published revision retains its prior setting.
 
-#### Scenario: Removal and restart
+#### Scenario: New model uses an installed service
 
-- **WHEN** a published Plan uses a feed-supplied model, the user removes the held copy and the service restarts
-- **THEN** new sessions and newly delegated Worker tasks through that published revision, and Continue of existing tasks, keep running with its frozen facts, while a recheck of the source, publishing a draft that selects it and selecting the model in an editor are blocked with the reason that its feed facts are no longer present.
+- **WHEN** the official catalog adds a model for an installed endpoint and the normal account/connection check succeeds
+- **THEN** it saves and qualifies under the ordinary source lifecycle with the supplying snapshot recorded as historical evidence.
 
+#### Scenario: Metadata is readable before execution support
 
-#### Scenario: Saved embedded member survives changed catalog capabilities
+- **WHEN** a model record requires an adapter the client does not implement
+- **THEN** its metadata remains readable while executable selection/check/publication is unavailable with a specific reason and a minimum version only when established.
 
-- **WHEN** the user renames a saved registered source or removes another member after an embedded model context or reasoning fact changed
-- **THEN** the unchanged embedded member retains its saved capability facts and the edit succeeds; new/rechecked and withdrawn feed-only members still require current admission
+#### Scenario: Withdrawal and restart preserve published execution
+
+- **WHEN** an official model is withdrawn or its only usable downloaded facts are removed, and the service restarts
+- **THEN** new use requiring the absent facts is unavailable with a reason, while existing publications, new sessions through them and Worker Start/Continue use their frozen execution facts.
+
+#### Scenario: Routine lifecycle edits preserve retained members
+
+- **WHEN** the user renames a source, removes a different model or changes Keys after catalog capabilities changed
+- **THEN** unchanged saved members keep their values and identities; only newly added/rechecked members undergo current admission, and removing or disabling an unavailable member remains possible.
+
+#### Scenario: Upgrade absorbs a downloaded model
+
+- **WHEN** a later client embeds a model already selected in a saved connection
+- **THEN** the compatible connection continues without a forced recheck, and comparable data revisions choose defaults without replacing a newer usable cache.
+
+#### Scenario: Public connection hint changes
+
+- **WHEN** a publication changes a provider's suggested Base URL or authentication description
+- **THEN** the new hint can appear in editable setup, but existing saved destinations, protected credentials and registered authority are unchanged.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/142#issuecomment-6236436037
+- https://github.com/higress-group/HiRoute/issues/191#issuecomment-6295418452
 
 ### Requirement: Directory access and inference evidence are independent
 
@@ -406,35 +424,53 @@ request envelope or persisted source and requires no implicit mode migration.
 
 ### Requirement: Model feed status and origin are visible and controllable
 
-Model management in every product UI host (macOS Desktop, the Windows shell and the web console) and the public CLI SHALL show the same model feed state: whether retrieval is enabled, the held publication's sequence and issue time, the highest accepted sequence, the time and classified result of the last retrieval attempt, verification state, and the counts of applied, ignored and newer-client-only records. Wherever model facts are shown for selection, each model SHALL show its origin, either embedded in the running client version or supplied by the hiroute.ai feed with its inclusion date. A model that requires a newer client SHALL show that version and SHALL NOT be selectable. Users SHALL be able to refresh now, turn retrieval off and remove the held copy. Turning retrieval off SHALL change the one service-owned setting, stop requests and keep the held verified copy in effect. Removing the held copy SHALL first show which saved sources would have new use blocked, noting that published revisions and runs stay unchanged and that the highest accepted sequence is kept so that an older publication cannot be applied afterwards, and SHALL apply only after confirmation. The backend SHALL expose featured entries and per-model availability (executable now, needs a saved connection, needs a newer client, or used by published Plans) through one query for product UI hosts and the public CLI, with help and schema discovery. These views SHALL NOT call a model or run a connection check.
+Model management in macOS Desktop, the Windows shell, web console and public CLI SHALL expose the same daemon-owned complete model metadata and feed state. Directory search/listing, model detail, editable prefill, capability views and price views SHALL use one selected effective snapshot per operation. Every maintained descriptive record SHALL be discoverable even without an executable binding or canonical match. Bounded pagination or another bounded complete-query path SHALL preserve snapshot identity and provenance; it SHALL not silently omit records to fit a frame.
+
+Status SHALL disclose retrieval enabled/disabled, held publication sequence/issue time, selected official data revision and origin, highest accepted publication/data revisions, last retrieval attempt/result and last success, validation/recovery state, and counts that distinguish usable metadata from execution-restricted records. An updated existing model SHALL not be counted as ignored merely because it is embedded. Record/field views SHALL distinguish website/cache/bundled defaults and explicit user overrides, retain actual reviewed-as-of information, and name unknown or unsupported components. Publication, retrieval and model-provider release times SHALL not be presented as interchangeable.
+
+Availability SHALL distinguish executable, needs a saved connection/qualification, unsupported or needs a known newer client, withdrawn/unavailable, and use by existing published Plans. Being used by a frozen Plan SHALL not imply availability for a new publication. Descriptive-only records can be inspected but SHALL not be offered as executable. Featured entries SHALL resolve against the selected catalog and retain their editorial role and actual origin.
+
+Every host and the CLI SHALL support explicit refresh and the same persistent automatic-retrieval setting. Disabling automatic retrieval SHALL stop scheduled requests and invalidate an earlier in-flight result without discarding the selected usable cache; a later explicit refresh remains available. Removing the copy SHALL require a preview of changed defaults, saved sources affected in new use, embedded fallback and unchanged published revisions; only confirmation of that current preview may remove it. Retained acceptance floors and user overrides SHALL survive removal. The preview SHALL account for existing models whose defaults came from the website as well as feed-only models.
+
+Public CLI help and schema discovery SHALL describe the shared views and controls. A first display of website-derived data SHALL disclose hiroute.ai retrieval and how to turn it off. Ordinary reads SHALL neither fetch metadata, call a model, perform connection checks nor mutate configuration. Concurrent reads SHALL report internally consistent snapshot identity or an explicit refresh/conflict outcome.
+
+#### Scenario: Inspect a descriptive-only model
+
+- **WHEN** the catalog contains a provider-scoped model with no executable binding
+- **THEN** directory search and detail expose its metadata and limitations in the shared UI and CLI without enabling an executable selection.
+
+#### Scenario: Inspect mixed default and manual origins
+
+- **WHEN** an existing model uses website capabilities, a manual context limit and an unknown cache price
+- **THEN** the view distinguishes these origins and states rather than applying one misleading origin badge to all fields.
+
+#### Scenario: Same state across hosts
+
+- **WHEN** the same service is opened through Desktop, Windows shell, web console or the public CLI
+- **THEN** each reports the same selected snapshot and retrieval setting; hosts do not fetch their own catalogs.
+
+#### Scenario: Remove a copy that updated an embedded model
+
+- **WHEN** a held snapshot changed defaults for an embedded model used by a saved connection
+- **THEN** removal preview identifies the fallback/default changes and any new-use restrictions, preserves manual values and explains that published revisions remain frozen.
 
 #### Scenario: Turn retrieval off
 
-- **WHEN** the user turns retrieval off while holding publication 42
-- **THEN** no further feed requests are made, publication 42 stays in effect, and status shows retrieval as off with sequence 42.
+- **WHEN** a user disables retrieval while a valid snapshot is held
+- **THEN** all clients of that service show retrieval off, the copy remains usable, and a late in-flight fetch cannot reverse the choice.
 
-#### Scenario: Remove the held copy
+#### Scenario: Complete bounded enumeration
 
-- **WHEN** the user removes the held copy while one saved connection uses feed-supplied facts
-- **THEN** a preview names that connection and states that its published Plan revisions are unchanged; after confirmation, new use of that connection is blocked with a stated reason and the embedded catalog alone is shown.
+- **WHEN** a caller enumerates a maintained catalog larger than one response page while a new snapshot activates
+- **THEN** it can complete a coherent snapshot or receives an explicit refresh requirement; it is never told that a silently truncated or mixed-generation list is complete.
 
-#### Scenario: CLI status
+#### Scenario: Refresh updates only selected source facts
 
-- **WHEN** a user requests the feed status through the public CLI with JSON output
-- **THEN** the output carries the same fields as the product UI status, and the command is listed in help and schema discovery.
-
-#### Scenario: Newer client only
-
-- **WHEN** a featured model requires HiRoute 0.3.3 while 0.3.1 is running
-- **THEN** the model is listed with the required version, and selecting or checking it is not offered.
-
-#### Scenario: Same view in every host
-
-- **WHEN** the same service is opened in the Windows shell and in a browser through the web console
-- **THEN** both show the same feed state, model origins and featured entries, and neither host fetches the feed itself.
+- **WHEN** a publication updates one provider while other records retain older evidence dates
+- **THEN** the views show the new publication/retrieval time separately from each record's actual reviewed-as-of date.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/142#issuecomment-6236437152
+- https://github.com/higress-group/HiRoute/issues/191#issuecomment-6295421495
 
 ## Implementation references
 

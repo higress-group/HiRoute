@@ -15,7 +15,7 @@ export type ModelFeedStatus = {
   disclosure_acknowledged: boolean;
 };
 export type ModelAvailability = { kind: 'executable' | 'needs_connection' | 'descriptive_only' } | { kind: 'needs_newer_client'; version: string } | { kind: 'used_by_published_plans'; count: number };
-export type ModelOrigin = { kind: 'embedded'; client_version: string } | { kind: 'feed'; sequence: number; included_on: string } | { kind: 'published' };
+export type ModelOrigin = { kind: 'embedded'; client_version: string } | { kind: 'feed'; sequence: number; as_of: string } | { kind: 'published' };
 export type ModelReasoning = { kind: 'toggle' | 'budget' } | { kind: 'profiles'; profiles: string[] };
 export type ModelFacts = { publisher_id: string; context_tokens: number; tool: boolean; vision: boolean; reasoning: ModelReasoning | null };
 export type AvailableModel = { model_configuration_id: string; display_name: string; origin: ModelOrigin; identity_stability: string | null; availability: ModelAvailability; binding_ids: string[]; published_plan_references?: number; facts: ModelFacts | null };
@@ -23,9 +23,9 @@ export type ModelAnnouncement = { id: string; kind: 'new_model' | 'model_update'
 export type ModelAvailabilityResult = { featured: ModelAnnouncement[]; models: AvailableModel[] };
 export type FeedRemovalPreview = {
   impact: {source_id:string;source_name:string;binding_id:string;model_configuration_id:string;changes:Record<string,{current:unknown;fallback:unknown}>}[];
-  total:number;next_cursor:string|null;complete:boolean;published_plan_count:number;
-  sources: { source_id: string; display_name: string; model_configuration_ids: string[]; published_revisions: { plan_id: string; content_revision: number }[] }[];
-  published_revisions: { plan_id: string; content_revision: number }[];
+  total:number;next_cursor:string|null;complete:boolean;
+  sources: { source_id: string; display_name: string; model_configuration_ids: string[]; published_revision_count: number }[];
+  published_revision_count: number;
   retained_sequence: number | null;
   retrieval_enabled: boolean;
   digest: string;

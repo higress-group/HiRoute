@@ -54,31 +54,36 @@ pub(in crate::control::runtime) fn project_source(
 ) -> ComputeManagementSourceV2 {
     let mut effective = source.clone();
     for model in &mut effective.models {
-        let Some(cap) = scoped_capability(catalog, source, model) else {
-            continue;
-        };
-        let Some(definition) = catalog.model_data().model(&cap.model_configuration_id) else {
-            continue;
-        };
-        let Some(reasoning) = catalog
-            .native_reasoning()
-            .iter()
-            .find(|r| r.model_configuration_id == cap.model_configuration_id)
-        else {
-            continue;
-        };
-        if let Ok(capabilities) = hiroute_integrations::compute::resolve_managed_defaults(
-            &model.capabilities,
-            &preferences
-                .get(&model.binding_id)
-                .cloned()
-                .unwrap_or_default(),
-            cap,
-            definition,
-            reasoning,
-        ) {
-            model.capabilities = capabilities;
-        }
+        let fields = preferences
+            .get(&model.binding_id)
+            .cloned()
+            .unwrap_or_default();
+        let current = scoped_capability(catalog, source, model).and_then(|cap| {
+            let definition = catalog.model_data().model(&cap.model_configuration_id)?;
+            let reasoning = catalog
+                .native_reasoning()
+                .iter()
+                .find(|r| r.model_configuration_id == cap.model_configuration_id)?;
+            hiroute_integrations::compute::resolve_managed_defaults(
+                catalog,
+                &model.capabilities,
+                &fields,
+                cap,
+                definition,
+                reasoning,
+            )
+            .ok()
+        });
+        model.capabilities = current.unwrap_or_else(|| {
+            hiroute_integrations::compute::without_current_defaults(
+                &model.capabilities,
+                &fields,
+                model
+                    .catalog_configuration_id
+                    .as_ref()
+                    .is_some_and(|id| catalog.model_data().model(id).is_none()),
+            )
+        });
     }
     effective
 }

@@ -68,6 +68,8 @@ pub struct FeedState {
     pub data_floor: Option<DataFloor>,
     #[serde(default)]
     pub selected_data: Option<DataFloor>,
+    #[serde(default)]
+    pub qualification_digest: Option<CanonicalDigest>,
     #[serde(default = "enabled")]
     pub retrieval_enabled: bool,
     pub disclosure_acknowledged: bool,
@@ -90,6 +92,7 @@ impl Default for FeedState {
             schema: STATE_SCHEMA.into(),
             data_floor: None,
             selected_data: None,
+            qualification_digest: None,
             retrieval_enabled: true,
             disclosure_acknowledged: false,
             highest_accepted: None,

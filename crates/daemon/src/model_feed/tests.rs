@@ -1,5 +1,5 @@
 use super::*;
-use hiroute_integrations::model_feed::{FeedPayload, MODEL_FEED_SCHEMA};
+use hiroute_integrations::model_feed::FeedPayload;
 
 fn payload(sequence: u64) -> Vec<u8> {
     let mut snapshot = crate::release_catalog::current_fixture_catalog().official_snapshot();
@@ -662,4 +662,27 @@ fn model_feed_slow_preparation_does_not_hold_feed_lock_and_superseded_candidate_
         "feed_retrieval_superseded"
     );
     assert_eq!(service.current().generation, 0);
+}
+
+#[test]
+fn model_feed_registry_qualification_changes_advance_once_without_changing_semantic_data_floor() {
+    let root = tempfile::tempdir().unwrap();
+    let service = open(root.path(), 0);
+    let mut state = service.store.read_state().unwrap();
+    let old_identity = state.selected_data.clone();
+    let old_generation = state.generation;
+    state.qualification_digest = Some(CanonicalDigest::of_bytes(b"previous installed registry"));
+    service.store.commit(&state).unwrap();
+    drop(service);
+    let updated = open(root.path(), old_generation);
+    assert_eq!(updated.current().generation, old_generation + 1);
+    assert_eq!(
+        updated.store.read_state().unwrap().selected_data,
+        old_identity
+    );
+    drop(updated);
+    assert_eq!(
+        open(root.path(), old_generation).current().generation,
+        old_generation + 1
+    );
 }

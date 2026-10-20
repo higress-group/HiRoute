@@ -51,7 +51,7 @@ impl ModelFeedService {
             },
         )
     }
-    pub(super) fn refresh_using_prepared<P>(
+    pub(crate) fn refresh_using_prepared<P>(
         &self,
         mut retrieve: impl FnMut(
             Option<&str>,

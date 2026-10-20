@@ -345,11 +345,11 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
             Some(ModelFactOrigin::Feed {
                 sequence,
                 included_on,
-            }) => ModelFactOriginV1::Feed {
+            }) => ModelFactOriginV2::Feed {
                 sequence,
-                included_on,
+                as_of: included_on,
             },
-            _ => ModelFactOriginV1::Embedded {
+            _ => ModelFactOriginV2::Embedded {
                 client_version: env!("CARGO_PKG_VERSION").into(),
             },
         };
@@ -391,9 +391,9 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
         models.push(AvailableModelV2 {
             model_configuration_id: newer.model_configuration_id.clone(),
             display_name: newer.display_name.clone(),
-            origin: ModelFactOriginV1::Feed {
+            origin: ModelFactOriginV2::Feed {
                 sequence: newer.sequence,
-                included_on: newer.included_on.clone(),
+                as_of: newer.included_on.clone(),
             },
             identity_stability: Some(newer.identity_stability.clone()),
             availability: ModelAvailabilityV2::NeedsNewerClient {
@@ -422,7 +422,7 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
         models.push(AvailableModelV2 {
             display_name: id.clone(),
             model_configuration_id: id,
-            origin: ModelFactOriginV1::Published,
+            origin: ModelFactOriginV2::Published,
             identity_stability: None,
             availability: ModelAvailabilityV2::UsedByPublishedPlans { count },
             published_plan_references: count,

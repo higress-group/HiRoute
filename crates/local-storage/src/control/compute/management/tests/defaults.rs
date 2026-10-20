@@ -50,8 +50,19 @@ fn model_defaults_commit_with_source_cas_preserve_original_source_proofs_and_res
         let mut corrupt = encoded.clone();
         corrupt["control"]["compute_management_mutation"]["preferences_after"] =
             serde_json::json!({});
-        assert!(serde_json::from_value::<hiroute_domain::TransactionPlanV1>(corrupt).is_err());
-        let _: hiroute_domain::TransactionPlanV1 = serde_json::from_value(encoded).unwrap();
+        let corrupt: hiroute_domain::ComputeManagementMutationV3 =
+            serde_json::from_value(corrupt["control"]["compute_management_mutation"].clone())
+                .unwrap();
+        assert!(corrupt.validate(&preview.result.spec).is_err());
+        hiroute_domain::TransactionPlanV1::from_registered_typed_planner(
+            preview.result.spec.clone(),
+            encoded["control"].clone(),
+            None,
+            preview.plan().secrets().to_vec(),
+            vec![],
+            vec![],
+        )
+        .unwrap();
         let stale_request = ComputeConnectionApplyRequestV1 {
             spec: preview.result.spec.clone(),
             accept_digest: preview.result.accept_digest.clone(),

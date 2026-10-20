@@ -4,6 +4,7 @@ Only the integration-test-hooks binary accepts the private feed transport fixtur
 state is changed exclusively through released commands. TLS dialing uses the existing E2E map.
 """
 import copy
+import hashlib
 import http.server
 import json
 import os
@@ -99,35 +100,49 @@ class FeedUpstream:
         self.thread.join(timeout=5)
 
 
+def digest(value):
+    body = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+    return 'sha256:' + hashlib.sha256(body).hexdigest()
+
+
 def publication(product, sequence, present=True):
-    bundle = json.loads((product.repo / 'assets/release-facts/current/bundle/model-data.json').read_text())
-    original = 'model.bailian.qwen3-max-2026-01-23'
-    definition = copy.deepcopy(next(x for x in bundle['data']['models'] if x['model_configuration_id'] == original))
-    definition.update(model_configuration_id=MODEL, display_name='Feed regression model')
-    canonical = copy.deepcopy(next(x for x in bundle['metadata_catalog']['canonical_models']
-                                  if 'qwen3-max-2026-01-23' in x['upstream_ids']))
-    canonical.update(model_key=UPSTREAM, upstream_ids=[UPSTREAM], display_name='Feed regression model')
-    record = {'definition': definition, 'canonical': canonical, 'native_reasoning': {
-        'model_configuration_id': MODEL, 'capability': {'kind': 'toggle', 'parameter': 'enable_thinking'}}}
-    records = [{'kind': 'model', 'record': record}]
-    for capability in bundle['data']['model_endpoint_capabilities']:
-        if capability['model_configuration_id'] != original:
-            continue
-        capability = copy.deepcopy(capability)
-        capability.update(model_configuration_id=MODEL, upstream_model_id=UPSTREAM,
-                          capability_id='capability.feed.' + str(len(records)))
-        records.append({'kind': 'model_endpoint_capability', 'record': capability})
-    offer = copy.deepcopy(next(x for x in bundle['data']['offers'] if x['offer_id'] == 'offer.bailian.payg.cn'))
-    offer['model_configuration_ids'].append(MODEL)
-    records.append({'kind': 'offer', 'record': offer})
-    records.append({'kind': 'price_rate', 'record': {
-        'price_rate_id': 'price.feed.regression.usd', 'revision': 1, 'offer_ref': offer['offer_id'],
-        'model_configuration_id': MODEL, 'currency': 'USD',
-        'input_micros_per_million': 1234567, 'output_micros_per_million': 2345678}})
-    for record in records:
-        record.update(min_client_version='0.1.0', included_on='2026-10-18')
-    return {'schema': 'hiroute.model-feed/v1', 'sequence': sequence, 'issued_at': '2026-10-18T00:00:00Z',
-            'source_revision': product.sha, 'records': records if present else [], 'featured': []}
+    snapshot = json.loads((product.repo / 'assets/release-facts/current/bundle/official-model-data.json').read_text())
+    data = snapshot['data']
+    if present:
+        original = 'model.bailian.qwen3-max-2026-01-23'
+        definition = copy.deepcopy(next(x for x in data['models'] if x['model_configuration_id'] == original))
+        definition.update(model_configuration_id=MODEL, display_name='Feed regression model')
+        data['models'].append(definition)
+        canonical = copy.deepcopy(next(x for x in data['metadata_catalog']['canonical_models'] if 'qwen3-max-2026-01-23' in x['upstream_ids']))
+        canonical.update(model_key=UPSTREAM, upstream_ids=[UPSTREAM], display_name='Feed regression model')
+        data['metadata_catalog']['canonical_models'].append(canonical)
+        data['rating_snapshot']['models'].append({'model_configuration_id': MODEL, 'capability': {'kind': 'toggle', 'parameter': 'enable_thinking'}})
+        capabilities = []
+        for cap in data['model_endpoint_capabilities']:
+            if cap['model_configuration_id'] != original:
+                continue
+            cap = copy.deepcopy(cap)
+            cap.update(model_configuration_id=MODEL, upstream_model_id=UPSTREAM, capability_id='capability.feed.' + str(len(capabilities)))
+            capabilities.append(cap)
+        data['model_endpoint_capabilities'].extend(capabilities)
+        offer = next(x for x in data['offers'] if x['offer_id'] == 'offer.bailian.payg.cn')
+        offer['model_configuration_ids'].append(MODEL)
+        offer['model_configuration_ids'].sort()
+        data['price_rates'].append({'price_rate_id': 'price.feed.regression.usd', 'revision': 1, 'offer_ref': offer['offer_id'], 'model_configuration_id': MODEL, 'currency': 'USD', 'input_micros_per_million': 1234567, 'output_micros_per_million': 2345678})
+        binding = copy.deepcopy(next(x for x in data['metadata_catalog']['endpoint_bindings'] if x['product_key'] == 'bailian-payg-cn'))
+        binding.update(binding_key='bailian-payg-cn/' + UPSTREAM, model_key=UPSTREAM, upstream_model_id=UPSTREAM, interface_candidates=['bailian-payg-cn/openai-chat'])
+        data['metadata_catalog']['endpoint_bindings'].append(binding)
+        data['pricing_facts'].append({'pricing_key': 'bailian-payg-cn/' + UPSTREAM, 'product_key': 'bailian-payg-cn', 'model_key': UPSTREAM, 'upstream_model_id': UPSTREAM, 'currency': 'USD', 'unit': 'per-1m-tokens', 'price_state': 'exact', 'evidence_refs': canonical['evidence_refs'], 'schedules': [{'schedule_key': 'standard', 'condition': {'kind': 'unconditional'}, 'application': 'whole-request', 'rates': {'input': '1.234567', 'output': '2.345678', 'cache-read': '0', 'cache-write': '0.125'}}]})
+    for key, identity in [('models', 'model_configuration_id'), ('model_endpoint_capabilities', 'capability_id'), ('offers', 'offer_id'), ('price_rates', 'price_rate_id'), ('pricing_facts', 'pricing_key')]:
+        data[key].sort(key=lambda row: row[identity])
+    for key, identity in [('canonical_models', 'model_key'), ('endpoint_bindings', 'binding_key')]:
+        data['metadata_catalog'][key].sort(key=lambda row: row[identity])
+    rating = data['rating_snapshot']
+    rating['models'].sort(key=lambda row: row['model_configuration_id'])
+    rating['model_catalog_digest'] = digest(data['models'])
+    rating['digest'] = digest([rating[key] for key in ['schema', 'version', 'scale_version', 'model_catalog_digest', 'models', 'records']])
+    snapshot.update(data_revision=sequence, data_digest=digest(data))
+    return {'schema': 'hiroute.model-feed/v2', 'sequence': sequence, 'issued_at': '2026-10-18T00:00:00Z', 'source_revision': product.sha, **snapshot, 'featured': []}
 
 
 def restart(product):
@@ -249,6 +264,8 @@ def run(repository):
         quote = by_kind['usage_estimate']['quote']
         assert quote['rates']['input_uncached'] == {'state': 'known', 'micros_per_million_tokens': 1234567}, quote
         assert quote['rates']['output'] == {'state': 'known', 'micros_per_million_tokens': 2345678}, quote
+        assert quote['rates']['cache_read'] == {'state': 'known', 'micros_per_million_tokens': 0}, quote
+        assert quote['rates']['cache_write'] == {'state': 'known', 'micros_per_million_tokens': 125000}, quote
         # API-equivalent references keep their existing separate, explicit pricing contract.
         reference = by_kind['api_equivalent']
         assert reference['quote']['unknown_reasons'] == ['price_not_collected'], reference

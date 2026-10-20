@@ -1,8 +1,6 @@
 //! Current-fact checks for saved/checked sources. Catalog digests are provenance, not validity.
 use super::*;
-use hiroute_domain::{
-    ComputeManagedModelV2, ComputeManagementMutation, ComputeManagementProvenanceV2,
-};
+use hiroute_domain::{ComputeManagementMutation, ComputeManagementProvenanceV2};
 
 impl LocalControlAdapter {
     pub(super) fn validate_feed_save_plan(
@@ -104,6 +102,7 @@ impl LocalControlAdapter {
                 .unwrap_or_default();
             let resolved_defaults = capability_record.zip(reasoning).and_then(|(cap, reason)| {
                 hiroute_integrations::compute::resolve_managed_defaults(
+                    catalog,
                     &model.capabilities,
                     &preferences,
                     cap,

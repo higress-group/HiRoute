@@ -372,14 +372,9 @@ impl LocalControlAdapter {
                 display_name: model.display_name.clone(),
                 catalog_configuration_id: Some(MODEL_CONFIGURATION_ID.into()),
                 membership: ComputeModelMembershipV2::Catalog,
-                capabilities: NativeModelCapabilityDeclarationV1 {
-                    tool: registered_fact(model.capabilities.tool),
-                    vision: registered_fact(model.capabilities.vision),
-                    streaming: registered_fact(model.capabilities.streaming),
-                    context_tokens: registered_fact(model.capabilities.context_tokens),
-                    max_output_tokens: registered_fact(model.capabilities.max_output_tokens),
-                    native_reasoning: registered_fact(reasoning.capability.clone()),
-                },
+                capabilities: super::registered::capability_declaration(
+                    &catalog, capability, model, reasoning,
+                ),
             }],
         })
     }

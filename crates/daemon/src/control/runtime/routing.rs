@@ -686,7 +686,7 @@ impl LocalControlAdapter {
                     }
                     let preferences = control
                         .source_default_preferences(&source.source_id)
-                        .map_err(map_port)?;
+                        .map_err(super::map_port)?;
                     let mut compilation = diagnostics.compile_models(&source);
                     for fact in &mut compilation {
                         fact.default_preferences = preferences

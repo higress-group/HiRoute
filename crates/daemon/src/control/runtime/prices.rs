@@ -312,11 +312,19 @@ impl LocalControlAdapter {
                     // Subscription reference mappings belong to 19. Until supplied, API equivalent
                     // has no guessed catalog reference; a source-specific manual value can exist.
                     let catalog_rules = if kind == PriceValuationKindV1::UsageEstimate {
-                        if let Some(rules) = official::rules(
+                        if let Some(mut rules) = official::rules(
                             &documented,
                             &currency,
                             catalog.official_snapshot().data_revision,
                         ) {
+                            // Enriched components retain the exact current legacy base identity.
+                            let bases = rates
+                                .iter()
+                                .filter(|r| r.currency == currency && r.schedule.is_none())
+                                .collect::<Vec<_>>();
+                            if let [base] = bases.as_slice() {
+                                rules[0].rule_ref.id = base.price_rate_id.clone();
+                            }
                             rules
                         } else {
                             rates
@@ -351,6 +359,9 @@ impl LocalControlAdapter {
                                 Some(o.offer_ref.as_str()) == binding.offer_ref.as_deref()
                                     && o.model_configuration_id == binding.model_configuration_id
                                     && o.currency == currency
+                                    && o.target_rule_id.as_ref().is_none_or(|id| {
+                                        catalog_rules.iter().any(|r| &r.rule_ref.id == id)
+                                    })
                             })
                             .cloned()
                             .collect()

@@ -2,15 +2,6 @@
 use super::*;
 use hiroute_domain::{DocumentedModelPriceV1, PriceUnknownReasonV1, TokenRateV1};
 
-fn protocol(protocol: hiroute_domain::UpstreamProtocol) -> &'static str {
-    use hiroute_domain::UpstreamProtocol::*;
-    match protocol {
-        Responses => "openai-responses",
-        ChatCompletions => "openai-chat",
-        Messages => "anthropic-messages",
-    }
-}
-
 pub(super) fn documented_prices<'a>(
     catalog: &'a TrustedReleaseCatalog,
     binding: &PriceSourceBinding,
@@ -36,47 +27,20 @@ pub(super) fn documented_prices<'a>(
                 && cap.endpoint_profile_id == resolved.endpoint_profile.endpoint_profile_id
                 && cap.endpoint_profile_revision == resolved.endpoint_profile.revision
         });
-    let mut products = BTreeSet::new();
-    let mut upstreams = BTreeSet::new();
-    for capability in capabilities {
-        let Some(endpoint) = resolved
-            .endpoint_profile
-            .protocol_endpoints
-            .iter()
-            .find(|e| {
-                e.protocol_endpoint_id == capability.protocol_endpoint_id
-                    && e.protocol == capability.upstream_protocol
-                    && e.adapter_ref == capability.required_adapter_ref
-                    && e.adapter_revision == capability.required_adapter_revision
-            })
-        else {
-            continue;
-        };
-        for product in &catalog.model_metadata().access_products {
-            if product.interfaces.iter().any(|interface| {
-                interface.protocol == protocol(endpoint.protocol)
-                    && interface.base_url.as_ref() == Some(&endpoint.base_url)
-                    && interface.request_path.as_ref() == Some(&endpoint.request_path)
-            }) {
-                products.insert(product.product_key.clone());
-                upstreams.insert(capability.upstream_model_id.clone());
-            }
-        }
-    }
-    // No name-based or cross-product selection. Ambiguous exact scopes remain unknown below.
+    let scopes = capabilities
+        .flat_map(|cap| hiroute_integrations::compute::matching_endpoint_metadata(catalog, cap))
+        .collect::<Vec<_>>();
     let Some(data) = catalog.complete_official_data() else {
         return vec![];
     };
     data.pricing_facts
         .iter()
         .filter(|price| {
-            products.contains(&price.product_key)
-                && upstreams.contains(&price.upstream_model_id)
-                && catalog.model_metadata().endpoint_bindings.iter().any(|b| {
-                    b.product_key == price.product_key
-                        && b.model_key == price.model_key
-                        && b.upstream_model_id == price.upstream_model_id
-                })
+            scopes.iter().any(|binding| {
+                binding.product_key == price.product_key
+                    && binding.model_key == price.model_key
+                    && binding.upstream_model_id == price.upstream_model_id
+            })
         })
         .collect()
 }
@@ -149,7 +113,12 @@ pub(super) fn rules(
     let digest = CanonicalDigest::of(&matching).ok()?;
     Some(vec![CatalogPriceRuleV2 {
         rule_ref: PriceFactRefV1 {
-            id: format!("documented/{}", &digest.as_str()[7..]),
+            id: format!(
+                "documented/{}",
+                &CanonicalDigest::of(&matching.iter().map(|p| &p.pricing_key).collect::<Vec<_>>())
+                    .ok()?
+                    .as_str()[7..]
+            ),
             revision,
             digest,
         },

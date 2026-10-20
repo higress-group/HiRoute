@@ -642,6 +642,7 @@ pub(super) fn materialize_connector_management_candidate(
         .find(|value| value.model_configuration_id == model_configuration_id)
         .cloned()?;
     let effective = hiroute_integrations::compute::resolve_managed_defaults(
+        catalog,
         &fact.capabilities,
         &fact.default_preferences,
         &capability,

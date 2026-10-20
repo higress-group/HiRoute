@@ -50,8 +50,23 @@ pub fn validate_source_default_preferences(
         if fields.is_empty() {
             return Err(ComputeManagementErrorV2::InvalidMutation);
         }
-        for policy in fields.values() {
+        for (field, policy) in fields {
             if let ModelDefaultPreferenceV1::FollowOfficial { locator } = policy {
+                let basis = match field {
+                    ModelDefaultFieldV1::Tool => model.capabilities.tool.basis,
+                    ModelDefaultFieldV1::Vision => model.capabilities.vision.basis,
+                    ModelDefaultFieldV1::Streaming => model.capabilities.streaming.basis,
+                    ModelDefaultFieldV1::ContextTokens => model.capabilities.context_tokens.basis,
+                    ModelDefaultFieldV1::MaxOutputTokens => {
+                        model.capabilities.max_output_tokens.basis
+                    }
+                    ModelDefaultFieldV1::NativeReasoning => {
+                        model.capabilities.native_reasoning.basis
+                    }
+                };
+                if basis == ComputeManagementFactBasisV2::ConnectorVerified {
+                    return Err(ComputeManagementErrorV2::InvalidCapability);
+                }
                 for id in [
                     &locator.model_configuration_id,
                     &locator.upstream_model_id,

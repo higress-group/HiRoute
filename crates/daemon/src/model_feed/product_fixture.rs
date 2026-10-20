@@ -27,13 +27,7 @@ pub(crate) fn catalog(catalog: TrustedReleaseCatalog) -> Result<TrustedReleaseCa
     // catalog (which the production admission boundary correctly refuses).
     let mut data = catalog.current_release_model_data().clone();
     data.data = effective.model_data().clone();
-    data.rating_snapshot.models = effective.native_reasoning().to_vec();
-    data.rating_snapshot.model_catalog_digest =
-        hiroute_domain::CanonicalDigest::of(&data.data.models).map_err(|e| e.to_string())?;
-    data.rating_snapshot.digest = data
-        .rating_snapshot
-        .computed_digest()
-        .map_err(|e| e.to_string())?;
+    data.rating_snapshot = payload.data.rating_snapshot.clone();
     data.metadata_catalog = payload.data.metadata_catalog.clone();
     let registry = serde_json::to_vec(catalog.registry()).map_err(|e| e.to_string())?;
     let model_data = serde_json::to_vec(&data).map_err(|e| e.to_string())?;
@@ -45,6 +39,8 @@ pub(crate) fn catalog(catalog: TrustedReleaseCatalog) -> Result<TrustedReleaseCa
         .map_err(|e| e.to_string())?;
     let manifest = serde_json::to_vec(&manifest).map_err(|e| e.to_string())?;
     TrustedReleaseCatalog::load_bundled_release_facts(&manifest, &manifest, &registry, &model_data)
+        .map_err(|e| e.to_string())?
+        .with_embedded_official_data(payload.snapshot())
         .map_err(|e| e.to_string())
 }
 pub(crate) fn directory_transport() -> Arc<dyn hiroute_integrations::ModelDirectoryTransportV1> {
