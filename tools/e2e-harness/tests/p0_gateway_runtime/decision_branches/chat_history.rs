@@ -6,12 +6,14 @@ fn hermes_chat_aliases_keep_tool_attribution_and_request_all_three_questions() {
 
     for reasoning_bytes in [32, 32 * 1024] {
         let plain = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#;
+        let chat_tool = br#"{"id":"chat-tool","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"native-call","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
+        let chat_ok = br#"{"id":"chat-ok","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":"42"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
         let regular = NativeProvider::start(vec![
-            reply(RESPONSES_TOOL_CALL),
-            reply(RESPONSES_OK),
-            reply(RESPONSES_OK),
-            reply(RESPONSES_OK),
-            reply(RESPONSES_OK),
+            reply(chat_tool),
+            reply(chat_ok),
+            reply(chat_ok),
+            reply(chat_ok),
+            reply(chat_ok),
         ]);
         let primary = NativeProvider::start(vec![]);
         let decider = NativeProvider::start(vec![
@@ -23,6 +25,27 @@ fn hermes_chat_aliases_keep_tool_attribution_and_request_all_three_questions() {
         let fixture =
             RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], true);
         let mut publication = fixture.publication();
+        for (candidate, provider) in publication.aliases[0]
+            .candidates
+            .iter_mut()
+            .zip([&regular, &primary])
+        {
+            *candidate = hiroute_e2e::gateway_fixture::sealed_native_candidate(
+                candidate.local_id,
+                &candidate.stable_target_key,
+                &candidate.credential_refs,
+                provider.authority(),
+                &candidate.upstream_model_id,
+                &[
+                    (IngressProtocol::Responses, IngressProtocol::ChatCompletions),
+                    (
+                        IngressProtocol::ChatCompletions,
+                        IngressProtocol::ChatCompletions,
+                    ),
+                    (IngressProtocol::Messages, IngressProtocol::ChatCompletions),
+                ],
+            );
+        }
         publication
             .grants
             .iter_mut()
@@ -40,13 +63,15 @@ fn hermes_chat_aliases_keep_tool_attribution_and_request_all_three_questions() {
                     ("X-HiRoute-Token", CHAT_TOKEN),
                     ("x-hermes-session-id", session),
                 ],
-                &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"messages":history}))
+                &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"messages":history,
+                    "tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]}))
                     .unwrap(),
             );
             assert_eq!(
                 response.status,
                 200,
-                "{}",
+                "history length {}, session {session}: {}",
+                history.len(),
                 String::from_utf8_lossy(&response.body)
             );
             let body: Value = serde_json::from_slice(&response.body).unwrap();
