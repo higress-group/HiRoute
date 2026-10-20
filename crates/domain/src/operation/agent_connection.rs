@@ -787,6 +787,28 @@ struct DurableSubject {
     integration_profile_ref: String,
 }
 
+pub(super) fn subject_projection(
+    spec: &ChangeSpecV1,
+    control: &Value,
+) -> Result<Option<AgentConnectionTransactionSubjectV1>, OperationValidationError> {
+    if !matches!(
+        spec.command_id.as_str(),
+        "agents.connect.apply" | "agents.restore.apply" | "agents.settings.apply"
+    ) {
+        return Ok(None);
+    }
+    let control = decode_control(control)?;
+    if control.schema != CONTROL_SCHEMA
+        || AgentConnectionTransactionKindV1::parse(&control.transaction)?.command_id()
+            != spec.command_id
+        || control.change_spec_digest != CanonicalDigest::of(spec)?
+        || control.payload_digest != CanonicalDigest::of(&control.payload)?
+    {
+        return Err(OperationValidationError::UnregisteredEffectPlan);
+    }
+    decode_subject(control.subject).map(Some)
+}
+
 fn decode_subject(
     subject: DurableSubject,
 ) -> Result<AgentConnectionTransactionSubjectV1, OperationValidationError> {

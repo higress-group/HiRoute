@@ -100,6 +100,7 @@ pub(super) fn project(
     let mut covered = std::collections::BTreeSet::new();
     let mut result = Vec::new();
     let mut ordinals = BTreeMap::new();
+    let mut opening_causes = BTreeMap::new();
     let mut identities = BTreeMap::new();
     let mut finished = BTreeMap::new();
     for fact in facts {
@@ -110,6 +111,7 @@ pub(super) fn project(
     for fact in finished.into_values() {
         let ExecutionFactV1::AgentTurnFinished {
             agent_turn_id,
+            opening_cause,
             segment_id,
             ordinal,
             plan_id,
@@ -177,6 +179,9 @@ pub(super) fn project(
         }
         let key = &members[0].view.request_id;
         identities.insert(key.clone(), (*ordinal, fact.producer_epoch.clone()));
+        if let Some(cause) = opening_cause {
+            opening_causes.insert(key.clone(), *cause);
+        }
         if !position.newer_than(previous)
             && let Some(turn) = bases.get(key)
         {
@@ -329,27 +334,27 @@ pub(super) fn project(
         let mut turn = (**base).clone();
         turn.position = dependency;
         let first = &requests[&turn.view.turn_id];
-        if held(first, LedgerReasonCodeV1::ContextHoldInvalidated) {
-            turn.view.boundary = RoutingTurnBoundaryV1::ContextRebuild;
-        } else if index > 0 && !held(first, LedgerReasonCodeV1::ContextHoldApplied) {
-            let prior = &requests[&result[index - 1].view.turn_id];
-            if first
-                .native_turn
-                .as_ref()
-                .zip(prior.native_turn.as_ref())
-                .is_some_and(|(a, b)| a != b)
-                && first.native_session.is_some()
-                && first.native_session == prior.native_session
-                && first.run_id == prior.run_id
-                && first
-                    .decision
-                    .as_ref()
-                    .and_then(|d| d.complexity.as_ref())
-                    .is_some_and(|s| s.decision_source != ComplexityDecisionSourceV1::Inherited)
-            {
-                turn.view.boundary = RoutingTurnBoundaryV1::NewUserMessage;
+        let fresh_decision = first
+            .decision
+            .as_ref()
+            .and_then(|d| d.complexity.as_ref())
+            .is_some_and(|s| s.decision_source != ComplexityDecisionSourceV1::Inherited);
+        let continuing = held(first, LedgerReasonCodeV1::ContextHoldApplied)
+            || held(first, LedgerReasonCodeV1::ContextHoldInvalidated);
+        // A retained tail with a later recorded ordinal is not the session's first turn.
+        let initial = index == 0 && ordinals.get(&turn.view.turn_id).is_none_or(|n| *n == 1);
+        turn.view.boundary = match opening_causes.get(&turn.view.turn_id) {
+            Some(AgentTurnOpeningCauseV1::UserMessage) => RoutingTurnBoundaryV1::NewUserMessage,
+            Some(AgentTurnOpeningCauseV1::HistoryRewrite) => RoutingTurnBoundaryV1::ContextRebuilt,
+            Some(AgentTurnOpeningCauseV1::NoComparableHistory) if initial => {
+                RoutingTurnBoundaryV1::NewUserMessage
             }
-        }
+            Some(_) => RoutingTurnBoundaryV1::Unknown,
+            None if initial || (fresh_decision && continuing) => {
+                RoutingTurnBoundaryV1::NewUserMessage
+            }
+            None => RoutingTurnBoundaryV1::Unknown,
+        };
         turn.view.assessment_state = if index + 1 < result.len()
             || matches!(turn.view.status.as_str(), "failed" | "interrupted")
         {

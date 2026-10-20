@@ -467,6 +467,7 @@ fn a_recorded_stage_is_evidence_for_a_selected_transition_not_a_switch() {
             &f.fact(
                 10,
                 ExecutionFactV1::AgentTurnFinished {
+                    opening_cause: None,
                     branch_execution: None,
                     agent_turn_id: "native-turn-1".into(),
                     segment_id: "stage-1".into(),

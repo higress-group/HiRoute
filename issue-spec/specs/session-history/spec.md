@@ -52,6 +52,30 @@ Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connect
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
 
+### Requirement: Managed Agent attribution uses persistent authenticated grant ownership
+
+New observation writes SHALL associate a session with an Agent only through the exact authenticated workspace, grant ID and generation mapped to a server-resolved Agent connection. The product SHALL persist that mapping from a verified connection transaction and matching publication before admitting its traffic. It SHALL remain available across reconfiguration, grant rotation, native-setting restoration and restart, so retained sessions keep their recorded Agent. Registration and receipt rebuilding SHALL NOT backfill old observations without attribution evidence. User-Agent strings, shared Plans, model aliases and client-supplied session IDs SHALL NOT establish Agent ownership.
+
+A session receiving mapped grants from different Agents SHALL retain an attribution conflict and display as unlinked. Repeated or later matching evidence cannot clear the conflict. Missing mappings remain unknown. Full fact deletion or retention expiry SHALL erase the session attribution evidence with those facts; content-only deletion preserves it. Worker run relations retain their existing verified authority and semantics.
+
+#### Scenario: Reconfiguration and rotation preserve old attribution
+
+- **WHEN** a configured Agent sends a request, its grant rotates or its native settings are restored, and the observation store reopens
+- **THEN** the retained session keeps its original Agent and new mapped grants can associate new sessions without consulting the old native files.
+
+#### Scenario: Conflicting and missing grant ownership
+
+- **WHEN** two Agents' authenticated grants appear in one session, or a request has no registered mapping
+- **THEN** conflicting ownership remains unlinked across later requests and reopening, while absent evidence is not guessed from other request metadata.
+
+#### Scenario: Old observations and Worker relations remain unchanged
+
+- **WHEN** grant ownership is first registered, historical receipts are rebuilt, or a verified Worker run emits new observations
+- **THEN** old sessions are not retrospectively assigned an Agent and Worker request/run associations retain their existing meaning.
+
+Source Issue:
+- https://github.com/higress-group/HiRoute/issues/182
+
 ### Requirement: Captured content preserves actual request and response attribution
 
 Sessions MUST present received requests and ultimately accepted responses using
@@ -429,10 +453,11 @@ Source SPEC comments:
 
 Session detail MUST show actual agent-turn selection, recorded boundary, group,
 model/reasoning, probability/threshold, continuations, relay, assessments and request
-usage/cost alongside retained conversation. Context invalidation establishes a
-context-rebuild boundary; a proven native-turn change with a fresh decision can
-establish a new-user boundary. Otherwise the boundary stays unknown. These are
-read-time projections of existing records, not new inferred execution facts.
+usage/cost alongside retained conversation. New writes SHALL record the turn opening cause from Gateway message-history continuity: continuing history plus an appended user message and an inheritable prior decision means user message; an existing checkpoint with shorter history or a changed prefix means history rewrite; a missing checkpoint (including first entry, expiry, eviction, contention or disabled tracking) means no comparable history; other decision boundaries, such as a Plan change on continuing history, mean other. A system-instruction change alone does not rewrite message history, even when it invalidates the hold preference. The optional AgentTurnFinished field SHALL retain its cause across tool continuations and turn completion.
+
+An explicit recorded cause is authoritative: user message displays New message; history rewrite displays Context rebuilt, explaining that the visible history no longer extends the prior checkpoint, commonly after compaction but also after rewind or editing, and that a fresh judgment occurred. No comparable history displays New message only at the session's first turn; other cases remain unknown. Without the field, the legacy read rule displays New message for the first session turn, or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. Invalidation alone SHALL NOT imply history rewrite. A retained tail with a known later ordinal is not the session's first turn. Unknown boundaries omit the heading badge and disclose the gap in details. Old bytes and digests retain their meaning; no historical facts are rewritten to manufacture provenance.
+
+The view SHALL disclose that Gateway continuity is not proof of human authorship: client-generated background messages can satisfy the new-message rule. Aliases, tools and timing SHALL NOT be used to claim native provenance. An explicitly evidenced subdialog distinction may separate histories; ambiguous or known shared-history scope must not claim a native cause. The legend SHALL state that the model stays fixed within a turn to preserve the cache and new messages or rebuilt context trigger a fresh judgment.
 
 The opening request provides stable display identity before the turn-ending fact
 arrives. Late assessments and valuations update that turn. Incremental cursors MUST
@@ -455,6 +480,36 @@ Timeline cache locks cover only cache take/return, never database reads, project
 - **WHEN** an earlier turn receives a score after the first page was delivered
 - **THEN** the remaining frozen page is delivered first, followed by the updated
   earlier turn once; reconnect cannot duplicate its unchanged projection.
+
+#### Scenario: Fresh decision on continuing history
+
+- **WHEN** an old turn without an opening-cause field has a fresh opening decision recording ContextHoldApplied or ContextHoldInvalidated
+- **THEN** the turn shows a new-message boundary; a group change is never labelled as compaction.
+
+#### Scenario: Unknown and retained-tail boundaries
+
+- **WHEN** a later turn lacks continuity evidence or only inherits a decision, including a retained tail with a known later ordinal
+- **THEN** its boundary remains unknown, its heading omits the badge and its details disclose the missing evidence.
+
+#### Scenario: Background message satisfies the same rule
+
+- **WHEN** the client appends a background message carrying fresh-decision and continuing-history evidence
+- **THEN** the new-message boundary applies with an explicit disclosure that the gateway does not establish human authorship.
+
+#### Scenario: History rewrite and missing checkpoint differ
+
+- **WHEN** visible history is shortened or its existing prefix changes, or separately its checkpoint has expired or lost a compare-and-swap race
+- **THEN** only the proven history rewrite displays Context rebuilt; missing comparable history remains unknown after the first session turn.
+
+#### Scenario: System instructions change without rewriting messages
+
+- **WHEN** the system instructions change while messages still extend the prior checkpoint
+- **THEN** message history remains continuing even if the hold preference is invalidated; an appended user message can start a new-message turn.
+
+#### Scenario: Recorded cause overrides legacy inference
+
+- **WHEN** a turn contains an explicit opening cause and an old-style ledger hint suggests another cause
+- **THEN** the explicit cause wins, remains stable through tool continuation and reopening, and absent legacy fields retain their previous canonical bytes.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235190304

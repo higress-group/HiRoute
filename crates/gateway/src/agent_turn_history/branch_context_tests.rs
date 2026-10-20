@@ -122,7 +122,7 @@ fn branch_context_reset_starts_a_new_competence_segment_on_the_same_model() {
                 &request(vec![new_user.clone()]),
                 &replay,
                 TurnDecisionInputs {
-                    message_history_continues: false,
+                    history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
                 now,

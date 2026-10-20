@@ -71,6 +71,7 @@ mod delegation_task_queries;
 mod delegation_tasks;
 mod delegation_worker;
 mod effects;
+mod grant_attribution;
 mod hermes_management_status;
 mod model_catalog;
 mod model_connections;

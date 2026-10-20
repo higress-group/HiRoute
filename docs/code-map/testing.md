@@ -70,6 +70,10 @@ The publication fixture leases its listener address across daemon restarts; do
 not substitute a released `bind(0)` probe. Its protected-input channel cannot be
 attached to an existing Desktop. Prepare that instance first, then use real UI
 mutations. Main-Agent delegation must separately invoke the actual public CLI.
+The isolated subscription startup test uses the [listener port lease](../../crates/daemon/src/test_support/listener_port.rs)
+outside the host's outbound ephemeral range; the parent keeps that lease through
+the isolated child's Gateway shutdown. On Unix it shares the publication fixture's
+per-user address-lock namespace across worktrees and runner temporary directories.
 
 The [shared product session](../../crates/product-session/src) owns confirmation,
 exact-digest authority and command orchestration tests. Its permit-drop and

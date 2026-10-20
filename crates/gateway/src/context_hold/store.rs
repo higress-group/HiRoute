@@ -92,6 +92,14 @@ fn frame_u64(mac: &mut HmacSha256, kind: &[u8], value: u64) {
     frame(mac, kind, &value.to_be_bytes());
 }
 
+/// Continuity of visible messages, independent of system-instruction changes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HistoryContinuity {
+    Continuing,
+    Rewritten,
+    NoCheckpoint,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct HoldTicket {
     key: ContextHoldKey,
@@ -99,7 +107,7 @@ pub(crate) struct HoldTicket {
     cycle: u64,
     value_version: u64,
     checkpoint_revision: u64,
-    pub(crate) message_history_continues: bool,
+    pub(crate) history_continuity: HistoryContinuity,
     pub(crate) hint: Option<HoldPreferenceV1>,
     /// Last fully delivered candidate in this exact route scope, even when
     /// rebuilt history invalidates the stronger continuity hint.
@@ -225,6 +233,16 @@ impl ContextHoldStore {
         history: &HistoryEvidence<'_>,
         now: Instant,
     ) -> Option<HoldTicket> {
+        self.begin_with_measure(key, history, now, |prefix| history.measure(prefix))
+    }
+
+    fn begin_with_measure(
+        &self,
+        key: ContextHoldKey,
+        history: &HistoryEvidence<'_>,
+        now: Instant,
+        measure: impl FnOnce(Option<usize>) -> Option<super::history::HistoryDigests>,
+    ) -> Option<HoldTicket> {
         self.key?;
         let snapshot = {
             let mut inner = self.inner.lock();
@@ -235,7 +253,7 @@ impl ContextHoldStore {
 
         // Scan visible history outside the mutex, retaining only the stored
         // prefix checkpoint and the final digest.
-        let measured = history.measure(snapshot.map(|entry| entry.message_count))?;
+        let measured = measure(snapshot.map(|entry| entry.message_count))?;
         let mut inner = self.inner.lock();
         inner.remove_if_expired(&key, now, self.idle_ttl);
         if let Some(snapshot) = snapshot {
@@ -296,7 +314,11 @@ impl ContextHoldStore {
                 cycle,
                 value_version,
                 checkpoint_revision,
-                message_history_continues,
+                history_continuity: if message_history_continues {
+                    HistoryContinuity::Continuing
+                } else {
+                    HistoryContinuity::Rewritten
+                },
                 hint,
                 previous_success,
                 cleaned_prefix_len,
@@ -345,7 +367,7 @@ impl ContextHoldStore {
             cycle: 1,
             value_version: 0,
             checkpoint_revision: 1,
-            message_history_continues: false,
+            history_continuity: HistoryContinuity::NoCheckpoint,
             hint: None,
             previous_success: None,
             cleaned_prefix_len: None,

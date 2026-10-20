@@ -59,6 +59,7 @@ path = "src/control/bin.rs"
 hiroute-observation = { path = "../observation", features = ["test-support"] }
 base64.workspace = true
 hiroute-integrations = { path = "../integrations", features = ["test-support"] }
+fs2.workspace = true
 hiroute-client-core = { path = "../client-core" }
 tokio = { workspace = true, features = ["test-util"] }
 tokio-util.workspace = true

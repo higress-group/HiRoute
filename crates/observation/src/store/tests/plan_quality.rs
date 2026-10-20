@@ -74,6 +74,7 @@ fn finished_for_model_with_status(
     status: AgentTurnStatusV1,
 ) -> ExecutionFactV1 {
     ExecutionFactV1::AgentTurnFinished {
+        opening_cause: None,
         branch_execution: None,
         agent_turn_id: turn.into(),
         segment_id: segment.into(),
@@ -621,4 +622,5 @@ fn request_retention_drops_expired_score_and_marks_a_continuing_segment_partial(
 }
 
 mod routing_timeline;
+mod timeline_boundaries;
 mod timeline_cache;

@@ -1,5 +1,8 @@
 //! Isolate tests that compose production discovery without mutating process-global HOME.
 
+mod listener_port;
+pub(crate) use listener_port::ListenerPortLease;
+
 pub(crate) fn isolated_agent_home(test_name: &str) -> bool {
     isolated_agent_home_inner(test_name, false, None)
 }

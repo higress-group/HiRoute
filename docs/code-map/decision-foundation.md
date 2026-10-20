@@ -91,7 +91,12 @@ returns to regular. Missing/partial scores remain unrated. Recognized tool
 continuations reuse the frozen decision only while history and authority permit.
 [ContextHold](../../crates/gateway/src/context_hold/store.rs) binds exact route,
 version, protocol, authorization and session; unrelated plan publication does not
-invalidate that route, and each request still reauthorizes.
+invalidate that route, and each request still reauthorizes. Message-prefix continuity is
+separate from system-instruction validity: [history entry](../../crates/gateway/src/context_hold/store.rs)
+distinguishes continuing, rewritten and unavailable checkpoints. [Turn history](../../crates/gateway/src/agent_turn_history/store.rs)
+records the opening cause on completion; [timeline projection](../../crates/observation/src/query_v2/routing_timeline/projection.rs)
+prefers it over legacy ledger inference. [Boundary regressions](../../crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs)
+cover persistence, unknown evidence and old canonical bytes.
 
 The planner always prefers a valid held candidate within the newly selected group,
 including an in-group backup; retired follow-up fields survive only at serialized

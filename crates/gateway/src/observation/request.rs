@@ -898,6 +898,7 @@ impl RequestObservation {
             };
         self.emit_execution(
             ExecutionFactV1::AgentTurnFinished {
+                opening_cause: Some(turn.opening_cause),
                 branch_execution: turn.branch_execution.clone(),
                 agent_turn_id: turn.agent_turn_id.clone(),
                 segment_id: turn.segment_id.clone(),

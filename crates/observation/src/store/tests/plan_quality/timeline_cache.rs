@@ -232,7 +232,7 @@ fn timeline_incremental_protection_revisits_a_nonadjacent_segment() {
         .iter()
         .find(|t| t.turn_id == primary.request.as_str())
         .unwrap();
-    assert_eq!(new.boundary, RoutingTurnBoundaryV1::ContextRebuild);
+    assert_eq!(new.boundary, RoutingTurnBoundaryV1::NewUserMessage);
     for turn in delta.turns {
         merged.insert(turn.turn_id.clone(), turn);
     }
