@@ -124,7 +124,6 @@ pub(super) fn read(
                 },
                 first_fact: i64::MAX,
                 native_turn: link.as_ref().and_then(|l| l.native_turn_id.clone()),
-                native_session: link.as_ref().and_then(|l| l.native_session_id.clone()),
                 run_id: link.map(|l| l.run_id.to_string()),
                 decision: None,
                 candidate: None,

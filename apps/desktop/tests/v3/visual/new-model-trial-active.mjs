@@ -209,16 +209,19 @@ try {
   await shot(`timeline-${lang}-${theme}-${width}`);
   results.push({id:`timeline.late-score-and-request-selection.${lang}.${theme}.${width}${target ? '-from-request' : ''}`,status:'passed'});
  }
- for (const lang of ['zh','en']) {
-  await open(`lang=${lang}&view=timeline&boundary=rebuilt`,755,600);
+ for (const [lang,width,height,theme] of [['zh',755,600,'light'],['en',755,600,'light'],['zh',1200,813,'dark'],['en',1200,813,'dark']]) {
+  await open(`lang=${lang}&theme=${theme}&view=timeline&boundary=rebuilt`,width,height);
   await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
   await evaluate(client,`document.querySelectorAll('.routing-turn')[1].click();true`);
   assert.ok(await evaluate(client,`document.querySelector('.routing-detail-head').textContent.includes(${JSON.stringify(lang==='zh'?'上下文重建':'Context rebuilt')})`));
   assert.ok(await evaluate(client,`document.querySelector('.routing-boundary-basis').textContent.includes(${JSON.stringify(lang==='zh'?'回退或编辑':'rewind or editing')})`));
   assert.ok(await evaluate(client,`document.querySelector('.routing-legend').textContent.includes(${JSON.stringify(lang==='zh'?'新消息或上下文重建':'new message or rebuilt context')})`));
+  await evaluate(client,`document.querySelector('.routing-boundary-basis').scrollIntoView({block:'center'});true`);
+  const basis=await evaluate(client,`(()=>{const e=document.querySelector('.routing-boundary-basis'),r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight,scroll:e.scrollWidth,width:e.clientWidth};})()`);
+  assert.ok(basis.top>=0&&basis.bottom<=basis.height&&basis.scroll<=basis.width+1,JSON.stringify(basis));
   for (const g of await geometry()) assert.ok(g.scroll<=g.width+1,JSON.stringify(g));
-  await shot(`timeline-rebuilt-${lang}-755`);
-  results.push({id:`timeline.recorded-history-rewrite.${lang}`,status:'passed'});
+  await shot(`timeline-rebuilt-${lang}-${width}-${theme}`);
+  results.push({id:`timeline.recorded-history-rewrite.${lang}.${width}.${theme}`,status:'passed'});
  }
  await open('lang=en&view=timeline&request-outcome=failed');
  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);

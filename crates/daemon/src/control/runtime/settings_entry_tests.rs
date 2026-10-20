@@ -1129,6 +1129,7 @@ fn record_attributed_session(
     suffix: &str,
     plan: &str,
 ) {
+    use hiroute_application::control::ApplicationClockPort;
     use hiroute_domain::*;
     use hiroute_observation::writer::ObservationCommitPort;
     // The real daemon runs retention while this lifecycle test reconfigures the
