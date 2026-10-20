@@ -519,6 +519,22 @@ impl ProductionControlRuntime {
                 root.join("hiroute-management/SKILL.md"),
             ));
         }
+        // An unavailable native context is local to that Agent. Register only
+        // resolved adapter targets so it cannot prevent daemon/control startup.
+        for (subject, kind) in [
+            (&opencode_subject, hiroute_domain::AgentKindV1::OpenCode),
+            (&dsh_subject, hiroute_domain::AgentKindV1::DeepseekHarness),
+            (&pi_subject, hiroute_domain::AgentKindV1::Pi),
+        ] {
+            if let Some(path) = scanner.native_routing_adapter_target(kind) {
+                scoped_targets.push((
+                    AgentConnectionEffectRoleV1::NativeRoutingAdapter
+                        .target_for(subject)
+                        .map_err(|e| e.to_string())?,
+                    path,
+                ));
+            }
+        }
         let mut external_targets = [
             (
                 opencode_model_target.clone(),
@@ -529,30 +545,6 @@ impl ProductionControlRuntime {
                     .target_for(&opencode_subject)
                     .map_err(|e| e.to_string())?,
                 scanner.opencode_user_skill_target(),
-            ),
-            (
-                AgentConnectionEffectRoleV1::NativeRoutingAdapter
-                    .target_for(&opencode_subject)
-                    .map_err(|e| e.to_string())?,
-                scanner
-                    .native_routing_adapter_target(hiroute_domain::AgentKindV1::OpenCode)
-                    .ok_or("OpenCode adapter target")?,
-            ),
-            (
-                AgentConnectionEffectRoleV1::NativeRoutingAdapter
-                    .target_for(&dsh_subject)
-                    .map_err(|e| e.to_string())?,
-                scanner
-                    .native_routing_adapter_target(hiroute_domain::AgentKindV1::DeepseekHarness)
-                    .ok_or("DSH adapter target")?,
-            ),
-            (
-                AgentConnectionEffectRoleV1::NativeRoutingAdapter
-                    .target_for(&pi_subject)
-                    .map_err(|e| e.to_string())?,
-                scanner
-                    .native_routing_adapter_target(hiroute_domain::AgentKindV1::Pi)
-                    .ok_or("Pi adapter target")?,
             ),
             (
                 AgentConnectionEffectRoleV1::ManagedConfiguration
