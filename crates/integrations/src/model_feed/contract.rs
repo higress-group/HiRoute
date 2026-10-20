@@ -95,7 +95,7 @@ pub fn validate_publication_fields(
     featured: &[FeaturedModel],
 ) -> Result<(), FeedError> {
     if sequence == 0
-        || !valid_utc_timestamp(&issued_at)
+        || !valid_utc_timestamp(issued_at)
         || source_revision.len() != 40
         || !source_revision.bytes().all(|b| b.is_ascii_hexdigit())
         || featured.len() > 128

@@ -158,13 +158,6 @@ pub(super) fn catalog_models(
         })
         .collect()
 }
-fn registered<T>(value: T) -> NativeCandidateFactValueV1<T> {
-    NativeCandidateFactValueV1 {
-        value: Some(value),
-        basis: NativeCandidateFactBasisV1::RegisteredCatalog,
-    }
-}
-
 pub(super) fn expand_models(
     catalog: &TrustedReleaseCatalog,
     sources: &[NativeApiSource],

@@ -26,10 +26,10 @@ pub(super) fn validate_before(
     workspace: &WorkspaceId,
     mutation: &ComputeManagementMutation,
 ) -> PortResult<()> {
-    if let Some((before, _)) = mutation.preferences() {
-        if &read(connection, workspace, mutation.source_id())? != before {
-            return Err(conflict("compute.defaults.cas"));
-        }
+    if let Some((before, _)) = mutation.preferences()
+        && &read(connection, workspace, mutation.source_id())? != before
+    {
+        return Err(conflict("compute.defaults.cas"));
     }
     Ok(())
 }

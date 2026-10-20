@@ -201,7 +201,7 @@ impl LocalControlAdapter {
                     .clone()
                     .unwrap_or_else(|| model.model_ref.clone());
                 let offer_ref = registered.as_ref().and_then(|(_, resolved)| {
-                    unique_offer(&catalog, resolved, &model_configuration_id)
+                    unique_offer(catalog, resolved, &model_configuration_id)
                         .map(|offer| offer.offer_id.clone())
                 });
                 source_bindings.push(PriceSourceBinding {

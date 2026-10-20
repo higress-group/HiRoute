@@ -167,10 +167,10 @@ pub(in crate::control) fn current_matches(
     if !effect_bound {
         return Err(corrupt("compute.management.observe.effect_binding"));
     }
-    if let Some(after) = defaults::effect(connection, operation_id.as_str(), false)? {
-        if defaults::read(connection, workspace, mutation.source_id())? != after {
-            return Ok(false);
-        }
+    if let Some(after) = defaults::effect(connection, operation_id.as_str(), false)?
+        && defaults::read(connection, workspace, mutation.source_id())? != after
+    {
+        return Ok(false);
     }
     let current: Option<(String, String)> = connection
         .query_row(

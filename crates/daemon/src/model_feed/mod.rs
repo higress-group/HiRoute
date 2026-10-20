@@ -209,9 +209,6 @@ impl ModelFeedService {
             client_version,
         })
     }
-    pub(crate) fn is_embedded_model(&self, id: &str) -> bool {
-        self.embedded.model_data().model(id).is_some()
-    }
     pub fn embedded_catalog(&self) -> &Arc<TrustedReleaseCatalog> {
         &self.embedded
     }

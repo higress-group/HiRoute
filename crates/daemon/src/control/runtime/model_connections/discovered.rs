@@ -379,10 +379,3 @@ impl LocalControlAdapter {
         })
     }
 }
-
-fn registered_fact<T>(value: T) -> NativeCandidateFactValueV1<T> {
-    NativeCandidateFactValueV1 {
-        value: Some(value),
-        basis: NativeCandidateFactBasisV1::RegisteredCatalog,
-    }
-}
