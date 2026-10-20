@@ -3,6 +3,10 @@ use super::FilesystemAgentScannerV1;
 use hiroute_domain::AgentKindV1;
 use std::path::PathBuf;
 
+pub fn native_routing_adapter_uri(path: &std::path::Path) -> Option<String> {
+    reqwest::Url::from_file_path(path).ok().map(Into::into)
+}
+
 pub const PI_ROUTING_ADAPTER: &str =
     include_str!("../../../../assets/agents/pi/hiroute-routing.mjs");
 pub const DSH_ROUTING_ADAPTER: &str =

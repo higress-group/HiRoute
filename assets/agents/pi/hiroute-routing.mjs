@@ -2,20 +2,21 @@
 const managed = (model) => /^hiroute-(main-|worker(?:$|-))/.test(model?.provider ?? "");
 export default function hirouteRouting(pi) {
   const compacting = new Set();
+  let healthy = true;
   pi.on("cache_warming_decision", (event, ctx) => {
-    try { if (managed(event.model ?? ctx.model)) return { action: "stop" }; } catch {}
+    try { if (managed(event.model ?? ctx.model)) return { action: "stop" }; } catch { healthy = false; }
   });
   pi.on("session_before_compact", (_event, ctx) => {
-    try { if (managed(ctx.model)) compacting.add(ctx.sessionManager.getSessionId()); } catch {}
+    try { if (managed(ctx.model)) compacting.add(ctx.sessionManager.getSessionId()); } catch { healthy = false; }
   });
   for (const name of ["session_compact", "session_compact_failed"]) {
     pi.on(name, (_event, ctx) => {
-      try { compacting.delete(ctx.sessionManager.getSessionId()); } catch {}
+      try { compacting.delete(ctx.sessionManager.getSessionId()); } catch { healthy = false; }
     });
   }
   pi.on("before_provider_headers", (event, ctx) => {
     try {
-      if (!managed(event.model ?? ctx.model)) return;
+      if (!healthy || !managed(event.model ?? ctx.model)) return;
       const session = ctx.sessionManager.getSessionId();
       const entries = ctx.sessionManager.getBranch();
       const checkpoint = entries.findLast((entry) => entry.type === "compaction");

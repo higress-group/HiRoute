@@ -60,6 +60,10 @@ test("OpenCode reads completed native checkpoints, real turns and isolates concu
   assert.equal(JSON.parse((await headers(hook, next))["x-hiroute-routing-context"]).turn_id, "05");
   const broken = await HiRouteRouting({ client: { session: { messages: async () => { throw Error("native read failed"); } } } });
   assert.deepEqual(await headers(broken, next), {});
+  const hung = await HiRouteRouting({ client: { session: { messages: () => new Promise(() => {}) } } });
+  const start = performance.now();
+  assert.deepEqual(await headers(hung, next), {});
+  assert.ok(performance.now() - start < 300);
   assert.deepEqual(await headers(hook, { ...next, model: { providerID: "foreign" } }), {});
 });
 

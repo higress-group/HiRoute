@@ -3,10 +3,15 @@ export const HiRouteRouting = async ({ client }) => ({
   "chat.headers": async (input, output) => {
     try {
       if (!/^hiroute-(main-|worker(?:$|-))/.test(input.model.providerID)) return;
-      const result = await client.session.messages({
-        path: { id: input.sessionID }, query: { limit: 128 },
-        signal: AbortSignal.timeout(50),
-      });
+      const controller = new AbortController();
+      let timer;
+      let result;
+      try {
+        result = await Promise.race([
+          client.session.messages({ path: { id: input.sessionID }, query: { limit: 128 }, signal: controller.signal }),
+          new Promise((resolve) => { timer = setTimeout(() => { controller.abort(); resolve({}); }, 50); }),
+        ]);
+      } finally { clearTimeout(timer); }
       if (!Array.isArray(result.data)) return;
       const entries = result.data;
       const summary = entries.findLast(({ info }) =>

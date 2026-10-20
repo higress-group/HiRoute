@@ -21,10 +21,14 @@ pub(super) fn render(
     .map(|(api, endpoint)| (api, endpoint.to_owned()))
     .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
     let state = input.session_root.path().join("native-dsh");
+    let routing_uri = hiroute_integrations::native_routing_adapter_uri(
+        &input.private_root.join("hiroute-routing.mjs"),
+    )
+    .ok_or(DelegationErrorV1::InvalidArguments)?;
     // JSON is a YAML subset. Only public stock-composition IDs are overridden;
     // secret values are referenced by name, never persisted in this overlay.
     let mut patch = vec![
-        json!({"insert":[{"id":"hiroute-routing","name":url::Url::from_file_path(input.private_root.join("hiroute-routing.mjs")).map_err(|_| DelegationErrorV1::InvalidArguments)?.as_str()}]}),
+        json!({"insert":[{"id":"hiroute-routing","name":routing_uri}]}),
         json!({"id":"llm-pi-ai","config":{"providers":{provider:{
             "apiKeyEnv":"HIROUTE_RUN_TOKEN","api":api,"baseURL":endpoint,"headers":{"X-HiRoute-Agent":"dsh"},
             "models":[{"id":input.alias,"contextWindow":context,"maxTokens":output,"input":["text"]}]
