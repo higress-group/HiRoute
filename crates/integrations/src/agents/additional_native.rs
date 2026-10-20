@@ -222,6 +222,7 @@ fn default_not_removed(
             provider,
             &document["providers"][provider],
             retain,
+            Some(&[]),
         );
     }
     let Some(model) = document.get("model") else {

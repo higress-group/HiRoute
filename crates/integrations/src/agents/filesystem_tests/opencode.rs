@@ -10,6 +10,68 @@ fn declaration() -> serde_json::Value {
 }
 
 #[test]
+fn opencode_provider_credential_failures_do_not_hide_independent_sources_or_relax_stale_reads() {
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    let secret = root.path().join("broken.key");
+    let mut value = declaration();
+    let mut broken = value["provider"]["ordinary"].clone();
+    broken["options"]["apiKey"] = json!(format!("{{file:{}}}", secret.display()));
+    value["provider"]["a-broken"] = broken;
+    write_secret_settings(&scanner.opencode_user_models_target(), value.clone());
+    for bytes in [vec![0xff], vec![b'x'; 1024 * 1024 + 1]] {
+        std::fs::write(&secret, bytes).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        assert_independent_source(&scanner);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        std::fs::write(&secret, b"native-public-key").unwrap();
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_independent_source(&scanner);
+        std::fs::remove_file(&secret).unwrap();
+        let target = root.path().join("target.key");
+        std::fs::write(&target, b"native-linked-key").unwrap();
+        symlink(target, &secret).unwrap();
+        assert_independent_source(&scanner);
+    }
+    let selected = scanner
+        .opencode_api_sources()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.provider_id == "ordinary")
+        .unwrap();
+    value["provider"]["ordinary"]["options"]["apiKey"] = json!("changed-independent-key");
+    write_secret_settings(&scanner.opencode_user_models_target(), value);
+    assert!(scanner.read_opencode_api_source(&selected).is_err());
+}
+
+fn assert_independent_source(scanner: &FilesystemAgentScannerV1) {
+    let sources = scanner.opencode_api_sources().unwrap();
+    assert_eq!(sources.len(), 2);
+    let broken = sources
+        .iter()
+        .find(|s| s.provider_id == "a-broken")
+        .unwrap();
+    assert!(!broken.supported_auth && broken.credential.is_none());
+    assert!(scanner.read_opencode_api_source(broken).is_err());
+    let valid = sources
+        .iter()
+        .find(|s| s.provider_id == "ordinary")
+        .unwrap();
+    assert!(valid.supported_auth && valid.credential.is_some());
+    assert_eq!(
+        scanner.read_opencode_api_source(valid).unwrap().1.expose(),
+        b"static-only"
+    );
+}
+
+#[test]
 fn opencode_discovers_the_official_home_entry_without_executing_or_replacing_a_selection() {
     let root = tempfile::tempdir().unwrap();
     let mut scanner = scanner(root.path());

@@ -92,8 +92,18 @@ impl FilesystemAgentScannerV1 {
             let options = &provider["options"];
             let stored = &auth.0[provider_id];
             let mut key_evidence = Vec::new();
+            let mut key_available = true;
             let (authentication, secret) = if let Some(value) = options.get("apiKey") {
-                resolve_key(value.as_str(), &origin, &native.home, &mut key_evidence)?
+                match resolve_key(value.as_str(), &origin, &native.home, &mut key_evidence) {
+                    Ok(key) => key,
+                    Err(_) => {
+                        // A provider-local credential cannot hide independent candidates.
+                        // No descriptor/material is issued; selected reads still compare
+                        // the full fresh candidate and reject any changed evidence.
+                        key_available = false;
+                        (DiscoveredAuthSource::Missing, None)
+                    }
+                }
             } else if stored["type"] == "api" {
                 (
                     DiscoveredAuthSource::InlineToken,
@@ -126,7 +136,8 @@ impl FilesystemAgentScannerV1 {
                 }
             };
             let clean = |v: &Value| v.is_null() || v.as_object().is_some_and(|v| v.is_empty());
-            let representable = !remote
+            let representable = key_available
+                && !remote
                 && !dynamic_keys
                 && stored["type"] != "oauth"
                 && clean(&options["headers"])

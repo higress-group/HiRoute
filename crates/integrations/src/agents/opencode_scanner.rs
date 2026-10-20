@@ -125,6 +125,7 @@ impl FilesystemAgentScannerV1 {
             return Err(AgentFilesystemScanError::InvalidConfig);
         }
         let config = native.read_config(None)?;
+        let resources = super::super::opencode_resources::model_references(native);
         if super::super::opencode::dynamic_keys(&config.value) {
             return Err(AgentFilesystemScanError::InvalidConfig);
         }
@@ -172,6 +173,7 @@ impl FilesystemAgentScannerV1 {
                     id,
                     &config.value["provider"][id],
                     &retain,
+                    resources.as_ref().ok().map(|r| r.models.as_slice()),
                 ) {
                     if error.stage != "default in use" {
                         return Err(AgentFilesystemScanError::InvalidConfig);
@@ -192,13 +194,17 @@ impl FilesystemAgentScannerV1 {
                 return Err(AgentFilesystemScanError::InvalidConfig);
             }
         }
-        let digest = CanonicalDigest::of(
-            &config
-                .documents
-                .iter()
-                .filter(|(path, _)| *path != target)
-                .collect::<Vec<_>>(),
-        )
+        let mut documents = config
+            .documents
+            .iter()
+            .filter(|(path, _)| *path != target)
+            .collect::<Vec<_>>();
+        let digest = if let Ok(resources) = &resources {
+            documents.extend(resources.documents.iter());
+            CanonicalDigest::of(&documents)
+        } else {
+            CanonicalDigest::of(&(documents, "unavailable native model references"))
+        }
         .map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
         Ok((digest, default_in_use))
     }

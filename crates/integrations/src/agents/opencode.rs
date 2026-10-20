@@ -126,13 +126,7 @@ impl OpenCodeNativeContext {
         paths.extend(self.config_file.iter().cloned());
         if let Some(workspace) = workspace {
             checked_path(workspace)?;
-            let mut ancestry = Vec::new();
-            for root in workspace.ancestors().take(64) {
-                ancestry.push(root.to_owned());
-                if root.join(".git").exists() {
-                    break;
-                }
-            }
+            let mut ancestry = project_ancestry(workspace)?;
             ancestry.reverse();
             for root in &ancestry {
                 paths.extend([root.join("opencode.json"), root.join("opencode.jsonc")]);
@@ -253,7 +247,12 @@ impl OpenCodeNativeContext {
             executable_plugins |= parsed
                 .get("plugin")
                 .is_some_and(|v| v.as_array().is_none_or(|v| !v.is_empty()));
-            schemas_complete &= parsed.get("$schema").and_then(Value::as_str).is_some();
+            // The native loader expands substitutions before testing schema truthiness
+            // and writes back to the borrowed file when the result is empty.
+            schemas_complete &= parsed
+                .get("$schema")
+                .and_then(Value::as_str)
+                .is_some_and(|schema| !schema.is_empty() && !substitution(schema));
             merge(&mut value, parsed);
             documents.push((path, CanonicalDigest::of_bytes(&bytes)));
         }
@@ -277,6 +276,25 @@ impl OpenCodeNativeContext {
             schemas_complete,
             executable_plugins,
         })
+    }
+
+    pub(super) fn resource_roots(
+        &self,
+        workspace: Option<&Path>,
+    ) -> Result<Vec<PathBuf>, QoderNativeError> {
+        let mut roots = vec![self.config_root.clone()];
+        if let Some(workspace) = workspace {
+            roots.extend(
+                project_ancestry(workspace)?
+                    .iter()
+                    .map(|p| p.join(".opencode")),
+            );
+        }
+        roots.push(self.home.join(".opencode"));
+        roots.extend(self.extra_config_root.iter().cloned());
+        let mut seen = BTreeSet::new();
+        roots.retain(|p| seen.insert(p.clone()));
+        Ok(roots)
     }
 }
 
@@ -331,6 +349,24 @@ fn checked_path(path: &Path) -> Result<(), QoderNativeError> {
     Ok(())
 }
 
+/// A bounded inspection is complete only at the same worktree/root stop as native.
+fn project_ancestry(workspace: &Path) -> Result<Vec<PathBuf>, QoderNativeError> {
+    checked_path(workspace)?;
+    let mut roots = Vec::new();
+    for root in workspace.ancestors().take(64) {
+        roots.push(root.to_owned());
+        if root
+            .join(".git")
+            .try_exists()
+            .map_err(|_| qoder_error("OpenCode project ancestry"))?
+            || root.parent().is_none()
+        {
+            return Ok(roots);
+        }
+    }
+    Err(qoder_error("OpenCode project ancestry bound"))
+}
+
 /// Shared native SDK declaration. Ordinary grants use their independent fixed header.
 pub fn opencode_provider(
     endpoint: &str,
@@ -381,6 +417,7 @@ pub(super) fn validate_references(
     provider: &str,
     provider_value: &Value,
     retain: &BTreeSet<String>,
+    resource_models: Option<&[String]>,
 ) -> Result<(), QoderNativeError> {
     if dynamic_keys(value) {
         return Err(qoder_error("OpenCode dynamic configuration keys"));
@@ -409,16 +446,28 @@ pub(super) fn validate_references(
             }
         }
     }
-    for value in refs {
-        let selector = value
-            .as_str()
-            .ok_or_else(|| qoder_error("OpenCode model selector"))?;
+    if removes_model && resource_models.is_none() {
+        // Unknown native frontmatter cannot authorize deleting a model selector.
+        return Err(qoder_error("default in use"));
+    }
+    let check = |selector: &str| {
         if removes_model && substitution(selector) {
             return Err(qoder_error("OpenCode dynamic model selector"));
         }
         if selector.starts_with(&format!("{provider}/")) && !retain.contains(selector) {
             return Err(qoder_error("default in use"));
         }
+        Ok(())
+    };
+    for value in refs {
+        check(
+            value
+                .as_str()
+                .ok_or_else(|| qoder_error("OpenCode model selector"))?,
+        )?;
+    }
+    for selector in resource_models.unwrap_or_default() {
+        check(selector)?;
     }
     Ok(())
 }
@@ -464,15 +513,7 @@ pub fn validate_opencode_composition(
     if native.config_root.join("config").exists() {
         return Err(unavailable());
     }
-    let mut roots = vec![native.config_root.clone(), native.home.join(".opencode")];
-    roots.extend(native.extra_config_root.iter().cloned());
-    for root in workspace.ancestors().take(64) {
-        roots.push(root.join(".opencode"));
-        if root.join(".git").exists() {
-            break;
-        }
-    }
-    for root in roots {
+    for root in native.resource_roots(Some(workspace))? {
         for dir in ["tool", "tools", "agent", "agents", "mode", "modes"] {
             match std::fs::read_dir(root.join(dir)) {
                 Ok(entries) => {
@@ -491,6 +532,20 @@ pub fn validate_opencode_composition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn project_ancestry_requires_a_proven_native_stop_within_the_bound() {
+        let root = tempfile::tempdir().unwrap();
+        let base = root.path().canonicalize().unwrap();
+        std::fs::create_dir(base.join(".git")).unwrap();
+        let at_limit = (0..63).fold(base.clone(), |path, _| path.join("d"));
+        std::fs::create_dir_all(&at_limit).unwrap();
+        assert_eq!(project_ancestry(&at_limit).unwrap().len(), 64);
+        assert!(project_ancestry(&at_limit.join("d")).is_err());
+        std::fs::remove_dir(base.join(".git")).unwrap();
+        assert!(project_ancestry(&base).is_ok());
+        assert!(project_ancestry(&at_limit).is_err());
+    }
+
     #[test]
     fn context_selectors_are_additive_and_database_is_data_relative() {
         let home = super::super::test_absolute_path("/native");

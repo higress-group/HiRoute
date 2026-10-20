@@ -96,6 +96,7 @@ pub fn windows_npm_entry_with_inspection(
         "pi" => "@earendil-works/pi-coding-agent",
         "dsh" => "@deepseek-ai/dsh",
         "qoder" | "qodercli" => "@qoder-ai/qodercli",
+        "opencode" => "opencode-ai",
         _ => return Err(io::Error::other("unknown npm producer")),
     };
     let bin_directory = shim.parent().ok_or_else(|| io::Error::other("npm root"))?;

@@ -21,22 +21,29 @@ fn package(root: &Path) -> Result<Option<Value>, QoderNativeError> {
 /// Resolves the explicitly located official npm wrapper to a single declared native package.
 /// A directly selected standalone binary remains selectable without format capability.
 pub fn opencode_native_executable(selected: &Path) -> Result<Option<PathBuf>, QoderNativeError> {
-    #[cfg(windows)]
-    let selected_entry = if selected
-        .extension()
-        .is_some_and(|e| e.as_encoded_bytes().eq_ignore_ascii_case(b"cmd"))
-    {
-        super::windows_runtime::windows_npm_entry(selected)
-            .map_err(|_| qoder_error("OpenCode npm entry"))?
-    } else {
-        selected.to_owned()
-    };
-    #[cfg(windows)]
-    let selected = selected_entry.as_path();
     let Some(path) =
         super::executable::resolve(selected).map_err(|_| qoder_error("OpenCode executable"))?
     else {
         return Ok(None);
+    };
+    #[cfg(windows)]
+    let path = if path
+        .extension()
+        .is_some_and(|e| e.as_encoded_bytes().eq_ignore_ascii_case(b"cmd"))
+    {
+        let mut identities = Vec::new();
+        let entry = super::windows_runtime::windows_npm_entry_with_inspection(&path, |path| {
+            identities.push(hiroute_platform::windows::security::open_identity(
+                path, false,
+            )?);
+            Ok(())
+        })
+        .map_err(|_| qoder_error("OpenCode npm entry"))?;
+        super::executable::resolve(&entry)
+            .map_err(|_| qoder_error("OpenCode npm entry"))?
+            .ok_or_else(|| qoder_error("OpenCode npm entry"))?
+    } else {
+        path
     };
     let root = path
         .parent()
@@ -190,3 +197,7 @@ fn official_package(meta: &Value) -> bool {
         )
     )
 }
+
+#[cfg(all(test, windows))]
+#[path = "opencode_installation_windows_tests.rs"]
+mod windows_tests;

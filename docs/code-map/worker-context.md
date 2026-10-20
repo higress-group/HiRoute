@@ -28,6 +28,9 @@ OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) 
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)
 also feed the shared configured/drift status.
+Its [bounded Markdown reference reader](../../crates/integrations/src/agents/opencode_resources.rs)
+adds native user Agent/Mode selectors to the same settings dependency checks;
+removal requires complete references, while retaining selectors permits grant rotation.
 
 Hermes uses an [explicit effective profile](../../crates/integrations/src/agents/hermes/README.md)
 and one default main-model Plan. Desktop keeps Hermes in the common Agent list;
@@ -94,6 +97,10 @@ image and trusted helper handles. UNC and device aliases remain outside this con
 capture output in private files and retain the process Job until all owned tools
 stop. Follow those owners for shell, environment, timeout or background-session
 differences rather than duplicating ecosystem lifecycle code.
+OpenCode's isolated collaboration probe pins the system Windows PowerShell and
+quotes the public CLI for that shell. The native tool ID `bash` does not imply
+Git Bash. Its npm locator uses the shared declared-producer reader after PATH
+resolution, then selects the unique native platform package without running a shim.
 
 The Windows [Qoder collaboration probe](../../crates/integrations/src/agents/qoder_probe.rs)
 retains the actual Skill directory and file before launching the client. Its

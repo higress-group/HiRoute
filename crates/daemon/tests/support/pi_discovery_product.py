@@ -91,6 +91,27 @@ def scan(product):
     return sources[0]['discovery']
 
 
+def opencode_local_credential_failures(models_path, controls):
+    """Native-readable keys outside the protected import reader's supported subset."""
+    value = json.loads(models_path.read_text())
+    template = value['provider']['native-source']
+    linked = controls / 'linked.key'
+    target = controls / 'link-target.key'
+    public = controls / 'public.key'
+    oversized = controls / 'oversized.key'
+    write_new(target, 'synthetic-linked-key')
+    linked.symlink_to(target)
+    write_new(public, 'synthetic-public-key')
+    public.chmod(0o644)
+    write_new(oversized, 'x' * (1024 * 1024 + 1))
+    for name, key in [('linked', linked), ('public', public), ('oversized', oversized)]:
+        provider = json.loads(json.dumps(template))
+        provider['options']['apiKey'] = '{file:' + str(key) + '}'
+        value['provider']['a-broken-' + name] = provider
+    models_path.write_text(json.dumps(value))
+    return (linked, target, public, oversized)
+
+
 def run(repository, candidate):
     global HARNESS
     HARNESS = os.environ.get('HIROUTE_PRODUCT_WORKER_HARNESS','pi')
@@ -128,6 +149,7 @@ def run(repository, candidate):
             write_new(models_path,json.dumps({'$schema':'https://opencode.ai/config.json','agent':{'title':{'disable':True},'summary':{'disable':True}},'provider':{'native-source':{'npm':'@ai-sdk/openai','options':{'baseURL':source.base_url},'models':{source.model:{'limit':{'context':16384,'output':4096}}}}}}))
             write_new(auth_path,json.dumps({'native-source':{'type':'api','key':source.token}}))
             changed_auth=json.dumps({'native-source':{'type':'api','key':'changed-native-key'}})
+            credential_context_paths = opencode_local_credential_failures(models_path, controls)
         elif HARNESS=='dsh':
             from dsh_native_context import encode_patch, source_credentials
             models_path = config/'profiles/web/cordis.patch.yml'
@@ -149,6 +171,12 @@ def run(repository, candidate):
         product.secrets.update((source.token, 'provider-fallback'))
         product.start()
         stage = 'public-scan-prepare-save'
+        if HARNESS == 'opencode':
+            items = control(product, 'ScanCompute', {})['data']['items']
+            blocked = [item for item in items if item['agent_id']=='agent_opencode_default'
+                and str(item.get('native_provider_id','')).startswith('a-broken-')]
+            assert len(blocked) == 3 and all(not row['inventory_eligible'] and not row.get('discovery') for row in blocked), 'one credential failure hid independent native sources'
+            report['provider_local_credential_failures_isolated'] = ['symlink', 'unsafe_permissions', 'oversized']
         discovery = scan(product)
         candidate_view = prepare(product, discovery, 'pi-source-prepare')
         assert prepare(product, discovery, 'pi-source-prepare') == candidate_view, 'prepare retry changed its candidate'

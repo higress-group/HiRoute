@@ -757,6 +757,33 @@ pub(super) fn pending_file_tail_retries_exact_operation(kind: AgentKindV1) {
     assert_eq!(model_status(&fixture)["state"], "pending");
     private_file(&fixture.native_config, &before);
     let request_body = json!({"schema":"hiroute.agent-settings-retry/v1","context_id":fixture.context,"operation_id":id});
+    if kind == AgentKindV1::OpenCode {
+        let resource = fixture
+            .native_config
+            .parent()
+            .unwrap()
+            .join("agents/late.md");
+        private_file(
+            &resource,
+            b"---\nmodel: daily/default\n---\nConcurrent native resource\n",
+        );
+        let resumed = fixture.service.dispatch_wire(request(
+            "ApplyAgentConnectionChange",
+            request_body.clone(),
+            None,
+        ));
+        assert!(
+            resumed.error.is_some()
+                || resumed
+                    .data
+                    .as_ref()
+                    .is_some_and(|data| data["state"] != "succeeded"),
+            "{resumed:?}"
+        );
+        assert_eq!(fs::read(&fixture.native_config).unwrap(), before);
+        assert_eq!(model_status(&fixture)["state"], "pending");
+        fs::remove_file(resource).unwrap();
+    }
     for _ in 0..2 {
         let resumed = fixture.service.dispatch_wire(request(
             "ApplyAgentConnectionChange",

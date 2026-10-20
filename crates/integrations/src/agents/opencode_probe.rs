@@ -1,6 +1,6 @@
 //! Explicit native Skill/CLI check. Reuses the shared Responses peer and owned process scope.
 use super::qoder_probe::{
-    QoderCollaborationProbeTarget as Target, cli_baseline, cli_command, confirmed_skill, skill_body,
+    QoderCollaborationProbeTarget as Target, cli_baseline, confirmed_skill, skill_body,
 };
 use super::{OpenCodeNativeContext, QoderNativeError, qoder_error};
 use hiroute_domain::{
@@ -149,16 +149,16 @@ impl OpenCodeCollaborationProbe {
         let mut nonce = [0u8; 16];
         getrandom::fill(&mut nonce).map_err(|_| fail())?;
         let token = nonce.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let (shell, cli_command) = probe_shell_command(&cli, &token)?;
         let mut challenge = Challenge {
             name,
             directory: directory.to_str().ok_or_else(fail)?.into(),
             body: skill_body(&content)?,
-            command: cli_command(&cli)?,
+            command: cli_command,
             expected_cli: cli_baseline(&cli, &root_path)?,
             nonce: token.clone(),
             step: 0,
         };
-        challenge.command = format!("{}; printf '%s' '{}'", challenge.command, challenge.nonce);
         let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| fail())?;
         listener.set_nonblocking(true).map_err(|_| fail())?;
         let provider = super::opencode_provider(
@@ -175,7 +175,10 @@ impl OpenCodeCollaborationProbe {
         let selector = format!("hiroute-native-probe/{MODEL}");
         let permission = json!({"*":"deny","skill":"allow","bash":"allow","external_directory":"allow","doom_loop":"allow"});
 
-        let overlay = json!({"$schema":"https://opencode.ai/config.json","provider":{"hiroute-native-probe":provider},"model":selector,"small_model":selector,"default_agent":"hiroute-check","enabled_providers":["hiroute-native-probe"],"agent":{"hiroute-check":{"mode":"primary","model":selector,"permission":permission},"title":{"model":selector,"disable":true},"summary":{"model":selector,"disable":true},"compaction":{"model":selector,"disable":true}},"permission":permission,"skills":{"paths":[directory]},"share":"disabled","autoupdate":false,"lsp":false,"formatter":false});
+        let mut overlay = json!({"$schema":"https://opencode.ai/config.json","provider":{"hiroute-native-probe":provider},"model":selector,"small_model":selector,"default_agent":"hiroute-check","enabled_providers":["hiroute-native-probe"],"agent":{"hiroute-check":{"mode":"primary","model":selector,"permission":permission},"title":{"model":selector,"disable":true},"summary":{"model":selector,"disable":true},"compaction":{"model":selector,"disable":true}},"permission":permission,"skills":{"paths":[directory]},"share":"disabled","autoupdate":false,"lsp":false,"formatter":false});
+        if let Some(shell) = shell {
+            overlay["shell"] = json!(shell);
+        }
         let output =
             super::probe_files::file(&root_path.join("output.private")).map_err(|_| fail())?;
         let observer = output.try_clone().map_err(|_| fail())?;
@@ -304,6 +307,41 @@ impl OpenCodeCollaborationProbe {
         })
     }
 }
+
+fn probe_shell_command(
+    cli: &Path,
+    nonce: &str,
+) -> Result<(Option<PathBuf>, String), QoderNativeError> {
+    #[cfg(windows)]
+    {
+        // OpenCode's tool ID is `bash` even when it executes PowerShell/cmd.
+        // Pin the system shell for this private probe, independently of PATH.
+        let shell = hiroute_platform::windows::launcher::system_executable(Path::new(
+            "WindowsPowerShell/v1.0/powershell.exe",
+        ))
+        .map_err(|_| qoder_error("OpenCode probe shell"))?;
+        let cli = super::managed_launch::windows_executable_path(cli)
+            .map_err(|_| qoder_error("trusted CLI path"))?;
+        let path = cli
+            .to_str()
+            .ok_or_else(|| qoder_error("trusted CLI path"))?;
+        let path = path.replace('\'', "''");
+        Ok((
+            Some(shell),
+            format!(
+                "$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; & '{path}' schema list --output json; if ($LASTEXITCODE -ne 0) {{ exit $LASTEXITCODE }}; Write-Output '{nonce}'"
+            ),
+        ))
+    }
+    #[cfg(not(windows))]
+    Ok((
+        None,
+        format!(
+            "{} && printf '%s' '{nonce}'",
+            super::qoder_probe::cli_command(cli)?
+        ),
+    ))
+}
 fn dependencies(
     executable: &Path,
     native: &OpenCodeNativeContext,
@@ -409,4 +447,92 @@ impl Challenge {
 }
 fn function(suffix: &str, name: &str, args: Value) -> Value {
     json!({"id":format!("fc_hiroute_{suffix}"),"type":"function_call","status":"completed","call_id":format!("call_hiroute_{suffix}"),"name":name,"arguments":args.to_string()})
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn opencode_probe_cli_shell_preserves_literal_paths_and_requires_success_for_nonce() {
+        let root = tempfile::tempdir().unwrap();
+        let cli = root.path().join("CLI ' space $(literal); & hiroute");
+        let nonce = "0123456789abcdef";
+        for exit in [0, 7] {
+            std::fs::write(
+                &cli,
+                format!("#!/bin/sh\nprintf '%s' 'actual-cli-receipt'\nexit {exit}\n"),
+            )
+            .unwrap();
+            std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let (shell, command) = probe_shell_command(&cli, nonce).unwrap();
+            assert!(shell.is_none());
+            let output = Command::new("/bin/sh")
+                .args(["-c", &command])
+                .output()
+                .unwrap();
+            assert_eq!(output.status.success(), exit == 0);
+            let output = String::from_utf8(output.stdout).unwrap();
+            assert!(output.starts_with("actual-cli-receipt"));
+            assert_eq!(output.ends_with(nonce), exit == 0);
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use base64::Engine;
+
+    #[test]
+    fn windows_opencode_probe_pins_system_powershell_and_parses_cli_as_literal_argv() {
+        let root = super::super::probe_files::temporary("hiroute-opencode-shell-").unwrap();
+        let cli = root.path().join("CLI 中文 ' $() & percent% literal.exe");
+        std::fs::write(&cli, b"parser-only fixture").unwrap();
+        let (shell, script) = probe_shell_command(&cli, "0123456789abcdef").unwrap();
+        let shell = shell.unwrap();
+        assert_eq!(
+            shell,
+            hiroute_platform::windows::launcher::system_executable(Path::new(
+                "WindowsPowerShell/v1.0/powershell.exe"
+            ))
+            .unwrap()
+        );
+        let parser = r#"[Console]::OutputEncoding=[Text.Encoding]::UTF8; $tokens=$null; $errors=$null; $ast=[System.Management.Automation.Language.Parser]::ParseInput($env:HIROUTE_TEST_COMMAND,[ref]$tokens,[ref]$errors); if($errors.Count -ne 0){exit 1}; $calls=@($ast.FindAll({param($node) $node -is [System.Management.Automation.Language.CommandAst] -and $node.InvocationOperator -eq 'Ampersand'},$true)); if($calls.Count -ne 1){exit 2}; @($calls[0].CommandElements | ForEach-Object {if($_ -is [System.Management.Automation.Language.StringConstantExpressionAst]){$_.Value}else{$_.Extent.Text}}) | ConvertTo-Json -Compress"#;
+        let payload = base64::engine::general_purpose::STANDARD.encode(
+            parser
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<_>>(),
+        );
+        let mut command = Command::new(shell);
+        command
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-EncodedCommand",
+                &payload,
+            ])
+            .env("HIROUTE_TEST_COMMAND", script);
+        let output =
+            super::super::windows_runtime::bounded(&command, true, Duration::from_secs(10), 8192)
+                .unwrap();
+        let text = std::str::from_utf8(&output)
+            .unwrap()
+            .trim_start_matches('\u{feff}');
+        let args: Vec<String> = serde_json::from_str(text).unwrap();
+        let expected = super::super::managed_launch::windows_executable_path(&cli).unwrap();
+        assert_eq!(
+            args,
+            [
+                expected.to_str().unwrap(),
+                "schema",
+                "list",
+                "--output",
+                "json"
+            ]
+        );
+    }
 }

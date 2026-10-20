@@ -239,6 +239,69 @@ mod tests {
     use super::*;
 
     #[test]
+    fn opencode_startup_rejects_rewritable_schema_without_touching_borrowed_files() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().canonicalize().unwrap();
+        let native =
+            hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
+        std::fs::create_dir_all(&native.config_root).unwrap();
+        for schema in [
+            "",
+            "{env:HIROUTE_UNSET_SCHEMA}",
+            "{file:schema.txt}",
+            "https://opencode.ai/config.json",
+        ] {
+            let bytes = serde_json::to_vec(&json!({"$schema":schema})).unwrap();
+            std::fs::write(native.model_target(), &bytes).unwrap();
+            let config = native.read_config(Some(&home)).unwrap();
+            let admission = StartupAdmission {
+                native: native.clone(),
+                config_digest: config.digest.clone(),
+                migrations: &["known"],
+            };
+            assert_eq!(
+                admission.validate(&home, true).is_ok(),
+                schema == "https://opencode.ai/config.json",
+                "{schema}"
+            );
+            assert_eq!(std::fs::read(native.model_target()).unwrap(), bytes);
+            assert!(!native.database.exists());
+        }
+    }
+
+    #[test]
+    fn opencode_startup_refuses_incomplete_ancestry_before_native_tool_loading() {
+        for git in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let home = root.path().canonicalize().unwrap();
+            let project = home.join("project");
+            std::fs::create_dir_all(project.join(".opencode/tools")).unwrap();
+            if git {
+                std::fs::create_dir(project.join(".git")).unwrap();
+            }
+            let tool = project.join(".opencode/tools/custom.ts");
+            let content = b"throw new Error('must never be imported')";
+            std::fs::write(&tool, content).unwrap();
+            let native =
+                hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
+            let config = native.read_config(Some(&home)).unwrap();
+            let admission = StartupAdmission {
+                native: native.clone(),
+                config_digest: config.digest.clone(),
+                migrations: &["known"],
+            };
+            let deep = (0..65).fold(project, |path, _| path.join("d"));
+            std::fs::create_dir_all(&deep).unwrap();
+            assert_eq!(
+                admission.validate(&deep, true),
+                Err(DelegationErrorV1::CapabilityUnavailable)
+            );
+            assert_eq!(std::fs::read(tool).unwrap(), content);
+            assert!(!native.database.exists());
+        }
+    }
+
+    #[test]
     fn opencode_startup_rechecks_configuration_and_missing_continue_history() {
         let root = tempfile::tempdir().unwrap();
         let home = root.path().canonicalize().unwrap();

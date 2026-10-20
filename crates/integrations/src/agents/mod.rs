@@ -64,6 +64,7 @@ mod observed_capabilities;
 mod opencode;
 mod opencode_installation;
 mod opencode_migrations;
+mod opencode_resources;
 mod opencode_sources;
 #[cfg(test)]
 mod opencode_tests;
