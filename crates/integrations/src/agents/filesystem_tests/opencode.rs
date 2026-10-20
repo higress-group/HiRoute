@@ -33,7 +33,10 @@ fn opencode_provider_credential_failures_do_not_hide_independent_sources_or_rela
         use std::os::unix::fs::{PermissionsExt, symlink};
         std::fs::write(&secret, b"native-public-key").unwrap();
         std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o000)).unwrap();
-        assert_independent_source(&scanner);
+        if std::fs::read(&secret).is_err() {
+            // Root may bypass POSIX read permissions; exercise a real read denial.
+            assert_independent_source(&scanner);
+        }
         std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
         std::fs::remove_file(&secret).unwrap();
         let target = root.path().join("target.key");

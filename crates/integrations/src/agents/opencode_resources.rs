@@ -2,7 +2,7 @@
 //! These borrowed resources are never rewritten or interpreted as an executable config.
 use super::{AgentFilesystemScanError as Error, OpenCodeNativeContext};
 use hiroute_domain::CanonicalDigest;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub(super) struct ModelReferences {
     pub models: Vec<String>,
