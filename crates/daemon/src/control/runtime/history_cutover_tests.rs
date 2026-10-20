@@ -20,7 +20,18 @@ fn production_startup_seals_old_history_and_preserves_the_new_generation_on_rest
             options,
         )
     };
-    drop(open(Default::default()).unwrap());
+    let original = open(Default::default()).unwrap();
+    original
+        .observation
+        .register_agent_grant(
+            &WorkspaceId::default(),
+            "original-grant",
+            1,
+            "original-connection",
+            "agent_codex_default",
+        )
+        .unwrap();
+    drop(original);
     let key = fs::read(root.join("observation-hmac-key")).unwrap();
     let old_db = root.join("observation/activity.db");
     let db = Connection::open(&old_db).unwrap();
@@ -73,9 +84,26 @@ fn production_startup_seals_old_history_and_preserves_the_new_generation_on_rest
         .unwrap(),
         "original-history"
     );
+    assert_attribution_tables(&db);
+    assert_eq!(grant_count(&db, "original-grant"), 1);
     drop(db);
     assert_eq!(fs::read(root.join("observation-hmac-key")).unwrap(), key);
     assert!(!root.join("observation/original-object").exists());
+    {
+        let current = Connection::open(&old_db).unwrap();
+        assert_attribution_tables(&current);
+        assert_eq!(grant_count(&current, "original-grant"), 0);
+    }
+    runtime
+        .observation
+        .register_agent_grant(
+            &WorkspaceId::default(),
+            "current-grant",
+            2,
+            "current-connection",
+            "agent_claude_default",
+        )
+        .unwrap();
     assert_eq!(
         runtime
             .observation
@@ -133,6 +161,8 @@ fn production_startup_seals_old_history_and_preserves_the_new_generation_on_rest
         .unwrap(),
         "new-current-history"
     );
+    assert_attribution_tables(&db);
+    assert_eq!(grant_count(&db, "current-grant"), 1);
     assert_eq!(fs::read(root.join("observation-hmac-key")).unwrap(), key);
     drop(db);
     runtime.observation.set_capacity_limit(None).unwrap();
@@ -146,4 +176,28 @@ fn production_startup_seals_old_history_and_preserves_the_new_generation_on_rest
             .max_active_bytes,
         None
     );
+}
+
+fn assert_attribution_tables(db: &Connection) {
+    let count: u64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type='table'
+             AND name IN ('observation_agent_grants_v1','observation_session_agents_v1')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        count, 2,
+        "both attribution tables belong to their source generation"
+    );
+}
+
+fn grant_count(db: &Connection, grant: &str) -> u64 {
+    db.query_row(
+        "SELECT COUNT(*) FROM observation_agent_grants_v1 WHERE grant_id=?1",
+        [grant],
+        |row| row.get(0),
+    )
+    .unwrap()
 }

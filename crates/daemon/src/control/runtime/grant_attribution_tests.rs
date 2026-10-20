@@ -202,7 +202,7 @@ fn startup_missing_provenance_is_unlinked_while_activation_stays_strict() {
         return;
     }
     let (root, runtime, historical, current, grant, plan) = configured();
-    let (operation, publication) = {
+    let (mut operation, publication) = {
         let stores = runtime.adapter.stores_lock().unwrap();
         (
             stores.control().load_operation(&current).unwrap().unwrap(),
@@ -226,28 +226,24 @@ fn startup_missing_provenance_is_unlinked_while_activation_stays_strict() {
     let runtime = open_with_scanner(root.path(), scanner);
     runtime.adapter.restore_active_publication().unwrap();
     runtime.adapter.reconcile_startup_and_open().unwrap();
-    runtime.adapter.finish_startup_publication_recovery().unwrap();
+    runtime
+        .adapter
+        .finish_startup_publication_recovery()
+        .unwrap();
     record_attributed_session(&runtime, &grant, "missing-current-proof", &plan);
     assert_unlinked_session(&runtime, "missing-current-proof");
 
-    // A later authenticated settings transaction can establish attribution without
-    // repairing or trusting either rejected historical journal.
-    let service = LocalControlDaemon::new(ApplicationService::new(runtime.application_ports()));
-    apply(
-        &service,
-        &runtime,
-        operation.plan.spec().desired_state.clone(),
-        "attribution-new-proof",
-    );
-    let current_grant = runtime
+    // Restore the fixture's original authenticated completed journal. Attribution
+    // can now be registered, but that cannot relabel the earlier unlinked session.
+    runtime
         .adapter
         .stores_lock()
         .unwrap()
-        .secrets()
-        .inspect_agent_access_grant(WorkspaceId::DEFAULT, grant.connection_id())
-        .unwrap()
+        .control()
+        .save_operation(&mut operation)
         .unwrap();
-    record_attributed_session(&runtime, &current_grant, "new-current-proof", &plan);
+    runtime.adapter.restore_active_publication().unwrap();
+    record_attributed_session(&runtime, &grant, "new-current-proof", &plan);
     assert_attributed_session(&runtime, "new-current-proof");
     assert_unlinked_session(&runtime, "missing-current-proof");
 }
@@ -302,6 +298,15 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
         .control()
         .save_operation(&mut operation)
         .unwrap();
+    // Unlike a parked file tail, a real crash before the service receipt still
+    // holds the writer claim. Recreate that part of the isolated crash fixture.
+    runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .reclaim_operation_writer(&current)
+        .unwrap();
     clear_grant_mappings(root.path());
     let scanner = runtime.adapter.scanner.clone();
     drop(runtime);
@@ -310,7 +315,10 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
     record_attributed_session(&runtime, &grant, "before-service-recovery", &plan);
     assert_unlinked_session(&runtime, "before-service-recovery");
     runtime.adapter.reconcile_startup_and_open().unwrap();
-    runtime.adapter.finish_startup_publication_recovery().unwrap();
+    runtime
+        .adapter
+        .finish_startup_publication_recovery()
+        .unwrap();
     assert_eq!(
         runtime
             .adapter
