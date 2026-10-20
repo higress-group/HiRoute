@@ -612,6 +612,29 @@ HiRoute SHALL configure Hermes with a compact recognizable managed-provider iden
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/125#issuecomment-6219938656
 
+### Requirement: Previous routing is an ordinary scoped edit, separate from Restore
+
+Return to previous routing MUST follow the succeeded configuration journal chain
+within the current Agent context, including Codex's active root/profile slot. For
+each selected preset it skips unchanged resolved mappings and finds the mapping
+before that preset's latest change. Only selected presets are overlaid on current
+settings; unrelated presets retain their current mappings. This produces a draft
+for normal Preview/Apply, with manual-edit checks and no deletion of Plans/evidence.
+
+Traversal is bounded to 128 configurations and detects cycles. Missing history,
+context mismatch, a non-succeeded entry or the traversal bound yields an explicit
+unavailable reason. None is evidence of a previous native configuration. Restore
+to native remains a separate labelled action with its existing ownership rules.
+
+#### Scenario: Sonnet changes after the Opus trial starts
+
+- **WHEN** Opus is mapped to a trial and a later configuration changes only Sonnet
+- **THEN** returning Opus skips the unchanged Opus entry and restores its earlier
+  mapping while preserving the later Sonnet choice.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235502571
+
 ### Requirement: OpenCode discovery preserves exact native context and scoped capabilities
 
 HiRoute MUST recognize OpenCode as an explicit Agent identity and selectable native ACP Harness through existing Desktop and public CLI surfaces on macOS, Linux and native Windows. Passive discovery MUST use bounded installation/configuration metadata without launching OpenCode, executing shims, authenticating, downloading, changing native files or making model requests. It MUST distinguish executable discovery, model-configuration capability, collaboration capability and Worker execution/Continue capability. It MUST resolve the selected context using native HOME/XDG and explicit OpenCode configuration-root semantics without guessing another account from executable location. An explicit selected installation remains selected when missing or unusable; no automatic candidate substitution is permitted. Worker selection uses the native OpenCode CLI, not a fictitious separate ACP adapter. Platform-specific launch dependencies MUST be explicit where the actual installation form requires them. Normal configuration actions MUST reuse the shared enable/edit/restore and Operation flow rather than introduce a separate OpenCode setup or verification workflow.
@@ -660,29 +683,6 @@ HiRoute MUST configure explicitly selected published Plan aliases as supplementa
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258609244
-
-### Requirement: Previous routing is an ordinary scoped edit, separate from Restore
-
-Return to previous routing MUST follow the succeeded configuration journal chain
-within the current Agent context, including Codex's active root/profile slot. For
-each selected preset it skips unchanged resolved mappings and finds the mapping
-before that preset's latest change. Only selected presets are overlaid on current
-settings; unrelated presets retain their current mappings. This produces a draft
-for normal Preview/Apply, with manual-edit checks and no deletion of Plans/evidence.
-
-Traversal is bounded to 128 configurations and detects cycles. Missing history,
-context mismatch, a non-succeeded entry or the traversal bound yields an explicit
-unavailable reason. None is evidence of a previous native configuration. Restore
-to native remains a separate labelled action with its existing ownership rules.
-
-#### Scenario: Sonnet changes after the Opus trial starts
-
-- **WHEN** Opus is mapped to a trial and a later configuration changes only Sonnet
-- **THEN** returning Opus skips the unchanged Opus entry and restores its earlier
-  mapping while preserving the later Sonnet choice.
-
-Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235502571
 
 ## Implementation references
 

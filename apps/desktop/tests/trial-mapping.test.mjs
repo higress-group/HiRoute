@@ -4,6 +4,14 @@ import { currentPrimary, trialMappingValues, initialTrialMapping } from '../src/
 import { agentEditorSeed, editorFingerprint } from '../src/features/agents/editor-state.ts';
 const native = { agent_id:'agent_claude_default', context_id:'claude/context', status_error:null, settings:{state:'not_configured'} };
 const configured = { ...native, settings:{state:'configured',current_selection:{mode:'claude_launcher',surfaces:['claude_cli'],fixed_models:[],preset_mappings:{opus:{kind:'plan',plan_id:'primary'},sonnet:{kind:'plan',plan_id:'separate'},haiku:{kind:'preserve_native'}}}} };
+for(const ecosystem of ['dsh','pi','qoder','opencode']) test(`${ecosystem} trial appends its route while retaining existing protocols`,()=>{
+ const agent={...native,agent_id:`agent_${ecosystem}_default`,context_id:`${ecosystem}/context`,settings:{state:'configured',current_selection:{mode:`${ecosystem}_additional`,allowed_plan_ids:['original'],plan_protocols:{original:'messages'}}}};
+ const before=structuredClone(agent);
+ const values=trialMappingValues(agent,'trial',{agentId:agent.agent_id,presets:[]});
+ assert.deepEqual(values.allowedPlanIds,['original','trial']);
+ assert.deepEqual(values.planProtocols,{original:'messages',trial:'responses'});
+ assert.deepEqual(agent,before);
+});
 test('first Claude trial maps only the explicitly selected Opus preset',()=>{
  const values=trialMappingValues(native,'trial',{agentId:native.agent_id,presets:['opus']});
  assert.deepEqual(values.claudePresets,{opus:{kind:'plan',plan_id:'trial'},sonnet:{kind:'preserve_native'},haiku:{kind:'preserve_native'}});

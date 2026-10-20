@@ -34,7 +34,7 @@ export function trialMappingValues(agent: Agent, planId: string, mapping: TrialM
     return { ...values, claudePresets: { ...values.claudePresets, ...Object.fromEntries(mapping.presets.map(preset => [preset, { kind: 'plan', plan_id: planId }])) } };
   }
   if (ecosystem === 'codex') return { ...values, allowedPlanIds: [...new Set([...values.allowedPlanIds, planId])], defaultChoice: { kind: 'plan' as const, plan_id: planId } };
-  if (['dsh', 'pi', 'qoder'].includes(ecosystem ?? '')) return { ...values, allowedPlanIds: [...new Set([...values.allowedPlanIds, planId])], planProtocols: { ...values.planProtocols, [planId]: 'responses' as const } };
+  if (['dsh', 'pi', 'qoder', 'opencode'].includes(ecosystem ?? '')) return { ...values, allowedPlanIds: [...new Set([...values.allowedPlanIds, planId])], planProtocols: { ...values.planProtocols, [planId]: 'responses' as const } };
   throw new Error('AGENT_UNSUPPORTED');
 }
 
