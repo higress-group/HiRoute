@@ -92,7 +92,7 @@ export function qualityModelRows(configured: readonly PlanQualityModel[], summar
 
 export function qualityBranchLabel(branch: string, language: 'zh' | 'en'): string {
   const labels: Record<string, [string, string]> = {
-    smart_saving: ['智能省钱', 'Smart saving'],
+    smart_saving: ['按难度分流', 'Difficulty routing'],
     fixed: ['固定候选', 'Fixed candidates'],
     fixed_model: ['固定候选', 'Fixed candidates'],
     free: ['免费候选', 'Free candidates'],
@@ -106,6 +106,7 @@ export function qualityBranchLabel(branch: string, language: 'zh' | 'en'): strin
 
 export function qualityReasoningLabel(profile: string | null | undefined, language: 'zh' | 'en'): string {
   if (profile && /^budget-[0-9]+$/.test(profile)) return profile.slice(7) + ' tokens';
+  if (profile === 'provider-default') return language === 'zh' ? '模型默认思考' : 'Model default reasoning';
   // Native authored profile names are readable; a digest/path is diagnostic only.
   if (profile && profile.length <= 32 && /^[a-zA-Z][a-zA-Z0-9 _-]*$/.test(profile)) return profile;
   return language === 'zh' ? '推理配置未记录' : 'Reasoning configuration unrecorded';
@@ -122,8 +123,7 @@ export function qualityNativeModelName(nativeModel: string): string {
 
 export function qualityGroupLabel(branch: string, group: 'regular' | 'primary' | null | undefined, language: 'zh' | 'en'): string {
   if (!group) return language === 'zh' ? '模型组未记录' : 'Model group unrecorded';
-  return group === 'primary' ? (language === 'zh' ? '主力' : 'Primary')
-    : branch === 'smart_saving' ? (language === 'zh' ? '省钱' : 'Economy') : (language === 'zh' ? '常规' : 'Regular');
+  return group === 'primary' ? (language === 'zh' ? '主力' : 'Primary') : (language === 'zh' ? '常规' : 'Regular');
 }
 export function qualityRowSection(row: QualityModelRow): string {
   return JSON.stringify([row.branch, row.summary?.execution.group ?? row.configured?.group ?? null]);

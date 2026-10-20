@@ -1,6 +1,45 @@
 use super::*;
 
 #[test]
+fn trust_task_population_includes_tasks_without_model_execution_and_binds_creation_scope() {
+    let root = crate::test_tempdir().unwrap();
+    let store = open(root.path());
+    let input = sample("task-trust", "run-trust", "trust-root");
+    store.accept(&input).unwrap();
+    let population = store
+        .trust_task_population(&input.task.workspace_id, "plan", Some(1), 0, 10)
+        .unwrap();
+    assert!(!population.over_limit);
+    assert_eq!(population.tasks.len(), 1);
+    assert_eq!(population.tasks[0].state, RunStateV1::Accepted);
+    assert_eq!(population.tasks[0].ordinal, 1);
+    assert!(
+        store
+            .trust_task_population(&input.task.workspace_id, "plan", Some(2), 0, 10)
+            .unwrap()
+            .tasks
+            .is_empty()
+    );
+    assert!(
+        store
+            .trust_task_population(&input.task.workspace_id, "plan", None, 2, 10)
+            .unwrap()
+            .tasks
+            .is_empty()
+    );
+    drop(store);
+    let reopened = open(root.path());
+    assert_eq!(
+        reopened
+            .trust_task_population(&input.task.workspace_id, "plan", None, 0, 10)
+            .unwrap()
+            .tasks
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn latest_run_listing_pages_the_continued_run_once_and_survives_reopen() {
     let dir = crate::test_tempdir().unwrap();
     let workspace = WorkspaceId::parse("workspace").unwrap();

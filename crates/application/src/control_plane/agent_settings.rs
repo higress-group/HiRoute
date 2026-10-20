@@ -346,3 +346,32 @@ pub(crate) fn status(
         Err(error) => failed(map_control_error(error), request.request_id),
     }
 }
+
+/// Read-only draft recovery. The ordinary settings preview must still admit every effect.
+pub(crate) fn previous_routing(
+    service: &ApplicationService,
+    request: LocalControlRequestV2,
+) -> MachineEnvelopeV2<Value> {
+    if request.protected_grant.is_some() {
+        return failed(ErrorCode::CapabilityDenied, request.request_id);
+    }
+    let query: hiroute_application_api::AgentPreviousRoutingQueryV1 =
+        match serde_json::from_value(request.payload) {
+            Ok(query) => query,
+            Err(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
+        };
+    let Some(ports) = &service.ports else {
+        return failed(ErrorCode::DaemonUnavailable, request.request_id);
+    };
+    let Some(connection) = ports.agent_connection.as_deref() else {
+        return failed(ErrorCode::DaemonUnavailable, request.request_id);
+    };
+    match crate::agent_connection::preview_previous_routing(
+        connection,
+        ports.control.as_ref(),
+        &query,
+    ) {
+        Ok(preview) => succeeded(preview, request.request_id),
+        Err(error) => failed(map_control_error(error), request.request_id),
+    }
+}

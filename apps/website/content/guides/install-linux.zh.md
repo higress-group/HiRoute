@@ -131,6 +131,29 @@ hiroute worker exec \
 
 网络或进程中断后，不要换一个 key 盲目重试。保留原 `submission-key`，使用 `worker status --submission ... --operation start` 查询是否已接收。
 
+## 模型信息更新
+
+支持模型 Feed 的版本会由本机服务自动从 `hiroute.ai` 获取经过校验的模型信息。
+桌面端、网页控制台和独立服务共用这个设置。请求不携带账号、安装或用量标识，
+获取信息不会调用模型或测试连接。首次发布前，服务继续使用内置模型目录。
+
+查看当前副本或手动刷新：
+
+```sh
+hiroute models feed status --output json
+hiroute models feed refresh --output json
+```
+
+关闭自动获取：
+
+```sh
+hiroute models feed settings apply --retrieval off
+```
+
+关闭后会保留服务已验证的副本。可在“模型 → 模型 Feed → 移除副本”的预览中移除副本，
+并同时关闭自动获取。移除后，已发布计划仍使用发布时冻结的模型执行；新选择和默认价格
+以当前仍可用的模型信息为准。
+
 ## 6. 卸载
 
 先停止服务，再运行同一份官方安装器的卸载入口：

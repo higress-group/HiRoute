@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-model-feed-remove-apply"
+description = "Enables the model_feed_remove_apply command without any pre-configured scope."
+commands.allow = ["model_feed_remove_apply"]
+
+[[permission]]
+identifier = "deny-model-feed-remove-apply"
+description = "Denies the model_feed_remove_apply command without any pre-configured scope."
+commands.deny = ["model_feed_remove_apply"]

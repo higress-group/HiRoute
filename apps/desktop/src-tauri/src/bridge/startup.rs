@@ -56,6 +56,8 @@ pub(super) fn start_session(
 pub struct StartupReport {
     state: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    storage_recovery: Option<hiroute_host_runtime::StorageRecovery>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
     recovery_available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -64,44 +66,56 @@ pub struct StartupReport {
     upgrade_phase: Option<hiroute_host_runtime::StorageUpgradePhase>,
 }
 
-fn complete_upgrade_backup(root: &std::path::Path) -> Option<PathBuf> {
-    // Select only known backup names and a portable owner-written batch identity.
-    // The WebView never supplies a filesystem path or restoration authority.
-    let parent = root.join("storage.upgrade-backups");
-    if let Ok(storage) =
-        hiroute_diagnostics::files::PrivateDir::open_existing(&root.join("storage"))
-        && let Ok(Some(mut file)) = storage.open_read("observation-source-backup.json")
-    {
-        if file.len() > 16 * 1024 {
-            return None;
-        }
-        let link: serde_json::Value =
-            serde_json::from_slice(&file.read_prefix(16 * 1024).ok()?).ok()?;
-        file.recheck().ok()?;
-        let name = link["backup_name"].as_str()?;
-        let id = link["set_id"].as_str()?;
-        if link["schema"] != 1
-            || !matches!(name, "migration-set" | "observation-format-5")
-            || id.is_empty()
-            || id.len() > 128
-            || id.contains("..")
-            || !id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
-        {
-            return None;
-        }
-        for candidate in [
-            parent.join(name),
-            parent.join(format!("migration-set.{id}")),
-        ] {
-            if let Some(path) = published_source(&candidate, Some(id)) {
-                return Some(path);
-            }
-        }
+fn published_backup(
+    root: &std::path::Path,
+    recovery: &hiroute_host_runtime::StorageRecovery,
+) -> Option<PathBuf> {
+    use hiroute_host_runtime::StorageRecoveryAction;
+    if !matches!(
+        recovery.action,
+        StorageRecoveryAction::ResumeCurrent | StorageRecoveryAction::RestoreCompleteGroup
+    ) {
         return None;
     }
-    published_source(&parent.join("migration-set"), None)
+    let name = recovery.backup_name.as_deref()?;
+    let id = recovery.backup_batch.as_deref()?;
+    let portable = |s: &str| {
+        !s.is_empty()
+            && s.len() <= 128
+            && !s.contains("..")
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+    };
+    if !portable(name) || !portable(id) {
+        return None;
+    }
+    // This target comes from the storage owner's verified failing batch, never
+    // from whichever old directory happens to be present.
+    published_source(&root.join("storage.upgrade-backups").join(name), Some(id))
+}
+
+fn recovery_for_failure(
+    code: &str,
+    root: Option<&std::path::Path>,
+) -> Option<hiroute_host_runtime::StorageRecovery> {
+    use hiroute_diagnostics::event::StartupFailureCode as Failure;
+    use hiroute_host_runtime::StorageRecovery;
+    let storage = root.map(|root| root.join("storage"));
+    let admission = match code {
+        "DAEMON_STORAGE_UNREADABLE" => Some(Failure::StorageUnavailable),
+        "DAEMON_UPGRADE_SOURCE_UNSUPPORTED" => Some(Failure::UpgradeSourceUnsupported),
+        "DAEMON_STORAGE_ACCESS_DENIED" => Some(Failure::StorageAccessDenied),
+        "DAEMON_STORAGE_KEY_UNAVAILABLE" => Some(Failure::StorageKeyUnavailable),
+        "DAEMON_STORAGE_LOCKED" => Some(Failure::StorageLocked),
+        _ => None,
+    };
+    if let Some(code) = admission {
+        return StorageRecovery::read_for_admission_failure(code, storage.as_deref());
+    }
+    if code == "DAEMON_UPGRADE_STORAGE_FAILED" {
+        return storage.and_then(|root| StorageRecovery::read(&root).ok().flatten());
+    }
+    None
 }
 
 fn published_source(batch: &std::path::Path, expected_id: Option<&str>) -> Option<PathBuf> {
@@ -141,24 +155,28 @@ pub async fn startup_status(
 ) -> Result<StartupReport, String> {
     super::main_window(&window)?;
     if let Some(code) = state.1.error.get() {
+        let recovery = recovery_for_failure(code, state.1.data_root.as_deref());
+        let backup_directory = state.1.data_root.as_deref().and_then(|root| {
+            recovery
+                .as_ref()
+                .and_then(|record| published_backup(root, record))
+        });
         return Ok(StartupReport {
             state: "failed",
+            storage_recovery: recovery,
             code: Some(code.clone()),
             recovery_available: state.1.data_root.as_ref().is_some_and(|root| {
                 root.is_absolute()
                     && hiroute_diagnostics::files::PrivateDir::open_existing(root).is_ok()
             }),
-            backup_directory: state
-                .1
-                .data_root
-                .as_deref()
-                .and_then(complete_upgrade_backup),
+            backup_directory,
             upgrade_phase: state.1.upgrade_progress.lock().ok().and_then(|p| *p),
         });
     }
     let ready = state.0.try_lock().is_ok_and(|session| session.is_some());
     Ok(StartupReport {
         state: if ready { "ready" } else { "starting" },
+        storage_recovery: None,
         code: None,
         recovery_available: false,
         backup_directory: None,
@@ -178,9 +196,7 @@ pub async fn open_startup_recovery_directory(
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
     super::main_window(&window)?;
-    if state.1.error.get().is_none() {
-        return Err("STARTUP_RECOVERY_NOT_REQUIRED".into());
-    }
+    let code = state.1.error.get().ok_or("STARTUP_RECOVERY_NOT_REQUIRED")?;
     let root = state
         .1
         .data_root
@@ -189,7 +205,11 @@ pub async fn open_startup_recovery_directory(
         .ok_or("PRIVATE_PATH_UNAVAILABLE")?;
     hiroute_diagnostics::files::PrivateDir::open_existing(&root)
         .map_err(|_| "PRIVATE_PATH_INVALID")?;
-    let directory = complete_upgrade_backup(&root).unwrap_or(root);
+    let recovery = recovery_for_failure(code, Some(&root));
+    let directory = recovery
+        .as_ref()
+        .and_then(|record| published_backup(&root, record))
+        .unwrap_or(root);
     super::diagnostics::open_in_file_manager(&directory)
         .map_err(|_| "STARTUP_RECOVERY_OPEN_FAILED".into())
 }
@@ -200,8 +220,21 @@ mod tests {
     use std::sync::atomic::Ordering;
     use std::time::Duration;
 
+    fn complete_upgrade_backup(root: &std::path::Path) -> Option<PathBuf> {
+        recovery_for_failure("DAEMON_UPGRADE_STORAGE_FAILED", Some(root))
+            .as_ref()
+            .and_then(|record| published_backup(root, record))
+    }
+
     #[test]
-    fn observation_source_locator_handles_large_manifests_and_rejects_another_batch() {
+    #[cfg(unix)]
+    fn observation_source_locator_requires_verified_material_and_rejects_another_batch() {
+        use sha2::{Digest, Sha256};
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let write = |path: PathBuf, bytes: &[u8]| {
+            std::fs::write(&path, bytes).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        };
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path();
         let storage = root.join("storage");
@@ -214,17 +247,76 @@ mod tests {
             br#"{"schema":1,"backup_name":"observation-format-5","set_id":"retained-batch"}"#,
         )
         .unwrap();
-        std::fs::write(
-            source.join("source-backup.json"),
-            vec![b' '; 5 * 1024 * 1024],
-        )
-        .unwrap();
+        let history = source.join("storage/observation");
+        hiroute_diagnostics::files::PrivateDir::open_or_create(&history).unwrap();
+        let mut files = serde_json::Map::new();
+        for name in [
+            "storage/live/control.db",
+            "storage/live/runtime.db",
+            "storage/live/secrets.db",
+            "storage/master-key",
+            "storage/observation-hmac-key",
+            "recovery-package/hirouted",
+        ] {
+            let path = source.join(name);
+            hiroute_diagnostics::files::PrivateDir::open_or_create(path.parent().unwrap()).unwrap();
+            write(path, b"retained original");
+            files.insert(
+                name.into(),
+                serde_json::json!(format!("sha256:{:x}", Sha256::digest(b"retained original"))),
+            );
+        }
+        let identity = std::fs::metadata(&history).unwrap();
+        for (path, value) in [
+            (
+                source.join("source-backup.json"),
+                serde_json::json!({"schema":"hiroute.upgrade-source-backup/v2","complete":true,"source_info":{"batch_id":"retained-batch"},"files":files,"sealed_observation":{"identity":[identity.dev(),identity.ino()]}}),
+            ),
+            (
+                batch.join("backup-set.manifest.json"),
+                serde_json::json!({"schema":"hiroute.sqlite-backup-set/v2","set_id":"retained-batch"}),
+            ),
+        ] {
+            write(path, &serde_json::to_vec(&value).unwrap());
+        }
         std::fs::write(
             batch.join("source-location.json"),
             br#"{"schema":1,"complete":true,"batch_id":"retained-batch"}"#,
         )
         .unwrap();
-        assert_eq!(complete_upgrade_backup(root), Some(source));
+        let mut recovery = hiroute_host_runtime::StorageRecovery::new(
+            hiroute_host_runtime::StorageRecoveryCause::MigrationFailed,
+            hiroute_host_runtime::StorageRecoveryAction::ResumeCurrent,
+        );
+        recovery.backup_name = Some("observation-format-5".into());
+        recovery.backup_batch = Some("retained-batch".into());
+        recovery.store(&storage).unwrap();
+        assert_eq!(complete_upgrade_backup(root), Some(source.clone()));
+        for code in [
+            "DAEMON_STORAGE_UNREADABLE",
+            "DAEMON_STORAGE_LOCKED",
+            "DAEMON_STORAGE_ACCESS_DENIED",
+            "DAEMON_GATEWAY_UNAVAILABLE",
+        ] {
+            assert!(
+                recovery_for_failure(code, Some(root))
+                    .as_ref()
+                    .and_then(|record| published_backup(root, record))
+                    .is_none(),
+                "a different current failure cannot offer an older report's recovery folder"
+            );
+        }
+        let mut verified = recovery.clone();
+        verified.cause = hiroute_host_runtime::StorageRecoveryCause::UnsupportedFormat;
+        verified.action = hiroute_host_runtime::StorageRecoveryAction::RestoreCompleteGroup;
+        verified.store(&storage).unwrap();
+        assert_eq!(
+            recovery_for_failure("DAEMON_UPGRADE_SOURCE_UNSUPPORTED", Some(root))
+                .as_ref()
+                .and_then(|record| published_backup(root, record)),
+            Some(source)
+        );
+        recovery.store(&storage).unwrap();
         std::fs::write(
             batch.join("source-location.json"),
             br#"{"schema":1,"complete":true,"batch_id":"different-batch"}"#,
@@ -261,7 +353,8 @@ mod tests {
             br#"{"schema":"hiroute.upgrade-source-backup/v1","complete":true}"#,
         )
         .unwrap();
-        assert_eq!(complete_upgrade_backup(&root), Some(backup.clone()));
+        // Directory/manifest existence alone never grants restoration authority.
+        assert_eq!(complete_upgrade_backup(&root), None);
         let other = backup.join("other.json");
         std::fs::rename(&manifest, &other).unwrap();
         symlink(&other, &manifest).unwrap();

@@ -1,6 +1,6 @@
 # Quickstart
 
-Choose macOS Desktop or Linux headless, connect model access and create the route you need: fixed model or smart saving directly. Smart saving can use explicitly selected local rules without an external decision service. Task delegation is independent.
+Choose macOS Desktop or Linux headless, connect model access and create the route you need: fixed model or difficulty routing directly. Difficulty routing can use explicitly selected local rules without an external decision service. Task delegation is independent.
 
 ## 1. Choose how to run HiRoute
 
@@ -13,7 +13,7 @@ Steps 2–5 below show the visual Desktop path. Linux users complete the corresp
 
 Run `hiroute quickstart` to inspect the current service, exact targets and reusable sources/Plans. Continue with `--context CONTEXT_ID --plan PLAN_ID`; for a specific Hermes profile, add `--hermes-root /ABSOLUTE/EFFECTIVE/ROOT`. The entry is read-only and shows missing choices and next commands.
 
-The main path is source → route → target Agent → native activation → matching request evidence. Existing Preview commands accept concise choices and `--apply-file PATH`, so callers do not hand-write a full editor or transfer digests. See [CLI Quickstart](/en/docs/cli/) for direct smart saving, adjustment, uncertain-response recovery and independent facet restoration. The same management Skill can run in any supported Agent and manage another target while leaving its own model native.
+The main path is source → route → target Agent → native activation → matching request evidence. Existing Preview commands accept concise choices and `--apply-file PATH`, so callers do not hand-write a full editor or transfer digests. See [CLI Quickstart](/en/docs/cli/) for direct difficulty routing, adjustment, uncertain-response recovery and independent facet restoration. The same management Skill can run in any supported Agent and manage another target while leaving its own model native.
 
 For model decisions, start with `hiroute decision services options` and reuse a suitable saved connection. Enter credentials in your own terminal through the hidden prompt, then let the management Agent continue saving, testing and binding the route. Never send keys in chat. See [CLI decision-service onboarding](/docs/cli/).
 
@@ -28,10 +28,10 @@ Check the connection, select the model you want HiRoute to use, and save it. “
 Open Smart routing and select New smart routing:
 
 1. Enter a name and purpose, such as “Daily development” and “Routine code changes.”
-2. Choose Fixed model with one candidate, or Smart saving with economy/primary groups and an explicit decision method.
+2. Choose Fixed model with one candidate, or Difficulty routing with regular/primary groups and an explicit decision method.
 3. Select Enable. Only published and enabled routes handle new requests.
 
-For further configuration, use Smart saving, Custom branches, or Free first in [Use smart model routing](/en/docs/model-routing/). When you need model judgment and stage assessment, add a built-in connection under Models → Decision models, or connect a self-hosted custom extension.
+For further configuration, use Difficulty routing, Custom branches, or Free first in [Use smart model routing](/en/docs/model-routing/). When you need model judgment and stage assessment, add a built-in connection under Models → Decision models, or connect a self-hosted custom extension.
 
 ## 4. Connect your agent
 

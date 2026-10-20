@@ -1,4 +1,4 @@
-//! Typed Task Scheduler COM boundary. No XML or PowerShell is generated.
+//! Typed Task Scheduler COM boundary. Recovery may export an owned native Task's XML.
 use std::io;
 use windows::Win32::Foundation::{VARIANT_BOOL, VARIANT_FALSE, VARIANT_TRUE};
 use windows::Win32::System::Com::{
@@ -234,6 +234,24 @@ pub fn autostart(definition: &Definition) -> io::Result<bool> {
             Err(error) => return Err(com_error(error)),
         };
         trigger_enabled(&registered)
+    })
+}
+
+/// Preserve the scheduler's actual registration for manual whole-group recovery.
+/// This reads only the exact owned Task; it never registers or generates a Task.
+pub fn recovery_xml(definition: &Definition) -> io::Result<Vec<u8>> {
+    definition.verify_image()?;
+    with_folder(definition, |folder, definition| unsafe {
+        let registered = owned_task(folder, definition)?;
+        let xml = registered.Xml().map_err(com_error)?.to_string();
+        if xml.is_empty() || xml.len() > 256 * 1024 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+        // Scheduler XML declares UTF-16. Preserve that encoding with a BOM so
+        // Task Scheduler and schtasks can import the retained file directly.
+        let mut bytes = vec![0xff, 0xfe];
+        bytes.extend(xml.encode_utf16().flat_map(u16::to_le_bytes));
+        Ok(bytes)
     })
 }
 
@@ -505,6 +523,18 @@ mod tests {
         let _remove = Remove(definition.clone());
         assert!(!autostart(&definition).unwrap());
         assert!(!active(&definition).unwrap());
+        let xml = recovery_xml(&definition).unwrap();
+        assert!(xml.starts_with(&[0xff, 0xfe]));
+        assert!(
+            String::from_utf16(
+                &xml[2..]
+                    .chunks_exact(2)
+                    .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                    .collect::<Vec<_>>()
+            )
+            .unwrap()
+            .contains("<Task")
+        );
         set_autostart(&definition, true).unwrap();
         assert!(autostart(&definition).unwrap());
         register(&definition, Some(&definition)).unwrap();
@@ -520,6 +550,7 @@ mod tests {
         let mut foreign = definition.clone();
         foreign.daemon = temporary.path().join("unowned/hirouted.exe");
         assert!(active(&foreign).is_err());
+        assert!(recovery_xml(&foreign).is_err());
         unregister(&definition).unwrap();
         assert!(!active(&definition).unwrap());
         assert!(!autostart(&definition).unwrap());

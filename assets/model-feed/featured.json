@@ -1,0 +1,17 @@
+[
+  {
+    "id": "update.deepseek.v4-1-flash.1017",
+    "kind": "model_update",
+    "model_configuration_id": "model.deepseek.v4-1-flash",
+    "headline": {
+      "en": "DeepSeek V4.1 Flash 1017",
+      "zh": "DeepSeek V4.1 Flash 1017"
+    },
+    "note": {
+      "en": "The DeepSeek official API was updated on October 17. Check with your connection provider to confirm which version it serves.",
+      "zh": "DeepSeek 官方 API 已于 10 月 17 日更新。其他接入服务是否同步该版本，请向对应服务核实。"
+    },
+    "links": [],
+    "included_on": "2026-10-19"
+  }
+]

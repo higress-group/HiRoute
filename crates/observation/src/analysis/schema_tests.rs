@@ -19,7 +19,12 @@ fn drop_triggers(db: &Connection) {
             .collect::<Result<Vec<_>, _>>()
             .unwrap()
     };
-    assert_eq!(names.len(), 13);
+    assert_eq!(names.len(), 14);
+    assert!(
+        names
+            .iter()
+            .any(|name| name == "analysis_dirty_session_agent_v1")
+    );
     for name in names {
         db.execute_batch(&format!("DROP TRIGGER {name}")).unwrap();
     }
@@ -49,18 +54,30 @@ fn compatible_core_writes_survive_atomic_auxiliary_table_and_trigger_replacement
         tx.commit().unwrap();
         // An unaware writer only executes core-table SQL. The installed trigger
         // must still notify the candidate without a Rust projection callback.
-        db.execute("DELETE FROM observation_analysis_dirty_v1", [])
-            .unwrap();
-        db.execute("UPDATE logical_requests SET finished_at_ms=finished_at_ms WHERE workspace_id=?1 AND request_id=?2",params![f.workspace.as_str(),f.request.as_str()]).unwrap();
-        assert_eq!(
-            db.query_row(
-                "SELECT COUNT(*) FROM observation_analysis_dirty_v1",
-                [],
-                |r| r.get::<_, u64>(0)
-            )
-            .unwrap(),
-            1
-        );
+        for (sql, identity) in [
+            (
+                "UPDATE logical_requests SET finished_at_ms=finished_at_ms WHERE workspace_id=?1 AND request_id=?2",
+                f.request.as_str(),
+            ),
+            (
+                "UPDATE sessions SET agent_id='agent_claude_default' WHERE workspace_id=?1 AND session_id=?2",
+                f.session.as_str(),
+            ),
+        ] {
+            db.execute("DELETE FROM observation_analysis_dirty_v1", [])
+                .unwrap();
+            db.execute(sql, params![f.workspace.as_str(), identity])
+                .unwrap();
+            assert_eq!(
+                db.query_row(
+                    "SELECT COUNT(*) FROM observation_analysis_dirty_v1",
+                    [],
+                    |r| r.get::<_, u64>(0)
+                )
+                .unwrap(),
+                1
+            );
+        }
     }
     let fresh = ingest(&store, "schema-after-replacement");
     let principal = ObservationPrincipalV1::local_user(fresh.workspace.clone());

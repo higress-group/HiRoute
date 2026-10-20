@@ -71,15 +71,18 @@ mod delegation_task_queries;
 mod delegation_tasks;
 mod delegation_worker;
 mod effects;
+mod grant_attribution;
 mod hermes_management_status;
 mod model_catalog;
 mod model_connections;
+mod model_feed;
 mod mutation;
 mod native_additional_model;
 mod native_claude_model;
 mod native_hermes;
 mod native_model;
 mod observation_key;
+mod trust;
 use observation_key::observation_workspace_key;
 mod plan_content;
 mod plan_content_snapshot;
@@ -335,11 +338,20 @@ impl ProductionControlRuntime {
         recover: bool,
         overrides: RuntimeOpenOverrides,
     ) -> Result<Self, String> {
-        observation_key::validate_existing_authority(storage_root)?;
+        observation_key::validate_existing_authority(storage_root).map_err(|error| {
+            overrides.storage_startup.report_failure(error.recovery());
+            error.to_string()
+        })?;
         let mut startup = overrides.storage_startup.clone();
         startup.preserve_observation_source =
             LocalObservationStore::legacy_history_requires_seal(storage_root.join("observation"))
-                .map_err(|error| format!("{error}; preserve all storage generations and use the original whole-group recovery guide"))?
+                .map_err(|error| {
+                    startup.report_failure(hiroute_host_runtime::StorageRecovery::new(
+                        hiroute_host_runtime::StorageRecoveryCause::UnsupportedFormat,
+                        hiroute_host_runtime::StorageRecoveryAction::PreserveAndDiagnose,
+                    ));
+                    format!("{error}; preserve all storage generations and use the original whole-group recovery guide")
+                })?
                 || LocalStorageSet::observation_cutover_pending(storage_root);
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress
@@ -353,6 +365,27 @@ impl ProductionControlRuntime {
             .begin_plan_version_recovery()
             .map_err(|error| error.to_string())?;
         release_install::activate_release_catalog_revisions(&stores, &release_catalog)?;
+        let feed_revisions = stores
+            .control()
+            .current_revisions(&WorkspaceId::default())
+            .map_err(|error| error.to_string())?
+            .dependencies;
+        let feed_generation = feed_revisions.get("feed.model_data").copied().unwrap_or(0);
+        let feed_sequence = feed_revisions.get("feed.sequence").copied().unwrap_or(0);
+        let model_feed = Arc::new(crate::model_feed::ModelFeedService::open(
+            storage_root,
+            release_catalog.clone(),
+            feed_generation,
+            feed_sequence,
+        )?);
+        stores
+            .control()
+            .activate_model_feed_generation(
+                &WorkspaceId::default(),
+                model_feed.current().generation,
+                model_feed.current().accepted_sequence,
+            )
+            .map_err(|error| error.to_string())?;
         let home = native_agent_home()?;
         let project = std::env::current_dir().map_err(|error| error.to_string())?;
         let mut scanner = match overrides.scanner {
@@ -597,7 +630,13 @@ impl ProductionControlRuntime {
             } else {
                 LocalObservationStore::open(observation_root, digest_authority.clone())
             }
-            .map_err(|error| error.to_string())?,
+            .map_err(|error| {
+                startup.report_failure(stores.record_observation_startup_failure(
+                    storage_root,
+                    hiroute_host_runtime::StorageRecoveryCause::MigrationFailed,
+                ));
+                error.to_string()
+            })?,
         );
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress
@@ -625,13 +664,19 @@ impl ProductionControlRuntime {
             delegation_finalization: delegation_finalization.clone(),
             scanner,
             artifacts,
-            release_catalog: Some(release_catalog),
+            catalog_fallback: model_feed::FallbackCatalog::new(release_catalog),
+            model_feed: Some(model_feed),
             protected_inputs: Mutex::new(BTreeMap::new()),
             manual_protected_inputs: Mutex::new(BTreeMap::new()),
             agent_token_inputs: Mutex::new(BTreeMap::new()),
             model_connections: hiroute_integrations::NativeModelConnectionServiceV1::new(
                 hiroute_application::compute_management::TrustedComputeCandidateRegistry::new(),
                 overrides.model_transport.unwrap_or_else(|| {
+                    #[cfg(feature = "integration-test-hooks")]
+                    {
+                        crate::model_feed::product_fixture::directory_transport()
+                    }
+                    #[cfg(not(feature = "integration-test-hooks"))]
                     Arc::new(hiroute_integrations::ReqwestModelDirectoryTransportV1)
                 }),
             ),
@@ -683,6 +728,7 @@ impl ProductionControlRuntime {
                 .finish_startup_publication_recovery()
                 .map_err(|error| error.to_string())?;
         }
+        model_feed::start_retrieval(&adapter);
         Ok(Self {
             _observation_maintenance:
                 hiroute_observation::maintenance::ObservationMaintenance::start_with_hook(
@@ -750,6 +796,7 @@ impl ProductionControlRuntime {
         .with_mutation(self.adapter.clone())
         .with_prices(self.adapter.clone())
         .with_model_catalog(self.adapter.clone())
+        .with_model_feed(self.adapter.clone())
         .with_compute_management(self.adapter.clone())
         .with_compute_routing(self.adapter.clone())
         .with_agent_connection(self.adapter.clone())
@@ -930,7 +977,8 @@ struct LocalControlAdapter {
     delegation_finalization: Arc<DelegationFinalization>,
     scanner: FilesystemAgentScannerV1,
     artifacts: ManagedArtifactStore,
-    release_catalog: Option<TrustedReleaseCatalog>,
+    catalog_fallback: model_feed::FallbackCatalog,
+    model_feed: Option<Arc<crate::model_feed::ModelFeedService>>,
     protected_inputs: Mutex<BTreeMap<String, DiscoveredCredentialRefV1>>,
     manual_protected_inputs: Mutex<BTreeMap<String, ProtectedSecret>>,
     agent_token_inputs: Mutex<BTreeMap<String, ProtectedSecret>>,
@@ -1214,6 +1262,66 @@ impl ControlStatePort for LocalControlAdapter {
             )
             .map_err(map_port)?;
         Ok(ControlReadAttempt::Ready(revisions.target))
+    }
+    fn trust_recovery_targets(
+        &self,
+        plan_id: &str,
+    ) -> Result<Vec<hiroute_application::agent_connection::PreviousRoutingTargetV1>, ControlReadError>
+    {
+        hiroute_application::agent_connection::previous_routing_targets(self, self, plan_id)
+    }
+
+    fn trust_plan_ids(&self, workspace: &WorkspaceId) -> Result<Vec<String>, ControlReadError> {
+        let stores = self.stores_lock().map_err(map_port)?;
+        let heads = stores
+            .control()
+            .plan_heads(workspace)
+            .map_err(|_| ControlReadError::Unavailable)?;
+        Ok(heads
+            .into_iter()
+            .filter(|h| h.status == hiroute_domain::PlanLifecycleV1::Enabled)
+            .map(|h| h.reference.plan_id.as_str().to_owned())
+            .collect())
+    }
+
+    fn trust_context(
+        &self,
+        workspace: &WorkspaceId,
+        plan_id: &str,
+    ) -> Result<hiroute_application::trust::context::TrustContextV1, ControlReadError> {
+        self.read_trust_context(workspace, plan_id)
+    }
+    fn trust_primary_bindings(
+        &self,
+        workspace: &WorkspaceId,
+        plan_id: &str,
+        revision: Option<u64>,
+        branch_id: Option<&str>,
+    ) -> Result<Vec<String>, ControlReadError> {
+        self.read_trust_primary_bindings(workspace, plan_id, revision, branch_id)
+    }
+    fn trust_task_population(
+        &self,
+        workspace: &WorkspaceId,
+        query: &hiroute_domain::TrustPopulationQueryV1,
+        from_ms: i64,
+        to_ms: i64,
+    ) -> Result<hiroute_domain::TrustTaskPopulationV1, ControlReadError> {
+        let stores = self.stores_lock().map_err(map_port)?;
+        stores
+            .runtime()
+            .trust_task_population(workspace, &query.plan_id, query.revision, from_ms, to_ms)
+            .map_err(|_| ControlReadError::Unavailable)
+    }
+    fn trust_runs(
+        &self,
+        workspace: &WorkspaceId,
+        ids: &[String],
+    ) -> Result<
+        std::collections::BTreeMap<String, hiroute_application::trust::context::TrustRunV1>,
+        ControlReadError,
+    > {
+        self.read_trust_runs(workspace, ids)
     }
 
     fn snapshot(

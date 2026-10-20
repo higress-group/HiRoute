@@ -39,11 +39,15 @@ pub(crate) fn migrate(db: &mut Connection) -> rusqlite::Result<()> {
             SELECT workspace_id,request_id,0 FROM observation_analysis_turns_v1 WHERE segment_id IS NULL;")?;
     }
     let mut rebuild_turns = false;
-    for column in ["first_request_id", "last_request_id"] {
+    for (column, declaration) in [
+        ("first_request_id", "TEXT"),
+        ("last_request_id", "TEXT"),
+        ("membership_conflict", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
         let present:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('observation_analysis_turns_v1') WHERE name=?1)",[column],|r|r.get(0))?;
         if !present {
             tx.execute_batch(&format!(
-                "ALTER TABLE observation_analysis_turns_v1 ADD COLUMN {column} TEXT;"
+                "ALTER TABLE observation_analysis_turns_v1 ADD COLUMN {column} {declaration};"
             ))?;
             rebuild_turns = true;
         }
@@ -51,7 +55,7 @@ pub(crate) fn migrate(db: &mut Connection) -> rusqlite::Result<()> {
     if rebuild_turns {
         tx.execute_batch(
             "INSERT OR IGNORE INTO observation_analysis_dirty_v1(workspace_id,request_id,sequence)
-            SELECT workspace_id,request_id,0 FROM observation_analysis_turns_v1;
+            SELECT workspace_id,request_id,0 FROM logical_requests;
             DELETE FROM observation_analysis_turns_v1;",
         )?;
     }
@@ -143,6 +147,17 @@ fn install_dirty_triggers(db: &Connection) -> rusqlite::Result<()> {
                 END;"))?;
         }
     }
+    // A newly authenticated grant or an Agent conflict changes every request's
+    // attribution in this session, including already projected requests.
+    db.execute_batch("CREATE TRIGGER IF NOT EXISTS analysis_dirty_session_agent_v1
+        AFTER UPDATE OF agent_id ON sessions WHEN OLD.agent_id!=NEW.agent_id
+        BEGIN
+          UPDATE observation_analysis_meta_v1 SET value=CAST(value AS INTEGER)+1 WHERE key='dirty_sequence';
+          INSERT INTO observation_analysis_dirty_v1(workspace_id,request_id,sequence)
+            SELECT workspace_id,request_id,(SELECT CAST(value AS INTEGER) FROM observation_analysis_meta_v1 WHERE key='dirty_sequence')
+            FROM logical_requests WHERE workspace_id=NEW.workspace_id AND session_id=NEW.session_id
+            ON CONFLICT(workspace_id,request_id) DO UPDATE SET sequence=excluded.sequence;
+        END;")?;
     // Preserve an actually observed typed deletion, including a later old
     // writer clearing the original tombstone. Absence is not deletion evidence.
     db.execute_batch("CREATE TRIGGER IF NOT EXISTS analysis_typed_delete_v1 AFTER INSERT ON observation_tombstones
@@ -223,6 +238,7 @@ CREATE TABLE IF NOT EXISTS observation_analysis_pricing_v1(
 CREATE TABLE IF NOT EXISTS observation_analysis_turns_v1(
  workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,agent_turn_id TEXT NOT NULL,
  ordinal INTEGER NOT NULL,producer_epoch TEXT NOT NULL,partial INTEGER NOT NULL,segment_id TEXT,first_request_id TEXT,last_request_id TEXT,
+ membership_conflict INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(workspace_id,request_id));
 CREATE TABLE IF NOT EXISTS observation_analysis_models_v1(
  workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,ordinal INTEGER NOT NULL,

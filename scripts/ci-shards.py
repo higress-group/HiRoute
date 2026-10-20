@@ -41,6 +41,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-cli", "desktop_locator"),
         ("hiroute-cli", "management_contracts"),
         ("hiroute-cli", "request_input"),
+        ("hiroute-cli", "routing_timeline_follow"),
         ("hiroute-cli", "service_proxy"),
         ("hiroute-cli", "transport_unavailable"),
         ("hiroute-cli", "work_plans"),

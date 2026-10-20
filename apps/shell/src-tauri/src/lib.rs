@@ -2,6 +2,9 @@
 use url::Url;
 #[cfg(any(test, all(windows, feature = "shell-runtime")))]
 mod handoff;
+#[cfg(any(test, all(windows, feature = "shell-runtime")))]
+#[path = "runtime/startup_failure.rs"]
+mod startup_failure;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConsoleOrigin(String);

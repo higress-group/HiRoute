@@ -18,6 +18,9 @@ static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[path = "branch_context_tests.rs"]
 mod branch_context;
 
+#[path = "opening_cause_tests.rs"]
+mod opening_cause;
+
 #[path = "accepted_output_tests.rs"]
 mod accepted_output;
 
@@ -240,7 +243,7 @@ fn appended_users_keep_distinct_history_when_reselection_is_off() {
             &request(messages.clone()),
             &replay,
             TurnDecisionInputs {
-                message_history_continues: true,
+                history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: false,
             },
             now + Duration::from_secs(1),
@@ -285,7 +288,7 @@ fn appended_users_keep_distinct_history_when_reselection_is_off() {
             &request(third_messages),
             &replay,
             TurnDecisionInputs {
-                message_history_continues: true,
+                history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
             now + Duration::from_secs(2),
@@ -657,7 +660,7 @@ fn rebuilt_context_does_not_attribute_shifted_old_result_to_reused_id() {
                 &request(rebuilt),
                 &replay,
                 TurnDecisionInputs {
-                    message_history_continues: false,
+                    history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
                 now,
@@ -727,7 +730,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
             &request(rebuilt_messages.clone()),
             &replay,
             TurnDecisionInputs {
-                message_history_continues: false,
+                history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                 reselect_on_user_message: true,
             },
             now + Duration::from_secs(1),
@@ -769,7 +772,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
             &request(rebuilt_messages),
             &replay,
             TurnDecisionInputs {
-                message_history_continues: true,
+                history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
             now + Duration::from_secs(2),
@@ -841,7 +844,7 @@ fn missing_candidate_preference_does_not_reselect_when_messages_continue() {
             &follow_up,
             &replay,
             TurnDecisionInputs {
-                message_history_continues: true,
+                history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: false,
             },
             now + Duration::from_secs(1),
@@ -1185,4 +1188,67 @@ fn pinned_snapshot_prevents_lru_eviction_until_the_request_releases_it() {
     assert!(inner.accounted_bytes <= budget);
     drop(inner);
     store.abort(&other_ticket);
+}
+
+#[test]
+fn completed_turn_preserves_its_opening_cause() {
+    use crate::context_hold::HistoryContinuity::{Continuing, NoCheckpoint, Rewritten, Shortened};
+    use hiroute_domain::AgentTurnOpeningCauseV1 as Cause;
+    let (_directory, replay) = replay();
+    let now = Instant::now();
+    for (continuity, next_plan, expected) in [
+        (Continuing, 1, Cause::UserMessage),
+        (Shortened, 1, Cause::HistoryShortened),
+        (Rewritten, 1, Cause::HistoryRewrite),
+        (NoCheckpoint, 1, Cause::NoComparableHistory),
+        (Continuing, 2, Cause::UserMessage),
+    ] {
+        let store = AgentTurnHistoryStore::default();
+        let key = store.scope_key("workspace", "causes").unwrap();
+        let first_message = text(MessageRole::User, "first");
+        let (first, history) = new_turn(
+            store
+                .begin_with_context(
+                    key.clone(),
+                    plan(1),
+                    &request(vec![first_message.clone()]),
+                    &replay,
+                    TurnDecisionInputs {
+                        history_continuity: NoCheckpoint,
+                        reselect_on_user_message: true,
+                    },
+                    now,
+                )
+                .unwrap(),
+        );
+        drop(history);
+        let first_closed = close_turn(
+            &store,
+            &first,
+            "smart_saving_simple",
+            "m",
+            "p",
+            "first",
+            now,
+        );
+        assert_eq!(first_closed.opening_cause, Cause::NoComparableHistory);
+        let (next, history) = new_turn(
+            store
+                .begin_with_context(
+                    key,
+                    plan(next_plan),
+                    &request(vec![first_message, text(MessageRole::User, "next")]),
+                    &replay,
+                    TurnDecisionInputs {
+                        history_continuity: continuity,
+                        reselect_on_user_message: true,
+                    },
+                    now,
+                )
+                .unwrap(),
+        );
+        drop(history);
+        let closed = close_turn(&store, &next, "smart_saving_simple", "m", "p", "next", now);
+        assert_eq!(closed.opening_cause, expected);
+    }
 }

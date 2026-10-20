@@ -21,6 +21,14 @@ export type AgentEditorValues = {
   hermesProtocol: 'chat_completions' | 'responses' | 'messages';
 };
 
+/** Apply a recovered selection to the ordinary editor without touching collaboration. */
+export function withModelSelection(values: AgentEditorValues, selection: import('./types').AgentModelSelection): AgentEditorValues {
+  if (selection.mode === 'claude_launcher') return { ...values, fixedModels: selection.fixed_models, claudePresets: selection.preset_mappings };
+  if (selection.mode === 'hermes_default') return { ...values, hermesPlanId: selection.plan_id, hermesProtocol: selection.protocol };
+  if (selection.mode === 'codex_default') return { ...values, fixedModels: selection.fixed_models, nativeModelMode: selection.native_model_mode, allowedPlanIds: selection.allowed_plan_ids, defaultChoice: selection.default_selection };
+  return { ...values, allowedPlanIds: selection.allowed_plan_ids, planProtocols: selection.plan_protocols ?? {} };
+}
+
 export const EMPTY_EDITOR_VALUES: AgentEditorValues = {
   fixedModels: [],
   nativeModelMode: 'hiroute_only',
@@ -39,10 +47,20 @@ export const EMPTY_EDITOR_VALUES: AgentEditorValues = {
 const preserve = (): AgentClaudePresetChoice => ({ kind: 'preserve_native' });
 
 export function editorFingerprint(value: AgentEditorValues): string {
+  // Compare settings rather than JSON map insertion order or seed-only metadata.
+  // Preserve array order except for the set of allowed Plan identities.
   return JSON.stringify({
-    ...value,
+    fixedModels: value.fixedModels,
+    nativeModelMode: value.nativeModelMode,
     allowedPlanIds: [...value.allowedPlanIds].sort(),
-  });
+    planProtocols: value.planProtocols,
+    defaultChoice: value.defaultChoice,
+    claudePresets: value.claudePresets,
+    triggerMode: value.triggerMode,
+    hermesPlanId: value.hermesPlanId,
+    hermesProtocol: value.hermesProtocol,
+  }, (_key, item: unknown) => item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 }
 
 export function codexDefaultChoiceValid(

@@ -16,6 +16,14 @@ See [the contract](../../../../issue-spec/specs/session-history/spec.md) and
 [all-decision query](routing_observations.rs). The remaining sections describe
 independent session search.
 
+Plan-quality reasoning reads filter known unrelated events through the existing
+safe catalog before opening sensitive carriers. Missing catalog entries retain
+the original payload lookup; deleted carriers cannot supply a reasoning profile.
+An additive request/digest/sequence index covers event identity reads and locates
+routing evidence by its exact digest. Opening an existing store creates the index
+without changing its schema marker, immutable events or serialized contracts.
+The shared query deadline and retention/deletion filters still apply.
+
 `session_search` is the Desktop conversation-search intent on the existing protected
 observation operation. It uses the existing search filters and returns one
 `ObservationTextAnchorV2` per matching session, newest matching request first,

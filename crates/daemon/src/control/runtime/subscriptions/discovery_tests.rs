@@ -45,7 +45,7 @@ fn change_for(fixture: &Fixture, source: &CpaRegisteredSourceV1) -> ComputeConne
         .iter()
         .find_map(|model| model.model_configuration_id.clone())
         .unwrap();
-    let catalog = fixture.adapter().release_catalog.as_ref().unwrap();
+    let catalog = fixture.adapter().current_catalog().unwrap();
     let ids = catalog.cpa_compute_projection_ids(source, &model).unwrap();
     let expected = fixture
         .adapter()

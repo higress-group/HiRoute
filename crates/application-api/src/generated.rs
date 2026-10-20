@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 mod compute_discovery;
 mod delegation;
+mod model_feed;
 mod native_protocol;
 mod plan_authoring;
 mod subscription_login;
@@ -378,6 +379,18 @@ fn value_query_schema() -> Value {
 pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
     let mut files = BTreeMap::from([
         (
+            "routing-timeline-selection.v1.schema.json",
+            pretty_json(&{
+                let mut schema = serde_json::to_value(schemars::schema_for!(
+                    hiroute_domain::RoutingTimelineSelectionV1
+                ))
+                .expect("timeline selection schema");
+                schema["$id"] =
+                    json!("hiroute://contracts/cli/routing-timeline-selection.v1.schema.json");
+                schema
+            }),
+        ),
+        (
             "console-launch-request.v1.schema.json",
             pretty_json(
                 &json!({"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"hiroute://contracts/cli/console-launch-request.v1.schema.json","type":"object","additionalProperties":false,"properties":{"loopback_only":{"type":"boolean","default":false}}}),
@@ -563,6 +576,7 @@ pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
     files.extend(plan_authoring::files());
     files.extend(native_protocol::files());
     files.extend(compute_discovery::files());
+    files.extend(model_feed::files());
     let file_digests = files
         .iter()
         .map(|(path, contents)| {
@@ -661,6 +675,11 @@ mod tests {
                 "local-control.v2.schema.json",
                 "machine-envelope.v2.schema.json",
                 "manifest.v1.json",
+                "model-availability.v1.schema.json",
+                "model-feed-removal-preview.v1.schema.json",
+                "model-feed-remove.v1.schema.json",
+                "model-feed-settings.v1.schema.json",
+                "model-feed-status.v1.schema.json",
                 "operation-cancel-request.v1.schema.json",
                 "operation-lookup.v1.schema.json",
                 "plan-content-change.v2.schema.json",
@@ -670,6 +689,7 @@ mod tests {
                 "planned-manifest.v1.json",
                 "prepare-discovered-model-connection-request.v1.schema.json",
                 "publication-checkpoint-change.v1.schema.json",
+                "routing-timeline-selection.v1.schema.json",
                 "session-list-query.v1.schema.json",
                 "session-lookup.v1.schema.json",
                 "setup-apply-request.v1.schema.json",

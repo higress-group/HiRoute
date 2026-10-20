@@ -41,6 +41,91 @@ pub(crate) struct ServiceStatus {
     runtime_root: PathBuf,
 }
 
+pub(crate) fn recovery() -> Result<serde_json::Value, ServiceFailure> {
+    let layout = StandaloneLayout::from_environment().map_err(|_| ServiceFailure::Unavailable)?;
+    let record = hiroute_host_runtime::StorageRecovery::read_for_failed_startup(
+        &layout.storage_root(),
+        &layout.diagnostics_root(),
+    );
+    let instructions = record
+        .as_ref()
+        .map(|record| recovery_instructions(record, &layout.storage_root()));
+    Ok(
+        json!({"schema":"hiroute.service-recovery/v1", "recovery":record, "instructions":instructions, "diagnostics_root":layout.diagnostics_root()}),
+    )
+}
+
+fn recovery_instructions(record: &hiroute_host_runtime::StorageRecovery, storage: &Path) -> String {
+    use hiroute_host_runtime::StorageRecoveryAction;
+    let mut text = record.operator_guidance().to_owned();
+    if let Some(space) = &record.storage_space {
+        text.push_str(&format!(
+            " Storage volume: approximately {} bytes required, {} bytes available.",
+            space.required_bytes, space.available_bytes
+        ));
+    }
+    if matches!(
+        record.action,
+        StorageRecoveryAction::ResumeCurrent | StorageRecoveryAction::RestoreCompleteGroup
+    ) && let (Some(batch), Some(name), Some(parent), Some(leaf)) = (
+        record.backup_batch.as_deref(),
+        record.backup_name.as_deref(),
+        storage.parent(),
+        storage.file_name(),
+    ) && [batch, name].iter().all(|value| {
+        !value.is_empty()
+            && value.len() <= 128
+            && !value.contains("..")
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
+    }) {
+        // The caller obtained this disposition through the storage owner's
+        // complete batch verification; formatting does not infer authority.
+        let mut directory = leaf.to_os_string();
+        directory.push(".upgrade-backups");
+        let source = parent.join(directory).join(name).join("source");
+        text.push_str(&format!(" Verified original batch: {batch}. Recovery source directory: {}. Read RECOVERY.md (or 恢复说明.md), then PROGRAM-LOCATIONS.md where present. Use only this batch.",source.display()));
+    }
+    text
+}
+
+#[cfg(test)]
+mod recovery_text_tests {
+    use super::*;
+    use hiroute_host_runtime::{StorageRecovery, StorageRecoveryAction, StorageRecoveryCause};
+
+    #[test]
+    fn offline_recovery_names_the_original_batch_and_exact_source_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let storage = directory.path().join("custom-storage");
+        let mut report = StorageRecovery::new(
+            StorageRecoveryCause::MigrationFailed,
+            StorageRecoveryAction::RestoreCompleteGroup,
+        );
+        report.backup_batch = Some("set_original".into());
+        report.backup_name = Some("observation-format-5".into());
+        let text = recovery_instructions(&report, &storage);
+        assert!(text.contains("Verified original batch: set_original"));
+        assert!(
+            text.contains(
+                &directory
+                    .path()
+                    .join("custom-storage.upgrade-backups/observation-format-5/source")
+                    .display()
+                    .to_string()
+            )
+        );
+        assert!(text.contains("RECOVERY.md"));
+        assert!(text.contains("PROGRAM-LOCATIONS.md"));
+        report.action = StorageRecoveryAction::PreserveAndDiagnose;
+        assert!(!recovery_instructions(&report, &storage).contains("Recovery source directory:"));
+        report.action = StorageRecoveryAction::RestoreCompleteGroup;
+        report.backup_name = Some("../foreign".into());
+        assert!(!recovery_instructions(&report, &storage).contains("Recovery source directory:"));
+    }
+}
+
 pub(crate) fn status() -> Result<ServiceStatus, ServiceFailure> {
     let (layout, _) = installed()?;
     Ok(ServiceStatus {
@@ -59,13 +144,19 @@ pub(crate) fn start(timeout: Duration) -> Result<ServiceStatus, ServiceFailure> 
     let (layout, _) = installed()?;
     ensure_not_maintaining(&layout)?;
     if !manager_active(&layout) {
+        hiroute_host_runtime::StorageRecovery::clear(&layout.storage_root())
+            .map_err(|_| ServiceFailure::Unavailable)?;
         capture_proxy_environment(&layout)?;
     }
     manager_start(&layout)?;
     #[cfg(windows)]
     wait_ready(deadline.saturating_duration_since(Instant::now()))?;
     #[cfg(not(windows))]
-    wait_ready(timeout)?;
+    if let Err(error) = wait_ready(timeout) {
+        #[cfg(target_os = "linux")]
+        stop_failed_storage_start(&layout);
+        return Err(error);
+    }
     status()
 }
 
@@ -86,6 +177,8 @@ pub(crate) fn restart(timeout: Duration) -> Result<ServiceStatus, ServiceFailure
     let deadline = Instant::now() + timeout;
     let (layout, _) = installed()?;
     ensure_not_maintaining(&layout)?;
+    hiroute_host_runtime::StorageRecovery::clear(&layout.storage_root())
+        .map_err(|_| ServiceFailure::Unavailable)?;
     capture_proxy_environment(&layout)?;
     #[cfg(windows)]
     windows::restart(&layout, timeout)?;
@@ -94,7 +187,11 @@ pub(crate) fn restart(timeout: Duration) -> Result<ServiceStatus, ServiceFailure
     #[cfg(windows)]
     wait_ready(deadline.saturating_duration_since(Instant::now()))?;
     #[cfg(not(windows))]
-    wait_ready(timeout)?;
+    if let Err(error) = wait_ready(timeout) {
+        #[cfg(target_os = "linux")]
+        stop_failed_storage_start(&layout);
+        return Err(error);
+    }
     status()
 }
 
@@ -354,9 +451,31 @@ fn wait_ready(timeout: Duration) -> Result<(), ServiceFailure> {
         ) {
             return Ok(());
         }
+        if StandaloneLayout::from_environment().is_ok_and(|layout| {
+            hiroute_host_runtime::StorageRecovery::read(&layout.storage_root())
+                .is_ok_and(|report| report.is_some())
+        }) {
+            return Err(ServiceFailure::Unavailable);
+        }
         std::thread::sleep(Duration::from_millis(100));
     }
     Err(ServiceFailure::Unavailable)
+}
+
+#[cfg(target_os = "linux")]
+fn stop_failed_storage_start(layout: &StandaloneLayout) {
+    if hiroute_host_runtime::StorageRecovery::read(&layout.storage_root())
+        .is_ok_and(|report| report.is_some())
+    {
+        // Deterministic storage admission needs correction, not an automatic
+        // manager restart loop. Stop only this verified installation's manager.
+        let _ = run_checked(Command::new("systemctl").args([
+            "--user",
+            "--no-block",
+            "stop",
+            SERVICE_LABEL,
+        ]));
+    }
 }
 
 #[cfg(not(windows))]
@@ -383,7 +502,13 @@ fn control_ready(timeout: Duration) -> bool {
     LocalControlClient::cli_from_environment()
         .map(|client| client.with_timeout(timeout))
         .and_then(|client| client.call(request))
-        .is_ok_and(|response| response.status == MachineStatus::Succeeded)
+        .is_ok_and(|response| {
+            response.status == MachineStatus::Succeeded
+                && response.error.is_none()
+                && response
+                    .data
+                    .is_some_and(|data| data["daemon"] == "role_all" && data["gateway"] == "ready")
+        })
 }
 
 #[cfg(target_os = "linux")]

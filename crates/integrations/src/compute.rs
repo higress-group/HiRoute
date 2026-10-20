@@ -26,6 +26,7 @@ pub struct TrustedReleaseCatalog {
     pub(crate) model_data_digest: CanonicalDigest,
     pub(crate) release_facts: hiroute_domain::ReleaseFactsManifestV2,
     pub(crate) current_release_model_data: hiroute_domain::ReleaseModelDataBundleV2,
+    pub(crate) feed_facts: Option<Box<crate::model_feed::FeedCatalogFacts>>,
 }
 
 impl TrustedReleaseCatalog {
@@ -82,6 +83,9 @@ impl TrustedReleaseCatalog {
     }
 
     pub fn native_reasoning(&self) -> &[hiroute_domain::ModelNativeReasoningV1] {
+        if let Some(feed) = &self.feed_facts {
+            return &feed.native_reasoning;
+        }
         self.current_release_model_data
             .rating_snapshot
             .models

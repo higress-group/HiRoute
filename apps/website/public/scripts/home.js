@@ -10,7 +10,7 @@ const boundaries = document.documentElement.lang === 'en' ? {
   human: {
     kicker: 'A decision point with human input',
     title: 'A new user turn gets a fresh decision.',
-    copy: 'A new question or feedback prompts a fresh task and model-group choice, with an optional assessment of the prior stage. Old low scores do not lock the group, and a new turn does not automatically return to economy. The same model can continue if it fits the newly selected group.',
+    copy: 'A new question or feedback prompts a fresh task and model-group choice, with an optional assessment of the prior stage. Old low scores do not lock the group, and a new turn does not automatically return to regular. The same model can continue if it fits the newly selected group.',
     assessment: 'Judge the new task and, when possible, assess model A’s completed stage',
     choice: 'Select primary for the deeper work; model B takes over in this example'
   }
@@ -25,7 +25,7 @@ const boundaries = document.documentElement.lang === 'en' ? {
   human: {
     kicker: '用户参与后的决策机会',
     title: '新用户轮次，重新判断当前工作。',
-    copy: '新的问题或反馈触发本轮任务与模型组判断，并可评价上一阶段。旧低分不会跨轮锁定，新一轮也不会自动回到省钱组。原模型符合本轮新选中的模型组时，可以继续使用。',
+    copy: '新的问题或反馈触发本轮任务与模型组判断，并可评价上一阶段。旧低分不会跨轮锁定，新一轮也不会自动回到常规组。原模型符合本轮新选中的模型组时，可以继续使用。',
     assessment: '判断新任务，并在证据可用时评价模型 A 已完成的阶段',
     choice: '示例中深入工作使用主力组，由模型 B 接续'
   }

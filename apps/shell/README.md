@@ -12,6 +12,9 @@ authentication, confirmations and operations stay in `hirouted` and
   explicit owner configuration/restart steps without changing saved scope.
 - `mod` / `commands`: private WebView, single instance, navigation lock and
   explicit host commands, each checked against the exact active console origin.
+- `startup_failure`: the completed readiness wait projects the latest typed
+  daemon failure through the shared host mapping. Installer, manager-command and
+  console failures never load an older storage recovery report.
 - `tray` / platform `shell_login`: window visibility and current-user login start;
   quitting the shell leaves the Task running.
 - `installer`: NSIS's fixed adapter to the native Rust installation transaction.

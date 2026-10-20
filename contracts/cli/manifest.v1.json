@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:ab0f7c80d9b8729ddd5de6a72cf98b79dcf6defe338e176a02294a7aa2727dac",
+  "descriptor_digest": "sha256:6442c5e2453d65985ee602d119f10db1467c7671cd770be616ebb2b9b284c39c",
   "visibility": "release",
   "commands": [
     {
@@ -466,6 +466,58 @@
       },
       "negative": {
         "scenario_id": "p0.agents.list.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "agents.previous-routing.preview",
+      "path": [
+        "agents",
+        "previous-routing",
+        "preview"
+      ],
+      "operation_id": "PreviewAgentPreviousRouting",
+      "trace_ids": [
+        "CLI-068",
+        "APP-068"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.agent-previous-routing-query/v1",
+      "response_schema": "hiroute.agent-previous-routing-preview/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Recover selected previous mappings as an ordinary Agent settings draft.",
+        "usage": "hiroute agents previous-routing preview [typed options] --non-interactive --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Accepts --request-stdin or --request-file with {agent,presets?}. Claude presets: opus, sonnet, haiku; Codex: default; additional-model Agents: models. Returns a draft for the ordinary settings Preview/Apply. Missing history never implies native routing.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute agents previous-routing preview --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id agents.previous-routing.preview"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.agents.previous-routing.preview.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.agents.previous-routing.preview.negative",
         "polarity": "negative",
         "state": "executable"
       }
@@ -1393,7 +1445,7 @@
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Ready permits a managed launch attempt, not a promise of execution or authorization. Optional capabilities remain unknown until the actual ACP handshake; start, load and cancel report real outcomes.",
-        "output": "Default text renders overall and scoped states for all six supported Harnesses. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints their stable wire names.",
+        "output": "Default text renders overall and scoped states for all five supported Harnesses. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints their stable wire names.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "hiroute worker executors --output json"
@@ -1439,7 +1491,7 @@
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Automation must use --output json. For the chosen Harness, select only found candidates and copy that Harness's selection_revisions revision into expected_selection_revision; discovery never installs or selects anything.",
-        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, deepseek_harness, or opencode), one per line, and is empty when nothing is selected.",
+        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), one per line, and is empty when nothing is selected.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "hiroute worker dependencies discover --harness codex_cli --output json"
@@ -1488,7 +1540,7 @@
         "effects": "Application-owned journaled operation after exact spec, digest, selection-revision CAS, and idempotency checks on owner-only Local Control.",
         "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
         "automation": "Preserve the submitted JSON document. If delivery may have succeeded but no response was received, replay that same document unchanged; its deterministic request identity returns the existing Operation instead of applying twice. Do not substitute paths or a newer revision until the server reports a conflict and discovery is run again.",
-        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, deepseek_harness, or opencode), one per line, and is empty when nothing is selected.",
+        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), one per line, and is empty when nothing is selected.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "printf '%s\\n' '{\"harness\":\"codex_cli\",\"adapter_path\":\"/ABSOLUTE/PATH/TO/codex-acp\",\"cli_path\":\"/ABSOLUTE/PATH/TO/codex\",\"node_path\":\"/ABSOLUTE/PATH/TO/node\",\"expected_selection_revision\":0}' | hiroute worker dependencies select --request-stdin --output json"
@@ -2315,6 +2367,308 @@
       }
     },
     {
+      "command_id": "models.feed.status",
+      "path": [
+        "models",
+        "feed",
+        "status"
+      ],
+      "operation_id": "GetModelFeedStatus",
+      "trace_ids": [
+        "CLI-059",
+        "APP-059"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.model-feed-status/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Show the verified model feed, retrieval setting and last attempt.",
+        "usage": "hiroute models feed status [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute models feed status --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id models.feed.status"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.models.feed.status.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.models.feed.status.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.feed.refresh",
+      "path": [
+        "models",
+        "feed",
+        "refresh"
+      ],
+      "operation_id": "RefreshModelFeed",
+      "trace_ids": [
+        "CLI-060",
+        "APP-060"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "apply",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.model-feed-status/v1",
+      "effect": "high_impact_write",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Retrieve and verify the model feed now.",
+        "usage": "hiroute models feed refresh [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Application-owned journaled operation after exact spec, digest, revision, capability, and idempotency checks.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute models feed refresh --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id models.feed.refresh"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.models.feed.refresh.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.models.feed.refresh.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.feed.settings.apply",
+      "path": [
+        "models",
+        "feed",
+        "settings",
+        "apply"
+      ],
+      "operation_id": "ApplyModelFeedSettings",
+      "trace_ids": [
+        "CLI-061",
+        "APP-061"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "apply",
+      "request_schema": "hiroute.model-feed-settings/v1",
+      "response_schema": "hiroute.model-feed-status/v1",
+      "effect": "high_impact_write",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Change service-owned model feed retrieval and disclosure settings.",
+        "usage": "hiroute models feed settings apply [typed options] --non-interactive --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Application-owned journaled operation after exact spec, digest, revision, capability, and idempotency checks.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute models feed settings apply --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id models.feed.settings.apply"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.models.feed.settings.apply.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.models.feed.settings.apply.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.feed.remove.preview",
+      "path": [
+        "models",
+        "feed",
+        "remove",
+        "preview"
+      ],
+      "operation_id": "PreviewModelFeedRemoval",
+      "trace_ids": [
+        "CLI-062",
+        "APP-062"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.model-feed-removal-preview/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Preview saved sources affected by removing the held model feed.",
+        "usage": "hiroute models feed remove preview [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute models feed remove preview --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id models.feed.remove.preview"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.models.feed.remove.preview.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.models.feed.remove.preview.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.feed.remove.apply",
+      "path": [
+        "models",
+        "feed",
+        "remove",
+        "apply"
+      ],
+      "operation_id": "ApplyModelFeedRemoval",
+      "trace_ids": [
+        "CLI-063",
+        "APP-063"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "apply",
+      "request_schema": "hiroute.model-feed-remove/v1",
+      "response_schema": "hiroute.model-feed-status/v1",
+      "effect": "high_impact_write",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Remove the held feed while retaining its highest accepted sequence.",
+        "usage": "hiroute models feed remove apply [typed options] --non-interactive --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Application-owned journaled operation after exact spec, digest, revision, capability, and idempotency checks.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute models feed remove apply --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id models.feed.remove.apply"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.models.feed.remove.apply.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.models.feed.remove.apply.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.availability",
+      "path": [
+        "models",
+        "availability"
+      ],
+      "operation_id": "GetModelAvailability",
+      "trace_ids": [
+        "CLI-064",
+        "APP-064"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.model-availability/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Show model origins, announcements and current local availability.",
+        "usage": "hiroute models availability [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute models availability --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id models.availability"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.models.availability.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.models.availability.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "models.show",
       "path": [
         "models",
@@ -2820,6 +3174,216 @@
       },
       "negative": {
         "scenario_id": "p0.value.show.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "sessions.timeline",
+      "path": [
+        "sessions",
+        "timeline"
+      ],
+      "operation_id": "GetRoutingTimeline",
+      "trace_ids": [
+        "CLI-069",
+        "APP-069"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.observation.query/v2",
+      "response_schema": "hiroute.routing-timeline/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file",
+        "capability_fd"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Read agent turns with selection, historical protection, score, requests and costs; --follow streams changed turns.",
+        "usage": "hiroute sessions timeline <SESSION_ID> [--follow] [--after-watermark <WATERMARK>] [--limit <1..200>] --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Required SESSION_ID; optional --after-watermark and --limit 1..200 (default 50). --follow streams one NDJSON change event per new or updated agent turn every two seconds, until interrupted. A watermark is opaque and scoped to this session and page size. No configuration is changed.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute sessions timeline --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id sessions.timeline"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.sessions.timeline.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.sessions.timeline.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "observation.plan-trust",
+      "path": [
+        "observation",
+        "plan-trust"
+      ],
+      "operation_id": "GetPlanTrust",
+      "trace_ids": [
+        "CLI-065",
+        "APP-065"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.observation.query/v2",
+      "response_schema": "hiroute.plan-trust/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file",
+        "capability_fd"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Read complete-scoring coverage and competence for a Plan revision.",
+        "usage": "hiroute observation plan-trust ([OPTIONS] | (--request-stdin | --request-file <PATH>)) [--capability-fd <FD>] --non-interactive --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Required --plan-id; optional --branch-id, --revision active|all|N, --from-ms, --to-ms, --group-by model|executor. Replay requires --thresholds-millis with 1–8 comma-separated values from 0 to 1000. A complete population above 50,000 stages or a query deadline returns retryable scope_too_large; reduce the scope where possible. Suggestions use the full retained active revision, with a post-announcement upward cohort. No settings change automatically.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute observation plan-trust --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id observation.plan-trust"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.observation.plan-trust.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.observation.plan-trust.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "observation.plan-trust.replay",
+      "path": [
+        "observation",
+        "plan-trust",
+        "replay"
+      ],
+      "operation_id": "GetPlanTrustReplay",
+      "trace_ids": [
+        "CLI-066",
+        "APP-066"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.observation.query/v2",
+      "response_schema": "hiroute.plan-trust-replay/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file",
+        "capability_fd"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Replay exact thresholds over a complete retained population; estimates are not predictions.",
+        "usage": "hiroute observation plan-trust replay ([OPTIONS] | (--request-stdin | --request-file <PATH>)) [--capability-fd <FD>] --non-interactive --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Required --plan-id; optional --branch-id, --revision active|all|N, --from-ms, --to-ms, --group-by model|executor. Replay requires --thresholds-millis with 1–8 comma-separated values from 0 to 1000. A complete population above 50,000 stages or a query deadline returns retryable scope_too_large; reduce the scope where possible. Suggestions use the full retained active revision, with a post-announcement upward cohort. No settings change automatically.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute observation plan-trust replay --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id observation.plan-trust.replay"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.observation.plan-trust.replay.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.observation.plan-trust.replay.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "observation.plan-trust.suggestions",
+      "path": [
+        "observation",
+        "plan-trust",
+        "suggestions"
+      ],
+      "operation_id": "GetPlanTrustSuggestions",
+      "trace_ids": [
+        "CLI-067",
+        "APP-067"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.observation.query/v2",
+      "response_schema": "hiroute.plan-trust-suggestions/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file",
+        "capability_fd"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Read optional evidence-based trust suggestions without changing a Plan.",
+        "usage": "hiroute observation plan-trust suggestions ([OPTIONS] | (--request-stdin | --request-file <PATH>)) [--capability-fd <FD>] --non-interactive --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. No options. Returns suggestions and unavailable arrays for active published Plans. Per-Plan failures carry plan_id and scope_too_large, unavailable or stale while healthy suggestions remain usable. Suggested branches contain counts, cohort, protection_count, identity_stabilities and only the suggested-threshold replay; full report rows are omitted. A whole-query failure remains retryable, never an empty success. No configuration is changed.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute observation plan-trust suggestions --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id observation.plan-trust.suggestions"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.observation.plan-trust.suggestions.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.observation.plan-trust.suggestions.negative",
         "polarity": "negative",
         "state": "executable"
       }

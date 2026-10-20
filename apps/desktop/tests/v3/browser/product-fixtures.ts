@@ -6,6 +6,7 @@ import type { AgentTaskRead } from '../../../src/features/AgentTasks';
 import type { ManagementSnapshot } from '../../../src/features/models/types';
 import type { ComputeCandidateView } from '../../../src/features/model-connections/types';
 import type { SubscriptionCandidate, SubscriptionCheckResult } from '../../../src/features/subscriptions/types';
+import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
 import type { AuthoringOptions, Draft, Editor, Plan } from '../../../src/plan-editor';
 import type { DesktopSnapshot } from '../../../src/product/home-projections';
 import { fixture as legacyHomeFixture } from '../../mvp16/browser/fixtures';
@@ -24,6 +25,12 @@ const fixtureNow = new Date();
 fixtureNow.setHours(14, 28, 0, 0);
 const now = fixtureNow.getTime();
 
+/** A daemon that has not retrieved model information yet and has nothing held. */
+export const idleModelFeedStatus: ModelFeedStatus = {
+  retrieval_enabled: true, held: null, highest_accepted_sequence: null, last_attempt: null, verification: { kind: 'none' },
+  counts: { applied: 0, ignored_embedded: 0, newer_client: 0, unresolved: 0 }, next_automatic_attempt_at: null,
+  disclosure: 'Model information is retrieved automatically from hiroute.ai.', disclosure_acknowledged: true,
+};
 export const readyManagement: ManagementSnapshot = {
   schema: 'hiroute.compute-management-snapshot/v2',
   revisions: { target: 19, dependencies: {} },
@@ -812,6 +819,8 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     };
     if (view === 'status') return { running: true, index_running: true, error_count: 0 };
     if (view === 'ancestry') return { roots: [], gap: null };
+    if (view === 'routing_timeline') return { turns: [], watermark: `routing/${query.session_id ?? ''}`, complete: true };
+    if (view === 'plan_trust_suggestions') return { suggestions: [], unavailable: [] };
   }
   if (command === 'check_saved_model_connection') {
     if (scenario === 'api_failure') throw { code: 'MODEL_CONNECTION_AUTHENTICATION_REJECTED' };
@@ -877,5 +886,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
   }
   if (command === 'release_protected_model_input' || command === 'cancel_model_connection_check') return undefined;
   if (command === 'register_protected_model_input') return { input_candidate: { candidate_ref: 'candidate/protected', candidate_revision: 1 }, key_id: 'credential/fixture-protected' };
+  if (command === 'model_availability') return { featured: [], models: [] };
+  if (command === 'model_feed_status') return structuredClone(idleModelFeedStatus);
   throw new Error(`Unexpected V3 fixture command: ${command}`);
 }

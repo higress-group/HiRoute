@@ -323,6 +323,33 @@ impl LocalControlAdapter {
 }
 
 impl AgentConnectionControlPort for LocalControlAdapter {
+    fn previous_routing_head(
+        &self,
+        agent: &str,
+    ) -> Result<hiroute_application::agent_connection::PreviousRoutingHead, ControlReadError> {
+        let context_id = if agent == "agent_codex_default" {
+            let access = self.codex_access_view()?;
+            if access.selected_mode == "profile" {
+                access.profile_context_id
+            } else {
+                access.root_context_id
+            }
+        } else {
+            self.settings_context_for_agent(agent)
+                .ok_or(ControlReadError::NotFound)?
+        };
+        // Keep-only settings reads deliberately capture independent Skill facts
+        // without model lineage. Resolve the current model's verified file,
+        // grant and publication join directly for this read-only history entry.
+        let operation = self
+            .configured_model_settings_join(&context_id)?
+            .map(|join| join.operation_id);
+        Ok(hiroute_application::agent_connection::PreviousRoutingHead {
+            context_id,
+            operation,
+        })
+    }
+
     fn check_collaboration(&self, agent_id: &str) -> Result<(), CollaborationCheckError> {
         #[cfg(any(unix, windows))]
         {
@@ -720,7 +747,8 @@ mod tests {
             ),
             scanner,
             artifacts,
-            release_catalog: None,
+            catalog_fallback: Default::default(),
+            model_feed: None,
             protected_inputs: Mutex::new(BTreeMap::new()),
             manual_protected_inputs: Mutex::new(BTreeMap::new()),
             agent_token_inputs: Mutex::new(BTreeMap::new()),

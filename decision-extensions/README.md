@@ -13,7 +13,7 @@ the task conditions and model groups; HiRoute applies them on each new user turn
    endpoints.
 2. Enter the provider, model, complete endpoint and credential, then save and test
    the connection.
-3. Select the saved connection in a routing plan and configure smart saving or
+3. Select the saved connection in a routing plan and configure difficulty routing or
    custom task branches with their execution models.
 4. Publish the plan to apply it. Editing a connection or a draft takes effect only
    after the plan selects that version and is published again.
@@ -32,7 +32,7 @@ is a deployable reference implementation.
 
 | Mode | What the decision model judges | Execution models |
 | --- | --- | --- |
-| Smart saving | Whether the current task is simple or complex | Economy and primary groups |
+| Difficulty routing | Whether the current task is simple or complex | Economy and primary groups |
 | Custom branches | The current task category, then its required degree when it has two groups | Regular models and optional primary models per category |
 
 Category, degree and competence answer different questions:
@@ -46,7 +46,7 @@ Category, degree and competence answer different questions:
 For custom branches, overlapping conditions are resolved by the current request's
 main intent; no match uses the configured default branch. A category with only
 regular models skips degree evaluation and can still collect competence scores.
-Smart saving uses one task scope, so simple and complex are not separate task branches.
+Difficulty routing uses one task scope, so simple and complex are not separate task branches.
 
 ## How HiRoute selects and executes models
 
@@ -74,7 +74,7 @@ group; a single-group category fails when its candidates are exhausted. A candid
 failure does not create a competence score.
 
 If the category is valid but its degree result is unavailable, HiRoute uses that
-category's primary group. If the whole decision fails, smart saving uses its
+category's primary group. If the whole decision fails, difficulty routing uses its
 heuristic rules; custom branches use the default category and its primary group
 when configured.
 
@@ -87,7 +87,7 @@ within a category, and competence standards assess work that has already happene
 
 Custom categories follow the plan's judgment settings by default. Independent
 editing copies the complete settings; resetting resumes following the plan.
-Smart saving also offers explicit heuristic rules, which do not produce model
+Difficulty routing also offers explicit heuristic rules, which do not produce model
 competence scores.
 
 Published definitions, connection versions and assessment standards are frozen.

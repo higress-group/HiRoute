@@ -7,6 +7,29 @@ use std::collections::{BTreeMap, BTreeSet};
 const MAX_DECISIONS: usize = 10_000;
 const MAX_SAFE_BYTES: usize = 32 * 1024 * 1024;
 
+// The partial index excludes unrelated safe projections before opening JSON
+// payload pages. Invalid legacy JSON remains visible to the original predicate
+// so the read still fails closed, while index creation can preserve those bytes.
+// The fixed join order then bounds retained producer-identity lookups.
+pub(super) const SUMMARY_SQL: &str = "SELECT f.body_json,e.producer_id,e.producer_epoch,e.stream_id,e.event_id
+        FROM observation_safe_facts_v2 f
+        CROSS JOIN execution_fact_events e ON e.workspace_id=f.workspace_id AND e.request_id=f.request_id AND e.envelope_digest=f.original_digest
+        JOIN logical_requests r ON r.workspace_id=f.workspace_id AND r.request_id=f.request_id
+        JOIN sessions s ON s.workspace_id=r.workspace_id AND s.session_id=r.session_id
+        LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
+        WHERE f.workspace_id=:workspace
+          AND CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') ELSE 'route_decision' END='route_decision'
+          AND json_extract(f.body_json,'$.event_kind')='route_decision'
+          AND COALESCE(json_extract(f.body_json,'$.occurred_at_ms'),r.started_at_ms)>=:from AND COALESCE(json_extract(f.body_json,'$.occurred_at_ms'),r.started_at_ms)<:to
+          AND (:session IS NULL OR r.session_id=:session)
+          AND (:plan IS NULL OR COALESCE(json_extract(f.body_json,'$.routing_observation.plan_id'),json_extract(f.body_json,'$.routing_context.plan_id'))=:plan
+               OR COALESCE(json_extract(f.body_json,'$.routing_observation.plan_id'),json_extract(f.body_json,'$.routing_context.plan_id')) IS NULL)
+          AND (:revision IS NULL OR CAST(COALESCE(json_extract(f.body_json,'$.routing_observation.plan_revision'),json_extract(f.body_json,'$.routing_context.plan_revision')) AS INTEGER)=:revision
+               OR COALESCE(json_extract(f.body_json,'$.routing_observation.plan_revision'),json_extract(f.body_json,'$.routing_context.plan_revision')) IS NULL)
+          AND (:runs IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(:runs))))
+          AND (s.tombstone_reason IS NULL OR EXISTS(SELECT 1 FROM observation_tombstones t WHERE t.workspace_id=r.workspace_id AND t.session_id=r.session_id AND t.delete_scope='content_only'))
+        ORDER BY f.rowid LIMIT 10001";
+
 pub(super) fn summarize(
     transaction: &Transaction<'_>,
     reader: &ObservationReaderContext,
@@ -33,26 +56,10 @@ pub(super) fn summarize(
         scan_limited: false,
         cohorts: vec![],
     };
-    let sql = "SELECT f.body_json,e.producer_id,e.producer_epoch,e.stream_id,e.event_id
-        FROM observation_safe_facts_v2 f
-        JOIN execution_fact_events e ON e.workspace_id=f.workspace_id AND e.request_id=f.request_id AND e.envelope_digest=f.original_digest
-        JOIN logical_requests r ON r.workspace_id=f.workspace_id AND r.request_id=f.request_id
-        JOIN sessions s ON s.workspace_id=r.workspace_id AND s.session_id=r.session_id
-        LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
-        WHERE f.workspace_id=:workspace AND json_extract(f.body_json,'$.event_kind')='route_decision'
-          AND COALESCE(json_extract(f.body_json,'$.occurred_at_ms'),r.started_at_ms)>=:from AND COALESCE(json_extract(f.body_json,'$.occurred_at_ms'),r.started_at_ms)<:to
-          AND (:session IS NULL OR r.session_id=:session)
-          AND (:plan IS NULL OR COALESCE(json_extract(f.body_json,'$.routing_observation.plan_id'),json_extract(f.body_json,'$.routing_context.plan_id'))=:plan
-               OR COALESCE(json_extract(f.body_json,'$.routing_observation.plan_id'),json_extract(f.body_json,'$.routing_context.plan_id')) IS NULL)
-          AND (:revision IS NULL OR CAST(COALESCE(json_extract(f.body_json,'$.routing_observation.plan_revision'),json_extract(f.body_json,'$.routing_context.plan_revision')) AS INTEGER)=:revision
-               OR COALESCE(json_extract(f.body_json,'$.routing_observation.plan_revision'),json_extract(f.body_json,'$.routing_context.plan_revision')) IS NULL)
-          AND (:runs IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(:runs))))
-          AND (s.tombstone_reason IS NULL OR EXISTS(SELECT 1 FROM observation_tombstones t WHERE t.workspace_id=r.workspace_id AND t.session_id=r.session_id AND t.delete_scope='content_only'))
-        ORDER BY f.rowid LIMIT 10001";
     let mut cohorts: BTreeMap<RoutingObservationCohortV1, RoutingObservationCountsV1> =
         BTreeMap::new();
     let mut seen = BTreeSet::new();
-    let mut statement = transaction.prepare(sql)?;
+    let mut statement = transaction.prepare(SUMMARY_SQL)?;
     let mut rows = statement.query(named_params! { ":workspace":reader.workspace().as_str(),":from":from_ms,":to":to_ms,":session":query.session_id,":plan":query.plan_id,":revision":query.plan_revision,":runs":runs })?;
     let mut bytes = 0;
     let mut scanned = 0;

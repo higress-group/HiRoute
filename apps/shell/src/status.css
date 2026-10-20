@@ -6,3 +6,7 @@
 .shell-status input { min-width: 0; width: 100%; }
 .shell-status pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; font-size: 13px; line-height: 1.7; }
 .shell-status .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.shell-status [hidden] { display: none; }
+.shell-status code { white-space: normal; overflow-wrap: anywhere; user-select: text; }
+.shell-status #recovery-material { display: grid; gap: 8px; }
+.shell-status #recovery-material[hidden] { display: none; }

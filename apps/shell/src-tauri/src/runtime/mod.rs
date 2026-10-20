@@ -1,4 +1,4 @@
-use crate::ConsoleOrigin;
+use crate::{ConsoleOrigin, startup_failure};
 use serde::Serialize;
 use std::sync::{
     Arc, Mutex,
@@ -18,6 +18,7 @@ pub struct Status {
     phase: &'static str,
     code: Option<&'static str>,
     logs_path: String,
+    storage_recovery: Option<hiroute_host_runtime::StorageRecovery>,
 }
 pub struct ShellState {
     origin: Mutex<Option<ConsoleOrigin>>,
@@ -37,6 +38,7 @@ impl ShellState {
                 phase: "starting",
                 code: None,
                 logs_path: logs,
+                storage_recovery: None,
             }),
             starting: AtomicBool::new(false),
             updater: updater::Updater::new(),
@@ -46,6 +48,14 @@ impl ShellState {
         if let Ok(mut status) = self.status.lock() {
             status.phase = phase;
             status.code = code;
+            status.storage_recovery = None;
+        }
+    }
+    fn failed(&self, failure: startup_failure::Failure) {
+        if let Ok(mut status) = self.status.lock() {
+            status.phase = "failed";
+            status.code = Some(failure.code);
+            status.storage_recovery = failure.recovery;
         }
     }
 }
@@ -72,11 +82,11 @@ fn start(app: tauri::AppHandle, state: Arc<ShellState>) {
                 .navigate(url)
                 .map_err(|_| "SHELL_NAVIGATION_FAILED")?;
             state.phase("ready", None);
-            Ok::<_, &'static str>(())
+            Ok::<_, startup_failure::Failure>(())
         }
         .await;
-        if let Err(code) = outcome {
-            state.phase("failed", Some(code));
+        if let Err(failure) = outcome {
+            state.failed(failure);
             focus(&app);
         }
         state.starting.store(false, Ordering::Release);

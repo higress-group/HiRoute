@@ -16,6 +16,31 @@ mod publication;
 mod tests;
 
 impl ControlStore {
+    /// Published immutable content, including versions retained by an admitted Worker.
+    /// This read never changes retention or publication authority.
+    pub fn published_plan_versions(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> Result<Vec<PlanVersionV1>, PlanVersionError> {
+        let connection = self.connection.borrow();
+        let mut statement=connection.prepare("SELECT version_json FROM plan_versions WHERE workspace_id=?1 AND state='published' ORDER BY plan_id,content_revision LIMIT 10001").map_err(storage)?;
+        let rows = statement
+            .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
+            .map_err(storage)?;
+        let mut versions = Vec::new();
+        for row in rows {
+            if versions.len() == 10000 {
+                return Err(PlanVersionError::Invalid);
+            }
+            let version: PlanVersionV1 = decode(&row.map_err(storage)?)?;
+            version.validate()?;
+            if &version.reference.workspace_id != workspace {
+                return Err(PlanVersionError::Invalid);
+            }
+            versions.push(version);
+        }
+        Ok(versions)
+    }
     pub fn plan_drafts(
         &self,
         workspace: &WorkspaceId,

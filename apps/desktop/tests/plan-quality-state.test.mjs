@@ -42,6 +42,7 @@ test('missing reasoning evidence cannot assign a historical stage to one of mult
 test('reasoning controls use readable labels and keep opaque identities out of the overview', () => {
   assert.equal(qualityReasoningLabel('budget-16000', 'zh'), '16000 tokens');
   assert.equal(qualityReasoningLabel('high', 'en'), 'high');
+  assert.equal(qualityReasoningLabel('provider-default', 'zh'), '模型默认思考');
   assert.equal(qualityReasoningLabel('xhigh', 'zh'), 'xhigh');
   assert.equal(qualityReasoningLabel('medium', 'zh'), 'medium');
   assert.equal(qualityReasoningLabel('sha256:1234', 'zh'), '推理配置未记录');

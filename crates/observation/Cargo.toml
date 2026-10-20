@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
 getrandom.workspace = true
 hmac.workspace = true
@@ -21,5 +24,5 @@ hiroute-platform = { path = "../platform" }
 fs2.workspace = true
 
 [dev-dependencies]
-rusqlite = { workspace = true, features = ["trace"] }
+rusqlite = { workspace = true, features = ["functions", "trace"] }
 tempfile.workspace = true

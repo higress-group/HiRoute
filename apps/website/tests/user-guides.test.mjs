@@ -36,7 +36,7 @@ test('guides cover Desktop, Linux headless, and the released management CLI', as
   assert.match(linuxEn, /compute connection options\/test\/preview\/apply/);
   assert.match(linuxEn, /<code>authorize<\/code>/);
   assert.match(routing, /固定模型/);
-  assert.match(routing, /智能省钱/);
+  assert.match(routing, /按难度分流/);
   assert.match(routing, /自定义分支/);
   assert.match(routing, /免费优先/);
   assert.match(worker, /hiroute worker exec/);
@@ -58,8 +58,8 @@ test('decision guidance exposes current routing choices and released CLI paths i
   for (const language of ['zh', 'en']) {
     const routing = await renderUserGuide('model-routing', language);
     const modes = language === 'zh'
-      ? ['固定模型', '智能省钱', '自定义分支', '免费优先']
-      : ['Fixed model', 'Smart saving', 'Custom branches', 'Free first'];
+      ? ['固定模型', '按难度分流', '自定义分支', '免费优先']
+      : ['Fixed model', 'Difficulty routing', 'Custom branches', 'Free first'];
     for (const mode of modes) assert.ok(routing.includes(`<td>${mode}</td>`), `${language} routing table is missing ${mode}`);
 
     const cli = await renderUserGuide('cli', language);
@@ -69,5 +69,17 @@ test('decision guidance exposes current routing choices and released CLI paths i
       assert.ok(cli.includes(`hiroute ${command.path.join(' ')}`), `${language} CLI is missing ${commandId}`);
     }
     assert.doesNotMatch(cli, /(?:publishes|公开)\s*\d+\s*(?:Released|个)/);
+  }
+});
+
+test('routing introductions use current names and condition the cost benefit on a cheaper Regular model', async () => {
+  for (const language of ['zh', 'en']) {
+    const routing = await renderUserGuide('model-routing', language);
+    assert.match(routing, language === 'zh' ? /更便宜的常规模型来降低成本/ : /lower cost.*cheaper Regular model/);
+    const cli = await renderUserGuide('cli', language);
+    const quickstart = await renderUserGuide('quickstart', language);
+    assert.doesNotMatch([routing, cli, quickstart].join('\n'), /智能省钱|省钱路由|省钱组合|Smart saving/i);
+    const linux = await renderUserGuide('install-linux', language);
+    assert.doesNotMatch(linux, /signed model information|signature verified|签名已校验/i);
   }
 });

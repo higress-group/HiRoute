@@ -94,6 +94,7 @@ struct TranscriptCheckpoint {
 }
 
 struct ActiveTurn {
+    opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     agent_turn_id: String,
     ordinal: u64,
     user: Vec<VisibleContentPart>,
@@ -203,7 +204,7 @@ impl AgentTurnHistoryStore {
             request,
             replay,
             TurnDecisionInputs {
-                message_history_continues: true,
+                history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
             now,
@@ -244,6 +245,15 @@ impl AgentTurnHistoryStore {
             let request_token = inner.allocate_request_token()?;
             let turn_id = self.allocate_id(&mut inner, "turn")?;
             let active = ActiveTurn {
+                opening_cause: match decision_inputs.history_continuity {
+                    crate::context_hold::HistoryContinuity::Shortened => {
+                        hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened
+                    }
+                    crate::context_hold::HistoryContinuity::Rewritten => {
+                        hiroute_domain::AgentTurnOpeningCauseV1::HistoryRewrite
+                    }
+                    _ => hiroute_domain::AgentTurnOpeningCauseV1::NoComparableHistory,
+                },
                 agent_turn_id: turn_id.clone(),
                 ordinal: 1,
                 user: latest.user.clone(),
@@ -324,14 +334,34 @@ impl AgentTurnHistoryStore {
             .entries
             .get(&key)
             .ok_or(AgentTurnHistoryError::Integrity)?;
-        let appended_user = decision_inputs.message_history_continues
+        let appended_user = decision_inputs.history_continuity
+            == crate::context_hold::HistoryContinuity::Continuing
             && latest.user_index > entry.checkpoint.active_user_index;
         let inheritable_decision = entry.active.decision.is_some() && entry.active.plan == plan;
         let needs_decision = !inheritable_decision
-            || !decision_inputs.message_history_continues
+            || decision_inputs.history_continuity
+                != crate::context_hold::HistoryContinuity::Continuing
             || (appended_user && decision_inputs.reselect_on_user_message);
         let starts_new_turn = appended_user || needs_decision;
-        let reset_branch_context = !decision_inputs.message_history_continues
+        let opening_cause = match decision_inputs.history_continuity {
+            crate::context_hold::HistoryContinuity::Shortened => {
+                hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened
+            }
+            crate::context_hold::HistoryContinuity::Rewritten => {
+                hiroute_domain::AgentTurnOpeningCauseV1::HistoryRewrite
+            }
+            crate::context_hold::HistoryContinuity::NoCheckpoint => {
+                hiroute_domain::AgentTurnOpeningCauseV1::NoComparableHistory
+            }
+            crate::context_hold::HistoryContinuity::Continuing if appended_user => {
+                hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
+            }
+            crate::context_hold::HistoryContinuity::Continuing => {
+                hiroute_domain::AgentTurnOpeningCauseV1::Other
+            }
+        };
+        let reset_branch_context = decision_inputs.history_continuity
+            != crate::context_hold::HistoryContinuity::Continuing
             && entry
                 .active
                 .decision
@@ -425,7 +455,9 @@ impl AgentTurnHistoryStore {
                 .entries
                 .get_mut(&key)
                 .ok_or(AgentTurnHistoryError::Integrity)?;
-            if decision_inputs.message_history_continues {
+            if decision_inputs.history_continuity
+                == crate::context_hold::HistoryContinuity::Continuing
+            {
                 output::apply_tool_results(
                     &mut entry.active,
                     &analyzed.tool_results,
@@ -468,6 +500,7 @@ impl AgentTurnHistoryStore {
                 entry.current_segment = None;
             }
             entry.active = ActiveTurn {
+                opening_cause,
                 agent_turn_id: turn_id.clone(),
                 ordinal,
                 user: latest.user.clone(),
@@ -564,7 +597,8 @@ impl AgentTurnHistoryStore {
                 .get(&key)
                 .ok_or(AgentTurnHistoryError::Resource)?;
             let mut history = snapshot(entry, pin);
-            let new_branch_task = !decision_inputs.message_history_continues
+            let new_branch_task = decision_inputs.history_continuity
+                != crate::context_hold::HistoryContinuity::Continuing
                 && history
                     .previous_decision
                     .as_ref()
@@ -840,6 +874,7 @@ fn close_active(
         steps: std::mem::take(&mut entry.active.steps),
     });
     let completed = CompletedAgentTurn {
+        opening_cause: entry.active.opening_cause,
         branch_execution: if matches!(attribution, ExecutionAttribution::Single { .. }) {
             entry
                 .active

@@ -2,6 +2,9 @@
 #[path = "tests/usage_order.rs"]
 mod usage_order;
 
+#[path = "tests/preplanner.rs"]
+mod preplanner;
+
 use serde_json::{Value, json};
 
 use hiroute_diagnostics::runtime::DiagnosticsPort;
@@ -261,6 +264,7 @@ fn request_with_sinks(
             authority_epoch: 1,
             publication_revision: 7,
             publication_digest: "sha256:publication".into(),
+            agent_plan_id: Some("plan/test".into()),
             route: hiroute_domain::ModelRequestRouteV2::Plan {
                 revision: 5,
                 semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"plan"),

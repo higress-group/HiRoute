@@ -178,6 +178,14 @@ fn specified_header_reaches_only_the_confirmed_target_and_public_view_is_safe() 
     );
     assert_eq!(result.directory, ModelConnectionDirectoryStatusV1::Partial);
     assert_eq!(result.checked_model_count, 2);
+    assert_eq!(result.observed_model_ids.len(), 2);
+    assert!(result.observed_model_ids.iter().all(|id| {
+        result
+            .candidate
+            .models
+            .iter()
+            .any(|m| &m.upstream_model_id == id)
+    }));
     assert_eq!(result.invalid_model_count, 1);
     assert_eq!(result.inference, ModelConnectionInferenceStatusV1::NotRun);
     assert_eq!(result.candidate.candidate.candidate_revision, 1);

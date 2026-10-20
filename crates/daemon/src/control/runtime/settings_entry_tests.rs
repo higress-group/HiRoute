@@ -214,6 +214,21 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
     fs::write(&path, before).unwrap();
     let first = apply(&ordinary, &runtime, spec.clone(), "catalog-first");
     let first_operation = OperationId::parse(first["operation_id"].as_str().unwrap()).unwrap();
+    let original_grant = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .secrets()
+        .inspect_agent_access_grant(WorkspaceId::DEFAULT, &format!("agent-connection/{context}"))
+        .unwrap()
+        .unwrap();
+    record_attributed_session(
+        &runtime,
+        &original_grant,
+        "original",
+        plan.agent_plan_id.as_str(),
+    );
+    assert_attributed_session(&runtime, "original");
     let catalog_for = |operation_id: &OperationId| {
         let stores = runtime.adapter.stores_lock().unwrap();
         let operation = stores
@@ -290,6 +305,7 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
     let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
         "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&same_operation)}});
     apply(&ordinary, &runtime, restore, "catalog-disable");
+    assert_attributed_session(&runtime, "original");
     assert!(
         references().references.is_empty(),
         "model Restore must release references while collaboration remains configured"
@@ -445,6 +461,14 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
             .iter()
             .any(|grant| grant.bearer_token_sha256 == previous_material.sha256())
     );
+    record_attributed_session(
+        &runtime,
+        &custom_ref,
+        "rotated",
+        plan.agent_plan_id.as_str(),
+    );
+    assert_attributed_session(&runtime, "rotated");
+    assert_attributed_session(&runtime, "original");
     let custom_operation = runtime
         .adapter
         .stores_lock()
@@ -1091,6 +1115,9 @@ mod facets;
 #[path = "settings_profile_tests.rs"]
 mod settings_profile_tests;
 
+#[path = "grant_attribution_tests.rs"]
+mod grant_attribution_tests;
+
 #[path = "settings_entry_hermes_tests.rs"]
 mod hermes;
 #[path = "settings_entry_qoder_tests.rs"]
@@ -1098,3 +1125,73 @@ mod qoder;
 
 #[path = "settings_profile_fault.rs"]
 mod fault;
+
+fn record_attributed_session(
+    runtime: &ProductionControlRuntime,
+    grant: &hiroute_domain::AgentAccessGrantRefV1,
+    suffix: &str,
+    plan: &str,
+) {
+    use hiroute_application::control::ApplicationClockPort;
+    use hiroute_domain::*;
+    use hiroute_observation::writer::ObservationCommitPort;
+    // The real daemon runs retention while this lifecycle test reconfigures the
+    // Agent. Keep test observations inside the production retention window.
+    let now = runtime.adapter.now_ms().unwrap();
+    let stream = ObservationStreamV1 {
+        producer_id: ProducerId::parse(format!("agent-{suffix}")).unwrap(),
+        producer_epoch: ProducerEpoch::parse(format!("epoch-{suffix}")).unwrap(),
+        stream_id: StreamId::parse(format!("stream-{suffix}")).unwrap(),
+    };
+    let request_id = LogicalRequestId::parse(format!("request-{suffix}")).unwrap();
+    let fact = ExecutionFactV1::AgentTurnFinished {
+        opening_cause: Some(AgentTurnOpeningCauseV1::NoComparableHistory),
+        branch_execution: None,
+        agent_turn_id: format!("agent-turn-{suffix}"),
+        segment_id: format!("segment-{suffix}"),
+        ordinal: 1,
+        plan_id: AgentPlanId::parse(plan).unwrap(),
+        plan_revision: 1,
+        selected_branch_id: "regular".into(),
+        executed_branch_id: None,
+        model_configuration_id: None,
+        profile_digest: None,
+        attribution: AgentTurnAttributionV1::Unknown,
+        started_at_ms: u64::try_from(now - 1).unwrap(),
+        finished_at_ms: u64::try_from(now).unwrap(),
+        status: AgentTurnStatusV1::Completed,
+        history_partial: false,
+        first_request_id: Some(request_id.clone()),
+        last_request_id: Some(request_id),
+    };
+    let mut event = crate::control::runtime::tests::envelope(&stream, suffix, plan, 1, now, fact);
+    event.trust.grant_id = grant.grant_id().into();
+    event.trust.grant_generation = grant.generation();
+    let result = runtime
+        .adapter
+        .delegation_observation
+        .ingest_fact(&event, &[])
+        .unwrap();
+    assert!(
+        matches!(result, hiroute_observation::writer::IngestOutcome::Ack(_)),
+        "{result:?}"
+    );
+}
+
+fn assert_attributed_session(runtime: &ProductionControlRuntime, suffix: &str) {
+    use hiroute_domain::{ContentMode, ObservationQueryPort, SessionId};
+    let session = runtime
+        .adapter
+        .delegation_observation
+        .get_session(
+            &WorkspaceId::default(),
+            &SessionId::parse(format!("session-{suffix}")).unwrap(),
+            ContentMode::None,
+        )
+        .unwrap();
+    assert_eq!(
+        session.summary.agent_id, "agent_codex_default",
+        "{suffix}: {:?}",
+        session.summary
+    );
+}

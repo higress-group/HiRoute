@@ -22,6 +22,9 @@ pub mod writer;
 
 pub use content::DigestAuthority;
 pub use store::LocalObservationStore;
+
+#[cfg(feature = "test-support")]
+mod test_support;
 pub use writer::{
     BoundedLifecycleReceiverV2, ConversationContentChannel, FactChannel, LocalObservationWriter,
     OfferOutcome, WriterCycleOutcome,

@@ -5,7 +5,7 @@ description: "Refresh, extend, or audit HiRoute's single current model-metadata 
 
 # Model Metadata Maintainer
 
-Maintain `assets/model-data/current/inputs/metadata-catalog.json` as HiRoute's sole current model-metadata source. The generated files in `assets/model-data/current/` and `assets/release-facts/current/` are deterministic projections of that source, never separately maintained catalogs. Do not create edition selectors, compatibility catalogs, or parallel metadata products.
+Maintain `assets/model-data/current/inputs/metadata-catalog.json` as HiRoute's sole current model-metadata source. The generated files in `assets/model-data/current/`, `assets/release-facts/current/` and `assets/model-feed/payload.json` are deterministic projections of that source, never separately maintained catalogs. Do not create edition selectors, compatibility catalogs, or parallel metadata products.
 
 ## Load only what the task needs
 
@@ -30,6 +30,7 @@ Maintain `assets/model-data/current/inputs/metadata-catalog.json` as HiRoute's s
 8. Close the catalog: `tools/model-metadata/close_model_metadata.py` rewrites every provider-scoped record so no closable field stays `unknown` — it either keeps an observed assertion, assigns an inferred value from `tools/model-metadata/inference-rules.json` (recording `{basis: inferred, rule_key}`), or leaves an explicit `unsupported`/`not-applicable`. When a new or changed fact needs a rule, add or amend the rule there instead of hand-writing a value; a rule that stops matching is discarded and re-closed, never left stale.
 9. Run the validator and review the semantic diff. Report changed facts, added/retired identities, conflicts, runtime-required items, inference-closed fields (with their rule keys), and source freshness separately.
 10. When client records or consumer coverage change, refresh `assets/model-data/current/inputs/client-discovery-runs.json`, then regenerate `assets/model-data/current/` and `assets/release-facts/current/`. Keep review findings in the change discussion; do not commit one-off reports, uncertainty dumps, or projection notes.
+11. Regenerate `assets/model-feed/payload.json` with `cargo run -p hiroute-release-facts -- feed build`, using the same current bundle and supported release history. Maintain editorial announcements in `assets/model-feed/featured.json`; model facts still come only from the catalog. When payload bytes change, increase `publication.json` sequence and update its UTC issue time in the same PR, then regenerate and check again. Keep the referenced `source_revision` reproducible from repository history; do not replace it for an unrelated website deployment. Before the first recorded feed-capable release, the generated payload remains JSON null and publication is skipped. See [feed publication](../../../assets/model-feed/README.md) for production keys and deployment boundaries.
 
 ## Scanning a client repository
 
@@ -101,9 +102,12 @@ python3 assets/model-data/current/generate.py
 python3 assets/model-data/current/generate.py --check
 python3 assets/release-facts/current/prepare-bundle.py
 python3 assets/release-facts/current/prepare-bundle.py --check
+cargo run -p hiroute-release-facts -- feed build
+cargo run -p hiroute-release-facts -- feed build --check
+node apps/website/scripts/model-feed.mjs check
 ```
 
-`close_model_metadata.py` owns the closure rules and writes the source catalog in place; `--check` fails when the catalog is not a fixed point. Run it before validation, and run it twice when it changed a record: the second run must produce no diff. Then run both current generators twice; their second run must produce no diff. The validator checks entity keys, references, state vocabularies, source authorization, token-null semantics, endpoint relationships, field-derived completeness and `usable_for`, provenance, the inference-rule table and per-field provenance, the closure fixed point, dynamic-route attribution, and a deterministic canonical digest. Structural failures are red; stale sources are reported separately and require refresh or an explicit runtime/excluded disposition.
+`close_model_metadata.py` owns the closure rules and writes the source catalog in place; `--check` fails when the catalog is not a fixed point. Run it before validation, and run it twice when it changed a record: the second run must produce no diff. Then run the current generators and feed builder twice; their second run must produce no diff. The feed check uses shared Rust admission against supported release bundles; Node checks only complement it. Production public-key review and embedding precede the first feed-capable client release; matching deployment-secret provisioning precedes the first publication. Never install test roots into production trust. The validator checks entity keys, references, state vocabularies, source authorization, token-null semantics, endpoint relationships, field-derived completeness and `usable_for`, provenance, the inference-rule table and per-field provenance, the closure fixed point, dynamic-route attribution, and a deterministic canonical digest. Structural failures are red; stale sources are reported separately and require refresh or an explicit runtime/excluded disposition.
 
 For a changed discovery profile or scanner, scan its target commit twice and compare the outputs byte-for-byte. Also run the scanner's self-tests:
 

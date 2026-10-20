@@ -206,3 +206,21 @@
 @media(max-width:900px) {
   .hr-ui[data-text-scale='2'] .page-toolbar {align-items:flex-start;flex-wrap:wrap;padding-block:12px;}
 }
+
+/* The live routing projection and retained conversation are two views of one session. */
+.session-routing-and-conversation {container:session-detail / inline-size; padding:20px 22px; min-width:0;}
+.session-pane,.routing-conversation {min-width:0;}
+.routing-conversation>.request-chapter {padding:0;}
+.session-routing-and-conversation>.session-model-performance {margin-bottom:16px;}
+.routing-conversation>.request-timeline {margin:0 0 16px;}
+.app-window:has(.sessions-page.is-compact) {grid-template-columns:0 minmax(0,1fr);}
+.app-window:has(.sessions-page.is-compact)>.sidebar {visibility:hidden;}
+.sessions-page.is-compact .session-layout {grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);}
+.sessions-page.is-compact .session-master {display:none!important;}
+
+.division-draft-form,.division-executors {display:grid;gap:16px;min-width:0;}
+.division-draft-form .field {display:grid;gap:8px;min-width:0;}
+.division-draft-form .field-label {display:block;}
+.division-protection {align-items:flex-start;overflow-wrap:anywhere;}
+.division-protection p {margin:8px 0;}
+.division-protection-summary p {overflow-wrap:anywhere;}

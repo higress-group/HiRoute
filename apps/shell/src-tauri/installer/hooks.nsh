@@ -23,6 +23,18 @@ FunctionEnd
 !insertmacro HiRouteRestoreConfirmation ""
 !insertmacro HiRouteRestoreConfirmation "un."
 
+Function HiRouteHistoryNotice
+  ${IfThen} $PassiveMode = 1 ${|} Abort ${|}
+  IfSilent 0 +2
+    Abort
+  !insertmacro MUI_HEADER_TEXT "Upgrade and history / 升级与历史" "Keep the complete recovery material / 请保留完整恢复材料"
+  nsDialogs::Create 1018
+  Pop $0
+  ${NSD_CreateLabel} 0 0 100% 100% "When upgrading old HiRoute storage, configuration, credentials and routing continue. Old HiRoute observations are sealed with the matching old program; current history and statistics begin at cutover. Old-period continuation/history references require complete-group recovery with the old program. Native Agent history is unchanged. Service restarts can interrupt availability. Keep all sealed history and recovery packages.$\r$\n$\r$\n升级旧存储时，配置、凭据和路由会保留。旧 HiRoute 历史与配套旧程序一起封存，新历史与统计从切换时开始；旧时期的继续会话与历史引用需要整组恢复到配套旧版本。原生 Agent 历史不变。服务重启会短暂影响使用，请保留全部封存历史与恢复包。"
+  Pop $0
+  nsDialogs::Show
+FunctionEnd
+
 Function HiRouteOptions
   ${IfThen} $PassiveMode = 1 ${|} Abort ${|}
   IfSilent 0 +2
@@ -52,11 +64,11 @@ FunctionEnd
   StrCmp $INSTDIR "$LOCALAPPDATA\Programs\HiRoute" +3
     MessageBox MB_ICONSTOP "HiRoute install directory is invalid. No product files were written." /SD IDOK
     Abort
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-prepare "$PLUGINSDIR\hiroute-package.json"'
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-prepare "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe"'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute could not prepare a verified backup. Existing data is preserved." /SD IDOK
+    MessageBox MB_ICONSTOP "HiRoute could not prepare the upgrade. Installed programs were not replaced and existing data is preserved. $1" /SD IDOK
     Abort
   ${EndIf}
   StrCpy $HiRoutePrepared 1

@@ -107,6 +107,7 @@ function observationRead(view: string, query: Record<string, any>) {
     case 'content': return { state: 'complete', chunks: [{ text: control.texts[query.content_id] ?? '', original_byte_offset: 0 }], next_cursor: null };
     case 'facts': return { facts: [], projection_partial: false, next_cursor: null };
     case 'plan_quality': return { samples: [], summary: { models: [], scored_stage_count: 0, unrated_stage_count: 0, session_count: 0, available_revisions: [] }, next_cursor: null };
+    case 'routing_timeline': return { turns: [], watermark: `routing/${query.session_id ?? ''}`, complete: true };
     case 'home_value': return {
       pending_requests: 0,
       provisional_requests: 0,

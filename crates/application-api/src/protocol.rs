@@ -577,6 +577,7 @@ pub enum ErrorCode {
     DaemonUnavailable,
     GatewayUnavailable,
     ObservationUnavailable,
+    ScopeTooLarge,
     NoSupportedAgent,
     ActionRequired,
     OperationNeedsAttention,
@@ -616,6 +617,7 @@ impl ErrorCode {
             Self::CapabilityUnavailable
             | Self::DaemonUnavailable
             | Self::GatewayUnavailable
+            | Self::ScopeTooLarge
             | Self::ObservationUnavailable
             | Self::SnapshotUnavailable
             | Self::ControlWaitCapacityExceeded
@@ -648,6 +650,7 @@ impl ErrorCode {
             Self::DaemonUnavailable => "control.error.daemon_unavailable",
             Self::GatewayUnavailable => "application.error.gateway_unavailable",
             Self::ObservationUnavailable => "application.error.observation_unavailable",
+            Self::ScopeTooLarge => "application.error.scope_too_large",
             Self::NoSupportedAgent => "application.error.no_supported_agent",
             Self::ActionRequired => "application.error.action_required",
             Self::OperationNeedsAttention => "application.error.operation_needs_attention",
@@ -690,7 +693,9 @@ impl ErrorV1 {
     pub fn new(code: ErrorCode) -> Self {
         let retryable = matches!(
             code,
-            ErrorCode::DaemonUnavailable | ErrorCode::ControlWaitCapacityExceeded
+            ErrorCode::DaemonUnavailable
+                | ErrorCode::ControlWaitCapacityExceeded
+                | ErrorCode::ScopeTooLarge
         );
         Self {
             code,
@@ -869,6 +874,7 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
             "hiroute.agent-connection-apply-request/union"
         }
         "agents.connect.status" => "hiroute.agent-connection-status-request/union",
+        "agents.previous-routing.preview" => "hiroute.agent-previous-routing-query/v1",
         "agents.check" => "hiroute.agent-check-request/v1",
         "agents.scan" => "hiroute.agent-scan-request/v1",
         "compute.list" | "compute.show" => "hiroute.compute-management-query/v2",
@@ -880,18 +886,25 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         "compute.connection.authorize" => "hiroute.compute-connection-authorization-request/v1",
         "compute.connection.login" => "hiroute.subscription-login-request/v1",
         "compute.connection.test" => "hiroute.compute-connection-test-request/v1",
+        "models.feed.settings.apply" => "hiroute.model-feed-settings/v1",
+        "models.feed.remove.apply" => "hiroute.model-feed-remove/v1",
         "models.show" => "hiroute.model-catalog-query/v1",
         "sessions.list" => "hiroute.session-list-query/v1",
         "sessions.show" => "hiroute.session-lookup/v1",
         "sessions.receipt" => "hiroute.session-receipt-request/union",
         "value.show" => "hiroute.observation.query/v2",
-        "observation.plan-quality.samples" => "hiroute.observation.query/v2",
+        "observation.plan-quality.samples"
+        | "sessions.timeline"
+        | "observation.plan-trust"
+        | "observation.plan-trust.replay"
+        | "observation.plan-trust.suggestions" => "hiroute.observation.query/v2",
         _ => "hiroute.empty-request/v1",
     }
 }
 
 pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
     match command_id {
+        "agents.previous-routing.preview" => "hiroute.agent-previous-routing-preview/v1",
         "console.open" => "hiroute.console-launch/v1",
         "console.token.create" | "console.token.list" | "console.token.revoke" => {
             "hiroute.console-token-result/v1"
@@ -951,6 +964,12 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "compute.connection.authorize" => "hiroute.compute-subscription-check-result/v2",
         "compute.connection.login" => "hiroute.subscription-login-result/v1",
         "compute.connection.test" => "hiroute.model-connection-check/union",
+        "models.feed.status"
+        | "models.feed.refresh"
+        | "models.feed.settings.apply"
+        | "models.feed.remove.apply" => "hiroute.model-feed-status/v1",
+        "models.feed.remove.preview" => "hiroute.model-feed-removal-preview/v1",
+        "models.availability" => "hiroute.model-availability/v1",
         "models.show" => "hiroute.model-catalog-view/v1",
         "sessions.list" => "hiroute.session-list/v1",
         "sessions.show" => "hiroute.session-detail/v1",
@@ -958,6 +977,10 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "sessions.status" => "hiroute.session-store-status/v1",
         "value.show" => "hiroute.observation.value-report/v2",
         "observation.plan-quality.samples" => "hiroute.plan-quality-samples-page/v1",
+        "sessions.timeline" => "hiroute.routing-timeline/v1",
+        "observation.plan-trust" => "hiroute.plan-trust/v1",
+        "observation.plan-trust.suggestions" => "hiroute.plan-trust-suggestions/v1",
+        "observation.plan-trust.replay" => "hiroute.plan-trust-replay/v1",
         _ => "hiroute.command-result/v1",
     }
 }
@@ -1002,6 +1025,8 @@ pub(crate) fn command_stdin_channels(command_id: &str) -> &'static [&'static str
         | "agents.scan"
         | "compute.connection.prepare"
         | "compute.connection.options"
+        | "models.feed.settings.apply"
+        | "models.feed.remove.apply"
         | "compute.connection.preview"
         | "compute.connection.apply"
         | "compute.connection.authorize"
@@ -1015,12 +1040,19 @@ pub(crate) fn command_stdin_channels(command_id: &str) -> &'static [&'static str
         | "agents.connect.preview"
         | "agents.connect.apply"
         | "agents.restore.preview"
-        | "agents.restore.apply" => &["request_stdin", "request_file"],
+        | "agents.restore.apply"
+        | "agents.previous-routing.preview" => &["request_stdin", "request_file"],
         "sessions.list"
         | "sessions.show"
         | "sessions.receipt"
         | "value.show"
-        | "observation.plan-quality.samples" => &["request_stdin", "request_file", "capability_fd"],
+        | "observation.plan-quality.samples"
+        | "sessions.timeline"
+        | "observation.plan-trust"
+        | "observation.plan-trust.replay"
+        | "observation.plan-trust.suggestions" => {
+            &["request_stdin", "request_file", "capability_fd"]
+        }
         "agents.check" | "operations.cancel" => &["capability_fd"],
         _ => &[],
     }
@@ -1128,9 +1160,10 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
             format!("hiroute {joined_path} --request-stdin --output json")
         }
         "agents.connect.status" => "hiroute agents connect status <CONNECTION_OR_CONTEXT_ID> | --effective --context <ID> --plan <ID> [--session-id <ID>] [--observed-request-id <ID>] | --request-file <PATH> --output json".to_owned(),
-        "sessions.list" | "value.show" | "observation.plan-quality.samples" => {
+        "sessions.list" | "value.show" | "observation.plan-quality.samples" | "observation.plan-trust" | "observation.plan-trust.replay" | "observation.plan-trust.suggestions" => {
             format!("hiroute {joined_path} ([OPTIONS] | --request-stdin) [--capability-fd <FD>] --non-interactive --output json")
         }
+        "sessions.timeline" => "hiroute sessions timeline <SESSION_ID> [--follow] [--after-watermark <WATERMARK>] [--limit <1..200>] --output json".to_owned(),
         "sessions.show" => "hiroute sessions show (<SESSION_ID> [--content <none|messages|messages-and-tools>] | --request-stdin) [--capability-fd <FD>] --non-interactive --output json".to_owned(),
         "agents.scan" => "hiroute agents scan [--request-stdin | --request-file <PATH>] --non-interactive --output json".to_owned(),
         "system.status" | "agents.list" | "sessions.status" => {
@@ -1191,6 +1224,10 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "routing.preview" | "routing.apply" => "--request-stdin accepts only the existing strict draft, content, or lifecycle schema. Apply must reproduce Preview and carry its exact revisions, digest, and idempotency key; publication remains one recoverable Operation.".to_owned(),
         "agents.connect.preview" | "agents.connect.apply" | "agents.restore.preview" | "agents.restore.apply" => "--request-stdin accepts only the strict v1 connection or v2 managed-settings request. Model, management_skill and collaboration each support independent keep/configure/restore, including both Skills in one request. Omitted facets keep their state. Apply uses local OS socket access and is revision-checked and idempotent; it and writes only owned Agent fields; restore refuses concurrent ownership drift.".to_owned(),
         "sessions.list" => "Human options retain the v1 query. Fact-only listing is available to the same-UID Local Control peer; --query searches retained text and therefore still requires a separately delivered protected capability. --request-stdin accepts only a strict v2 sessions intent.".to_owned(),
+        "sessions.timeline" => "Required SESSION_ID; optional --after-watermark and --limit 1..200 (default 50). --follow streams one NDJSON change event per new or updated agent turn every two seconds, until interrupted. A watermark is opaque and scoped to this session and page size. No configuration is changed.".to_owned(),
+        "observation.plan-trust.suggestions" => "No options. Returns suggestions and unavailable arrays for active published Plans. Per-Plan failures carry plan_id and scope_too_large, unavailable or stale while healthy suggestions remain usable. Suggested branches contain counts, cohort, protection_count, identity_stabilities and only the suggested-threshold replay; full report rows are omitted. A whole-query failure remains retryable, never an empty success. No configuration is changed.".to_owned(),
+        "agents.previous-routing.preview" => "Accepts --request-stdin or --request-file with {agent,presets?}. Claude presets: opus, sonnet, haiku; Codex: default; additional-model Agents: models. Returns a draft for the ordinary settings Preview/Apply. Missing history never implies native routing.".to_owned(),
+        "observation.plan-trust" | "observation.plan-trust.replay" => "Required --plan-id; optional --branch-id, --revision active|all|N, --from-ms, --to-ms, --group-by model|executor. Replay requires --thresholds-millis with 1–8 comma-separated values from 0 to 1000. A complete population above 50,000 stages or a query deadline returns retryable scope_too_large; reduce the scope where possible. Suggestions use the full retained active revision, with a post-announcement upward cohort. No settings change automatically.".to_owned(),
         "observation.plan-quality.samples" => "Provide at least --plan-id or --session-id. Use --competence below-floor|meets-floor to compare the latest reliable score with the floor saved for that stage, or --unrated for missing/partial scores. Score bounds remain strict open bounds. Detail filters do not alter full-scope summaries. The existing v2 query may opt in with include_routing_observations:true for retained applicability statistics. Omitted/false preserves released strict fields, authorization and cursor bindings. Counts and rates state retained coverage and actual applicability-request denominators. Facts are same-UID reads; protected evidence content is never returned.".to_owned(),
         "value.show" => "Human options use the current v2 value_report intent; defaults are the last seven days and separate totals for every currency. --group-by day returns UTC day buckets from the same snapshot. --request-stdin accepts strict v2 value, home_value or value_report intents. Same-UID reads retain known/unknown usage, amounts and coverage; missing values are never filled with zero.".to_owned(),
         "sessions.show" => "Human options retain the v1 lookup and content defaults to none. Same-UID facts/timeline reads need no extra token; messages, tool content, catalog, ancestry, content pages, and search still require an exact protected capability.".to_owned(),

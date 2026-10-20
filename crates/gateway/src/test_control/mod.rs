@@ -7,6 +7,8 @@
 mod contract;
 mod dial;
 mod fixture;
+#[cfg(all(test, target_os = "linux"))]
+mod registered_feed_tls;
 mod runtime_state;
 mod security;
 

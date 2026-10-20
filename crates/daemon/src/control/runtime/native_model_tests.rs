@@ -841,6 +841,15 @@ fn publish(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
         _ => panic!("original grant effect is missing"),
     };
     drop(stores);
+    // Manual adapter tests must record the same staged grant evidence that the
+    // coordinator journals before it activates the publication.
+    operation.step_mut(OperationStepKind::ApplySecrets).effects = vec![grant_effect.clone()];
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .save_operation(operation)
+        .unwrap();
     let mut tampered = operation.clone();
     tampered.accepted_digest = CanonicalDigest::of_bytes(b"unconfirmed-publication");
     assert!(settings_model_publication_record(&tampered, &intent, &base, &grant_effect).is_err());

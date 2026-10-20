@@ -6,7 +6,7 @@ use hiroute_domain::*;
 use rusqlite::Connection;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) fn transitions(rows: &[Row]) -> Vec<AnalysisTransitionV1> {
+pub(crate) fn transitions(rows: &[Row]) -> Vec<AnalysisTransitionV1> {
     let mut previous_http = BTreeMap::<&str, &Row>::new();
     let mut previous_turn = BTreeMap::<&str, &Row>::new();
     let mut first_by_turn = BTreeMap::new();

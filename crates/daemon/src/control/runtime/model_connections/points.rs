@@ -23,16 +23,14 @@ pub(super) fn point_discovery(
 impl LocalControlAdapter {
     pub(in crate::control::runtime) fn claude_api_point_sources(
         &self,
+        catalog: &TrustedReleaseCatalog,
     ) -> Result<
         Vec<hiroute_integrations::NativeApiSource>,
         hiroute_application::control::ControlReadError,
     > {
         use super::super::compute_routing::authorized_compute_discovery;
         use hiroute_application::control::ControlReadError;
-        let catalog = self
-            .release_catalog
-            .as_ref()
-            .ok_or(ControlReadError::Unavailable)?;
+
         let mut sources = Vec::new();
         for native in self.scanner.scan() {
             let Some(discovery) = authorized_compute_discovery(catalog, &native)? else {
@@ -87,8 +85,7 @@ impl LocalControlAdapter {
     ) -> Result<ComputeScanResultV2, hiroute_application::control::ControlReadError> {
         use hiroute_application::control::ControlReadError;
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
         let provenance = catalog
             .compute_catalog_provenance()
@@ -143,7 +140,7 @@ impl LocalControlAdapter {
             ),
             (
                 "agent_claude_default",
-                self.claude_api_point_sources().map_err(|_| ()),
+                self.claude_api_point_sources(&catalog).map_err(|_| ()),
             ),
             (
                 "agent_opencode_default",
@@ -190,9 +187,9 @@ impl LocalControlAdapter {
                             .native_scope
                             .as_str()[7..]
                     ),
-                    connection_option_id: super::point_catalog::qualified_point(catalog, first)
+                    connection_option_id: super::point_catalog::qualified_point(&catalog, first)
                         .map(|(r, _)| r.option.connection_option_id),
-                    endpoint_profile_id: super::point_catalog::qualified_point(catalog, first)
+                    endpoint_profile_id: super::point_catalog::qualified_point(&catalog, first)
                         .map(|(r, _)| r.endpoint_profile.endpoint_profile_id),
                     target,
                     connection_ref: format!("connection-point/{}", &point.key_digest.as_str()[7..]),
@@ -211,7 +208,7 @@ impl LocalControlAdapter {
                         "native_configuration_not_importable"
                     }
                     .into(),
-                    discovery: importable.then(|| point_discovery(&point, catalog)),
+                    discovery: importable.then(|| point_discovery(&point, &catalog)),
                     actions_required: if importable {
                         vec![]
                     } else {

@@ -652,7 +652,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.deepseek.official.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1790294400,
+        "last_verified_at": 1792368000,
         "logical_endpoint_group": "deepseek-official",
         "protocol_endpoints": [
           {
@@ -1653,6 +1653,21 @@
           "upstream_protocol": "messages"
         },
         {
+          "capability_id": "cap.deepseek.v4-1-flash.official.chat",
+          "connector_id": "connector.deepseek.p0",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.deepseek.official.global.v1",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:7912d8c2c263cf0b9beea39d6085db85d84d437e6038d57a30356c2184143b74",
+          "model_configuration_id": "model.deepseek.v4-1-flash",
+          "protocol_endpoint_id": "endpoint.deepseek.official.global.v1.chat",
+          "required_adapter_ref": "adapter.openai-chat.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "deepseek-flash",
+          "upstream_protocol": "chat_completions"
+        },
+        {
           "capability_id": "cap.groq.openai-gpt-oss-20b.chat",
           "connector_id": "connector.groq.p0",
           "connector_revision": 1,
@@ -2061,6 +2076,19 @@
         {
           "capabilities": {
             "context_tokens": 1000000,
+            "max_output_tokens": 393216,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
+          "display_name": "DeepSeek V4.1 Flash",
+          "model_configuration_id": "model.deepseek.v4-1-flash",
+          "publisher_id": "publisher.deepseek",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1000000,
             "max_output_tokens": 384000,
             "streaming": true,
             "tool": true,
@@ -2391,6 +2419,21 @@
           "region_id": "global",
           "revision": 1,
           "service_offering_id": "codex-subscription",
+          "usage_scope": "account"
+        },
+        {
+          "billing_class": "paid",
+          "endpoint_profile_id": "endpoint.deepseek.official.global.v1",
+          "endpoint_profile_revision": 1,
+          "entitlement_id": "api-key",
+          "evidence_digest": "sha256:7912d8c2c263cf0b9beea39d6085db85d84d437e6038d57a30356c2184143b74",
+          "model_configuration_ids": [
+            "model.deepseek.v4-1-flash"
+          ],
+          "offer_id": "offer.deepseek.v4-1-flash.official",
+          "region_id": "global",
+          "revision": 1,
+          "service_offering_id": "official-api",
           "usage_scope": "account"
         },
         {
@@ -4314,6 +4357,7 @@
             "source-010",
             "source-134",
             "source-135",
+            "source-144",
             "source-150",
             "source-171",
             "source-172"
@@ -4344,7 +4388,7 @@
               "max"
             ]
           },
-          "source_stability_note": "deepseek-flash serves V4.1 Flash on the direct API; deepseek-v4.1-flash is Alibaba Cloud Model Studio’s product-scoped upstream ID. The retired direct deepseek-v4-flash compatibility alias is not a current binding.",
+          "source_stability_note": "The DeepSeek official deepseek-flash rolling alias was updated to V4.1 Flash 1017 on 2026-10-17 without changing the API model name. Alibaba Cloud Model Studio uses its own deepseek-v4.1-flash ID; this official announcement does not establish the version served by Alibaba or other hosts. The retired direct deepseek-v4-flash compatibility alias is not a current binding.",
           "upstream_id_state": null,
           "upstream_ids": [
             "deepseek-flash",
@@ -8210,7 +8254,8 @@
             "source-007",
             "source-008",
             "source-009",
-            "source-010"
+            "source-010",
+            "source-144"
           ],
           "interface_candidates": [
             "deepseek-platform/anthropic-messages",
@@ -10467,9 +10512,9 @@
         },
         {
           "authority": "api-docs.deepseek.com",
-          "bytes_digest": null,
-          "collected_on": "2026-09-25",
-          "digest_state": "not-captured",
+          "bytes_digest": "sha256:9abda5ba89b86be5d82ad045864dbe5047e0908b45c161d8a4631d4d5fcb6f18",
+          "collected_on": "2026-10-19",
+          "digest_state": "captured",
           "locator": "https://api-docs.deepseek.com/updates/",
           "source_key": "source-144",
           "source_kind": "provider-documentation"
@@ -101609,11 +101654,11 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:275bb1862f855a05d04888e59666a1249e2e8108b4c519bb757219caafb2b5af"
+      "source_catalog_digest": "sha256:369479a2ccfa7828a846288db3ed85ccd6e83217bd6615758418560e8dcc9ee6"
     },
     "rating_snapshot": {
-      "digest": "sha256:4421ab512915f871dbbec5ec7d437302beb8e2f7bfeced07a9eecf4232c372e8",
-      "model_catalog_digest": "sha256:6e7f5a3ac7d08198a0e5d0719e156dc543a2e0a321a967844cf8e95100268c7d",
+      "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
+      "model_catalog_digest": "sha256:9a7552c0d3206b1e144ed7c55e344a4479ca387cae7deb36ae7666cf29b07239",
       "models": [
         {
           "capability": {
@@ -101718,6 +101763,13 @@
             "parameter": "enable_thinking"
           },
           "model_configuration_id": "model.bailian.qwen3-max-2026-01-23"
+        },
+        {
+          "capability": {
+            "kind": "fixed",
+            "profile": "provider-default"
+          },
+          "model_configuration_id": "model.deepseek.v4-1-flash"
         },
         {
           "capability": {
@@ -102585,6 +102637,25 @@
           "native_configuration": {
             "enabled": true,
             "kind": "toggle"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.deepseek.v4-1-flash",
+          "native_configuration": {
+            "kind": "fixed",
+            "profile": "provider-default"
           },
           "overall": {
             "reason": "rating_not_collected",

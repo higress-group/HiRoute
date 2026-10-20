@@ -34,9 +34,15 @@ pub(super) fn capture(root: &Path, destination: &Path) -> Result<Value, LocalSto
     if source[0] != identity(destination)?[0] {
         return Err(LocalStorageError::InvalidData.at_upgrade_stage(
             "Old Observation must be sealed on the same filesystem; no full-copy fallback is allowed",
-        ));
+        ).with_recovery(hiroute_host_runtime::StorageRecoveryCause::NamespaceUnavailable,
+            hiroute_host_runtime::StorageRecoveryAction::PreserveAndDiagnose));
     }
     Ok(json!({"identity":source,"contents":"preserved_without_recursive_verification"}))
+}
+
+/// Check only held directory identities; never enumerate historical contents.
+pub(super) fn preflight(root: &Path, destination_parent: &Path) -> Result<(), LocalStorageError> {
+    capture(root, destination_parent).map(|_| ())
 }
 
 pub(super) fn verify_directory(path: &Path, value: &Value) -> Result<(), LocalStorageError> {

@@ -16,7 +16,9 @@ language/theme/size matrix. Native origin ACLs, NSIS, Task/login effects and rea
 upgrades keep their [installed gates](../../../docs/windows-desktop-installation.md#evidence-and-release-claims).
 It also distinguishes an unavailable Windows update catalog from installation
 recovery, and checks the bundled local-listener recovery instructions and usable
-Recheck action at both supported window sizes.
+Recheck action at both supported window sizes. Incomplete installation has a
+neutral heading and exact version/build installer repair, without storage retry
+or an unrelated recovery location.
 
 Start with the user capability, then choose the smallest layer that can observe its
 contract. Node state tests explain decision rules; browser scenarios exercise the
@@ -27,6 +29,7 @@ proves native authorization, persistence, process cleanup or real model calls.
 
 | User capability | Representative tests | Unique guarantee |
 | --- | --- | --- |
+| Recover after a storage upgrade refuses startup | [Recovery presentation](storage-recovery.test.mjs), [production-style scenarios](v3/visual/storage-recovery-scenarios.mjs), [storage owner proof](../../../crates/local-storage/src/migrations/startup_recovery.rs) | Original-program reinstall requires the authoritative admitted unchanged group; unknown causes never grant downgrade. Verified source guidance names the exact batch, source directory and guides; long names wrap in both languages/themes. Windows supplies a route from the displayed log folder; macOS offers the preserved-material action. Missing/unsafe locations grant neither located recovery nor resume. Native installed upgrade, complete restoration and real requests remain separate acceptance. |
 | Search session content and continue reading matches | [Session scenarios](v3/browser/session-window-scenarios.mjs), [session layout captures](v3/visual/session-window-active.mjs) | Results represent distinct matching sessions; keyword edits discard stale pages, failed continuation withdraws its cursor, and clearing search resumes automatic selection after an in-flight detail read. Pending indexing and complete empty results remain distinct. Chinese/English searching, results, empty, pending and retry states stay readable at 1200×813 and 755×600 using production styles. Real lookup, fresh authorization and Worker activity require native acceptance. |
 | Connect an API through the service directory | [Connection flow scenarios](v3/visual/connection-flow-active.mjs), [directory and draft rules](connection-directory.test.mjs) | Full branded directory, separate product drafts and keys, checked source name, cancellation, explicit model selection and inherited append behavior. Uses production styles; native save and live calls need separate acceptance. |
 | Enable or edit Codex routing | `codex.enable.draft-cancel`, `codex.routing.fixed-binding`, `codex.routing.mixed-native-default` in [Agent scenarios](v3/browser/agent-trust-scenarios.mjs) | Cancelling never applies; configured fixed overrides, native reasoning and the chosen default survive save; service responsibility is explained. |
@@ -56,6 +59,27 @@ proves native authorization, persistence, process cleanup or real model calls.
 | Add a decision connection from an unfinished route | `desktop.decisions.route-detour` | The shell suspends the route draft, saves and returns the exact typed connection, preserves input on cancel, and never publishes automatically. |
 | Inspect a model or open its documentation | `desktop.models.documentation-retains-input`; [model-to-route scenario](v3/browser/model-to-route-scenarios.mjs) | Local readiness does not claim inference success; browser failure retains form input; web anchors retain their default action; route creation uses the selected model. |
 | Change model grouping or inspect page controls | `desktop.models.view-switch`, `desktop.presentation.control-layout`; [presentation scenarios](v3/browser/presentation-interactions.mjs) | Production styles preserve model/connection counts, selected model and visible selection. Chinese/English and light/dark checks reject browser-default buttons and horizontal overflow from long recent-session titles at the supported small window. |
+| Try a new model, judge its evidence and follow live routing | `timeline.initial-failure-retry-recovers.*`, `timeline.polls-only-while-displayed-and-visible`, `trust.scoring-states.both-groupings.*`, `quickstart.*.inline-connection-guard.model-change-and-back` in [trial scenarios](v3/visual/new-model-trial-active.mjs) | A failed timeline read keeps its tab, error and Retry until recovery, while only a confirmed empty read hides the tab; polling continues only while the timeline is shown and the window is visible, after one availability probe. Per-model and per-executor groupings both show scoring coverage and complete/partial/awaiting/unscored counts. Changing models, going back or leaving the quick start asks before discarding the inline connection form; Cancel keeps the model and input. `HIROUTE_BROWSER_TRANSPORT=console` runs the same scenarios over the console host. Real feed retrieval, saved trials and live sessions require native acceptance. |
+
+The [historical protection and overview scenarios](v3/visual/new-model-trial-protection-active.mjs)
+run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --protection`.
+They verify scope-matched release counts and explicit unavailable reasons, a selectable
+24-hour interval inside independently clipped retention boundaries, the opening
+selection's historical-protection outcome/previous score, and forty-turn overview
+navigation, viewport tracking, keyboard access and live append. Use the same
+`HIROUTE_BROWSER_TRANSPORT=console` switch for the console host. These remain
+production-component scenarios with synthetic data; real protection/release
+records and native acceptance need their own evidence. Run browser suites serially.
+
+The [trial interaction refinements](v3/visual/new-model-trial-polish-active.mjs)
+run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --polish`.
+They cover cached trust-level replay, precise-value debounce, shared reason labels,
+bounded two/forty-turn lanes and sticky labels, visible arrivals and unread counts,
+automatic following until an explicit selection, reduced motion, suggestion hierarchy,
+model-card facts and footer clearance across both supported sizes, languages and themes.
+Small-window timeline captures use the product's Compact view. Browser suites in
+one checkout share the Vite dependency cache and should run serially. These
+fixtures do not establish native or provider effects.
 
 Task-route save scenarios also cover Pi and Qoder executor reselection: an explicit
 Messages choice survives clicking the selected executor and reaches the saved draft.

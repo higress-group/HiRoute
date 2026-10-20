@@ -72,7 +72,7 @@ class InstalledProduct:
         self.daemon = None
         self.upstream = NativeUpstream()
 
-    def close(self):
+    def stop(self):
         if self.daemon is not None:
             self.daemon.terminate()
             try:
@@ -85,6 +85,9 @@ class InstalledProduct:
                 self.daemon.stderr.read() if self.daemon.stderr else b'',
             ))
             self.daemon = None
+
+    def close(self):
+        self.stop()
         self.upstream.close()
         leaked = []
         for output in self.outputs:
@@ -209,14 +212,13 @@ finally:
         codex.chmod(0o700)
         adapter = self.fixture_bin / 'codex-acp'
         adapter.write_text(r'''#!/usr/bin/python3
-import http.client, json, os, sys
+import http.client, json, os, sys, uuid
 from urllib.parse import urlparse
 config = json.loads(os.environ['CODEX_CONFIG'])
 base = urlparse(config['model_providers'][config['model_provider']]['base_url'])
 token = os.environ['HIROUTE_RUN_TOKEN']
-session = 'headless-acp-session'
+session = None
 # External ACP fixture owns its exact native session receipt across process restarts.
-session_receipt = os.path.join(os.environ['CODEX_HOME'], 'headless-acp-session.json')
 for line in sys.stdin:
     request = json.loads(line)
     method = request['method']
@@ -227,8 +229,10 @@ for line in sys.stdin:
                   '_meta': {'jetbrains': {'air': {
                       'version': 1, 'capabilities': ['sessionFailure']}}}}
     elif method in ('session/new', 'session/load'):
+        session = request['params']['sessionId'] if method == 'session/load' else 'headless-' + uuid.uuid4().hex
+        assert session.startswith('headless-') and session[9:].isalnum()
+        session_receipt = os.path.join(os.environ['CODEX_HOME'], session + '.json')
         if method == 'session/load':
-            assert request['params']['sessionId'] == session
             with open(session_receipt, encoding='utf-8') as stream:
                 assert json.load(stream) == {'id': session, 'cwd': request['params']['cwd']}
         else:

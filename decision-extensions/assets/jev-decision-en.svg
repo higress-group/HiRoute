@@ -35,7 +35,7 @@
 
     <rect x="758" y="170" width="322" height="166" rx="15" fill="#222d4d" stroke="#7487d5"/>
     <text x="778" y="207" font-size="20" fill="#d0d9ff" font-weight="600">Select &amp; execute models</text>
-    <text x="778" y="239" font-size="16" fill="#b4bfd6">Smart saving: economy / primary</text>
+    <text x="778" y="239" font-size="16" fill="#b4bfd6">Difficulty routing: regular / primary</text>
     <text x="778" y="265" font-size="16" fill="#b4bfd6">Custom: category → regular / primary</text>
     <text x="778" y="292" font-size="15" fill="#b4bfd6">Apply thresholds and an applicable score</text>
     <text x="778" y="316" font-size="15" fill="#b4bfd6">Ordered candidates · Bounded failover</text>

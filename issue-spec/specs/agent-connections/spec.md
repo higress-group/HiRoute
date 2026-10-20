@@ -661,6 +661,29 @@ HiRoute MUST configure explicitly selected published Plan aliases as supplementa
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258609244
 
+### Requirement: Previous routing is an ordinary scoped edit, separate from Restore
+
+Return to previous routing MUST follow the succeeded configuration journal chain
+within the current Agent context, including Codex's active root/profile slot. For
+each selected preset it skips unchanged resolved mappings and finds the mapping
+before that preset's latest change. Only selected presets are overlaid on current
+settings; unrelated presets retain their current mappings. This produces a draft
+for normal Preview/Apply, with manual-edit checks and no deletion of Plans/evidence.
+
+Traversal is bounded to 128 configurations and detects cycles. Missing history,
+context mismatch, a non-succeeded entry or the traversal bound yields an explicit
+unavailable reason. None is evidence of a previous native configuration. Restore
+to native remains a separate labelled action with its existing ownership rules.
+
+#### Scenario: Sonnet changes after the Opus trial starts
+
+- **WHEN** Opus is mapped to a trial and a later configuration changes only Sonnet
+- **THEN** returning Opus skips the unchanged Opus entry and restores its earlier
+  mapping while preserving the later Sonnet choice.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235502571
+
 ## Implementation references
 
 - [Shared settings transaction](../../../crates/application/src/agent_connection/settings/transaction.rs)

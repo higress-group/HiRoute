@@ -709,6 +709,30 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
     );
     assert!(updated_native["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
 
+    // Exercise the real read adapter as well as the retained-chain algorithm.
+    // A Keep-only Skill snapshot intentionally omits model lineage and cannot
+    // establish the head of a previous-routing query.
+    let before_history_read = fs::read(&settings).unwrap();
+    let previous = ordinary.dispatch_wire(request(
+        "PreviewAgentPreviousRouting",
+        json!({"agent":"agent_claude_default","presets":["sonnet"]}),
+        None,
+    ));
+    assert!(previous.error.is_none(), "{previous:?}");
+    let previous = previous.data.unwrap();
+    assert_eq!(previous["status"], "available", "{previous}");
+    assert_eq!(previous["current_operation"], updated["operation_id"]);
+    assert_eq!(previous["restored_from"]["sonnet"], reused["operation_id"]);
+    assert_eq!(
+        previous["spec"]["model"]["settings"]["preset_mappings"]["sonnet"]["kind"],
+        "preserve_native"
+    );
+    assert_eq!(
+        previous["spec"]["model"]["settings"]["preset_mappings"]["opus"]["plan_id"],
+        json!(plan.agent_plan_id)
+    );
+    assert_eq!(fs::read(&settings).unwrap(), before_history_read);
+
     let restore_spec = json!({
         "schema_version":{"major":2,"minor":0}, "context_id":context,
         "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&operation)}
@@ -756,6 +780,15 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
             .resolve_active_agent_grant(&connection_id)
             .is_err(),
         "a formal restore withdraws the exposed grant"
+    );
+    assert!(
+        runtime
+            .adapter
+            .previous_routing_head("agent_claude_default")
+            .unwrap()
+            .operation
+            .is_none(),
+        "a withdrawn model grant must not expose an old history head"
     );
     let withdrawn = service.dispatch_wire(request(
         "GetManagedAgentLaunchDescriptor",

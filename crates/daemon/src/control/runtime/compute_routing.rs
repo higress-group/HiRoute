@@ -25,8 +25,7 @@ impl LocalControlAdapter {
         &self,
     ) -> Result<Vec<RegisteredComputeCandidateV1>, ControlReadError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
         let discoveries = self
             .refresh_discovery()
@@ -62,6 +61,9 @@ impl LocalControlAdapter {
             .get(input_slot)
             .cloned()
             .ok_or(ControlReadError::NotFound)?;
+        let catalog = self
+            .current_catalog()
+            .ok_or(ControlReadError::Unavailable)?;
         if descriptor.field_selector == "hermes.api-key" {
             let sources = self
                 .hermes_source_facts()
@@ -70,8 +72,7 @@ impl LocalControlAdapter {
             return if hiroute_integrations::native_api_connection_points(sources)
                 .iter()
                 .any(|point| {
-                    self.release_catalog
-                        .as_ref()
+                    Some(&catalog)
                         .and_then(|catalog| {
                             super::model_connections::point_catalog::point_evidence(catalog, point)
                                 .ok()
@@ -90,13 +91,12 @@ impl LocalControlAdapter {
         }
         if descriptor.field_selector == "env.ANTHROPIC_AUTH_TOKEN" {
             let sources = self
-                .claude_api_point_sources()
+                .claude_api_point_sources(&catalog)
                 .map_err(|_| ControlReadError::SnapshotChanged)?;
             if hiroute_integrations::native_api_connection_points(sources)
                 .iter()
                 .any(|point| {
-                    self.release_catalog
-                        .as_ref()
+                    Some(&catalog)
                         .and_then(|catalog| {
                             super::model_connections::point_catalog::point_evidence(catalog, point)
                                 .ok()
@@ -122,8 +122,7 @@ impl LocalControlAdapter {
             if hiroute_integrations::native_api_connection_points(sources)
                 .iter()
                 .any(|point| {
-                    self.release_catalog
-                        .as_ref()
+                    Some(&catalog)
                         .and_then(|catalog| {
                             super::model_connections::point_catalog::point_evidence(catalog, point)
                                 .ok()
@@ -151,12 +150,11 @@ impl LocalControlAdapter {
                 .ok_or(ControlReadError::SnapshotChanged);
         }
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
         let mut matched = false;
         for discovery in self.scanner.scan() {
-            let Some(authorized) = authorized_compute_discovery(catalog, &discovery)? else {
+            let Some(authorized) = authorized_compute_discovery(&catalog, &discovery)? else {
                 continue;
             };
             if authorized.credential == descriptor
@@ -191,8 +189,7 @@ impl LocalControlAdapter {
         connection_option_id: &str,
     ) -> Result<Vec<(CpaRegisteredSourceV1, String)>, ControlReadError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
         let kind = catalog
             .resolve_connection_option(connection_option_id)
@@ -218,8 +215,7 @@ impl LocalControlAdapter {
         sources: Vec<CpaRegisteredSourceV1>,
     ) -> Result<Vec<(CpaRegisteredSourceV1, String)>, ControlReadError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
         let mut candidates = sources
             .into_iter()
@@ -252,8 +248,7 @@ impl LocalControlAdapter {
         change: &ComputeConnectionChangeV1,
     ) -> Result<PreparedComputeProjectionV1, ComputeProjectionReadError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ComputeProjectionReadError::Control(
                 ControlReadError::Unavailable,
             ))?;
@@ -350,8 +345,7 @@ impl ComputeFactsPort for LocalControlAdapter {
     }
     fn scan_compute(&self) -> Result<ComputeScanResultV1, ControlReadError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
         let provenance = catalog
             .compute_catalog_provenance()
@@ -361,7 +355,7 @@ impl ComputeFactsPort for LocalControlAdapter {
             .map_err(|_| ControlReadError::Unavailable)?;
         let mut items = discoveries
             .iter()
-            .map(|discovery| scan_item(catalog, discovery))
+            .map(|discovery| scan_item(&catalog, discovery))
             .collect::<Result<Vec<_>, _>>()?;
         for ecosystem in hiroute_integrations::NativeApiEcosystem::ALL {
             items.extend(self.native_compute_scan_items(ecosystem)?);
@@ -378,8 +372,7 @@ impl ComputeFactsPort for LocalControlAdapter {
 
     fn connection_options(&self) -> Result<ComputeConnectionOptionsResultV1, ControlReadError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
         let provenance = catalog
             .compute_catalog_provenance()

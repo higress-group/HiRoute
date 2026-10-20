@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-agent-previous-routing"
+description = "Enables the preview_agent_previous_routing command without any pre-configured scope."
+commands.allow = ["preview_agent_previous_routing"]
+
+[[permission]]
+identifier = "deny-preview-agent-previous-routing"
+description = "Denies the preview_agent_previous_routing command without any pre-configured scope."
+commands.deny = ["preview_agent_previous_routing"]

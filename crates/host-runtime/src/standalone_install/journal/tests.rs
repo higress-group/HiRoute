@@ -4,14 +4,16 @@ use serde_json::json;
 #[derive(Default)]
 struct Manager {
     calls: Vec<&'static str>,
+    registered: Vec<Value>,
 }
 impl ManagerHost for Manager {
     fn quiesce(&mut self, _: &[&Value]) -> io::Result<()> {
         self.calls.push("stop");
         Ok(())
     }
-    fn register(&mut self, _: &Value, _: Option<&Value>) -> io::Result<()> {
+    fn register(&mut self, value: &Value, _: Option<&Value>) -> io::Result<()> {
         self.calls.push("register");
+        self.registered.push(value.clone());
         Ok(())
     }
     fn unregister(&mut self, _: &Value) -> io::Result<()> {
@@ -64,6 +66,62 @@ fn fixture() -> (tempfile::TempDir, StandaloneLayout, Journal) {
     (temp, layout, journal)
 }
 use sha2::Digest;
+#[test]
+fn changed_storage_refuses_rollback_and_forward_reapplication_never_registers_old_program() {
+    let (_temp, layout, mut journal) = fixture();
+    let mut old = journal.new_marker.clone();
+    old.install_root = layout.home.join(".local/lib/hiroute/0.3.0-bbbbbbbbbbbb");
+    old.cpa_binary = Some(old.install_root.join("libexec/cliproxyapi.exe"));
+    journal.old_marker = Some(old);
+    journal.old_definition = Some(json!({"manager":"old-task"}));
+    let entry = &mut journal.files[0];
+    fs::write(&entry.destination, b"old").unwrap();
+    directory(entry.backup.parent().unwrap()).unwrap();
+    copy_new(&entry.destination, &entry.backup).unwrap();
+    entry.old_sha256 = Some(format!("{:x}", sha2::Sha256::digest(b"old")));
+    journal.persist(&layout).unwrap();
+    journal.apply_files().unwrap();
+    directory(&layout.storage_root()).unwrap();
+    let flag = layout.storage_root().join("observation.upgrade.json");
+    fs::write(&flag, b"current storage transition; portable fixture only").unwrap();
+    let mut host = Manager::default();
+    assert_eq!(
+        journal
+            .clone()
+            .recover(&layout, &mut host)
+            .unwrap_err()
+            .to_string(),
+        "STORAGE_UPGRADE_RECOVERY_REQUIRED"
+    );
+    assert!(host.calls.is_empty());
+    for _ in 0..2 {
+        journal.reapply_install(&layout, &mut host).unwrap();
+        assert_eq!(fs::read(&journal.files[0].destination).unwrap(), b"new");
+        assert_eq!(fs::read(&journal.files[0].backup).unwrap(), b"old");
+        assert_eq!(
+            fs::read(&flag).unwrap(),
+            b"current storage transition; portable fixture only"
+        );
+    }
+    assert_eq!(host.registered, vec![journal.new_definition.clone(); 2]);
+    assert!(Journal::path(&layout).is_file());
+    journal.commit(&layout).unwrap();
+    journal.finish(&layout).unwrap();
+    assert!(!Journal::path(&layout).exists());
+}
+
+#[test]
+fn forward_reapplication_refuses_changed_files_before_manager_effects() {
+    let (_temp, layout, journal) = fixture();
+    fs::write(&journal.files[0].destination, b"foreign native entry").unwrap();
+    let mut host = Manager::default();
+    assert!(journal.reapply_install(&layout, &mut host).is_err());
+    assert!(host.calls.is_empty());
+    assert_eq!(
+        fs::read(&journal.files[0].destination).unwrap(),
+        b"foreign native entry"
+    );
+}
 #[test]
 fn pending_manager_delete_keeps_prepared_journal_and_all_owned_files() {
     struct Pending;

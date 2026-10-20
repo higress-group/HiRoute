@@ -14,9 +14,7 @@ impl RequestObservation {
         }
         let metadata = self.inner.metadata.clone();
         let agent_plan_id = match &metadata.route {
-            hiroute_domain::ModelRequestRouteV2::Plan { .. } => {
-                self.lock_state().agent_plan_id.clone()
-            }
+            hiroute_domain::ModelRequestRouteV2::Plan { .. } => metadata.agent_plan_id.clone(),
             hiroute_domain::ModelRequestRouteV2::Fixed { .. } => None,
         };
         let correlation = self.correlation();

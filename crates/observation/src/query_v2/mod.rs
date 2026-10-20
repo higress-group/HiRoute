@@ -7,10 +7,14 @@ mod catalog;
 mod content;
 mod facts;
 mod plan_quality;
+#[cfg(test)]
+mod plan_quality_bounds_tests;
+mod trust_cost;
 pub(crate) use plan_quality::routing_reason;
 mod relation;
 mod requests;
 mod routing_observations;
+pub(crate) mod routing_timeline;
 mod schema;
 mod search;
 #[cfg(test)]
@@ -27,6 +31,7 @@ mod sessions_tests;
 #[cfg(test)]
 mod tests;
 mod totals;
+mod trust;
 mod turns;
 mod valuation;
 
@@ -42,6 +47,8 @@ pub(crate) use schema::migrate;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ObservationV2Error {
+    #[error("observation scope is too large; narrow the time window")]
+    ScopeTooLarge,
     #[error("observation scope is not authorized")]
     Unauthorized,
     #[error("observation query is invalid")]
@@ -126,6 +133,7 @@ impl ObservationV2Error {
         match self {
             Self::Unauthorized => E::Unauthorized,
             Self::Invalid => E::InvalidQuery,
+            Self::ScopeTooLarge => E::ScopeTooLarge,
             Self::Stale => E::StalePreview,
             Self::RelationshipConflict => E::RevisionConflict,
             Self::Busy => E::ReaderBusy,

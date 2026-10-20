@@ -8,7 +8,9 @@ pub use hiroute_domain::{
     ObservationSearchPageV2, ObservationSearchQueryV2, ObservationSessionCorrelationKindV1,
     ObservationSessionPageV2, ObservationSessionSearchPageV1, ObservationSessionSummaryV2,
     ObservationValueQueryV2, ObservationValueSummaryV2, PlanCompetenceFilter,
-    PlanQualitySamplesPage, PlanQualitySamplesQuery, PriceValuationKindV1,
+    PlanQualitySamplesPage, PlanQualitySamplesQuery, PlanTrustQueryV1, PlanTrustReplayQueryV1,
+    PriceValuationKindV1, RoutingTimelinePageV1, RoutingTimelineQueryV1, TrustGroupByV1,
+    TrustRevisionNameV1, TrustRevisionV1,
 };
 use serde::{Deserialize, Serialize};
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -50,6 +52,7 @@ pub enum ObservationReadIntentV2 {
     Status(ObservationStatusQueryV2),
     Sessions(ObservationRequestQuery),
     Timeline(ObservationRequestQuery),
+    RoutingTimeline(RoutingTimelineQueryV1),
     Catalog(ObservationCatalogQueryV2),
     Ancestry(ObservationAncestryQueryV2),
     Content(ObservationContentQueryV2),
@@ -60,7 +63,10 @@ pub enum ObservationReadIntentV2 {
     HomeValue(ObservationHomeValueQueryV2),
     ValueReport(ObservationValueReportOptionsV2),
     ApiEquivalentValue(ApiEquivalentValueOptionsV1),
-    PlanQuality(PlanQualitySamplesQuery),
+    PlanQuality(Box<PlanQualitySamplesQuery>),
+    PlanTrust(PlanTrustQueryV1),
+    PlanTrustReplay(PlanTrustReplayQueryV1),
+    PlanTrustSuggestions(ObservationStatusQueryV2),
 }
 impl ObservationReadRequestV2 {
     pub fn new(intent: ObservationReadIntentV2) -> Self {
@@ -80,7 +86,11 @@ impl ObservationReadRequestV2 {
             | ObservationReadIntentV2::Sessions(_)
             | ObservationReadIntentV2::Search(_)
             | ObservationReadIntentV2::SessionSearch(_) => "ListSessions",
+            ObservationReadIntentV2::RoutingTimeline(_) => "GetRoutingTimeline",
             ObservationReadIntentV2::PlanQuality(_) => "GetPlanQualitySamples",
+            ObservationReadIntentV2::PlanTrust(_) => "GetPlanTrust",
+            ObservationReadIntentV2::PlanTrustReplay(_) => "GetPlanTrustReplay",
+            ObservationReadIntentV2::PlanTrustSuggestions(_) => "GetPlanTrustSuggestions",
             ObservationReadIntentV2::Facts(_) => "GetRoutingReceipt",
             ObservationReadIntentV2::Value(_)
             | ObservationReadIntentV2::HomeValue(_)
@@ -100,6 +110,7 @@ impl ObservationReadRequestV2 {
                 "ListSessionsV2"
             }
             ObservationReadIntentV2::Timeline(_) => "GetSessionTimelineV2",
+            ObservationReadIntentV2::RoutingTimeline(_) => "ReadRoutingTimelineV1",
             ObservationReadIntentV2::Catalog(_) => "ReadSessionCatalogV2",
             ObservationReadIntentV2::Ancestry(_) => "ReadSessionAncestryV2",
             ObservationReadIntentV2::Content(_) => "ReadSessionContentV2",
@@ -112,6 +123,9 @@ impl ObservationReadRequestV2 {
             | ObservationReadIntentV2::ValueReport(_)
             | ObservationReadIntentV2::ApiEquivalentValue(_) => "GetValueV2",
             ObservationReadIntentV2::PlanQuality(_) => "ReadPlanQualitySamplesV1",
+            ObservationReadIntentV2::PlanTrust(_) => "ReadPlanTrustV1",
+            ObservationReadIntentV2::PlanTrustReplay(_) => "ReadPlanTrustReplayV1",
+            ObservationReadIntentV2::PlanTrustSuggestions(_) => "ReadPlanTrustSuggestionsV1",
         }
     }
 }

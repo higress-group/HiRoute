@@ -31,7 +31,19 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:7ff01a649de96b1f62e069b872b23609d64a3734b5ad42c337324d3eb7cfc9f2";
+    "sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069";
+
+/// What the Gateway observed when it opened an agent turn. This is not proof
+/// of human authorship or of a particular native compaction command.
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentTurnOpeningCauseV1 {
+    UserMessage,
+    HistoryShortened,
+    HistoryRewrite,
+    NoComparableHistory,
+    Other,
+}
 
 /// Gateway profile digests are canonical except on its explicit degraded-observation path.
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -709,6 +721,8 @@ pub enum ExecutionFactV1 {
         facts_completeness: FactsCompleteness,
     },
     AgentTurnFinished {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        opening_cause: Option<AgentTurnOpeningCauseV1>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch_execution: Option<crate::BranchExecutionV1>,
         agent_turn_id: String,

@@ -131,6 +131,32 @@ hiroute worker exec \
 
 If a network or process interruption leaves acceptance uncertain, do not retry with a new key. Keep the original `submission-key` and query `worker status --submission ... --operation start`.
 
+## Model information updates
+
+On feed-capable releases, the local service automatically retrieves model
+information over HTTPS from `hiroute.ai` and validates its content. The same setting applies to Desktop, the web console,
+and standalone use. Requests include no account, installation or usage identifiers.
+Retrieval does not call a model or test a connection. Before the first publication,
+the service continues with its built-in model catalog.
+
+Inspect the current copy or request a refresh:
+
+```sh
+hiroute models feed status --output json
+hiroute models feed refresh --output json
+```
+
+Turn automatic retrieval off with:
+
+```sh
+hiroute models feed settings apply --retrieval off
+```
+
+Turning it off keeps the verified copy already held by the service. Remove that
+copy through Models → Model feed → Remove copy, where the preview can also turn
+retrieval off. A published plan continues to execute its frozen models after removal;
+new model selection and default prices use the model facts still available.
+
 ## 6. Uninstall
 
 Stop the service, then use the uninstall entry in the same official installer:

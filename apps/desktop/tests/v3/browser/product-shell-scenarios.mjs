@@ -567,7 +567,7 @@ const scenarios = [
     await fresh(); await routing(); await click('新建智能路由');
     const fields = all('.plan-identity-fields input');
     setInput(fields[0], 'Continuous routing'); setInput(fields[1], 'Check routing without a follow-up setting');
-    for (const label of ['智能省钱', '自定义分支', '智能省钱', '自定义分支']) {
+    for (const label of ['按难度分流', '自定义分支', '按难度分流', '自定义分支']) {
       all('.mode-card').find(item => item.querySelector('strong')?.textContent === label).click();
       await pause(40);
       assert(!all('.plan-editor details').some(item => /追问设置|Follow-up settings/.test(item.textContent)), 'An empty retired follow-up section remains');

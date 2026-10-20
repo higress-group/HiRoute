@@ -102,8 +102,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         .validate()
         .expect("current directory metadata");
     data.validate_against(&registry).unwrap();
-    assert_eq!(data.data.models.len(), 29);
-    assert_eq!(data.rating_snapshot.records.len(), 91);
+    assert_eq!(data.data.models.len(), 30);
+    assert_eq!(data.rating_snapshot.records.len(), 92);
     assert!(
         data.data
             .model_endpoint_capabilities

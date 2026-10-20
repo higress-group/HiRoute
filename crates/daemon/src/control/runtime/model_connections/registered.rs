@@ -61,8 +61,7 @@ impl LocalControlAdapter {
         source: Option<&ComputeManagementSourceV2>,
     ) -> Result<NativeModelConnectionDraftV1, ComputeManagementControlError> {
         let catalog = self
-            .release_catalog
-            .as_ref()
+            .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
         let provenance = catalog
             .compute_catalog_provenance()
@@ -188,7 +187,7 @@ impl LocalControlAdapter {
                 evidence_ref: None,
             },
             runtime_fallback_denied_model_ids: super::runtime_fallback_denied_model_ids(Some(
-                catalog,
+                &catalog,
             )),
             models,
         })

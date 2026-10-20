@@ -9,6 +9,7 @@ rust-version.workspace = true
 clap.workspace = true
 hiroute-domain = { path = "../../crates/domain" }
 hiroute-integrations = { path = "../../crates/integrations" }
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

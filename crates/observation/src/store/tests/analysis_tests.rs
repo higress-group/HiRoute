@@ -1,3 +1,5 @@
+#[path = "trust_cost_tests.rs"]
+mod trust_cost_tests;
 use super::*;
 
 fn reader() -> ObservationReaderContext {
@@ -465,6 +467,7 @@ fn a_recorded_stage_is_evidence_for_a_selected_transition_not_a_switch() {
             &f.fact(
                 10,
                 ExecutionFactV1::AgentTurnFinished {
+                    opening_cause: None,
                     branch_execution: None,
                     agent_turn_id: "native-turn-1".into(),
                     segment_id: "stage-1".into(),
@@ -523,6 +526,38 @@ fn a_recorded_stage_is_evidence_for_a_selected_transition_not_a_switch() {
     assert_eq!(t.kind, AnalysisTransitionKindV1::InitialSelection, "{t:?}");
     assert_eq!(t.reason.as_ref().unwrap().segment_id, "stage-1");
     assert!(!page.transition_counts.contains_key("between_turn_change"));
+    let timeline = store
+        .observed_routing_timeline(
+            &reader(),
+            &RoutingTimelineQueryV1 {
+                session_id: f.session.to_string(),
+                after_watermark: None,
+                limit: 50,
+            },
+            1000,
+        )
+        .unwrap();
+    let turn = timeline
+        .turns
+        .iter()
+        .find(|turn| turn.agent_turn_id.as_deref() == Some("native-turn-1"))
+        .unwrap();
+    assert_eq!(
+        turn.requests
+            .iter()
+            .map(|r| r.request_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![f.request.as_str()]
+    );
+    let classified = turn
+        .transitions
+        .iter()
+        .find(|change| change.request_id == f.request.as_str())
+        .unwrap();
+    assert_eq!(
+        classified.kind, t.kind,
+        "retained and live readers must agree at a timestamp tie"
+    );
 }
 
 #[test]

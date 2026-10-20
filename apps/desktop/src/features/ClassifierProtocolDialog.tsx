@@ -41,7 +41,7 @@ export function ClassifierProtocolDialog({
     <div className="classifier-protocol">
       <div className="callout"><UiIcon name="info" /><span>{text('扩展按传入的定义判断任务类别或程度，并按指定标准评价上一阶段。阈值比较和模型选择由 HiRoute 处理。', 'Follow the supplied category or degree definition and assess the prior stage using its supplied standard. HiRoute handles thresholds and model selection.')}</span></div>
       <section>
-        <div className="decision-methods" role="group" aria-label={text('协议示例', 'Protocol examples')}><button type="button" className="btn" aria-pressed={example === 'first'} onClick={() => { setExample('first'); setActionStatus('idle'); }}>{text('智能省钱 · 程度判断', 'Smart saving · degree')}</button><button type="button" className="btn" aria-pressed={example === 'assessment'} onClick={() => { setExample('assessment'); setActionStatus('idle'); }}>{text('自定义分支 · 分类并评分', 'Custom branches · choice and assessment')}</button></div>
+        <div className="decision-methods" role="group" aria-label={text('协议示例', 'Protocol examples')}><button type="button" className="btn" aria-pressed={example === 'first'} onClick={() => { setExample('first'); setActionStatus('idle'); }}>{text('按难度分流 · 程度判断', 'Difficulty routing · degree')}</button><button type="button" className="btn" aria-pressed={example === 'assessment'} onClick={() => { setExample('assessment'); setActionStatus('idle'); }}>{text('自定义分支 · 分类并评分', 'Custom branches · choice and assessment')}</button></div>
         <h3>{text('请求示例', 'Request example')}</h3>
         <p>{text('将示例地址替换为你的服务地址；如已配置认证，HiRoute 会额外发送对应请求头。', 'Replace the example URL with your service endpoint. When authentication is configured, HiRoute also sends that header.')}</p>
         <pre><code>{curl}</code></pre>

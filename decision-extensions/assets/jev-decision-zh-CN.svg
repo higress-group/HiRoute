@@ -35,7 +35,7 @@
 
     <rect x="758" y="170" width="322" height="166" rx="15" fill="#222d4d" stroke="#7487d5"/>
     <text x="778" y="207" font-size="20" fill="#d0d9ff" font-weight="600">选择并执行模型组</text>
-    <text x="778" y="239" font-size="16" fill="#b4bfd6">智能省钱：省钱组 / 主力组</text>
+    <text x="778" y="239" font-size="16" fill="#b4bfd6">按难度分流：常规组 / 主力组</text>
     <text x="778" y="265" font-size="16" fill="#b4bfd6">自定义：类别 → 常规组 / 主力组</text>
     <text x="778" y="292" font-size="15" fill="#b4bfd6">应用阈值与本次适用的完整评分</text>
     <text x="778" y="316" font-size="15" fill="#b4bfd6">有序候选 · 有边界的故障接力</text>

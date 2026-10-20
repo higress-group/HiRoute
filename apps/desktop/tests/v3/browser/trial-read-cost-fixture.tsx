@@ -1,0 +1,39 @@
+import { useState } from 'react';
+import { TrialSessionHandoff } from '../../../src/features/trial/TrialSessionHandoff';
+import { useTrustSuggestions, type TrustSuggestionPlan } from '../../../src/features/trust/use-trust-suggestions';
+import { TrustAttention } from '../../../src/features/trust/TrustAttention';
+import { Sessions } from '../../../src/features/Sessions';
+
+const timers = new Map<number, { interval: number; callback: () => void }>();
+let serial = 70000, hidden = false;
+export const readCostState = { found: false, fail: false, confirmed: Date.now() };
+export function installReadCostClock() {
+  const set = window.setInterval.bind(window), clear = window.clearInterval.bind(window);
+  window.setInterval = ((callback: () => void, interval: number) => {
+    if (![5000,300000].includes(interval)) return set(callback, interval);
+    const id = ++serial; timers.set(id,{interval,callback}); return id;
+  }) as typeof window.setInterval;
+  window.clearInterval = ((id: number) => { if (!timers.delete(id)) clear(id); }) as typeof window.clearInterval;
+  Object.defineProperty(document,'hidden',{configurable:true,get:()=>hidden});
+  Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>hidden?'hidden':'visible'});
+  Object.assign(window,{readCostState, tickReadCost:(elapsed:number)=>{for(const timer of [...timers.values()])if(elapsed>=timer.interval)timer.callback();}, hideReadCost:(value:boolean)=>{hidden=value;document.dispatchEvent(new Event('visibilitychange'));},readCostTimers:timers});
+}
+export function ReadCostFixture({language,view}:{language:'zh'|'en';view:string}) {
+  const [open,setOpen]=useState(true),[session,setSession]=useState<string|null>(null),[revision,setRevision]=useState(1),[home,setHome]=useState(true);
+  const read=useTrustSuggestions(view==='suggestion-cadence',revision,home);
+  return <div className="new-models"><button className="btn" onClick={()=>setOpen(false)}>Close waiting</button><button className="btn" onClick={()=>setRevision(v=>v+1)}>Publish fixture</button><button className="btn" onClick={()=>setHome(v=>!v)}>Toggle Home</button>
+    {view==='suggestion-cadence'?<TrustAttention read={read} language={language} names={{}} onOpen={()=>{}} />: session ? <Sessions language={language} initialSession={session} /> : open && <TrialSessionHandoff planId="plan/trial" confirmedAt={readCostState.confirmed} language={language} onWatch={setSession} />}
+  </div>;
+}
+export function readCostResponse(payload:any, plan:TrustSuggestionPlan) {
+  const {view,query}=payload.request.intent;
+  if(view==='plan_trust_suggestions') return {suggestions:[plan],unavailable:[{plan_id:'plan/oversized',reason:'scope_too_large'}]};
+  if(view==='sessions') {if(readCostState.fail)throw Error('OBSERVATION_UNAVAILABLE');return {sessions:readCostState.found?[{session_id:'trial-found',agent_id:null,request_count:1,fallback_request_count:0,last_request_at_ms:Date.now(),correlation_kind:'unknown',content_completeness:'unknown'}]:[],next_cursor:null};}
+  if(view==='routing_timeline')return {turns:[],watermark:'fixture',complete:true};
+  if(view==='timeline')return {requests:[],next_cursor:null};
+  if(view==='status')return {running:true,index_running:true,error_count:0};
+  if(view==='catalog')return {contents:[],next_cursor:null};
+  if(view==='ancestry')return {roots:[],gap:null};
+  if(view==='facts')return {facts:[],projection_partial:false};
+  throw Error(`Unexpected read ${view} ${JSON.stringify(query)}`);
+}
