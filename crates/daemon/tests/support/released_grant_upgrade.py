@@ -6,8 +6,10 @@ Native probes and the external upstream use the existing bounded fixtures; all
 connection transactions, grant issuance, upgrade and requests use real binaries.
 """
 import hashlib
+import ctypes
 import http.client
 import json
+import os
 import signal
 import sqlite3
 import threading
@@ -64,6 +66,38 @@ def source_rows(product):
         return dict(connection.execute('SELECT source_id,source_json FROM compute_management_sources'))
 
 
+def released_fixture_children(product):
+    """Capture only this daemon's counted external fixture before interrupting it."""
+    binary = product.cpa_fixture / 'cpa_upstream.py'
+    expected = hashlib.sha256(binary.read_bytes()).hexdigest()
+    children = []
+    for path in (product.storage / 'cpa/state').glob('*/owner.lock/owner.json'):
+        owner = json.loads(path.read_text())
+        assert owner['owner_pid'] == product.process.pid
+        assert owner['binary_sha256_hex'] == expected
+        pid = owner['cpa_pid']
+        assert str(binary).encode() in Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
+        children.append(pid)
+    return children
+
+
+def stop_adopted_fixtures(children):
+    """Model retiring the old external component before installing a different version.
+
+    waitpid proves these are our adopted children and pins their identity before signaling.
+    Never remove ownership records or edit the released operation/source data.
+    """
+    for pid in children:
+        completed, _ = os.waitpid(pid, os.WNOHANG)
+        if completed:
+            continue
+        os.kill(pid, signal.SIGTERM)
+        deadline = time.monotonic() + 5
+        while not os.waitpid(pid, os.WNOHANG)[0]:
+            assert time.monotonic() < deadline, 'owned external fixture did not stop'
+            time.sleep(.01)
+
+
 def park_released_source_edit(product, source_id):
     """Stop the real released process only after observing its committed unfinished journal.
 
@@ -108,13 +142,16 @@ def park_released_source_edit(product, source_id):
                 operation = json.loads(parked[2])
                 mutation = operation['plan']['control']['compute_management_mutation']
                 assert mutation['schema'] == 'hiroute.compute-management-mutation/v2', mutation['schema']
+                children = released_fixture_children(product)
                 product.process.kill()
                 product.stop(diagnostic_failure=True)
                 writer.join(timeout=16)
                 assert not writer.is_alive(), 'old apply connection did not terminate'
+                stop_adopted_fixtures(children)
                 return {'operation_id':parked[0],'observed_state':parked[1],
                     'plan_digest':hashlib.sha256(encoded(operation['plan'])).hexdigest(),
-                    'source_id':source_id,'desired':mutation['desired']}
+                    'source_id':source_id,'desired':mutation['desired'],
+                    'retired_external_fixture_children':len(children)}
         writer.join(timeout=16)
         assert not writer.is_alive(), 'ordinary released edit did not finish'
         assert outcomes and isinstance(outcomes[0],dict), outcomes
@@ -122,6 +159,11 @@ def park_released_source_edit(product, source_id):
 
 
 def run(repository, archive):
+    assert sys.platform.startswith('linux'), 'this exact package acceptance runs on Linux'
+    # The isolated harness adopts its interrupted daemon's children so a counted external
+    # component can be stopped and reaped before switching its authenticated version.
+    libc = ctypes.CDLL(None, use_errno=True)
+    assert libc.prctl(36, 1, 0, 0, 0) == 0, 'cannot enable fixture child reaping'
     archive = Path(archive).resolve()
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == PACKAGE_SHA256, "wrong released package"
     candidate = subprocess.check_output(
@@ -214,6 +256,8 @@ def run(repository, archive):
             "candidate": candidate, "released_sessions": 2, "current_attributed_sessions": 4,
             "agents": sorted(connections), "current_startups": 2,
             "native_settings_and_grants_unchanged": True,
+            "released_pending_state": pending['observed_state'],
+            "retired_external_fixture_children": pending['retired_external_fixture_children'],
         }), flush=True)
     finally:
         product.close()
