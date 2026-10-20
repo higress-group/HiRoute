@@ -192,12 +192,18 @@ try {
   await waitFor(client,`document.querySelector('.routing-turn').textContent.includes('0.40')`);
   assert.equal(await evaluate(client,`document.querySelectorAll('.routing-turn').length`),2);
   assert.equal(await evaluate(client,`document.querySelectorAll('.routing-ticks .failed').length`),0,'delivered accepted requests are not failed ticks');
+  assert.equal(await evaluate(client,`document.querySelectorAll('.routing-turn-head .badge').length`),1,'unknown boundaries have no heading badge');
+  assert.equal(await evaluate(client,`/After compaction|压缩后/.test(document.querySelector('.routing-timeline').textContent)`),false);
+  await evaluate(client,`document.querySelectorAll('.routing-turn')[0].click();true`);
+  assert.ok(await evaluate(client,`document.querySelector('.routing-boundary-basis').textContent.includes(${JSON.stringify(lang==='zh'?'后台消息':'background messages')})`));
+
   assert.ok(await evaluate(client,`trialTrace.filter(x=>x.command==='observation_read'&&x.payload.request.intent.view==='routing_timeline')[1].payload.request.intent.query.after_watermark==='watermark-1'`));
   await click('button',lang==='zh'?'紧凑视图':'Compact view');
   assert.equal(await evaluate(client,`getComputedStyle(document.querySelector('.session-master')).display`),'none');
   await evaluate(client,`document.querySelectorAll('.routing-turn')[1].click();true`);
   await waitFor(client,`document.querySelector('.routing-request.selected')?.textContent.includes('trial-model')`);
   assert.equal(await evaluate(client,`document.querySelectorAll('.routing-request.failed').length`),0,'delivered accepted requests are not failed detail rows');
+  assert.ok(await evaluate(client,`document.querySelector('.routing-detail-head').textContent.includes(${JSON.stringify(lang==='zh'?'边界未确认':'Boundary unknown')})`));
   assert.ok(await evaluate(client,`document.querySelector('.routing-request.selected')?.textContent.includes('trial-model')`));
   for (const g of await evaluate(client,`[...document.querySelectorAll('.routing-timeline,.routing-conversation,.routing-turn-detail,.session-routing-and-conversation')].map(e=>({width:e.clientWidth,scroll:e.scrollWidth,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right}))`)) {assert.ok(g.scroll<=g.width+1,JSON.stringify(g));assert.ok(g.left>=-1&&g.right<=width+1,JSON.stringify(g));}
   await shot(`timeline-${lang}-${theme}-${width}`);
@@ -341,4 +347,4 @@ try {
   results.push({id:`quickstart.${lang}.inline-connection-guard.model-change-and-back`,status:'passed'});
  }
  await writeFile(path.join(output,'report.json'),JSON.stringify({proof:'production components with synthetic IPC; no native or provider claim',results},null,2));console.log(JSON.stringify({passed:results.length,output}));
-} catch(error) {await shot('failure');await writeFile(path.join(output,'failure.json'),JSON.stringify(await evaluate(client,`({text:document.body.innerText,trace:trialTrace})`),null,2));throw error;} finally {clearInterval(keepAlive);client.close();}
+} catch(error) {await shot('failure');const details=await evaluate(client,`({text:document.body.innerText,trace:window.trialTrace??[]})`).catch(()=>null);await writeFile(path.join(output,'failure.json'),JSON.stringify({error:String(error.stack??error),details,results},null,2));throw error;} finally {clearInterval(keepAlive);client.close();}

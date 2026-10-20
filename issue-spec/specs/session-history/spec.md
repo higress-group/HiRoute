@@ -429,10 +429,7 @@ Source SPEC comments:
 
 Session detail MUST show actual agent-turn selection, recorded boundary, group,
 model/reasoning, probability/threshold, continuations, relay, assessments and request
-usage/cost alongside retained conversation. Context invalidation establishes a
-context-rebuild boundary; a proven native-turn change with a fresh decision can
-establish a new-user boundary. Otherwise the boundary stays unknown. These are
-read-time projections of existing records, not new inferred execution facts.
+usage/cost alongside retained conversation. A new-message boundary SHALL be shown for the first session turn, or when the opening request has a fresh decision (not inherited) and records ContextHoldApplied or ContextHoldInvalidated. These ledger entries establish continuing message history, not compaction. Other boundaries remain unknown: the turn heading omits the badge and its details disclose that the boundary is unconfirmed. A retained tail with a known later ordinal SHALL NOT become the first session turn. Native-turn proof is not required. The view SHALL explain that this is gateway continuity evidence: a client-generated background message can satisfy the same rule and is not proof of human authorship. Model aliases, tools and timing SHALL NOT be used as heuristics to claim such proof. No compaction or context-rebuild boundary SHALL be inferred from context-hold invalidation. The legend SHALL explain that the model stays fixed within a turn to preserve the cache and a new message triggers a fresh decision. These are read-time projections of existing records; recorded execution facts remain unchanged.
 
 The opening request provides stable display identity before the turn-ending fact
 arrives. Late assessments and valuations update that turn. Incremental cursors MUST
@@ -455,6 +452,21 @@ Timeline cache locks cover only cache take/return, never database reads, project
 - **WHEN** an earlier turn receives a score after the first page was delivered
 - **THEN** the remaining frozen page is delivered first, followed by the updated
   earlier turn once; reconnect cannot duplicate its unchanged projection.
+
+#### Scenario: Fresh decision on continuing history
+
+- **WHEN** a fresh opening decision records ContextHoldApplied or ContextHoldInvalidated
+- **THEN** the turn shows a new-message boundary; a group change is never labelled as compaction.
+
+#### Scenario: Unknown and retained-tail boundaries
+
+- **WHEN** a later turn lacks continuity evidence or only inherits a decision, including a retained tail with a known later ordinal
+- **THEN** its boundary remains unknown, its heading omits the badge and its details disclose the missing evidence.
+
+#### Scenario: Background message satisfies the same rule
+
+- **WHEN** the client appends a background message carrying fresh-decision and continuing-history evidence
+- **THEN** the new-message boundary applies with an explicit disclosure that the gateway does not establish human authorship.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235190304

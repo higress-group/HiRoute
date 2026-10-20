@@ -372,7 +372,7 @@ For a category with two groups, HiRoute selects regular models when the current 
 
 Each new user message triggers a fresh decision. Recognized tool continuations and same-turn replay inherit a frozen decision while it remains reusable; discontinuous history or a decision that cannot be inherited triggers another call. The extension should process each request without requiring the user text to change.
 
-HiRoute tries eligible models in the selected group in order. Exhausting regular models can lead to the same category's primary group; selecting primary directly stays within that group. Candidate failures do not create zero competence scores. A whole decision failure uses heuristic rules for smart saving, or the custom plan's default category with its primary group when available.
+HiRoute tries eligible models in the selected group in order. Exhausting regular models can lead to the same category's primary group; selecting primary directly stays within that group. Candidate failures do not create zero competence scores. A whole decision failure uses heuristic rules for difficulty routing, or the custom plan's default category with its primary group when available.
 
 ## Context, timeouts and call boundaries
 

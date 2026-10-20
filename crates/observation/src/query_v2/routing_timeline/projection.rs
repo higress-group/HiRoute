@@ -329,27 +329,20 @@ pub(super) fn project(
         let mut turn = (**base).clone();
         turn.position = dependency;
         let first = &requests[&turn.view.turn_id];
-        if held(first, LedgerReasonCodeV1::ContextHoldInvalidated) {
-            turn.view.boundary = RoutingTurnBoundaryV1::ContextRebuild;
-        } else if index > 0 && !held(first, LedgerReasonCodeV1::ContextHoldApplied) {
-            let prior = &requests[&result[index - 1].view.turn_id];
-            if first
-                .native_turn
-                .as_ref()
-                .zip(prior.native_turn.as_ref())
-                .is_some_and(|(a, b)| a != b)
-                && first.native_session.is_some()
-                && first.native_session == prior.native_session
-                && first.run_id == prior.run_id
-                && first
-                    .decision
-                    .as_ref()
-                    .and_then(|d| d.complexity.as_ref())
-                    .is_some_and(|s| s.decision_source != ComplexityDecisionSourceV1::Inherited)
-            {
-                turn.view.boundary = RoutingTurnBoundaryV1::NewUserMessage;
-            }
-        }
+        let fresh_decision = first
+            .decision
+            .as_ref()
+            .and_then(|d| d.complexity.as_ref())
+            .is_some_and(|s| s.decision_source != ComplexityDecisionSourceV1::Inherited);
+        let continuing = held(first, LedgerReasonCodeV1::ContextHoldApplied)
+            || held(first, LedgerReasonCodeV1::ContextHoldInvalidated);
+        // A retained tail with a later recorded ordinal is not the session's first turn.
+        let initial = index == 0 && ordinals.get(&turn.view.turn_id).is_none_or(|n| *n == 1);
+        turn.view.boundary = if initial || (fresh_decision && continuing) {
+            RoutingTurnBoundaryV1::NewUserMessage
+        } else {
+            RoutingTurnBoundaryV1::Unknown
+        };
         turn.view.assessment_state = if index + 1 < result.len()
             || matches!(turn.view.status.as_str(), "failed" | "interrupted")
         {

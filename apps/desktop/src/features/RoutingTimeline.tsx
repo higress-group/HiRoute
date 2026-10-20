@@ -12,7 +12,7 @@ type Cost = { model_configuration_id: string | null; currency: string | null; va
 export type TimelineRequest = { request_id: string; started_at_ms: number; duration_ms: number | null; native_model: string | null; input_tokens: number | null; output_tokens: number | null; cache_read_tokens: number | null; cache_read_share: number | null; costs: Cost[]; outcome: string | null };
 export type TimelineTurn = {
   turn_id: string; agent_turn_id: string | null; segment_id: string | null; started_at_ms: number; finished_at_ms: number | null;
-  boundary: 'new_user_message' | 'context_rebuild' | 'unknown'; plan_id: string | null; plan_revision: number | null;
+  boundary: 'new_user_message' | 'unknown'; plan_id: string | null; plan_revision: number | null;
   branch_id: string | null; model_configuration_id: string | null; reasoning_profile_id: string | null; group: string | null;
   selection: { simple_probability: number | null; simple_threshold_millis: number | null; selection_reason: string; competence_trigger?: { score: number; floor_millis: number } | null } | null;
   tool_continuations: number; relays: { request_id: string; from_model: string | null; to_model: string | null }[];
@@ -129,7 +129,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
 
   const selectedTurn = turns.find(t => t.turn_id === selected) ?? turns[turns.length - 1];
   const index = (turn: TimelineTurn) => turns.indexOf(turn) + 1;
-  const boundary = (turn: TimelineTurn) => turn.boundary === 'new_user_message' ? text('新消息', 'New message') : turn.boundary === 'context_rebuild' ? text('压缩后', 'After compaction') : text('边界未确认', 'Boundary unknown');
+  const boundary = (turn: TimelineTurn) => turn.boundary === 'new_user_message' ? text('新消息', 'New message') : text('边界未确认', 'Boundary unknown');
   const laneName = (lane: Lane) => lane === 'primary' ? text('主力', 'Primary') : lane === 'regular' ? text('常规', 'Regular') : text('分组未记录', 'Group unknown');
   const tone = (lane: Lane) => lane === 'regular' ? 'cyan' : lane === 'primary' ? 'purple' : '';
   const reason = (turn: TimelineTurn) => selectionReasonLabel(turn.selection?.selection_reason ?? '', language);
@@ -196,6 +196,9 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
             {selectedTurn.plan_id && <button type="button" className="btn btn-quiet" onClick={() => onOpenPerformance(selectedTurn.plan_id!)}>{text('查看模型表现', 'View model performance')}</button>}
           </span>
         </div>
+        <p className="routing-boundary-basis muted">{selectedTurn.boundary === 'new_user_message'
+          ? text('依据：会话第一轮，或网关确认对话延续并重新判断。客户端自动追加的后台消息也可能满足此规则。', 'Basis: the first session turn, or a fresh decision on gateway-confirmed continuing history. Client-generated background messages can also meet this rule.')
+          : text('没有足够记录确认这一轮的起因。', 'The retained records do not establish what started this turn.')}</p>
         {selectedTurn.requests[0] && <blockquote className="routing-quote"><ContentExcerpt request={selectedTurn.requests[0].request_id} language={language} fallback={text('这一轮的消息未记录或已清理', 'This turn’s message is unrecorded or cleared')} limit={140} revision={selectedTurn.content_digest} /></blockquote>}
         <div className="routing-detail-block"><span>{text('阶段开始时的模型选择', 'Model selection at the start of this stage')}</span><p>{explanation(selectedTurn)}</p></div>
         <div className="routing-detail-block"><span>{text('胜任评分', 'Competence score')}</span><div><span className={`routing-score ${scoreTone(selectedTurn)}`}>{score(selectedTurn)}</span></div><p>{scoreExplanation(selectedTurn)}</p></div>
@@ -242,7 +245,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           {lanes.map(lane => <div key={lane} className={`routing-lane-label ${tone(lane)}`}><strong>{laneName(lane)}</strong>{laneModel(lane) && <span>{laneModel(lane)}</span>}</div>)}
           {/* One column per agent turn; the grid flows by column, so focus and reading order follow time. */}
           {turns.map(turn => <Fragment key={turn.turn_id}>
-            <div className="routing-turn-head" title={new Date(turn.started_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}><strong>T{index(turn)}</strong><span className="badge no-dot">{boundary(turn)}</span></div>
+            <div className="routing-turn-head" title={new Date(turn.started_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}><strong>T{index(turn)}</strong>{turn.boundary !== 'unknown' && <span className="badge no-dot">{boundary(turn)}</span>}</div>
             {lanes.map(lane => <div className={`routing-lane-cell${laneOf(turn) !== lane ? ' routing-cell-empty' : ''}`} key={lane} aria-hidden={laneOf(turn) !== lane || undefined}>{laneOf(turn) === lane && <button type="button" className={`routing-turn ${tone(lane)}${selectedTurn?.turn_id === turn.turn_id ? ' selected' : ''}`} data-turn-id={turn.turn_id} data-new={arrivals.has(turn.turn_id) || undefined} aria-pressed={selectedTurn?.turn_id === turn.turn_id} onClick={() => { setSelected(turn.turn_id); if (turn.requests[0]) onSelectRequest(turn.requests[0]); }}>
               <span className="sr-only">{text(`轮次 ${index(turn)}`, `Turn ${index(turn)}`)}</span>
               <strong className="routing-turn-reason">{reason(turn)}</strong>
@@ -259,7 +262,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           </Fragment>)}
         </div>
       </div>
-      <p className="routing-legend"><span><i />{text('请求', 'Request')}</span><span><i className="failed" />{text('失败', 'Failed')}</span><span className="muted">{text('同一个 agent turn 内不换模型，保住缓存；只在新消息或压缩后重新判断。点一轮查看详情。', 'The model stays fixed within an agent turn to keep the cache; routing is decided again only after a new message or compaction. Select a turn for details.')}</span></p>
+      <p className="routing-legend"><span><i />{text('请求', 'Request')}</span><span><i className="failed" />{text('失败', 'Failed')}</span><span className="muted">{text('同一轮内不换模型，保住缓存；新消息到来时重新判断。点一轮查看详情。', 'The model stays fixed within a turn to preserve the cache; a new message triggers a fresh decision. Select a turn for details.')}</span></p>
     </div>}
     {detail}
   </section>;
