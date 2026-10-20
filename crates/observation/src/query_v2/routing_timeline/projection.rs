@@ -345,7 +345,9 @@ pub(super) fn project(
         let initial = index == 0 && ordinals.get(&turn.view.turn_id).is_none_or(|n| *n == 1);
         turn.view.boundary = match opening_causes.get(&turn.view.turn_id) {
             Some(AgentTurnOpeningCauseV1::UserMessage) => RoutingTurnBoundaryV1::NewUserMessage,
-            Some(AgentTurnOpeningCauseV1::HistoryRewrite) => RoutingTurnBoundaryV1::ContextRebuilt,
+            Some(AgentTurnOpeningCauseV1::HistoryShortened) => {
+                RoutingTurnBoundaryV1::ContextRebuilt
+            }
             Some(AgentTurnOpeningCauseV1::NoComparableHistory) if initial => {
                 RoutingTurnBoundaryV1::NewUserMessage
             }

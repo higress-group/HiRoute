@@ -1868,6 +1868,18 @@
         "crates/domain/src/observation/execution_validation.rs",
         "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
       ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-shortening opening causes; digest 5f7a8a65779fea426fbe0b247e2691ff893de0f638c3a42f4408f5345b9f5bf6",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Retained opening causes remain authenticated unchanged. HistoryRewrite did not distinguish shorter history from equal-length edits, so it remains unknown in the timeline. This digest cannot authenticate HistoryShortened and is not admitted to live ingestion.",
+      "removal_condition": "Remove only when retained activity stores and backups no longer contain these facts or an authenticated evidence-preserving conversion replaces this reader.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
+      ]
     }
   ]
 }

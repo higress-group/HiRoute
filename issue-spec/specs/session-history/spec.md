@@ -451,29 +451,15 @@ Source SPEC comments:
 
 ### Requirement: The routing timeline re-emits late evidence without duplicates
 
-Session detail MUST show actual agent-turn selection, recorded boundary, group,
-model/reasoning, probability/threshold, continuations, relay, assessments and request
-usage/cost alongside retained conversation. New writes SHALL record the turn opening cause from Gateway message-history continuity: continuing history plus an appended user message and an inheritable prior decision means user message; an existing checkpoint with shorter history or a changed prefix means history rewrite; a missing checkpoint (including first entry, expiry, eviction, contention or disabled tracking) means no comparable history; other decision boundaries, such as a Plan change on continuing history, mean other. A system-instruction change alone does not rewrite message history, even when it invalidates the hold preference. The optional AgentTurnFinished field SHALL retain its cause across tool continuations and turn completion.
+Session detail MUST show actual agent-turn selection, boundary, group, model/reasoning, probability/threshold, continuations, relays, assessments and request usage/cost beside retained conversation. New AgentTurnFinished writes SHALL record an optional opening cause, preserved across tool continuation and completion: continuing message history with an appended user message and an inheritable decision means UserMessage; fewer canonical messages than an existing comparable checkpoint means HistoryShortened; an equal or greater count with a changed prefix means HistoryRewrite; absent checkpoints (first entry, expiry, eviction, contention or disabled tracking) mean NoComparableHistory; other boundaries, including Plan changes, mean Other. System/developer instructions are excluded from the message count; changing only those instructions does not rewrite message history even if it invalidates a hold preference.
 
-An explicit recorded cause is authoritative: user message displays New message; history rewrite displays Context rebuilt, explaining that the visible history no longer extends the prior checkpoint, commonly after compaction but also after rewind or editing, and that a fresh judgment occurred. No comparable history displays New message only at the session's first turn; other cases remain unknown. Without the field, the legacy read rule displays New message for the first session turn, or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. Invalidation alone SHALL NOT imply history rewrite. A retained tail with a known later ordinal is not the session's first turn. Unknown boundaries omit the heading badge and disclose the gap in details. Old bytes and digests retain their meaning; no historical facts are rewritten to manufacture provenance.
+Explicit causes override legacy hints. UserMessage displays New message. HistoryShortened displays Context rebuilt and is attributed to compaction by the owner-selected step-count heuristic. A step is one canonical request message, not a token, tool or timeline turn. Details disclose that a shorter rewind or shared-scope background/subagent request can also satisfy this heuristic. HistoryRewrite and Other remain unknown. NoComparableHistory displays New message only for the first session turn. Retained unsplit HistoryRewrite records remain unknown without backfill. Without the field, legacy inference displays New message for the first session turn or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. A retained tail with a known later ordinal is not the first session turn. Invalidation alone never proves compaction. Unknown headings omit the badge and details disclose the gap. Old bytes and authenticated digests remain readable unchanged.
 
-The view SHALL disclose that Gateway continuity is not proof of human authorship: client-generated background messages can satisfy the new-message rule. Aliases, tools and timing SHALL NOT be used to claim native provenance. An explicitly evidenced subdialog distinction may separate histories; ambiguous or known shared-history scope must not claim a native cause. The legend SHALL state that the model stays fixed within a turn to preserve the cache and new messages or rebuilt context trigger a fresh judgment.
+The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools and timing SHALL NOT establish native provenance. Issue #185 separately tracks shared-history background/subagent isolation and active-turn conflicts; this repair does not infer subdialog identity or claim isolation is fixed. The legend states that a turn keeps its model to preserve cache and new messages or rebuilt context trigger fresh judgment.
 
-The opening request provides stable display identity before the turn-ending fact
-arrives. Late assessments and valuations update that turn. Incremental cursors MUST
-be authenticated and bound to reader, session, page size and retained visibility;
-pagination freezes fact, valuation and link positions until the changed page is
-consumed. Reconnect deduplicates equal content digests. Cleared or expired scope
-invalidates the cursor. Unknown usage/cost stays unknown, with per-model currency
-and valuation basis preserved.
+The opening request supplies stable display identity before completion. Late assessments and valuations update that turn. Incremental cursors MUST be authenticated and bound to reader, session, page size and retained visibility; pagination freezes fact, valuation and link positions until its changed page is consumed. Reconnect deduplicates equal content digests. Cleared or expired scope invalidates the cursor. Unknown usage/cost remains unknown; per-model currency and valuation basis are preserved.
 
-Reads share authorized observation limits and a 500 ms storage deadline, returning
-an explicit retryable scope error beyond 10,000 requests, 50,000 facts or a 1 MiB
-response rather than sampled evidence. Visible Desktop timelines refresh every two
-seconds; hidden views stop polling. The CLI's `--follow` emits NDJSON changes using
-the same query and preserves terminal errors.
-
-Timeline cache locks cover only cache take/return, never database reads, projection or serialization. Storage timeouts are the same explicit scope error; Desktop stops automatic retries after it until explicit Retry. Busy readers honor the bounded retry hint quietly while retaining loaded content. CLI follow remains interruptible through busy reads and retries at most three consecutive transient unavailable failures. Live and retained readers use recorded endpoint/start-time membership and the same retained transition classifier, leaving unrelated timestamp ties unassigned.
+Reads retain shared authorization, a 500 ms storage deadline, and explicit retryable scope errors beyond 10,000 requests, 50,000 facts or a 1 MiB response. Cache locks cover only take/return, never database reads, projection or serialization. Visible Desktop timelines refresh every two seconds; hidden views stop polling and catch up when shown. A storage timeout stops automatic retries until explicit Retry. Busy readers quietly honor the bounded retry hint while retaining content. CLI --follow emits NDJSON through the same query, preserves terminal errors, remains interruptible while busy and retries at most three consecutive transient unavailable failures. Live and retained readers use recorded endpoint/start-time membership and the same retained transition classifier; unrelated timestamp ties stay unassigned.
 
 #### Scenario: Assessment arrives during pagination
 
@@ -496,10 +482,10 @@ Timeline cache locks cover only cache take/return, never database reads, project
 - **WHEN** the client appends a background message carrying fresh-decision and continuing-history evidence
 - **THEN** the new-message boundary applies with an explicit disclosure that the gateway does not establish human authorship.
 
-#### Scenario: History rewrite and missing checkpoint differ
+#### Scenario: Shorter history uses the compaction heuristic
 
-- **WHEN** visible history is shortened or its existing prefix changes, or separately its checkpoint has expired or lost a compare-and-swap race
-- **THEN** only the proven history rewrite displays Context rebuilt; missing comparable history remains unknown after the first session turn.
+- **WHEN** the current canonical message-step count is smaller than an existing comparable checkpoint, including a compacted replacement or shorter rewind
+- **THEN** the recorded HistoryShortened cause displays Context rebuilt with compaction attribution and its limitation; equal-length or growing prefix edits and unavailable checkpoints remain unknown after the first session turn.
 
 #### Scenario: System instructions change without rewriting messages
 
@@ -510,6 +496,11 @@ Timeline cache locks cover only cache take/return, never database reads, project
 
 - **WHEN** a turn contains an explicit opening cause and an old-style ledger hint suggests another cause
 - **THEN** the explicit cause wins, remains stable through tool continuation and reopening, and absent legacy fields retain their previous canonical bytes.
+
+#### Scenario: Retained unsplit history rewrite
+
+- **WHEN** a retained opening cause is HistoryRewrite without evidence that the step count decreased
+- **THEN** the original bytes and digest remain readable, but the boundary remains unknown rather than being relabelled as compaction.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235190304

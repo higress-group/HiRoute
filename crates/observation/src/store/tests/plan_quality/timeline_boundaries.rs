@@ -137,7 +137,8 @@ fn recorded_opening_cause_overrides_legacy_ledger_inference_and_survives_reopen(
     let first = Fixture::new("recorded-causes");
     let cases = [
         (Cause::NoComparableHistory, NewUserMessage),
-        (Cause::HistoryRewrite, ContextRebuilt),
+        (Cause::HistoryShortened, ContextRebuilt),
+        (Cause::HistoryRewrite, Unknown),
         (Cause::UserMessage, NewUserMessage),
         (Cause::NoComparableHistory, Unknown),
         (Cause::Other, Unknown),
@@ -250,5 +251,56 @@ fn pre_opening_facts_keep_canonical_bytes_and_cannot_authenticate_new_causes() {
         unreachable!()
     };
     *opening_cause = Some(hiroute_domain::AgentTurnOpeningCauseV1::HistoryRewrite);
+    assert!(event.validate_persisted_contract().is_err());
+}
+
+#[test]
+fn prior_opening_contract_preserves_rewrites_without_claiming_compaction() {
+    let directory = tempfile::tempdir().unwrap();
+    let fixture = Fixture::new("pre-shortening");
+    let mut event = fixture.fact(
+        1,
+        finished(&fixture, "stage", "turn", 2, "smart_saving", 1000),
+        1010,
+    );
+    event.schema_digest = hiroute_domain::CanonicalDigest::parse(
+        "sha256:5f7a8a65779fea426fbe0b247e2691ff893de0f638c3a42f4408f5345b9f5bf6",
+    )
+    .unwrap();
+    let ExecutionFactV1::AgentTurnFinished { opening_cause, .. } = &mut event.fact else {
+        unreachable!()
+    };
+    *opening_cause = Some(hiroute_domain::AgentTurnOpeningCauseV1::HistoryRewrite);
+    let bytes = serde_json::to_vec(&event).unwrap();
+    let decoded: hiroute_domain::ExecutionFactEnvelopeV1 = serde_json::from_slice(&bytes).unwrap();
+    decoded.validate_persisted_contract().unwrap();
+    assert!(decoded.validate().is_err());
+    assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
+    let digest = hiroute_domain::CanonicalDigest::of(&decoded).unwrap();
+    {
+        let store = open_store(directory.path());
+        let mut connection = store.connection.lock();
+        let transaction = connection.transaction().unwrap();
+        crate::store::fact_log::insert(&transaction, &decoded, &digest).unwrap();
+        crate::receipt::apply_fact(&transaction, &decoded).unwrap();
+        transaction.commit().unwrap();
+    }
+    let store = open_store(directory.path());
+    let page = store
+        .observed_routing_timeline(
+            &reader(),
+            &RoutingTimelineQueryV1 {
+                session_id: fixture.session.to_string(),
+                after_watermark: None,
+                limit: 50,
+            },
+            5000,
+        )
+        .unwrap();
+    assert_eq!(page.turns[0].boundary, RoutingTurnBoundaryV1::Unknown);
+    let ExecutionFactV1::AgentTurnFinished { opening_cause, .. } = &mut event.fact else {
+        unreachable!()
+    };
+    *opening_cause = Some(hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened);
     assert!(event.validate_persisted_contract().is_err());
 }
