@@ -67,8 +67,19 @@ pub struct RestoreName {
     pub plan_id: String,
     pub previous_name: String,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeConnectionStatus {
+    Ready,
+    RecoveryRequired,
+    RestartRequired,
+    NotOwned,
+}
+
 #[derive(Serialize)]
 pub struct DesktopSnapshot {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_connection: Option<NativeConnectionStatus>,
     pub service: ClientServiceStatusV1,
     pub catalog: AgentPlanCatalogViewV2,
     pub catalog_error: Option<DesktopFailure>,
@@ -425,8 +436,15 @@ impl ProductSession {
         };
         // The successful status query came over Client Core's verified owner-only Local Control
         // peer. Configuration writes use that same transport, not the separate check grant pipe.
-        let trusted_authority = true;
+        let native_connection = self.authority.native_connection();
+        let trusted_authority = !matches!(
+            native_connection,
+            Some(
+                NativeConnectionStatus::RecoveryRequired | NativeConnectionStatus::RestartRequired
+            )
+        );
         Ok(DesktopSnapshot {
+            native_connection,
             service,
             catalog,
             catalog_error,

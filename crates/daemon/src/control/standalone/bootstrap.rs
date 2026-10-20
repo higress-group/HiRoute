@@ -22,6 +22,8 @@ pub(crate) fn apply_standalone_defaults(arguments: &mut Arguments) -> Result<(),
         || arguments.shutdown_fd.is_some()
         || arguments.capability_fd.is_some()
         || arguments.capability_ack_fd.is_some()
+        || arguments.maintenance_fd.is_some()
+        || arguments.maintenance_ack_fd.is_some()
         || arguments.codex_desktop_engine.is_some()
     {
         return Err("standalone role=all arguments are invalid".into());

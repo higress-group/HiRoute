@@ -23,6 +23,8 @@ use hiroute_local_storage::ApplyCapabilityRegistrationV1;
 use serde::Deserialize;
 use zeroize::{Zeroize, Zeroizing};
 
+mod maintenance;
+mod protected_exchange;
 mod ready;
 #[cfg(any(unix, windows))]
 mod standalone;
@@ -56,6 +58,8 @@ struct Arguments {
     shutdown_fd: Option<i32>,
     capability_fd: Option<i32>,
     capability_ack_fd: Option<i32>,
+    maintenance_fd: Option<i32>,
+    maintenance_ack_fd: Option<i32>,
     cpa_binary: Option<PathBuf>,
     cpa_sha256: Option<String>,
     codex_desktop_engine: Option<PathBuf>,
@@ -115,6 +119,8 @@ fn main() {
             || arguments.shutdown_fd.is_some()
             || arguments.capability_fd.is_some()
             || arguments.capability_ack_fd.is_some()
+            || arguments.maintenance_fd.is_some()
+            || arguments.maintenance_ack_fd.is_some()
             || arguments.cpa_binary.is_some()
             || arguments.cpa_sha256.is_some()
             || arguments.codex_desktop_engine.is_some()
@@ -343,6 +349,8 @@ fn run_control(arguments: Arguments, diagnostics: &DiagnosticRuntime) -> Result<
         || arguments.shutdown_fd.is_some()
         || arguments.capability_fd.is_some()
         || arguments.capability_ack_fd.is_some()
+        || arguments.maintenance_fd.is_some()
+        || arguments.maintenance_ack_fd.is_some()
         || arguments.cpa_binary.is_some()
         || arguments.cpa_sha256.is_some()
         || arguments.codex_desktop_engine.is_some()
@@ -372,6 +380,7 @@ fn run_all(
         return Err("standalone role=all is not available on this platform".into());
     }
     diagnostics.stage_begin(StartupStage::RootValidate);
+    let mut maintenance = maintenance::open(&arguments)?;
     let (
         Some(storage_root),
         Some(runtime_root),
@@ -483,44 +492,21 @@ fn run_all(
         if shutdown.poll_eof()? {
             break;
         }
+        maintenance::poll(&mut maintenance, &role, diagnostics);
         #[cfg(unix)]
         protected_inputs.poll(&role)?;
         for frame in capabilities.read_available()? {
-            let registration_id = frame.registration_id();
             if acknowledgements.is_none() {
                 return Err(
                     "v2 capability registration requires a protected acknowledgement channel"
                         .into(),
                 );
             }
-            match frame {
-                ProtectedChannelFrame::Upgrade(request) => {
-                    let status = role.upgrade_status(request.action, request.registration_id)?;
-                    let writer = acknowledgements.as_mut().expect("checked channel");
-                    serde_json::to_writer(&mut *writer, &status)
-                        .map_err(|_| "upgrade acknowledgement failed")?;
-                    use std::io::Write;
-                    writer
-                        .write_all(b"\n")
-                        .map_err(|_| "upgrade acknowledgement failed")?;
-                    writer
-                        .flush()
-                        .map_err(|_| "upgrade acknowledgement failed")?;
-                    continue;
-                }
-                ProtectedChannelFrame::Apply { registration, .. } => {
-                    role.register_apply_capability(registration)?;
-                }
-                ProtectedChannelFrame::InputRegister {
-                    candidate, secret, ..
-                } => role.register_manual_protected_input(candidate, secret)?,
-                ProtectedChannelFrame::InputRelease { candidate_ref, .. } => {
-                    role.release_manual_protected_input(&candidate_ref)?;
-                }
-            }
-            write_ack(
+            protected_exchange::process(
+                &role,
+                frame,
                 acknowledgements.as_mut().expect("checked channel"),
-                &registration_id,
+                diagnostics,
             )?;
         }
         std::thread::sleep(Duration::from_millis(5));
@@ -564,6 +550,13 @@ fn parse_arguments() -> Arguments {
             }
             "--capability-ack-fd" => {
                 parsed.capability_ack_fd =
+                    value(&mut arguments).and_then(|value| value.parse().ok())
+            }
+            "--maintenance-fd" => {
+                parsed.maintenance_fd = value(&mut arguments).and_then(|value| value.parse().ok())
+            }
+            "--maintenance-ack-fd" => {
+                parsed.maintenance_ack_fd =
                     value(&mut arguments).and_then(|value| value.parse().ok())
             }
             "--cpa-binary" => parsed.cpa_binary = value(&mut arguments).map(PathBuf::from),
@@ -997,7 +990,7 @@ fn classify_ready_error(error: &std::io::Error) -> ReadyIoError {
 
 fn exit_usage() -> ! {
     eprintln!(
-        "usage: hirouted --role control --storage-root <DIR> --runtime-root <DIR>\n       hirouted --role all --standalone [--cpa-binary <PATH> --cpa-sha256 <HEX>] [--diagnostics-root <ABSOLUTE_DIR>] [--diagnostic-level-override error|warn|info|debug]\n       hirouted --role all --storage-root <DIR> --runtime-root <DIR> --listen <IPV4:PORT> --lkg <PATH> --shutdown-fd <INHERITED_FD> --capability-fd <INHERITED_FD> [--capability-ack-fd <INHERITED_FD>] [--cpa-binary <PATH> --cpa-sha256 <HEX>] [--codex-desktop-engine <PATH>] [--diagnostics-root <ABSOLUTE_DIR>] [--diagnostics-parent-session <HEX32>] [--diagnostic-level-override error|warn|info|debug]"
+        "usage: hirouted --role control --storage-root <DIR> --runtime-root <DIR>\n       hirouted --role all --standalone [--cpa-binary <PATH> --cpa-sha256 <HEX>] [--diagnostics-root <ABSOLUTE_DIR>] [--diagnostic-level-override error|warn|info|debug]\n       hirouted --role all --storage-root <DIR> --runtime-root <DIR> --listen <IPV4:PORT> --lkg <PATH> --shutdown-fd <INHERITED_FD> --capability-fd <INHERITED_FD> [--capability-ack-fd <INHERITED_FD>] [--maintenance-fd <INHERITED_FD> --maintenance-ack-fd <INHERITED_FD>] [--cpa-binary <PATH> --cpa-sha256 <HEX>] [--codex-desktop-engine <PATH>] [--diagnostics-root <ABSOLUTE_DIR>] [--diagnostics-parent-session <HEX32>] [--diagnostic-level-override error|warn|info|debug]"
     );
     std::process::exit(2)
 }

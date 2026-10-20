@@ -63,6 +63,50 @@ Authenticated console sessions have the same protected-operation authority as ma
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/132#issuecomment-6219725852
 
+### Requirement: Native connection loss is truthful and safely recoverable
+
+A responsive daemon SHALL NOT establish that the Desktop's inherited protected
+channel remains usable. Failed, timed-out, malformed or mismatched exchanges SHALL
+invalidate that channel without accepting a late response for another registration.
+Protected observations and actions SHALL fail closed with an actionable connection
+failure; service status SHALL distinguish that failure from daemon unavailability
+and from an intentional read-only connection. Existing loaded records and unsaved
+non-secret input SHALL remain available without being presented as fresh reads.
+
+Desktop SHALL offer safe recovery for an owned daemon through independent inherited
+maintenance authority, never by reusing an uncertain grant/acknowledgement stream,
+relaxing digests/revisions/principals or using unprotected observation reads. Recovery
+SHALL pause new work, preserve in-flight requests/tasks and confirm drainage before
+orderly shutdown. If work is active, it SHALL leave that daemon running and restore
+ordinary admission. A pending stop SHALL never be converted into a force kill.
+Only verified exit permits replacement under the same host lease and listener
+identity. Replacement SHALL use fresh protected channels and a distinct product
+session, expire old confirmations and prevent captured old-session callbacks from
+authorizing work. It SHALL preserve saved configuration, retained sessions and
+operation identities without automatically replaying business mutations. Missing or
+failed recovery authority SHALL be explicit and SHALL NOT grant a bypass.
+
+The first failed exchange SHALL have bounded diagnostics identifying its phase,
+closed failure category, duration and irreversible registration correlation. Neither
+capability/input bytes, business payloads nor raw registration identifiers may appear.
+A controlled timeout reproducer SHALL NOT be described as the cause of an earlier
+unobserved failure.
+
+#### Scenario: Daemon responds after an uncertain protected exchange
+
+- **WHEN** the owned daemon is responsive after a protected registration times out
+- **THEN** Desktop reports loss of its trusted connection, protected reads remain
+  denied and ordinary Retry cannot treat a late ACK as new authorization.
+
+#### Scenario: Recovery waits for owned work and starts a fresh session
+
+- **WHEN** the user restores an invalid native connection
+- **THEN** independent maintenance verifies drainage or preserves the running work;
+  after verified orderly exit a fresh session restores protected reads and actions
+  with the same saved records, while old confirmations and channels remain invalid.
+
+Source Issue: https://github.com/higress-group/HiRoute/issues/187
+
 ### Requirement: Clients observe work without automatically repeating it
 
 Accepted is not succeeded. Measured progress alone supports percentages; otherwise

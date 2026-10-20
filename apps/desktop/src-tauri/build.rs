@@ -92,6 +92,7 @@ fn main() {
             "quit_desktop",
             "diagnostic_status",
             "startup_status",
+            "recover_native_connection",
             "open_startup_recovery_directory",
             "update_status",
             "update_check",

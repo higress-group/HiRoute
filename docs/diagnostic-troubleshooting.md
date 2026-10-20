@@ -48,3 +48,21 @@ Run the `stream_replay PRIVATE_CAPTURE` example in the same candidate's Debug bu
 Replay supports only successful cross-protocol decoder paths. It skips 1xx and requires one final status. Same-protocol projectors and unsuccessful statuses explicitly return `unsupported_capture_path`; they must not produce decoder judgments from a substitute production entry. Raw captures must not be committed or attached to an Issue. A separate owner with a bounded lifetime stops the isolated candidate's entire process group, including descendants after the main process exits, and reaps the main process. It does not stop other sessions or processes with reused identities. After the CLI returns, retain the session for at most 24 hours, then delete it. Output includes the owner PID; SIGTERM to that owner stops the candidate early and deletes the session immediately. Do not force-kill the owner during retention. Host shutdown or SIGKILL prevents cleanup; after recovery, use `private-stream-capture.py cleanup ROOT` to delete the exact expired session. Locks use kernel ownership and release when the candidate crashes. A leftover lock file does not permanently block cleanup; an active writer still prevents it.
 
 macOS may stop reporting PGID/SID for an exited but unreaped child. The supervisor may use the process group ID established at creation only if it created the candidate with `start_new_session` and `waitid(WNOWAIT)` still proves that child is waitable. This fallback remains forbidden for live, reaped or unknown-origin processes. After normal exit, retain sealed samples until their deadline; a failed zombie PGID query must not trigger early deletion. Darwin may also return EPERM when signaling a group containing only a zombie. Accept this result only when kernel PID and process-group snapshots match exactly and prove the group contains only that unreaped leader. Other members or a failed query remain errors. Report diagnostic repairs, historical failure attribution and semantic repairs backed by actual old failing samples separately. Failure to reproduce does not establish a repair.
+
+## Native connection lost while the daemon responds
+
+A successful Local Control/CLI query does not establish that Desktop's separate
+inherited protected channel is healthy. Home and Sessions also require that
+channel. `TRUSTED_AUTHORITY_UNAVAILABLE` after an exchange failure stays denied;
+ordinary read retry cannot repair it. Use **Restore local connection** in Desktop.
+Recovery uses independent inherited maintenance, preserves live work, and replaces
+only the exact exited owned daemon with fresh channels and a new product session.
+If requests/tasks are active, it restores admission and asks the user to retry
+after they finish. Unknown maintenance state does not permit forced termination.
+
+Inspect `protected_exchange` in both roles before attributing the original trigger.
+The event records a closed exchange family, phase, duration, failure category and
+HMAC registration correlation, with the authority-loss transition on the host.
+A late successful daemon ACK can coexist with a host timeout; it does not authorize
+reuse. A successful later recovery is not proof of the earlier failure's cause.
+Keep raw diagnostics private and report only revision-bound observable outcomes.

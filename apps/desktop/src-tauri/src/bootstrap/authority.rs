@@ -9,6 +9,14 @@ impl HostAuthority for NativeAuthority {
     fn as_any(&self) -> &dyn std::any::Any {
         &self.0
     }
+    fn native_connection(&self) -> Option<hiroute_product_session::NativeConnectionStatus> {
+        Some(
+            self.0
+                .lock()
+                .map(|mut resident| resident.native_connection())
+                .unwrap_or(hiroute_product_session::NativeConnectionStatus::RestartRequired),
+        )
+    }
     fn has_authority(&self) -> bool {
         self.0
             .lock()

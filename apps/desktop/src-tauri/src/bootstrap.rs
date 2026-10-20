@@ -24,6 +24,8 @@ use zeroize::Zeroizing;
 use crate::native_diagnostics::NativeDiagnostics;
 
 const DAEMON_READY_TIMEOUT: Duration = Duration::from_secs(210);
+mod channel;
+mod recovery;
 mod startup_progress;
 pub enum ApplyPurpose {
     AgentPlan,
@@ -42,6 +44,7 @@ struct OwnedChild {
     capability: File,
     ack: File,
     authority_healthy: bool,
+    maintenance: Option<recovery::MaintenanceChannel>,
     manual_input_candidates: BTreeSet<String>,
     diagnostics: Option<DiagnosticsPort>,
 }
@@ -107,8 +110,11 @@ impl Resident {
         })
         .map_err(|_| "UPGRADE_FRAME_INVALID")?;
         bytes.push(b'\n');
+        let started = Instant::now();
+        let mut phase = hiroute_diagnostics::event::ProtectedExchangePhase::RequestWrite;
         let exchange = (|| {
             write_frame(&mut owned.capability, &bytes)?;
+            phase = hiroute_diagnostics::event::ProtectedExchangePhase::AcknowledgementRead;
             let bytes = read_frame(&mut owned.ack, 4096, Duration::from_secs(10), None)?;
             let status: hiroute_host_runtime::LauncherUpgradeStatus =
                 serde_json::from_slice(&bytes).map_err(|_| "UPGRADE_ACK_INVALID")?;
@@ -123,6 +129,15 @@ impl Resident {
         if exchange.is_err() {
             owned.authority_healthy = false;
         }
+        channel::emit_exchange(
+            owned.diagnostics.as_ref(),
+            hiroute_diagnostics::event::ProtectedExchangeKind::Upgrade,
+            phase,
+            &id,
+            started,
+            exchange.as_ref().err(),
+            exchange.is_err(),
+        );
         exchange
     }
 
@@ -300,6 +315,8 @@ impl Resident {
         let (shutdown_read, shutdown_write) = pipe()?;
         let (cap_read, cap_write) = pipe()?;
         let (ack_read, ack_write) = pipe()?;
+        let (maintenance_read, maintenance_write) = pipe()?;
+        let (maintenance_ack_read, maintenance_ack_write) = pipe()?;
         // The stable host address: a restart rebinds exactly the recorded address. A publication
         // (gateway.lkg) pins clients to it, so only the previously served address may be reused.
         let last_served = crate::resident_ownership::recorded_gateway_address(&mut lock)?;
@@ -329,6 +346,10 @@ impl Resident {
                 "4",
                 "--capability-ack-fd",
                 "5",
+                "--maintenance-fd",
+                "6",
+                "--maintenance-ack-fd",
+                "7",
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -382,6 +403,14 @@ impl Resident {
                     parent_fd: ack_write.into(),
                     child_fd: 5,
                 },
+                FdMapping {
+                    parent_fd: maintenance_read.into(),
+                    child_fd: 6,
+                },
+                FdMapping {
+                    parent_fd: maintenance_ack_write.into(),
+                    child_fd: 7,
+                },
             ])
             .map_err(|_| "PROTECTED_CHANNEL_UNAVAILABLE")?;
         reservation.release(); // A port race fails this exact target; it never selects another.
@@ -406,6 +435,10 @@ impl Resident {
             capability: cap_write,
             ack: ack_read,
             authority_healthy: true,
+            maintenance: Some(recovery::MaintenanceChannel::new(
+                maintenance_write,
+                maintenance_ack_read,
+            )?),
             manual_input_candidates: BTreeSet::new(),
             diagnostics: Some(stages.clone()),
         };
@@ -670,8 +703,11 @@ impl Resident {
             .map_err(|_| "PROTECTED_INPUT_INVALID")?,
         );
         bytes.push(b'\n');
-        write_frame(&mut owned.capability, &bytes)?;
-        receive_ack(&mut owned.ack, &id, Duration::from_secs(2))
+        owned.exchange_ack(
+            &bytes,
+            &id,
+            hiroute_diagnostics::event::ProtectedExchangeKind::InputRegister,
+        )
     }
     pub fn release_model_input(&mut self, candidate: &ComputeCandidateRefV2) -> Result<(), String> {
         candidate
@@ -703,8 +739,11 @@ impl Resident {
             .map_err(|_| "PROTECTED_INPUT_INVALID")?,
         );
         bytes.push(b'\n');
-        let result = write_frame(&mut owned.capability, &bytes)
-            .and_then(|()| receive_ack(&mut owned.ack, &id, Duration::from_secs(2)));
+        let result = owned.exchange_ack(
+            &bytes,
+            &id,
+            hiroute_diagnostics::event::ProtectedExchangeKind::InputRelease,
+        );
         if result.is_ok() {
             owned
                 .manual_input_candidates
@@ -726,7 +765,7 @@ impl Resident {
         let result = self.register_once(digest, revisions, operation);
         if result.is_err() {
             // A partial/timed-out channel cannot be reused for a different registration.
-            // Keep the owned daemon alive for reads; a new native session re-establishes authority.
+            // Local Control can remain live, but protected observation reads also need authority.
             if let Some(owned) = &mut self.owned {
                 owned.authority_healthy = false;
             }
@@ -775,8 +814,11 @@ impl Resident {
             .map_err(|_| "REGISTRATION_INVALID")?,
         );
         bytes.push(b'\n');
-        write_frame(&mut owned.capability, &bytes)?;
-        receive_ack(&mut owned.ack, &id, Duration::from_secs(2))?;
+        owned.exchange_ack(
+            &bytes,
+            &id,
+            hiroute_diagnostics::event::ProtectedExchangeKind::Grant,
+        )?;
         Ok(capability)
     }
 }

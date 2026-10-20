@@ -11,6 +11,7 @@ mod control;
 mod cpa;
 mod model;
 mod observation;
+mod protected_channel;
 mod startup;
 mod system;
 mod worker;
@@ -25,6 +26,7 @@ pub use control::*;
 pub use cpa::*;
 pub use model::*;
 pub use observation::*;
+pub use protected_channel::*;
 pub use startup::*;
 pub use system::*;
 pub use worker::*;
@@ -53,6 +55,7 @@ pub enum DiagnosticEvent {
     Apply(ApplyEvent),
     ControlCallEnd(ControlCallEnd),
     ControlStage(ControlStage),
+    ProtectedExchange(ProtectedExchange),
     RequestBegin(RequestBegin),
     RequestEnd(RequestEnd),
     RouteSelected(RouteSelected),
@@ -136,6 +139,13 @@ impl DiagnosticEvent {
                 }
             }
             DiagnosticEvent::ControlStage(_) => Debug,
+            DiagnosticEvent::ProtectedExchange(exchange) => {
+                if exchange.error.is_some() {
+                    Warn
+                } else {
+                    Debug
+                }
+            }
             DiagnosticEvent::RequestBegin(_)
             | DiagnosticEvent::RouteSelected(_)
             | DiagnosticEvent::AttemptBegin(_) => Info,
@@ -221,6 +231,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::Apply(_) => "apply",
             DiagnosticEvent::ControlCallEnd(_) => "control_call_end",
             DiagnosticEvent::ControlStage(_) => "control_stage",
+            DiagnosticEvent::ProtectedExchange(_) => "protected_exchange",
             DiagnosticEvent::RequestBegin(_) => "request_begin",
             DiagnosticEvent::RequestEnd(_) => "request_end",
             DiagnosticEvent::RouteSelected(_) => "route_selected",

@@ -107,3 +107,69 @@ fn live_daemon_after_ack_timeout_does_not_report_a_healthy_native_session() {
         "a live service does not prove a usable native authority"
     );
 }
+
+#[test]
+fn fresh_native_session_recovers_without_reusing_late_ack_or_saved_state_changes() {
+    let root = tempfile::Builder::new()
+        .prefix("hr187-")
+        .tempdir_in(std::fs::canonicalize("/tmp").unwrap())
+        .unwrap();
+    let binary = daemon();
+    let mut resident = Resident::open(root.path(), &binary).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let before = runtime
+        .block_on(resident.client.query::<_, ClientServiceStatusV1>(
+            "GetClientServiceStatus",
+            "before-recovery",
+            &serde_json::json!({}),
+        ))
+        .unwrap()
+        .data
+        .unwrap();
+    let previous = resident.owned.as_ref().unwrap().child.id();
+    let paused = Paused::new(previous);
+    assert!(
+        resident
+            .register_operation(
+                &CanonicalDigest::of_bytes(b"late old registration"),
+                &before.revisions,
+                "ListSessionsV2"
+            )
+            .is_err()
+    );
+    drop(paused);
+    // The daemon writes the original success ACK after the caller's absolute timeout.
+    // It stays unread in the tainted stream while independent maintenance drains/restarts.
+    std::thread::sleep(Duration::from_millis(100));
+    let replacement = resident
+        .recover_authority(root.path(), &binary, &NativeDiagnostics::disabled())
+        .unwrap();
+    assert_ne!(replacement.owned.as_ref().unwrap().child.id(), previous);
+    assert!(
+        !resident.has_authority(),
+        "captured old authority cannot authorize after replacement"
+    );
+    assert!(
+        acquire_host_lock(root.path()).is_err(),
+        "replacement retains the original host lease"
+    );
+    let mut session = crate::session_from_resident(replacement);
+    let snapshot = runtime.block_on(session.snapshot()).unwrap();
+    assert!(snapshot.trusted_authority);
+    assert_eq!(snapshot.service.revisions, before.revisions);
+    assert_eq!(
+        snapshot.native_connection,
+        Some(hiroute_product_session::NativeConnectionStatus::Ready)
+    );
+    let request = serde_json::from_value(serde_json::json!({
+        "schema":"hiroute.observation.query/v2", "intent":{"view":"status","query":{}}
+    }))
+    .unwrap();
+    assert!(runtime.block_on(session.observation_read(request)).is_ok());
+    let candidate = session
+        .authority
+        .register_model_input(Zeroizing::new("synthetic recovered input".into()))
+        .unwrap();
+    session.authority.release_model_input(&candidate).unwrap();
+    assert!(!resident.has_authority());
+}
