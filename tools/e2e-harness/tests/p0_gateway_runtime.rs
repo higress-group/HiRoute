@@ -6,6 +6,8 @@ mod bearer_auth;
 mod decision_branches;
 #[path = "p0_gateway_runtime/hermes_identity.rs"]
 mod hermes_identity;
+#[path = "p0_gateway_runtime/history_bypass.rs"]
+mod history_bypass;
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};

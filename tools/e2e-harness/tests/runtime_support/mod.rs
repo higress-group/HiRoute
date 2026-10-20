@@ -507,6 +507,7 @@ struct RuntimeLaunchOptions {
     reasoning_choices: bool,
     isolated_fixed_grants: bool,
     attempt_timeout_ms: Option<u64>,
+    history_max_bytes: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -556,6 +557,7 @@ impl Default for RuntimeLaunchOptions {
             reasoning_choices: false,
             isolated_fixed_grants: false,
             attempt_timeout_ms: None,
+            history_max_bytes: None,
         }
     }
 }
@@ -918,6 +920,27 @@ impl RuntimeFixture {
                 replay_record_bytes,
                 classified_route: true,
                 rest_classifier: true,
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
+    pub fn launch_rest_classified_with_history_capacity(
+        providers: &[&NativeProvider],
+        history_max_bytes: usize,
+    ) -> Self {
+        assert_eq!(providers.len(), 3);
+        Self::launch_configured(
+            providers,
+            1,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                observation: Some(ObservationFaults::healthy()),
+                classified_route: true,
+                rest_classifier: true,
+                history_max_bytes: Some(history_max_bytes),
                 ..RuntimeLaunchOptions::default()
             },
         )
@@ -1427,6 +1450,9 @@ impl Hirouted {
         }
         if let Some(attempt_timeout_ms) = options.attempt_timeout_ms {
             command.env(E2E_ATTEMPT_TIMEOUT_MS_ENV, attempt_timeout_ms.to_string());
+        }
+        if let Some(bytes) = options.history_max_bytes {
+            command.env("HIROUTE_AGENT_TURN_HISTORY_MAX_BYTES", bytes.to_string());
         }
         if let Some((address, nonce_file)) = test_control {
             command
