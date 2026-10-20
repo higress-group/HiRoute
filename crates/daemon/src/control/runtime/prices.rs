@@ -1,4 +1,5 @@
 use super::*;
+mod official;
 use hiroute_application::prices::{
     CatalogPriceRuleV2, PriceControlFactsV1, PriceIndexEntryV1, PriceSnapshot, PriceSnapshotSlot,
     PriceSourceBinding, SourcePriceControlPort,
@@ -109,12 +110,9 @@ impl LocalControlAdapter {
             .map_err(map_port)?;
         check()?;
         let legacy = control.price_overrides().map_err(map_port)?;
-        let mut revisions = control
+        let revisions = control
             .current_revisions(&WorkspaceId::default())
             .map_err(map_port)?;
-        revisions
-            .dependencies
-            .insert("feed.model_data".into(), catalog.generation);
         let configuration_revision = revisions.target;
         let identity = catalog.official_snapshot();
         let catalog_refs = vec![PriceFactRefV1 {
@@ -267,10 +265,12 @@ impl LocalControlAdapter {
                         && r.model_configuration_id == binding.model_configuration_id
                 })
                 .collect::<Vec<_>>();
+            let documented = official::documented_prices(catalog, binding);
             let mut currencies = rates
                 .iter()
                 .map(|r| r.currency.clone())
                 .collect::<BTreeSet<_>>();
+            currencies.extend(documented.iter().map(|p| p.currency.clone()));
             currencies.insert("USD".into());
             currencies.extend(
                 overrides
@@ -298,25 +298,33 @@ impl LocalControlAdapter {
                     // Subscription reference mappings belong to 19. Until supplied, API equivalent
                     // has no guessed catalog reference; a source-specific manual value can exist.
                     let catalog_rules = if kind == PriceValuationKindV1::UsageEstimate {
-                        rates
-                            .iter()
-                            .filter(|r| r.currency == currency)
-                            .map(|r| {
-                                Ok(CatalogPriceRuleV2 {
-                                    rule_ref: PriceFactRefV1 {
-                                        id: r.price_rate_id.clone(),
-                                        revision: r.revision,
-                                        digest: CanonicalDigest::of(*r)
-                                            .map_err(|_| ControlReadError::Corrupt)?,
-                                    },
-                                    rates: TokenRatesV1::from_legacy(
-                                        r.input_micros_per_million,
-                                        r.output_micros_per_million,
-                                    ),
-                                    schedule: r.schedule.clone(),
+                        if let Some(rules) = official::rules(
+                            &documented,
+                            &currency,
+                            catalog.official_snapshot().data_revision,
+                        ) {
+                            rules
+                        } else {
+                            rates
+                                .iter()
+                                .filter(|r| r.currency == currency)
+                                .map(|r| {
+                                    Ok(CatalogPriceRuleV2 {
+                                        rule_ref: PriceFactRefV1 {
+                                            id: r.price_rate_id.clone(),
+                                            revision: r.revision,
+                                            digest: CanonicalDigest::of(*r)
+                                                .map_err(|_| ControlReadError::Corrupt)?,
+                                        },
+                                        rates: TokenRatesV1::from_legacy(
+                                            r.input_micros_per_million,
+                                            r.output_micros_per_million,
+                                        ),
+                                        schedule: r.schedule.clone(),
+                                    })
                                 })
-                            })
-                            .collect::<Result<Vec<_>, ControlReadError>>()?
+                                .collect::<Result<Vec<_>, ControlReadError>>()?
+                        }
                     } else {
                         vec![]
                     };
@@ -382,6 +390,7 @@ impl LocalControlAdapter {
         let facts = self
             .price_facts_for(&stores, None, catalog)
             .map_err(|_| "prices.candidate.facts")?;
+        drop(stores);
         let snapshot = PriceSnapshot::build(
             facts.configuration_revision,
             facts.catalog_refs,

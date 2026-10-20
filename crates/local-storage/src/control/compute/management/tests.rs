@@ -32,6 +32,7 @@ use super::super::super::ControlStore;
 use crate::{LocalSecretStore, LocalStorageSet, RuntimeStore};
 
 mod compensation_guards;
+mod defaults;
 mod lifecycle;
 mod recovery;
 mod released_lifecycle;

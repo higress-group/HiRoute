@@ -33,6 +33,9 @@ pub struct TrustedReleaseCatalog {
 }
 
 impl TrustedReleaseCatalog {
+    pub fn complete_official_data(&self) -> Option<&hiroute_domain::OfficialModelDataV1> {
+        self.official_snapshot.as_ref().map(|s| &s.data)
+    }
     pub fn registry(&self) -> &ConnectorRegistryBundleV1 {
         &self.registry
     }

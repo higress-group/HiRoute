@@ -65,9 +65,7 @@ impl TransactionPlanV1 {
             source_mutation,
             preferences_before,
             preferences_after,
-            change_spec_digest: self
-                .spec
-                .digest()
+            change_spec_digest: CanonicalDigest::of(&self.spec)
                 .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?,
         };
         mutation

@@ -89,9 +89,7 @@ impl ComputeManagementMutationV3 {
                 .get("schema")
                 .and_then(serde_json::Value::as_str)
                 != Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
-            || spec
-                .digest()
-                .map_err(|_| ComputeManagementErrorV2::InvalidDigest)?
+            || CanonicalDigest::of(spec).map_err(|_| ComputeManagementErrorV2::InvalidDigest)?
                 != self.change_spec_digest
             || spec.desired_state.get("default_preferences")
                 != Some(

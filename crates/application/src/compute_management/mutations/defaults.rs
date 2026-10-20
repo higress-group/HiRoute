@@ -29,9 +29,18 @@ where
         let before = self
             .repository
             .source_default_preferences(mutation.source_id())?;
+        let mut after = before.clone();
+        for (binding, fields) in change.default_preferences {
+            after.entry(binding).or_default().extend(fields);
+        }
+        after.retain(|binding, _| {
+            mutation
+                .desired()
+                .is_some_and(|s| s.models.iter().any(|m| &m.binding_id == binding))
+        });
         preview.plan = preview
             .plan
-            .with_source_defaults(before, change.default_preferences)
+            .with_source_defaults(before, after)
             .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
         preview.result.spec = preview.plan.spec().clone();
         preview.result.accept_digest = CanonicalDigest::of(&(
