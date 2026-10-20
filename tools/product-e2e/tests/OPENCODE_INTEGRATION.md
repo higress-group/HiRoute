@@ -39,8 +39,8 @@ The explicit collaboration prerequisite check uses private configuration and his
 On Windows this private check explicitly selects system Windows PowerShell and
 uses its literal native-command syntax; Qoder's Git Bash command contract is
 unchanged. The nonce is emitted only after a successful CLI exit. Static-source
-acceptance also includes independent provider credential failures (linked, exposed
-or oversized files): these stay non-importable while the valid source completes
+acceptance also includes independent provider credential failures (symbolic/hard
+links or oversized files): these stay non-importable while the valid source completes
 public Scan/Prepare/Save and still rejects stale credentials.
 
 ## Evidence and platform limits
