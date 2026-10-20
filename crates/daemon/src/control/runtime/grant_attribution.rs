@@ -3,8 +3,9 @@
 use super::LocalControlAdapter;
 use hiroute_domain::{
     AgentAccessGrantMutationKindV1, AgentAccessGrantRefV1, AgentOperationRead,
-    GatewayPublicationV1, OperationStepKind, OwnedEffectV1, PortError, PortErrorCode, PortResult,
-    WorkspaceId, is_agent_access_grant_effect,
+    CanonicalDigest, ControlRepositoryPort, GatewayPublicationV1, OperationStepKind,
+    OwnedEffectV1, PortError, PortErrorCode, PortResult, WorkspaceId,
+    is_agent_access_grant_effect,
 };
 use std::collections::BTreeSet;
 
@@ -22,10 +23,11 @@ impl LocalControlAdapter {
         operation: &dyn AgentOperationRead,
         effects: &[OwnedEffectV1],
         publication: &GatewayPublicationV1,
-    ) -> PortResult<()> {
+    ) -> PortResult<BTreeSet<(String, u64)>> {
+        let mut verified = BTreeSet::new();
         let input = operation.agent_input();
         if input.grants.is_empty() {
-            return Ok(());
+            return Ok(verified);
         }
         let Some(subject) = input.connection_subject().map_err(|_| invalid())? else {
             return Err(invalid());
@@ -66,14 +68,16 @@ impl LocalControlAdapter {
                         "observation.agent-grant.persist",
                     )
                 })?;
+            verified.insert((reference.grant_id().to_owned(), reference.generation()));
         }
-        Ok(())
+        Ok(verified)
     }
 
     pub(super) fn register_restored_agent_grants(
         &self,
         workspace: &WorkspaceId,
         publication: &GatewayPublicationV1,
+        publication_digest: &CanonicalDigest,
     ) -> PortResult<()> {
         let (operations, mut rejected) = self
             .stores_lock()?
@@ -127,6 +131,29 @@ impl LocalControlAdapter {
                     })?;
                 verified.insert((reference.grant_id().to_owned(), reference.generation()));
             }
+        }
+        // A committed service can keep serving while its independently edited native file
+        // remains a parked tail. Its authenticated receipt, not Succeeded alone, proves the
+        // current publication. Reuse the existing recovery proof and exact journal guard;
+        // this neither retries the client file nor exports an unfinished connection grant.
+        let pending = self.stores_lock()?.control().recoverable_operations()?;
+        for operation in pending {
+            if operation.workspace_id != *workspace
+                || !hiroute_application::settings_service_completion_is_current(
+                    &operation,
+                    publication.publication_revision.get(),
+                    publication_digest,
+                )
+            {
+                continue;
+            }
+            self.require_current_operation(&operation)?;
+            verified.extend(self.register_operation_agent_grants(
+                workspace,
+                &operation,
+                &operation.step(OperationStepKind::ApplySecrets).effects,
+                publication,
+            )?);
         }
         if rejected > 0 {
             // One closed-vocabulary warning per reconciliation, irrespective of history
