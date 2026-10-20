@@ -219,7 +219,7 @@ try {
   await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
   await evaluate(client,`document.querySelectorAll('.routing-turn')[1].click();true`);
   assert.ok(await evaluate(client,`document.querySelector('.routing-detail-head').textContent.includes(${JSON.stringify(lang==='zh'?'上下文重建':'Context rebuilt')})`));
-  assert.ok(await evaluate(client,`document.querySelector('.routing-boundary-basis').textContent.includes(${JSON.stringify(lang==='zh'?'回退或编辑':'rewind or editing')})`));
+  assert.ok(await evaluate(client,`document.querySelector('.routing-boundary-basis').textContent.includes(${JSON.stringify(lang==='zh'?'消息步骤比上一份可比较记录少':'fewer message steps')})`));
   assert.ok(await evaluate(client,`document.querySelector('.routing-legend').textContent.includes(${JSON.stringify(lang==='zh'?'新消息或上下文重建':'new message or rebuilt context')})`));
   await evaluate(client,`document.querySelector('.routing-boundary-basis').scrollIntoView({block:'center'});true`);
   const basis=await evaluate(client,`(()=>{const e=document.querySelector('.routing-boundary-basis'),r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight,scroll:e.scrollWidth,width:e.clientWidth};})()`);

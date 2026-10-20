@@ -246,6 +246,9 @@ impl AgentTurnHistoryStore {
             let turn_id = self.allocate_id(&mut inner, "turn")?;
             let active = ActiveTurn {
                 opening_cause: match decision_inputs.history_continuity {
+                    crate::context_hold::HistoryContinuity::Shortened => {
+                        hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened
+                    }
                     crate::context_hold::HistoryContinuity::Rewritten => {
                         hiroute_domain::AgentTurnOpeningCauseV1::HistoryRewrite
                     }
@@ -341,6 +344,9 @@ impl AgentTurnHistoryStore {
             || (appended_user && decision_inputs.reselect_on_user_message);
         let starts_new_turn = appended_user || needs_decision;
         let opening_cause = match decision_inputs.history_continuity {
+            crate::context_hold::HistoryContinuity::Shortened => {
+                hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened
+            }
             crate::context_hold::HistoryContinuity::Rewritten => {
                 hiroute_domain::AgentTurnOpeningCauseV1::HistoryRewrite
             }

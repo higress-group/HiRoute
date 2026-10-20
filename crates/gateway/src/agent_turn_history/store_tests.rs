@@ -1189,12 +1189,13 @@ fn pinned_snapshot_prevents_lru_eviction_until_the_request_releases_it() {
 
 #[test]
 fn completed_turn_preserves_its_opening_cause() {
-    use crate::context_hold::HistoryContinuity::{Continuing, NoCheckpoint, Rewritten};
+    use crate::context_hold::HistoryContinuity::{Continuing, NoCheckpoint, Rewritten, Shortened};
     use hiroute_domain::AgentTurnOpeningCauseV1 as Cause;
     let (_directory, replay) = replay();
     let now = Instant::now();
     for (continuity, next_plan, expected) in [
         (Continuing, 1, Cause::UserMessage),
+        (Shortened, 1, Cause::HistoryShortened),
         (Rewritten, 1, Cause::HistoryRewrite),
         (NoCheckpoint, 1, Cause::NoComparableHistory),
         (Continuing, 2, Cause::Other),

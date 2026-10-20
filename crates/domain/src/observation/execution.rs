@@ -31,7 +31,7 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:5f7a8a65779fea426fbe0b247e2691ff893de0f638c3a42f4408f5345b9f5bf6";
+    "sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069";
 
 /// What the Gateway observed when it opened an agent turn. This is not proof
 /// of human authorship or of a particular native compaction command.
@@ -39,6 +39,7 @@ pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
 #[serde(rename_all = "snake_case")]
 pub enum AgentTurnOpeningCauseV1 {
     UserMessage,
+    HistoryShortened,
     HistoryRewrite,
     NoComparableHistory,
     Other,

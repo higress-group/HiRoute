@@ -385,7 +385,12 @@ fn ordered_indexes_charge_each_entry_before_insertion() {
 #[test]
 fn history_rewrites_and_unavailable_checkpoints_have_distinct_causes() {
     let now = Instant::now();
-    for replacement in [&[9][..], &[1, 2][..], &[1, 9, 3][..]] {
+    for (replacement, expected) in [
+        (&[9][..], HistoryContinuity::Shortened),
+        (&[1, 2][..], HistoryContinuity::Shortened),
+        (&[1, 9, 3][..], HistoryContinuity::Rewritten),
+        (&[1, 9, 3, 4][..], HistoryContinuity::Rewritten),
+    ] {
         let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
         assert_eq!(
             begin(&store, 1, 1, &[1, 2, 3], now)
@@ -393,12 +398,12 @@ fn history_rewrites_and_unavailable_checkpoints_have_distinct_causes() {
                 .history_continuity,
             HistoryContinuity::NoCheckpoint
         );
-        // Compaction-shaped replacement, rewind, and equal-length edit are all rewrites.
+        // Only a decrease is the compaction heuristic, including a shorter rewind.
         assert_eq!(
             begin(&store, 1, 1, replacement, now)
                 .unwrap()
                 .history_continuity,
-            HistoryContinuity::Rewritten
+            expected
         );
     }
     let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, Duration::from_secs(1));

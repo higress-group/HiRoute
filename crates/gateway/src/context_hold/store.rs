@@ -96,6 +96,7 @@ fn frame_u64(mac: &mut HmacSha256, kind: &[u8], value: u64) {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HistoryContinuity {
     Continuing,
+    Shortened,
     Rewritten,
     NoCheckpoint,
 }
@@ -316,6 +317,8 @@ impl ContextHoldStore {
                 checkpoint_revision,
                 history_continuity: if message_history_continues {
                     HistoryContinuity::Continuing
+                } else if measured.message_count < snapshot.message_count {
+                    HistoryContinuity::Shortened
                 } else {
                     HistoryContinuity::Rewritten
                 },

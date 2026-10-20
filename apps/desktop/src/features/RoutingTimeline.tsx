@@ -255,7 +255,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         </div>
         <p className="routing-boundary-basis muted">{selectedTurn.boundary === 'new_user_message'
           ? text('依据：会话第一轮，或网关确认对话延续并重新判断。客户端自动追加的后台消息也可能满足此规则。', 'Basis: the first session turn, or a fresh decision on gateway-confirmed continuing history. Client-generated background messages can also meet this rule.')
-          : selectedTurn.boundary === 'context_rebuilt' ? text('消息历史不再延续上一份记录，常见于压缩，也可能是回退或编辑；已重新判断。', 'The message history no longer extends the prior checkpoint, commonly after compaction but also after rewind or editing; a fresh decision was made.')
+          : selectedTurn.boundary === 'context_rebuilt' ? text('上下文中的消息步骤比上一份可比较记录少，按压缩归因；已重新判断。回退或共享会话的后台、子代理请求也可能满足此条件。', 'The context has fewer message steps than the prior comparable checkpoint, so this is attributed to compaction and judged again. Rewinds or background and subagent requests sharing a session can also meet this condition.')
           : text('没有足够记录确认这一轮的起因。', 'The retained records do not establish what started this turn.')}</p>
         {selectedTurn.requests[0] && <blockquote className="routing-quote"><ContentExcerpt request={selectedTurn.requests[0].request_id} language={language} fallback={text('这一轮的消息未记录或已清理', 'This turn’s message is unrecorded or cleared')} limit={140} revision={selectedTurn.content_digest} /></blockquote>}
         <div className="routing-detail-block"><span>{text('阶段开始时的模型选择', 'Model selection at the start of this stage')}</span>{historicalExplanation(selectedTurn)}</div>
