@@ -71,6 +71,7 @@ trust root or transport override. The test does not establish live production si
 
 | Need | Reuse / preserve |
 | --- | --- |
+| Diagnose a real Gateway listener assertion | [RuntimeFixture](../../tools/e2e-harness/tests/runtime_support/mod.rs): use the diagnostics-enabled REST-classified variant when boot/request evidence is needed; unexpected panics retain the private fixture root for [failure diagnosis](../diagnostic-troubleshooting.md#gateway-listener-fixture-failures) |
 | Prepare a daemon's current sources, grants and plans | [Publication Product](../../crates/daemon/tests/support/publication_product.py): its `Product.cli` is internal Local Control notation, not the standalone CLI; protected input belongs to that fixture's daemon |
 | Save an explicit HTTP model source or correct its target | [Custom HTTP journey](../../crates/daemon/tests/support/custom_http_product.py): real control/save/restart/recheck with synthetic literal/hostname targets and no directory; [connection form browser checks](../../apps/desktop/tests/v3/visual/connection-flow-active.mjs) separately cover plaintext notices, localized errors and retained input |
 | Configure a real native Agent | [Agent product support](../../crates/daemon/tests/support/agent_product_support.py): shared Preview → Apply → status and bounded process capture; native argv/ownership/result interpretation remain in the leaf |
