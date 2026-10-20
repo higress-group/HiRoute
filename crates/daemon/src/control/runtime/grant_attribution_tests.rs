@@ -39,7 +39,8 @@ fn configured() -> (
         })
         .unwrap()
         .agent_plan_id
-        .to_string();
+        .as_str()
+        .to_owned();
     let spec = json!({
         "schema_version":{"major":2,"minor":0}, "context_id":context,
         "model":{"intent":"configure","settings":{

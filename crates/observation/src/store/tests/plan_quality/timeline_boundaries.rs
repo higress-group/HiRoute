@@ -293,18 +293,15 @@ fn unsupported_execution_digest_is_rejected_without_rewriting_retained_facts() {
         )
         .unwrap();
     assert!(
-        store
-            .observed_routing_timeline(
-                &reader(),
-                &RoutingTimelineQueryV1 {
-                    session_id: fixture.session.to_string(),
-                    after_watermark: None,
-                    limit: 50,
-                },
-                5000,
-            )
-            .is_err(),
-        "an unsupported historical digest must not be silently admitted"
+        matches!(
+            crate::store::fact_log::load_request(
+                &store.connection.lock(),
+                &event.correlation.workspace_id,
+                &event.correlation.request_id,
+            ),
+            Err(crate::writer::ObservationStoreError::Corrupt),
+        ),
+        "the authenticated fact reader must reject an unsupported historical digest"
     );
     let after: (String, String) = store
         .connection
