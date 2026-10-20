@@ -6,7 +6,6 @@ use hiroute_domain::{
     ControlRepositoryPort, GatewayPublicationV1, OperationStepKind, OwnedEffectV1, PortError,
     PortErrorCode, PortResult, WorkspaceId, is_agent_access_grant_effect,
 };
-use std::collections::BTreeSet;
 
 fn invalid() -> PortError {
     PortError::new(
@@ -22,11 +21,10 @@ impl LocalControlAdapter {
         operation: &dyn AgentOperationRead,
         effects: &[OwnedEffectV1],
         publication: &GatewayPublicationV1,
-    ) -> PortResult<BTreeSet<(String, u64)>> {
-        let mut verified = BTreeSet::new();
+    ) -> PortResult<()> {
         let input = operation.agent_input();
         if input.grants.is_empty() {
-            return Ok(verified);
+            return Ok(());
         }
         let Some(subject) = input.connection_subject().map_err(|_| invalid())? else {
             return Err(invalid());
@@ -67,9 +65,8 @@ impl LocalControlAdapter {
                         "observation.agent-grant.persist",
                     )
                 })?;
-            verified.insert((reference.grant_id().to_owned(), reference.generation()));
         }
-        Ok(verified)
+        Ok(())
     }
 
     pub(super) fn register_restored_agent_grants(
@@ -82,7 +79,6 @@ impl LocalControlAdapter {
             .stores_lock()?
             .control()
             .agent_attribution_recovery_candidates(workspace)?;
-        let mut verified = BTreeSet::new();
         for operation in operations {
             let input = operation.agent_input();
             let effects = &operation.step(OperationStepKind::ApplySecrets).effects;
@@ -128,7 +124,6 @@ impl LocalControlAdapter {
                             "observation.agent-grant.persist",
                         )
                     })?;
-                verified.insert((reference.grant_id().to_owned(), reference.generation()));
             }
         }
         // A committed service can keep serving while its independently edited native file
@@ -137,22 +132,26 @@ impl LocalControlAdapter {
         // this neither retries the client file nor exports an unfinished connection grant.
         let pending = self.stores_lock()?.control().recoverable_operations()?;
         for operation in pending {
-            if operation.workspace_id != *workspace
-                || !hiroute_application::settings_service_completion_is_current(
-                    &operation,
-                    publication.publication_revision.get(),
-                    publication_digest,
-                )
-            {
+            if operation.workspace_id != *workspace {
+                continue;
+            }
+            if !hiroute_application::settings_service_completion_is_current(
+                &operation,
+                publication.publication_revision.get(),
+                publication_digest,
+            ) {
+                if !operation.agent_input().grants.is_empty() {
+                    rejected = rejected.saturating_add(1);
+                }
                 continue;
             }
             self.require_current_operation(&operation)?;
-            verified.extend(self.register_operation_agent_grants(
+            self.register_operation_agent_grants(
                 workspace,
                 &operation,
                 &operation.step(OperationStepKind::ApplySecrets).effects,
                 publication,
-            )?);
+            )?;
         }
         if rejected > 0 {
             // One closed-vocabulary warning per reconciliation, irrespective of history
@@ -167,14 +166,9 @@ impl LocalControlAdapter {
                 }));
             }
         }
-        // Managed Agent grant IDs occupy this server-owned namespace. Delegation grants
-        // use a separate task authority and must never acquire native-Agent attribution.
-        if publication.grants.iter().any(|grant| {
-            grant.grant_id.starts_with("grant_")
-                && !verified.contains(&(grant.grant_id.clone(), grant.generation))
-        }) {
-            return Err(invalid());
-        }
+        // Publication activation and its service receipt are separate transactions.
+        // Missing attribution proof must leave recovery open: the journal can finish the
+        // operation, and the subsequent restore registers its authenticated ownership.
         Ok(())
     }
 }
