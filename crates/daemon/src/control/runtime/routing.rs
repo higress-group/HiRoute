@@ -803,9 +803,6 @@ impl LocalControlAdapter {
                     .insert("feed.model_data".into(), catalog.generation);
                 expected_revisions
                     .dependencies
-                    .insert("feed.sequence".into(), catalog.accepted_sequence);
-                expected_revisions
-                    .dependencies
                     .insert("release.registry".into(), provenance.release_sequence);
                 expected_revisions
                     .dependencies

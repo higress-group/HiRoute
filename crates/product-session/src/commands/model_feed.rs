@@ -8,9 +8,20 @@ async fn query<T: serde::de::DeserializeOwned, I: serde::Serialize>(
     input: &I,
 ) -> Result<T, DesktopFailure> {
     main_window(window)?;
+    let (client, authority) = {
+        let guard = state.0.lock().await;
+        let session = guard.as_ref().ok_or("RESIDENT_UNAVAILABLE")?;
+        (session.client.clone(), session.authority.clone())
+    };
+    let result = crate::session::query(&client, operation, input).await?;
     let guard = state.0.lock().await;
-    let session = guard.as_ref().ok_or("RESIDENT_UNAVAILABLE")?;
-    crate::session::query(&session.client, operation, input).await
+    if !guard
+        .as_ref()
+        .is_some_and(|session| std::sync::Arc::ptr_eq(&session.authority, &authority))
+    {
+        return Err("RESIDENT_UNAVAILABLE".into());
+    }
+    Ok(result)
 }
 
 pub async fn model_feed_status(

@@ -159,10 +159,24 @@ fn unsupported_external_adapter_keeps_complete_descriptions_and_rating_identity(
 fn complete_snapshot_allows_withdrawal_but_cannot_change_entitlement() {
     let current = catalog();
     let mut payload = empty();
-    payload.data.offers[0].model_configuration_ids.pop();
+    let index = payload
+        .data
+        .offers
+        .iter()
+        .position(|o| o.model_configuration_ids.len() > 1)
+        .unwrap();
+    let removed = payload.data.offers[index]
+        .model_configuration_ids
+        .pop()
+        .unwrap();
+    let offer = payload.data.offers[index].offer_id.clone();
+    payload
+        .data
+        .price_rates
+        .retain(|p| p.offer_ref != offer || p.model_configuration_id != removed);
     seal(&mut payload);
     assert!(admit(&current, &payload, "0.3.2").is_ok());
-    payload.data.offers[0].usage_scope = "ungranted-scope".into();
+    payload.data.offers[index].usage_scope = "ungranted-scope".into();
     seal(&mut payload);
     assert!(admit(&current, &payload, "0.3.2").is_err());
 }
@@ -197,4 +211,37 @@ fn model_feed_rejects_invalid_dates_and_links() {
     ] {
         assert!(!valid_featured_url(url));
     }
+}
+
+#[test]
+fn generated_complete_body_preserves_documented_prices_and_exceeds_old_delta_bound() {
+    let snapshot: hiroute_domain::OfficialModelSnapshotV1 = serde_json::from_slice(include_bytes!(
+        "../../../../assets/release-facts/current/bundle/official-model-data.json"
+    ))
+    .unwrap();
+    let current = catalog()
+        .with_embedded_official_data(snapshot.clone())
+        .unwrap();
+    assert_eq!(current.official_snapshot(), snapshot);
+    assert!(!snapshot.data.pricing_facts.is_empty());
+    assert!(!snapshot.data.connection_hints.is_empty());
+    let mut payload = FeedPayload::from_snapshot(
+        snapshot,
+        1,
+        "2026-10-18T00:00:00Z".into(),
+        "1".repeat(40),
+        vec![],
+    );
+    for price in payload.data.pricing_facts.iter_mut().take(3) {
+        for i in 0..10 {
+            price.schedules[0].condition.insert(
+                format!("description_{i}"),
+                serde_json::Value::String("x".repeat(10_000)),
+            );
+        }
+    }
+    seal(&mut payload);
+    let bytes = serde_json::to_vec(&payload).unwrap();
+    assert!(bytes.len() > 2 * 1024 * 1024);
+    assert_eq!(parse_feed(&bytes).unwrap().payload.data, payload.data);
 }

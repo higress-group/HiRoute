@@ -503,3 +503,103 @@ fn model_feed_valid_json_with_changed_cached_bytes_is_discarded_without_lowering
     assert_eq!(fetch(&reopened, 16).unwrap_err(), "older_sequence");
     fetch(&reopened, 17).unwrap();
 }
+
+#[test]
+fn announcement_only_publication_preserves_semantic_generation_and_confirmation_dependencies() {
+    let root = tempfile::tempdir().unwrap();
+    let service = open(root.path(), 0);
+    fetch(&service, 5).unwrap();
+    let before = service.current();
+    let mut publication: FeedPayload = serde_json::from_slice(&payload(5)).unwrap();
+    publication.sequence = 6;
+    publication.issued_at = "2026-10-19T00:00:00Z".into();
+    service
+        .refresh_using(
+            |_| {
+                Ok(FeedDownload::Content {
+                    bytes: publication_bytes(&publication),
+                    etag: None,
+                })
+            },
+            |_, _| panic!("editorial-only updates cannot activate a semantic/price generation"),
+        )
+        .unwrap();
+    assert_eq!(service.current().generation, before.generation);
+    assert_eq!(
+        service.current().official_snapshot(),
+        before.official_snapshot()
+    );
+    assert_eq!(service.status().unwrap().highest_accepted_sequence, Some(6));
+}
+
+#[test]
+fn higher_publication_sequence_cannot_lower_semantic_data_even_after_removal() {
+    let root = tempfile::tempdir().unwrap();
+    let service = open(root.path(), 0);
+    fetch(&service, 5).unwrap();
+    service
+        .remove(&service.removal_digest().unwrap(), false, |_, _| Ok(()))
+        .unwrap();
+    let mut publication: FeedPayload = serde_json::from_slice(&payload(4)).unwrap();
+    publication.sequence = 100;
+    let bytes = publication_bytes(&publication);
+    assert_eq!(
+        service
+            .refresh_using(
+                |_| Ok(FeedDownload::Content {
+                    bytes: bytes.clone(),
+                    etag: None
+                }),
+                |_, _| Ok(())
+            )
+            .unwrap_err(),
+        "older_data_revision"
+    );
+    drop(service);
+    let restarted = open(root.path(), 0);
+    assert_eq!(
+        restarted.status().unwrap().highest_accepted_sequence,
+        Some(5)
+    );
+    assert_eq!(
+        restarted.store.read_data_floor().unwrap().unwrap().revision,
+        5
+    );
+}
+
+#[test]
+fn retained_v1_choices_and_floor_do_not_poison_v2_acceptance() {
+    let root = tempfile::tempdir().unwrap();
+    let _store = FeedStore::open(root.path()).unwrap();
+    let legacy = serde_json::json!({
+        "schema":"hiroute.model-feed.state/v1", "retrieval_enabled":false,
+        "disclosure_acknowledged":true, "generation":7, "sequence_floor":99,
+        "highest_accepted":{"sequence":99,"payload_digest":CanonicalDigest::of_bytes(b"legacy")},
+        "held":null, "last_attempt":null,"last_success_at_ms":null,"etag":null
+    });
+    let bytes = serde_json::to_vec(&legacy).unwrap();
+    std::fs::write(root.path().join("model-feed/state.json"), &bytes).unwrap();
+    let service = open(root.path(), 7);
+    assert!(!service.status().unwrap().retrieval_enabled);
+    assert!(service.status().unwrap().disclosure_acknowledged);
+    assert_eq!(service.status().unwrap().highest_accepted_sequence, None);
+    assert_eq!(
+        std::fs::read(root.path().join("model-feed/retained-v1-state.json")).unwrap(),
+        bytes
+    );
+    fetch(&service, 2).unwrap();
+    let generation = service.current().generation;
+    drop(service);
+    let restarted = open(root.path(), generation);
+    assert_eq!(
+        restarted.status().unwrap().highest_accepted_sequence,
+        Some(2)
+    );
+    restarted
+        .remove(&restarted.removal_digest().unwrap(), true, |_, _| Ok(()))
+        .unwrap();
+    drop(restarted);
+    let restarted = open(root.path(), generation + 1);
+    assert_eq!(fetch(&restarted, 1).unwrap_err(), "older_sequence");
+    assert!(restarted.status().unwrap().disclosure_acknowledged);
+}

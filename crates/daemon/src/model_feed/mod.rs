@@ -83,6 +83,17 @@ impl ModelFeedService {
         let (mut state, refused, recovery_available) =
             recovery::restore_state(&store, minimum_generation, minimum_sequence)?;
         let client_version = env!("CARGO_PKG_VERSION").to_owned();
+        let installed = embedded.official_snapshot();
+        if refused.is_none() {
+            let floor = DataFloor {
+                revision: installed.data_revision,
+                digest: installed.data_digest.clone(),
+            };
+            match &mut state.data_floor {
+                Some(current) => current.advance(&floor)?,
+                None => state.data_floor = Some(floor),
+            }
+        }
         let mut effective = embedded.clone();
         let mut counts = FeedCounts::default();
         if let Some(held) = &state.held {
@@ -94,6 +105,22 @@ impl ModelFeedService {
                         || validated.payload_digest != held.payload_digest
                     {
                         return Err("feed_cache_identity_mismatch".into());
+                    }
+                    if state.data_floor.as_ref().is_some_and(|f| {
+                        validated.payload.data_revision == f.revision
+                            && validated.payload.data_digest != f.digest
+                    }) {
+                        return Err("same_data_revision_conflicting_digest".into());
+                    }
+                    if validated.payload.data_revision < installed.data_revision {
+                        return Ok((embedded.clone(), FeedCounts::default()));
+                    }
+                    if state
+                        .data_floor
+                        .as_ref()
+                        .is_some_and(|f| validated.payload.data_revision < f.revision)
+                    {
+                        return Err("older_data_revision".into());
                     }
                     let admission = admit(&embedded, &validated.payload, &client_version)
                         .map_err(|e| e.to_string())?;
@@ -126,6 +153,25 @@ impl ModelFeedService {
                     store.retire_unreferenced(None);
                 }
             }
+        }
+        let selected = effective.official_snapshot();
+        let selected = DataFloor {
+            revision: selected.data_revision,
+            digest: selected.data_digest,
+        };
+        if state
+            .selected_data
+            .as_ref()
+            .is_some_and(|old| old != &selected)
+        {
+            state.generation = state
+                .generation
+                .checked_add(1)
+                .ok_or("feed_generation_overflow")?;
+        }
+        state.selected_data = Some(selected);
+        if refused.is_none() {
+            store.commit(&state)?;
         }
         let generation = state.generation;
         let next_attempt = state
@@ -162,7 +208,13 @@ impl ModelFeedService {
         self.current.load_full()
     }
     pub fn available_catalog(&self) -> Option<Arc<ReleaseCatalogSnapshot>> {
-        self.active.load(Ordering::Acquire).then(|| self.current())
+        for _ in 0..3 {
+            if self.active.load(Ordering::Acquire) {
+                return Some(self.current());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        None
     }
     pub fn automatic_attempt_due(&self) -> bool {
         self.mutable.lock().is_ok_and(|guard| {
@@ -237,6 +289,11 @@ impl ModelFeedService {
         let mut next = guard.state.clone();
         next.held = None;
         next.etag = None;
+        let embedded = self.embedded.official_snapshot();
+        next.selected_data = Some(DataFloor {
+            revision: embedded.data_revision,
+            digest: embedded.data_digest,
+        });
         next.generation = next
             .generation
             .checked_add(1)
@@ -383,6 +440,19 @@ impl ModelFeedService {
                 }
             }
         }
+        let incoming = DataFloor {
+            revision: validated.payload.data_revision,
+            digest: validated.payload.data_digest.clone(),
+        };
+        if let Some(floor) = &guard.state.data_floor {
+            if incoming.revision < floor.revision {
+                return Err("older_data_revision".into());
+            }
+            if incoming.revision == floor.revision && incoming.digest != floor.digest {
+                return Err("same_data_revision_conflicting_digest".into());
+            }
+        }
+        let semantic_change = guard.state.selected_data.as_ref() != Some(&incoming);
         let admission = admit(&self.embedded, &validated.payload, &self.client_version)
             .map_err(|e| e.to_string())?;
         let catalog = self
@@ -390,10 +460,14 @@ impl ModelFeedService {
             .with_feed(&admission)
             .map_err(|e| e.to_string())?;
         let mut next = guard.state.clone();
-        next.generation = next
-            .generation
-            .checked_add(1)
-            .ok_or("feed_generation_overflow")?;
+        if semantic_change {
+            next.generation = next
+                .generation
+                .checked_add(1)
+                .ok_or("feed_generation_overflow")?;
+        }
+        next.data_floor = Some(incoming.clone());
+        next.selected_data = Some(incoming);
         next.highest_accepted = Some(HighestAccepted {
             sequence: validated.payload.sequence,
             payload_digest: validated.payload_digest.clone(),
@@ -411,7 +485,11 @@ impl ModelFeedService {
         guard.state = next;
         guard.counts = admission.counts;
         self.active.store(false, Ordering::Release);
-        if let Err(error) = install(guard.state.generation, accepted_sequence(&guard.state)) {
+        if let Err(error) = if semantic_change {
+            install(guard.state.generation, accepted_sequence(&guard.state))
+        } else {
+            Ok(())
+        } {
             guard.refused = Some("feed_activation_requires_restart".into());
             guard.recovery_available = false;
             // The control transaction failed atomically; its previous snapshot is still valid.

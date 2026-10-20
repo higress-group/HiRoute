@@ -101,19 +101,13 @@ impl LocalControlAdapter {
             .map_err(map_port)?;
         check()?;
         let legacy = control.price_overrides().map_err(map_port)?;
-        let configuration_revision = overrides
-            .iter()
-            .try_fold(0u64, |sum, value| sum.checked_add(value.revision))
-            .ok_or(ControlReadError::Corrupt)?;
         let mut revisions = control
             .current_revisions(&WorkspaceId::default())
             .map_err(map_port)?;
         revisions
             .dependencies
             .insert("feed.model_data".into(), catalog.generation);
-        revisions
-            .dependencies
-            .insert("feed.sequence".into(), catalog.accepted_sequence);
+        let configuration_revision = revisions.target;
         let (_, sequence, digest) = catalog.model_data_provenance();
         let catalog_refs = vec![PriceFactRefV1 {
             id: catalog.model_data().bundle_version.clone(),
@@ -384,9 +378,7 @@ impl LocalControlAdapter {
         if stores
             .control()
             .current_revisions(&WorkspaceId::default())?
-            .dependencies
-            .get("feed.model_data")
-            != facts.revisions.dependencies.get("feed.model_data")
+            != facts.revisions
         {
             return Err(PortError::new(
                 PortErrorCode::Conflict,
