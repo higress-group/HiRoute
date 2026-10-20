@@ -52,7 +52,11 @@ impl Drop for ReleaseOnDrop {
 #[test]
 fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_continuation() {
     let identities: &[&[(&str, &str)]] = &[
-        &[("x-claude-code-session-id", "shared-claude")],
+        &[
+            ("x-claude-code-session-id", "shared-claude"),
+            ("x-claude-code-request-class", "main"),
+            ("x-claude-code-prompt-id", "main-turn"),
+        ],
         &[
             ("thread-id", "shared-thread"),
             ("session-id", "shared-codex"),
@@ -61,10 +65,30 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
         &[
             ("User-Agent", "pi (linux; x64)"),
             ("x-client-request-id", "shared-pi"),
+            ("x-session-affinity", "shared-pi"),
+            ("x-hiroute-agent", "pi"),
+            (
+                "x-hiroute-routing-context",
+                r#"{"version":1,"agent":"pi","session_id":"shared-pi","purpose":"main","turn_id":"main-turn"}"#,
+            ),
         ],
-        &[("x-deepseek-harness-session-id", "shared-dsh")],
+        &[
+            ("x-deepseek-harness-session-id", "shared-dsh"),
+            ("x-hiroute-agent", "dsh"),
+            (
+                "x-hiroute-routing-context",
+                r#"{"version":1,"agent":"dsh","session_id":"shared-dsh","purpose":"main","turn_id":"main-turn"}"#,
+            ),
+        ],
         &[("x-hermes-session-id", "shared-hermes")],
-        &[("x-opencode-session-id", "shared-opencode")],
+        &[
+            ("x-opencode-session-id", "shared-opencode"),
+            ("x-hiroute-agent", "opencode"),
+            (
+                "x-hiroute-routing-context",
+                r#"{"version":1,"agent":"opencode","session_id":"shared-opencode","purpose":"main","turn_id":"main-turn"}"#,
+            ),
+        ],
     ];
     let mut executed = 0;
     for identity in identities {

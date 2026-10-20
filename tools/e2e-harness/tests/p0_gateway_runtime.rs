@@ -8,6 +8,8 @@ mod decision_branches;
 mod hermes_identity;
 #[path = "p0_gateway_runtime/history_bypass.rs"]
 mod history_bypass;
+#[path = "p0_gateway_runtime/native_history.rs"]
+mod native_history;
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
