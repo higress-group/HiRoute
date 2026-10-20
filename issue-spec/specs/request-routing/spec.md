@@ -68,6 +68,33 @@ hosted-execution extensions, auth, or destination overrides cannot bypass admiss
 Cross-protocol candidates fail explicitly when equivalence is unavailable; they
 cannot silently drop images, tool semantics, reasoning, or ordinary extensions.
 
+Protocol adapters SHALL derive continuity from their supported typed history,
+using the existing common history representation and prefix comparison. In Chat
+assistant history, textual `reasoning` is an alias of `reasoning_content`. A sole
+alias or two byte-equivalent carriers represent one canonical reasoning state;
+native forwarding retains the original fields. Equivalence MUST compare actual
+bytes, including Replay-backed text, rather than reference locations. Conflicting
+carriers, non-text aliases, aliases on other roles and other unknown historical
+semantics remain native-only and cannot authorize history reuse, conversion or
+cleanup. Authorized prefix cleanup removes both recognized carriers only within
+the selected prefix. Alias normalization does not bypass session/authority scope,
+tool identity, message order or content-change checks.
+
+#### Scenario: Hermes replays duplicate reasoning through a local Chat endpoint
+
+- **WHEN** a Hermes tool continuation or subsequent user turn supplies the same
+  native session and continuous typed history, with identical `reasoning` and
+  `reasoning_content` text
+- **THEN** the tool continuation inherits its own decision, the next real user
+  input obtains the complete attributable assessment target for the three-question
+  protocol, and original native request fields remain intact.
+
+#### Scenario: Reasoning aliases cannot conceal changed history
+
+- **WHEN** aliases conflict, backing cannot establish equality, tool arguments,
+  results or IDs change, or a different native session supplies equal messages
+- **THEN** no unproven continuity or assessment target is inherited.
+
 Request projection uses actual adapter capability, not a blanket requirement for
 Exact provider metadata on reasoning/refusal/usage/streaming. Optional unknown facts
 may affect estimates/catalog declaration, not provider admission. Auth, exact

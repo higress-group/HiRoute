@@ -7,22 +7,37 @@ use std::collections::BTreeSet;
 use serde_json::{Map, Value};
 
 use crate::content_ref::{ContentRef, JsonValueExt};
+use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::*;
 use crate::server::request_plan::IngressProtocol;
 
 #[path = "responses_options.rs"]
 mod responses_options;
 
+mod chat_reasoning;
+
 #[derive(Default)]
-struct DecodeContext {
+struct DecodeContext<'a> {
     native_only: std::cell::Cell<bool>,
+    replay: Option<&'a ReplayStore>,
 }
 
 pub fn decode_ingress_request(
     protocol: IngressProtocol,
     body: &Value,
 ) -> Result<ModelRequestIRV1, ModelIrError> {
-    let context = &DecodeContext::default();
+    decode_ingress_request_with_replay(protocol, body, None)
+}
+
+pub(crate) fn decode_ingress_request_with_replay(
+    protocol: IngressProtocol,
+    body: &Value,
+    replay: Option<&ReplayStore>,
+) -> Result<ModelRequestIRV1, ModelIrError> {
+    let context = &DecodeContext {
+        replay,
+        ..DecodeContext::default()
+    };
     let mut request = match protocol {
         IngressProtocol::Responses => decode_responses(context, body),
         IngressProtocol::ChatCompletions => decode_chat(context, body),
@@ -322,10 +337,12 @@ fn decode_chat_message(
             "tool_calls",
             "tool_call_id",
             "reasoning_content",
+            "reasoning",
         ],
         "chat message",
     )?;
     let role = required_string(object, "role")?;
+    let reasoning = chat_reasoning::canonical_reasoning(context, object, &role);
     if role == "system" || role == "developer" {
         ensure_absent(
             object,
@@ -383,7 +400,7 @@ fn decode_chat_message(
         .map(|value| decode_chat_content(context, value))
         .transpose()?
         .unwrap_or_default();
-    if let Some(reasoning) = object.get("reasoning_content") {
+    if let Some(reasoning) = reasoning {
         if role != "assistant" || (!reasoning.is_string() && reasoning.content_ref().is_none()) {
             return Err(ModelIrError::InvalidField("reasoning_content"));
         }

@@ -282,6 +282,9 @@ fn clean_prefix(body: &mut Value, protocol: IngressProtocol, end: usize) {
         }
         if let Some(object) = item.as_object_mut() {
             object.remove("reasoning_content");
+            if protocol == IngressProtocol::ChatCompletions {
+                object.remove("reasoning");
+            }
         }
         if let Some(parts) = item.get_mut("content").and_then(Value::as_array_mut) {
             let original_len = parts.len();

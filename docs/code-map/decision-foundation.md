@@ -92,6 +92,9 @@ continuations reuse the frozen decision only while history and authority permit.
 [ContextHold](../../crates/gateway/src/context_hold/store.rs) binds exact route,
 version, protocol, authorization and session; unrelated plan publication does not
 invalidate that route, and each request still reauthorizes.
+The [ingress adapters](../../crates/gateway/src/adapters/ingress.rs) normalize
+supported protocol history into the same representation before prefix checks;
+Chat reasoning aliases share one state while their native fields remain intact.
 
 The planner always prefers a valid held candidate within the newly selected group,
 including an in-group backup; retired follow-up fields survive only at serialized
