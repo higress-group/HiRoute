@@ -414,8 +414,10 @@ fn history_rewrites_and_unavailable_checkpoints_have_distinct_causes() {
             .history_continuity,
         HistoryContinuity::NoCheckpoint
     );
-    let mut disabled = ContextHoldStore::default();
-    disabled.key = None;
+    let disabled = ContextHoldStore {
+        key: None,
+        ..ContextHoldStore::default()
+    };
     assert!(begin(&disabled, 1, 1, &[9], now).is_none());
 }
 
