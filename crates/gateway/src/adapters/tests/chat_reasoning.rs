@@ -168,6 +168,9 @@ fn replay_backed_chat_aliases_compare_bytes_instead_of_reference_locations() {
         .store_content(&serde_json::to_vec(&text.replace("推", "理")).unwrap())
         .unwrap();
     assert_ne!(first, second);
+    store
+        .prevalidate(&[first.clone(), second.clone(), different.clone()])
+        .unwrap();
     for (alias, matches) in [
         (second.json_marker(), true),
         (json!(text), true),
