@@ -59,7 +59,12 @@ def assert_project_admission(product, fixture, upstream, boundary):
                            kind + ' --file - --output json')
                 status, response = worker_cli(product, command, 'Return done.', success=False)
                 if status == 0:
-                    result = wait_for_worker_result(product, response['data']['run_id'], expected='failed', timeout=40)
+                    try:
+                        result = wait_for_worker_result(product, response['data']['run_id'], expected='failed', timeout=40)
+                    finally:
+                        # Even a different terminal error must not hide native
+                        # startup side effects in this pre-launch refusal case.
+                        assert not Path(fixture['database']).exists(), 'unconfirmed Git stop launched native database initialization'
                     assert not result.get('result'), 'unconfirmed Git stop returned a result'
                 else:
                     assert response.get('error', {}).get('code') == 'CAPABILITY_UNAVAILABLE', response
