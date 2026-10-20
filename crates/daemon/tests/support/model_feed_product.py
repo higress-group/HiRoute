@@ -446,8 +446,16 @@ def run(repository):
         change = {'schema': 'hiroute.compute-management-change/v2', 'subject': {'kind': 'saved_source', 'source_id': source['source_id']},
             'expected_revisions': snapshot['revisions'], 'selected_model_refs': [m['model_ref'] for m in saved['models']],
             'intent': 'save_ready', 'key_edits': []}
-        rejected = raw(product, 'compute', 'connection', 'preview', payload={'change': change})
-        assert rejected['status'] != 'succeeded' and rejected['error']['code'] != 'INVALID_ARGUMENTS', rejected
+        # Retaining identical authenticated members is management, not a new admission.
+        # Current authoring and an explicit recheck still require current official facts.
+        retained_preview = product.cli('compute', 'connection', 'preview', '--request-stdin', payload={'change': change})['data']
+        retained_save = product.cli('compute', 'connection', 'apply', '--request-stdin', payload={
+            'spec': retained_preview['spec'], 'accept_digest': retained_preview['accept_digest'],
+            'expected_revisions': retained_preview['expected_revisions'], 'idempotency_key': 'feed-retained-save'})['data']
+        assert retained_save['state'] == 'succeeded', retained_save
+        updated = product.cli('compute', 'list')['data']
+        saved = next(x for x in updated['sources'] if x['source_id'] == source['source_id'])
+        assert saved['models'] == next(x for x in snapshot['sources'] if x['source_id'] == source['source_id'])['models']
         recheck = copy.deepcopy(checked_request)
         recheck['request'].update(expected_catalog=product.cli('compute', 'connection', 'options')['data']['catalog'],
             existing_source_id=source['source_id'], expected_source_revision=saved['revision'], check_id='check/feed/withdrawn')
