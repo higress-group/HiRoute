@@ -61,6 +61,9 @@ pub(crate) fn prepare_context(
         let key = ContextHoldKey::from_request(authorized, ingress, &identity, &hold_key)?;
         let mut prepared = store.prepare(key, &history, now)?;
         prepared.set_native(identity.native_checkpoint());
+        prepared.set_history_key(ContextHoldKey::routing_history(
+            authorized, ingress, &identity, &hold_key,
+        )?);
         Some(prepared)
     });
     (identity, ticket)

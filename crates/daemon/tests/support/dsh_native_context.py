@@ -97,10 +97,10 @@ class DshModelSettings:
         assert self.path.is_file() and not self.path.is_symlink()
         value = {}
         for row in read_patch(self.path):
-            if row['id']=='llm-pi-ai': value['providers']=row['config']['providers']
-            elif row['id']=='agent-default-model':
+            if row.get('id')=='llm-pi-ai': value['providers']=row['config']['providers']
+            elif row.get('id')=='agent-default-model':
                 value['model']={'name':row['config']['provider']+'/'+row['config']['model']}
-            elif row['id']=='fixture-preserved': value.update(row['config'])
+            elif row.get('id')=='fixture-preserved': value.update(row['config'])
         return value
 
     def write(self, value):

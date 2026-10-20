@@ -788,6 +788,25 @@ impl RuntimeFixture {
         )
     }
 
+    pub fn launch_rest_classified_with_native_control(
+        providers: &[&NativeProvider],
+        max_attempts: u32,
+    ) -> Self {
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                test_control: true,
+                classified_route: true,
+                rest_classifier: true,
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
     pub fn launch_rest_classified_with_classifier_timeout(
         providers: &[&NativeProvider],
         max_attempts: u32,

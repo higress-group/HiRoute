@@ -29,30 +29,73 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
     ) -> Option<Self> {
+        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, false)
+    }
+
+    pub(crate) fn routing_history(
+        authorized: &AuthorizedRequestPlan,
+        ingress_protocol: IngressProtocol,
+        identity: &ContextIdentityFacts,
+        digest_key: &[u8; 32],
+    ) -> Option<Self> {
+        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, true)
+    }
+
+    fn scoped_key(
+        authorized: &AuthorizedRequestPlan,
+        ingress_protocol: IngressProtocol,
+        identity: &ContextIdentityFacts,
+        digest_key: &[u8; 32],
+        history: bool,
+    ) -> Option<Self> {
         let (identity_kind, identity_parts) = identity.hold_identity()?;
         let receipt = authorized.receipt();
         let mut mac = HmacSha256::new_from_slice(digest_key).ok()?;
-        frame(&mut mac, b"domain", b"context-hold/v1");
+        frame(
+            &mut mac,
+            b"domain",
+            if history {
+                b"routing-history/v1"
+            } else {
+                b"context-hold/v1"
+            },
+        );
         frame(&mut mac, b"workspace_id", receipt.workspace_id.as_bytes());
         frame(&mut mac, b"authority_id", receipt.authority_id.as_bytes());
         frame_u64(&mut mac, b"authority_epoch", receipt.authority_epoch);
         frame(&mut mac, b"grant_id", receipt.grant_id.as_bytes());
         frame_u64(&mut mac, b"grant_generation", receipt.grant_generation);
-        frame(
-            &mut mac,
-            b"route_identity",
-            &serde_json::to_vec(&authorized.planner_policy().identity).ok()?,
-        );
+        if history {
+            // Accepted execution remains visible when this Plan is revised;
+            // PlanSnapshot separately prevents inheriting an obsolete decision.
+            match &authorized.planner_policy().identity {
+                crate::server::core_runtime::profiles::PlannerRouteIdentityV2::Plan {
+                    plan_id,
+                    ..
+                } => frame(&mut mac, b"plan_id", plan_id.as_bytes()),
+                crate::server::core_runtime::profiles::PlannerRouteIdentityV2::Fixed {
+                    binding_digest,
+                } => frame(&mut mac, b"binding", binding_digest.as_str().as_bytes()),
+            }
+        } else {
+            frame(
+                &mut mac,
+                b"route_identity",
+                &serde_json::to_vec(&authorized.planner_policy().identity).ok()?,
+            );
+        }
         frame(
             &mut mac,
             b"served_model_id",
             receipt.served_model_id.as_bytes(),
         );
-        frame(
-            &mut mac,
-            b"route_provenance",
-            &serde_json::to_vec(&receipt.route).ok()?,
-        );
+        if !history {
+            frame(
+                &mut mac,
+                b"route_provenance",
+                &serde_json::to_vec(&receipt.route).ok()?,
+            );
+        }
         // The aggregate revision also changes for unrelated plans. Continuity
         // belongs to this authorized route/version; current authorization and
         // the exact held candidate/profile are still checked on every request.
@@ -132,6 +175,7 @@ pub(crate) struct HoldTicket {
 pub(crate) struct PreparedHold {
     key: ContextHoldKey,
     snapshot: Option<BeginSnapshot>,
+    history_key: Option<ContextHoldKey>,
     instruction_digest: [u8; 32],
     measured: HistoryDigests,
     native: super::routing::NativeCheckpoint,
@@ -141,8 +185,17 @@ impl PreparedHold {
     pub(crate) fn set_native(&mut self, native: super::routing::NativeCheckpoint) {
         self.native = native;
     }
+    pub(crate) fn set_history_key(&mut self, key: ContextHoldKey) {
+        self.history_key = Some(key);
+    }
     pub(crate) fn scope_id(&self) -> String {
-        self.key.0.iter().map(|b| format!("{b:02x}")).collect()
+        self.history_key
+            .as_ref()
+            .unwrap_or(&self.key)
+            .0
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
     }
     pub(crate) fn history_continuity(&self) -> HistoryContinuity {
         match self.snapshot {
@@ -347,6 +400,7 @@ impl ContextHoldStore {
         Some(PreparedHold {
             key,
             snapshot,
+            history_key: None,
             instruction_digest: history.instruction_digest,
             measured,
             native: Default::default(),
@@ -358,6 +412,7 @@ impl ContextHoldStore {
         let PreparedHold {
             key,
             snapshot,
+            history_key: _,
             instruction_digest,
             measured,
             native,

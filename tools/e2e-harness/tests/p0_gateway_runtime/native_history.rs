@@ -48,12 +48,17 @@ fn headers(
         ]);
         if agent == "pi" {
             headers.push(("User-Agent".into(), "pi (linux; x64)".into()));
+            headers.push(("x-client-request-id".into(), session.into()));
         }
     }
     headers
 }
 fn native_fixture(agent: &str, providers: &[&NativeProvider]) -> RuntimeFixture {
-    let fixture = RuntimeFixture::launch_rest_classified(providers, 1);
+    let fixture = if agent == "hermes" {
+        RuntimeFixture::launch_rest_classified_with_native_control(providers, 1)
+    } else {
+        RuntimeFixture::launch_rest_classified(providers, 1)
+    };
     if agent == "hermes" {
         let mut publication = fixture.publication();
         publication.grants.iter_mut().for_each(|grant| {
@@ -526,4 +531,41 @@ fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_share
         }
         assert_eq!(classifier.calls(), 2, "{user_agent}");
     }
+}
+
+#[test]
+fn real_listener_native_history_keeps_accepted_execution_across_plan_revisions() {
+    use hiroute_gateway::server::publication::ModelRouteV2;
+    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+    let complex = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&simple, &complex, &classifier],
+        1,
+    );
+    let first = json!({"role":"user","content":"PREVIOUS_ACCEPTED_TASK"});
+    accepted(&send(
+        fixture.address,
+        &headers("opencode", "session", "main", "turn-1", "checkpoint"),
+        json!([first]),
+    ));
+    let mut publication = fixture.publication();
+    publication.aliases[0].agent_plan_revision += 1;
+    for grant in &mut publication.grants {
+        if let Some(ModelRouteV2::Plan { revision, .. }) = grant.routes.get_mut(MODEL) {
+            *revision += 1;
+        }
+    }
+    publication.publication_revision += 1;
+    fixture.publish(&mut publication);
+    accepted(&send(
+        fixture.address,
+        &headers("opencode", "session", "main", "turn-2", "checkpoint"),
+        json!([
+            first, {"role":"assistant","content":"ok"}, {"role":"user","content":"NEW_PLAN_TASK"}
+        ]),
+    ));
+    let history = classifier_body(&classifier, 1).to_string();
+    assert!(history.contains("PREVIOUS_ACCEPTED_TASK"), "{history}");
+    assert_eq!(classifier.calls(), 2);
 }
