@@ -309,6 +309,17 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
     {
         return Err(ErrorCode::ChangePreviewStale);
     }
+    let preferences = management
+        .sources
+        .iter()
+        .map(|source| {
+            stores
+                .control()
+                .source_default_preferences(&source.source_id)
+                .map(|preferences| (source.source_id.clone(), preferences))
+                .map_err(|_| ErrorCode::DaemonUnavailable)
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()?;
     drop(stores);
     let mut bindings: BTreeMap<String, Vec<String>> = BTreeMap::new();
     // Pure local admission: never probe a provider or refresh a subscription from this read.
@@ -323,7 +334,12 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
             else {
                 continue;
             };
-            for fact in facts {
+            for mut fact in facts {
+                fact.default_preferences = preferences
+                    .get(&source.source_id)
+                    .and_then(|preferences| preferences.get(&fact.binding_id))
+                    .cloned()
+                    .unwrap_or_default();
                 let candidate =
                     super::candidate_execution::materialize_registered_management_candidate(
                         &fact, &catalog,

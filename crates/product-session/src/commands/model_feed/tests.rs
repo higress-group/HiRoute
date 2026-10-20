@@ -43,7 +43,14 @@ impl HostAuthority for Authority {
 }
 
 #[tokio::test]
-async fn slow_refresh_does_not_hold_session_mutex_or_block_local_queries() {
+async fn slow_model_feed_refresh_does_not_hold_session_mutex_or_block_local_queries() {
+    refresh_with_concurrent_reads(false).await;
+}
+#[tokio::test]
+async fn model_feed_response_from_replaced_session_is_rejected() {
+    refresh_with_concurrent_reads(true).await;
+}
+async fn refresh_with_concurrent_reads(replace_session: bool) {
     let root = tempfile::Builder::new()
         .prefix("hrfeed-")
         .tempdir_in(std::fs::canonicalize("/tmp").unwrap())
@@ -121,6 +128,9 @@ async fn slow_refresh_does_not_hold_session_mutex_or_block_local_queries() {
             }
         };
         let outcome = tokio::time::timeout(std::time::Duration::from_secs(1), reads).await;
+        if replace_session {
+            sessions.lock().await.as_mut().unwrap().authority = Arc::new(Authority);
+        }
         release.notify_one();
         assert!(
             outcome.is_ok(),
@@ -128,6 +138,13 @@ async fn slow_refresh_does_not_hold_session_mutex_or_block_local_queries() {
         );
     };
     let (result, _) = tokio::join!(refresh, concurrent);
-    assert_eq!(result.unwrap()["operation"], "RefreshModelFeed");
+    if replace_session {
+        assert!(
+            result.is_err(),
+            "a response from revoked session authority was returned"
+        );
+    } else {
+        assert_eq!(result.unwrap()["operation"], "RefreshModelFeed");
+    }
     server.abort();
 }

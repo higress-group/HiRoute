@@ -227,7 +227,7 @@ def run(repository):
         product.start()
         assert product.cli('models', 'feed', 'status')['data']['retrieval_enabled']
         status = product.cli('models', 'feed', 'refresh')['data']
-        assert status['held']['sequence'] == 17 and status['counts']['applied'] >= 3, status
+        assert status['held']['sequence'] == 17 and status['counts']['qualified_models'] >= 1, status
         stage = 'registered-check-save-publish'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
         candidate_ref = 'candidate/feed/product'

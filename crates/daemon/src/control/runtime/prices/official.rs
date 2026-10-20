@@ -2,6 +2,8 @@
 use super::*;
 use hiroute_domain::{DocumentedModelPriceV1, PriceUnknownReasonV1, TokenRateV1};
 
+mod time_windows;
+
 pub(super) fn documented_prices<'a>(
     catalog: &'a TrustedReleaseCatalog,
     binding: &PriceSourceBinding,
@@ -95,23 +97,9 @@ pub(super) fn rules(
         [price] => Some(*price),
         _ => None,
     };
-    let known = selected.and_then(|price| match price.schedules.as_slice() {
-        [schedule]
-            if price.price_state == "exact"
-                && schedule.application == "whole-request"
-                && schedule.condition.len() == 1
-                && schedule
-                    .condition
-                    .get("kind")
-                    .and_then(serde_json::Value::as_str)
-                    == Some("unconditional") =>
-        {
-            Some(rates(schedule))
-        }
-        _ => None,
-    });
+    let compiled = selected.and_then(time_windows::compile);
     let digest = CanonicalDigest::of(&matching).ok()?;
-    Some(vec![CatalogPriceRuleV2 {
+    let base = CatalogPriceRuleV2 {
         rule_ref: PriceFactRefV1 {
             id: format!(
                 "documented/{}",
@@ -122,15 +110,29 @@ pub(super) fn rules(
             revision,
             digest,
         },
-        rates: known.unwrap_or_else(|| {
-            TokenRatesV1::unknown(if matching.len() > 1 {
-                PriceUnknownReasonV1::AmbiguousRule
-            } else {
-                PriceUnknownReasonV1::UnsupportedBillingCondition
-            })
+        rates: TokenRatesV1::unknown(if matching.len() > 1 {
+            PriceUnknownReasonV1::AmbiguousRule
+        } else {
+            PriceUnknownReasonV1::UnsupportedBillingCondition
         }),
         schedule: None,
-    }])
+    };
+    Some(match compiled {
+        None => vec![base],
+        Some(compiled) => compiled
+            .into_iter()
+            .enumerate()
+            .map(|(index, (rates, schedule))| {
+                let mut rule = base.clone();
+                if index != 0 {
+                    rule.rule_ref.id.push_str(&format!("/{index}"));
+                }
+                rule.rates = rates;
+                rule.schedule = schedule;
+                rule
+            })
+            .collect(),
+    })
 }
 
 #[cfg(test)]
@@ -157,5 +159,80 @@ mod tests {
             TokenRatesV1::unknown(PriceUnknownReasonV1::UnsupportedBillingCondition)
         );
         assert!(rules(&[], "USD", 3).is_none());
+    }
+    #[test]
+    fn model_documented_time_windows_keep_complements_finite_boundaries_and_four_components() {
+        use hiroute_application::prices::{PriceIndexEntryV1, PriceSnapshot, PriceSnapshotHandle};
+        use hiroute_domain::*;
+        let mut p = price();
+        let mut peak = p.schedules[0].clone();
+        peak.schedule_key = "peak".into();
+        peak.condition = serde_json::from_value(json!({"kind":"time-window","timezone":"UTC",
+            "days":["monday"],"windows":[{"start":"01:00","end":"02:00"}],
+            "effective_from":345600,"effective_until":950400}))
+        .unwrap();
+        peak.rates.insert("input".into(), "2".into());
+        let mut rest = p.schedules[0].clone();
+        rest.schedule_key = "off-peak".into();
+        rest.condition = serde_json::from_value(
+            json!({"kind":"time-window-complement","complement_of":"peak","timezone":"UTC"}),
+        )
+        .unwrap();
+        p.schedules = vec![rest, peak];
+        let target = PriceTargetV1 {
+            workspace_id: WorkspaceId::default(),
+            source_id: "source/price-window".into(),
+            source_identity_digest: CanonicalDigest::of_bytes(b"source"),
+            model_identity: PriceModelIdentityV1::CatalogModel("model".into()),
+            currency: "USD".into(),
+            valuation_kind: PriceValuationKindV1::UsageEstimate,
+        };
+        let entry = PriceIndexEntryV1 {
+            target: target.clone(),
+            actual_offer_ref: Some("offer".into()),
+            reference_model_offer_ref: None,
+            catalog_rules: rules(&[&p], "USD", 3).unwrap(),
+            legacy_overrides: vec![],
+            source_override: None,
+        };
+        let handle = PriceSnapshotHandle::Available(std::sync::Arc::new(
+            PriceSnapshot::build(1, vec![], vec![entry]).unwrap(),
+        ));
+        for (at, input) in [
+            (345600, Some(0)),
+            (349199, Some(0)),
+            (349200, Some(2_000_000)),
+            (352799, Some(2_000_000)),
+            (352800, Some(0)),
+            (950399, Some(0)),
+            (950400, None),
+            (345599, None),
+        ] {
+            let quote = handle
+                .freeze_price(&target, at, PriceBillingContextV1::StandardTokens)
+                .unwrap();
+            match input {
+                Some(value) => {
+                    assert_eq!(
+                        quote.rates.input_uncached,
+                        TokenRateV1::known(value),
+                        "{at}"
+                    );
+                    assert_eq!(quote.rates.cache_read, TokenRateV1::known(25_000));
+                }
+                None => assert!(
+                    matches!(quote.rates.input_uncached, TokenRateV1::Unknown { .. }),
+                    "{at}"
+                ),
+            }
+        }
+        p.schedules[1].condition.remove("effective_until");
+        assert!(p.schedules[1].compiled_time_windows().is_err());
+        p.schedules[1].condition.remove("effective_from");
+        assert!(p.schedules[1].compiled_time_windows().unwrap().is_none());
+        assert_eq!(
+            rules(&[&p], "USD", 3).unwrap()[0].rates,
+            TokenRatesV1::unknown(PriceUnknownReasonV1::UnsupportedBillingCondition)
+        );
     }
 }

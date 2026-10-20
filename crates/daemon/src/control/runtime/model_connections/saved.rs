@@ -513,12 +513,17 @@ mod tests {
         manifest.model_data_digest = CanonicalDigest::of_bytes(&model_data_bytes);
         manifest.cross_reference_digest = release.cross_reference_digest(&registry).unwrap();
         let manifest_bytes = serde_json::to_vec(&manifest).unwrap();
-        hiroute_integrations::TrustedReleaseCatalog::load_release_facts(
+        let catalog = hiroute_integrations::TrustedReleaseCatalog::load_release_facts(
             &manifest_bytes,
             &registry_bytes,
             &model_data_bytes,
         )
-        .unwrap()
+        .unwrap();
+        let mut snapshot = crate::release_catalog::current_fixture_catalog().official_snapshot();
+        snapshot.data.model_endpoint_capabilities = release.data.model_endpoint_capabilities;
+        snapshot.data_revision += 1;
+        snapshot.data_digest = CanonicalDigest::of(&snapshot.data).unwrap();
+        catalog.with_embedded_official_data(snapshot).unwrap()
     }
 
     fn registered_fact<T: Clone>(

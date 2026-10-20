@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+mod time_windows;
+
 pub const OFFICIAL_MODEL_DATA_SCHEMA: &str = "hiroute.official-model-data/v1";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -212,6 +214,7 @@ impl OfficialModelDataV1 {
             }
             unique(price.schedules.iter().map(|s| s.schedule_key.as_str()))?;
             for schedule in &price.schedules {
+                schedule.compiled_time_windows()?;
                 if schedule
                     .condition
                     .get("kind")

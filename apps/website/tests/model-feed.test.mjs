@@ -221,3 +221,12 @@ test('canonical data identity matches the Rust goldens without integer or Unicod
   }
   for (const wire of fixtures.invalid) assert.throws(() => parseJson(Buffer.from(wire),'golden'));
 });
+
+
+test('a scoped price cannot be duplicated under a different descriptive identity', async () => {
+  const {canonicalData} = await import('../scripts/model-feed.mjs');
+  const value = payload();
+  value.data.pricing_facts.push({...structuredClone(value.data.pricing_facts[0]),pricing_key:'duplicate-scope'});
+  value.data_digest = `sha256:${createHash('sha256').update(canonicalData(value.data)).digest('hex')}`;
+  assert.throws(() => checkPayload(json(value)),/duplicate documented price scope/);
+});

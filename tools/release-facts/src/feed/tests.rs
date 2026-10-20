@@ -111,7 +111,14 @@ fn without_model(id: &str) -> TrustedReleaseCatalog {
     ratings.model_catalog_digest = CanonicalDigest::of(&data.models).unwrap();
     ratings.digest = ratings.computed_digest().unwrap();
     let output = crate::compile_release_facts(&input).unwrap();
-    load_catalog(|file| Ok(output.files[file].clone())).unwrap()
+    load_catalog(|file| {
+        output
+            .files
+            .get(file)
+            .cloned()
+            .ok_or_else(|| "no complete snapshot in this released fixture".into())
+    })
+    .unwrap()
 }
 
 #[test]

@@ -166,6 +166,27 @@ function identities(values, key, maximum) {
   return ids;
 }
 
+function finiteWindow(condition) {
+  const allowed = ['kind','timezone','days','windows','effective_from','effective_until'];
+  if (condition.kind !== 'time-window' || Object.keys(condition).some(k => !allowed.includes(k))
+    || !Object.hasOwn(condition,'effective_from') && !Object.hasOwn(condition,'effective_until')) return;
+  const integer = value => (typeof value === 'bigint' || Number.isSafeInteger(value))
+    && BigInt(value) >= -(1n << 63n) && BigInt(value) <= (1n << 63n)-1n;
+  requireThat(integer(condition.effective_from) && integer(condition.effective_until)
+    && BigInt(condition.effective_from) < BigInt(condition.effective_until), 'invalid price validity');
+  const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+  requireThat(typeof condition.timezone === 'string' && Array.isArray(condition.days) && condition.days.length > 0
+    && condition.days.length <= 7 && new Set(condition.days).size === condition.days.length
+    && condition.days.every(day => days.includes(day)), 'invalid price days');
+  requireThat(Array.isArray(condition.windows) && condition.windows.length > 0 && condition.windows.length <= 32,
+    'invalid price windows');
+  for (const window of condition.windows) {
+    fields(window,['start','end'],[],'price window');
+    requireThat([window.start,window.end].every(value => typeof value === 'string' && /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(value))
+      && window.start !== window.end, 'invalid price window boundary');
+  }
+}
+
 export function checkPayload(bytes) {
   const payload = parseJson(bytes, 'payload');
   if (payload === null) return null;
@@ -194,12 +215,17 @@ export function checkPayload(bytes) {
   const sets = new Map(collections.map(([name,key,max]) => [name, identities(metadata[name], key, max)]));
   identities(data.pricing_facts, 'pricing_key', 50000);
   identities(data.connection_hints, 'connection_option_id', 1000);
+  const priceScopes = new Set();
   for (const price of data.pricing_facts) {
+    const scope = JSON.stringify([price.product_key, price.model_key, price.upstream_model_id, price.currency]);
+    requireThat(!priceScopes.has(scope), 'duplicate documented price scope');
+    priceScopes.add(scope);
     requireThat(sets.get('access_products').has(price.product_key) && sets.get('canonical_models').has(price.model_key)
       && price.evidence_refs.every(ref => sets.get('evidence_sources').has(ref)), 'invalid documented price scope/evidence');
     identities(price.schedules, 'schedule_key', 64);
     for (const schedule of price.schedules) {
       object(schedule.condition, 'price condition'); text(schedule.condition.kind, 'price condition kind');
+      finiteWindow(schedule.condition);
       object(schedule.rates, 'price rates');
       requireThat(Object.values(schedule.rates).every(rate => typeof rate === 'string' && /^\d+(?:\.\d+)?$/.test(rate) && rate.length <= 64), 'invalid decimal price');
     }
@@ -315,7 +341,7 @@ export async function publishFeed({ sourceDirectory, payloadPath, distDirectory 
     }
   }
   if (env.GITHUB_STEP_SUMMARY) {
-    await appendFile(env.GITHUB_STEP_SUMMARY, `\n### Model feed\n\n- Status: ${result.status}\n- Sequence: ${result.sequence ?? 'none'}\n- Payload SHA-256: ${result.payload_digest ?? 'none'}\n- Source revision: ${result.source_revision ?? 'none'}\n`);
+    await appendFile(env.GITHUB_STEP_SUMMARY, `\n### Model feed\n\n- Status: ${result.status}\n- Sequence: ${result.sequence ?? 'none'}\n- Data revision: ${result.data_revision ?? 'none'}\n- Data digest: ${result.data_digest ?? 'none'}\n- Payload SHA-256: ${result.payload_digest ?? 'none'}\n- Source revision: ${result.source_revision ?? 'none'}\n`);
   }
   if (outputBytes) {
     await mkdir(path.dirname(destination), { recursive: true });
