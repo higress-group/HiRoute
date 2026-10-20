@@ -20,6 +20,50 @@ fn agent(store: &LocalObservationStore, fixture: &Fixture) -> String {
         .agent_id
 }
 
+fn projected_agent(store: &LocalObservationStore, fixture: &Fixture) -> String {
+    let db = store.connection.lock();
+    crate::analysis::sync(&db, 200, 1000).unwrap();
+    db.query_row(
+        "SELECT agent_id FROM observation_analysis_requests_v1
+         WHERE workspace_id=?1 AND request_id=?2 ORDER BY revision DESC LIMIT 1",
+        rusqlite::params![fixture.workspace.as_str(), fixture.request.as_str()],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn analysis_refreshes_prior_requests_after_attribution_and_conflict() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let first = Fixture::new("analysis-attribution");
+    ingest(&store, &first, "unmapped", 1);
+    assert_eq!(projected_agent(&store, &first), "");
+    for (grant, connection, agent) in [
+        ("grant-a", "connection-a", "agent_claude_default"),
+        ("grant-b", "connection-b", "agent_codex_default"),
+    ] {
+        store
+            .register_agent_grant(&first.workspace, grant, 1, connection, agent)
+            .unwrap();
+    }
+    let mut second = Fixture::new("analysis-attributed");
+    second.session = first.session.clone();
+    ingest(&store, &second, "grant-a", 1);
+    assert_eq!(projected_agent(&store, &first), "agent_claude_default");
+    assert_eq!(projected_agent(&store, &second), "agent_claude_default");
+    let mut conflict = Fixture::new("analysis-conflict");
+    conflict.session = first.session.clone();
+    ingest(&store, &conflict, "grant-b", 1);
+    for request in [&first, &second, &conflict] {
+        assert_eq!(
+            projected_agent(&store, request),
+            "",
+            "fresh analysis must not retain an Agent after session conflict"
+        );
+    }
+}
+
 #[test]
 fn authenticated_grant_attribution_survives_rotation_reopen_and_does_not_backfill() {
     let directory = tempfile::tempdir().unwrap();
