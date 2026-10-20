@@ -2315,6 +2315,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "command-fds",
+ "fs2",
  "futures",
  "getrandom 0.3.4",
  "hiroute-application",

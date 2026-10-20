@@ -1,7 +1,8 @@
 //! Provider-local source errors must not become daemon startup failures.
 use super::*;
-use std::net::TcpListener;
 use std::process::Command;
+
+use crate::test_support::ListenerPortLease;
 
 fn private_root() -> tempfile::TempDir {
     let builder = tempfile::Builder::new();
@@ -29,11 +30,16 @@ fn invalid_subscription_source_is_local_to_its_provider() {
             "proxy-invalid",
         ] {
             let root = private_root();
+            let listener = ListenerPortLease::reserve().unwrap();
             let mut child = Command::new(std::env::current_exe().unwrap());
             child
                 .args(["--exact", TEST, "--nocapture"])
                 .env_clear()
                 .env(CHILD, case)
+                .env(
+                    "HIROUTE_SUBSCRIPTION_STARTUP_LISTEN",
+                    listener.address.to_string(),
+                )
                 .env("HOME", root.path())
                 .env("PATH", "/usr/bin:/bin")
                 .env("CODEX_HOME", root.path().join(".codex"))
@@ -79,9 +85,12 @@ fn invalid_subscription_source_is_local_to_its_provider() {
         proxy.mark_applied(&desired).unwrap();
         std::fs::write(root.join("subscription-proxy.json"), b"{broken").unwrap();
     }
-    let socket = TcpListener::bind("127.0.0.1:0").unwrap();
-    let listen = socket.local_addr().unwrap();
-    drop(socket);
+    // The parent holds the address lease through child shutdown, outside the host's
+    // outbound ephemeral range. Only the real Gateway owns the listening socket.
+    let listen = std::env::var("HIROUTE_SUBSCRIPTION_STARTUP_LISTEN")
+        .unwrap()
+        .parse()
+        .unwrap();
     let config = RoleAllConfig::new(
         root.join("storage"),
         root.join("runtime"),
