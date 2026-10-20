@@ -151,7 +151,14 @@ impl PreparedHold {
                 if self.measured.message_count >= snapshot.message_count
                     && self.measured.prefix_digest == Some(snapshot.history_digest) =>
             {
-                HistoryContinuity::Continuing
+                if self.native.turn.is_some()
+                    && snapshot.native.turn.is_some()
+                    && self.native.turn != snapshot.native.turn
+                {
+                    HistoryContinuity::NativeNewTurn
+                } else {
+                    HistoryContinuity::Continuing
+                }
             }
             Some(snapshot)
                 if self.native.turn.is_some() && self.native.turn == snapshot.native.turn =>

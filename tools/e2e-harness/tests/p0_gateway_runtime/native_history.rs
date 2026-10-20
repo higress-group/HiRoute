@@ -452,3 +452,26 @@ fn real_listener_auxiliary_provider_failure_cannot_change_main_tool_continuation
     ));
     assert_eq!(classifier.calls(), 2);
 }
+
+#[test]
+fn real_listener_native_new_turn_does_not_reuse_a_decision_for_identical_content() {
+    for agent in ["codex", "claude", "pi", "dsh", "opencode", "hermes"] {
+        let simple = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+        let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+        let classifier =
+            NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_COMPLEX)]);
+        let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
+        for turn in ["native-turn-1", "native-turn-2"] {
+            accepted(&send(
+                fixture.address,
+                &headers(agent, "session", "main", turn, "checkpoint"),
+                json!("identical real user task"),
+            ));
+        }
+        assert_eq!(
+            (simple.calls(), complex.calls(), classifier.calls()),
+            (1, 1, 2),
+            "{agent}"
+        );
+    }
+}
