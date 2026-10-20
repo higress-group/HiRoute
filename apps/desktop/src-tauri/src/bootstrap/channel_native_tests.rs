@@ -1,6 +1,7 @@
 //! Real Resident/daemon exchanges; synthetic private inputs, no user state.
 use super::*;
 use hiroute_application_api::ClientServiceStatusV1;
+use hiroute_product_session::HostAuthority;
 
 fn daemon() -> PathBuf {
     let build = Command::new("cargo")

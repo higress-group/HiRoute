@@ -147,6 +147,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(s => s.capabilities.includes('native-recovery'))) {
+        checks.push(...await (await import('./native-connection-captures.mjs')).nativeConnectionCaptures(client, baseUrl, outputRoot));
+      }
       if (selected.some(s => s.id === 'desktop.settings.storage-capacity')) {
         checks.push(...await (await import('./storage-capacity-captures.mjs')).runStorageCapacityCaptures(client, outputRoot));
       }
