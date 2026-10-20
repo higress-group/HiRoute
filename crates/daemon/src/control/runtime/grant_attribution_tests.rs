@@ -210,3 +210,63 @@ fn current_grant_and_activation_stay_strict_when_provenance_is_missing() {
         "a persisted mapping is not a substitute for current publication proof",
     );
 }
+
+#[test]
+fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::native_model::tests::settings_entry_tests::grant_attribution_tests::parked_native_tail_requires_a_current_authenticated_service_receipt",
+    ) {
+        return;
+    }
+    let (root, runtime, historical, current, grant, plan) = configured();
+    invalidate_operation(root.path(), &historical);
+    let mut operation = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .load_operation(&current)
+        .unwrap()
+        .unwrap();
+    // Preserve the real completed service receipt and exact grant proof, but leave the
+    // native-file tail parked as production recovery does after an independent user edit.
+    operation.state = hiroute_domain::OperationState::Activating;
+    operation.step_mut(OperationStepKind::Activate).status =
+        hiroute_domain::OperationStepStatus::Started;
+    operation.safe_error_code = Some("SETTINGS_TAIL_PENDING".into());
+    runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .save_operation(&mut operation)
+        .unwrap();
+    rusqlite::Connection::open(root.path().join("observation/activity.db"))
+        .unwrap()
+        .execute("DELETE FROM observation_agent_grants_v1", [])
+        .unwrap();
+    runtime.adapter.restore_active_publication().unwrap();
+    record_attributed_session(&runtime, &grant, "parked-service-proof", &plan);
+    assert_attributed_session(&runtime, "parked-service-proof");
+
+    // A pending operation alone is not proof; the sealed current-service receipt is
+    // required even if the attribution mapping was already persisted.
+    operation
+        .step_mut(OperationStepKind::Activate)
+        .terminal_result = None;
+    runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .save_operation(&mut operation)
+        .unwrap();
+    assert_eq!(
+        runtime
+            .adapter
+            .restore_active_publication()
+            .unwrap_err()
+            .code,
+        PortErrorCode::InvalidData,
+    );
+}
