@@ -109,7 +109,7 @@ fn native_routing_adapter_effects_restore_after_reopen_and_detect_drift() {
         assert_eq!(model_status(&fixture)["state"], "configured");
         let fixture = reopen(fixture);
         assert_eq!(model_status(&fixture)["state"], "configured");
-        let mut rotation = spec;
+        let mut rotation = spec.clone();
         rotation["access_token"] = json!({"intent":"regenerate"});
         apply(
             &fixture.service,
@@ -130,5 +130,21 @@ fn native_routing_adapter_effects_restore_after_reopen_and_detect_drift() {
         assert_eq!(model_status(&fixture)["state"], "not_configured");
         assert!(!adapter.exists());
         assert_eq!(fs::read(&fixture.native_config).unwrap(), baseline);
+        // Borrowing identical native resources must not turn into file ownership.
+        private_file(&adapter, bundled);
+        apply(
+            &fixture.service,
+            &fixture.runtime,
+            spec,
+            "native-adapter-borrow",
+        );
+        apply(
+            &fixture.service,
+            &fixture.runtime,
+            restore_spec(&fixture, &model_status(&fixture)),
+            "native-adapter-release-reference",
+        );
+        assert_eq!(fs::read(&adapter).unwrap(), bundled);
+        fs::remove_file(adapter).unwrap();
     }
 }

@@ -134,11 +134,13 @@ fn base_identity_facts(
 ) -> ContextIdentityFacts {
     if let Some(run) = authorized.verified_run_observation() {
         let child = match run.harness_id.as_str() {
-            "claude" => header_value(headers, "x-claude-code-agent-id"),
-            "codex" if headers.contains_key("x-codex-parent-thread-id") => {
+            "claude" | "claude_code" => header_value(headers, "x-claude-code-agent-id"),
+            "codex" | "codex_cli" if headers.contains_key("x-codex-parent-thread-id") => {
                 header_value(headers, "thread-id")
             }
-            "dsh" if headers.contains_key("x-deepseek-harness-parent-session-id") => {
+            "dsh" | "deepseek_harness"
+                if headers.contains_key("x-deepseek-harness-parent-session-id") =>
+            {
                 header_value(headers, "x-deepseek-harness-session-id")
             }
             "opencode" if headers.contains_key("x-opencode-parent-session-id") => {

@@ -67,6 +67,13 @@ pub(super) fn facts(
     worker: Option<&str>,
     hermes: bool,
 ) -> RoutingFacts {
+    let worker = worker.map(|id| match id {
+        "codex_cli" => "codex",
+        "claude_code" => "claude",
+        "qoder_cli" => "qoder",
+        "deepseek_harness" => "dsh",
+        id => id,
+    });
     let native_identity = identity.observation_identity();
     let native_kind = native_identity.map(|(kind, _)| kind);
     let brand = match single_header(headers, "x-hiroute-agent", 32) {

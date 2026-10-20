@@ -218,12 +218,26 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
             let mut child = headers(
                 agent,
                 if agent == "claude" { "parent" } else { "child" },
-                "main",
+                if agent == "claude" {
+                    "subagent"
+                } else {
+                    "main"
+                },
                 "child-turn",
                 "checkpoint-1",
             );
             if agent == "claude" {
                 child.push(("x-claude-code-agent-id".into(), "child-agent".into()));
+            }
+            if agent == "codex" {
+                child
+                    .iter_mut()
+                    .find(|(key, _)| key == "session-id")
+                    .unwrap()
+                    .1 = "parent".into();
+                child.iter_mut().find(|(key, _)| key == "x-codex-turn-metadata").unwrap().1 = json!({
+                    "session_id":"parent","thread_id":"child","turn_id":"child-turn","request_kind":"turn"
+                }).to_string();
             }
             accepted(&send(address, &child, json!("CHILD_USER")));
             accepted(&send(
