@@ -188,6 +188,11 @@ MCP, plugins and custom executable tools are excluded. Existing nonempty tool/ag
 directories, late remote/organization/managed settings or unsupported agent overrides
 fail before launch. Native LSP/formatter execution is disabled. The bounded reader
 rechecks dependencies without rewriting daily configuration or copying credentials.
+Project inspection stops at a Git root only after bounded native `rev-parse` checks
+in the same filtered HOME/XDG/PATH as the Worker. Invalid `.git`/worktree pointers,
+unavailable or rejecting Git, and unconfirmed roots make this Worker unavailable;
+they cannot hide ancestor configuration or custom tools. Final admission rechecks
+the boundary after waiting for native initialization, using the captured child PATH.
 This permission boundary is not an OS sandbox for approve-all shell commands.
 
 The [native acceptance guide](../../../../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md)

@@ -191,51 +191,7 @@ use hiroute_domain::delegation::{
     NativeDependencyCheckV1, NativeDependencyFailureReasonV1, NativeDependencyFailureV1,
 };
 
-#[cfg(unix)]
-fn bounded_check(
-    mut command: std::process::Command,
-    check: NativeDependencyCheckV1,
-    timeout: std::time::Duration,
-    output_limit: usize,
-) -> Result<zeroize::Zeroizing<Vec<u8>>, NativeDependencyFailureV1> {
-    use NativeDependencyFailureReasonV1 as Reason;
-    use std::os::unix::process::CommandExt;
-    use std::process::Stdio;
-    use std::time::{Duration, Instant};
-    let failure = |reason| NativeDependencyFailureV1 { check, reason };
-    let start = Instant::now();
-    let capture = tempfile::NamedTempFile::new().map_err(|_| failure(Reason::Unavailable))?;
-    let child = command
-        .env_remove("NODE_OPTIONS")
-        .env_remove("HIROUTE_RUN_TOKEN")
-        .stdin(Stdio::null())
-        .stdout(capture.reopen().map_err(|_| failure(Reason::Unavailable))?)
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map_err(|_| failure(Reason::Unavailable))?;
-    let mut child = super::NativeProbeProcess::new(child);
-    let result = (|| {
-        loop {
-            if start.elapsed() >= timeout {
-                return Err(failure(Reason::Timeout));
-            }
-            match child.observe().map_err(|_| failure(Reason::Unavailable))? {
-                Some(true) => break,
-                Some(false) => return Err(failure(Reason::ProcessFailed)),
-                None => {}
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        super::native_probe_process::read_bounded(capture.path(), output_limit)
-            .map_err(|_| failure(Reason::InvalidOutput))
-    })();
-    // A failed check also stops and accounts for its owned scope before returning.
-    child.stop().map_err(|_| failure(Reason::CleanupFailed))?;
-    result
-}
-
-#[cfg(windows)]
+#[cfg(any(unix, windows))]
 fn bounded_check(
     mut command: std::process::Command,
     check: NativeDependencyCheckV1,
@@ -245,24 +201,8 @@ fn bounded_check(
     command
         .env_remove("NODE_OPTIONS")
         .env_remove("HIROUTE_RUN_TOKEN");
-    super::windows_runtime::bounded(&command, true, timeout, output_limit).map_err(|error| {
-        NativeDependencyFailureV1 {
-            check,
-            reason: if super::windows_runtime::cleanup_unknown(&error) {
-                NativeDependencyFailureReasonV1::CleanupFailed
-            } else if super::windows_runtime::process_exit_code(&error).is_some() {
-                NativeDependencyFailureReasonV1::ProcessFailed
-            } else {
-                match error.kind() {
-                    std::io::ErrorKind::TimedOut => NativeDependencyFailureReasonV1::Timeout,
-                    std::io::ErrorKind::InvalidData => {
-                        NativeDependencyFailureReasonV1::InvalidOutput
-                    }
-                    _ => NativeDependencyFailureReasonV1::Unavailable,
-                }
-            },
-        }
-    })
+    super::native_probe_process::capture(command, true, timeout, output_limit)
+        .map_err(|reason| NativeDependencyFailureV1 { check, reason })
 }
 
 #[cfg(all(test, unix))]

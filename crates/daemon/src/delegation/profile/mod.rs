@@ -254,7 +254,7 @@ impl CandidateWorkerProfile {
             WorkerHarnessV1::QoderCli => qoder::render(&input, &private_root)?,
             WorkerHarnessV1::Pi => pi::render(&input)?,
             WorkerHarnessV1::DeepseekHarness => dsh::render(&input)?,
-            WorkerHarnessV1::OpenCode => opencode::render(&input)?,
+            WorkerHarnessV1::OpenCode => opencode::render(&input, env["PATH"].as_str())?,
         };
         env.extend(rendered.env);
         let (executable, args) = match launch {

@@ -266,6 +266,8 @@ def run(repository, candidate):
         if harness in ('dsh','opencode'):
             from agent_product_support import expose_native_installation
             expose_native_installation(product,harness,binary)
+        if harness == 'opencode':
+            project_boundary = opencode_native_context.prepare_project_boundary(product)
         stage = 'real-daemon-and-plan'
         fixture, upstream = prepare_product(product, harness,
                                              context_tokens=16_384 if harness == 'pi' else 32_768 if harness == 'qoder' else None)
@@ -275,6 +277,10 @@ def run(repository, candidate):
             report['source_output_tokens'] = 4096
             (product.root / 'native-context.json').write_text(json.dumps(fixture))
         configure_worker_installation(product, product.worker_work['harness'], adapter, binary, node)
+        if harness == 'opencode':
+            stage = 'opencode-project-admission'
+            report['project_ancestry_admission'] = opencode_native_context.assert_project_admission(
+                product, fixture, upstream, project_boundary)
         if harness == 'qoder':
             stage = 'unsupported-qoder-permissions'
             report['rejected_permission_modes'] = qoder_native_context.assert_restricted_modes_unavailable(product, upstream)
@@ -337,6 +343,10 @@ def run(repository, candidate):
                 'Continue replay sent another model request'
         report['cases'].append({'id': CORE_CASES[1], 'state': 'green'})
         attempts = events(product)
+        if harness == 'opencode':
+            assert not Path(project_boundary['imported']).exists(), 'native crossed its confirmed Git stop'
+            for path, original in project_boundary['protected'].items():
+                assert Path(path).read_bytes() == original, 'native changed foreign ancestor configuration/tool'
         if fixture.get('proxy_trap_events'):
             report['native_proxy_requests'] = len(Path(fixture['proxy_trap_events']).read_text().splitlines())
             assert report['native_proxy_requests'] == 0, 'native Worker used the user-configured proxy'

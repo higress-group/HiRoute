@@ -10,6 +10,7 @@ pub(super) struct StartupAdmission {
     native: hiroute_integrations::OpenCodeNativeContext,
     config_digest: hiroute_domain::CanonicalDigest,
     migrations: &'static [&'static str],
+    search_path: String,
 }
 
 impl StartupAdmission {
@@ -35,25 +36,31 @@ impl StartupAdmission {
         validate_database(&self.native.database, self.migrations)?;
         let config = self
             .native
-            .read_config(Some(workspace))
+            .read_config(Some((workspace, &self.search_path)))
             .map_err(|_| unavailable())?;
         if config.digest != self.config_digest {
             return Err(unavailable());
         }
-        hiroute_integrations::validate_opencode_composition(&self.native, &config, workspace)
-            .map_err(|_| unavailable())
+        hiroute_integrations::validate_opencode_composition(
+            &self.native,
+            &config,
+            workspace,
+            &self.search_path,
+        )
+        .map_err(|_| unavailable())
     }
 }
 
 pub(super) fn render(
     input: &ProfileInput<'_>,
+    search_path: &str,
 ) -> Result<RenderedHarnessProfile, DelegationErrorV1> {
     let unavailable = || DelegationErrorV1::CapabilityUnavailable;
     let native = input.native_context.opencode().ok_or_else(unavailable)?;
     let ids = hiroute_integrations::opencode_native_format(input.harness_binary)
         .map_err(|_| unavailable())?;
     let config = native
-        .read_config(Some(input.workspace))
+        .read_config(Some((input.workspace, search_path)))
         .map_err(|_| unavailable())?;
     let task = input
         .session_root
@@ -125,6 +132,7 @@ pub(super) fn render(
             native: native.clone(),
             config_digest: config.digest.clone(),
             migrations: ids,
+            search_path: search_path.into(),
         }),
         native_model_id: selector,
         native_args: vec![
@@ -253,11 +261,12 @@ mod tests {
         ] {
             let bytes = serde_json::to_vec(&json!({"$schema":schema})).unwrap();
             std::fs::write(native.model_target(), &bytes).unwrap();
-            let config = native.read_config(Some(&home)).unwrap();
+            let config = native.read_config(Some((&home, ""))).unwrap();
             let admission = StartupAdmission {
                 native: native.clone(),
                 config_digest: config.digest.clone(),
                 migrations: &["known"],
+                search_path: String::new(),
             };
             assert_eq!(
                 admission.validate(&home, true).is_ok(),
@@ -284,11 +293,12 @@ mod tests {
             std::fs::write(&tool, content).unwrap();
             let native =
                 hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
-            let config = native.read_config(Some(&home)).unwrap();
+            let config = native.read_config(Some((&home, ""))).unwrap();
             let admission = StartupAdmission {
                 native: native.clone(),
                 config_digest: config.digest.clone(),
                 migrations: &["known"],
+                search_path: String::new(),
             };
             let deep = (0..65).fold(project, |path, _| path.join("d"));
             std::fs::create_dir_all(&deep).unwrap();
@@ -301,17 +311,105 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn opencode_startup_refuses_false_git_stops_and_rechecks_late_boundary_changes() {
+        for kind in [
+            "empty",
+            "corrupt",
+            "broken-worktree",
+            "missing-git",
+            "rejected-git",
+            "late-corruption",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let base = root.path().canonicalize().unwrap();
+            let home = base.join("home");
+            let ancestor = base.join("ancestor");
+            let project = ancestor.join("project");
+            std::fs::create_dir(&home).unwrap();
+            std::fs::create_dir_all(&project).unwrap();
+            let native =
+                hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
+            let path = worker_path(Path::new("/unused/native"), None, None).unwrap();
+            let marker = project.join(".git");
+            if matches!(kind, "missing-git" | "rejected-git" | "late-corruption") {
+                let status = std::process::Command::new("git")
+                    .args(["init", "-q"])
+                    .arg(&project)
+                    .env_clear()
+                    .env("HOME", &home)
+                    .env("PATH", &path)
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+            } else if kind == "empty" {
+                std::fs::create_dir(&marker).unwrap();
+            } else {
+                std::fs::write(
+                    &marker,
+                    if kind == "corrupt" {
+                        "not a gitdir"
+                    } else {
+                        "gitdir: missing-worktree\n"
+                    },
+                )
+                .unwrap();
+            }
+            let config_bytes = br#"{"$schema":""}"#;
+            let config_path = ancestor.join("opencode.json");
+            std::fs::write(&config_path, config_bytes).unwrap();
+            std::fs::create_dir_all(ancestor.join(".opencode/tools")).unwrap();
+            let tool = ancestor.join(".opencode/tools/custom.ts");
+            let tool_bytes = b"throw new Error('must never be imported')";
+            std::fs::write(&tool, tool_bytes).unwrap();
+            let config = native.read_config(None).unwrap();
+            let mut admission = StartupAdmission {
+                native: native.clone(),
+                config_digest: config.digest.clone(),
+                migrations: &["known"],
+                search_path: path.clone(),
+            };
+            if kind == "late-corruption" {
+                assert!(admission.validate(&project, true).is_ok());
+                std::fs::write(marker.join("config"), b"[invalid git config").unwrap();
+            }
+            if kind == "missing-git" {
+                admission.search_path = home.to_str().unwrap().into();
+            }
+            if kind == "rejected-git" {
+                // A real Git rejection, without changing process-global test environment.
+                std::fs::write(marker.join("config"), b"[invalid git config").unwrap();
+            }
+            assert_eq!(
+                admission.validate(&project, true),
+                Err(DelegationErrorV1::CapabilityUnavailable),
+                "{kind}"
+            );
+            assert!(
+                native
+                    .read_config(Some((&project, &admission.search_path)))
+                    .is_err(),
+                "{kind}"
+            );
+            assert_eq!(std::fs::read(&config_path).unwrap(), config_bytes);
+            assert_eq!(std::fs::read(&tool).unwrap(), tool_bytes);
+            assert!(!native.database.exists());
+        }
+    }
+
     #[test]
     fn opencode_startup_rechecks_configuration_and_missing_continue_history() {
         let root = tempfile::tempdir().unwrap();
         let home = root.path().canonicalize().unwrap();
         let native =
             hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
-        let config = native.read_config(Some(&home)).unwrap();
+        let config = native.read_config(Some((&home, ""))).unwrap();
         let admission = StartupAdmission {
             native: native.clone(),
             config_digest: config.digest.clone(),
             migrations: &["known"],
+            search_path: String::new(),
         };
         assert_eq!(admission.root(), native.database);
         assert!(admission.validate(&home, true).is_ok());

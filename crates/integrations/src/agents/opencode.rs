@@ -117,16 +117,20 @@ impl OpenCodeNativeContext {
     }
 
     /// Native merge order, restricted to the chosen user and optional project ancestry.
-    pub fn config_paths(&self, workspace: Option<&Path>) -> Result<Vec<PathBuf>, QoderNativeError> {
+    /// Project inspection requires the actual filtered Worker PATH, not the host environment.
+    pub fn config_paths(
+        &self,
+        workspace: Option<(&Path, &str)>,
+    ) -> Result<Vec<PathBuf>, QoderNativeError> {
         let mut paths = vec![
             self.config_root.join("config.json"),
             self.config_root.join("opencode.json"),
             self.config_root.join("opencode.jsonc"),
         ];
         paths.extend(self.config_file.iter().cloned());
-        if let Some(workspace) = workspace {
+        if let Some((workspace, search_path)) = workspace {
             checked_path(workspace)?;
-            let mut ancestry = project_ancestry(workspace)?;
+            let mut ancestry = project_ancestry(self, workspace, search_path)?;
             ancestry.reverse();
             for root in &ancestry {
                 paths.extend([root.join("opencode.json"), root.join("opencode.jsonc")]);
@@ -230,7 +234,7 @@ impl OpenCodeNativeContext {
         Ok(false)
     }
 
-    pub fn read_config(&self, workspace: Option<&Path>) -> Result<OpenCodeConfig, Error> {
+    pub fn read_config(&self, workspace: Option<(&Path, &str)>) -> Result<OpenCodeConfig, Error> {
         let mut value = serde_json::json!({});
         let mut documents = Vec::new();
         let mut schemas_complete = true;
@@ -280,12 +284,12 @@ impl OpenCodeNativeContext {
 
     pub(super) fn resource_roots(
         &self,
-        workspace: Option<&Path>,
+        workspace: Option<(&Path, &str)>,
     ) -> Result<Vec<PathBuf>, QoderNativeError> {
         let mut roots = vec![self.config_root.clone()];
-        if let Some(workspace) = workspace {
+        if let Some((workspace, search_path)) = workspace {
             roots.extend(
-                project_ancestry(workspace)?
+                project_ancestry(self, workspace, search_path)?
                     .iter()
                     .map(|p| p.join(".opencode")),
             );
@@ -350,7 +354,11 @@ fn checked_path(path: &Path) -> Result<(), QoderNativeError> {
 }
 
 /// A bounded inspection is complete only at the same worktree/root stop as native.
-fn project_ancestry(workspace: &Path) -> Result<Vec<PathBuf>, QoderNativeError> {
+fn project_ancestry(
+    native: &OpenCodeNativeContext,
+    workspace: &Path,
+    search_path: &str,
+) -> Result<Vec<PathBuf>, QoderNativeError> {
     checked_path(workspace)?;
     let mut roots = Vec::new();
     for root in workspace.ancestors().take(64) {
@@ -359,8 +367,11 @@ fn project_ancestry(workspace: &Path) -> Result<Vec<PathBuf>, QoderNativeError> 
             .join(".git")
             .try_exists()
             .map_err(|_| qoder_error("OpenCode project ancestry"))?
-            || root.parent().is_none()
         {
+            super::opencode_project::confirm_root(native, root, search_path)?;
+            return Ok(roots);
+        }
+        if root.parent().is_none() {
             return Ok(roots);
         }
     }
@@ -476,6 +487,7 @@ pub fn validate_opencode_composition(
     native: &OpenCodeNativeContext,
     config: &OpenCodeConfig,
     workspace: &Path,
+    search_path: &str,
 ) -> Result<(), QoderNativeError> {
     let unavailable = || qoder_error("unsupported OpenCode native composition");
     if dynamic_keys(&config.value)
@@ -513,7 +525,7 @@ pub fn validate_opencode_composition(
     if native.config_root.join("config").exists() {
         return Err(unavailable());
     }
-    for root in native.resource_roots(Some(workspace))? {
+    for root in native.resource_roots(Some((workspace, search_path)))? {
         for dir in ["tool", "tools", "agent", "agents", "mode", "modes"] {
             match std::fs::read_dir(root.join(dir)) {
                 Ok(entries) => {
@@ -536,14 +548,112 @@ mod tests {
     fn project_ancestry_requires_a_proven_native_stop_within_the_bound() {
         let root = tempfile::tempdir().unwrap();
         let base = root.path().canonicalize().unwrap();
-        std::fs::create_dir(base.join(".git")).unwrap();
+        let native = OpenCodeNativeContext::from_lookup(&base, |_| None).unwrap();
+        let search_path = std::env::var("PATH").unwrap();
+        git(&native, &base, &["init", "-q"], &search_path);
         let at_limit = (0..63).fold(base.clone(), |path, _| path.join("d"));
         std::fs::create_dir_all(&at_limit).unwrap();
-        assert_eq!(project_ancestry(&at_limit).unwrap().len(), 64);
-        assert!(project_ancestry(&at_limit.join("d")).is_err());
-        std::fs::remove_dir(base.join(".git")).unwrap();
-        assert!(project_ancestry(&base).is_ok());
-        assert!(project_ancestry(&at_limit).is_err());
+        assert_eq!(
+            project_ancestry(&native, &at_limit, &search_path)
+                .unwrap()
+                .len(),
+            64
+        );
+        assert!(project_ancestry(&native, &at_limit.join("d"), &search_path).is_err());
+        std::fs::remove_dir_all(base.join(".git")).unwrap();
+        assert!(project_ancestry(&native, &base, &search_path).is_ok());
+        assert!(project_ancestry(&native, &at_limit, &search_path).is_err());
+    }
+
+    fn git(native: &OpenCodeNativeContext, cwd: &Path, args: &[&str], path: &str) {
+        let binary = super::super::executable::resolve(Path::new("git"))
+            .unwrap()
+            .unwrap();
+        let mut command = std::process::Command::new(binary);
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env_clear()
+            .env("HOME", &native.home)
+            .env("PATH", path);
+        super::super::native_probe_process::capture(
+            command,
+            false,
+            std::time::Duration::from_secs(5),
+            4096,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn opencode_real_git_and_linked_worktree_stop_before_foreign_ancestor_config_and_tools() {
+        let root = tempfile::tempdir().unwrap();
+        let base = root.path().canonicalize().unwrap();
+        let home = base.join("home");
+        let repository = base.join("repository");
+        std::fs::create_dir(&home).unwrap();
+        std::fs::create_dir(&repository).unwrap();
+        let native = OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
+        let search_path = std::env::var("PATH").unwrap();
+        git(&native, &repository, &["init", "-q"], &search_path);
+        git(
+            &native,
+            &repository,
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "fixture",
+            ],
+            &search_path,
+        );
+        let linked = base.join("linked");
+        git(
+            &native,
+            &repository,
+            &[
+                "worktree",
+                "add",
+                "--detach",
+                linked.to_str().unwrap(),
+                "HEAD",
+            ],
+            &search_path,
+        );
+        let foreign_config = base.join("opencode.json");
+        let foreign_bytes = br#"{"$schema":"","server":{"port":9}}"#;
+        std::fs::write(&foreign_config, foreign_bytes).unwrap();
+        std::fs::create_dir_all(base.join(".opencode/tools")).unwrap();
+        let tool = base.join(".opencode/tools/custom.ts");
+        std::fs::write(&tool, b"throw new Error('outside confirmed native root')").unwrap();
+        for project in [&repository, &linked] {
+            let workspace = project.join("nested");
+            std::fs::create_dir(&workspace).unwrap();
+            let config = native
+                .read_config(Some((&workspace, &search_path)))
+                .unwrap();
+            assert!(
+                validate_opencode_composition(&native, &config, &workspace, &search_path).is_ok()
+            );
+            assert!(
+                !config
+                    .documents
+                    .iter()
+                    .any(|(path, _)| path == &foreign_config)
+            );
+            assert_eq!(
+                project_ancestry(&native, &workspace, &search_path).unwrap(),
+                [workspace.clone(), project.to_owned()]
+            );
+            assert_eq!(std::fs::read(&foreign_config).unwrap(), foreign_bytes);
+            assert!(!native.database.exists());
+        }
     }
 
     #[test]

@@ -4,6 +4,84 @@ import json
 from pathlib import Path
 from native_context_fixture import write_new, protect_configuration
 
+def prepare_project_boundary(product):
+    """Real Git stop, with unsafe foreign ancestors that native must not load."""
+    import subprocess
+    def git(cwd, *args):
+        subprocess.run(['git', *args], cwd=cwd, env=product.env, check=True,
+                       capture_output=True, timeout=10)
+    import os
+    linked = os.environ.get('HIROUTE_PRODUCT_AGENT_PROTOCOL', 'responses') == 'responses'
+    repository = product.root / 'git-repository' if linked else product.project
+    repository.mkdir(mode=0o700, exist_ok=True)
+    git(repository, 'init', '-q')
+    if linked:
+        git(repository, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'fixture')
+        # Product has not installed any project fixtures yet; keep all later
+        # user/Skill paths unchanged while making cwd an actual linked worktree.
+        product.project.rmdir()
+        git(repository, 'worktree', 'add', '--detach', str(product.project), 'HEAD')
+    foreign_config = product.root / 'opencode.json'
+    write_new(foreign_config, '{"$schema":""}\n')
+    imported = product.root / 'foreign-tool-imported'
+    tool = product.root / '.opencode/tools/foreign.ts'
+    tool.parent.mkdir(mode=0o700, parents=True)
+    write_new(tool, 'import { writeFileSync } from "node:fs";\nwriteFileSync(' +
+              json.dumps(str(imported)) + ', "imported");\nthrow new Error("foreign tool imported");\n')
+    return dict(kind='linked-worktree' if linked else 'repository', imported=str(imported),
+                protected={str(path): path.read_bytes() for path in (foreign_config, tool)})
+
+def assert_project_admission(product, fixture, upstream, boundary):
+    """False stops fail through public Worker admission before DB/tool/model work."""
+    import shutil
+    from delegation_product import worker_cli, wait_for_worker_result
+    marker = product.project / '.git'
+    saved = product.project / '.git-confirmed-fixture'
+    marker.rename(saved)
+    shadow_git = product.root / 'bin/git'
+    assert not shadow_git.exists()
+    events = upstream.controls / 'native-context-events.jsonl'
+    before = events.read_bytes() if events.exists() else b''
+    results = []
+    try:
+        for kind in ('empty', 'corrupt', 'broken-worktree', 'unavailable-git'):
+            if kind == 'empty':
+                marker.mkdir(mode=0o700)
+            elif kind == 'unavailable-git':
+                saved.rename(marker)
+                write_new(shadow_git, '#!/bin/sh\nexit 127\n', executable=True)
+            else:
+                write_new(marker, 'not a gitdir\n' if kind == 'corrupt' else 'gitdir: missing-worktree\n')
+            try:
+                command = ('worker exec --plan ' + product.plan_id + ' --cwd ' + str(product.project) +
+                           ' --run-timeout 30 --no-wait --submission-key opencode-false-git-' +
+                           kind + ' --file - --output json')
+                status, response = worker_cli(product, command, 'Return done.', success=False)
+                if status == 0:
+                    result = wait_for_worker_result(product, response['data']['run_id'], expected='failed', timeout=40)
+                    assert not result.get('result'), 'unconfirmed Git stop returned a result'
+                else:
+                    assert response.get('error', {}).get('code') == 'CAPABILITY_UNAVAILABLE', response
+                assert not Path(fixture['database']).exists(), 'unconfirmed Git stop launched native database initialization'
+                assert not Path(boundary['imported']).exists(), 'unconfirmed Git stop imported a foreign tool'
+                assert (events.read_bytes() if events.exists() else b'') == before, 'unconfirmed Git stop made a model request'
+                for path, original in boundary['protected'].items():
+                    assert Path(path).read_bytes() == original, 'unconfirmed Git stop rewrote borrowed configuration/tool'
+                results.append(kind)
+            finally:
+                if kind == 'unavailable-git':
+                    shadow_git.unlink()
+                    marker.rename(saved)
+                elif marker.is_dir():
+                    shutil.rmtree(marker)
+                else:
+                    marker.unlink()
+    finally:
+        saved.rename(marker)
+    return dict(positive=boundary['kind'], rejected=results,
+                foreign_tool_imported=False, native_database_created=False, model_requests=0)
+
 def select_context(product):
     home=Path(product.env['HOME'])
     for key,folder in [('XDG_CONFIG_HOME','.config'),('XDG_DATA_HOME','.local/share'),('XDG_CACHE_HOME','.cache'),('XDG_STATE_HOME','.local/state')]:

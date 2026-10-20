@@ -31,6 +31,10 @@ also feed the shared configured/drift status.
 Its [bounded Markdown reference reader](../../crates/integrations/src/agents/opencode_resources.rs)
 adds native user Agent/Mode selectors to the same settings dependency checks;
 removal requires complete references, while retaining selectors permits grant rotation.
+Worker project ancestry uses the [native Git boundary check](../../crates/integrations/src/agents/opencode_project.rs)
+with the filtered child HOME/XDG/PATH and shared bounded probe process. Both configuration
+and resource inspection require a confirmed Git stop or the filesystem root within the
+existing bound; an invalid marker or unavailable Git cannot truncate admission.
 
 Hermes uses an [explicit effective profile](../../crates/integrations/src/agents/hermes/README.md)
 and one default main-model Plan. Desktop keeps Hermes in the common Agent list;

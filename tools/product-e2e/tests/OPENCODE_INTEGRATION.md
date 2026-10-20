@@ -21,6 +21,12 @@ permits token rotation. Unreadable or ambiguous resources cannot authorize remov
 and their original bytes remain untouched. Worker admission independently refuses
 empty/substituted `$schema` values and incomplete project ancestry before native
 startup, so it cannot trigger native schema repair or omit ancestor custom tools.
+The stop must be confirmed by bounded Git checks using the Worker's filtered
+HOME/XDG/PATH; `.git` existence alone is insufficient. Invalid markers, broken
+worktree pointers and missing/rejecting Git fail before launch. The core Worker
+journeys use real Git repositories/linked worktrees, place foreign configuration
+and an import sentinel beyond the confirmed stop, and exercise false stops through
+the public CLI before native database creation, tool import or model work.
 
 ## Real product entry
 
