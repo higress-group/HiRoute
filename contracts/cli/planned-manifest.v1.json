@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:6442c5e2453d65985ee602d119f10db1467c7671cd770be616ebb2b9b284c39c",
+  "descriptor_digest": "sha256:4954e2a63d1255fae5f8fbac80bffec5525b444ec2ec8f42bdd0c6de906d0b89",
   "visibility": "planned",
   "commands": [
     {
@@ -2262,7 +2262,7 @@
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Ready permits a managed launch attempt, not a promise of execution or authorization. Optional capabilities remain unknown until the actual ACP handshake; start, load and cancel report real outcomes.",
-        "output": "Default text renders overall and scoped states for all five supported Harnesses. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints their stable wire names.",
+        "output": "Default text renders overall and scoped states for all six supported Harnesses. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints their stable wire names.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "hiroute worker executors --output json"
@@ -2308,7 +2308,7 @@
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Automation must use --output json. For the chosen Harness, select only found candidates and copy that Harness's selection_revisions revision into expected_selection_revision; discovery never installs or selects anything.",
-        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), one per line, and is empty when nothing is selected.",
+        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, deepseek_harness, or opencode), one per line, and is empty when nothing is selected.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "hiroute worker dependencies discover --harness codex_cli --output json"
@@ -2357,7 +2357,7 @@
         "effects": "Application-owned journaled operation after exact spec, digest, selection-revision CAS, and idempotency checks on owner-only Local Control.",
         "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
         "automation": "Preserve the submitted JSON document. If delivery may have succeeded but no response was received, replay that same document unchanged; its deterministic request identity returns the existing Operation instead of applying twice. Do not substitute paths or a newer revision until the server reports a conflict and discovery is run again.",
-        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), one per line, and is empty when nothing is selected.",
+        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, deepseek_harness, or opencode), one per line, and is empty when nothing is selected.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "printf '%s\\n' '{\"harness\":\"codex_cli\",\"adapter_path\":\"/ABSOLUTE/PATH/TO/codex-acp\",\"cli_path\":\"/ABSOLUTE/PATH/TO/codex\",\"node_path\":\"/ABSOLUTE/PATH/TO/node\",\"expected_selection_revision\":0}' | hiroute worker dependencies select --request-stdin --output json"
