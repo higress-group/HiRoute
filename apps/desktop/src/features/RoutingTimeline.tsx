@@ -12,7 +12,7 @@ type Cost = { model_configuration_id: string | null; currency: string | null; va
 export type TimelineRequest = { request_id: string; started_at_ms: number; duration_ms: number | null; native_model: string | null; input_tokens: number | null; output_tokens: number | null; cache_read_tokens: number | null; cache_read_share: number | null; costs: Cost[]; outcome: string | null };
 export type TimelineTurn = {
   turn_id: string; agent_turn_id: string | null; segment_id: string | null; started_at_ms: number; finished_at_ms: number | null;
-  boundary: 'new_user_message' | 'unknown'; plan_id: string | null; plan_revision: number | null;
+  boundary: 'new_user_message' | 'context_rebuilt' | 'unknown'; plan_id: string | null; plan_revision: number | null;
   branch_id: string | null; model_configuration_id: string | null; reasoning_profile_id: string | null; group: string | null;
   selection: { simple_probability: number | null; simple_threshold_millis: number | null; selection_reason: string; competence_trigger?: { score: number; floor_millis: number } | null } | null;
   tool_continuations: number; relays: { request_id: string; from_model: string | null; to_model: string | null }[];
@@ -129,7 +129,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
 
   const selectedTurn = turns.find(t => t.turn_id === selected) ?? turns[turns.length - 1];
   const index = (turn: TimelineTurn) => turns.indexOf(turn) + 1;
-  const boundary = (turn: TimelineTurn) => turn.boundary === 'new_user_message' ? text('新消息', 'New message') : text('边界未确认', 'Boundary unknown');
+  const boundary = (turn: TimelineTurn) => turn.boundary === 'new_user_message' ? text('新消息', 'New message') : turn.boundary === 'context_rebuilt' ? text('上下文重建', 'Context rebuilt') : text('边界未确认', 'Boundary unknown');
   const laneName = (lane: Lane) => lane === 'primary' ? text('主力', 'Primary') : lane === 'regular' ? text('常规', 'Regular') : text('分组未记录', 'Group unknown');
   const tone = (lane: Lane) => lane === 'regular' ? 'cyan' : lane === 'primary' ? 'purple' : '';
   const reason = (turn: TimelineTurn) => selectionReasonLabel(turn.selection?.selection_reason ?? '', language);
@@ -198,6 +198,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         </div>
         <p className="routing-boundary-basis muted">{selectedTurn.boundary === 'new_user_message'
           ? text('依据：会话第一轮，或网关确认对话延续并重新判断。客户端自动追加的后台消息也可能满足此规则。', 'Basis: the first session turn, or a fresh decision on gateway-confirmed continuing history. Client-generated background messages can also meet this rule.')
+          : selectedTurn.boundary === 'context_rebuilt' ? text('消息历史不再延续上一份记录，常见于压缩，也可能是回退或编辑；已重新判断。', 'The message history no longer extends the prior checkpoint, commonly after compaction but also after rewind or editing; a fresh decision was made.')
           : text('没有足够记录确认这一轮的起因。', 'The retained records do not establish what started this turn.')}</p>
         {selectedTurn.requests[0] && <blockquote className="routing-quote"><ContentExcerpt request={selectedTurn.requests[0].request_id} language={language} fallback={text('这一轮的消息未记录或已清理', 'This turn’s message is unrecorded or cleared')} limit={140} revision={selectedTurn.content_digest} /></blockquote>}
         <div className="routing-detail-block"><span>{text('阶段开始时的模型选择', 'Model selection at the start of this stage')}</span><p>{explanation(selectedTurn)}</p></div>
@@ -262,7 +263,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           </Fragment>)}
         </div>
       </div>
-      <p className="routing-legend"><span><i />{text('请求', 'Request')}</span><span><i className="failed" />{text('失败', 'Failed')}</span><span className="muted">{text('同一轮内不换模型，保住缓存；新消息到来时重新判断。点一轮查看详情。', 'The model stays fixed within a turn to preserve the cache; a new message triggers a fresh decision. Select a turn for details.')}</span></p>
+      <p className="routing-legend"><span><i />{text('请求', 'Request')}</span><span><i className="failed" />{text('失败', 'Failed')}</span><span className="muted">{text('同一轮内不换模型，保住缓存；新消息或上下文重建时重新判断。点一轮查看详情。', 'The model stays fixed within a turn to preserve the cache; a new message or rebuilt context triggers a fresh decision. Select a turn for details.')}</span></p>
     </div>}
     {detail}
   </section>;

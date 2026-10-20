@@ -209,6 +209,17 @@ try {
   await shot(`timeline-${lang}-${theme}-${width}`);
   results.push({id:`timeline.late-score-and-request-selection.${lang}.${theme}.${width}${target ? '-from-request' : ''}`,status:'passed'});
  }
+ for (const lang of ['zh','en']) {
+  await open(`lang=${lang}&view=timeline&boundary=rebuilt`,755,600);
+  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
+  await evaluate(client,`document.querySelectorAll('.routing-turn')[1].click();true`);
+  assert.ok(await evaluate(client,`document.querySelector('.routing-detail-head').textContent.includes(${JSON.stringify(lang==='zh'?'上下文重建':'Context rebuilt')})`));
+  assert.ok(await evaluate(client,`document.querySelector('.routing-boundary-basis').textContent.includes(${JSON.stringify(lang==='zh'?'回退或编辑':'rewind or editing')})`));
+  assert.ok(await evaluate(client,`document.querySelector('.routing-legend').textContent.includes(${JSON.stringify(lang==='zh'?'新消息或上下文重建':'new message or rebuilt context')})`));
+  for (const g of await geometry()) assert.ok(g.scroll<=g.width+1,JSON.stringify(g));
+  await shot(`timeline-rebuilt-${lang}-755`);
+  results.push({id:`timeline.recorded-history-rewrite.${lang}`,status:'passed'});
+ }
  await open('lang=en&view=timeline&request-outcome=failed');
  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
  assert.equal(await evaluate(client,`document.querySelectorAll('.routing-ticks .failed').length`),2,'actual request failures retain failed ticks');

@@ -100,6 +100,7 @@ pub(super) fn project(
     let mut covered = std::collections::BTreeSet::new();
     let mut result = Vec::new();
     let mut ordinals = BTreeMap::new();
+    let mut opening_causes = BTreeMap::new();
     let mut identities = BTreeMap::new();
     let mut finished = BTreeMap::new();
     for fact in facts {
@@ -110,6 +111,7 @@ pub(super) fn project(
     for fact in finished.into_values() {
         let ExecutionFactV1::AgentTurnFinished {
             agent_turn_id,
+            opening_cause,
             segment_id,
             ordinal,
             plan_id,
@@ -177,6 +179,9 @@ pub(super) fn project(
         }
         let key = &members[0].view.request_id;
         identities.insert(key.clone(), (*ordinal, fact.producer_epoch.clone()));
+        if let Some(cause) = opening_cause {
+            opening_causes.insert(key.clone(), *cause);
+        }
         if !position.newer_than(previous)
             && let Some(turn) = bases.get(key)
         {
@@ -338,10 +343,17 @@ pub(super) fn project(
             || held(first, LedgerReasonCodeV1::ContextHoldInvalidated);
         // A retained tail with a later recorded ordinal is not the session's first turn.
         let initial = index == 0 && ordinals.get(&turn.view.turn_id).is_none_or(|n| *n == 1);
-        turn.view.boundary = if initial || (fresh_decision && continuing) {
-            RoutingTurnBoundaryV1::NewUserMessage
-        } else {
-            RoutingTurnBoundaryV1::Unknown
+        turn.view.boundary = match opening_causes.get(&turn.view.turn_id) {
+            Some(AgentTurnOpeningCauseV1::UserMessage) => RoutingTurnBoundaryV1::NewUserMessage,
+            Some(AgentTurnOpeningCauseV1::HistoryRewrite) => RoutingTurnBoundaryV1::ContextRebuilt,
+            Some(AgentTurnOpeningCauseV1::NoComparableHistory) if initial => {
+                RoutingTurnBoundaryV1::NewUserMessage
+            }
+            Some(_) => RoutingTurnBoundaryV1::Unknown,
+            None if initial || (fresh_decision && continuing) => {
+                RoutingTurnBoundaryV1::NewUserMessage
+            }
+            None => RoutingTurnBoundaryV1::Unknown,
         };
         turn.view.assessment_state = if index + 1 < result.len()
             || matches!(turn.view.status.as_str(), "failed" | "interrupted")

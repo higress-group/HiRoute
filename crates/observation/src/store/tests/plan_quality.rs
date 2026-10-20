@@ -73,6 +73,7 @@ fn finished_for_model_with_status(
     status: AgentTurnStatusV1,
 ) -> ExecutionFactV1 {
     ExecutionFactV1::AgentTurnFinished {
+        opening_cause: None,
         branch_execution: None,
         agent_turn_id: turn.into(),
         segment_id: segment.into(),

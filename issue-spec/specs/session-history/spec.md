@@ -429,7 +429,11 @@ Source SPEC comments:
 
 Session detail MUST show actual agent-turn selection, recorded boundary, group,
 model/reasoning, probability/threshold, continuations, relay, assessments and request
-usage/cost alongside retained conversation. A new-message boundary SHALL be shown for the first session turn, or when the opening request has a fresh decision (not inherited) and records ContextHoldApplied or ContextHoldInvalidated. These ledger entries establish continuing message history, not compaction. Other boundaries remain unknown: the turn heading omits the badge and its details disclose that the boundary is unconfirmed. A retained tail with a known later ordinal SHALL NOT become the first session turn. Native-turn proof is not required. The view SHALL explain that this is gateway continuity evidence: a client-generated background message can satisfy the same rule and is not proof of human authorship. Model aliases, tools and timing SHALL NOT be used as heuristics to claim such proof. No compaction or context-rebuild boundary SHALL be inferred from context-hold invalidation. The legend SHALL explain that the model stays fixed within a turn to preserve the cache and a new message triggers a fresh decision. These are read-time projections of existing records; recorded execution facts remain unchanged.
+usage/cost alongside retained conversation. New writes SHALL record the turn opening cause from Gateway message-history continuity: continuing history plus an appended user message and an inheritable prior decision means user message; an existing checkpoint with shorter history or a changed prefix means history rewrite; a missing checkpoint (including first entry, expiry, eviction, contention or disabled tracking) means no comparable history; other decision boundaries, such as a Plan change on continuing history, mean other. A system-instruction change alone does not rewrite message history, even when it invalidates the hold preference. The optional AgentTurnFinished field SHALL retain its cause across tool continuations and turn completion.
+
+An explicit recorded cause is authoritative: user message displays New message; history rewrite displays Context rebuilt, explaining that the visible history no longer extends the prior checkpoint, commonly after compaction but also after rewind or editing, and that a fresh judgment occurred. No comparable history displays New message only at the session's first turn; other cases remain unknown. Without the field, the legacy read rule displays New message for the first session turn, or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. Invalidation alone SHALL NOT imply history rewrite. A retained tail with a known later ordinal is not the session's first turn. Unknown boundaries omit the heading badge and disclose the gap in details. Old bytes and digests retain their meaning; no historical facts are rewritten to manufacture provenance.
+
+The view SHALL disclose that Gateway continuity is not proof of human authorship: client-generated background messages can satisfy the new-message rule. Aliases, tools and timing SHALL NOT be used to claim native provenance. An explicitly evidenced subdialog distinction may separate histories; ambiguous or known shared-history scope must not claim a native cause. The legend SHALL state that the model stays fixed within a turn to preserve the cache and new messages or rebuilt context trigger a fresh judgment.
 
 The opening request provides stable display identity before the turn-ending fact
 arrives. Late assessments and valuations update that turn. Incremental cursors MUST
@@ -455,7 +459,7 @@ Timeline cache locks cover only cache take/return, never database reads, project
 
 #### Scenario: Fresh decision on continuing history
 
-- **WHEN** a fresh opening decision records ContextHoldApplied or ContextHoldInvalidated
+- **WHEN** an old turn without an opening-cause field has a fresh opening decision recording ContextHoldApplied or ContextHoldInvalidated
 - **THEN** the turn shows a new-message boundary; a group change is never labelled as compaction.
 
 #### Scenario: Unknown and retained-tail boundaries
@@ -467,6 +471,21 @@ Timeline cache locks cover only cache take/return, never database reads, project
 
 - **WHEN** the client appends a background message carrying fresh-decision and continuing-history evidence
 - **THEN** the new-message boundary applies with an explicit disclosure that the gateway does not establish human authorship.
+
+#### Scenario: History rewrite and missing checkpoint differ
+
+- **WHEN** visible history is shortened or its existing prefix changes, or separately its checkpoint has expired or lost a compare-and-swap race
+- **THEN** only the proven history rewrite displays Context rebuilt; missing comparable history remains unknown after the first session turn.
+
+#### Scenario: System instructions change without rewriting messages
+
+- **WHEN** the system instructions change while messages still extend the prior checkpoint
+- **THEN** message history remains continuing even if the hold preference is invalidated; an appended user message can start a new-message turn.
+
+#### Scenario: Recorded cause overrides legacy inference
+
+- **WHEN** a turn contains an explicit opening cause and an old-style ledger hint suggests another cause
+- **THEN** the explicit cause wins, remains stable through tool continuation and reopening, and absent legacy fields retain their previous canonical bytes.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235190304

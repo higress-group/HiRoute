@@ -1856,6 +1856,18 @@
         "crates/local-storage/src/backup/source_snapshot/seal/tests.rs",
         "crates/daemon/src/control/runtime/history_cutover_tests.rs"
       ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "AgentTurnFinished.opening_cause absent; pre-opening digest 7ff01a649de96b1f62e069b872b23609d64a3734b5ad42c337324d3eb7cfc9f2",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained pre-opening facts without adding a field or changing canonical bytes; those facts use conservative read-time timeline inference. The old digest cannot authenticate the new opening field and is never admitted to live ingestion.",
+      "removal_condition": "Remove only when all supported activity stores and backups have no pre-opening facts or an authenticated conversion preserving the evidence replaces this reader.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
+      ]
     }
   ]
 }

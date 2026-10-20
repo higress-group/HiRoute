@@ -24,6 +24,7 @@ pub struct RoutingTimelinePageV1 {
 #[serde(rename_all = "snake_case")]
 pub enum RoutingTurnBoundaryV1 {
     NewUserMessage,
+    ContextRebuilt,
     Unknown,
 }
 

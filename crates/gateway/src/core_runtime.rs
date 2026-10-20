@@ -694,9 +694,10 @@ impl ProductionGatewayRuntime {
                     }
                 };
                 let decision_inputs = crate::agent_turn_history::TurnDecisionInputs {
-                    message_history_continues: hold_ticket
-                        .as_ref()
-                        .is_some_and(|ticket| ticket.message_history_continues),
+                    history_continuity: hold_ticket.as_ref().map_or(
+                        crate::context_hold::HistoryContinuity::NoCheckpoint,
+                        |ticket| ticket.history_continuity,
+                    ),
                     // Every new user turn decides again. Candidate continuity stays in Planner.
                     reselect_on_user_message: true,
                 };
@@ -1225,7 +1226,9 @@ impl ProductionGatewayRuntime {
             });
             let cleanup_eligible = hold_ticket
                 .as_ref()
-                .filter(|ticket| !ticket.message_history_continues)
+                .filter(|ticket| {
+                    ticket.history_continuity != crate::context_hold::HistoryContinuity::Continuing
+                })
                 .and(planner_input.previous_success_candidate_id.as_ref())
                 .and_then(|previous| {
                     let first = frozen_candidates.first()?;

@@ -162,7 +162,7 @@ fn accepted_text_survives_client_rewrite_and_history_rebuild_without_terminal_du
                 &input,
                 &replay,
                 TurnDecisionInputs {
-                    message_history_continues: false,
+                    history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
                 now,
@@ -223,7 +223,7 @@ fn interrupted_output_is_preserved_and_late_events_cannot_touch_the_next_request
                 &request(vec![text(MessageRole::User, "second")]),
                 &replay,
                 TurnDecisionInputs {
-                    message_history_continues: false,
+                    history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
                 now,
@@ -272,7 +272,7 @@ fn dropped_request_marks_its_accepted_prefix_partial_and_rejects_queued_events()
                 &request(vec![text(MessageRole::User, "next")]),
                 &replay,
                 TurnDecisionInputs {
-                    message_history_continues: false,
+                    history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
                 now,
@@ -332,7 +332,7 @@ fn retry_of_finalized_request_retains_original_user_and_both_accepted_answers() 
                 &request(vec![text(MessageRole::User, "new question")]),
                 &replay,
                 TurnDecisionInputs {
-                    message_history_continues: false,
+                    history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
                 now,

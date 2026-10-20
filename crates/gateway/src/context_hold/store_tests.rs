@@ -85,7 +85,7 @@ fn append_and_repeat_keep_while_rebuild_clears() {
     let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
     let now = Instant::now();
     let first = begin(&store, 1, 9, &[1], now).unwrap();
-    assert!(!first.message_history_continues);
+    assert_eq!(first.history_continuity, HistoryContinuity::NoCheckpoint);
     assert!(first.previous_success.is_none());
     assert_eq!(
         store.complete(&first, preference("a"), now),
@@ -93,24 +93,27 @@ fn append_and_repeat_keep_while_rebuild_clears() {
     );
 
     let appended = begin(&store, 1, 9, &[1, 2], now + Duration::from_secs(1)).unwrap();
-    assert!(appended.message_history_continues);
+    assert_eq!(appended.history_continuity, HistoryContinuity::Continuing);
     assert_eq!(appended.hint.as_ref().unwrap().candidate_id, "a");
     assert_eq!(
         appended.previous_success.as_ref().unwrap().candidate_id,
         "a"
     );
     let repeated = begin(&store, 1, 9, &[1, 2], now + Duration::from_secs(2)).unwrap();
-    assert!(repeated.message_history_continues);
+    assert_eq!(repeated.history_continuity, HistoryContinuity::Continuing);
     assert_eq!(repeated.hint.as_ref().unwrap().candidate_id, "a");
     let changed_instructions = begin(&store, 1, 10, &[1, 2], now + Duration::from_secs(3)).unwrap();
-    assert!(changed_instructions.message_history_continues);
+    assert_eq!(
+        changed_instructions.history_continuity,
+        HistoryContinuity::Continuing
+    );
     assert!(changed_instructions.hint.is_none());
     assert_eq!(
         changed_instructions.previous_success.unwrap().candidate_id,
         "a"
     );
     let rebuilt = begin(&store, 1, 10, &[1, 3], now + Duration::from_secs(4)).unwrap();
-    assert!(!rebuilt.message_history_continues);
+    assert_eq!(rebuilt.history_continuity, HistoryContinuity::Rewritten);
     assert!(rebuilt.hint.is_none());
     assert_eq!(rebuilt.previous_success.unwrap().candidate_id, "a");
 }
@@ -127,7 +130,7 @@ fn rebuilt_history_exposes_only_prior_complete_delivery_for_fallback() {
         HoldCompleteOutcome::Applied
     );
     let compacted = begin(&store, 1, 9, &[3], now + Duration::from_secs(2)).unwrap();
-    assert!(!compacted.message_history_continues);
+    assert_eq!(compacted.history_continuity, HistoryContinuity::Rewritten);
     assert!(compacted.hint.is_none());
     assert_eq!(compacted.previous_success.unwrap().candidate_id, "luna");
     assert_eq!(
@@ -290,6 +293,10 @@ fn idle_expiry_and_capacity_never_reinsert_old_completion() {
     let after_expiry = now + Duration::from_secs(60);
     let replacement = begin(&store, 1, 9, &[1], after_expiry).unwrap();
     assert_eq!(
+        replacement.history_continuity,
+        HistoryContinuity::NoCheckpoint
+    );
+    assert_eq!(
         store.complete(&expired, preference("old"), after_expiry),
         HoldCompleteOutcome::Stale
     );
@@ -312,6 +319,12 @@ fn idle_expiry_and_capacity_never_reinsert_old_completion() {
     assert_eq!(
         evicting.complete(&evicted, preference("evicted"), now),
         HoldCompleteOutcome::Stale
+    );
+    assert_eq!(
+        begin(&evicting, 10, 9, &[9], now)
+            .unwrap()
+            .history_continuity,
+        HistoryContinuity::NoCheckpoint
     );
     assert!(evicting.peak_accounted_bytes() <= eviction_budget);
 }
@@ -366,5 +379,63 @@ fn ordered_indexes_charge_each_entry_before_insertion() {
     assert_eq!(
         retained_bytes(4, 0).saturating_sub(retained_bytes(3, 0)),
         TREE_INDEX_ENTRY_BYTES
+    );
+}
+
+#[test]
+fn history_rewrites_and_unavailable_checkpoints_have_distinct_causes() {
+    let now = Instant::now();
+    for replacement in [&[9][..], &[1, 2][..], &[1, 9, 3][..]] {
+        let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
+        assert_eq!(
+            begin(&store, 1, 1, &[1, 2, 3], now)
+                .unwrap()
+                .history_continuity,
+            HistoryContinuity::NoCheckpoint
+        );
+        // Compaction-shaped replacement, rewind, and equal-length edit are all rewrites.
+        assert_eq!(
+            begin(&store, 1, 1, replacement, now)
+                .unwrap()
+                .history_continuity,
+            HistoryContinuity::Rewritten
+        );
+    }
+    let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, Duration::from_secs(1));
+    begin(&store, 1, 1, &[1, 2, 3], now).unwrap();
+    assert_eq!(
+        begin(&store, 1, 1, &[9], now + Duration::from_secs(1))
+            .unwrap()
+            .history_continuity,
+        HistoryContinuity::NoCheckpoint
+    );
+    let mut disabled = ContextHoldStore::default();
+    disabled.key = None;
+    assert!(begin(&disabled, 1, 1, &[9], now).is_none());
+}
+
+#[test]
+fn checkpoint_cas_contention_does_not_claim_a_rewrite() {
+    let store = ContextHoldStore::default();
+    let now = Instant::now();
+    begin(&store, 1, 1, &[1], now).unwrap();
+    let request = history_request(1, &[9]);
+    let history = super::super::visible_history(&request, &HISTORY_KEY).unwrap();
+    let contested = store.begin_with_measure(key(1), &history, now, |prefix| {
+        // Deterministically interleave another entry while the original hashes outside the lock.
+        assert_eq!(
+            begin(&store, 1, 1, &[1, 2], now)
+                .unwrap()
+                .history_continuity,
+            HistoryContinuity::Continuing
+        );
+        history.measure(prefix)
+    });
+    assert!(contested.is_none());
+    assert_eq!(
+        begin(&store, 1, 1, &[1, 2, 3], now)
+            .unwrap()
+            .history_continuity,
+        HistoryContinuity::Continuing
     );
 }
