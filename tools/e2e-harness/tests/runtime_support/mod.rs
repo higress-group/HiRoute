@@ -489,6 +489,21 @@ pub struct RuntimeFixture {
     _serial: std::sync::MutexGuard<'static, ()>,
     _directory: tempfile::TempDir,
 }
+
+impl Drop for RuntimeFixture {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            // Keep the publication, private credentials and native daemon logs
+            // available after an unexpected listener assertion fails.
+            self._directory.disable_cleanup(true);
+            eprintln!(
+                "retained Gateway fixture evidence: {}",
+                self._directory.path().display()
+            );
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct RuntimeLaunchOptions {
     replay_threshold: usize,
@@ -783,6 +798,25 @@ impl RuntimeFixture {
             RuntimeLaunchOptions {
                 classified_route: true,
                 rest_classifier: true,
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
+    pub fn launch_rest_classified_with_diagnostics(
+        providers: &[&NativeProvider],
+        max_attempts: u32,
+    ) -> Self {
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                classified_route: true,
+                rest_classifier: true,
+                diagnostic_level: Some("debug"),
                 ..RuntimeLaunchOptions::default()
             },
         )
