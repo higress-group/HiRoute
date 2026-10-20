@@ -10,6 +10,7 @@ pub(crate) struct NativeCheckpoint {
     pub(crate) turn: Option<[u8; 32]>,
     pub(crate) checkpoint: Option<[u8; 32]>,
     pub(crate) compacted: bool,
+    pub(crate) requires_checkpoint: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -148,6 +149,14 @@ pub(super) fn facts(
         {
             return RoutingFacts::detached();
         }
+        if matches!(&purpose, Field::Value(value) if value == "subagent")
+            && !matches!(
+                header_value(headers, "x-claude-code-agent-id"),
+                Field::Value(_)
+            )
+        {
+            return RoutingFacts::detached();
+        }
         let turn = match header_value(headers, "x-claude-code-prompt-id") {
             Field::Value(value) => Some(digest(&value)),
             Field::Absent => None,
@@ -163,6 +172,7 @@ pub(super) fn facts(
                 turn,
                 compacted,
                 checkpoint: None,
+                requires_checkpoint: false,
             },
             ..RoutingFacts::default()
         };
@@ -179,7 +189,9 @@ pub(super) fn facts(
         Field::Absent if agent == "hermes" && hermes => {
             // Older managed Hermes hooks only enter the selected conversation
             // call site. Its independent auxiliary clients lack this identity.
-            return hermes_root(headers, native_identity, RoutingFacts::default());
+            let mut result = RoutingFacts::default();
+            result.native.requires_checkpoint = true;
+            return hermes_root(headers, native_identity, result);
         }
         Field::Absent | Field::Invalid => None,
     };
@@ -225,6 +237,7 @@ pub(super) fn facts(
             turn: context.turn_id.as_deref().map(digest),
             checkpoint: context.checkpoint.as_deref().map(digest),
             compacted: false,
+            requires_checkpoint: true,
         },
         ..RoutingFacts::default()
     };

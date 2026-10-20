@@ -569,3 +569,46 @@ fn real_listener_native_history_keeps_accepted_execution_across_plan_revisions()
     assert!(history.contains("PREVIOUS_ACCEPTED_TASK"), "{history}");
     assert_eq!(classifier.calls(), 2);
 }
+
+#[test]
+fn real_listener_unexplained_native_rewrites_cannot_replace_main_history() {
+    for agent in ["pi", "dsh", "opencode", "hermes"] {
+        let simple = NativeProvider::start(vec![reply(RESPONSES_TOOL_CALL), reply(RESPONSES_OK)]);
+        let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+        let classifier =
+            NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_COMPLEX)]);
+        let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
+        let main = headers(agent, "parent", "main", "turn-1", "checkpoint-1");
+        let user = json!({"role":"user","content":"REAL_MAIN_TASK"});
+        let response = send(fixture.address, &main, json!([user]));
+        accepted(&response);
+        // A stale/copied main marker is insufficient proof of native compaction.
+        accepted(&send(
+            fixture.address,
+            &main,
+            json!("UNEXPLAINED_BACKGROUND_REWRITE"),
+        ));
+        let detached = classifier_body(&classifier, 1);
+        assert_eq!(
+            detached["visible_conversation"],
+            json!([]),
+            "{agent}: {detached}"
+        );
+        assert!(detached["assessment_target"].is_null());
+        let response: Value = serde_json::from_slice(&response.body).unwrap();
+        let call = &response["output"][0]["call_id"];
+        accepted(&send(
+            fixture.address,
+            &main,
+            json!([user,
+                {"type":"function_call","call_id":call,"namespace":"tools","name":"lookup","arguments":"{}"},
+                {"type":"function_call_output","call_id":call,"output":"found"}
+            ]),
+        ));
+        assert_eq!(
+            (simple.calls(), complex.calls(), classifier.calls()),
+            (2, 1, 2),
+            "{agent}"
+        );
+    }
+}

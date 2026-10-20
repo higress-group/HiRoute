@@ -182,6 +182,11 @@ pub(crate) struct PreparedHold {
 }
 
 impl PreparedHold {
+    pub(crate) fn history_is_proven(&self) -> bool {
+        self.snapshot.is_none()
+            || !self.native.requires_checkpoint
+            || self.history_continuity().semantic_continuity()
+    }
     pub(crate) fn set_native(&mut self, native: super::routing::NativeCheckpoint) {
         self.native = native;
     }
@@ -214,7 +219,12 @@ impl PreparedHold {
                 }
             }
             Some(snapshot)
-                if self.native.turn.is_some() && self.native.turn == snapshot.native.turn =>
+                if self.native.turn.is_some()
+                    && self.native.turn == snapshot.native.turn
+                    && (!self.native.requires_checkpoint
+                        || self.native.compacted
+                        || self.native.checkpoint.is_some()
+                            && self.native.checkpoint != snapshot.native.checkpoint) =>
             {
                 HistoryContinuity::NativeContinuation
             }
