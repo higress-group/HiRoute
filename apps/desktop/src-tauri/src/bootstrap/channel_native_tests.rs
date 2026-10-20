@@ -173,4 +173,14 @@ fn fresh_native_session_recovers_without_reusing_late_ack_or_saved_state_changes
         .unwrap();
     session.authority.release_model_input(&candidate).unwrap();
     assert!(!resident.has_authority());
+    assert!(
+        runtime
+            .block_on(resident.client.query::<_, ClientServiceStatusV1>(
+                "GetClientServiceStatus",
+                "old-session-callback",
+                &serde_json::json!({}),
+            ))
+            .is_err(),
+        "captured old client must reject the replacement process identity"
+    );
 }

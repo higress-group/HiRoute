@@ -48,8 +48,15 @@ object, input, digest/revisions, and window lifetime, and expires after 60 secon
 WebView only returns a one-time accept or reject for a current confirmation ID; it cannot
 supply context, skip confirmation, or acquire a capability. Acceptance registers a one-time
 Desktop capability through the inherited channel, and Apply is sent only after the matching
-acknowledgement succeeds. An uncertain registration result closes that write relationship;
-restart the native application to establish a new one.
+acknowledgement succeeds. An uncertain exchange invalidates that channel, including
+protected history reads, while the daemon may still respond to ordinary queries. Desktop
+shows this distinction and offers **Restore local connection**. Independent inherited
+maintenance pauses new work and confirms existing requests/tasks have finished before
+orderly replacement under the same host lock. Active work is left running and admission
+is restored; retry recovery after it finishes. Replacement creates a fresh native product
+session, expires old confirmations and preserves saved data. Uncertain channels and old
+callbacks never acquire the new session's authority. An unavailable maintenance channel
+or externally managed daemon gives explicit guidance instead of being forcefully replaced.
 
 Desktop keeps only the current interaction's submission key, digest, and Operation reference
 in memory so it can query or explicitly retry after a lost response. Reopening reads actual

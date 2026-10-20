@@ -48,7 +48,7 @@ pub(super) fn process(
             .as_ref()
             .err()
             .map(|_| ProtectedExchangeError::Unavailable),
-        authority_lost: result.is_err(),
+        authority_lost: false,
     }));
     result
 }

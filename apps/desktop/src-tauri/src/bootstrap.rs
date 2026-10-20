@@ -1,4 +1,4 @@
-//! Native-owned child and three private inherited channels. Never exposed over WebView IPC.
+//! Native-owned child with private inherited shutdown, grant and maintenance channels. Never exposed over WebView IPC.
 use command_fds::{CommandFdExt, FdMapping};
 use fs2::FileExt;
 use hiroute_application_api::{CanonicalDigest, ComputeCandidateRefV2, RevisionSetV1};

@@ -440,7 +440,9 @@ impl ProductSession {
         let trusted_authority = !matches!(
             native_connection,
             Some(
-                NativeConnectionStatus::RecoveryRequired | NativeConnectionStatus::RestartRequired
+                NativeConnectionStatus::RecoveryRequired
+                    | NativeConnectionStatus::RestartRequired
+                    | NativeConnectionStatus::NotOwned
             )
         );
         Ok(DesktopSnapshot {

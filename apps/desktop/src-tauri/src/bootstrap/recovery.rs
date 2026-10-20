@@ -48,6 +48,11 @@ impl MaintenanceChannel {
             {
                 return Err("REGISTRATION_ACK_MISMATCH".into());
             }
+            if matches!(action, UpgradeAction::Prepare) && !status.paused
+                || matches!(action, UpgradeAction::Cancel) && status.paused
+            {
+                return Err("UPGRADE_ACK_INVALID".into());
+            }
             Ok(status)
         })();
         if result.is_err() {
@@ -146,6 +151,78 @@ impl Resident {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unowned_daemon_is_never_taken_over_by_connection_recovery() {
+        let root = tempfile::tempdir().unwrap();
+        let mut resident = super::super::tests::recovery_resident(root.path(), false);
+        drop(resident.owned.take());
+        assert_eq!(
+            resident.native_connection(),
+            hiroute_product_session::NativeConnectionStatus::NotOwned
+        );
+        assert_eq!(
+            resident
+                .recover_authority(
+                    root.path(),
+                    Path::new("must-not-launch"),
+                    &NativeDiagnostics::disabled()
+                )
+                .err()
+                .as_deref(),
+            Some("AUTHORITY_RECOVERY_NOT_OWNED")
+        );
+        assert!(acquire_host_lock(root.path()).is_err());
+    }
+
+    #[test]
+    fn active_work_is_never_stopped_and_ordinary_admission_is_resumed() {
+        let root = tempfile::tempdir().unwrap();
+        let mut resident = super::super::tests::recovery_resident(root.path(), false);
+        let (mut requests, request_writer) = pipe().unwrap();
+        let (reply_reader, mut replies) = pipe().unwrap();
+        nonblocking(&requests).unwrap();
+        let owned = resident.owned.as_mut().unwrap();
+        owned.authority_healthy = false;
+        owned.maintenance = Some(MaintenanceChannel::new(request_writer, reply_reader).unwrap());
+        let pid = owned.child.id();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                for (expected, paused) in [("prepare", true), ("cancel", false)] {
+                    let request =
+                        read_frame(&mut requests, 4096, Duration::from_secs(2), None).unwrap();
+                    let request: LauncherUpgradeRequest = serde_json::from_slice(&request).unwrap();
+                    assert_eq!(serde_json::to_value(request.action).unwrap(), expected);
+                    let mut reply = serde_json::to_vec(&LauncherUpgradeStatus {
+                        schema: "hiroute.launcher-upgrade-status/v1".into(),
+                        registration_id: request.registration_id,
+                        paused,
+                        active_calls: 1,
+                        active_tasks: 1,
+                    })
+                    .unwrap();
+                    reply.push(b'\n');
+                    write_frame(&mut replies, &reply).unwrap();
+                }
+            });
+            assert_eq!(
+                resident
+                    .recover_authority(
+                        root.path(),
+                        Path::new("must-not-launch"),
+                        &NativeDiagnostics::disabled()
+                    )
+                    .err()
+                    .as_deref(),
+                Some("AUTHORITY_RECOVERY_WORK_ACTIVE")
+            );
+        });
+        let owned = resident.owned.as_mut().unwrap();
+        assert_eq!(owned.child.id(), pid);
+        assert!(owned.shutdown.is_some());
+        assert!(owned.child.try_wait().unwrap().is_none());
+        assert!(owned.maintenance.as_ref().unwrap().healthy);
+    }
     #[test]
     fn maintenance_requires_its_own_exact_ack_and_cannot_reuse_a_failed_channel() {
         let (mut requests, request_writer) = pipe().unwrap();
@@ -156,7 +233,7 @@ mod tests {
             scope.spawn(move || {
                 let request = read_frame(&mut requests, 4096, Duration::from_secs(2), None).unwrap();
                 let request: LauncherUpgradeRequest = serde_json::from_slice(&request).unwrap();
-                let reply = format!("{{\"schema\":\"hiroute.launcher-upgrade-status/v1\",\"registration_id\":\"conflict\",\"paused\":true,\"active_calls\":0,\"active_tasks\":0}}\n");
+                let reply = "{\"schema\":\"hiroute.launcher-upgrade-status/v1\",\"registration_id\":\"conflict\",\"paused\":true,\"active_calls\":0,\"active_tasks\":0}\n";
                 write_frame(&mut replies, reply.as_bytes()).unwrap();
                 assert!(!request.registration_id.is_empty());
                 assert_eq!(read_frame(&mut requests, 4096, Duration::from_millis(100), None).unwrap_err(), "PROTECTED_CHANNEL_TIMEOUT");

@@ -9,6 +9,6 @@ export function nativeConnectionLost(error: unknown): boolean {
 export function nativeConnectionReadText(error: unknown, language: 'zh' | 'en'): string | undefined {
   if (!nativeConnectionLost(error)) return;
   return language === 'zh'
-    ? '本机可信连接已失效，暂时无法读取记录。请使用页面上方的“恢复本机连接”。'
-    : 'The trusted local connection was lost, so records cannot be read. Use Restore local connection above.';
+    ? '本机可信连接已失效，暂时无法读取记录。请查看页面上方的连接恢复提示。'
+    : 'The trusted local connection was lost, so records cannot be read. Follow the connection recovery guidance above.';
 }
