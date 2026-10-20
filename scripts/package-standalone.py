@@ -86,7 +86,9 @@ def omarchy_payload(directory):
               for p in directory.rglob("*") if not p.is_dir() or p.is_symlink()}
     if actual != OMARCHY_FILES:
         raise ValueError("Omarchy asset inventory is incomplete")
-    result = {name: checked_source(directory / name.removeprefix("integrations/omarchy/")) for name in OMARCHY_FILES}
+    # Linux packaging still runs on Python 3.8, which lacks str.removeprefix.
+    prefix = "integrations/omarchy/"
+    result = {name: checked_source(directory / name[len(prefix):]) for name in OMARCHY_FILES}
     if any(path.stat().st_size > 512 * 1024 for path in result.values()):
         raise ValueError("Omarchy asset exceeds its size bound")
     return result
