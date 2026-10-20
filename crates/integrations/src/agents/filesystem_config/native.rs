@@ -1,7 +1,7 @@
 //! Native field rendering and ownership, shared by persistent and isolated file effects.
 use super::*;
 
-const CLAUDE_MANAGED_PATHS: [&str; 10] = [
+const CLAUDE_MANAGED_PATHS: [&str; 11] = [
     "apiKeyHelper",
     "hiroute.auth_environment",
     "env.ANTHROPIC_BASE_URL",
@@ -10,6 +10,7 @@ const CLAUDE_MANAGED_PATHS: [&str; 10] = [
     "env.ANTHROPIC_DEFAULT_SONNET_MODEL",
     "env.ANTHROPIC_DEFAULT_HAIKU_MODEL",
     "env.ANTHROPIC_SMALL_FAST_MODEL",
+    "env.CLAUDE_CODE_GATEWAY_HINT_HEADERS",
     "env.CLAUDE_CODE_AUTO_COMPACT_WINDOW",
     "env.CLAUDE_CODE_MAX_CONTEXT_TOKENS",
 ];

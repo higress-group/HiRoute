@@ -280,7 +280,8 @@ fn hermes_root(
     let Some(current) = parts.first() else {
         return RoutingFacts::detached();
     };
-    if let Some(proof) = crate::observation::native_continuation::read(headers, current)
+    if let Some(proof) =
+        crate::server::core_runtime::observation::native_continuation::read(headers, current)
         && proof.complete
         && proof.invalid_edges.is_none()
         && proof

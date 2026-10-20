@@ -585,7 +585,10 @@ impl ProductionGatewayRuntime {
                 },
                 Instant::now(),
             );
-            if path.starts_with(hiroute_domain::QODER_MODEL_BASE_PATH) {
+            if request
+                .path_and_query
+                .starts_with(hiroute_domain::QODER_MODEL_BASE_PATH)
+            {
                 // Qoder has no complete per-call subdialog contract yet.
                 prepared_hold = None;
             }
