@@ -80,13 +80,19 @@ pub(super) fn render(
         context_window_tokens: input.context_window_tokens.ok_or_else(unavailable)?,
         max_output_tokens: input.max_output_tokens.ok_or_else(unavailable)?,
     };
-    let declaration = hiroute_integrations::opencode_provider(
+    let mut declaration = hiroute_integrations::opencode_provider(
         &format!("http://{}/v1", input.gateway),
         &model,
         "{env:HIROUTE_RUN_TOKEN}",
         None,
     )
     .map_err(|_| unavailable())?;
+    declaration["options"]["headers"] =
+        json!({"X-HiRoute-Agent":"opencode","X-HiRoute-Request-Purpose":"main"});
+    let auxiliary_provider = format!("{provider}-auxiliary");
+    let mut auxiliary = declaration.clone();
+    auxiliary["options"]["headers"]["X-HiRoute-Request-Purpose"] = json!("auxiliary");
+    let auxiliary_selector = format!("{auxiliary_provider}/{}", input.alias);
     let selector = format!("{provider}/{}", input.alias);
     let permission = json!({"*":"deny","read":"allow","edit":"allow","bash":"allow","glob":"allow","grep":"allow","skill":"allow","external_directory":"allow","doom_loop":"allow"});
     let mut agents = serde_json::Map::new();
@@ -101,7 +107,7 @@ pub(super) fn render(
     for key in ["title", "summary", "compaction"] {
         agents.insert(
             key.into(),
-            json!({"model":selector,"disable":false,"permission":{"*":"deny"}}),
+            json!({"model":auxiliary_selector,"disable":false,"permission":{"*":"deny"}}),
         );
     }
     agents.insert(
@@ -114,8 +120,8 @@ pub(super) fn render(
         .flat_map(|v| v.keys())
         .map(|k| (k.clone(), json!({"enabled":false})))
         .collect::<serde_json::Map<_, _>>();
-    let overlay = json!({"$schema":"https://opencode.ai/config.json","model":selector,"small_model":selector,"default_agent":MODE,
-        "enabled_providers":[provider],"provider":{(provider):declaration},"agent":agents,"permission":permission,"mcp":mcp,
+    let overlay = json!({"$schema":"https://opencode.ai/config.json","model":selector,"small_model":auxiliary_selector,"default_agent":MODE,
+        "enabled_providers":[provider,auxiliary_provider],"provider":{(provider):declaration,(auxiliary_provider):auxiliary},"agent":agents,"permission":permission,"mcp":mcp,
         "share":"disabled","autoupdate":false,"lsp":false,"formatter":false,"compaction":{"auto":true}});
     let mut listener_entropy = [0u8; 32];
     getrandom::fill(&mut listener_entropy).map_err(|_| unavailable())?;

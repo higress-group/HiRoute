@@ -338,12 +338,13 @@ impl AgentTurnHistoryStore {
             .get(&key)
             .ok_or(AgentTurnHistoryError::Integrity)?;
         let appended_user = decision_inputs.history_continuity
-            == crate::context_hold::HistoryContinuity::Continuing
-            && latest.user_index > entry.checkpoint.active_user_index;
+            == crate::context_hold::HistoryContinuity::NativeNewTurn
+            || decision_inputs.history_continuity
+                == crate::context_hold::HistoryContinuity::Continuing
+                && latest.user_index > entry.checkpoint.active_user_index;
         let inheritable_decision = entry.active.decision.is_some() && entry.active.plan == plan;
         let needs_decision = !inheritable_decision
-            || decision_inputs.history_continuity
-                != crate::context_hold::HistoryContinuity::Continuing
+            || !decision_inputs.history_continuity.semantic_continuity()
             || (appended_user && decision_inputs.reselect_on_user_message);
         let starts_new_turn = appended_user || needs_decision;
         let opening_cause = match decision_inputs.history_continuity {
@@ -356,15 +357,19 @@ impl AgentTurnHistoryStore {
             crate::context_hold::HistoryContinuity::NoCheckpoint => {
                 hiroute_domain::AgentTurnOpeningCauseV1::NoComparableHistory
             }
-            crate::context_hold::HistoryContinuity::Continuing if appended_user => {
+            crate::context_hold::HistoryContinuity::NativeNewTurn
+            | crate::context_hold::HistoryContinuity::Continuing
+                if appended_user =>
+            {
                 hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
             }
-            crate::context_hold::HistoryContinuity::Continuing => {
+            crate::context_hold::HistoryContinuity::Continuing
+            | crate::context_hold::HistoryContinuity::NativeContinuation
+            | crate::context_hold::HistoryContinuity::NativeNewTurn => {
                 hiroute_domain::AgentTurnOpeningCauseV1::Other
             }
         };
-        let reset_branch_context = decision_inputs.history_continuity
-            != crate::context_hold::HistoryContinuity::Continuing
+        let reset_branch_context = !decision_inputs.history_continuity.semantic_continuity()
             && entry
                 .active
                 .decision
@@ -600,8 +605,7 @@ impl AgentTurnHistoryStore {
                 .get(&key)
                 .ok_or(AgentTurnHistoryError::Resource)?;
             let mut history = snapshot(entry, pin);
-            let new_branch_task = decision_inputs.history_continuity
-                != crate::context_hold::HistoryContinuity::Continuing
+            let new_branch_task = !decision_inputs.history_continuity.semantic_continuity()
                 && history
                     .previous_decision
                     .as_ref()

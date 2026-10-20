@@ -43,14 +43,18 @@ impl ProductionGatewayRuntime {
         replay: &ReplayStore,
         prepared_hold: Option<PreparedHold>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
-        let Ok(key) = self.agent_turn_history.scope_key(
-            &observation.metadata().workspace_id,
-            &observation.metadata().conversation_id,
-        ) else {
+        let Some(prepared) = prepared_hold.as_ref() else {
+            return Ok(DecisionHistory::detached());
+        };
+        let Ok(key) = self
+            .agent_turn_history
+            .scope_key("authorized-context", &prepared.scope_id())
+        else {
             return Ok(DecisionHistory::detached());
         };
         let history_continuity = prepared_hold.as_ref().map_or(
-            HistoryContinuity::NoCheckpoint, PreparedHold::history_continuity,
+            HistoryContinuity::NoCheckpoint,
+            PreparedHold::history_continuity,
         );
         let begin = self.agent_turn_history.begin_with_context(
             key,

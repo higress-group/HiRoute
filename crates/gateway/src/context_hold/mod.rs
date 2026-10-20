@@ -1,5 +1,6 @@
 mod history;
 mod identity;
+mod routing;
 mod store;
 
 use std::time::Instant;
@@ -58,7 +59,9 @@ pub(crate) fn prepare_context(
     let ticket = store.digest_key().and_then(|hold_key| {
         let history = visible_history_with_replay(request, &hold_key, Some(replay))?;
         let key = ContextHoldKey::from_request(authorized, ingress, &identity, &hold_key)?;
-        store.prepare(key, &history, now)
+        let mut prepared = store.prepare(key, &history, now)?;
+        prepared.set_native(identity.native_checkpoint());
+        Some(prepared)
     });
     (identity, ticket)
 }

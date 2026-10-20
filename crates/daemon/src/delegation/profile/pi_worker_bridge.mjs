@@ -284,7 +284,7 @@ try {
   });
   runtime.registerProvider(route.provider, {
     api: route.api,
-    headers: route.api === "anthropic-messages" ? { Authorization: `Bearer ${token}` } : {},
+    headers: { "x-hiroute-agent": "pi", ...(route.api === "anthropic-messages" ? { Authorization: `Bearer ${token}` } : {}) },
     baseUrl: route.endpoint,
     models: [route.model],
   });
@@ -335,11 +335,14 @@ try {
     },
     { projectTrusted: true },
   );
+  const routingExtensions = await import(new URL("./hiroute-routing.mjs", import.meta.url).href)
+    .then(({ default: adapter }) => [adapter]).catch(() => []);
   const resourceLoader = new DefaultResourceLoader({
     cwd: process.cwd(),
     agentDir,
     settingsManager,
     noExtensions: true,
+    extensionFactories: routingExtensions,
   });
   await resourceLoader.reload();
 

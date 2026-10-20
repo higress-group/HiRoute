@@ -91,22 +91,22 @@ pub(in crate::agents) fn rebase_claude_change_bytes(
     // Check the accepted before-values before constructing the release transition.
     render_claude_change_bytes(current, change)?;
     let base = claude_document_from_bytes(base)?;
-    let desired_change: BTreeMap<_, _> =
-        change
-            .fields
-            .iter()
-            .map(|field| {
-                let after = if field.after.is_none()
-                    && field.path.strip_prefix("env.").is_some_and(|key| {
-                        hiroute_domain::CLAUDE_CONTEXT_ENVIRONMENT.contains(&key)
-                    }) {
-                    base.fields.get(&field.path).cloned()
-                } else {
-                    field.after.clone()
-                };
-                (field.path.clone(), after)
-            })
-            .collect();
+    let desired_change: BTreeMap<_, _> = change
+        .fields
+        .iter()
+        .map(|field| {
+            let after = if field.after.is_none()
+                && field.path.strip_prefix("env.").is_some_and(|key| {
+                    (key == "CLAUDE_CODE_GATEWAY_HINT_HEADERS"
+                        || hiroute_domain::CLAUDE_CONTEXT_ENVIRONMENT.contains(&key))
+                }) {
+                base.fields.get(&field.path).cloned()
+            } else {
+                field.after.clone()
+            };
+            (field.path.clone(), after)
+        })
+        .collect();
     let adjusted = AgentConfigChangeV1::preview(
         &claude_document_from_bytes(current)?,
         desired_change.clone(),

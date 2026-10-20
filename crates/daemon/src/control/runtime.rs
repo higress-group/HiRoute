@@ -531,6 +531,30 @@ impl ProductionControlRuntime {
                 scanner.opencode_user_skill_target(),
             ),
             (
+                AgentConnectionEffectRoleV1::NativeRoutingAdapter
+                    .target_for(&opencode_subject)
+                    .map_err(|e| e.to_string())?,
+                scanner
+                    .native_routing_adapter_target(hiroute_domain::AgentKindV1::OpenCode)
+                    .ok_or("OpenCode adapter target")?,
+            ),
+            (
+                AgentConnectionEffectRoleV1::NativeRoutingAdapter
+                    .target_for(&dsh_subject)
+                    .map_err(|e| e.to_string())?,
+                scanner
+                    .native_routing_adapter_target(hiroute_domain::AgentKindV1::DeepseekHarness)
+                    .ok_or("DSH adapter target")?,
+            ),
+            (
+                AgentConnectionEffectRoleV1::NativeRoutingAdapter
+                    .target_for(&pi_subject)
+                    .map_err(|e| e.to_string())?,
+                scanner
+                    .native_routing_adapter_target(hiroute_domain::AgentKindV1::Pi)
+                    .ok_or("Pi adapter target")?,
+            ),
+            (
                 AgentConnectionEffectRoleV1::ManagedConfiguration
                     .target_for(&dsh_subject)
                     .map_err(|e| e.to_string())?,

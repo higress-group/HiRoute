@@ -88,7 +88,10 @@ fn preparing_an_interleaved_history_cannot_invalidate_the_live_completion() {
     let background = history_request(2, &[8]);
     let history = super::super::visible_history(&background, &HISTORY_KEY).unwrap();
     let prepared = store.prepare(key(1), &history, now).unwrap();
-    assert_eq!(prepared.history_continuity(), HistoryContinuity::NoCheckpoint);
+    assert_eq!(
+        prepared.history_continuity(),
+        HistoryContinuity::NoCheckpoint
+    );
     assert_eq!(
         store.complete(&first, preference("main"), now),
         HoldCompleteOutcome::Applied

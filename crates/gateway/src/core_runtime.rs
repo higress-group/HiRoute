@@ -572,7 +572,7 @@ impl ProductionGatewayRuntime {
                     }
                 };
             let parse_elapsed = parse_started.elapsed();
-            let (identity, prepared_hold) = prepare_context(
+            let (identity, mut prepared_hold) = prepare_context(
                 &self.context_holds,
                 &self.observation.correlation_key(),
                 &authorized,
@@ -585,6 +585,10 @@ impl ProductionGatewayRuntime {
                 },
                 Instant::now(),
             );
+            if path.starts_with(hiroute_domain::QODER_MODEL_BASE_PATH) {
+                // Qoder has no complete per-call subdialog contract yet.
+                prepared_hold = None;
+            }
             drop(document);
             drop(ingress_workspace);
             if canonical_request.web_search.is_some() && !authorized.web_search_allowed() {

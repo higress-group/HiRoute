@@ -13,7 +13,7 @@ fn stamp(s: &NativeProofObservationV1) -> bool {
     identifier(&s.observer_id) && s.sequence > 0 && s.observed_at_ms >= 0 && s.age_ms <= 3_600_000
 }
 
-fn read(headers: &HeaderMap, current: &str) -> Option<HermesCompressionLineageV1> {
+pub(crate) fn read(headers: &HeaderMap, current: &str) -> Option<HermesCompressionLineageV1> {
     if headers
         .get_all("x-hermes-compression-lineage")
         .iter()

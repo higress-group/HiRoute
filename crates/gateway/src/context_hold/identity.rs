@@ -12,6 +12,7 @@ type HmacSha256 = Hmac<Sha256>;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ContextIdentityFacts {
     identity: Identity,
+    routing: super::routing::RoutingFacts,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -29,7 +30,17 @@ enum Identity {
 }
 
 impl ContextIdentityFacts {
+    pub(crate) fn native_checkpoint(&self) -> super::routing::NativeCheckpoint {
+        self.routing.native
+    }
+
     pub(crate) fn hold_identity(&self) -> Option<(&'static str, &[String])> {
+        if !self.routing.track {
+            return None;
+        }
+        if let Some(root) = &self.routing.root {
+            return Some(("hermes_session", std::slice::from_ref(root)));
+        }
         match &self.identity {
             Identity::Reliable { kind, parts, .. } => Some((*kind, parts)),
             Identity::Inferred { hold_digest, .. } => {
@@ -77,6 +88,7 @@ impl ContextIdentityFacts {
     pub(crate) fn request_scoped() -> Self {
         Self {
             identity: Identity::RequestScoped,
+            routing: Default::default(),
         }
     }
 }
@@ -90,8 +102,56 @@ pub(crate) fn identity_facts(
     hold_key: &[u8; 32],
     observation_key: &[u8; 32],
 ) -> ContextIdentityFacts {
+    let mut result = base_identity_facts(
+        authorized,
+        ingress,
+        headers,
+        document,
+        request,
+        hold_key,
+        observation_key,
+    );
+    result.routing = super::routing::facts(
+        &result,
+        headers,
+        document,
+        authorized
+            .verified_run_observation()
+            .map(|run| run.harness_id.as_str()),
+        authorized.is_hermes_consumer(),
+    );
+    result
+}
+
+fn base_identity_facts(
+    authorized: &AuthorizedRequestPlan,
+    ingress: IngressProtocol,
+    headers: &HeaderMap,
+    document: &Value,
+    request: &ModelRequestIRV1,
+    hold_key: &[u8; 32],
+    observation_key: &[u8; 32],
+) -> ContextIdentityFacts {
     if let Some(run) = authorized.verified_run_observation() {
-        return verified_worker_identity(run);
+        let child = match run.harness_id.as_str() {
+            "claude" => header_value(headers, "x-claude-code-agent-id"),
+            "codex" if headers.contains_key("x-codex-parent-thread-id") => {
+                header_value(headers, "thread-id")
+            }
+            "opencode" if headers.contains_key("x-opencode-parent-session-id") => {
+                header_value(headers, "x-opencode-session-id")
+            }
+            _ => Field::Absent,
+        };
+        return match child {
+            Field::Value(child) => reliable(
+                "verified_worker_native_child",
+                vec![run.task_id.clone(), run.harness_id.clone(), child],
+                true,
+            ),
+            Field::Invalid => ContextIdentityFacts::request_scoped(),
+            Field::Absent => verified_worker_identity(run),
+        };
     }
 
     match native_identity(ingress, headers, document, request) {
@@ -113,6 +173,7 @@ pub(crate) fn identity_facts(
         return ContextIdentityFacts::request_scoped();
     };
     ContextIdentityFacts {
+        routing: Default::default(),
         identity: Identity::Inferred {
             hold_digest: hex(&domain_digest(
                 hold_key,
@@ -140,6 +201,7 @@ fn verified_worker_identity(
 
 fn reliable(kind: &'static str, parts: Vec<String>, verified_worker: bool) -> ContextIdentityFacts {
     ContextIdentityFacts {
+        routing: Default::default(),
         identity: Identity::Reliable {
             kind,
             parts,
@@ -148,7 +210,7 @@ fn reliable(kind: &'static str, parts: Vec<String>, verified_worker: bool) -> Co
     }
 }
 
-enum Field<T> {
+pub(super) enum Field<T> {
     Absent,
     Value(T),
     Invalid,
@@ -176,6 +238,14 @@ fn native_identity(
             claude_metadata,
         ),
     );
+    let claude = match (claude, header_value(headers, "x-claude-code-agent-id")) {
+        (Field::Value((_, mut parts)), Field::Value(agent)) => {
+            parts.push(agent);
+            Field::Value(("claude_native_agent", parts))
+        }
+        (Field::Absent | Field::Invalid, Field::Value(_)) | (_, Field::Invalid) => Field::Invalid,
+        (value, Field::Absent) => value,
+    };
     let dsh = session_identity(
         "deepseek_harness_session",
         header_value(headers, "x-deepseek-harness-session-id"),
@@ -305,11 +375,15 @@ fn codex_identity(
     }
 }
 
-fn header_value(headers: &HeaderMap, name: &'static str) -> Field<String> {
+pub(super) fn header_value(headers: &HeaderMap, name: &'static str) -> Field<String> {
     single_header(headers, name, 128)
 }
 
-fn single_header(headers: &HeaderMap, name: &'static str, max_bytes: usize) -> Field<String> {
+pub(super) fn single_header(
+    headers: &HeaderMap,
+    name: &'static str,
+    max_bytes: usize,
+) -> Field<String> {
     let mut values = headers.get_all(name).iter();
     let Some(value) = values.next() else {
         return Field::Absent;

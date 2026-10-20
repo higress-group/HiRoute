@@ -100,6 +100,17 @@ pub(crate) enum HistoryContinuity {
     Shortened,
     Rewritten,
     NoCheckpoint,
+    NativeContinuation,
+    NativeNewTurn,
+}
+
+impl HistoryContinuity {
+    pub(crate) fn semantic_continuity(self) -> bool {
+        matches!(
+            self,
+            Self::Continuing | Self::NativeContinuation | Self::NativeNewTurn
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -123,15 +134,42 @@ pub(crate) struct PreparedHold {
     snapshot: Option<BeginSnapshot>,
     instruction_digest: [u8; 32],
     measured: HistoryDigests,
+    native: super::routing::NativeCheckpoint,
 }
 
 impl PreparedHold {
+    pub(crate) fn set_native(&mut self, native: super::routing::NativeCheckpoint) {
+        self.native = native;
+    }
+    pub(crate) fn scope_id(&self) -> String {
+        self.key.0.iter().map(|b| format!("{b:02x}")).collect()
+    }
     pub(crate) fn history_continuity(&self) -> HistoryContinuity {
         match self.snapshot {
             None => HistoryContinuity::NoCheckpoint,
-            Some(snapshot) if self.measured.message_count >= snapshot.message_count
-                && self.measured.prefix_digest == Some(snapshot.history_digest) => HistoryContinuity::Continuing,
-            Some(snapshot) if self.measured.message_count < snapshot.message_count => HistoryContinuity::Shortened,
+            Some(snapshot)
+                if self.measured.message_count >= snapshot.message_count
+                    && self.measured.prefix_digest == Some(snapshot.history_digest) =>
+            {
+                HistoryContinuity::Continuing
+            }
+            Some(snapshot)
+                if self.native.turn.is_some() && self.native.turn == snapshot.native.turn =>
+            {
+                HistoryContinuity::NativeContinuation
+            }
+            Some(snapshot)
+                if self.native.turn.is_some()
+                    && snapshot.native.turn.is_some()
+                    && (self.native.compacted
+                        || self.native.checkpoint.is_some()
+                            && self.native.checkpoint != snapshot.native.checkpoint) =>
+            {
+                HistoryContinuity::NativeNewTurn
+            }
+            Some(snapshot) if self.measured.message_count < snapshot.message_count => {
+                HistoryContinuity::Shortened
+            }
             Some(_) => HistoryContinuity::Rewritten,
         }
     }
@@ -189,6 +227,7 @@ struct HoldEntry {
     instruction_digest: [u8; 32],
     message_count: usize,
     history_digest: [u8; 32],
+    native: super::routing::NativeCheckpoint,
     preference: Option<HoldPreferenceV1>,
     hint_valid: bool,
     cleaned_prefix_len: Option<usize>,
@@ -211,6 +250,7 @@ struct BeginSnapshot {
     instruction_digest: [u8; 32],
     message_count: usize,
     history_digest: [u8; 32],
+    native: super::routing::NativeCheckpoint,
 }
 
 const MAINTENANCE_BATCH: usize = 16;
@@ -302,15 +342,18 @@ impl ContextHoldStore {
             snapshot,
             instruction_digest: history.instruction_digest,
             measured,
+            native: Default::default(),
         })
     }
 
     pub(crate) fn commit(&self, prepared: PreparedHold, now: Instant) -> Option<HoldTicket> {
+        let history_continuity = prepared.history_continuity();
         let PreparedHold {
             key,
             snapshot,
             instruction_digest,
             measured,
+            native,
         } = prepared;
         let mut inner = self.inner.try_lock()?;
         inner.remove_if_expired(&key, now, self.idle_ttl);
@@ -360,6 +403,7 @@ impl ContextHoldStore {
                 entry.instruction_digest = instruction_digest;
                 entry.message_count = measured.message_count;
                 entry.history_digest = measured.complete_digest;
+                entry.native = native;
                 entry.hint_valid &= continues;
                 entry.cleaned_prefix_len = cleaned_prefix_len;
                 (hint, previous_success, cleaned_prefix_len, removed_dynamic)
@@ -372,13 +416,7 @@ impl ContextHoldStore {
                 cycle,
                 value_version,
                 checkpoint_revision,
-                history_continuity: if message_history_continues {
-                    HistoryContinuity::Continuing
-                } else if measured.message_count < snapshot.message_count {
-                    HistoryContinuity::Shortened
-                } else {
-                    HistoryContinuity::Rewritten
-                },
+                history_continuity,
                 hint,
                 previous_success,
                 cleaned_prefix_len,
@@ -400,6 +438,7 @@ impl ContextHoldStore {
             instruction_digest,
             message_count: measured.message_count,
             history_digest: measured.complete_digest,
+            native,
             preference: None,
             hint_valid: false,
             cleaned_prefix_len: None,
@@ -670,6 +709,7 @@ impl From<&HoldEntry> for BeginSnapshot {
             instruction_digest: entry.instruction_digest,
             message_count: entry.message_count,
             history_digest: entry.history_digest,
+            native: entry.native,
         }
     }
 }

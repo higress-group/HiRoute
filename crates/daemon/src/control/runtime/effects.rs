@@ -285,8 +285,8 @@ impl ExternalEffectPort for LocalControlAdapter {
         }
         // Resolve known native adapters before a capability is consumed or an Operation exists.
         self.native_claude_change(intent)?;
-        if hiroute_application::agent_connection::is_settings_hermes_plugin(intent) {
-            hiroute_application::agent_connection::decode_settings_hermes_plugin_file(intent)?;
+        if hiroute_application::agent_connection::is_settings_native_plugin(intent) {
+            hiroute_application::agent_connection::decode_settings_native_plugin_file(intent)?;
         }
         self.permission_intent(intent)?;
         self.validate_publication_admission(intent)
@@ -320,8 +320,8 @@ impl ExternalEffectPort for LocalControlAdapter {
             return Ok(());
         }
         for intent in operation.plan.external() {
-            if hiroute_application::agent_connection::is_settings_hermes_plugin(intent)
-                && matches!(hiroute_application::agent_connection::settings_hermes_plugin_file_for_operation(operation, intent)?.change, hiroute_application::agent_connection::HermesPluginFileAction::Restore { .. })
+            if hiroute_application::agent_connection::is_settings_native_plugin(intent)
+                && matches!(hiroute_application::agent_connection::settings_native_plugin_file_for_operation(operation, intent)?.change, hiroute_application::agent_connection::NativePluginFileAction::Restore { .. })
                 && self.artifacts.read_native_target(intent.target())?.is_none() {
                 self.artifacts.cleanup_native_parents(&operation.operation_id, intent)?;
             }
@@ -418,7 +418,7 @@ impl ExternalEffectPort for LocalControlAdapter {
         if hiroute_application::agent_connection::is_settings_hermes_model(intent) {
             return self.stage_settings_hermes_model(operation, intent);
         }
-        if hiroute_application::agent_connection::is_settings_hermes_plugin(intent) {
+        if hiroute_application::agent_connection::is_settings_native_plugin(intent) {
             return self.stage_settings_hermes_plugin(operation, intent);
         }
         let Some(permission) = self.permission_intent(intent)? else {
