@@ -1,3 +1,4 @@
+import { metadataFixtureInvoke } from './model-metadata-fixture';
 import { ReadCostFixture, installReadCostClock, readCostResponse } from './trial-read-cost-fixture';
 import { TrialFixture, quickStartInvoke } from './trial-quickstart-fixture';
 import { NewModels } from '../../../src/features/trial/NewModels';
@@ -98,7 +99,7 @@ mockIPC(async (command, payload: any) => {
   if (command === 'model_feed_status') { if (params.has('error') && !failed) {failed=true;throw new Error('DAEMON_UNAVAILABLE');} return structuredClone(feed); }
   if (command === 'model_feed_refresh') { feed.last_attempt={at:Date.now(),result:'validation',reason:'invalid_payload'}; return structuredClone(feed); }
   if (command === 'model_feed_settings_apply') { if (payload.input.retrieval_enabled !== undefined) feed.retrieval_enabled=payload.input.retrieval_enabled; if (payload.input.acknowledge_disclosure) feed.disclosure_acknowledged=true; return structuredClone(feed); }
-  if (command === 'model_feed_remove_preview') return { sources:[{source_id:'source/feed',display_name:'Team experimental model connection with a deliberately long readable name',model_configuration_ids:['model.trial'],published_revisions:[]}],published_revisions:[{plan_id:'plan/frozen',content_revision:3}],retained_sequence:12,retrieval_enabled:feed.retrieval_enabled,digest:'sha256:preview' };
+  const metadata = metadataFixtureInvoke(command,payload,params); if (metadata !== undefined) return metadata;
   if (command === 'model_feed_remove_apply') { if (params.has('stale')) throw {message_key:'application.error.change_preview_stale'}; feed.held=null; feed.verification={kind:'none'}; feed.recovery_available=false; if (payload.input.also_disable_retrieval) feed.retrieval_enabled=false; return structuredClone(feed); }
   if (command === 'model_availability') return ['feed-home','home'].includes(params.get('view') ?? '') ? params.has('bundled') ? {featured:[],models:[{...featuredCatalog.models[2],model_configuration_id:'model.anthropic.old',display_name:'Older directory model'},{...featuredCatalog.models[0],origin:{kind:'embedded',client_version:'0.3.1'}}]} : featuredCatalog : {featured:[],models:[]};
   if (command === 'observation_read' && payload.request.intent.view === 'plan_trust_replay') {

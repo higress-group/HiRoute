@@ -9,6 +9,24 @@ import './model-feed.css';
 
 export function ModelFeedPanel({ language, mutable = true, onChanged }: { language: 'zh' | 'en'; mutable?: boolean; onChanged?: () => void }) {
   const zh = language === 'zh';
+  const fieldLabel = (name: string) => {
+    if (name.startsWith('prices:')) return `${zh?'价格':'Price'} · ${name.split(':')[1]} · ${name.endsWith('api_equivalent') ? (zh?'API 参考':'API reference') : (zh?'使用估算':'Usage estimate')}`;
+    return ({tool:zh?'工具调用':'Tools',vision:zh?'图片输入':'Vision',streaming:zh?'流式输出':'Streaming',context_tokens:zh?'上下文上限':'Context limit',max_output_tokens:zh?'输出上限':'Output limit',native_reasoning:zh?'思考设置':'Reasoning',availability:zh?'可用性':'Availability'} as Record<string,string>)[name] ?? (zh?'默认值':'Default');
+  };
+  const valueLabel = (value: unknown): string => {
+    if (value === null || value === undefined) return zh?'未知':'Unknown';
+    if (typeof value === 'boolean') return value ? (zh?'支持':'Supported') : (zh?'不支持':'Not supported');
+    if (typeof value === 'number') return value.toLocaleString();
+    if (typeof value === 'string') return value;
+    const v=value as Record<string,unknown>;
+    if (Array.isArray(v.rules)) return v.rules.map(rule=>{
+      const [rates,schedule]=rule as [Record<string,{state:string;micros_per_million_tokens?:number}>,unknown];
+      return Object.entries(rates).map(([key,rate])=>`${({input_uncached:zh?'输入':'Input',output:zh?'输出':'Output',cache_read:zh?'缓存读取':'Cache read',cache_write:zh?'缓存写入':'Cache write'} as Record<string,string>)[key] ?? key}: ${rate.state === 'known' ? (rate.micros_per_million_tokens! / 1_000_000).toLocaleString(language,{maximumFractionDigits:6}) : (zh?'未知':'Unknown')}`).join(' · ')+(schedule ? (zh?'（时段规则）':' (time window)') : '');
+    }).join('; ') || (zh?'未知':'Unknown');
+    if (v.kind === 'fixed') return v.profile === 'non-thinking' ? (zh?'不使用思考':'No reasoning') : (zh?'固定思考配置':'Fixed reasoning profile');
+    if (v.kind === 'toggle') return zh?'可切换思考':'Switchable reasoning';
+    return zh?'可选思考配置':'Reasoning choices';
+  };
   const [status, setStatus] = useState<ModelFeedStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -88,7 +106,7 @@ export function ModelFeedPanel({ language, mutable = true, onChanged }: { langua
     <Dialog open={Boolean(preview)} title={status?.recovery_available ? (zh ? '重置损坏缓存' : 'Reset damaged cache') : (zh ? '移除本机缓存的模型目录' : 'Remove the local model directory')} closeLabel={zh ? '取消' : 'Cancel'} closeDisabled={busy} onClose={() => setPreview(null)} footer={<><button className="btn" disabled={busy} onClick={() => setPreview(null)}>{zh ? '取消' : 'Cancel'}</button><button className="btn btn-primary" disabled={busy || impactBusy || !preview?.complete} onClick={() => preview && void change('model_feed_remove_apply', { accepted_digest: preview.digest, also_disable_retrieval: disable })}>{status?.recovery_available ? (zh ? '确认重置' : 'Confirm reset') : (zh ? '移除' : 'Remove')}</button></>}>
       {status?.recovery_available && <p>{zh ? '将保留损坏的状态文件并新建缓存状态。' : 'The damaged state file will be preserved and cache state recreated.'}</p>}
       <p>{zh ? '移除后，新检查与发布将使用内置资料。下面列出能力、思考设置或价格默认值会变化的模型。用户保留的值与已发布路由不变。' : 'After removal, new checks and publications use embedded information. Models with changed capability, reasoning or price defaults are listed below. Preserved user values and published routes retain their settings.'}</p>
-      {preview && <><p>{zh ? `${preview.impact.length} / ${preview.total} 项影响` : `${preview.impact.length} / ${preview.total} changed defaults`}</p><ul>{preview.impact.map(record => <li key={`${record.source_id}/${record.binding_id}/${Object.keys(record.changes).join()}`}><strong>{record.source_name}</strong><p>{record.model_configuration_id}</p><p>{Object.keys(record.changes).join(' · ')}</p></li>)}</ul>{preview.next_cursor && <button className="btn" disabled={impactBusy} onClick={() => void moreImpact()}>{zh ? '继续查看影响' : 'Review more impacts'}</button>}<p>{zh ? `${preview.published_revision_count} 个已发布版本保持可用。` : `${preview.published_revision_count} published revisions remain usable.`}</p></>}
+      {preview && <><p>{zh ? `${preview.impact.length} / ${preview.total} 项影响` : `${preview.impact.length} / ${preview.total} changed defaults`}</p><ul>{preview.impact.map(record => <li key={`${record.source_id}/${record.binding_id}/${Object.keys(record.changes).join()}`}><strong>{record.source_name}</strong><p>{record.model_display_name}</p><dl>{Object.entries(record.changes).map(([field,change])=><div key={field}><dt>{fieldLabel(field)}</dt><dd>{zh?'当前':'Current'}: {valueLabel(change.current)} → {zh?'内置':'Embedded'}: {valueLabel(change.fallback)}</dd></div>)}</dl></li>)}</ul>{preview.next_cursor && <button className="btn" disabled={impactBusy} onClick={() => void moreImpact()}>{zh ? '继续查看影响' : 'Review more impacts'}</button>}<p>{zh ? `${preview.published_revision_count} 个已发布版本保持可用。` : `${preview.published_revision_count} published revisions remain usable.`}</p></>}
       <label className="model-feed-checkbox"><input type="checkbox" checked={disable} disabled={busy} onChange={event => setDisable(event.target.checked)} /><span>{zh ? '同时关闭自动获取' : 'Also turn off automatic retrieval'}</span></label>
     </Dialog>
   </section>;

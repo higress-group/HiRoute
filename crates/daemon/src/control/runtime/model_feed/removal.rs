@@ -148,6 +148,7 @@ pub(super) fn preview(
                     source_name: source.display_name.clone(),
                     binding_id: old.binding_id.clone(),
                     model_configuration_id: id.clone(),
+                    model_display_name: old.display_name.clone(),
                     changes: BTreeMap::from([(field, change)]),
                     published_revision_count: published.len(),
                 });

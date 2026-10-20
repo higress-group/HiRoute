@@ -415,6 +415,7 @@ for pinned generation and actual host discovery, including the shared validation
 Complete-model-data regressions cover [canonical wire identity](../../crates/integrations/src/model_feed/validation.rs),
 [manual versus scoped defaults](../../crates/integrations/src/compute/defaults.rs),
 [source/default commit and restart](../../crates/local-storage/src/control/compute/management/tests/defaults.rs),
+[defaults, metadata pagination and removal dialogs](../../apps/desktop/tests/v3/visual/model-metadata-active.mjs),
 [price activation races](../../crates/daemon/src/control/runtime/prices/tests.rs), and
 [slow shared-session reads](../../crates/product-session/src/commands/model_feed/tests.rs).
 The installed HTTPS lifecycle uses complete v2 publications, exact documented cache components,

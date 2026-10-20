@@ -887,6 +887,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
   if (command === 'release_protected_model_input' || command === 'cancel_model_connection_check') return undefined;
   if (command === 'register_protected_model_input') return { input_candidate: { candidate_ref: 'candidate/protected', candidate_revision: 1 }, key_id: 'credential/fixture-protected' };
   if (command === 'model_availability') return { featured: [], models: [] };
+  if (command === 'compute_defaults') return {source_id: payload?.input.source_id,source_revision:1,revisions:readyManagement.revisions,reviewed_on:'2026-10-21',models:[]};
   if (command === 'model_feed_status') return structuredClone(idleModelFeedStatus);
   throw new Error(`Unexpected V3 fixture command: ${command}`);
 }

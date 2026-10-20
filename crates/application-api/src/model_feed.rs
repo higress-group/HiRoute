@@ -160,6 +160,7 @@ pub struct ModelFeedDefaultImpactV2 {
     pub source_name: String,
     pub binding_id: String,
     pub model_configuration_id: String,
+    pub model_display_name: String,
     pub changes: std::collections::BTreeMap<String, serde_json::Value>,
     pub published_revision_count: usize,
 }

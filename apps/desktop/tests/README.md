@@ -100,6 +100,14 @@ For an interactive presentation regression check, open
 click **Run presentation checks**. It runs the same two required presentation
 scenarios with production styles and reports each result; IPC remains mocked.
 
+The full model-information views run with `node tests/v3/visual/new-model-trial.mjs
+/path/to/evidence --metadata`. They mount production Models, default-intent controls,
+metadata directory and removal dialogs with synthetic IPC. The scenarios cover
+Chinese/English, light/dark, 755×600 and 1200×813, retained edits after read failures,
+stale-cursor restart, four price components and confirmation only after all impact
+pages are reviewed. Installed CLI/daemon tests separately own persistence and
+actual feed/default/price effects.
+
 ## Session quality presentation
 
 Session quality names come from the exact retained execution request (same session and request ID), then the current configuration display name when available. Opaque configuration/branch IDs belong in diagnostic tooltips, not primary labels. Mixed or unknown attribution must not be presented as one model. History gaps and partial assessment evidence remain separate visible flags; an unrated stage is not assigned a score.

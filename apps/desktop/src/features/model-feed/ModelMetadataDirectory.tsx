@@ -10,6 +10,19 @@ function text(value:unknown):string {return typeof value === 'string' ? value : 
 function limit(value:unknown):string {if (typeof value === 'number') return value.toLocaleString(); if (value && typeof value === 'object' && 'value' in value) return limit(value.value); return '—';}
 export function ModelMetadataDirectory({ language }: {language:'zh'|'en'}) {
   const zh = language === 'zh';
+  const support = (value: unknown) => value === true || value === 'supported' ? (zh?'支持':'Supported') : value === false || value === 'unsupported' ? (zh?'不支持':'Not supported') : (zh?'未知':'Unknown');
+  const component = (key: string) => ({input:zh?'输入':'Input', 'input-cache-miss':zh?'未缓存输入':'Uncached input', output:zh?'输出':'Output', 'cache-read':zh?'缓存读取':'Cache read', 'input-cache-hit':zh?'缓存命中':'Cached input', 'cache-write':zh?'缓存写入':'Cache write'} as Record<string,string>)[key] ?? key;
+  const condition = (value: unknown) => {
+    const v = (value && typeof value === 'object' ? value : {}) as Record<string,unknown>;
+    if (v.kind === 'unconditional') return zh?'标准请求':'Standard requests';
+    if (v.kind === 'time-window-complement') return zh?'指定时段以外；请核对供应商规则':'Outside the specified window; check provider rules';
+    if (v.kind === 'time-window') {
+      const windows = Array.isArray(v.windows) ? v.windows as Record<string,unknown>[] : [];
+      return `${zh?'指定时段':'Specified window'} · ${text(v.timezone)} · ${windows.map(w=>`${text(w.start)}–${text(w.end)}`).join(', ')}`;
+    }
+    if (v.kind === 'service-tier') return `${zh?'服务档位':'Service tier'}: ${text(v.tier)}`;
+    return zh?'附带供应商计费条件，请核对原始资料':'Provider billing conditions apply; check the source';
+  };
   const [open,setOpen] = useState(false); const [kind,setKind] = useState('model_metadata'); const [search,setSearch] = useState('');
   const [page,setPage] = useState<Page|null>(null); const [rows,setRows] = useState<Entry[]>([]);
   const [busy,setBusy] = useState(false); const [error,setError] = useState(false); const [retry,setRetry] = useState(0);
@@ -28,6 +41,7 @@ export function ModelMetadataDirectory({ language }: {language:'zh'|'en'}) {
       if (serial === epoch.current) {setPage(result);setRows(old => cursor && !restarted ? [...old,...result.records] : result.records);}
     } catch {if (serial === epoch.current) setError(true);} finally {if (serial === epoch.current) setBusy(false);}
   }
+  useEffect(() => {setRows([]);setPage(null);},[kind,search]);
   useEffect(() => {
     if (!open) {++epoch.current;return;}
     const timer = window.setTimeout(() => {void load();},150);
@@ -42,10 +56,10 @@ export function ModelMetadataDirectory({ language }: {language:'zh'|'en'}) {
         const v = row.value; const capabilities = (v.capability_hints ?? v.capabilities ?? {}) as Record<string,unknown>;
         const schedules = Array.isArray(v.schedules) ? v.schedules as Record<string,unknown>[] : [];
         return <li key={`${row.kind}/${row.key}`}><strong>{text(v.display_name) || text(v.product) || text(v.provider) || text(v.title) || text(v.upstream_model_id) || row.key}</strong><span className="field-help">{text(v.provider_id) || text(v.provider)} · {row.origin === 'website_cache' ? (zh?'官网 / 本机缓存':'Website / local cache') : (zh?'内置资料':'Embedded information')}</span>
-          {kind === 'model_metadata' && <dl><dt>{zh?'上下文 / 输出上限':'Context / output limit'}</dt><dd>{limit(v.context_tokens)} / {limit(v.max_output_tokens)}</dd><dt>{zh?'工具 / 图片输入':'Tools / vision'}</dt><dd>{JSON.stringify(capabilities.tool ?? capabilities.tool_call ?? '—')} / {JSON.stringify(capabilities.vision ?? '—')}</dd></dl>}
+          {kind === 'model_metadata' && <dl><dt>{zh?'上下文 / 输出上限':'Context / output limit'}</dt><dd>{limit(v.context_tokens)} / {limit(v.max_output_tokens)}</dd><dt>{zh?'工具 / 图片输入':'Tools / vision'}</dt><dd>{support(capabilities.tool ?? capabilities.tool_call)} / {support(capabilities.vision)}</dd></dl>}
           {kind === 'access_product' && <p>{text(v.region_scope)} · {text(v.billing)} · {text(v.restriction)}</p>}
-          {kind === 'price' && <><p>{text(v.product_key)} · {text(v.currency)} / {zh?'百万 Token':'million tokens'}</p>{schedules.map(s => <div key={text(s.schedule_key)}><strong>{text(s.schedule_key)}</strong><p>{Object.entries((s.rates ?? {}) as Record<string,string>).map(([name,value]) => `${name}: ${value}`).join(' · ')}</p><p className="field-help">{JSON.stringify(s.condition)} · {text(s.application)}</p></div>)}</>}
-          {kind === 'evidence_source' && <p>{text(v.url)} · {text(v.collected_on)}</p>}
+          {kind === 'price' && <><p>{text(v.product_key)} · {text(v.currency)} / {zh?'百万 Token':'million tokens'}</p>{schedules.map(s => <div key={text(s.schedule_key)}><strong>{text(s.schedule_key)}</strong><p>{Object.entries((s.rates ?? {}) as Record<string,string>).map(([name,value]) => `${component(name)}: ${value}`).join(' · ')}</p><p className="field-help">{condition(s.condition)}{s.application !== 'whole-request' ? (zh?' · 适用方式需供应商确认':' · Confirm applicability with the provider') : ''}</p></div>)}</>}
+          {kind === 'evidence_source' && <p>{text(v.locator)} · {text(v.collected_on)}</p>}
         </li>;
       })}</ul>
       {error && <p role="alert">{zh?'暂时无法读取资料。':'Information is temporarily unavailable.'}<button className="btn btn-quiet" onClick={() => setRetry(n => n+1)} disabled={busy}>{zh?'重试':'Retry'}</button></p>}

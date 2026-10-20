@@ -106,7 +106,13 @@ impl DocumentedPriceScheduleV1 {
     }
 }
 fn minute(value: &str) -> Result<u16, ComputeContractError> {
-    if value.len() != 5 || value.as_bytes()[2] != b':' {
+    if value.len() != 5
+        || value.as_bytes()[2] != b':'
+        || !value
+            .bytes()
+            .enumerate()
+            .all(|(i, b)| i == 2 || b.is_ascii_digit())
+    {
         return Err(ComputeContractError::InvalidModelData);
     }
     let hour = value.get(..2).and_then(|s| s.parse::<u16>().ok());
