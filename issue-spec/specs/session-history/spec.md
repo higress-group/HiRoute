@@ -56,6 +56,8 @@ Source SPEC comments:
 
 New observation writes SHALL associate a session with an Agent only through the exact authenticated workspace, grant ID and generation mapped to a server-resolved Agent connection. The product SHALL persist that mapping from a verified connection transaction and matching publication before admitting its traffic. It SHALL remain available across reconfiguration, grant rotation, native-setting restoration and restart, so retained sessions keep their recorded Agent. Registration and receipt rebuilding SHALL NOT backfill old observations without attribution evidence. User-Agent strings, shared Plans, model aliases and client-supplied session IDs SHALL NOT establish Agent ownership.
 
+Startup attribution recovery SHALL require verifiable ownership for each managed Agent grant in the current publication. Unverifiable historical connection operations that do not provide required current ownership SHALL be skipped with bounded diagnostics; they SHALL NOT block startup or backfill unlinked historical sessions. Publication activation SHALL retain strict transaction and grant validation.
+
 A session receiving mapped grants from different Agents SHALL retain an attribution conflict and display as unlinked. Repeated or later matching evidence cannot clear the conflict. Missing mappings remain unknown. Full fact deletion or retention expiry SHALL erase the session attribution evidence with those facts; content-only deletion preserves it. Worker run relations retain their existing verified authority and semantics.
 
 #### Scenario: Reconfiguration and rotation preserve old attribution
@@ -67,6 +69,11 @@ A session receiving mapped grants from different Agents SHALL retain an attribut
 
 - **WHEN** two Agents' authenticated grants appear in one session, or a request has no registered mapping
 - **THEN** conflicting ownership remains unlinked across later requests and reopening, while absent evidence is not guessed from other request metadata.
+
+#### Scenario: Released connections survive startup recovery
+
+- **WHEN** a data directory created by supported v0.3.1 with Claude Code and Codex connected starts the current build, including an unrelated historical operation that cannot be verified
+- **THEN** startup succeeds, new sessions use the verified current grants to identify their Agents, and unlinked old sessions remain unlinked; missing proof for a current managed grant still prevents admission.
 
 #### Scenario: Old observations and Worker relations remain unchanged
 
@@ -451,9 +458,9 @@ Source SPEC comments:
 
 ### Requirement: The routing timeline re-emits late evidence without duplicates
 
-Session detail MUST show actual agent-turn selection, boundary, group, model/reasoning, probability/threshold, continuations, relays, assessments and request usage/cost beside retained conversation. New AgentTurnFinished writes SHALL record an optional opening cause, preserved across tool continuation and completion: continuing message history with an appended user message and an inheritable decision means UserMessage; fewer canonical messages than an existing comparable checkpoint means HistoryShortened; an equal or greater count with a changed prefix means HistoryRewrite; absent checkpoints (first entry, expiry, eviction, contention or disabled tracking) mean NoComparableHistory; other boundaries, including Plan changes, mean Other. System/developer instructions are excluded from the message count; changing only those instructions does not rewrite message history even if it invalidates a hold preference.
+Session detail MUST show actual agent-turn selection, boundary, group, model/reasoning, probability/threshold, continuations, relays, assessments and request usage/cost beside retained conversation. New AgentTurnFinished writes SHALL record an optional opening cause, preserved across tool continuation and completion: continuing message history with an appended user message means UserMessage, independently of whether the prior decision can be inherited; fewer canonical messages than an existing comparable checkpoint means HistoryShortened; an equal or greater count with a changed prefix means HistoryRewrite; absent checkpoints (first entry, expiry, eviction, contention or disabled tracking) mean NoComparableHistory; other boundaries, including a Plan change without an appended user message, mean Other. System/developer instructions are excluded from the message count; changing only those instructions does not rewrite message history even if it invalidates a hold preference.
 
-Explicit causes override legacy hints. UserMessage displays New message. HistoryShortened displays Context rebuilt and is attributed to compaction by the owner-selected step-count heuristic. A step is one canonical request message, not a token, tool or timeline turn. Details disclose that a shorter rewind or shared-scope background/subagent request can also satisfy this heuristic. HistoryRewrite and Other remain unknown. NoComparableHistory displays New message only for the first session turn. Retained unsplit HistoryRewrite records remain unknown without backfill. Without the field, legacy inference displays New message for the first session turn or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. A retained tail with a known later ordinal is not the first session turn. Invalidation alone never proves compaction. Unknown headings omit the badge and details disclose the gap. Old bytes and authenticated digests remain readable unchanged.
+Explicit causes override legacy hints. UserMessage displays New message. HistoryShortened displays Context rebuilt and is attributed to compaction by the owner-selected step-count heuristic. A step is one canonical request message, not a token, tool or timeline turn. Details disclose that a shorter rewind or shared-scope background/subagent request can also satisfy this heuristic. HistoryRewrite and Other remain unknown. NoComparableHistory displays New message only for the first session turn. Without the field, legacy inference displays New message for the first session turn or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. A retained tail with a known later ordinal is not the first session turn. Invalidation alone never proves compaction. Unknown headings omit the badge and details disclose the gap. Supported old bytes and authenticated digests remain readable unchanged; unreleased experimental digests are not admitted.
 
 The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools and timing SHALL NOT establish native provenance. Issue #185 separately tracks shared-history background/subagent isolation and active-turn conflicts; this repair does not infer subdialog identity or claim isolation is fixed. The legend states that a turn keeps its model to preserve cache and new messages or rebuilt context trigger fresh judgment.
 
@@ -497,10 +504,10 @@ Reads retain shared authorization, a 500 ms storage deadline, and explicit retry
 - **WHEN** a turn contains an explicit opening cause and an old-style ledger hint suggests another cause
 - **THEN** the explicit cause wins, remains stable through tool continuation and reopening, and absent legacy fields retain their previous canonical bytes.
 
-#### Scenario: Retained unsplit history rewrite
+#### Scenario: New user message after a Plan revision
 
-- **WHEN** a retained opening cause is HistoryRewrite without evidence that the step count decreased
-- **THEN** the original bytes and digest remain readable, but the boundary remains unknown rather than being relabelled as compaction.
+- **WHEN** messages continue the prior history and append a user message after the Plan changes or without an inheritable prior decision
+- **THEN** the turn records UserMessage and displays New message while obtaining a fresh decision; a Plan change without an appended user message remains Other.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235190304

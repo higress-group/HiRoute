@@ -255,9 +255,9 @@ fn pre_opening_facts_keep_canonical_bytes_and_cannot_authenticate_new_causes() {
 }
 
 #[test]
-fn prior_opening_contract_preserves_rewrites_without_claiming_compaction() {
+fn unsupported_execution_digest_is_rejected_without_rewriting_retained_facts() {
     let directory = tempfile::tempdir().unwrap();
-    let fixture = Fixture::new("pre-shortening");
+    let fixture = Fixture::new("unsupported-execution");
     let mut event = fixture.fact(
         1,
         finished(&fixture, "stage", "turn", 2, "smart_saving", 1000),
@@ -271,36 +271,49 @@ fn prior_opening_contract_preserves_rewrites_without_claiming_compaction() {
         unreachable!()
     };
     *opening_cause = Some(hiroute_domain::AgentTurnOpeningCauseV1::HistoryRewrite);
-    let bytes = serde_json::to_vec(&event).unwrap();
-    let decoded: hiroute_domain::ExecutionFactEnvelopeV1 = serde_json::from_slice(&bytes).unwrap();
-    decoded.validate_persisted_contract().unwrap();
-    assert!(decoded.validate().is_err());
-    assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
-    let digest = hiroute_domain::CanonicalDigest::of(&decoded).unwrap();
+    assert!(event.validate_persisted_contract().is_err());
+    assert!(event.validate().is_err());
+    let digest = hiroute_domain::CanonicalDigest::of(&event).unwrap();
     {
         let store = open_store(directory.path());
         let mut connection = store.connection.lock();
         let transaction = connection.transaction().unwrap();
-        crate::store::fact_log::insert(&transaction, &decoded, &digest).unwrap();
-        crate::receipt::apply_fact(&transaction, &decoded).unwrap();
+        crate::store::fact_log::insert(&transaction, &event, &digest).unwrap();
+        crate::receipt::apply_fact(&transaction, &event).unwrap();
         transaction.commit().unwrap();
     }
     let store = open_store(directory.path());
-    let page = store
-        .observed_routing_timeline(
-            &reader(),
-            &RoutingTimelineQueryV1 {
-                session_id: fixture.session.to_string(),
-                after_watermark: None,
-                limit: 50,
-            },
-            5000,
+    let before: (String, String) = store
+        .connection
+        .lock()
+        .query_row(
+            "SELECT envelope_json,envelope_digest FROM execution_fact_events",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .unwrap();
-    assert_eq!(page.turns[0].boundary, RoutingTurnBoundaryV1::Unknown);
-    let ExecutionFactV1::AgentTurnFinished { opening_cause, .. } = &mut event.fact else {
-        unreachable!()
-    };
-    *opening_cause = Some(hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened);
-    assert!(event.validate_persisted_contract().is_err());
+    assert!(
+        store
+            .observed_routing_timeline(
+                &reader(),
+                &RoutingTimelineQueryV1 {
+                    session_id: fixture.session.to_string(),
+                    after_watermark: None,
+                    limit: 50,
+                },
+                5000,
+            )
+            .is_err(),
+        "an unsupported historical digest must not be silently admitted"
+    );
+    let after: (String, String) = store
+        .connection
+        .lock()
+        .query_row(
+            "SELECT envelope_json,envelope_digest FROM execution_fact_events",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(before, after);
 }

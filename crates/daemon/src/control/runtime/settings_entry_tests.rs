@@ -1115,6 +1115,9 @@ mod facets;
 #[path = "settings_profile_tests.rs"]
 mod settings_profile_tests;
 
+#[path = "grant_attribution_tests.rs"]
+mod grant_attribution_tests;
+
 #[path = "settings_entry_hermes_tests.rs"]
 mod hermes;
 #[path = "settings_entry_qoder_tests.rs"]

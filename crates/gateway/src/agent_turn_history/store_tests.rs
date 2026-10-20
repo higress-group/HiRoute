@@ -18,6 +18,9 @@ static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[path = "branch_context_tests.rs"]
 mod branch_context;
 
+#[path = "opening_cause_tests.rs"]
+mod opening_cause;
+
 #[path = "accepted_output_tests.rs"]
 mod accepted_output;
 
@@ -1198,7 +1201,7 @@ fn completed_turn_preserves_its_opening_cause() {
         (Shortened, 1, Cause::HistoryShortened),
         (Rewritten, 1, Cause::HistoryRewrite),
         (NoCheckpoint, 1, Cause::NoComparableHistory),
-        (Continuing, 2, Cause::Other),
+        (Continuing, 2, Cause::UserMessage),
     ] {
         let store = AgentTurnHistoryStore::default();
         let key = store.scope_key("workspace", "causes").unwrap();
