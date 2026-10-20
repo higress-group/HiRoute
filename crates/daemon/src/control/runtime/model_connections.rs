@@ -1,3 +1,4 @@
+pub(super) mod defaults;
 use hiroute_application::compute_management::{
     ComputeCandidatePort, ComputeManagementPlanner, ComputeManagementPlanningErrorV2,
     ComputeManagementPresentationFactsV1, ProtectedInputSourceDescriptorV1,
@@ -549,6 +550,9 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         query: &ComputeManagementQueryV2,
     ) -> Result<hiroute_application_api::ComputeManagementSnapshotV3, ComputeManagementControlError>
     {
+        let catalog = self
+            .current_catalog()
+            .ok_or(ComputeManagementControlError::PreviewStale)?;
         // Price/catalog collection takes the same storage mutex internally. Capture those safe
         // facts first, then take one repository snapshot without nesting the writer lock.
         let presentation = match self.compute_management_presentation_facts() {
@@ -562,7 +566,7 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         let stores = self
             .stores_lock()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;
-        hiroute_application::compute_management::query_compute_management_v3(
+        let mut result = hiroute_application::compute_management::query_compute_management_v3(
             stores.control(),
             stores.runtime(),
             &WorkspaceId::default(),
@@ -579,7 +583,37 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             hiroute_application::compute_management::ComputeManagementQueryErrorV2::Corrupt => {
                 ComputeManagementControlError::Corrupt
             }
-        })
+        })?;
+        for view in &mut result.sources {
+            let saved = stores
+                .control()
+                .compute_management_source(&view.source_id)
+                .map_err(map_port)?
+                .ok_or(ComputeManagementControlError::NotFound)?;
+            let preferences = stores
+                .control()
+                .source_default_preferences(&view.source_id)
+                .map_err(map_port)?;
+            let effective = defaults::project_source(&catalog, &saved, &preferences);
+            for model in &mut view.models {
+                if let Some(projected) = effective
+                    .models
+                    .iter()
+                    .find(|m| m.binding_id == model.binding_id)
+                {
+                    model.capabilities = projected.capabilities.clone();
+                    model.native_reasoning = projected.capabilities.native_reasoning.value.clone();
+                }
+            }
+        }
+        drop(stores);
+        if self
+            .current_catalog()
+            .is_none_or(|c| c.generation != catalog.generation)
+        {
+            return Err(ComputeManagementControlError::PreviewStale);
+        }
+        Ok(result)
     }
 
     fn preview_compute_save(
@@ -612,15 +646,23 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         Ok(preview.result)
     }
 
+    fn compute_defaults(
+        &self,
+        query: hiroute_application_api::ComputeDefaultsQueryV1,
+    ) -> Result<hiroute_application_api::ComputeDefaultsResultV1, ComputeManagementControlError>
+    {
+        LocalControlAdapter::compute_defaults(self, query)
+    }
     fn preview_compute_save_v3(
         &self,
-        change: hiroute_application_api::ComputeManagementChangeV3,
+        mut change: hiroute_application_api::ComputeManagementChangeV3,
     ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError> {
         let catalog = self
             .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
         self.validate_subscription_save_change(&change.change)?;
         self.bind_saved_key_inputs(&change.change)?;
+        self.establish_save_defaults(&mut change, &catalog)?;
         let stores = self
             .stores_lock()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;

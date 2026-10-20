@@ -344,7 +344,7 @@ def run(repository):
         (fixture / 'absorbed.json').write_bytes(wire(restored))
         restart(product)
         absorbed = product.cli('models', 'feed', 'status')['data']
-        assert absorbed['counts']['ignored_embedded'] >= 3 and absorbed['counts']['applied'] == 0, absorbed
+        assert absorbed['counts']['qualified_models'] >= 1, absorbed
         main_session(product)
         admitted = product.cli('routing', 'preview', '--request-stdin', payload=new_draft)
         assert admitted['status'] == 'succeeded', 'absorption must admit a new draft without rechecking the saved source'

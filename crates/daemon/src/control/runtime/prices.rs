@@ -104,6 +104,24 @@ impl LocalControlAdapter {
         let management = control
             .compute_management_snapshot(&WorkspaceId::default())
             .map_err(map_port)?;
+        let mut catalog_model_ids = catalog
+            .model_data()
+            .models
+            .iter()
+            .map(|m| m.model_configuration_id.clone())
+            .collect::<BTreeSet<_>>();
+        catalog_model_ids.extend(
+            management
+                .sources
+                .iter()
+                .flat_map(|s| &s.models)
+                .filter_map(|m| m.catalog_configuration_id.clone()),
+        );
+        catalog_model_ids.extend(
+            legacy_source_bindings
+                .iter()
+                .map(|(_, binding)| binding.model_configuration_id.clone()),
+        );
         check()?;
         let overrides = control
             .source_price_overrides(&WorkspaceId::default())
@@ -242,11 +260,7 @@ impl LocalControlAdapter {
         let mut entries = Vec::new();
         for binding in &source_bindings {
             check()?;
-            let model = if catalog
-                .model_data()
-                .model(&binding.model_configuration_id)
-                .is_some()
-            {
+            let model = if catalog_model_ids.contains(&binding.model_configuration_id) {
                 PriceModelIdentityV1::CatalogModel(binding.model_configuration_id.clone())
             } else {
                 PriceModelIdentityV1::LocalModel(binding.model_configuration_id.clone())
@@ -363,12 +377,7 @@ impl LocalControlAdapter {
             catalog_refs,
             effective: self.price_snapshot.capture_current_price_snapshot(),
             evaluated_at: self.now_ms()?.div_euclid(1000),
-            catalog_model_ids: catalog
-                .model_data()
-                .models
-                .iter()
-                .map(|m| m.model_configuration_id.clone())
-                .collect(),
+            catalog_model_ids,
         })
     }
 }

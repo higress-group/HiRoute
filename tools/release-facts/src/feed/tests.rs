@@ -162,7 +162,7 @@ fn model_feed_projection_closes_a_real_model_graph_and_preserves_first_inclusion
         admit(&clients[1].catalog, &first, "0.3.3")
             .unwrap()
             .counts
-            .ignored_embedded,
+            .unresolved,
         0
     );
     let second = project(

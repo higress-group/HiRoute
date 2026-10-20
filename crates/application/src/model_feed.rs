@@ -16,18 +16,18 @@ pub trait ModelFeedPort: Send + Sync {
     ) -> Result<ModelMetadataDetailV1, ErrorCode> {
         Err(ErrorCode::DaemonUnavailable)
     }
-    fn feed_status(&self) -> Result<ModelFeedStatusV1, ErrorCode>;
-    fn feed_refresh(&self) -> Result<ModelFeedStatusV1, ErrorCode>;
+    fn feed_status(&self) -> Result<ModelFeedStatusV2, ErrorCode>;
+    fn feed_refresh(&self) -> Result<ModelFeedStatusV2, ErrorCode>;
     fn feed_settings(
         &self,
         request: ModelFeedSettingsRequestV1,
-    ) -> Result<ModelFeedStatusV1, ErrorCode>;
-    fn feed_remove_preview(&self) -> Result<ModelFeedRemovalPreviewV1, ErrorCode>;
+    ) -> Result<ModelFeedStatusV2, ErrorCode>;
+    fn feed_remove_preview(&self) -> Result<ModelFeedRemovalPreviewV2, ErrorCode>;
     fn feed_remove(
         &self,
         request: ModelFeedRemoveRequestV1,
-    ) -> Result<ModelFeedStatusV1, ErrorCode>;
-    fn model_availability(&self) -> Result<ModelAvailabilityResultV1, ErrorCode>;
+    ) -> Result<ModelFeedStatusV2, ErrorCode>;
+    fn model_availability(&self) -> Result<ModelAvailabilityResultV2, ErrorCode>;
 }
 
 pub(crate) fn dispatch(

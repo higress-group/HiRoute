@@ -43,6 +43,8 @@ pub(crate) struct ModelFeedStatus {
     pub recovery_available: bool,
     pub held: Option<HeldPublication>,
     pub highest_accepted_sequence: Option<u64>,
+    pub highest_accepted_data_revision: Option<u64>,
+    pub last_success_at_ms: Option<u64>,
     pub last_attempt: Option<FeedAttempt>,
     pub verification: String,
     pub counts: FeedCounts,
@@ -233,6 +235,8 @@ impl ModelFeedService {
             recovery_available: guard.recovery_available,
             held: state.held.clone(),
             highest_accepted_sequence: Some(accepted_sequence(state)).filter(|s| *s > 0),
+            highest_accepted_data_revision: state.data_floor.as_ref().map(|f| f.revision),
+            last_success_at_ms: state.last_success_at_ms,
             last_attempt: state.last_attempt.clone(),
             verification: guard.refused.clone().unwrap_or_else(|| {
                 if state.held.is_some() {

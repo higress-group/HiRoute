@@ -790,6 +790,32 @@ pub async fn dispatch(
             )?;
             Ok(Value::Null)
         }
+        "compute_defaults" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: hiroute_application_api::ComputeDefaultsQueryV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(compute_defaults(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_compute_save_v3" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                change: WebComputeManagementChangeV2,
+                default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(
+                preview_compute_save_v3(window, state, input.change, input.default_preferences)
+                    .await?,
+            )
+            .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         _ => Err("COMMAND_UNKNOWN".into()),
     }
 }

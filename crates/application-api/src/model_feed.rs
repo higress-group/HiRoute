@@ -39,15 +39,18 @@ pub enum ModelFeedVerificationV1 {
 }
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModelFeedCountsV1 {
-    pub applied: u64,
-    pub ignored_embedded: u64,
-    pub newer_client: u64,
-    pub unresolved: u64,
+pub struct ModelFeedCountsV2 {
+    pub descriptive_records: u64,
+    pub qualified_models: u64,
+    pub restricted_models: u64,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModelFeedStatusV1 {
+pub struct ModelFeedStatusV2 {
+    pub selected: crate::ModelMetadataSnapshotRefV1,
+    pub selected_origin: String,
+    pub highest_accepted_data_revision: Option<u64>,
+    pub last_success_at: Option<u64>,
     #[serde(default)]
     pub recovery_available: bool,
     pub retrieval_enabled: bool,
@@ -55,7 +58,7 @@ pub struct ModelFeedStatusV1 {
     pub highest_accepted_sequence: Option<u64>,
     pub last_attempt: Option<ModelFeedAttemptV1>,
     pub verification: ModelFeedVerificationV1,
-    pub counts: ModelFeedCountsV1,
+    pub counts: ModelFeedCountsV2,
     pub next_automatic_attempt_at: Option<u64>,
     pub disclosure: String,
     pub disclosure_acknowledged: bool,
@@ -70,7 +73,7 @@ pub struct ModelFeedAffectedSourceV1 {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModelFeedRemovalPreviewV1 {
+pub struct ModelFeedRemovalPreviewV2 {
     pub sources: Vec<ModelFeedAffectedSourceV1>,
     pub published_revisions: Vec<PlanExecutionRef>,
     pub retained_sequence: Option<u64>,
@@ -86,9 +89,10 @@ pub enum ModelFactOriginV1 {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ModelAvailabilityV1 {
+pub enum ModelAvailabilityV2 {
     Executable,
     NeedsConnection,
+    DescriptiveOnly,
     NeedsNewerClient { version: String },
     UsedByPublishedPlans { count: usize },
 }
@@ -112,13 +116,14 @@ pub struct AvailableModelFactsV1 {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct AvailableModelV1 {
+pub struct AvailableModelV2 {
     pub model_configuration_id: String,
     pub display_name: String,
     pub origin: ModelFactOriginV1,
     pub identity_stability: Option<String>,
-    pub availability: ModelAvailabilityV1,
+    pub availability: ModelAvailabilityV2,
     pub binding_ids: Vec<String>,
+    pub published_plan_references: usize,
     /// Absent for models known only from published Plans.
     pub facts: Option<AvailableModelFactsV1>,
 }
@@ -141,7 +146,7 @@ pub struct ModelAnnouncementV1 {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModelAvailabilityResultV1 {
+pub struct ModelAvailabilityResultV2 {
     pub featured: Vec<ModelAnnouncementV1>,
-    pub models: Vec<AvailableModelV1>,
+    pub models: Vec<AvailableModelV2>,
 }

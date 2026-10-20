@@ -10,8 +10,6 @@ use crate::TrustedReleaseCatalog;
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RecordAdmission {
     Applied,
-    IgnoredEmbedded,
-    NewerClient { min_client_version: String },
     Unresolved,
 }
 
@@ -27,8 +25,6 @@ pub struct AdmittedRecord {
 #[serde(deny_unknown_fields)]
 pub struct FeedCounts {
     pub applied: u64,
-    pub ignored_embedded: u64,
-    pub newer_client: u64,
     pub unresolved: u64,
 }
 

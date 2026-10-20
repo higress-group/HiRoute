@@ -136,7 +136,6 @@ pub fn compile_connection_only_codex_model(
         membership: map_membership(model.membership),
         execution_eligible: true,
         capabilities: map_capabilities(&model.capabilities),
-        default_preferences: Default::default(),
         capability_evidence_digest: model.capability_evidence_digest.clone(),
     });
     compile_compute_management_source(&connection_source)?

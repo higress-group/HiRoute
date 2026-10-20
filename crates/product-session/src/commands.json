@@ -883,5 +883,31 @@
     ],
     "result": "Result<hiroute_application_api::ModelMetadataDetailV1, DesktopFailure>",
     "host_only": false
+  },
+  {
+    "name": "compute_defaults",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::ComputeDefaultsQueryV1"
+      }
+    ],
+    "result": "Result<hiroute_application_api::ComputeDefaultsResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_compute_save_v3",
+    "args": [
+      {
+        "name": "change",
+        "type": "WebComputeManagementChangeV2"
+      },
+      {
+        "name": "default_preferences",
+        "type": "hiroute_domain::SourceDefaultPreferencesV1"
+      }
+    ],
+    "result": "Result<WebComputeSavePreviewV2, DesktopFailure>",
+    "host_only": false
   }
 ]

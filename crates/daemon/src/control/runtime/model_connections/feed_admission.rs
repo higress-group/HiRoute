@@ -41,7 +41,21 @@ impl LocalControlAdapter {
                 .expected()
                 .is_some_and(|old| old.models.iter().any(|saved| saved == model));
             // Unchanged authenticated members remain manageable after withdrawal or absorption.
-            if retained {
+            let preferences_changed = mutation.preferences().is_some_and(|(before, after)| {
+                before.get(&model.binding_id) != after.get(&model.binding_id)
+            });
+            let follows = mutation
+                .preferences()
+                .and_then(|(_, after)| after.get(&model.binding_id))
+                .is_some_and(|fields| {
+                    fields.values().any(|p| {
+                        matches!(
+                            p,
+                            hiroute_domain::ModelDefaultPreferenceV1::FollowOfficial { .. }
+                        )
+                    })
+                });
+            if retained && (!preferences_changed || !follows) {
                 continue;
             }
             let Some(definition) = catalog.model_data().model(id) else {

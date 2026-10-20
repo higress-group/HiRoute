@@ -795,6 +795,8 @@ pub fn run() {
             model_availability,
             list_model_metadata,
             get_model_metadata,
+            compute_defaults,
+            preview_compute_save_v3,
             effective_price_query,
             compute_management_snapshot,
             compute_key_masks,

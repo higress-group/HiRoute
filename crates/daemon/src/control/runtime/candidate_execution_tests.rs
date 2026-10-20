@@ -1294,7 +1294,6 @@ fn registered_management_compilation_excludes_disabled_missing_keys_and_unknown_
             membership: ComputeManagementMembershipV2::Catalog,
             execution_eligible: true,
             capabilities: fact.capabilities.clone(),
-            default_preferences: Default::default(),
             capability_evidence_digest: fact.capability_evidence_digest.clone(),
         }],
         native_recheck: None,

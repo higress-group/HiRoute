@@ -119,7 +119,7 @@ fn complete_snapshot_corrects_existing_model_and_prices_without_changing_authori
     payload.data.price_rates[0].input_micros_per_million += 1;
     seal(&mut payload);
     let admission = admit(&current, &payload, "0.3.2").unwrap();
-    assert_eq!(admission.counts.ignored_embedded, 0);
+    assert_eq!(admission.counts.unresolved, 0);
     let effective = current.with_feed(&admission).unwrap();
     assert_eq!(effective.model_data().models, payload.data.models);
     assert_eq!(effective.model_data().price_rates, payload.data.price_rates);

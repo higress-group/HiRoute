@@ -958,6 +958,15 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Show model origins, announcements and current local availability."
     ),
     command!(
+        "compute.defaults.get",
+        ["compute", "defaults", "get"],
+        "GetComputeDefaults",
+        ["CLI-073", "APP-073"],
+        Released,
+        Query,
+        "Read saved intent, effective capabilities and the exact official default locator."
+    ),
+    command!(
         "compute.defaults.preview",
         ["compute", "defaults", "preview"],
         "PreviewComputeSaveV3",

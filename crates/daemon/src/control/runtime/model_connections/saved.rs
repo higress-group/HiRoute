@@ -153,6 +153,21 @@ impl LocalControlAdapter {
                 }
                 other => other,
             })?;
+        let preferences = self
+            .stores_lock()
+            .map_err(|_| ComputeManagementControlError::Unavailable)?
+            .control()
+            .source_default_preferences(&source.source_id)
+            .map_err(map_port)?;
+        let effective = super::defaults::project_source(&catalog, source, &preferences);
+        for saved in &effective.models {
+            if let Some(declared) = draft.models.iter_mut().find(|declared| {
+                declared.upstream_model_id == saved.upstream_model_id
+                    && declared.catalog_configuration_id == saved.catalog_configuration_id
+            }) {
+                declared.capabilities = saved_model(saved)?.capabilities;
+            }
+        }
         let base_url = draft.base_url.clone();
         let request_path = draft.request_path_override.clone().unwrap_or_default();
         for model in &source.models {

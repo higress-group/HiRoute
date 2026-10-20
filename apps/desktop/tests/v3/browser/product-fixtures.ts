@@ -28,7 +28,7 @@ const now = fixtureNow.getTime();
 /** A daemon that has not retrieved model information yet and has nothing held. */
 export const idleModelFeedStatus: ModelFeedStatus = {
   retrieval_enabled: true, held: null, highest_accepted_sequence: null, last_attempt: null, verification: { kind: 'none' },
-  counts: { applied: 0, ignored_embedded: 0, newer_client: 0, unresolved: 0 }, next_automatic_attempt_at: null,
+  counts: {descriptive_records:0,qualified_models:0,restricted_models:0}, next_automatic_attempt_at: null,
   disclosure: 'Model information is retrieved automatically from hiroute.ai.', disclosure_acknowledged: true,
 };
 export const readyManagement: ManagementSnapshot = {

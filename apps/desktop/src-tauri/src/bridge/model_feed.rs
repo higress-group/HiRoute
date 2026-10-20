@@ -6,7 +6,7 @@ use hiroute_application_api::*;
 pub(super) async fn model_feed_status(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
-) -> Result<ModelFeedStatusV1, DesktopFailure> {
+) -> Result<ModelFeedStatusV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
     let active = || window.is_visible().unwrap_or(false);
@@ -38,7 +38,7 @@ pub(super) async fn model_feed_status(
 pub(super) async fn model_feed_refresh(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
-) -> Result<ModelFeedStatusV1, DesktopFailure> {
+) -> Result<ModelFeedStatusV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
     let active = || window.is_visible().unwrap_or(false);
@@ -71,7 +71,7 @@ pub(super) async fn model_feed_settings_apply(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
     input: ModelFeedSettingsRequestV1,
-) -> Result<ModelFeedStatusV1, DesktopFailure> {
+) -> Result<ModelFeedStatusV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
     let active = || window.is_visible().unwrap_or(false);
@@ -104,7 +104,7 @@ pub(super) async fn model_feed_settings_apply(
 pub(super) async fn model_feed_remove_preview(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
-) -> Result<ModelFeedRemovalPreviewV1, DesktopFailure> {
+) -> Result<ModelFeedRemovalPreviewV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
     let active = || window.is_visible().unwrap_or(false);
@@ -137,7 +137,7 @@ pub(super) async fn model_feed_remove_apply(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
     input: ModelFeedRemoveRequestV1,
-) -> Result<ModelFeedStatusV1, DesktopFailure> {
+) -> Result<ModelFeedStatusV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
     let active = || window.is_visible().unwrap_or(false);
@@ -170,7 +170,7 @@ pub(super) async fn model_feed_remove_apply(
 pub(super) async fn model_availability(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
-) -> Result<ModelAvailabilityResultV1, DesktopFailure> {
+) -> Result<ModelAvailabilityResultV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
     let active = || window.is_visible().unwrap_or(false);
@@ -262,4 +262,77 @@ pub(super) async fn get_model_metadata(
         &state.3,
     );
     hiroute_product_session::commands::get_model_metadata(&context, &product_state, input).await
+}
+
+#[tauri::command]
+pub(super) async fn compute_defaults(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: ComputeDefaultsQueryV1,
+) -> Result<ComputeDefaultsResultV1, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::compute_defaults(&context, &product_state, input).await
+}
+
+#[tauri::command]
+pub(super) async fn preview_compute_save_v3(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    change: hiroute_product_session::commands::WebComputeManagementChangeV2,
+    default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+) -> Result<hiroute_product_session::commands::WebComputeSavePreviewV2, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::preview_compute_save_v3(
+        &context,
+        &product_state,
+        change,
+        default_preferences,
+    )
+    .await
 }

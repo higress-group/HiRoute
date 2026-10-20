@@ -27,7 +27,7 @@ async fn query<T: serde::de::DeserializeOwned, I: serde::Serialize>(
 pub async fn model_feed_status(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
-) -> Result<ModelFeedStatusV1, DesktopFailure> {
+) -> Result<ModelFeedStatusV2, DesktopFailure> {
     query(
         window,
         state,
@@ -40,7 +40,7 @@ pub async fn model_feed_status(
 pub async fn model_feed_refresh(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
-) -> Result<ModelFeedStatusV1, DesktopFailure> {
+) -> Result<ModelFeedStatusV2, DesktopFailure> {
     query(
         window,
         state,
@@ -54,14 +54,14 @@ pub async fn model_feed_settings_apply(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
     input: ModelFeedSettingsRequestV1,
-) -> Result<ModelFeedStatusV1, DesktopFailure> {
+) -> Result<ModelFeedStatusV2, DesktopFailure> {
     query(window, state, "ApplyModelFeedSettings", &input).await
 }
 
 pub async fn model_feed_remove_preview(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
-) -> Result<ModelFeedRemovalPreviewV1, DesktopFailure> {
+) -> Result<ModelFeedRemovalPreviewV2, DesktopFailure> {
     query(
         window,
         state,
@@ -75,14 +75,14 @@ pub async fn model_feed_remove_apply(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
     input: ModelFeedRemoveRequestV1,
-) -> Result<ModelFeedStatusV1, DesktopFailure> {
+) -> Result<ModelFeedStatusV2, DesktopFailure> {
     query(window, state, "ApplyModelFeedRemoval", &input).await
 }
 
 pub async fn model_availability(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
-) -> Result<ModelAvailabilityResultV1, DesktopFailure> {
+) -> Result<ModelAvailabilityResultV2, DesktopFailure> {
     query(
         window,
         state,

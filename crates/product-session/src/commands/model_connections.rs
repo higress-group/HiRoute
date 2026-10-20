@@ -588,3 +588,48 @@ pub async fn get_compute_save_result(
     )
     .map(Into::into)
 }
+
+pub async fn compute_defaults(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: hiroute_application_api::ComputeDefaultsQueryV1,
+) -> Result<hiroute_application_api::ComputeDefaultsResultV1, DesktopFailure> {
+    main_window(window)?;
+    let client = state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .client
+        .clone();
+    crate::session::query(&client, "GetComputeDefaults", &input).await
+}
+pub async fn preview_compute_save_v3(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    change: WebComputeManagementChangeV2,
+    default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+) -> Result<WebComputeSavePreviewV2, DesktopFailure> {
+    main_window(window)?;
+    let client = state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .client
+        .clone();
+    let change = hiroute_application_api::ComputeManagementChangeV3 {
+        schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+        change: change.try_into().map_err(DesktopFailure::from)?,
+        default_preferences,
+    };
+    let result: hiroute_application_api::ComputeSavePreviewV2 = crate::session::query(
+        &client,
+        "PreviewComputeSaveV3",
+        &hiroute_application_api::ComputeSavePreviewRequestV3 { change },
+    )
+    .await?;
+    result.try_into().map_err(DesktopFailure::from)
+}

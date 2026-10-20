@@ -20,6 +20,9 @@ pub fn resolve_managed_defaults(
             let follow = match preferences.get(&ModelDefaultFieldV1::$key) {
                 Some(ModelDefaultPreferenceV1::PreserveSaved) => false,
                 Some(ModelDefaultPreferenceV1::FollowOfficial { locator }) => {
+                    if saved.$field.basis == ComputeManagementFactBasisV2::ConnectorVerified {
+                        return Err(ComputeContractError::InvalidModelData);
+                    }
                     if locator.model_configuration_id != capability.model_configuration_id
                         || locator.upstream_model_id != capability.upstream_model_id
                         || locator.connector_id != capability.connector_id

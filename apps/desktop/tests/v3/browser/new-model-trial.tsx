@@ -25,7 +25,7 @@ if (readCost) installReadCostClock();
 const language = params.get('lang') === 'zh' ? 'zh' : 'en';
 const trace: { command: string; payload: any; at: number }[] = [];
 Object.assign(window, { trialTrace: trace });
-const feed: ModelFeedStatus = { retrieval_enabled:true, held:{sequence:12, issued_at:'2026-10-18T00:00:00Z', retrieved_at:1792281600000}, highest_accepted_sequence:12, last_attempt:{at:1792281600000,result:'ok',reason:null}, verification:{kind:'validated'}, counts:{applied:4,ignored_embedded:2,newer_client:1,unresolved:0}, next_automatic_attempt_at:null, disclosure:'Model information is retrieved automatically from hiroute.ai without account or usage identifiers. You can turn off automatic retrieval.', disclosure_acknowledged:false };
+const feed: ModelFeedStatus = { retrieval_enabled:true, held:{sequence:12, issued_at:'2026-10-18T00:00:00Z', retrieved_at:1792281600000}, highest_accepted_sequence:12, last_attempt:{at:1792281600000,result:'ok',reason:null}, verification:{kind:'validated'}, counts:{descriptive_records:4,qualified_models:4,restricted_models:0}, next_automatic_attempt_at:null, disclosure:'Model information is retrieved automatically from hiroute.ai without account or usage identifiers. You can turn off automatic retrieval.', disclosure_acknowledged:false };
 if (params.has('recovery')) { feed.held=null; feed.verification={kind:'discarded',reason:'feed_state_invalid'}; feed.recovery_available=true; }
 const featuredCatalog = {
   featured:[

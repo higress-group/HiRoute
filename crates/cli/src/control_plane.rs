@@ -85,6 +85,9 @@ pub(crate) fn command_payload(
         "agents.previous-routing.preview" => Some(request::<
             hiroute_application_api::AgentPreviousRoutingQueryV1,
         >(options)),
+        "compute.defaults.get" => Some(request::<hiroute_application_api::ComputeDefaultsQueryV1>(
+            options,
+        )),
         "compute.defaults.preview" => Some(request::<
             hiroute_application_api::ComputeSavePreviewRequestV3,
         >(options)),
