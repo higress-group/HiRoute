@@ -53,7 +53,6 @@ struct Request {
     position: Position,
     first_fact: i64,
     native_turn: Option<String>,
-    native_session: Option<String>,
     run_id: Option<String>,
     decision: Option<RouteDecisionFactV1>,
     candidate: Option<(String, Option<String>)>,
