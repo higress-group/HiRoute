@@ -49,8 +49,9 @@ covers the listener boundary, including tool continuation.
 
 ## Native session correlation
 
-[context_hold/identity.rs](src/context_hold/identity.rs) resolves one identity for
-ContextHold, decision history and observation before request content is externalized.
+[context_hold/identity.rs](src/context_hold/identity.rs) resolves native identity
+before request content is externalized. Routing purpose and validated lineage
+select history branches; observations retain the native physical identity.
 Verified Worker tasks take precedence. Ordinary clients supply these native fields:
 
 | Client | Accepted native identity |

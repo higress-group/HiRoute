@@ -128,6 +128,17 @@ class ObservationReadRetryTests(unittest.TestCase):
 
 
 class NativeInstallationTests(unittest.TestCase):
+    def test_dsh_uses_the_explicit_native_runtime_instead_of_an_ambient_older_node(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / 'bin').mkdir()
+            cli = root / 'selected-cli'; cli.write_text('fixture')
+            node = root / 'selected-node'; node.write_text('fixture')
+            with patch.dict(os.environ, {'HIROUTE_WORKER_NODE': str(node)}), patch('shutil.which', return_value=None):
+                expose_native_installation(SimpleNamespace(root=root), 'dsh', cli)
+            self.assertEqual((root / 'bin/node').resolve(), node)
+            self.assertEqual((root / 'bin/dsh').resolve(), cli)
+
     def test_opencode_gets_only_the_native_ripgrep_dependency_in_its_private_path(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

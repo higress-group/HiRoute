@@ -200,14 +200,14 @@ pub fn stage_additional_restoration(
     let mut restored = restore
         .restore(current.as_deref().map(Vec::as_slice))
         .map_err(fields_error)?;
-    if restore.kind().map_err(fields_error)? == AgentKindV1::DeepseekHarness {
-        if let Some(bytes) = &restored {
-            let path = port.native_target_path(intent.target())?;
-            restored = Some(
-                additional_native::attach_routing_adapter(bytes, &path, Some(&restore.original))
-                    .map_err(fields_error)?,
-            );
-        }
+    if restore.kind().map_err(fields_error)? == AgentKindV1::DeepseekHarness
+        && let Some(bytes) = &restored
+    {
+        let path = port.native_target_path(intent.target())?;
+        restored = Some(
+            additional_native::attach_routing_adapter(bytes, &path, Some(&restore.original))
+                .map_err(fields_error)?,
+        );
     }
     port.stage_native_target(
         operation,
