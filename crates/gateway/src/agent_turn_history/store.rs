@@ -353,9 +353,7 @@ impl AgentTurnHistoryStore {
             crate::context_hold::HistoryContinuity::NoCheckpoint => {
                 hiroute_domain::AgentTurnOpeningCauseV1::NoComparableHistory
             }
-            crate::context_hold::HistoryContinuity::Continuing
-                if appended_user && inheritable_decision =>
-            {
+            crate::context_hold::HistoryContinuity::Continuing if appended_user => {
                 hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
             }
             crate::context_hold::HistoryContinuity::Continuing => {
