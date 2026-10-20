@@ -328,6 +328,30 @@ impl Fixture {
         }
     }
 
+    fn current_candidate_request(
+        &self,
+        checked: &ComputeSubscriptionCheckResultV2,
+        key: &str,
+    ) -> ComputeConnectionApplyRequestV1 {
+        let old_request = self.candidate_request(checked, "current-save-template");
+        let change =
+            hiroute_application_api::saved_compute_change(old_request.spec.desired_state).unwrap();
+        let preview = self
+            .adapter()
+            .preview_compute_save_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                change,
+                default_preferences: Default::default(),
+            })
+            .unwrap();
+        ComputeConnectionApplyRequestV1 {
+            spec: preview.spec,
+            accept_digest: preview.accept_digest,
+            expected_revisions: preview.expected_revisions,
+            idempotency_key: key.into(),
+        }
+    }
+
     fn prepare(&self, request: ComputeConnectionApplyRequestV1) -> PreparedTransactionV1 {
         self.adapter().prepare_compute_save(request).unwrap()
     }
@@ -736,23 +760,7 @@ fn current_default_save_keeps_subscription_handoff_and_retained_presentation() {
     let fixture = Fixture::new();
     let session = fixture.authorize(SubscriptionLoginProviderV1::Codex);
     let checked = fixture.check(&session);
-    let old_request = fixture.candidate_request(&checked, "current-save-template");
-    let change =
-        hiroute_application_api::saved_compute_change(old_request.spec.desired_state).unwrap();
-    let preview = fixture
-        .adapter()
-        .preview_compute_save_v3(hiroute_application_api::ComputeManagementChangeV3 {
-            schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
-            change,
-            default_preferences: Default::default(),
-        })
-        .unwrap();
-    fixture.save(ComputeConnectionApplyRequestV1 {
-        spec: preview.spec,
-        accept_digest: preview.accept_digest,
-        expected_revisions: preview.expected_revisions,
-        idempotency_key: "current-default-save".into(),
-    });
+    fixture.save(fixture.current_candidate_request(&checked, "current-default-save"));
     let source = fixture.snapshot().sources.remove(0);
     let record = fixture
         .adapter()
@@ -784,4 +792,26 @@ fn current_default_save_keeps_subscription_handoff_and_retained_presentation() {
             .is_some()
     );
     assert!(fixture.credential_path(&session.login_ref).exists());
+}
+
+#[test]
+fn current_default_save_rechecks_withdrawn_subscription_before_admission() {
+    if isolated("current_default_save_rechecks_withdrawn_subscription_before_admission") {
+        return;
+    }
+    let fixture = Fixture::new();
+    let session = fixture.authorize(SubscriptionLoginProviderV1::Codex);
+    let checked = fixture.check(&session);
+    let prepared =
+        fixture.prepare(fixture.current_candidate_request(&checked, "current-withdrawn-save"));
+    fixture.forget(&session.login_ref);
+    let error = fixture
+        .adapter()
+        .apply_local_prepared_change(prepared)
+        .unwrap_err();
+    assert_eq!(
+        error.error_code(),
+        hiroute_application_api::ErrorCode::ChangePreviewStale
+    );
+    assert!(fixture.snapshot().sources.is_empty());
 }

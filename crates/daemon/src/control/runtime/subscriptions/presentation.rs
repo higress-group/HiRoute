@@ -5,8 +5,7 @@ use hiroute_application::compute_management::{
 };
 use hiroute_application::control::ComputeManagementControlError;
 use hiroute_application_api::{
-    COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2, ComputeManagementChangeV2, ComputeManagementIntentV2,
-    ComputeManagementSubjectV2, ComputeModelMembershipV2,
+    ComputeManagementIntentV2, ComputeManagementSubjectV2, ComputeModelMembershipV2,
 };
 use hiroute_domain::{
     ComputeManagementFactBasisV2, ComputeManagementFactValueV2, ComputeManagementMembershipV2,
@@ -64,17 +63,10 @@ impl LocalControlAdapter {
             || save_operation.state != OperationState::Succeeded
             || save_operation.plan.spec().command_id != "compute.connection.apply"
             || save_operation.plan.spec().resource_id.as_deref() != Some(source.source_id.as_str())
-            || save_operation
-                .plan
-                .spec()
-                .desired_state
-                .get("schema")
-                .and_then(serde_json::Value::as_str)
-                != Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2)
         {
             return Ok(None);
         }
-        let Ok(change) = serde_json::from_value::<ComputeManagementChangeV2>(
+        let Ok(change) = hiroute_application_api::saved_compute_change(
             save_operation.plan.spec().desired_state.clone(),
         ) else {
             return Ok(None);
