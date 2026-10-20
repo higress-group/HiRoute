@@ -19,7 +19,7 @@ export function NativeConnectionRecovery({ status, language, onRecovered, onRefr
     finally { setBusy(false); }
   }
   return <div className="callout bad native-connection-recovery" role="alert" data-connection-state={status}>
-    <div><strong>{text('本机可信连接已失效', 'Trusted local connection lost')}</strong>
+    <div><strong>{status === 'not_owned' ? text('本机服务由其他入口管理', 'Local service managed elsewhere') : text('本机可信连接已失效', 'Trusted local connection lost')}</strong>
       <p>{status === 'not_owned' ? text('本机服务正由其他入口管理，当前窗口无法读取受保护记录。请从该入口正常退出服务，再重新打开 HiRoute。', 'The local service is managed by another entry. This window cannot read protected records. Quit the service normally from that entry, then reopen HiRoute.') : text('本机服务仍可响应，但记录读取和需要授权的操作暂时不可用。恢复会在现有工作完成后重新连接，保留已保存的数据。', 'The local service still responds, but records and protected actions are unavailable. Restore reconnects after existing work finishes and keeps saved data.')}</p>
       {busy && <p role="status">{text('正在安全恢复本机连接…', 'Restoring the local connection safely…')}</p>}
       {error && <p data-error-code={error}>{error === 'AUTHORITY_RECOVERY_WORK_ACTIVE'

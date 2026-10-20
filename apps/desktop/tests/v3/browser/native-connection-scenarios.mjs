@@ -11,6 +11,15 @@ export function nativeConnectionScenarios({ fresh, click, until, text, calls, co
     await until(() => document.querySelector('[data-connection-state="recovery_required"]'), 'lost native connection');
   }
   return [
+    scenario('desktop.connection.unowned-service', ['native-recovery'], 'An externally managed daemon cannot be taken over from the Desktop recovery control', async () => {
+      await fresh(); await lose();
+      c().desktop.native_connection = 'not_owned';
+      await c().callHost('observation_read', {}).catch(() => {});
+      await until(() => document.querySelector('[data-connection-state="not_owned"]'), 'external service ownership');
+      assert(text().includes('其他入口管理'), 'External ownership guidance missing');
+      assert(!document.querySelector('.native-connection-recovery button'), 'External daemon can be taken over');
+      assert(calls('recover_native_connection').length === 0, 'Recovery touched an external daemon');
+    }),
     scenario('desktop.connection.loss-retry-recovery', ['native-recovery'], 'Live service with lost authority shows accurate read errors and only explicit recovery restores it', async () => {
       await fresh(); await lose(); await click('会话');
       await until(() => text().includes('暂时无法读取记录'), 'accurate observation error');

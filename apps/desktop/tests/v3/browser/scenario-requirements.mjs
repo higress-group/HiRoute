@@ -62,6 +62,7 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.connection.unowned-service',
   'desktop.connection.loss-retry-recovery',
   'desktop.connection.busy-and-failed-recovery',
   'desktop.settings.storage-capacity',
