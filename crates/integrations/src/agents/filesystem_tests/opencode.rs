@@ -125,8 +125,13 @@ fn opencode_dynamic_configuration_keys_are_scoped_out_of_models_workers_and_impo
             .is_err();
         let native = scanner.opencode_native_context().unwrap();
         let config = native.read_config(None).unwrap();
-        let worker_rejected =
-            crate::agents::validate_opencode_composition(native, &config, root.path(), "").is_err();
+        let worker_rejected = crate::agents::validate_opencode_composition(
+            native,
+            &config,
+            root.path(),
+            &std::env::var("PATH").unwrap(),
+        )
+        .is_err();
         let sources = scanner.opencode_api_sources().unwrap();
         let import_rejected = !sources.is_empty()
             && sources

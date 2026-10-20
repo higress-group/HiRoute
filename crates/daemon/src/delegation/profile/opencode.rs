@@ -253,6 +253,7 @@ mod tests {
         let native =
             hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
         std::fs::create_dir_all(&native.config_root).unwrap();
+        let search_path = worker_path(&home.join("opencode"), None, None).unwrap();
         for schema in [
             "",
             "{env:HIROUTE_UNSET_SCHEMA}",
@@ -261,12 +262,12 @@ mod tests {
         ] {
             let bytes = serde_json::to_vec(&json!({"$schema":schema})).unwrap();
             std::fs::write(native.model_target(), &bytes).unwrap();
-            let config = native.read_config(Some((&home, ""))).unwrap();
+            let config = native.read_config(Some((&home, &search_path))).unwrap();
             let admission = StartupAdmission {
                 native: native.clone(),
                 config_digest: config.digest.clone(),
                 migrations: &["known"],
-                search_path: String::new(),
+                search_path: search_path.clone(),
             };
             assert_eq!(
                 admission.validate(&home, true).is_ok(),
@@ -293,12 +294,13 @@ mod tests {
             std::fs::write(&tool, content).unwrap();
             let native =
                 hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
-            let config = native.read_config(Some((&home, ""))).unwrap();
+            let search_path = worker_path(&home.join("opencode"), None, None).unwrap();
+            let config = native.read_config(Some((&home, &search_path))).unwrap();
             let admission = StartupAdmission {
                 native: native.clone(),
                 config_digest: config.digest.clone(),
                 migrations: &["known"],
-                search_path: String::new(),
+                search_path: search_path.clone(),
             };
             let deep = (0..65).fold(project, |path, _| path.join("d"));
             std::fs::create_dir_all(&deep).unwrap();
@@ -331,7 +333,7 @@ mod tests {
             std::fs::create_dir_all(&project).unwrap();
             let native =
                 hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
-            let path = worker_path(Path::new("/unused/native"), None, None).unwrap();
+            let path = worker_path(&home.join("opencode"), None, None).unwrap();
             let marker = project.join(".git");
             if matches!(kind, "missing-git" | "rejected-git" | "late-corruption") {
                 let status = std::process::Command::new("git")
@@ -404,12 +406,13 @@ mod tests {
         let home = root.path().canonicalize().unwrap();
         let native =
             hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
-        let config = native.read_config(Some((&home, ""))).unwrap();
+        let search_path = worker_path(&home.join("opencode"), None, None).unwrap();
+        let config = native.read_config(Some((&home, &search_path))).unwrap();
         let admission = StartupAdmission {
             native: native.clone(),
             config_digest: config.digest.clone(),
             migrations: &["known"],
-            search_path: String::new(),
+            search_path: search_path.clone(),
         };
         assert_eq!(admission.root(), native.database);
         assert!(admission.validate(&home, true).is_ok());
