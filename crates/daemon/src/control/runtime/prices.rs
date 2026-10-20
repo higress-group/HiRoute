@@ -82,6 +82,14 @@ impl LocalControlAdapter {
         let catalog = self
             .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
+        self.price_facts_for(stores, deadline, &catalog)
+    }
+    fn price_facts_for(
+        &self,
+        stores: &hiroute_local_storage::LocalStorageSet,
+        deadline: Option<std::time::Instant>,
+        catalog: &crate::model_feed::ReleaseCatalogSnapshot,
+    ) -> Result<PriceControlFactsV1, ControlReadError> {
         let check = || {
             if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
                 Err(ControlReadError::Unavailable)
@@ -108,11 +116,11 @@ impl LocalControlAdapter {
             .dependencies
             .insert("feed.model_data".into(), catalog.generation);
         let configuration_revision = revisions.target;
-        let (_, sequence, digest) = catalog.model_data_provenance();
+        let identity = catalog.official_snapshot();
         let catalog_refs = vec![PriceFactRefV1 {
-            id: catalog.model_data().bundle_version.clone(),
-            revision: sequence,
-            digest: digest.clone(),
+            id: "official-model-data".into(),
+            revision: identity.data_revision,
+            digest: identity.data_digest,
         }];
         check()?;
         let mut source_bindings = Vec::new();
@@ -356,7 +364,77 @@ impl LocalControlAdapter {
         })
     }
 }
+pub(super) struct PreparedCatalogPrices {
+    snapshot: PriceSnapshot,
+    revisions: RevisionSetV1,
+    previous_price: Option<PriceGenerationRefV1>,
+}
 impl LocalControlAdapter {
+    pub(super) fn prepare_catalog_prices(
+        &self,
+        catalog: &crate::model_feed::ReleaseCatalogSnapshot,
+    ) -> Result<PreparedCatalogPrices, String> {
+        let stores = self.stores_lock().map_err(|e| e.to_string())?;
+        let revisions = stores
+            .control()
+            .current_revisions(&WorkspaceId::default())
+            .map_err(|e| e.to_string())?;
+        let facts = self
+            .price_facts_for(&stores, None, catalog)
+            .map_err(|_| "prices.candidate.facts")?;
+        let snapshot = PriceSnapshot::build(
+            facts.configuration_revision,
+            facts.catalog_refs,
+            facts.entries,
+        )
+        .map_err(|_| "prices.candidate.build")?;
+        Ok(PreparedCatalogPrices {
+            snapshot,
+            revisions,
+            previous_price: self
+                .price_snapshot
+                .capture_current_price_snapshot()
+                .generation_ref()
+                .cloned(),
+        })
+    }
+    pub(super) fn activate_catalog_prices(
+        &self,
+        catalog: &crate::model_feed::ReleaseCatalogSnapshot,
+        prepared: PreparedCatalogPrices,
+    ) -> Result<(), String> {
+        let stores = self.stores_lock().map_err(|e| e.to_string())?;
+        if stores
+            .control()
+            .current_revisions(&WorkspaceId::default())
+            .map_err(|e| e.to_string())?
+            != prepared.revisions
+            || self
+                .price_snapshot
+                .capture_current_price_snapshot()
+                .generation_ref()
+                != prepared.previous_price.as_ref()
+        {
+            return Err("prices.candidate.dependencies_changed".into());
+        }
+        stores
+            .control()
+            .activate_model_feed_generation(
+                &WorkspaceId::default(),
+                catalog.generation,
+                catalog.accepted_sequence,
+            )
+            .map_err(|e| e.to_string())?;
+        if self
+            .price_snapshot
+            .install(prepared.snapshot, prepared.previous_price.as_ref())
+            .is_err()
+        {
+            self.price_snapshot.invalidate_current();
+            return Err("prices.candidate.restart_required".into());
+        }
+        Ok(())
+    }
     pub(super) fn rebuild_price_snapshot(&self) -> PortResult<PriceGenerationRefV1> {
         let facts = self
             .price_control_facts()

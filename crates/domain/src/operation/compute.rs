@@ -623,9 +623,12 @@ pub(super) fn validate_connection_plan(
     runtime: &[RuntimeMutationV1],
     external: &[ExternalEffectIntentV1],
 ) -> Result<(), OperationValidationError> {
-    if spec.desired_state.get("schema").and_then(Value::as_str)
-        == Some(crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2)
-    {
+    if matches!(
+        spec.desired_state.get("schema").and_then(Value::as_str),
+        Some(
+            crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2 | crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+        )
+    ) {
         return super::compute_management::validate_management_plan(
             spec, control, secrets, runtime, external,
         );

@@ -1,7 +1,7 @@
 //! Current-fact checks for saved/checked sources. Catalog digests are provenance, not validity.
 use super::*;
 use hiroute_domain::{
-    ComputeManagedModelV2, ComputeManagementMutationV2, ComputeManagementProvenanceV2,
+    ComputeManagedModelV2, ComputeManagementMutation, ComputeManagementProvenanceV2,
 };
 
 impl LocalControlAdapter {
@@ -10,7 +10,7 @@ impl LocalControlAdapter {
         plan: &hiroute_domain::TransactionPlanV1,
         catalog: &TrustedReleaseCatalog,
     ) -> Result<(), ComputeManagementControlError> {
-        let mutation: ComputeManagementMutationV2 = serde_json::from_value(
+        let mutation: ComputeManagementMutation = serde_json::from_value(
             plan.control()
                 .get("compute_management_mutation")
                 .cloned()
@@ -40,13 +40,8 @@ impl LocalControlAdapter {
             let retained = mutation
                 .expected()
                 .is_some_and(|old| old.models.iter().any(|saved| saved == model));
-            let embedded = self.model_feed.as_ref().map_or_else(
-                || catalog.model_data().model(id).is_some(),
-                |feed| feed.is_embedded_model(id),
-            );
-            // Lifecycle edits retain saved embedded facts across catalog upgrades.
-            // New members and feed-only members must still pass current admission.
-            if retained && embedded {
+            // Unchanged authenticated members remain manageable after withdrawal or absorption.
+            if retained {
                 continue;
             }
             let Some(definition) = catalog.model_data().model(id) else {
@@ -78,23 +73,35 @@ impl LocalControlAdapter {
                 .native_reasoning()
                 .iter()
                 .find(|entry| entry.model_configuration_id == id);
-            if !capability || !offered || !current_model(model, definition, reasoning) {
+            let capability_record = catalog
+                .model_data()
+                .model_endpoint_capabilities
+                .iter()
+                .find(|cap| {
+                    cap.model_configuration_id == id
+                        && cap.upstream_model_id == model.upstream_model_id
+                        && cap.endpoint_profile_id == resolved.endpoint_profile.endpoint_profile_id
+                        && cap.upstream_protocol == source.target.upstream_protocol
+                });
+            let preferences = mutation
+                .preferences()
+                .and_then(|(_, after)| after.get(&model.binding_id))
+                .cloned()
+                .unwrap_or_default();
+            let resolved_defaults = capability_record.zip(reasoning).and_then(|(cap, reason)| {
+                hiroute_integrations::compute::resolve_managed_defaults(
+                    &model.capabilities,
+                    &preferences,
+                    cap,
+                    definition,
+                    reason,
+                )
+                .ok()
+            });
+            if !capability || !offered || resolved_defaults.is_none() {
                 return Err(ComputeManagementControlError::RegisteredCatalogChanged);
             }
         }
         Ok(())
     }
-}
-fn current_model(
-    model: &ComputeManagedModelV2,
-    definition: &hiroute_domain::ModelDefinitionV1,
-    reasoning: Option<&hiroute_domain::ModelNativeReasoningV1>,
-) -> bool {
-    let facts = &model.capabilities;
-    facts.tool.value == Some(definition.capabilities.tool)
-        && facts.vision.value == Some(definition.capabilities.vision)
-        && facts.streaming.value == Some(definition.capabilities.streaming)
-        && facts.context_tokens.value == Some(definition.capabilities.context_tokens)
-        && facts.max_output_tokens.value == Some(definition.capabilities.max_output_tokens)
-        && facts.native_reasoning.value.as_ref() == reasoning.map(|entry| &entry.capability)
 }

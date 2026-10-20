@@ -4,6 +4,7 @@
 pub(crate) mod product_fixture;
 mod recovery;
 mod store;
+mod transition;
 pub(crate) use store::*;
 
 use arc_swap::ArcSwap;
@@ -273,12 +274,37 @@ impl ModelFeedService {
         let guard = self.mutable.lock().map_err(|_| "feed_lock")?;
         removal_digest(&guard)
     }
+    #[cfg(test)]
     pub fn remove(
         &self,
         expected: &CanonicalDigest,
         disable: bool,
         install: impl FnOnce(u64, u64) -> Result<(), String>,
     ) -> Result<(), String> {
+        self.remove_prepared(
+            expected,
+            disable,
+            |_| Ok(()),
+            |catalog, ()| install(catalog.generation, catalog.accepted_sequence),
+        )
+    }
+    pub fn remove_prepared<P>(
+        &self,
+        expected: &CanonicalDigest,
+        disable: bool,
+        prepare: impl FnOnce(&ReleaseCatalogSnapshot) -> Result<P, String>,
+        install: impl FnOnce(&ReleaseCatalogSnapshot, P) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let mut candidate = ReleaseCatalogSnapshot {
+            catalog: (*self.embedded).clone(),
+            generation: self
+                .current()
+                .generation
+                .checked_add(1)
+                .ok_or("feed_generation_overflow")?,
+            accepted_sequence: self.current().accepted_sequence,
+        };
+        let prepared = prepare(&candidate)?;
         let mut guard = self.mutable.lock().map_err(|_| "feed_lock")?;
         if !guard.recovery_available {
             check_mutable(&guard)?;
@@ -304,6 +330,10 @@ impl ModelFeedService {
         if guard.recovery_available {
             self.store.quarantine_state()?;
         }
+        if candidate.generation != next.generation {
+            return Err("feed_retrieval_superseded".into());
+        }
+        candidate.accepted_sequence = accepted_sequence(&next);
         self.store.commit(&next)?;
         guard.state = next;
         guard.counts = FeedCounts::default();
@@ -312,198 +342,19 @@ impl ModelFeedService {
             .retrieval_enabled
             .then(|| now_ms() + startup_delay_ms());
         self.active.store(false, Ordering::Release);
-        if let Err(error) = install(guard.state.generation, accepted_sequence(&guard.state)) {
+        if let Err(error) = install(&candidate, prepared) {
             guard.refused = Some("feed_activation_requires_restart".into());
             guard.recovery_available = false;
             // The control transaction failed atomically; its previous snapshot is still valid.
             self.active.store(true, Ordering::Release);
             return Err(error);
         }
-        self.current.store(Arc::new(ReleaseCatalogSnapshot {
-            catalog: (*self.embedded).clone(),
-            generation: guard.state.generation,
-            accepted_sequence: accepted_sequence(&guard.state),
-        }));
+        self.current.store(Arc::new(candidate));
         self.active.store(true, Ordering::Release);
         guard.refused = None;
         guard.recovery_available = false;
         self.store.retire_unreferenced(None);
         Ok(())
-    }
-    pub fn refresh(
-        &self,
-        install: impl FnOnce(u64, u64) -> Result<(), String>,
-    ) -> Result<(), String> {
-        #[cfg(feature = "integration-test-hooks")]
-        if let Some(root) = product_fixture::root() {
-            return self.refresh_using(|_| product_fixture::download(&root), install);
-        }
-        self.refresh_using(|etag| retrieve_feed(&self.client_version, etag), install)
-    }
-    fn refresh_using(
-        &self,
-        mut retrieve: impl FnMut(
-            Option<&str>,
-        )
-            -> Result<FeedDownload, hiroute_integrations::model_feed::FeedError>,
-        install: impl FnOnce(u64, u64) -> Result<(), String>,
-    ) -> Result<(), String> {
-        let (generation, epoch, etag) = {
-            let mut guard = self.mutable.lock().map_err(|_| "feed_lock")?;
-            check_mutable(&guard)?;
-            if guard.refreshing {
-                while guard.refreshing {
-                    guard = self.refresh_finished.wait(guard).map_err(|_| "feed_lock")?;
-                }
-                return guard.last_refresh_result.clone().unwrap_or(Ok(()));
-            }
-            guard.refreshing = true;
-            (
-                guard.state.generation,
-                guard.retrieval_epoch,
-                guard.state.held.as_ref().and(guard.state.etag.clone()),
-            )
-        };
-        let fetched = retrieve(etag.as_deref()).and_then(|value| {
-            if matches!(value, FeedDownload::NotModified) && etag.is_none() {
-                retrieve(None)
-            } else {
-                Ok(value)
-            }
-        });
-        let mut guard = self.mutable.lock().map_err(|_| "feed_lock")?;
-        guard.refreshing = false;
-        if generation != guard.state.generation || epoch != guard.retrieval_epoch {
-            guard.last_refresh_result = Some(Err("feed_retrieval_superseded".into()));
-            self.refresh_finished.notify_all();
-            return Err("feed_retrieval_superseded".into());
-        }
-        let result = match fetched {
-            Ok(FeedDownload::Content { bytes, etag }) => parse_feed(&bytes)
-                .map_err(|e| failure_code(e.kind).into())
-                .and_then(|validated| self.apply(&mut guard, validated, &bytes, etag, install)),
-            Ok(FeedDownload::NotModified) if guard.state.held.is_some() => Ok("not_modified"),
-            Ok(FeedDownload::NotPublished) => Ok("not_published"),
-            Ok(FeedDownload::NotModified) => Err("cacheless_not_modified".into()),
-            Err(error) => Err(failure_code(error.kind).into()),
-        };
-        let (code, reason) = match &result {
-            Ok(code) => ((*code).to_owned(), None),
-            Err(reason) => (attempt_failure_code(reason).into(), Some(reason.clone())),
-        };
-        guard.state.last_attempt = Some(FeedAttempt {
-            at_ms: now_ms(),
-            result: code,
-            reason,
-        });
-        if result.is_ok() {
-            guard.failures = 0;
-        } else {
-            guard.failures = guard.failures.saturating_add(1);
-        }
-        let delay = if guard.failures == 0 {
-            330 * 60 * 1000 + jitter_ms(60 * 60 * 1000)
-        } else {
-            (15 * 60 * 1000_u64).saturating_mul(1 << guard.failures.min(4).saturating_sub(1))
-        };
-        guard.next_attempt = guard.state.retrieval_enabled.then(|| now_ms() + delay);
-        let result = self.store.commit(&guard.state).and(result.map(|_| ()));
-        guard.last_refresh_result = Some(result.clone());
-        self.refresh_finished.notify_all();
-        result
-    }
-    fn apply(
-        &self,
-        guard: &mut MutableFeed,
-        validated: ValidatedFeed,
-        bytes: &[u8],
-        etag: Option<String>,
-        install: impl FnOnce(u64, u64) -> Result<(), String>,
-    ) -> Result<&'static str, String> {
-        if validated.payload.sequence <= guard.state.sequence_floor
-            && !guard.state.highest_accepted.as_ref().is_some_and(|h| {
-                h.sequence >= guard.state.sequence_floor && h.sequence == validated.payload.sequence
-            })
-        {
-            return Err("older_sequence".into());
-        }
-        if let Some(high) = &guard.state.highest_accepted {
-            if validated.payload.sequence < high.sequence {
-                return Err("older_sequence".into());
-            }
-            if validated.payload.sequence == high.sequence {
-                if validated.payload_digest != high.payload_digest {
-                    return Err("same_sequence_conflicting_digest".into());
-                }
-                if guard.state.held.is_some() {
-                    return Ok("already_current");
-                }
-            }
-        }
-        let incoming = DataFloor {
-            revision: validated.payload.data_revision,
-            digest: validated.payload.data_digest.clone(),
-        };
-        if let Some(floor) = &guard.state.data_floor {
-            if incoming.revision < floor.revision {
-                return Err("older_data_revision".into());
-            }
-            if incoming.revision == floor.revision && incoming.digest != floor.digest {
-                return Err("same_data_revision_conflicting_digest".into());
-            }
-        }
-        let semantic_change = guard.state.selected_data.as_ref() != Some(&incoming);
-        let admission = admit(&self.embedded, &validated.payload, &self.client_version)
-            .map_err(|e| e.to_string())?;
-        let catalog = self
-            .embedded
-            .with_feed(&admission)
-            .map_err(|e| e.to_string())?;
-        let mut next = guard.state.clone();
-        if semantic_change {
-            next.generation = next
-                .generation
-                .checked_add(1)
-                .ok_or("feed_generation_overflow")?;
-        }
-        next.data_floor = Some(incoming.clone());
-        next.selected_data = Some(incoming);
-        next.highest_accepted = Some(HighestAccepted {
-            sequence: validated.payload.sequence,
-            payload_digest: validated.payload_digest.clone(),
-        });
-        next.held = Some(HeldPublication {
-            sequence: validated.payload.sequence,
-            payload_digest: validated.payload_digest.clone(),
-            retrieved_at_ms: now_ms(),
-            issued_at: validated.payload.issued_at,
-        });
-        next.etag = etag;
-        next.last_success_at_ms = Some(now_ms());
-        self.store.persist_blob(bytes, &validated.payload_digest)?;
-        self.store.commit(&next)?;
-        guard.state = next;
-        guard.counts = admission.counts;
-        self.active.store(false, Ordering::Release);
-        if let Err(error) = if semantic_change {
-            install(guard.state.generation, accepted_sequence(&guard.state))
-        } else {
-            Ok(())
-        } {
-            guard.refused = Some("feed_activation_requires_restart".into());
-            guard.recovery_available = false;
-            // The control transaction failed atomically; its previous snapshot is still valid.
-            self.active.store(true, Ordering::Release);
-            return Err(error);
-        }
-        self.current.store(Arc::new(ReleaseCatalogSnapshot {
-            catalog,
-            generation: guard.state.generation,
-            accepted_sequence: accepted_sequence(&guard.state),
-        }));
-        self.active.store(true, Ordering::Release);
-        self.store.retire_unreferenced(guard.state.held.as_ref());
-        Ok("ok")
     }
 }
 

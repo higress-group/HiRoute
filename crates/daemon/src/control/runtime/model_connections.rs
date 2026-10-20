@@ -612,12 +612,42 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         Ok(preview.result)
     }
 
+    fn preview_compute_save_v3(
+        &self,
+        change: hiroute_application_api::ComputeManagementChangeV3,
+    ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError> {
+        let catalog = self
+            .current_catalog()
+            .ok_or(ComputeManagementControlError::Unavailable)?;
+        self.validate_subscription_save_change(&change.change)?;
+        self.bind_saved_key_inputs(&change.change)?;
+        let stores = self
+            .stores_lock()
+            .map_err(|_| ComputeManagementControlError::Unavailable)?;
+        let preview = ComputeManagementPlanner::new(
+            self.model_connections.candidate_port(),
+            stores.control(),
+            stores.secrets(),
+            self,
+        )
+        .preview_v3(change)
+        .map_err(map_planning)?;
+        self.validate_feed_save_plan(preview.plan(), &catalog)?;
+        if self
+            .current_catalog()
+            .is_none_or(|current| current.generation != catalog.generation)
+        {
+            return Err(ComputeManagementControlError::Conflict);
+        }
+        Ok(preview.result)
+    }
+
     fn prepare_compute_save(
         &self,
         request: ComputeConnectionApplyRequestV1,
     ) -> Result<hiroute_application::PreparedTransactionV1, ComputeManagementControlError> {
         let change =
-            serde_json::from_value::<ComputeManagementChangeV2>(request.spec.desired_state.clone())
+            hiroute_application_api::saved_compute_change(request.spec.desired_state.clone())
                 .map_err(|_| ComputeManagementControlError::Invalid)?;
         let catalog = self
             .current_catalog()
@@ -633,7 +663,9 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             stores.secrets(),
             self,
         );
-        let preview = planner.preview(change).map_err(map_planning)?;
+        let preview = planner
+            .preview_saved_state(request.spec.desired_state.clone())
+            .map_err(map_planning)?;
         self.validate_feed_save_plan(preview.plan(), &catalog)?;
         let prepared = planner.prepare_apply(request).map_err(map_planning)?;
         let feed = self.model_feed.clone();
@@ -662,7 +694,7 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             .load_operation(&operation_id)
             .map_err(map_port)?
             .ok_or(ComputeManagementControlError::NotFound)?;
-        let change = serde_json::from_value::<ComputeManagementChangeV2>(
+        let change = hiroute_application_api::saved_compute_change(
             operation.plan.spec().desired_state.clone(),
         )
         .map_err(|_| ComputeManagementControlError::Corrupt)?;

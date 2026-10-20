@@ -238,12 +238,12 @@ fn model_feed_generation_is_captured_with_catalog_before_dependency_activation()
         .refresh_using(
             |_| {
                 Ok(FeedDownload::Content {
-                    bytes: payload(1),
+                    bytes: payload(2),
                     etag: None,
                 })
             },
             |generation, sequence| {
-                assert_eq!(sequence, 1);
+                assert_eq!(sequence, 2);
                 assert_eq!(generation, 1);
                 assert_eq!(service.current().generation, 0);
                 assert!(service.available_catalog().is_none());
@@ -602,4 +602,64 @@ fn retained_v1_choices_and_floor_do_not_poison_v2_acceptance() {
     let restarted = open(root.path(), generation + 1);
     assert_eq!(fetch(&restarted, 1).unwrap_err(), "older_sequence");
     assert!(restarted.status().unwrap().disclosure_acknowledged);
+}
+
+#[test]
+fn model_feed_failed_preparation_keeps_previous_catalog_and_durable_selection() {
+    let root = tempfile::tempdir().unwrap();
+    let service = open(root.path(), 0);
+    let old = service.current();
+    assert!(
+        service
+            .refresh_using_prepared(
+                |_| Ok(FeedDownload::Content {
+                    bytes: payload(2),
+                    etag: None
+                }),
+                |_| Err::<(), _>("prices.candidate.unavailable".into()),
+                |_, ()| panic!("failed candidate must never activate"),
+            )
+            .is_err()
+    );
+    assert_eq!(service.current().generation, old.generation);
+    assert!(service.status().unwrap().held.is_none());
+    drop(service);
+    assert_eq!(open(root.path(), 0).current().generation, old.generation);
+}
+
+#[test]
+fn model_feed_slow_preparation_does_not_hold_feed_lock_and_superseded_candidate_never_installs() {
+    let root = tempfile::tempdir().unwrap();
+    let service = Arc::new(open(root.path(), 0));
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+    let worker = service.clone();
+    let join = std::thread::spawn(move || {
+        worker.refresh_using_prepared(
+            |_| {
+                Ok(FeedDownload::Content {
+                    bytes: payload(2),
+                    etag: None,
+                })
+            },
+            |_| {
+                entered_tx.send(()).unwrap();
+                resume_rx.recv().unwrap();
+                Ok(())
+            },
+            |_, ()| panic!("superseded candidate must never activate"),
+        )
+    });
+    entered_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert!(service.available_catalog().is_some());
+    service.settings(Some(false), None).unwrap();
+    assert!(!service.status().unwrap().retrieval_enabled);
+    resume_tx.send(()).unwrap();
+    assert_eq!(
+        join.join().unwrap().unwrap_err(),
+        "feed_retrieval_superseded"
+    );
+    assert_eq!(service.current().generation, 0);
 }

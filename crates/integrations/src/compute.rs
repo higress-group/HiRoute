@@ -11,7 +11,9 @@ use thiserror::Error;
 
 #[path = "compute/control_plane.rs"]
 mod control_plane;
+mod defaults;
 pub use control_plane::*;
+pub use defaults::resolve_managed_defaults;
 
 #[derive(Clone, Debug)]
 pub struct TrustedReleaseCatalog {

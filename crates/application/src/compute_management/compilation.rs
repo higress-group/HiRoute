@@ -54,6 +54,10 @@ pub struct ComputeManagementCompilationFactV2 {
     pub authentication: GatewayAuthenticationSemanticsV1,
     pub additional_native_endpoints: Vec<ComputeNativeEndpointV3>,
     pub capabilities: ComputeManagedCapabilitiesV2,
+    pub default_preferences: std::collections::BTreeMap<
+        hiroute_domain::ModelDefaultFieldV1,
+        hiroute_domain::ModelDefaultPreferenceV1,
+    >,
     pub capability_evidence_digest: hiroute_domain::CanonicalDigest,
     pub native_reasoning: NativeReasoningCapabilityV1,
     pub credential: ComputeManagementCredentialCompilationV2,
@@ -132,6 +136,7 @@ pub fn compile_connection_only_codex_model(
         membership: map_membership(model.membership),
         execution_eligible: true,
         capabilities: map_capabilities(&model.capabilities),
+        default_preferences: Default::default(),
         capability_evidence_digest: model.capability_evidence_digest.clone(),
     });
     compile_compute_management_source(&connection_source)?
@@ -240,6 +245,7 @@ fn compile_model(
         authentication: source.authentication.clone(),
         additional_native_endpoints: source.additional_native_endpoints.clone(),
         capabilities: capabilities.clone(),
+        default_preferences: Default::default(),
         capability_evidence_digest: model.capability_evidence_digest.clone(),
         native_reasoning,
         credential,

@@ -106,6 +106,7 @@ fn source_local_fact(
                 profile: "provider-default".into(),
             }),
         },
+        default_preferences: Default::default(),
         capability_evidence_digest: CanonicalDigest::of_bytes(b"manual-capability"),
         native_reasoning: NativeReasoningCapabilityV1::Fixed {
             profile: "provider-default".into(),
@@ -230,6 +231,7 @@ fn registered_runtime_fallback_preserves_exact_provider_endpoint_and_has_no_comm
             max_output_tokens: runtime_fact(8_192),
             native_reasoning: runtime_fact(reasoning.clone()),
         },
+        default_preferences: Default::default(),
         capability_evidence_digest: CanonicalDigest::of_bytes(b"runtime-fallback-capability"),
         native_reasoning: reasoning,
         credential: ComputeManagementCredentialCompilationV2::Native {
@@ -1292,6 +1294,7 @@ fn registered_management_compilation_excludes_disabled_missing_keys_and_unknown_
             membership: ComputeManagementMembershipV2::Catalog,
             execution_eligible: true,
             capabilities: fact.capabilities.clone(),
+            default_preferences: Default::default(),
             capability_evidence_digest: fact.capability_evidence_digest.clone(),
         }],
         native_recheck: None,

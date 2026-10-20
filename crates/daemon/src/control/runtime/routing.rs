@@ -684,8 +684,15 @@ impl LocalControlAdapter {
                             continue;
                         }
                     }
-                    let compilation = diagnostics.compile_models(&source);
-                    for fact in &compilation {
+                    let preferences = control
+                        .source_default_preferences(&source.source_id)
+                        .map_err(map_port)?;
+                    let mut compilation = diagnostics.compile_models(&source);
+                    for fact in &mut compilation {
+                        fact.default_preferences = preferences
+                            .get(&fact.binding_id)
+                            .cloned()
+                            .unwrap_or_default();
                         let candidate = match &fact.provenance {
                     hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
                         connector_id,

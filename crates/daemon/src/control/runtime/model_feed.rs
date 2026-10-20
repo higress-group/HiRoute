@@ -23,27 +23,14 @@ impl LocalControlAdapter {
         }
     }
 
-    fn activate_feed_generation(&self, generation: u64, sequence: u64) -> Result<(), String> {
-        let stores = self.stores_lock().map_err(|error| error.to_string())?;
-        stores
-            .control()
-            .activate_model_feed_generation(&WorkspaceId::default(), generation, sequence)
-            .map_err(|error| error.to_string())?;
-        self.price_snapshot.invalidate_current();
-        Ok(())
-    }
-
     fn refresh_model_feed(&self) -> Result<(), String> {
-        let feed = self.model_feed.as_ref().ok_or("feed_unavailable")?;
-        let before = feed.current().generation;
-        let result = feed
-            .refresh(|generation, sequence| self.activate_feed_generation(generation, sequence));
-        // Catalog activation and default price projection use the same captured generation.
-        // A failed projection does not authorize a stale price override or change frozen ledgers.
-        if feed.current().generation != before {
-            let _ = self.rebuild_price_snapshot();
-        }
-        result
+        self.model_feed
+            .as_ref()
+            .ok_or("feed_unavailable")?
+            .refresh_prepared(
+                |catalog| self.prepare_catalog_prices(catalog),
+                |catalog, prepared| self.activate_catalog_prices(catalog, prepared),
+            )
     }
 }
 
@@ -167,13 +154,13 @@ impl ModelFeedPort for LocalControlAdapter {
         self.model_feed
             .as_ref()
             .ok_or(ErrorCode::DaemonUnavailable)?
-            .remove(
+            .remove_prepared(
                 &state_digest,
                 request.also_disable_retrieval,
-                |generation, sequence| self.activate_feed_generation(generation, sequence),
+                |catalog| self.prepare_catalog_prices(catalog),
+                |catalog, prepared| self.activate_catalog_prices(catalog, prepared),
             )
             .map_err(feed_error)?;
-        let _ = self.rebuild_price_snapshot();
         self.feed_status()
     }
     fn model_availability(&self) -> Result<ModelAvailabilityResultV1, ErrorCode> {
