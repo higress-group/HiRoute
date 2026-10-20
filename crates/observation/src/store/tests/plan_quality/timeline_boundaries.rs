@@ -279,19 +279,24 @@ fn unsupported_execution_digest_is_rejected_without_rewriting_retained_facts() {
         let mut connection = store.connection.lock();
         let transaction = connection.transaction().unwrap();
         crate::store::fact_log::insert(&transaction, &event, &digest).unwrap();
-        crate::receipt::apply_fact(&transaction, &event).unwrap();
+        assert!(matches!(
+            crate::receipt::apply_fact(&transaction, &event),
+            Err(crate::receipt::FactProjectionError::Corrupt),
+        ));
         transaction.commit().unwrap();
     }
     let store = open_store(directory.path());
-    let before: (String, String) = store
+    let before: (String, String, String) = store
         .connection
         .lock()
         .query_row(
-            "SELECT envelope_json,envelope_digest FROM execution_fact_events",
+            "SELECT envelope_json,envelope_digest,body_json FROM execution_fact_events
+             JOIN observation_sensitive_payloads_v2 ON id='fact:' || envelope_digest",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .unwrap();
+    assert_eq!(before.2, serde_json::to_string(&event).unwrap());
     assert!(
         matches!(
             crate::store::fact_log::load_request(
@@ -303,13 +308,14 @@ fn unsupported_execution_digest_is_rejected_without_rewriting_retained_facts() {
         ),
         "the authenticated fact reader must reject an unsupported historical digest"
     );
-    let after: (String, String) = store
+    let after: (String, String, String) = store
         .connection
         .lock()
         .query_row(
-            "SELECT envelope_json,envelope_digest FROM execution_fact_events",
+            "SELECT envelope_json,envelope_digest,body_json FROM execution_fact_events
+             JOIN observation_sensitive_payloads_v2 ON id='fact:' || envelope_digest",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .unwrap();
     assert_eq!(before, after);
