@@ -1131,6 +1131,9 @@ fn record_attributed_session(
 ) {
     use hiroute_domain::*;
     use hiroute_observation::writer::ObservationCommitPort;
+    // The real daemon runs retention while this lifecycle test reconfigures the
+    // Agent. Keep test observations inside the production retention window.
+    let now = runtime.adapter.now_ms().unwrap();
     let stream = ObservationStreamV1 {
         producer_id: ProducerId::parse(format!("agent-{suffix}")).unwrap(),
         producer_epoch: ProducerEpoch::parse(format!("epoch-{suffix}")).unwrap(),
@@ -1150,14 +1153,14 @@ fn record_attributed_session(
         model_configuration_id: None,
         profile_digest: None,
         attribution: AgentTurnAttributionV1::Unknown,
-        started_at_ms: 100,
-        finished_at_ms: 101,
+        started_at_ms: now - 1,
+        finished_at_ms: now,
         status: AgentTurnStatusV1::Completed,
         history_partial: false,
         first_request_id: Some(request_id.clone()),
         last_request_id: Some(request_id),
     };
-    let mut event = crate::control::runtime::tests::envelope(&stream, suffix, plan, 1, 101, fact);
+    let mut event = crate::control::runtime::tests::envelope(&stream, suffix, plan, 1, now, fact);
     event.trust.grant_id = grant.grant_id().into();
     event.trust.grant_generation = grant.generation();
     let result = runtime
@@ -1182,5 +1185,9 @@ fn assert_attributed_session(runtime: &ProductionControlRuntime, suffix: &str) {
             ContentMode::None,
         )
         .unwrap();
-    assert_eq!(session.summary.agent_id, "agent_codex_default");
+    assert_eq!(
+        session.summary.agent_id, "agent_codex_default",
+        "{suffix}: {:?}",
+        session.summary
+    );
 }
