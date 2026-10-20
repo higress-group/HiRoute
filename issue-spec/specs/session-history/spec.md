@@ -93,6 +93,9 @@ A session receiving mapped grants from different Agents SHALL retain an attribut
 Source Issue:
 - https://github.com/higress-group/HiRoute/issues/182
 
+Source SPEC comment:
+- https://github.com/higress-group/HiRoute/issues/182#issuecomment-6292812078
+
 ### Requirement: Captured content preserves actual request and response attribution
 
 Sessions MUST present received requests and ultimately accepted responses using

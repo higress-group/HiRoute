@@ -202,7 +202,7 @@ fn startup_missing_provenance_is_unlinked_while_activation_stays_strict() {
         return;
     }
     let (root, runtime, historical, current, grant, plan) = configured();
-    let (mut operation, publication) = {
+    let (operation, publication) = {
         let stores = runtime.adapter.stores_lock().unwrap();
         (
             stores.control().load_operation(&current).unwrap().unwrap(),
@@ -218,6 +218,21 @@ fn startup_missing_provenance_is_unlinked_while_activation_stays_strict() {
     assert!(runtime.adapter.register_operation_agent_grants(
         &WorkspaceId::default(), &operation, &[], &publication,
     ).is_err(), "activation must reject a missing ensure effect");
+    let journal = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
+    let original: Vec<(String, String)> = [&historical, &current]
+        .into_iter()
+        .map(|id| {
+            let encoded = journal
+                .query_row(
+                    "SELECT operation_json FROM operations WHERE operation_id=?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            (id.as_str().to_owned(), encoded)
+        })
+        .collect();
+    drop(journal);
     invalidate_operation(root.path(), &historical);
     invalidate_operation(root.path(), &current);
     clear_grant_mappings(root.path());
@@ -233,15 +248,18 @@ fn startup_missing_provenance_is_unlinked_while_activation_stays_strict() {
     record_attributed_session(&runtime, &grant, "missing-current-proof", &plan);
     assert_unlinked_session(&runtime, "missing-current-proof");
 
-    // Restore the fixture's original authenticated completed journal. Attribution
-    // can now be registered, but that cannot relabel the earlier unlinked session.
-    runtime
-        .adapter
-        .stores_lock()
-        .unwrap()
-        .control()
-        .save_operation(&mut operation)
-        .unwrap();
+    // Restore the exact original completed proof bytes in this isolated fixture.
+    // This models proof becoming available, not a production journal repair.
+    let journal = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
+    for (id, encoded) in original {
+        journal
+            .execute(
+                "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
+                rusqlite::params![id, encoded],
+            )
+            .unwrap();
+    }
+    drop(journal);
     runtime.adapter.restore_active_publication().unwrap();
     record_attributed_session(&runtime, &grant, "new-current-proof", &plan);
     assert_attributed_session(&runtime, "new-current-proof");
