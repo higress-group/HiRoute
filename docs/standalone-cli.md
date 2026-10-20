@@ -103,18 +103,21 @@ direction.
 
 ## Storage upgrade recovery
 
-Before replacing an installed program, the installer retains the complete original
-program/resources and installation records in private service state. A verified
-candidate performs read-only preflight; the daemon receives the retained-package
-handoff directly from its state directory, including when started by systemd.
+Before replacing an installed program, the verified candidate performs read-only
+preflight. When a history-format cutover is required, the installer retains the
+complete original program/resources and installation records in private service
+state; the daemon receives that handoff directly, including under systemd.
+Current-format repair skips this archival copy and its extra space reserve. Failed
+preparation removes only its unpublished copy; once the handoff may have been
+consumed, its material is retained even after later installation rollback.
 Do not delete `upgrade-packages`, `upgrade-package.json`, sealed history or
 `storage.upgrade-backups` to make room for an upgrade. Budget their disk use.
 
 If startup fails, use `hiroute service recovery --output json` even while Local
 Control is unavailable. It reports the storage-owned cause and action plus the
-startup diagnostic location. A confirmed original-compatible missing-package
-result permits reinstalling the exact complete original program without deleting
-data; otherwise do not downgrade in place. A resumable batch uses the current
+startup diagnostic location. Missing packages do not authorize program-only
+downgrade. Preserve data, keys, programs and journals; follow diagnostic/support
+steps when necessary material is unavailable. A resumable batch uses the current
 program. Whole-group recovery uses that batch's `RECOVERY.md`, `恢复说明.md` and,
 when present, `PROGRAM-LOCATIONS.md`: stop the service and automatic restarts,
 preserve newer data/program separately, restore all stores/keys/Observation and

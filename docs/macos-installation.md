@@ -67,12 +67,11 @@ Waiting can be cancelled. Storage startup repeats admission under its writer loc
 
 If you must replace an App manually, fully quit HiRoute and stop its owned service
 and tasks, keep the complete original App, and preserve the data directory. There
-is no recovery-package picker. A missing-package failure offers simple App-only
-reinstallation only after storage has positively admitted the whole original
-group and confirmed that no incompatible prior upgrade/cutover exists. Follow
-that specific instruction: reinstall the exact complete App used previously,
-keep data, open that version, then follow the supported Settings → Updates route.
-Do not infer safety from a generic error or the absence of a backup directory.
+is no recovery-package picker. A missing-package failure does not authorize
+program-only reinstallation or downgrade. Keep every data generation, key,
+complete App and upgrade journal. Open diagnostics and obtain support to verify
+the matching recovery material and supported upgrade route. Do not infer safety
+from a generic error or the absence of a backup directory.
 
 If startup reports a resumable original batch, reopen the current version. For a
 mixed, modified, unsupported or uncertain group, do not launch an older App.

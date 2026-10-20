@@ -110,6 +110,12 @@ recovery succeeded. The next shell start reads the private outcome and can recov
 an interrupted transaction after the installer is no longer active. An unresolved
 file or service conflict stays on the bundled failure page with a diagnostics path.
 
+When starting a stopped service, the shell also handles a failed CLI readiness wait.
+It captures a diagnostic watermark before the start request and accepts only a new
+failed startup record. Old, incomplete or unreadable diagnostics leave the manager
+error intact. The typed current cause can explain a lock, missing key or upgrade
+refusal without borrowing an earlier batch's advice.
+
 ## Windows support and acceptance scope
 
 This is the first supported Windows release, with no supported released Windows

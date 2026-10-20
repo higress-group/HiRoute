@@ -548,6 +548,8 @@ class HostedReleasePolicyTests(unittest.TestCase):
             'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-host-runtime --lib standalone_install::',
             'cargo test --locked --target x86_64-pc-windows-msvc '
+            '-p hiroute-host-runtime --lib storage_recovery::',
+            'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-platform --lib windows::shell_registration::tests::'
             'inherited_export_is_published_privately_and_changed_material_is_not_overwritten -- --exact',
             'cargo test --locked --target x86_64-pc-windows-msvc '

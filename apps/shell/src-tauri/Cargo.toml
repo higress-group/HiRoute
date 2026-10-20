@@ -30,6 +30,10 @@ tauri-plugin-dialog = { version = "=2.7.3", default-features = false, optional =
 [build-dependencies]
 tauri-build = { version = "=2.6.3", optional = true }
 
+[dev-dependencies]
+hiroute-diagnostics = { path = "../../../crates/diagnostics" }
+tempfile.workspace = true
+
 [[bin]]
 name = "hiroute-shell"
 path = "src/main.rs"

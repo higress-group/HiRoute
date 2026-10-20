@@ -132,8 +132,7 @@ fn transport(
                     | crate::StorageRecoveryAction::RetryCurrent
             )
             || recovery.backup_batch.is_some()
-            || recovery.backup_name.is_some()
-            || recovery.original_state_digest.is_some())
+            || recovery.backup_name.is_some())
     {
         // Provisional checks may explain prerequisites, but can never grant a
         // current-batch resume, restoration or old-program launch authority.
@@ -199,7 +198,7 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("arbitrary_native_error");
-        unknown["recovery"]["action"] = "reinstall_original".into();
+        unknown["recovery"]["action"] = "resume_current".into();
         write(&unknown);
         let failure =
             checked_upgrade_preflight(&program, directory.path(), directory.path()).unwrap_err();

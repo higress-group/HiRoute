@@ -9,7 +9,7 @@ use std::{
 pub const STORAGE_RECOVERY_SCHEMA: &str = "hiroute.storage-startup-recovery/v1";
 pub const STORAGE_RECOVERY_FILE: &str = "startup-recovery.json";
 mod admission;
-pub use admission::startup_failure_host_code;
+pub use admission::{StartupFailureBoundary, startup_failure_host_code};
 mod batch;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -36,7 +36,6 @@ pub enum StorageRecoveryCause {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum StorageRecoveryAction {
-    ReinstallOriginal,
     RetryCurrent,
     ResumeCurrent,
     RestoreCompleteGroup,
@@ -48,8 +47,6 @@ pub struct StorageRecovery {
     pub schema: String,
     pub cause: StorageRecoveryCause,
     pub action: StorageRecoveryAction,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub original_state_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup_batch: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -63,7 +60,6 @@ impl StorageRecovery {
             schema: STORAGE_RECOVERY_SCHEMA.into(),
             cause,
             action,
-            original_state_digest: None,
             backup_batch: None,
             backup_name: None,
             storage_space: None,
@@ -82,14 +78,6 @@ impl StorageRecovery {
         if bytes.len() > 4096 || record.schema != STORAGE_RECOVERY_SCHEMA {
             return Err(io::Error::other("STORAGE_RECOVERY_INVALID"));
         }
-        // A cutover marker always revokes a previous program-only instruction.
-        if record.action == StorageRecoveryAction::ReinstallOriginal
-            && (storage_upgrade_started(storage)?
-                || record.original_state_digest.as_deref()
-                    != Some(original_state_digest(storage)?.as_str()))
-        {
-            return Err(io::Error::other("STORAGE_RECOVERY_STALE"));
-        }
         if matches!(
             record.action,
             StorageRecoveryAction::ResumeCurrent | StorageRecoveryAction::RestoreCompleteGroup
@@ -97,10 +85,6 @@ impl StorageRecovery {
             batch::validate(storage, &record)?;
         }
         Ok(Some(record))
-    }
-    pub fn bind_original_state(&mut self, storage: &Path) -> io::Result<()> {
-        self.original_state_digest = Some(original_state_digest(storage)?);
-        Ok(())
     }
     pub fn store(&self, storage: &Path) -> io::Result<()> {
         durable::write_private_atomic(
@@ -128,9 +112,6 @@ impl StorageRecovery {
             (_, StorageRecoveryAction::RestoreCompleteGroup) => {
                 "Stop HiRoute and preserve newer data with its matching program separately. Follow the verified original batch's RECOVERY.md or recovery guide to restore the entire old group and matching complete program. Never restore individual databases or mix generations."
             }
-            (_, StorageRecoveryAction::ReinstallOriginal) => {
-                "The original data group was retained. Stop HiRoute and reinstall the exact complete program used before this upgrade without deleting data. Desktop: open that version and use Settings > Updates. Headless: retain the old package, set HIROUTE_RECOVERY_PACKAGE for the actual daemon process, then retry the supported upgrade."
-            }
             (StorageRecoveryCause::InsufficientSpace, _) => {
                 "Keep all data and recovery material. Free unrelated space on the storage volume, then retry the current version."
             }
@@ -148,72 +129,6 @@ impl StorageRecovery {
             }
         }
     }
-}
-
-// Core authority is small recovery material. Observation uses bounded native
-// metadata only: never traverse or hash old history to display startup guidance.
-fn original_state_digest(storage: &Path) -> io::Result<String> {
-    use sha2::{Digest, Sha256};
-    let mut digest = Sha256::new();
-    for name in [
-        "live/control.db",
-        "live/runtime.db",
-        "live/secrets.db",
-        "master-key",
-        "observation-hmac-key",
-    ] {
-        digest.update(name.as_bytes());
-        let mut file = private_fs::open_private_file(&storage.join(name))?;
-        private_fs::verify_single_link(&file)?;
-        let mut buffer = [0; 64 * 1024];
-        loop {
-            let n = file.read(&mut buffer)?;
-            if n == 0 {
-                break;
-            }
-            digest.update(&buffer[..n]);
-        }
-    }
-    for name in [
-        "live/control.db-wal",
-        "live/runtime.db-wal",
-        "live/secrets.db-wal",
-        "observation/activity.db",
-        "observation/activity.db-wal",
-    ] {
-        digest.update(name.as_bytes());
-        match private_fs::open_private_file(&storage.join(name)) {
-            Ok(file) => {
-                private_fs::verify_single_link(&file)?;
-                let metadata = file.metadata()?;
-                digest.update(metadata.len().to_le_bytes());
-                digest.update(
-                    metadata
-                        .modified()?
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map_err(io::Error::other)?
-                        .as_nanos()
-                        .to_le_bytes(),
-                );
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::MetadataExt;
-                    digest.update(metadata.dev().to_le_bytes());
-                    digest.update(metadata.ino().to_le_bytes());
-                }
-                #[cfg(windows)]
-                {
-                    let id = hiroute_platform::windows::security::file_identity(&file)?;
-                    digest.update(format!("{id:?}").as_bytes());
-                }
-            }
-            Err(e) if e.kind() == io::ErrorKind::NotFound && name.ends_with("-wal") => {
-                digest.update([0])
-            }
-            Err(e) => return Err(e),
-        }
-    }
-    Ok(format!("{:x}", digest.finalize()))
 }
 
 /// Installation rollback is insufficient evidence of storage downgrade safety.
@@ -250,7 +165,7 @@ pub fn storage_upgrade_started(storage: &Path) -> io::Result<bool> {
         if metadata.file_type().is_symlink() || !metadata.is_dir() {
             return Err(std::io::Error::other("STORAGE_BACKUP_ROOT_INVALID"));
         }
-        // Even unrecognized material prevents an original-compatible claim.
+        // Unrecognized recovery material also prevents an unsafe program rollback.
         if std::fs::read_dir(backup)?.next().is_some() {
             return Ok(true);
         }
@@ -262,6 +177,19 @@ pub fn storage_upgrade_started(storage: &Path) -> io::Result<bool> {
 mod tests {
     use super::*;
     #[test]
+    fn retired_program_only_action_and_fields_are_not_a_recovery_contract() {
+        let mut value = serde_json::to_value(StorageRecovery::new(
+            StorageRecoveryCause::MissingPackage,
+            StorageRecoveryAction::PreserveAndDiagnose,
+        ))
+        .unwrap();
+        value["action"] = serde_json::json!("reinstall_original");
+        assert!(serde_json::from_value::<StorageRecovery>(value.clone()).is_err());
+        value["action"] = serde_json::json!("preserve_and_diagnose");
+        value["original_state_digest"] = serde_json::json!("unproduced proof");
+        assert!(serde_json::from_value::<StorageRecovery>(value).is_err());
+    }
+    #[test]
     fn unknown_recovery_cannot_authorize_downgrade() {
         for field in ["cause", "action"] {
             let mut value = serde_json::to_value(StorageRecovery::new(
@@ -272,33 +200,5 @@ mod tests {
             value[field] = serde_json::json!("future_value");
             assert!(serde_json::from_value::<StorageRecovery>(value).is_err());
         }
-    }
-    #[test]
-    fn cutover_revokes_program_only_advice() {
-        let dir = tempfile::tempdir().unwrap();
-        let storage = dir.path().join("storage");
-        private_fs::prepare_storage_directory(&storage).unwrap();
-        let mut report = StorageRecovery::new(
-            StorageRecoveryCause::MissingPackage,
-            StorageRecoveryAction::ReinstallOriginal,
-        );
-        private_fs::prepare_storage_directory(&storage.join("live")).unwrap();
-        private_fs::prepare_storage_directory(&storage.join("observation")).unwrap();
-        for name in [
-            "live/control.db",
-            "live/runtime.db",
-            "live/secrets.db",
-            "master-key",
-            "observation-hmac-key",
-            "observation/activity.db",
-        ] {
-            durable::write_private_new(&storage.join(name), b"unchanged original authority")
-                .unwrap();
-        }
-        report.bind_original_state(&storage).unwrap();
-        report.store(&storage).unwrap();
-        assert_eq!(StorageRecovery::read(&storage).unwrap(), Some(report));
-        durable::write_private_new(&storage.join("observation-source-backup.json"), b"{}").unwrap();
-        assert!(StorageRecovery::read(&storage).is_err());
     }
 }

@@ -11,6 +11,7 @@ import plistlib
 import re
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -56,7 +57,7 @@ class HTTPSResponse(io.BytesIO):
 class StandaloneFixture(unittest.TestCase):
     def setUp(self):
         preflight = patch.object(installer, "candidate_preflight", return_value={"schema": "hiroute.upgrade-preflight/v1", "history_cutover_required": False, "required_bytes": 0, "available_bytes": 1000000000, "recovery": None})
-        preflight.start()
+        self.preflight = preflight.start()
         self.addCleanup(preflight.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -301,6 +302,90 @@ class MacInstallerTests(StandaloneFixture):
             self.assertEqual(state.read_text(), "business data")
 
 
+@unittest.skipUnless(os.name == "posix", "Unix installation recovery")
+class RecoveryRetentionTests(StandaloneFixture):
+    def setUp(self):
+        super().setUp()
+        conflict = patch.object(installer, "desktop_conflict", return_value=False)
+        conflict.start()
+        self.addCleanup(conflict.stop)
+
+    def install_original(self):
+        manifest, archive = self.build("0.1.0")
+        args = self.install_args(manifest, archive)
+        installer.install(args)
+        return args, installer.layout(self.home)
+
+    def test_current_format_repair_does_not_copy_packages_or_replace_existing_handoff(self):
+        with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            args, paths = self.install_original()
+            retained = paths["state"] / "upgrade-packages/prior-batch"
+            retained.mkdir(parents=True)
+            (retained / "keep").write_bytes(b"existing recovery material")
+            handoff = paths["state"] / "upgrade-package.json"
+            original = json.dumps({"package_root": str(retained)}).encode()
+            handoff.write_bytes(original)
+            data = paths["state"] / "storage/keep"
+            data.parent.mkdir()
+            data.write_bytes(b"business data")
+            with patch.object(installer.shutil, "disk_usage", return_value=SimpleNamespace(free=200 * 1024 * 1024)):
+                for _ in range(2):
+                    installer.install(args)
+            self.assertEqual(list(retained.parent.iterdir()), [retained])
+            self.assertEqual(handoff.read_bytes(), original)
+            self.assertEqual((retained / "keep").read_bytes(), b"existing recovery material")
+            self.assertEqual(data.read_bytes(), b"business data")
+
+    def test_refused_cutover_discards_only_this_unpublished_copy(self):
+        with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            args, paths = self.install_original()
+            marker = paths["marker"].read_bytes()
+            retained = paths["state"] / "upgrade-packages/prior-batch"
+            retained.mkdir(parents=True)
+            (retained / "keep").write_bytes(b"retained original")
+            handoff = paths["state"] / "upgrade-package.json"
+            handoff.write_bytes(b"prior handoff")
+            for _ in range(2):
+                self.preflight.side_effect = [{"history_cutover_required": True}, ValueError("final preflight refused")]
+                with self.assertRaisesRegex(ValueError, "final preflight refused"):
+                    installer.install(args)
+            self.assertEqual(list(retained.parent.iterdir()), [retained])
+            self.assertEqual(handoff.read_bytes(), b"prior handoff")
+            self.assertEqual(paths["marker"].read_bytes(), marker)
+            self.assertEqual((retained / "keep").read_bytes(), b"retained original")
+
+    def test_copy_failure_discards_the_new_private_archive(self):
+        with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            args, paths = self.install_original()
+            self.preflight.return_value = {"history_cutover_required": True}
+            with patch.object(installer.os, "read", side_effect=OSError("copy interrupted")):
+                with self.assertRaisesRegex(OSError, "copy interrupted"):
+                    installer.install(args)
+            self.assertEqual(list((paths["state"] / "upgrade-packages").iterdir()), [])
+            self.assertFalse((paths["state"] / "upgrade-package.json").exists())
+
+    def test_published_handoff_copy_survives_later_installation_rollback(self):
+        with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            args, paths = self.install_original()
+            marker = paths["marker"].read_bytes()
+            handoff = paths["state"] / "upgrade-package.json"
+            handoff.write_bytes(b"prior handoff")
+            self.preflight.return_value = {"history_cutover_required": True}
+            replace = installer.os.replace
+            def fail_marker(source, destination):
+                if Path(destination) == paths["marker"] and Path(source).name.startswith("." + paths["marker"].name + "."):
+                    raise OSError("publication interrupted")
+                return replace(source, destination)
+            with patch.object(installer.os, "replace", side_effect=fail_marker):
+                with self.assertRaisesRegex(OSError, "publication interrupted"):
+                    installer.install(args)
+            self.assertEqual(paths["marker"].read_bytes(), marker)
+            self.assertEqual(handoff.read_bytes(), b"prior handoff")
+            copies = list((paths["state"] / "upgrade-packages").iterdir())
+            self.assertEqual(len(copies), 1)
+            self.assertEqual((copies[0] / "program/hirouted").read_bytes(), self.sources["hirouted"].read_bytes())
+
+
 @unittest.skipUnless(os.name == "posix" and os.uname().sysname == "Linux", "Linux layout test")
 class InstallerTests(StandaloneFixture):
     def test_upgrade_retains_the_complete_original_package_and_restoration_entries(self):
@@ -313,6 +398,7 @@ class InstallerTests(StandaloneFixture):
             original_service = service.read_bytes()
             self.sources["hirouted"].write_bytes(b"new verified daemon")
             manifest, archive = self.build("0.2.0")
+            self.preflight.return_value = {"history_cutover_required": True}
             installer.install(self.install_args(manifest, archive))
             handoff = json.loads((paths["state"] / "upgrade-package.json").read_text())
             retained = Path(handoff["package_root"])

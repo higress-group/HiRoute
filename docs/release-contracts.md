@@ -39,8 +39,8 @@ A format-changing release requires a verified source/transition route before pub
 documentation or a rebuilt same-version updater is not that evidence.
 
 On startup refusal, the storage-owned cause/action is available through the native failure
-page and `hiroute service recovery --output json`. Only a positively admitted, unchanged
-original group permits original-program-only reinstall. A changed/mixed/unknown group
+page and `hiroute service recovery --output json`. Current production recovery does
+not offer program-only original-version reinstallation. A changed/mixed/unknown group
 cannot authorize an old-service launch, including during Windows installer rollback.
 Recognized batches may resume with the current version; complete restoration uses the
 correct verified batch, retaining newer data and program separately. Missing essential

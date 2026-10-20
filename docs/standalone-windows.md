@@ -111,9 +111,9 @@ The native installer checks the verified candidate before changing programs and
 retains the previous package while recovery needs it. For startup refusal, use
 `hiroute service recovery --output json` and the instructions in
 [Windows recovery](windows-desktop-installation.md#storage-format-failure-and-whole-group-recovery).
-Keep all data, keys and packages. Only a storage-confirmed original-compatible
-result permits program-only reinstall; mixed/unknown state requires current-batch
-resume or complete-group recovery. Verify an actual Gateway request after repair.
+Keep all data, keys and packages. Program-only downgrade is not offered. Use an
+admitted current-batch resume or verified complete-group recovery; preserve and
+diagnose state that cannot be admitted. Verify an actual Gateway request after repair.
 
 ## Native evidence
 
