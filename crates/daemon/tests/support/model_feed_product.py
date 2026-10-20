@@ -455,7 +455,11 @@ def run(repository):
         assert retained_save['state'] == 'succeeded', retained_save
         updated = product.cli('compute', 'list')['data']
         saved = next(x for x in updated['sources'] if x['source_id'] == source['source_id'])
-        assert saved['models'] == next(x for x in snapshot['sources'] if x['source_id'] == source['source_id'])['models']
+        # Management presentation is freshly evaluated (including its timestamp and price
+        # edit revisions). Compare the retained model facts, not that live projection.
+        before_models = next(x for x in snapshot['sources'] if x['source_id'] == source['source_id'])['models']
+        facts = lambda models: [{key: value for key, value in model.items() if key != 'presentation'} for model in models]
+        assert facts(saved['models']) == facts(before_models), (saved['models'], before_models)
         recheck = copy.deepcopy(checked_request)
         recheck['request'].update(expected_catalog=product.cli('compute', 'connection', 'options')['data']['catalog'],
             existing_source_id=source['source_id'], expected_source_revision=saved['revision'], check_id='check/feed/withdrawn')
