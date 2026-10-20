@@ -1474,3 +1474,6 @@ fn unknown_native_text_uses_execution_defaults_without_overwriting_unknown_facts
         second.model.model_configuration_id
     );
 }
+
+#[path = "candidate_execution_tests/model_defaults.rs"]
+mod model_defaults;

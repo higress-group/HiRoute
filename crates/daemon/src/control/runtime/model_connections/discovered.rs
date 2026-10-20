@@ -16,8 +16,8 @@ use hiroute_domain::{
 use hiroute_integrations::{
     AgentDiscoveryOutcomeV1, ModelConnectionBaseKindV1, ModelConnectionProbeCancellationV1,
     NativeCandidateFactBasisV1, NativeCandidateFactValueV1, NativeConnectionProvenanceInputV1,
-    NativeConnectionQualificationV1, NativeModelCapabilityDeclarationV1,
-    NativeModelConnectionCredentialV1, NativeModelConnectionDraftV1, NativeModelDeclarationV1,
+    NativeConnectionQualificationV1, NativeModelConnectionCredentialV1,
+    NativeModelConnectionDraftV1, NativeModelDeclarationV1,
 };
 
 use super::super::compute_routing::{AuthorizedComputeDiscoveryV1, authorized_compute_discovery};

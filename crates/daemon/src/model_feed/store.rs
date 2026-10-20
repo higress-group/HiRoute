@@ -151,6 +151,10 @@ impl FeedStore {
             || state.selected_data.as_ref().is_some_and(|f| {
                 f.revision == 0 || CanonicalDigest::parse(f.digest.as_str()).is_err()
             })
+            || state
+                .qualification_digest
+                .as_ref()
+                .is_some_and(|d| CanonicalDigest::parse(d.as_str()).is_err())
         {
             return Err("feed_state_invalid".into());
         }

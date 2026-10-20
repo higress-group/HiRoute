@@ -361,7 +361,7 @@ fn select_registered_endpoint<'a>(
 }
 
 pub(in crate::control::runtime) fn capability_declaration(
-    catalog: &TrustedReleaseCatalog,
+    catalog: &hiroute_integrations::TrustedReleaseCatalog,
     capability: &hiroute_domain::ModelEndpointCapabilityV1,
     model: &hiroute_domain::ModelDefinitionV1,
     reasoning: &hiroute_domain::ModelNativeReasoningV1,

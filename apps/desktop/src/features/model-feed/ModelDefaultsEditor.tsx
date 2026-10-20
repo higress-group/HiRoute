@@ -31,7 +31,14 @@ export function ModelDefaultsEditor({ source, bindingId, language, mutable, onAp
   }, [source.source_id, source.revision, bindingId, retry]);
   const model = view?.models.find(m => m.binding_id === bindingId);
   const labels: Record<Field, string> = zh ? {tool:'工具调用', vision:'图片输入', streaming:'流式输出', context_tokens:'上下文上限', max_output_tokens:'输出上限', native_reasoning:'思考设置'} : {tool:'Tools', vision:'Vision', streaming:'Streaming', context_tokens:'Context limit', max_output_tokens:'Output limit', native_reasoning:'Reasoning'};
-  const format = (value: unknown): string => value === null ? (zh ? '未知' : 'Unknown') : typeof value === 'boolean' ? value ? (zh ? '支持' : 'Supported') : (zh ? '不支持' : 'Not supported') : typeof value === 'number' ? value.toLocaleString() : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  const format = (value: unknown): string => value === null ? (zh ? '未知' : 'Unknown') : typeof value === 'boolean' ? value ? (zh ? '支持' : 'Supported') : (zh ? '不支持' : 'Not supported') : typeof value === 'number' ? value.toLocaleString() : typeof value === 'object' ? (() => {
+    const reasoning = value as {kind?:string;profile?:string;profiles?:string[]};
+    if (reasoning.kind === 'fixed') return reasoning.profile === 'non-thinking' ? (zh ? '不使用思考' : 'No reasoning') : `${zh ? '固定配置' : 'Fixed profile'} ${reasoning.profile ?? ''}`;
+    if (reasoning.kind === 'toggle') return zh ? '可切换' : 'Switchable';
+    if (reasoning.kind === 'discrete') return reasoning.profiles?.join(' / ') ?? (zh ? '可选档位' : 'Profiles');
+    if (reasoning.kind === 'budget') return zh ? '可调思考预算' : 'Adjustable reasoning budget';
+    return zh ? '未知' : 'Unknown';
+  })() : String(value);
   async function prepare() {
     if (!view || busy) return;
     setBusy(true); setError(false);

@@ -1,7 +1,7 @@
 //! Shared daemon-owned feed and trial reads; the client cannot supply a URL or verification key.
 use super::*;
 
-async fn query<T: serde::de::DeserializeOwned, I: serde::Serialize>(
+pub(super) async fn query<T: serde::de::DeserializeOwned, I: serde::Serialize>(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
     operation: &str,

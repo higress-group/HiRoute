@@ -89,6 +89,21 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
         .iter()
         .find(|reasoning| reasoning.model_configuration_id == model_id)?
         .clone();
+    if hiroute_integrations::compute::saved_native_capability_digest(
+        &fact.upstream_model_id,
+        &fact.capabilities,
+    )
+    .as_ref()
+        != Some(&fact.capability_evidence_digest)
+        || fact
+            .capabilities
+            .native_reasoning
+            .value
+            .as_ref()
+            .is_some_and(|r| r != &fact.native_reasoning)
+    {
+        return None;
+    }
     let effective = hiroute_integrations::compute::resolve_managed_defaults(
         catalog,
         &fact.capabilities,

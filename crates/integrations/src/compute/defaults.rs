@@ -192,3 +192,37 @@ pub fn without_current_defaults(
     clear!(native_reasoning, NativeReasoning);
     result
 }
+
+/// Verify a native admission against the saved facts, never against today's defaults.
+pub fn saved_native_capability_digest(
+    upstream: &str,
+    saved: &ComputeManagedCapabilitiesV2,
+) -> Option<CanonicalDigest> {
+    use crate::{
+        NativeCandidateFactBasisV1 as Basis, NativeCandidateFactValueV1 as Fact,
+        NativeModelCapabilityDeclarationV1,
+    };
+    fn fact<T: Clone>(saved: &ComputeManagementFactValueV2<T>) -> Option<Fact<T>> {
+        let basis = match saved.basis {
+            ComputeManagementFactBasisV2::RegisteredCatalog => Basis::RegisteredCatalog,
+            ComputeManagementFactBasisV2::RuntimeFallback => Basis::RuntimeFallback,
+            ComputeManagementFactBasisV2::UserDeclared => Basis::UserDeclared,
+            ComputeManagementFactBasisV2::Observed => Basis::Observed,
+            ComputeManagementFactBasisV2::Unknown => Basis::Unknown,
+            ComputeManagementFactBasisV2::ConnectorVerified => return None,
+        };
+        Some(Fact {
+            value: saved.value.clone(),
+            basis,
+        })
+    }
+    let declaration = NativeModelCapabilityDeclarationV1 {
+        tool: fact(&saved.tool)?,
+        vision: fact(&saved.vision)?,
+        streaming: fact(&saved.streaming)?,
+        context_tokens: fact(&saved.context_tokens)?,
+        max_output_tokens: fact(&saved.max_output_tokens)?,
+        native_reasoning: fact(&saved.native_reasoning)?,
+    };
+    CanonicalDigest::of(&("declared-model-capabilities/v1", upstream, &declaration)).ok()
+}
