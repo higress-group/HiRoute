@@ -70,13 +70,14 @@ fn configured() -> (
 }
 
 fn invalidate_operation(root: &std::path::Path, id: &OperationId) {
-    // Simulate an old successful journal that the current subject/proof reader cannot
-    // authenticate. No production record is rewritten by the repair.
+    // Remove a historical ensure receipt while keeping immutable command inputs valid.
+    // The attribution reader cannot authenticate this journal; ordinary operation
+    // decoding still succeeds. No production record is rewritten by the repair.
     rusqlite::Connection::open(root.join("live/control.db"))
         .unwrap()
         .execute(
             "UPDATE operations SET operation_json=json_set(operation_json,
-             '$.plan.control',json('{}')) WHERE operation_id=?1",
+             '$.steps[1].effects',json('[]')) WHERE operation_id=?1",
             [id.as_str()],
         )
         .unwrap();
@@ -91,6 +92,17 @@ fn startup_skips_unverifiable_history_without_backfilling_old_sessions() {
     }
     let (root, runtime, historical, _, grant, plan) = configured();
     invalidate_operation(root.path(), &historical);
+    assert!(
+        runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .control()
+            .load_operation(&historical)
+            .unwrap()
+            .is_some(),
+        "the fixture must not corrupt the independent immutable-operation contract"
+    );
     // This was the old all-or-nothing startup query. Its failure must not disappear
     // from strict execution/recovery callers when attribution becomes best effort.
     assert_eq!(
