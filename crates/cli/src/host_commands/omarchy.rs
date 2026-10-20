@@ -348,13 +348,17 @@ pub(crate) fn launch(arguments: &[OsString]) -> CliExecution {
         Some(&working),
     );
     if !check.launchable {
-        let _ = context.queue_launch_failure(
+        if let Err(error) = context.queue_launch_failure(
             &agent,
             check
                 .check_reason_code
                 .as_deref()
                 .unwrap_or("launch_unavailable"),
-        );
+        ) {
+            // Keep the routed launch's existing refusal/fallback behavior, but
+            // do not hide a failed durable notification enqueue from its terminal.
+            eprintln!("HiRoute could not queue the launch notification: {error}.");
+        }
         let _ = notifications::notify(&context, &Globals::default());
     }
     use std::os::unix::process::CommandExt;

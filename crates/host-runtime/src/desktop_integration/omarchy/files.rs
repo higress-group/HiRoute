@@ -4,6 +4,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
+use std::time::{Duration, Instant};
 
 pub(super) fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -202,7 +203,21 @@ pub(super) fn rollback(context: &Context, transaction: &Transaction) -> Result<(
     }
     Ok(())
 }
-pub(super) fn lock(context: &Context) -> Result<File, Error> {
+pub(super) struct StateLock(File);
+
+impl Drop for StateLock {
+    fn drop(&mut self) {
+        // Closing alone does not release flock while a concurrently spawned
+        // child still holds the same open-file description before exec.
+        let _ = fs2::FileExt::unlock(&self.0);
+    }
+}
+
+pub(super) fn lock(context: &Context) -> Result<StateLock, Error> {
+    lock_until(context, Duration::from_secs(2))
+}
+
+fn lock_until(context: &Context, timeout: Duration) -> Result<StateLock, Error> {
     directory(&context.state)?;
     let path = context.state.join("omarchy.lock");
     let _ = read(&path, 0o600, 16)?;
@@ -214,6 +229,58 @@ pub(super) fn lock(context: &Context) -> Result<File, Error> {
         .mode(0o600)
         .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK)
         .open(path)?;
-    fs2::FileExt::try_lock_exclusive(&file).map_err(|_| Error::Busy)?;
-    Ok(file)
+    let started = Instant::now();
+    loop {
+        match fs2::FileExt::try_lock_exclusive(&file) {
+            Ok(()) => return Ok(StateLock(file)),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                let remaining = timeout.saturating_sub(started.elapsed());
+                if remaining.is_zero() {
+                    return Err(Error::Busy);
+                }
+                std::thread::sleep(remaining.min(Duration::from_millis(10)));
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::fixture;
+    use super::*;
+
+    #[test]
+    fn omarchy_state_lock_releases_even_while_an_inherited_description_is_open() {
+        let (_temp, context, _) = fixture();
+        let held = lock(&context).unwrap();
+        // dup shares the open-file description exactly as fork does, without
+        // running arbitrary code in a forked multithreaded test process.
+        let inherited = held.0.try_clone().unwrap();
+        drop(held);
+        let next = lock_until(&context, Duration::ZERO).unwrap();
+        drop(inherited);
+        // Closing the old description must not release the new owner's lock.
+        assert!(matches!(
+            lock_until(&context, Duration::ZERO),
+            Err(Error::Busy)
+        ));
+        drop(next);
+        assert!(lock_until(&context, Duration::ZERO).is_ok());
+    }
+
+    #[test]
+    fn omarchy_state_lock_contention_is_bounded_and_does_not_steal_ownership() {
+        let (_temp, context, _) = fixture();
+        let held = lock(&context).unwrap();
+        let started = Instant::now();
+        assert!(matches!(
+            lock_until(&context, Duration::from_millis(30)),
+            Err(Error::Busy)
+        ));
+        assert!(started.elapsed() >= Duration::from_millis(30));
+        drop(held);
+        assert!(lock_until(&context, Duration::ZERO).is_ok());
+    }
 }

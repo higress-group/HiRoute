@@ -7,7 +7,7 @@ use hiroute_gateway_core::core::execution_plan::ResolvedTargetBindingId;
 use hiroute_gateway_core::core::publication::InstallError;
 
 use super::*;
-use crate::server::dispatch::GatewayRequestAuthority;
+use crate::server::dispatch::{DispatchError, GatewayRequestAuthority};
 use crate::server::request_plan::IngressProtocol;
 
 static DIRECTORY_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -874,12 +874,8 @@ fn fixed_grants_isolate_same_name_and_revocation_without_hidden_plans() {
     for id in 1..=2 {
         let token = format!("Bearer fixed-token-{id}");
         let authorized = authority
-            .authorize_bytes(
-                IngressProtocol::Responses,
-                Some(&token),
-                br#"{"model":"Native.Model/v1"}"#,
-                now,
-            )
+            .begin_at(IngressProtocol::Responses, Some(&token), now)
+            .and_then(|request| request.authorize_alias("Native.Model/v1", now))
             .unwrap();
         assert_eq!(authorized.served_model_id(), "Native.Model/v1");
         assert_eq!(authorized.agent_plan_revision(), None);
@@ -956,16 +952,22 @@ fn fixed_grants_isolate_same_name_and_revocation_without_hidden_plans() {
             )
             .is_err()
     );
-    assert!(
-        authority
-            .authorize_bytes(
-                IngressProtocol::Responses,
-                Some("Bearer fixed-token-2"),
-                br#"{"model":"Native.Model/v1"}"#,
-                now
-            )
-            .is_ok()
-    );
+    // Publication and disk reopen are not part of the new request's lifetime.
+    // Keep this authority test on an explicit logical clock; authorize_bytes
+    // completes selection on wall time and would charge that unrelated I/O.
+    let started = std::time::Instant::now();
+    let request = authority
+        .begin_at(
+            IngressProtocol::Responses,
+            Some("Bearer fixed-token-2"),
+            started,
+        )
+        .unwrap();
+    assert!(request.authorize_alias("Native.Model/v1", started).is_ok());
+    assert!(matches!(
+        request.authorize_alias("Native.Model/v1", started + Duration::from_secs(2)),
+        Err(DispatchError::RequestDeadlineExceeded)
+    ));
 }
 
 #[test]
