@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:4954e2a63d1255fae5f8fbac80bffec5525b444ec2ec8f42bdd0c6de906d0b89",
+  "descriptor_digest": "sha256:599207be26345edcb2ca69333ea50fb0580337aeff58ed0afe8f1fe5e0eca30e",
   "visibility": "planned",
   "commands": [
     {
@@ -2303,7 +2303,7 @@
       "idempotency": "not_applicable",
       "help": {
         "purpose": "Discover and validate local Worker CLI, adapter, and Node candidates.",
-        "usage": "hiroute worker dependencies discover [--harness <codex_cli|claude_code|qoder_cli|pi|deepseek_harness>] [--output <json|text|quiet>]",
+        "usage": "hiroute worker dependencies discover [--harness <codex_cli|claude_code|qoder_cli|pi|deepseek_harness|opencode>] [--output <json|text|quiet>]",
         "arguments_and_options": "Optionally restrict discovery to one Harness. The query checks the selected path, PATH, common locations, npm globals and npx cache without installing or selecting anything.",
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
@@ -2353,7 +2353,7 @@
       "help": {
         "purpose": "Select one validated Worker dependency tuple through same-UID local management.",
         "usage": "hiroute worker dependencies select (--request-stdin | --request-file <PATH>) [--output <json|text|quiet>]",
-        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Same-UID local management only. --request-stdin reads one strict JSON object with harness (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), absolute cli_path, and expected_selection_revision copied from the matching selection_revisions entry returned by worker dependencies discover --output json. codex_cli and claude_code require absolute adapter_path and accept optional absolute node_path. pi requires absolute node_path and forbids adapter_path. qoder_cli and deepseek_harness accept only cli_path and forbid adapter_path and node_path. All paths and the revision are validated again before an atomic selection update; the command never installs software or accepts an Apply capability.",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Same-UID local management only. --request-stdin reads one strict JSON object with harness (codex_cli, claude_code, qoder_cli, pi, deepseek_harness, or opencode), absolute cli_path, and expected_selection_revision copied from the matching selection_revisions entry returned by worker dependencies discover --output json. codex_cli and claude_code require absolute adapter_path and accept optional absolute node_path. pi requires absolute node_path and forbids adapter_path. qoder_cli, deepseek_harness and opencode accept only cli_path and forbid adapter_path and node_path. All paths and the revision are validated again before an atomic selection update; the command never installs software or accepts an Apply capability.",
         "effects": "Application-owned journaled operation after exact spec, digest, selection-revision CAS, and idempotency checks on owner-only Local Control.",
         "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
         "automation": "Preserve the submitted JSON document. If delivery may have succeeded but no response was received, replay that same document unchanged; its deterministic request identity returns the existing Operation instead of applying twice. Do not substitute paths or a newer revision until the server reports a conflict and discovery is run again.",
