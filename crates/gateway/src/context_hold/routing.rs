@@ -237,7 +237,9 @@ pub(super) fn facts(
             turn: context.turn_id.as_deref().map(digest),
             checkpoint: context.checkpoint.as_deref().map(digest),
             compacted: false,
-            requires_checkpoint: true,
+            // Hermes enters the native conversation call site, rather than a
+            // shared provider-header hook; its turn ID also covers in-place compression.
+            requires_checkpoint: agent != "hermes",
         },
         ..RoutingFacts::default()
     };

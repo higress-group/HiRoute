@@ -572,7 +572,7 @@ fn real_listener_native_history_keeps_accepted_execution_across_plan_revisions()
 
 #[test]
 fn real_listener_unexplained_native_rewrites_cannot_replace_main_history() {
-    for agent in ["pi", "dsh", "opencode", "hermes"] {
+    for agent in ["pi", "dsh", "opencode"] {
         let simple = NativeProvider::start(vec![reply(RESPONSES_TOOL_CALL), reply(RESPONSES_OK)]);
         let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
         let classifier =
@@ -611,4 +611,24 @@ fn real_listener_unexplained_native_rewrites_cannot_replace_main_history() {
             "{agent}"
         );
     }
+}
+
+#[test]
+fn real_listener_hermes_in_place_compression_uses_its_native_conversation_turn() {
+    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+    let complex = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
+    let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
+    let context = hermes_lineage("root", "native-conversation-turn", &["root"]);
+    accepted(&send(
+        fixture.address,
+        &context,
+        json!("ORIGINAL_MAIN_TASK"),
+    ));
+    accepted(&send(
+        fixture.address,
+        &context,
+        json!("NATIVE_IN_PLACE_COMPRESSION_SUMMARY"),
+    ));
+    assert_eq!((simple.calls(), classifier.calls()), (2, 1));
 }

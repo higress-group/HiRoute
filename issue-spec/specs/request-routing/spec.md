@@ -360,7 +360,7 @@ continuity SHALL NOT establish byte-prefix, provider-cache, instruction or opaqu
 response affinity. Missing evidence permits an optimization miss, never invented
 continuity. Restarts rebuild only state for which the native client supplies
 evidence; Gateway in-memory history is not reconstructed from equal summaries.
-For bundled adapters, an unchanged copied turn marker cannot establish continuity
+For Pi, DSH and OpenCode adapters, an unchanged copied turn marker cannot establish continuity
 for an otherwise rewritten transcript without a new native compaction checkpoint.
 Such uncertain requests SHALL neither replace the existing checkpoint nor append
 their execution to its routing history.
