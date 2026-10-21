@@ -93,16 +93,15 @@ narrow native-only exception in the request contract; declarations remain strict
 
 Known Responses `agent_message` history preserves its author, recipient, ordered
 plaintext/encrypted content and native metadata on same-protocol requests. Its peer
-role has no declared portable mapping: cross-protocol candidates are excluded and
-optional routing history remains unavailable for that request. Peer text is never
-promoted to a user instruction or an accepted assistant output; encryption is not
-reinterpreted as reasoning state. Malformed or unknown content variants remain
-protocol errors.
-The copied ancestor User is not a provable current peer task. Local and external
-classification SHALL use the published unavailable-input fallback instead of
-matching ancestor content or fabricating a User from peer plaintext/ciphertext.
-This exception does not suppress valid user input solely because another native
-field cannot be converted across protocols.
+role has no declared portable mapping: cross-protocol candidates are excluded.
+Known visible messages may support observed-input classification and actual
+execution history, with explicit missing-origin evidence and no provider-cache
+prefix claim. The copied ancestor User is observed request content, not proof of
+the current peer task; its association accuracy remains a disclosed limitation.
+Origin uncertainty alone SHALL NOT permanently disable subsequent classification,
+capture or cross-turn evaluation. Peer text is never fabricated as a human User
+or accepted assistant output; encryption is not reinterpreted as reasoning state.
+Malformed or unknown content variants retain their protocol errors.
 
 Thinking signature/redacted/encrypted values are payload, not interchangeable
 credentials. Same-protocol preserves raw values, empty versus absent, legal JSON
