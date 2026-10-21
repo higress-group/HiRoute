@@ -80,7 +80,9 @@ fn close_branch_turn(
     };
     let mut selected = decision("code");
     selected.policy = Some(policy.clone());
-    store.commit_decision(ticket, selected).unwrap();
+    if ticket.new_turn {
+        store.commit_decision(ticket, selected).unwrap();
+    }
     let mut executed = execution("same-model", "same-profile", "code", "request");
     executed.branch_execution = Some(BranchExecutionV1 {
         policy,
@@ -341,12 +343,31 @@ fn retrying_or_reclassifying_a_turn_cannot_launder_a_partial_segment() {
         let key = store.scope_key("workspace", "partial-retry").unwrap();
         let now = Instant::now();
         let user = text(MessageRole::User, "same task");
+        let earlier = text(MessageRole::User, "earlier task on the same model");
         let (ticket, history) = new_turn(
             store
                 .begin(
                     key.clone(),
                     plan(1),
-                    &request(vec![user.clone()]),
+                    &request(vec![earlier.clone()]),
+                    &replay,
+                    now,
+                )
+                .unwrap(),
+        );
+        drop(history);
+        close_branch_turn(&store, &ticket, now);
+        let messages = vec![
+            earlier,
+            text(MessageRole::Assistant, "earlier output"),
+            user,
+        ];
+        let (ticket, history) = new_turn(
+            store
+                .begin(
+                    key.clone(),
+                    plan(1),
+                    &request(messages.clone()),
                     &replay,
                     now,
                 )
@@ -355,32 +376,15 @@ fn retrying_or_reclassifying_a_turn_cannot_launder_a_partial_segment() {
         drop(history);
         accepted_output::text_output(&store, &ticket, "accepted execution");
         let original = close_branch_turn(&store, &ticket, now);
-        // Eviction may mark the segment partial without losing the current
-        // turn's output. It must remain partial across a fully captured retry.
-        store
-            .inner
-            .lock()
-            .entries
-            .get_mut(&key)
-            .unwrap()
-            .current_segment
-            .as_mut()
-            .unwrap()
-            .partial = true;
+        // Evict actual earlier execution without losing the current turn's
+        // output. A fully captured retry must not wash that missing prefix away.
+        assert!(trim_oldest_closed_turn(&mut store.inner.lock(), &key).unwrap());
         let AgentTurnBegin::Continuation { ticket, .. } = store
-            .begin(key.clone(), plan(1), &request(vec![user]), &replay, now)
+            .begin(key.clone(), plan(1), &request(messages), &replay, now)
             .unwrap()
         else {
             panic!("same input must resume the existing turn")
         };
-        store
-            .inner
-            .lock()
-            .entries
-            .get_mut(&key)
-            .unwrap()
-            .active
-            .opening_cause = Cause::UserMessage;
         let ticket = if new_execution_id {
             // A reclassification can allocate an execution ID while retaining
             // the input boundary. The ID is not fresh-user evidence.
