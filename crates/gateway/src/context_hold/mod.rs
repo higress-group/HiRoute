@@ -71,7 +71,7 @@ pub(crate) fn prepare_context(
     // Unknown origin alone does not make a usable request unavailable.
     let mut native_user_unavailable = native.user_origin == routing::NativeUserOrigin::ExistingTurn;
     let ticket = store.digest_key().and_then(|hold_key| {
-        let history = visible_history_with_replay(request, &hold_key, Some(replay))?
+        let history = history::observed_history_with_replay(request, &hold_key, Some(replay))?
             .with_semantic_request(semantic_request)?;
         let key = ContextHoldKey::from_request(authorized, ingress, &identity, &hold_key)?;
         let mut prepared = store.prepare(key, &history, now)?;

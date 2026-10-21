@@ -52,7 +52,11 @@ impl PreparedHold {
     }
 
     pub(crate) fn history_can_capture(&self) -> bool {
-        self.native.user_origin != NativeUserOrigin::ExistingTurn || self.history_is_proven()
+        self.history_is_proven()
+            || matches!(
+                self.native.user_origin,
+                NativeUserOrigin::Wire | NativeUserOrigin::Observed | NativeUserOrigin::NativeTurn
+            )
     }
 
     pub(crate) fn user_origin_unverified(&self) -> bool {

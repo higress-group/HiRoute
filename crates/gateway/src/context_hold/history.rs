@@ -154,6 +154,19 @@ pub(crate) fn visible_history_with_replay<'a>(
     key: &'a [u8; 32],
     replay: Option<&'a ReplayStore>,
 ) -> Option<HistoryEvidence<'a>> {
+    if request.native_only {
+        return None;
+    }
+    observed_history_with_replay(request, key, replay)
+}
+
+/// Actual known messages can support uncertain task capture without claiming
+/// that the complete native payload has a comparable provider-cache prefix.
+pub(super) fn observed_history_with_replay<'a>(
+    request: &'a ModelRequestIRV1,
+    key: &'a [u8; 32],
+    replay: Option<&'a ReplayStore>,
+) -> Option<HistoryEvidence<'a>> {
     let mut instructions = Encoder::new(key, b"visible-history/v1/instructions", replay)?;
     instructions.usize(request.instructions.len());
     for instruction in &request.instructions {

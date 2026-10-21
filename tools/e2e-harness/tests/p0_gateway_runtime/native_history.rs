@@ -118,9 +118,10 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
                 reply(RESPONSES_TOOL_CALL),
                 reply(RESPONSES_OK),
                 reply(RESPONSES_OK),
+                reply(RESPONSES_OK),
             ]);
             let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-            let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
+            let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 3]);
             let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
             let main = headers(agent, "main", "main", "turn-1", "checkpoint-1");
             let user = json!({"role":"user","content":"MAIN_USER"});
@@ -156,11 +157,11 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
                 &auxiliary,
                 json!("AUXILIARY_MUST_NOT_ENTER_HISTORY"),
             ));
-            let calls_before_next = 1;
+            let calls_before_next = if fault { 2 } else { 1 };
             assert_eq!(
                 classifier.calls(),
-                1,
-                "{agent}: unknown auxiliary input was classified"
+                calls_before_next,
+                "{agent}: known auxiliaries detach; broken evidence uses the observed lane"
             );
             let first: Value = serde_json::from_slice(&first.body).unwrap();
             let call = &first["output"][0]["call_id"];
@@ -194,7 +195,11 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
             );
             assert_eq!(
                 (simple.calls(), complex.calls(), classifier.calls()),
-                (3, 1, calls_before_next + 1)
+                (
+                    if fault { 4 } else { 3 },
+                    if fault { 0 } else { 1 },
+                    calls_before_next + 1
+                )
             );
         }
     }
@@ -356,11 +361,11 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
 }
 
 #[test]
-fn real_listener_restart_and_qoder_degradation_never_recover_an_unproven_history() {
+fn real_listener_restart_and_qoder_observed_routing_recovers_without_origin_claims() {
     for _restart in 0..2 {
-        let simple = NativeProvider::start(vec![]);
-        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-        let classifier = NativeProvider::start(vec![]);
+        let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+        let primary = NativeProvider::start(vec![]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
         let fixture = RuntimeFixture::launch_rest_classified(&[&simple, &primary, &classifier], 1);
         let mut qoder = vec![
             ("X-HiRoute-Token".into(), TOKEN.into()),
@@ -374,7 +379,7 @@ fn real_listener_restart_and_qoder_degradation_never_recover_an_unproven_history
         assert_ne!(send(fixture.address, &qoder, json!("denied")).status, 200);
         assert_eq!(
             (simple.calls(), primary.calls(), classifier.calls()),
-            (0, 2, 0)
+            (2, 0, 2)
         );
     }
 }
@@ -395,11 +400,12 @@ fn hermes_lineage(session: &str, turn: &str, ids: &[&str]) -> Vec<(String, Strin
 }
 
 #[test]
-fn real_listener_hermes_compression_and_fresh_gateway_remain_unavailable_without_user_origin() {
+fn real_listener_hermes_compression_and_fresh_gateway_retain_observed_routing_without_user_origin()
+{
     for _restart in 0..2 {
-        let simple = NativeProvider::start(vec![]);
-        let complex = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
-        let classifier = NativeProvider::start(vec![]);
+        let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
+        let complex = NativeProvider::start(vec![]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 3]);
         let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
         accepted(&send(
             fixture.address,
@@ -425,7 +431,7 @@ fn real_listener_hermes_compression_and_fresh_gateway_remain_unavailable_without
         ));
         assert_eq!(
             (simple.calls(), complex.calls(), classifier.calls()),
-            (0, 4, 0)
+            (4, 0, 3)
         );
         let facts = wait_execution_facts(&fixture, 4);
         let decisions = facts
@@ -436,7 +442,7 @@ fn real_listener_hermes_compression_and_fresh_gateway_remain_unavailable_without
         assert!(
             decisions
                 .iter()
-                .all(|fact| fact["fact"]["complexity"]["fallback_reason"] == "unavailable")
+                .all(|fact| fact["fact"]["complexity"]["fallback_used"] == false)
         );
     }
 }
@@ -506,7 +512,7 @@ fn real_listener_native_new_turn_does_not_reuse_a_decision_for_identical_content
 }
 
 #[test]
-fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_shared_history() {
+fn real_listener_known_native_clients_without_loaded_adapters_retain_observed_routing() {
     for user_agent in [
         "pi (linux; x64)",
         "deepseek-harness/0.2.0-rc.2",
@@ -515,9 +521,9 @@ fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_share
         "claude-cli/2.1.287 (external,cli)",
         "qodercli/1.1.72",
     ] {
-        let simple = NativeProvider::start(vec![]);
-        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-        let classifier = NativeProvider::start(vec![]);
+        let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+        let primary = NativeProvider::start(vec![]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
         let fixture = native_fixture("unknown", &[&simple, &primary, &classifier]);
         let headers = [
             ("X-HiRoute-Token".into(), TOKEN.into()),
@@ -532,7 +538,7 @@ fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_share
         }
         assert_eq!(
             (simple.calls(), primary.calls(), classifier.calls()),
-            (0, 2, 0),
+            (2, 0, 1),
             "{user_agent}"
         );
     }
@@ -619,10 +625,10 @@ fn real_listener_unexplained_native_rewrites_cannot_replace_main_history() {
 }
 
 #[test]
-fn real_listener_hermes_in_place_compression_does_not_bootstrap_an_unproven_turn() {
-    let simple = NativeProvider::start(vec![]);
-    let complex = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-    let classifier = NativeProvider::start(vec![]);
+fn real_listener_hermes_in_place_compression_retains_observed_original_task() {
+    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+    let complex = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
     let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
     let context = hermes_lineage("root", "native-conversation-turn", &["root"]);
     accepted(&send(
@@ -637,7 +643,7 @@ fn real_listener_hermes_in_place_compression_does_not_bootstrap_an_unproven_turn
     ));
     assert_eq!(
         (simple.calls(), complex.calls(), classifier.calls()),
-        (0, 2, 0)
+        (2, 0, 1)
     );
 }
 

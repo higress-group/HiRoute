@@ -79,7 +79,7 @@ fn metadata() -> Value {
 }
 
 #[test]
-fn only_known_unprojected_peer_tasks_make_the_current_user_unavailable() {
+fn opaque_native_fields_retain_the_request_and_disclose_origin_uncertainty() {
     let fixture = Fixture::new();
     for peer in [false, true] {
         let mut original = request(
@@ -98,7 +98,7 @@ fn only_known_unprojected_peer_tasks_make_the_current_user_unavailable() {
             &fixture.replay,
             &fixture.budget,
         );
-        assert_eq!(view.origin_unverified(), peer);
+        assert!(view.origin_unverified());
         assert!(std::ptr::eq(view.request(&original), &original));
     }
 }

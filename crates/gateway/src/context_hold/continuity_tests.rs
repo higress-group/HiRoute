@@ -71,6 +71,6 @@ fn a_changed_native_id_needs_an_appended_user_and_cannot_restore_a_replayed_wind
     store.commit(compressed, Instant::now()).unwrap();
     let rollback = prepare(&store, json!([user]), 1, 0);
     assert!(!rollback.history_is_proven());
-    assert!(!rollback.native_user_unavailable());
+    assert!(rollback.native_user_unavailable());
     assert!(rollback.user_origin_unverified());
 }

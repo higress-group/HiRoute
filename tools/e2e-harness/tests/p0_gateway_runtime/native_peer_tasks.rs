@@ -1,4 +1,4 @@
-//! An opaque native peer task cannot be classified as its copied ancestor user.
+//! Opaque peer tasks retain observed routing without changing execution wire.
 use super::*;
 use serde_json::{Value, json};
 
@@ -11,7 +11,7 @@ fn reply() -> ProviderReply {
 }
 
 #[test]
-fn real_listener_native_peer_tasks_use_unavailable_fallback_and_preserve_the_original_wire() {
+fn real_listener_native_peer_tasks_retain_observed_routing_and_original_wire() {
     for external in [false, true] {
         for content in [
             json!([{"type":"input_text","text":"complex child task distinct from its ancestor"}]),
@@ -46,18 +46,10 @@ fn real_listener_native_peer_tasks_use_unavailable_fallback_and_preserve_the_ori
                 "{}",
                 String::from_utf8_lossy(&result.body)
             );
-            assert_eq!(
-                economy.calls(),
-                0,
-                "copied ancestor user selected the economy branch"
-            );
-            assert_eq!(
-                classifier.calls(),
-                0,
-                "opaque task invented a latest user for external classification"
-            );
-            assert_eq!(primary.calls(), 1);
-            let requests = primary.requests();
+            assert_eq!(economy.calls(), 1, "usable observed input retains routing");
+            assert_eq!(classifier.calls(), usize::from(external));
+            assert_eq!(primary.calls(), 0);
+            let requests = economy.requests();
             let raw = &requests[0];
             let offset = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
             let executed: Value = serde_json::from_slice(&raw[offset..]).unwrap();

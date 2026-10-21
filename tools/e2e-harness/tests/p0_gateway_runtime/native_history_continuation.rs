@@ -130,8 +130,7 @@ fn real_listener_cold_native_continuation_cannot_warm_itself_into_history() {
 #[test]
 fn real_listener_claude_without_persistent_user_proof_keeps_main_and_child_output() {
     let barrier = ProviderBodyBarrier::default();
-    let simple = NativeProvider::start(vec![]);
-    let primary = NativeProvider::start(vec![
+    let simple = NativeProvider::start(vec![
         ProviderReply::BodyReadBarrier {
             barrier: barrier.clone(),
             status: 200,
@@ -144,7 +143,8 @@ fn real_listener_claude_without_persistent_user_proof_keeps_main_and_child_outpu
         reply(RESPONSES_OK),
         reply(RESPONSES_OK),
     ]);
-    let classifier = NativeProvider::start(vec![]);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 3]);
     let fixture = RuntimeFixture::launch_rest_classified_with_observation(
         &[&simple, &primary, &classifier],
         1,
@@ -193,7 +193,7 @@ fn real_listener_claude_without_persistent_user_proof_keeps_main_and_child_outpu
     ));
     assert_eq!(
         (simple.calls(), primary.calls(), classifier.calls()),
-        (0, 6, 0)
+        (6, 0, 3)
     );
     let facts = wait_execution_facts(&fixture, 6);
     let decisions = facts
@@ -205,16 +205,18 @@ fn real_listener_claude_without_persistent_user_proof_keeps_main_and_child_outpu
     for decision in decisions {
         assert_eq!(
             decision.pointer("/fact/complexity/fallback_used"),
-            Some(&json!(true))
+            Some(&json!(false))
         );
         assert_eq!(
             decision.pointer("/fact/complexity/fallback_reason"),
-            Some(&json!("unavailable"))
+            Some(&Value::Null)
         );
-        assert_eq!(
-            decision.pointer("/fact/complexity/decision_source"),
-            Some(&json!("unresolved"))
-        );
+        assert!(matches!(
+            decision
+                .pointer("/fact/complexity/decision_source")
+                .and_then(Value::as_str),
+            Some("external_classifier" | "inherited")
+        ));
         let branch = decision
             .pointer("/correlation/conversation_id")
             .and_then(Value::as_str)
@@ -231,10 +233,11 @@ fn real_listener_claude_without_persistent_user_proof_keeps_main_and_child_outpu
 }
 
 #[test]
-fn real_listener_cold_codex_persistent_compaction_window_never_bootstraps_a_summary() {
-    let simple = NativeProvider::start(vec![]);
-    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
-    let classifier = NativeProvider::start(vec![]);
+fn real_listener_cold_codex_persistent_compaction_window_records_observed_input_without_claiming_fresh_human_origin()
+ {
+    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
     let fixture = native_fixture("codex", &[&simple, &primary, &classifier]);
     for turn in ["uncaptured", "uncaptured", "changed-opaque-id"] {
         accepted(&send(
@@ -245,16 +248,16 @@ fn real_listener_cold_codex_persistent_compaction_window_never_bootstraps_a_summ
     }
     assert_eq!(
         (simple.calls(), primary.calls(), classifier.calls()),
-        (0, 3, 0)
+        (3, 0, 2)
     );
 }
 
 #[test]
-fn real_listener_fresh_questions_do_not_recover_unproven_native_users() {
+fn real_listener_fresh_questions_recover_actual_history_without_claiming_human_proof() {
     for agent in ["claude", "codex", "hermes"] {
-        let simple = NativeProvider::start(vec![]);
-        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
-        let classifier = NativeProvider::start(vec![]);
+        let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
+        let primary = NativeProvider::start(vec![]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE_WITH_ASSESSMENT); 3]);
         let fixture = native_fixture(agent, &[&simple, &primary, &classifier]);
         let summary = json!({"role":"user","content":"COLD_SYNTHETIC_SUMMARY"});
         accepted(&send(
@@ -278,21 +281,34 @@ fn real_listener_fresh_questions_do_not_recover_unproven_native_users() {
                 {"role":"assistant","content":"uncaptured fresh answer"},{"role":"user","content":"ACTUAL_FOLLOWUP"}
             ]),
         ));
-        // This asserts a capability limit, not successful recovery: genuine new
-        // questions still lack persistent native user provenance after this gap.
+        let followup = classifier_body(&classifier, 2);
+        let visible = followup["visible_conversation"].to_string();
+        assert!(visible.contains("ACTUAL_NEW_QUESTION") && visible.contains("ok"));
+        assert!(
+            !followup["assessment_target"].is_null(),
+            "{agent}: evaluation must remain enabled"
+        );
+        // Cold input was observed, not relabeled as verified human provenance.
+        let first_followup = classifier_body(&classifier, 1);
+        assert!(
+            first_followup["visible_conversation"]
+                .to_string()
+                .contains("unverified_request_user_origin")
+        );
         assert_eq!(
             (simple.calls(), primary.calls(), classifier.calls()),
-            (0, 3, 0),
+            (3, 0, 3),
             "{agent}"
         );
     }
 }
 
 #[test]
-fn real_listener_hermes_legacy_fresh_flag_cannot_capture_async_completion_or_recover() {
-    let simple = NativeProvider::start(vec![]);
-    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
-    let classifier = NativeProvider::start(vec![]);
+fn real_listener_hermes_legacy_fresh_flag_retains_observed_callback_history_without_human_origin_claims()
+ {
+    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE_WITH_ASSESSMENT); 3]);
     let fixture = native_fixture("hermes", &[&simple, &primary, &classifier]);
     let human = json!({"role":"user","content":"FIRST_REAL_HERMES_USER"});
     let batch = json!({"role":"user","content":"[ASYNC DELEGATION BATCH COMPLETE] child goals and results"});
@@ -322,7 +338,7 @@ fn real_listener_hermes_legacy_fresh_flag_cannot_capture_async_completion_or_rec
     }
     assert_eq!(
         (simple.calls(), primary.calls(), classifier.calls()),
-        (0, 4, 0)
+        (4, 0, 3)
     );
     let facts = wait_execution_facts(&fixture, 4);
     let decisions = facts
@@ -332,23 +348,30 @@ fn real_listener_hermes_legacy_fresh_flag_cannot_capture_async_completion_or_rec
     assert_eq!(decisions.len(), 4);
     for fact in decisions {
         assert_eq!(
-            fact.pointer("/fact/complexity/fallback_reason"),
-            Some(&json!("unavailable"))
-        );
-        assert_eq!(
-            fact.pointer("/fact/complexity/decision_source"),
-            Some(&json!("unresolved"))
+            fact.pointer("/fact/complexity/fallback_used"),
+            Some(&json!(false))
         );
     }
+    let callback = classifier_body(&classifier, 1);
+    assert!(!callback["assessment_target"].is_null());
+    let visible = callback["visible_conversation"].to_string();
+    assert!(visible.contains("FIRST_REAL_HERMES_USER") && visible.contains("ok"));
+    assert!(visible.contains("unverified_request_user_origin"));
+    let after = classifier_body(&classifier, 2);
+    assert!(
+        after["visible_conversation"]
+            .to_string()
+            .contains("unverified_request_user_origin")
+    );
 }
 
 #[test]
-fn real_listener_invalid_or_legacy_native_origin_cannot_classify_wire_summaries() {
+fn real_listener_invalid_or_legacy_native_origin_retains_observed_routing() {
     for agent in ["codex", "claude", "pi", "opencode", "hermes"] {
         for legacy in [false, true] {
-            let simple = NativeProvider::start(vec![]);
-            let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-            let classifier = NativeProvider::start(vec![]);
+            let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+            let primary = NativeProvider::start(vec![]);
+            let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
             let fixture = native_fixture(agent, &[&simple, &primary, &classifier]);
             let mut broken = headers(agent, "session", "main", "turn", "after");
             if agent == "codex" {
@@ -386,7 +409,7 @@ fn real_listener_invalid_or_legacy_native_origin_cannot_classify_wire_summaries(
             }
             assert_eq!(
                 (simple.calls(), primary.calls(), classifier.calls()),
-                (0, 2, 0),
+                (2, 0, 1),
                 "{agent}: legacy={legacy}"
             );
         }
@@ -394,10 +417,10 @@ fn real_listener_invalid_or_legacy_native_origin_cannot_classify_wire_summaries(
 }
 
 #[test]
-fn real_listener_managed_qoder_path_disables_unknown_bun_user_classification() {
-    let simple = NativeProvider::start(vec![]);
-    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-    let classifier = NativeProvider::start(vec![]);
+fn real_listener_managed_qoder_path_preserves_bearer_auth_and_observed_classification() {
+    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
     let fixture = native_fixture("unknown", &[&simple, &primary, &classifier]);
     let path = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);
     let bearer = format!("Bearer {TOKEN}");
@@ -432,6 +455,6 @@ fn real_listener_managed_qoder_path_disables_unknown_bun_user_classification() {
     }
     assert_eq!(
         (simple.calls(), primary.calls(), classifier.calls()),
-        (0, 2, 0)
+        (2, 0, 2)
     );
 }
