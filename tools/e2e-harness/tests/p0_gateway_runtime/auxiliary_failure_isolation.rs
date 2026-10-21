@@ -82,7 +82,7 @@ fn real_listener_title_failure_releases_an_expired_quota_probe_for_the_next_main
 
     assert_eq!(
         fixture.request().status,
-        502,
+        429,
         "seed an expired exact Key cooldown"
     );
     let title = send_agent_request(fixture.address, "Generate a short session title.");
@@ -115,7 +115,7 @@ fn real_listener_permanent_title_error_releases_an_expired_quota_probe_for_the_n
 
     assert_eq!(
         fixture.request().status,
-        502,
+        429,
         "seed an expired exact Key cooldown"
     );
     let title = send_agent_request(fixture.address, "Generate a short session title.");
@@ -138,7 +138,7 @@ fn real_listener_agent_quota_failure_retains_shared_cooldown_and_retry_contract(
     }]);
     let fixture = RuntimeFixture::launch(&[&provider], 1);
 
-    assert_eq!(fixture.request().status, 502);
+    assert_eq!(fixture.request().status, 429);
     let main = send_agent_request(fixture.address, "Continue the user's task.");
     assert_eq!(main.status, 503);
     assert_eq!(

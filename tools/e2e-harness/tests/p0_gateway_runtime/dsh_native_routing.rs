@@ -91,7 +91,11 @@ fn real_listener_dsh_semantic_user_excludes_runtime_context_and_keeps_tool_conti
     ]);
     let classifier =
         NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE)]);
-    let fixture = RuntimeFixture::launch_rest_classified(&[&model, &model, &classifier], 1);
+    let unused_primary = NativeProvider::start(vec![]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
+        &[&model, &unused_primary, &classifier],
+        1,
+    );
     let first = json!({"role":"user","content":"REAL_NATIVE_TASK"});
     let policy = json!({"role":"user","content":"NATIVE_RUNTIME_POLICY"});
     let h1 = header("1", Some(json!([proof("1", 0, "REAL_NATIVE_TASK")])));
@@ -173,8 +177,12 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
     ];
     for invalid in malformed {
         let model = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+        let unused_economy = NativeProvider::start(vec![]);
         let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
-        let fixture = RuntimeFixture::launch_rest_classified(&[&model, &model, &classifier], 1);
+        let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
+            &[&unused_economy, &model, &classifier],
+            1,
+        );
         let response = send(
             &fixture,
             &header("1", invalid),
@@ -191,6 +199,7 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
             "an unproved native envelope must not be sent as a real classifier input"
         );
         assert_eq!(model.calls(), 1);
+        assert_eq!(unused_economy.calls(), 0);
         assert!(
             body(&model, 0)["input"]
                 .as_array()
@@ -207,8 +216,12 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
     // A native checkpoint can retain the turn ID while removing the real user's
     // source message. The old digest cannot authorize the summary as that user.
     let model = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+    let unused_economy = NativeProvider::start(vec![]);
     let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
-    let fixture = RuntimeFixture::launch_rest_classified(&[&model, &model, &classifier], 1);
+    let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
+        &[&unused_economy, &model, &classifier],
+        1,
+    );
     let response = send(
         &fixture,
         &header("1", Some(json!([proof("1", 0, "REAL_NATIVE_TASK")]))),

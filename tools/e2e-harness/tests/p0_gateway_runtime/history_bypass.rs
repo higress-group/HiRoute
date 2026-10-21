@@ -92,6 +92,7 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
     ];
     let mut executed = 0;
     for identity in identities {
+        let dsh = identity.contains(&("x-hiroute-agent", "dsh"));
         let barrier = ProviderBodyBarrier::default();
         let simple = NativeProvider::start(vec![
             ProviderReply::BodyReadBarrier {
@@ -103,10 +104,11 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
             complete(RESPONSES_OK),
         ]);
         let complex = NativeProvider::start(vec![complete(RESPONSES_OK)]);
-        let classifier = NativeProvider::start(vec![
-            complete(CLASSIFIER_SIMPLE),
-            complete(CLASSIFIER_COMPLEX),
-        ]);
+        let classifier = NativeProvider::start(if dsh {
+            vec![complete(CLASSIFIER_SIMPLE)]
+        } else {
+            vec![complete(CLASSIFIER_SIMPLE), complete(CLASSIFIER_COMPLEX)]
+        });
         let fixture = RuntimeFixture::launch_rest_classified_with_observation(
             &[&simple, &complex, &classifier],
             1,
@@ -116,11 +118,23 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
         headers.push(("X-HiRoute-Token", TOKEN));
         let address = fixture.address;
         let user = json!({"role":"user","content":"Look up the record."});
+        let dsh_main_context = dsh.then(|| {
+            json!({"version":1,"agent":"dsh","session_id":"shared-dsh","purpose":"main","turn_id":"main-turn",
+                "user_turns":super::dsh_native_routing::fixture_user_turns(&json!([user]), "main-turn").unwrap()}).to_string()
+        });
+        let mut main_headers = headers.clone();
+        if let Some(context) = dsh_main_context.as_deref() {
+            main_headers
+                .iter_mut()
+                .find(|(name, _)| *name == "x-hiroute-routing-context")
+                .unwrap()
+                .1 = context;
+        }
         let first = std::thread::scope(|scope| {
             // Release inside the scoped closure even if an assertion fails, so
             // the provider and the first client cannot deadlock test cleanup.
             let release = ReleaseOnDrop(barrier.clone());
-            let main_headers = headers.clone();
+            let main_headers = main_headers.clone();
             let main_user = user.clone();
             let main = scope.spawn(move || send(address, &main_headers, json!([main_user])));
             barrier.wait_for_arrivals(1, Duration::from_secs(5));
@@ -131,10 +145,18 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
                 1,
                 "a conflicting request must execute independently"
             );
-            let detached = classifier_body(&classifier, 1);
-            assert_eq!(detached["history_partial"], true, "{detached}");
-            assert_eq!(detached["visible_conversation"], json!([]), "{detached}");
-            assert!(detached["assessment_target"].is_null(), "{detached}");
+            if dsh {
+                assert_eq!(
+                    classifier.calls(),
+                    1,
+                    "unproved DSH background input must use Primary without classification"
+                );
+            } else {
+                let detached = classifier_body(&classifier, 1);
+                assert_eq!(detached["history_partial"], true, "{detached}");
+                assert_eq!(detached["visible_conversation"], json!([]), "{detached}");
+                assert!(detached["assessment_target"].is_null(), "{detached}");
+            }
             release.0.release();
             main.join().unwrap()
         });
@@ -143,7 +165,7 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
         let call_id = &first["output"][0]["call_id"];
         let continued = send(
             address,
-            &headers,
+            &main_headers,
             json!([
                 user,
                 {"type":"function_call","call_id":call_id,"namespace":"tools","name":"lookup","arguments":"{}"},
@@ -154,7 +176,7 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
         assert_eq!((simple.calls(), complex.calls()), (2, 1), "{identity:?}");
         assert_eq!(
             classifier.calls(),
-            2,
+            if dsh { 1 } else { 2 },
             "bypass must not invalidate the main tool continuation"
         );
         let facts = wait_execution_facts(&fixture, 3);

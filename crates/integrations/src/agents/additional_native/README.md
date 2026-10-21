@@ -36,6 +36,9 @@ DSH's wire user role also carries runtime context. The adapter therefore binds
 native `source.kind=user` events to exact serialized text positions; Gateway's
 [optional semantic view](../../../../gateway/src/core_runtime/native_routing_view.rs)
 checks the bounded proof before routing. It leaves the execution body unchanged.
+The native pi-ai leaf concatenates pure text blocks within each user envelope;
+the adapter verifies that projection before hashing the final wire blocks, without
+joining separate messages or inferring user input from unknown sources.
 Unknown content, missing proof or exhausted projection capacity uses the normal
 unavailable-input fallback and cannot add synthetic users to later history.
 

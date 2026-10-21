@@ -183,3 +183,60 @@ test("DSH binds native semantic users to exact wire positions without changing m
       [...metadata.user_turns, { turn_id: "2", messages: [{ index: 3, sha256: digest("USER-C") }] }]);
   } finally { globalThis.fetch = original; delete globalThis[symbol]; }
 });
+
+test("DSH projects native pure-text blocks within each user envelope before binding exact wire text", async () => {
+  const original = globalThis.fetch;
+  const symbol = Symbol.for("hiroute.dsh.routing-context.v1");
+  const sent = [];
+  globalThis.fetch = async (_url, init) => { sent.push(init); return "native-result"; };
+  delete globalThis[symbol];
+  const text = value => ({ type: "text", text: value });
+  const user = (id, content, kind = "user") => ({ id, role: "user", content, source: { kind } });
+  const first = user("first", [text("NATIVE-TASK"), text("NATIVE-RETURN-GUIDANCE")]);
+  const policy = user("policy", [text("RUNTIME-POLICY")], "runtime-context");
+  const second = user("second", [text("SECOND-ENVELOPE")]);
+  const events = [{ type: "turn/start", data: { turn: 1 } },
+    ...[first, policy, second].map(data => ({ type: "user/message", data }))];
+  let hook;
+  dshRouting({ sessions: { get: () => ({ seq: events.length, eventAt: i => events[i] }) },
+    on: (_name, callback) => { hook = callback; } });
+  const options = { provider: "hiroute-main-test", sessionId: "child", messages: [
+    { role: "system", content: [text("SYSTEM")] }, first, policy, second,
+  ] };
+  const digest = value => createHash("sha256").update(JSON.stringify([value])).digest("hex");
+  try {
+    for (const protocol of ["responses", "messages"]) {
+      // dsh-llm-pi-ai 0.2.0-rc.2 flattens pure-text content with join("").
+      // pi-ai 0.87.1 emits one Responses input_text block or Messages string.
+      const envelope = value => ({ role: "user", content: protocol === "responses"
+        ? [{ type: "input_text", text: value }] : value });
+      const wire = [envelope("NATIVE-TASKNATIVE-RETURN-GUIDANCE"),
+        envelope("RUNTIME-POLICY"), envelope("SECOND-ENVELOPE")];
+      const send = async (messages, native = options) => {
+        const body = JSON.stringify({ [protocol === "responses" ? "input" : "messages"]: messages });
+        const next = async function* () { yield await fetch("http://127.0.0.1/v1/" + protocol, {
+          method: "POST", body, headers: { "x-hiroute-agent": "dsh", "x-hiroute-token": "synthetic" },
+        }); };
+        assert.equal((await hook(native, next).next()).value, "native-result");
+        assert.equal(sent.at(-1).body, body);
+        return JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context"));
+      };
+      assert.deepEqual((await send(wire)).user_turns, [{ turn_id: "1", messages: [
+        { index: 0, sha256: digest("NATIVE-TASKNATIVE-RETURN-GUIDANCE") },
+        { index: 2, sha256: digest("SECOND-ENVELOPE") },
+      ] }]);
+      assert.equal((await send([wire[2], wire[1], wire[0]])).user_turns, undefined);
+      assert.equal((await send([envelope("NATIVE-TASKCHANGED"), ...wire.slice(1)])).user_turns, undefined);
+      const reordered = { ...options, messages: options.messages.map(m => m.id === "first"
+        ? { ...m, content: [...m.content].reverse() } : m) };
+      assert.equal((await send(wire, reordered)).user_turns, undefined);
+      // No cross-envelope joining or alternate block-layout guesses are admitted.
+      assert.equal((await send([envelope("NATIVE-TASKNATIVE-RETURN-GUIDANCERUNTIME-POLICYSECOND-ENVELOPE")])).user_turns, undefined);
+      const split = { role: "user", content: [text("NATIVE-TASK"), text("NATIVE-RETURN-GUIDANCE")] };
+      assert.equal((await send([split, ...wire.slice(1)])).user_turns, undefined);
+      const image = { ...options, messages: options.messages.map(m => m.id === "first"
+        ? { ...m, content: [...m.content, { type: "image", attachment: {} }] } : m) };
+      assert.equal((await send(wire, image)).user_turns, undefined);
+    }
+  } finally { globalThis.fetch = original; delete globalThis[symbol]; }
+});

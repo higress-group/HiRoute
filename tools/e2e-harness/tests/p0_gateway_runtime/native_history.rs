@@ -532,9 +532,22 @@ fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_share
         "claude-cli/2.1.287 (external,cli)",
         "qodercli/1.1.72",
     ] {
-        let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-        let complex = NativeProvider::start(vec![]);
-        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
+        let dsh = user_agent.starts_with("deepseek-harness/");
+        let simple = NativeProvider::start(if dsh {
+            vec![]
+        } else {
+            vec![reply(RESPONSES_OK); 2]
+        });
+        let complex = NativeProvider::start(if dsh {
+            vec![reply(RESPONSES_OK); 2]
+        } else {
+            vec![]
+        });
+        let classifier = NativeProvider::start(if dsh {
+            vec![]
+        } else {
+            vec![reply(CLASSIFIER_SIMPLE); 2]
+        });
         let fixture = native_fixture("unknown", &[&simple, &complex, &classifier]);
         let unadapted = [
             ("X-HiRoute-Token".into(), TOKEN.into()),
@@ -547,16 +560,29 @@ fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_share
                 json!("identical native input"),
             ));
         }
-        for index in 0..2 {
-            let history = classifier_body(&classifier, index);
+        if dsh {
             assert_eq!(
-                history["visible_conversation"],
-                json!([]),
-                "{user_agent}: {history}"
+                (simple.calls(), complex.calls(), classifier.calls()),
+                (0, 2, 0),
+                "DSH without a semantic user proof must complete both requests through Primary"
             );
-            assert!(history["assessment_target"].is_null());
+        } else {
+            for index in 0..2 {
+                let history = classifier_body(&classifier, index);
+                assert_eq!(history["history_partial"], true, "{user_agent}: {history}");
+                assert_eq!(
+                    history["visible_conversation"],
+                    json!([]),
+                    "{user_agent}: {history}"
+                );
+                assert!(history["assessment_target"].is_null());
+            }
+            assert_eq!(
+                (simple.calls(), complex.calls(), classifier.calls()),
+                (2, 0, 2),
+                "{user_agent}"
+            );
         }
-        assert_eq!(classifier.calls(), 2, "{user_agent}");
     }
 }
 

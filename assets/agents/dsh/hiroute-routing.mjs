@@ -11,7 +11,7 @@ const MAX_TURNS = 16;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const USER_SOURCES = new Set(["user", "runtime-context", "compact-checkpoint", "agent-message"]);
 
-function textDigest(content) {
+function textDigest(content, nativeProjection = false) {
   const parts = typeof content === "string" ? [content] : Array.isArray(content) && content.length > 0
     && content.every(p => p && ["text", "input_text"].includes(p.type) && typeof p.text === "string")
     ? content.map(p => p.text) : undefined;
@@ -22,7 +22,9 @@ function textDigest(content) {
     bytes += Buffer.byteLength(part);
     if (bytes > MAX_BODY_BYTES) return;
   }
-  const encoded = JSON.stringify(parts);
+  // dsh-llm-pi-ai flattens supported pure-text blocks with join("") inside
+  // each envelope. The final wire layout is still fingerprinted independently.
+  const encoded = JSON.stringify(nativeProjection ? [parts.join("")] : parts);
   if (Buffer.byteLength(encoded) > MAX_BODY_BYTES) return;
   return { sha256: createHash("sha256").update(encoded).digest("hex"), bytes: Buffer.byteLength(encoded) };
 }
@@ -47,7 +49,7 @@ function nativeUsers(options, session, currentTurn) {
     // into its system slot. Later system messages are projected as user text.
     if (message.role !== "user" && !(message.role === "system" && (i > 0 || options.system !== undefined))) continue;
     if (message.role === "user" && !USER_SOURCES.has(message.source?.kind)) return;
-    const fingerprint = textDigest(message.content);
+    const fingerprint = textDigest(message.content, true);
     if (!fingerprint || (bytes += fingerprint.bytes) > MAX_BODY_BYTES) return;
     const real = message.role === "user" && message.source?.kind === "user";
     const nativeTurn = real ? turns.get(message.id) : undefined;
@@ -86,7 +88,7 @@ function userProof(context, input, init) {
       seen.add(user.turn);
       groups.push(group = { turn_id: user.turn, messages: [] });
     }
-    group.messages.push({ index, sha256: user.sha256 });
+    group.messages.push({ index, sha256: wire[index] });
     if (++count > MAX_USER_MESSAGES || groups.length > MAX_TURNS) return;
   }
   if (groups.at(-1)?.turn_id !== context.turn_id) return;

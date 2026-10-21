@@ -28,7 +28,11 @@ fn real_listener_instruction_text_changes_keep_captured_native_history() {
             };
             2
         ]);
-        let fixture = RuntimeFixture::launch_rest_classified(&[&model, &model, &classifier], 1);
+        let unused_primary = NativeProvider::start(vec![]);
+        let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
+            &[&model, &unused_primary, &classifier],
+            1,
+        );
         for (turn, input) in [
             (
                 "1",
