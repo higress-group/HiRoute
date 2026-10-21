@@ -503,12 +503,17 @@ replaced or unsupported native state SHALL suppress optional continuity evidence
 without preventing the model request or changing its authorization. Ordinary
 children and forks SHALL NOT be reported as compression continuations.
 
-Hermes original-user evidence uses public pre/post whole-turn hooks, scoped to the
-native task and turn. Only an exact supported last-User text match may advertise a
-fresh user; missing hooks, conflicting/expired input, multipart content or unknown
-message shape SHALL require an already captured turn. The bounded cache stores at
-most 64 inputs of 64 KiB for one hour and removes a finished turn. Hook registration
-or read failure MUST preserve middleware authorization and native execution.
+Hermes public whole-turn hooks cannot distinguish real input from native async
+completion notifications: both enter the same main-conversation User call site.
+Matching hook text, an opaque new turn, an initiated-turn flag or an empty live-job
+list SHALL NOT establish fresh-user provenance. The current producer always
+requires an already captured validated turn, and Gateway ignores older Hermes
+producers' false `continuation_requires_existing_turn` claim. Current Hermes
+classification/capture recovery is unsupported, including after a real new question
+or a new session. A future adapter needs independently verified input origin bound
+to the actual request/turn; a body-prefix heuristic is insufficient. Missing optional
+hooks SHALL NOT block otherwise compatible authorization, identity or native model
+execution. Compression lineage remains observation evidence, not user provenance.
 Pi uses native projected-entry provenance and treats compaction summaries, custom
 user-like contributions and unknown projection as continuations. OpenCode resolves
 the exact in-flight native user ID, excluding synthetic/compaction-only parts and

@@ -87,6 +87,18 @@ SDK headers. It preserves unrelated request parameters and headers. Invalid or
 missing IDs do not remove authorization. Gateway treats identity as Hermes only
 for a digest-bound managed consumer, then scopes it to that connection; equal
 content never supplies missing Hermes identity.
+Current public whole-turn hooks cannot establish original-user provenance. Hermes
+0.20 feeds native async delegation notifications into the same User input queue as
+real input; even its initiated-turn flag is shared. The adapter therefore always
+requires an existing validated turn, and Gateway rejects freshness claims from
+older adapters as optimization evidence. New real questions and new sessions do
+not recover classification/history capture. Model forwarding and observation
+continue through the Plan's unavailable-input route, potentially using Primary
+for every task. Independent child identity, an exact hook-text match or an empty
+active-job list does not establish safe recovery. A future integration needs
+structured input origin bound to each actual native request/turn, including async
+callbacks and restarts; this is not supplied by the current CLI/ACP public hooks.
+
 Optional compression ancestry comes from the selected profile's read-only native
 SessionDB interfaces. Missing or unsupported evidence leaves a continuation gap;
 it never blocks the model call. Observation owns the verified relation and scoped

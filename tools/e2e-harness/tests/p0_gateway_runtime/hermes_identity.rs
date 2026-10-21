@@ -27,7 +27,7 @@ fn assert_native_identity(chat: bool) {
         body,
     };
     let regular = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
-    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 8]);
+    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 11]);
     let decider = NativeProvider::start(vec![reply(simple.as_slice()); 3]);
     let fixture = RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], true);
     let mut publication = fixture.publication();
@@ -88,7 +88,7 @@ fn assert_native_identity(chat: bool) {
     });
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
-        (2, 0, 2)
+        (0, 2, 0)
     );
     let long = "a".repeat(129);
     for claims in [
@@ -124,7 +124,7 @@ fn assert_native_identity(chat: bool) {
     ]);
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
-        (3, 8, 3)
+        (0, 11, 0)
     );
     let facts = wait_execution_facts(&fixture, 11);
     let decisions = facts
@@ -141,7 +141,7 @@ fn assert_native_identity(chat: bool) {
                     && decision["fallback_used"] == false
             })
             .count(),
-        3
+        0
     );
     assert_eq!(
         decisions
@@ -150,7 +150,7 @@ fn assert_native_identity(chat: bool) {
                 decision["fallback_used"] == true && decision["fallback_reason"] == "unavailable"
             })
             .count(),
-        8
+        11
     );
     let finished = facts
         .iter()

@@ -366,8 +366,11 @@ pub(super) fn facts(
             // Hermes enters the native conversation call site, rather than a
             // shared provider-header hook; its turn ID also covers in-place compression.
             requires_checkpoint: agent != "hermes",
+            // Hermes whole-turn hooks also receive native async completion
+            // notifications as User input. Old adapters' false flag cannot prove
+            // a new original user; keep their transport compatible but conservative.
             user_origin: if agent == "dsh"
-                || context.continuation_requires_existing_turn == Some(false)
+                || agent != "hermes" && context.continuation_requires_existing_turn == Some(false)
             {
                 NativeUserOrigin::CurrentUser
             } else {

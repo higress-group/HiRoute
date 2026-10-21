@@ -15,7 +15,7 @@ fn existing_turn(mut headers: Vec<(String, String)>) -> Vec<(String, String)> {
 
 #[test]
 fn real_listener_same_native_turn_appended_summary_keeps_original_user() {
-    for agent in ["codex", "pi", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "opencode"] {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
         let primary = NativeProvider::start(vec![]);
         let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
@@ -66,7 +66,7 @@ fn real_listener_same_native_turn_appended_summary_keeps_original_user() {
 
 #[test]
 fn real_listener_cold_native_continuation_cannot_warm_itself_into_history() {
-    for agent in ["pi", "opencode", "hermes"] {
+    for agent in ["pi", "opencode"] {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
         let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
         let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
@@ -250,8 +250,8 @@ fn real_listener_cold_codex_persistent_compaction_window_never_bootstraps_a_summ
 }
 
 #[test]
-fn real_listener_fresh_questions_do_not_recover_claude_or_cold_compacted_codex_without_proof() {
-    for agent in ["claude", "codex"] {
+fn real_listener_fresh_questions_do_not_recover_unproven_native_users() {
+    for agent in ["claude", "codex", "hermes"] {
         let simple = NativeProvider::start(vec![]);
         let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
         let classifier = NativeProvider::start(vec![]);
@@ -284,6 +284,60 @@ fn real_listener_fresh_questions_do_not_recover_claude_or_cold_compacted_codex_w
             (simple.calls(), primary.calls(), classifier.calls()),
             (0, 3, 0),
             "{agent}"
+        );
+    }
+}
+
+#[test]
+fn real_listener_hermes_legacy_fresh_flag_cannot_capture_async_completion_or_recover() {
+    let simple = NativeProvider::start(vec![]);
+    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
+    let classifier = NativeProvider::start(vec![]);
+    let fixture = native_fixture("hermes", &[&simple, &primary, &classifier]);
+    let human = json!({"role":"user","content":"FIRST_REAL_HERMES_USER"});
+    let batch = json!({"role":"user","content":"[ASYNC DELEGATION BATCH COMPLETE] child goals and results"});
+    for (turn, input) in [
+        ("human-1", json!([human])),
+        (
+            "async-batch",
+            json!([human, {"role":"assistant","content":"accepted main output"}, batch]),
+        ),
+        (
+            "async-batch",
+            json!([batch, {"role":"assistant","content":"accepted batch output"}]),
+        ),
+        (
+            "human-2",
+            json!([human, batch, {"role":"user","content":"NEXT_REAL_HERMES_USER"}]),
+        ),
+    ] {
+        // The old whole-turn producer advertised false for every one of these
+        // calls. Neither an opaque turn change nor matching hook text proves
+        // that a main-conversation User envelope came from the human.
+        accepted(&send(
+            fixture.address,
+            &headers("hermes", "parent", "main", turn, "before"),
+            input,
+        ));
+    }
+    assert_eq!(
+        (simple.calls(), primary.calls(), classifier.calls()),
+        (0, 4, 0)
+    );
+    let facts = wait_execution_facts(&fixture, 4);
+    let decisions = facts
+        .iter()
+        .filter(|fact| fact.pointer("/fact/kind") == Some(&json!("route_decision")))
+        .collect::<Vec<_>>();
+    assert_eq!(decisions.len(), 4);
+    for fact in decisions {
+        assert_eq!(
+            fact.pointer("/fact/complexity/fallback_reason"),
+            Some(&json!("unavailable"))
+        );
+        assert_eq!(
+            fact.pointer("/fact/complexity/decision_source"),
+            Some(&json!("unresolved"))
         );
     }
 }

@@ -101,6 +101,42 @@ fn managed_hermes_requires_its_real_identity_and_never_infers_equal_content() {
 }
 
 #[test]
+fn legacy_hermes_fresh_flag_cannot_prove_human_or_async_user_origin() {
+    let authorized = managed_plan(Some(hiroute_domain::AgentModelConsumerV1::Hermes));
+    for content in [
+        "Actual new human question",
+        "[ASYNC DELEGATION BATCH COMPLETE] child results",
+    ] {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-hiroute-agent", "hermes".parse().unwrap());
+        headers.insert("x-hermes-session-id", "parent".parse().unwrap());
+        headers.insert(
+            "x-hiroute-routing-context",
+            serde_json::json!({"version":1,"agent":"hermes","session_id":"parent",
+                "purpose":"main","turn_id":"new-turn",
+                "continuation_requires_existing_turn":false})
+            .to_string()
+            .parse()
+            .unwrap(),
+        );
+        let facts = identity_facts(
+            &authorized,
+            IngressProtocol::Responses,
+            &headers,
+            &serde_json::json!({}),
+            &request(content),
+            &[1; 32],
+            &[2; 32],
+        );
+        assert_eq!(facts.session_scope(), "conversation");
+        assert_eq!(
+            facts.native_checkpoint().user_origin,
+            routing::NativeUserOrigin::ExistingTurn
+        );
+    }
+}
+
+#[test]
 fn claimed_hermes_user_agent_does_not_establish_managed_consumer_authority() {
     let authorized = managed_plan(None);
     assert!(!authorized.is_hermes_consumer());

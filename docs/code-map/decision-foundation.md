@@ -109,8 +109,10 @@ admits independent main/child branches and detaches auxiliary or uncertain reque
 The [native continuity guard](../../crates/gateway/src/context_hold/continuity.rs)
 keeps synthetic User continuations on their captured task without granting prefix
 affinity. [Recovery and unavailable-input regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history_continuation.rs)
-separate fresh-user capture from output-only degradation, including Claude's
-current unavailable history and cold compressed Codex sessions. Message-prefix continuity is
+separate fresh-user capture from output-only degradation, including Claude/Hermes's
+current unavailable history and cold compressed Codex sessions. Hermes whole-turn
+text is not user-origin proof: its native async callback regression and legacy
+freshness rejection share that listener owner. Message-prefix continuity is
 separate from system-instruction validity: [history entry](../../crates/gateway/src/context_hold/store.rs)
 distinguishes continuing, shortened, otherwise rewritten and unavailable checkpoints. [Turn history](../../crates/gateway/src/agent_turn_history/store.rs)
 records the opening cause on completion; [timeline projection](../../crates/observation/src/query_v2/routing_timeline/projection.rs)

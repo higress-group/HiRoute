@@ -377,7 +377,7 @@ reclassifying the synthetic wire user. Output gaps do not by themselves discard 
 still-complete original user. Tool outcomes require independently proven message
 positions; native identity never establishes a byte prefix.
 
-Managed Pi, ordinary OpenCode and Hermes adapters convey the bounded boolean
+Managed Pi and ordinary OpenCode adapters convey the bounded boolean
 `continuation_requires_existing_turn`. True or missing provenance MUST require the
 existing captured turn; explicit fresh-user provenance MAY restart capture after a
 gap. A real new question MUST be independently validated to produce a valid fresh
@@ -398,11 +398,14 @@ question remains unavailable until a new clean, uncompressed supported thread or
 future verified fresh-user producer supplies admissible evidence.
 
 Claude's one-call compaction flag is insufficient after consumption, restart or
-eviction. Until a supported producer supplies persistent original-user provenance,
-Claude and Qoder MUST omit cross-request routing history and classification from
-unproven wire users. Claude has no session-local or new-session recovery path in
-this contract; neither ordinary new questions nor changing prompt IDs restore the
-optimization. Requests retain native forwarding and the published unavailable-input
+eviction. Hermes 0.20 public whole-turn hooks also receive native async completion
+notifications as new User input; equality with their user_message and an initiated
+turn flag do not prove user origin. Hermes MUST require an existing validated turn,
+including for older producers that advertise a false continuation constraint.
+Until a supported producer supplies request-bound original-user provenance,
+Claude, Hermes and Qoder MUST omit history capture and classification from unproven
+wire users. They have no session-local or new-session recovery path in this contract;
+neither ordinary new questions nor changing prompt IDs restore the optimization. Requests retain native forwarding and the published unavailable-input
 route, potentially using the primary model for every task. This capability limit
 MUST remain distinct from successful full adaptation.
 Ordinary managed Qoder uses its reserved model base path; generic runtime

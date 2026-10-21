@@ -280,91 +280,7 @@ def _token(value):
     )
 
 
-_TURN_INPUT_LIMIT = 64
-_TURN_INPUT_BYTES = 65536
-_TURN_INPUT_TTL = 3600
-
-
-def _plain_user_text(value):
-    # Only the native plain-string / single text-block shapes are comparable.
-    # Never flatten multipart input, strip scaffolding, normalize or truncate.
-    if isinstance(value, list) and len(value) == 1:
-        part = value[0]
-        if (isinstance(part, dict) and len(part) == 2
-                and set(part) == {"type", "text"} and part["type"] == "text"):
-            value = part["text"]
-    if not isinstance(value, str) or len(value) > _TURN_INPUT_BYTES or not value.strip():
-        return None
-    try:
-        return value if len(value.encode("utf-8")) <= _TURN_INPUT_BYTES else None
-    except UnicodeEncodeError:
-        return None
-
-
-class _TurnInputs:
-    """Bounded native pre_llm_call evidence, scoped to this adapter instance."""
-
-    def __init__(self):
-        self.lock, self.entries, self.enabled = threading.Lock(), OrderedDict(), False
-
-    @staticmethod
-    def key(context):
-        key = context.get("task_id"), context.get("turn_id")
-        return key if all(_identity(value) for value in key) else None
-
-    def enable(self):
-        with self.lock:
-            self.enabled = True
-
-    def prune(self, now):
-        for key, (observed, _) in list(self.entries.items()):
-            if now - observed >= _TURN_INPUT_TTL:
-                self.entries.pop(key)
-
-    def observe(self, **context):
-        key = self.key(context)
-        if key is None:
-            return
-        text, now = _plain_user_text(context.get("user_message")), time.monotonic()
-        with self.lock:
-            if not self.enabled:
-                return
-            self.prune(now)
-            previous = self.entries.get(key)
-            if previous is not None and previous[1] != text:
-                text = None  # conflicting/unsupported re-observation is unknown
-            self.entries[key] = (now, text)
-            self.entries.move_to_end(key)
-            while len(self.entries) > _TURN_INPUT_LIMIT:
-                self.entries.popitem(last=False)
-
-    def finish(self, **context):
-        with self.lock:
-            self.entries.pop(self.key(context), None)
-
-    def requires_existing_turn(self, request, context):
-        key = self.key(context)
-        messages = request.get("messages")
-        if key is None or not isinstance(messages, list):
-            return True
-        text = None
-        for message in reversed(messages):
-            if not isinstance(message, dict):
-                return True
-            if message.get("role") == "user":
-                text = _plain_user_text(message.get("content"))
-                break
-            if message.get("role") not in ("system", "developer", "assistant", "tool"):
-                return True
-        if text is None:
-            return True
-        with self.lock:
-            self.prune(time.monotonic())
-            entry = self.entries.get(key) if self.enabled else None
-            return entry is None or entry[1] != text
-
-
-def _adapter(config, turn_inputs=None):
+def _adapter(config):
     """Read only the host's effective, already selected native configuration."""
     try:
         entry = config["plugins"]["entries"]["hiroute"]
@@ -405,17 +321,13 @@ def _adapter(config, turn_inputs=None):
         if _identity(session):
             headers["X-Hermes-Session-Id"] = session
             turn = context.get("turn_id")
-            try:
-                requires_existing_turn = (
-                    turn_inputs.requires_existing_turn(request, context) if turn_inputs else True
-                )
-            except Exception:
-                # Optional original-user evidence cannot interrupt the model adapter.
-                requires_existing_turn = True
+            # Hermes 0.20 routes async delegation notifications through the same
+            # public whole-turn hooks as real users. Matching user_message proves
+            # content continuity, not input origin; it cannot bootstrap history.
             headers["X-HiRoute-Routing-Context"] = json.dumps({
                 "version": 1, "agent": "hermes", "session_id": session, "purpose": "main",
                 **({"turn_id": turn} if _identity(turn) else {}),
-                "continuation_requires_existing_turn": requires_existing_turn,
+                "continuation_requires_existing_turn": True,
             }, separators=(",", ":"))
             lineage = _lineage_header(session)
             if lineage:
@@ -428,17 +340,6 @@ def _adapter(config, turn_inputs=None):
 def register(ctx):
     from hermes_cli.config import load_config_readonly
 
-    turn_inputs = _TurnInputs()
-    adapter = _adapter(load_config_readonly() or {}, turn_inputs)
+    adapter = _adapter(load_config_readonly() or {})
     if adapter is not None:
-        try:
-            # Public 0.20/current hooks. pre_llm_call precedes request middleware;
-            # post_llm_call fires once after the entire tool-calling turn ends.
-            if (ctx.register_hook("pre_llm_call", turn_inputs.observe) is not False
-                    and ctx.register_hook("post_llm_call", turn_inputs.finish) is not False):
-                turn_inputs.enable()
-        except Exception:
-            # A missing/partially registered hook leaves evidence disabled;
-            # authorization, identity and native model kwargs still work.
-            pass
         ctx.register_middleware("llm_request", adapter)
