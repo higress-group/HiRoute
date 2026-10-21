@@ -79,6 +79,31 @@ fn metadata() -> Value {
 }
 
 #[test]
+fn only_known_unprojected_peer_tasks_make_the_current_user_unavailable() {
+    let fixture = Fixture::new();
+    for peer in [false, true] {
+        let mut original = request(
+            IngressProtocol::Responses,
+            json!([{"role":"user","content":"complete ordinary user"}]),
+        );
+        original.native_only = true;
+        original.native_body = Some(if peer {
+            json!({"input":[{"type":"agent_message","author":"parent","recipient":"child","content":[]}]})
+        } else {
+            json!({"input":[{"role":"user","content":"complete ordinary user","phase":"native phase"}]})
+        });
+        let view = NativeRoutingView::prepare(
+            &HeaderMap::new(),
+            &original,
+            &fixture.replay,
+            &fixture.budget,
+        );
+        assert_eq!(view.disables_history(), peer);
+        assert!(std::ptr::eq(view.request(&original), &original));
+    }
+}
+
+#[test]
 fn semantic_user_projection_preserves_execution_and_runtime_context() {
     for protocol in [IngressProtocol::Responses, IngressProtocol::Messages] {
         let fixture = Fixture::new();

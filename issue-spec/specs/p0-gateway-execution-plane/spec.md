@@ -98,6 +98,11 @@ optional routing history remains unavailable for that request. Peer text is neve
 promoted to a user instruction or an accepted assistant output; encryption is not
 reinterpreted as reasoning state. Malformed or unknown content variants remain
 protocol errors.
+The copied ancestor User is not a provable current peer task. Local and external
+classification SHALL use the published unavailable-input fallback instead of
+matching ancestor content or fabricating a User from peer plaintext/ciphertext.
+This exception does not suppress valid user input solely because another native
+field cannot be converted across protocols.
 
 Thinking signature/redacted/encrypted values are payload, not interchangeable
 credentials. Same-protocol preserves raw values, empty versus absent, legal JSON

@@ -27,6 +27,30 @@ impl NativeRoutingView {
         replay: &ReplayStore,
         budget: &StreamBudget,
     ) -> Self {
+        // Responses peer tasks have no portable user projection. An ancestor
+        // user copied into a native child is not evidence of its current task.
+        // Only this recognized native item suppresses classification; unrelated
+        // native-only fields may still carry a complete, usable user message.
+        let peer_task = request.native_only
+            && request.ingress_protocol == crate::server::request_plan::IngressProtocol::Responses
+            && request
+                .native_body
+                .as_ref()
+                .and_then(|body| body.get("input"))
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|items| {
+                    items.iter().any(|item| {
+                        item.get("type").and_then(serde_json::Value::as_str)
+                            == Some("agent_message")
+                    })
+                });
+        if peer_task {
+            return Self {
+                projected: None,
+                disable_history: true,
+                _reservation: None,
+            };
+        }
         let Some(proof) = dsh_user_turns(headers) else {
             return Self {
                 projected: None,

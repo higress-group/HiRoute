@@ -106,7 +106,10 @@ Native Codex peer `agent_message` items use the
 forwarding preserves author/recipient, text and ciphertext, while optional history
 and cross-protocol conversion stay unavailable. The
 [native protocol regressions](src/adapters/tests/native_responses.rs) cover that
-boundary without fabricating a user role for peer content.
+boundary without fabricating a user role for peer content. The
+[optional semantic view](src/core_runtime/native_routing_view.rs) also prevents a
+copied ancestor user from becoming the peer task's classification input; the
+published unavailable-input fallback preserves native execution.
 [Native routing admission](src/context_hold/routing.rs) applies bounded native turn,
 purpose and checkpoint evidence before holds/history. Known auxiliary requests and
 uncertain known-client metadata have no history lease or write. Main/child scopes
