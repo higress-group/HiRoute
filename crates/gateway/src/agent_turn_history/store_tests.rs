@@ -24,6 +24,9 @@ mod opening_cause;
 #[path = "accepted_output_tests.rs"]
 mod accepted_output;
 
+#[path = "capture_gap_tests.rs"]
+mod capture_gap;
+
 struct TestRoot(PathBuf);
 
 impl TestRoot {

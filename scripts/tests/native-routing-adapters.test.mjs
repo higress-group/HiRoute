@@ -167,6 +167,10 @@ test("DSH binds native semantic users to exact wire positions without changing m
       kind: "agent-message", form: "relay", senderSessionId: "peer",
     } };
     assert.deepEqual((await sendMatching({ ...options, messages: [...options.messages, relay] })).user_turns, metadata.user_turns);
+    const settlement = { ...user("settled", "NATIVE-SETTLEMENT", "subagent-settled"), source: {
+      kind: "subagent-settled", form: "notice", senderSessionId: "peer", summary: "native completion",
+    } };
+    assert.deepEqual((await sendMatching({ ...options, messages: [...options.messages, settlement] })).user_turns, metadata.user_turns);
     // A resumed real turn keeps both prior semantic users and the new input,
     // preserving the intervening runtime-context ordinal without blessing it.
     const nextUser = user("u3", "USER-C");

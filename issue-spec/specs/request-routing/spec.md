@@ -254,6 +254,13 @@ succeeds, publishing that reserved checkpoint MUST have no remaining fallible ca
 admission step. A missed capture in an existing main history MUST be marked partial
 and MUST NOT retain an assessment target across that gap; it cannot be silently
 reported as complete history or reconstructed from client-supplied assistant text.
+A native main marker with a matching authenticated session MAY identify only a
+capture gap when its user proof is unavailable; it MUST NOT authorize history
+admission or classification of an ancestor user. This includes missing same-user
+continuation output, even when the next transcript contains no intervening true
+user. Gap disclosure MUST remain nonblocking. If lock contention prevents a scoped
+update, a fixed-size process-local fence MAY conservatively mark other retained
+histories partial and discard their assessment segments on next admission.
 
 For smart-saving and custom-branch Plans, a valid retained candidate MUST be
 prioritized whenever its origin group is the freshly selected or inherited group,

@@ -16,6 +16,7 @@ pub(crate) struct NativeCheckpoint {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct RoutingFacts {
     pub(super) track: bool,
+    pub(super) capture_gap: bool,
     pub(super) native: NativeCheckpoint,
     pub(super) root: Option<String>,
 }
@@ -24,6 +25,7 @@ impl Default for RoutingFacts {
     fn default() -> Self {
         Self {
             track: true,
+            capture_gap: false,
             native: NativeCheckpoint::default(),
             root: None,
         }
@@ -283,7 +285,6 @@ pub(super) fn facts(
         || context.purpose != "main"
         || context.turn_id.as_deref().is_some_and(|v| !id(v))
         || context.checkpoint.as_deref().is_some_and(|v| !id(v))
-        || (agent == "dsh" && !valid_user_turns(&context))
         || (agent != "dsh" && context.user_turns.is_some())
     {
         return RoutingFacts::detached();
@@ -312,6 +313,15 @@ pub(super) fn facts(
         .is_some_and(|(kind, parts)| kind == expected && parts.first() == Some(&context.session_id))
     {
         return RoutingFacts::detached();
+    }
+    if agent == "dsh" && !valid_user_turns(&context) {
+        // This proves only the affected main scope, not a semantic user. Record
+        // a capture gap without admitting this request or guessing its task.
+        return RoutingFacts {
+            track: false,
+            capture_gap: true,
+            ..RoutingFacts::default()
+        };
     }
     let result = RoutingFacts {
         native: NativeCheckpoint {

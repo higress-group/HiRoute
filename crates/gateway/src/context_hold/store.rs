@@ -34,7 +34,14 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
     ) -> Option<Self> {
-        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, false)
+        Self::scoped_key(
+            authorized,
+            ingress_protocol,
+            identity,
+            digest_key,
+            false,
+            false,
+        )
     }
 
     pub(crate) fn routing_history(
@@ -43,7 +50,35 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
     ) -> Option<Self> {
-        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, true)
+        Self::scoped_key(
+            authorized,
+            ingress_protocol,
+            identity,
+            digest_key,
+            true,
+            false,
+        )
+    }
+
+    pub(crate) fn capture_gap_scope(
+        authorized: &AuthorizedRequestPlan,
+        ingress_protocol: IngressProtocol,
+        identity: &ContextIdentityFacts,
+        digest_key: &[u8; 32],
+    ) -> Option<String> {
+        Self::scoped_key(
+            authorized,
+            ingress_protocol,
+            identity,
+            digest_key,
+            true,
+            true,
+        )
+        .map(|key| key.scope_id())
+    }
+
+    fn scope_id(&self) -> String {
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
     }
 
     fn scoped_key(
@@ -52,8 +87,13 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
         history: bool,
+        capture_gap: bool,
     ) -> Option<Self> {
-        let (identity_kind, identity_parts) = identity.hold_identity()?;
+        let (identity_kind, identity_parts) = if capture_gap {
+            identity.capture_gap_identity()
+        } else {
+            identity.hold_identity()
+        }?;
         let receipt = authorized.receipt();
         let mut mac = HmacSha256::new_from_slice(digest_key).ok()?;
         frame(
@@ -237,13 +277,7 @@ impl PreparedHold {
         self.history_key = Some(key);
     }
     pub(crate) fn scope_id(&self) -> String {
-        self.history_key
-            .as_ref()
-            .unwrap_or(&self.key)
-            .0
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        self.history_key.as_ref().unwrap_or(&self.key).scope_id()
     }
     pub(crate) fn history_continuity(&self) -> HistoryContinuity {
         match self.snapshot {

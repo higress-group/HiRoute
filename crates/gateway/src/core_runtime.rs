@@ -706,6 +706,9 @@ impl ProductionGatewayRuntime {
                     )
                     .await;
                 };
+                if prepared_hold.is_none() {
+                    self.note_decision_history_gap(&authorized, protocol, &identity);
+                }
                 let tracking = match self.begin_decision_history(
                     &request_observation,
                     PlanSnapshot {

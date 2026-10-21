@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::mem::size_of;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -22,6 +23,8 @@ use crate::server::core_runtime::profiles::BranchDecisionV1;
 
 type HmacSha256 = Hmac<Sha256>;
 
+#[path = "store/gap.rs"]
+mod gap;
 #[path = "store/output.rs"]
 mod output;
 
@@ -32,6 +35,7 @@ pub(crate) struct AgentTurnHistoryStore {
     max_memory_bytes: usize,
     idle_ttl: Duration,
     instance_nonce: [u8; 32],
+    capture_gap_epoch: AtomicU64,
     inner: Arc<Mutex<StoreInner>>,
 }
 
@@ -49,6 +53,7 @@ struct SessionEntry {
     revision: u64,
     last_access: Instant,
     history_partial: bool,
+    capture_gap_epoch: u64,
     checkpoint: TranscriptCheckpoint,
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
@@ -91,6 +96,11 @@ impl Drop for SnapshotPin {
 struct TranscriptCheckpoint {
     active_user_index: usize,
     message_count: usize,
+}
+
+struct CaptureAdmission {
+    now: Instant,
+    gap_epoch: u64,
 }
 
 struct ActiveTurn {
@@ -163,6 +173,7 @@ impl AgentTurnHistoryStore {
             max_memory_bytes: max_memory_bytes.max(1),
             idle_ttl,
             instance_nonce,
+            capture_gap_epoch: AtomicU64::new(0),
             inner: Arc::new(Mutex::new(StoreInner {
                 entries: BTreeMap::new(),
                 next_token: 1,
@@ -251,6 +262,7 @@ impl AgentTurnHistoryStore {
         if analyzed.turns.is_empty() {
             return Err(AgentTurnHistoryError::NoUserTurn);
         }
+        let gap_epoch = self.capture_gap_epoch.load(Ordering::Acquire);
         let mut inner = self
             .inner
             .try_lock()
@@ -277,7 +289,7 @@ impl AgentTurnHistoryStore {
             plan,
             analyzed,
             decision_inputs,
-            now,
+            CaptureAdmission { now, gap_epoch },
         ) {
             Ok(begin) => Ok(Some((begin, admission))),
             Err(error) => {
@@ -294,8 +306,10 @@ impl AgentTurnHistoryStore {
         plan: PlanSnapshot,
         analyzed: super::projection::AnalyzedRequest,
         decision_inputs: TurnDecisionInputs,
-        now: Instant,
+        admission: CaptureAdmission,
     ) -> Result<AgentTurnBegin, AgentTurnHistoryError> {
+        let CaptureAdmission { now, gap_epoch } = admission;
+        self.observe_capture_gap_epoch(inner, &key, gap_epoch);
         let latest = analyzed
             .turns
             .last()
@@ -344,6 +358,7 @@ impl AgentTurnHistoryStore {
                 revision: 1,
                 last_access: now,
                 history_partial: missing_history,
+                capture_gap_epoch: gap_epoch,
                 checkpoint,
                 active,
                 closed: VecDeque::new(),

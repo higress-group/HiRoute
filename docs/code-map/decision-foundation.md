@@ -98,7 +98,10 @@ capacity pressure and stale optional writes degrade to independent routing witho
 an inherited decision or assessment target. Checkpoint admission is reserved before
 history changes, and missed captures mark a gap rather than a complete assessment
 segment. [Atomic-admission regressions](../../crates/gateway/src/core_runtime/decision_history/tests.rs)
-cover rejected checkpoint writes and tool outcomes. The [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
+cover rejected checkpoint writes and tool outcomes. The [nonblocking gap fence](../../crates/gateway/src/agent_turn_history/store/gap.rs)
+discloses detached main continuations even without a missed user message; its
+[listener case](../../tools/e2e-harness/tests/p0_gateway_runtime/dsh_native_routing.rs)
+keeps auxiliary requests separate. The [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
 also verifies that the live main request can finish and continue its tools while
 observation failures leave delivered model output intact. Native identity parsing
 remains a separate boundary. [Native routing evidence](../../crates/gateway/src/context_hold/routing.rs)

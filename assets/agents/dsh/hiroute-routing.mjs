@@ -10,7 +10,7 @@ const MAX_MESSAGES = 128;
 const MAX_USER_MESSAGES = 32;
 const MAX_TURNS = 16;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const USER_SOURCES = new Set(["user", "runtime-context", "compact-checkpoint", "agent-message"]);
+const USER_SOURCES = new Set(["user", "runtime-context", "compact-checkpoint", "agent-message", "subagent-settled"]);
 
 function textDigest(content, nativeProjection = false) {
   const parts = typeof content === "string" ? [content] : Array.isArray(content) && content.length > 0

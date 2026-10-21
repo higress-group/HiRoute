@@ -234,3 +234,96 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
     assert_eq!(classifier.calls(), 0);
     assert_eq!(model.calls(), 1);
 }
+
+#[test]
+fn real_listener_dsh_detached_main_without_a_new_user_discloses_the_capture_gap() {
+    for failure in ["missing", "mismatched", "auxiliary"] {
+        let model = NativeProvider::start(vec![reply(RESPONSES_OK), reply(RESPONSES_OK)]);
+        let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+        let classifier =
+            NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE)]);
+        let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
+            &[&model, &primary, &classifier],
+            1,
+        );
+        let first = json!({"role":"user","content":"ORIGINAL_MAIN_TASK"});
+        assert_eq!(
+            send(
+                &fixture,
+                &header("1", Some(json!([proof("1", 0, "ORIGINAL_MAIN_TASK")]))),
+                json!([first])
+            )
+            .status,
+            200
+        );
+        let evidence = (failure == "mismatched").then(|| json!([proof("2", 1, "wrong digest")]));
+        let mut detached = header("2", evidence);
+        if failure == "auxiliary" {
+            let (_, value) = detached
+                .iter_mut()
+                .find(|(key, _)| key == "x-hiroute-routing-context")
+                .unwrap();
+            let mut context: Value = serde_json::from_str(value).unwrap();
+            context["purpose"] = json!("session-title");
+            *value = context.to_string();
+        }
+        assert_eq!(
+            send(
+                &fixture,
+                &detached,
+                json!([
+                    first, {"role":"assistant","content":"ok"},
+                    {"role":"user","content":"NATIVE_AGENT_RELAY"}
+                ])
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            classifier.calls(),
+            1,
+            "unproved relay must not classify an ancestor user"
+        );
+        assert_eq!(primary.calls(), 1);
+        let mut next = vec![first, json!({"role":"assistant","content":"ok"})];
+        let user_index = if failure == "auxiliary" {
+            1
+        } else {
+            next.push(json!({"role":"user","content":"NATIVE_AGENT_RELAY"}));
+            next.push(json!({"role":"assistant","content":"UNCAPTURED_RELAY_OUTPUT"}));
+            2
+        };
+        next.push(json!({"role":"user","content":"FRESH_TRUE_USER"}));
+        assert_eq!(
+            send(
+                &fixture,
+                &header(
+                    "3",
+                    Some(json!([
+                        proof("1", 0, "ORIGINAL_MAIN_TASK"),
+                        proof("3", user_index, "FRESH_TRUE_USER")
+                    ]))
+                ),
+                json!(next)
+            )
+            .status,
+            200
+        );
+        let decision = body(&classifier, 1);
+        assert_eq!(
+            decision["history_partial"],
+            failure != "auxiliary",
+            "{failure}: missing main output must be disclosed"
+        );
+        assert_eq!(
+            decision["assessment_target"].is_null(),
+            failure != "auxiliary",
+            "{failure}: stale assessment survived a main capture gap"
+        );
+        let visible = decision["visible_conversation"].to_string();
+        assert!(visible.contains("ORIGINAL_MAIN_TASK"));
+        assert!(!visible.contains("NATIVE_AGENT_RELAY"));
+        assert!(!visible.contains("UNCAPTURED_RELAY_OUTPUT"));
+        assert_eq!(model.calls(), 2);
+    }
+}

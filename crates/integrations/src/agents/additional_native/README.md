@@ -41,6 +41,10 @@ the adapter verifies that projection before hashing the final wire blocks, witho
 joining separate messages or inferring user input from unknown sources.
 Unknown content, missing proof or exhausted projection capacity uses the normal
 unavailable-input fallback and cannot add synthetic users to later history.
+Native subagent settlement notices are synthetic context, not new user tasks.
+An idle Agent relay with no current true user remains conservative; a matching
+main/session marker records the capture gap so a later proven user cannot inherit
+a complete-history claim or assessment across that uncaptured output.
 
 ## Shared transaction and native leaves
 

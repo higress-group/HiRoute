@@ -35,6 +35,30 @@ impl DecisionHistory {
 }
 
 impl ProductionGatewayRuntime {
+    pub(super) fn note_decision_history_gap(
+        &self,
+        authorized: &crate::server::request_plan::AuthorizedRequestPlan,
+        protocol: crate::server::request_plan::IngressProtocol,
+        identity: &crate::context_hold::ContextIdentityFacts,
+    ) {
+        let Some(scope) = self.context_holds.digest_key().and_then(|digest_key| {
+            crate::context_hold::ContextHoldKey::capture_gap_scope(
+                authorized,
+                protocol,
+                identity,
+                &digest_key,
+            )
+        }) else {
+            return;
+        };
+        if let Ok(key) = self
+            .agent_turn_history
+            .scope_key("authorized-context", &scope)
+        {
+            self.agent_turn_history.note_capture_gap(&key);
+        }
+    }
+
     pub(super) fn begin_decision_history(
         &self,
         observation: &RequestObservation,
@@ -52,6 +76,7 @@ impl ProductionGatewayRuntime {
         else {
             return Ok(DecisionHistory::detached());
         };
+        let gap_key = key.clone();
         let history_continuity = prepared.history_continuity();
         let begin =
             crate::agent_turn_history::AgentTurnHistoryStore::prepare_request(request, replay)
@@ -80,7 +105,10 @@ impl ProductionGatewayRuntime {
                 | AgentTurnHistoryError::TurnContextUnavailable
                 | AgentTurnHistoryError::Resource
                 | AgentTurnHistoryError::NoUserTurn,
-            ) => return Ok(DecisionHistory::detached()),
+            ) => {
+                self.agent_turn_history.note_capture_gap(&gap_key);
+                return Ok(DecisionHistory::detached());
+            }
         };
         let (ticket, history, completed, correlated) = match begin {
             AgentTurnBegin::NewTurn {
