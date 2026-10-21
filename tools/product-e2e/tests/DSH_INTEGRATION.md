@@ -38,6 +38,12 @@ configure and read back the real HiRoute UI and observe a real delegated task.
 Native project journeys initialize their owned project as a Git repository.
 DSH discovers project Skills from the nearest Git root, so an ancestor repository
 must not determine the fixture's project scope.
+Routing acceptance must distinguish true native user events from trailing runtime
+context carried in the same wire role. The installed middleware's bounded text
+proof must reach the real Gateway, and a runtime-context-only compaction control
+must use the normal fallback without fabricating a user or blocking model output.
+Full restored YAML rows, including middleware registration, must match the saved
+baseline before real ACP startup; absence of the adapter file alone is insufficient.
 The controlled main-Agent journey explicitly selects DSH's `danger-full-access`
 mode for its fixture-owned commands, matching the Worker journey's `approve-all`
 policy. It does not establish `workspace-write` sandbox support on the host.

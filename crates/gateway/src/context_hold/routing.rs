@@ -52,6 +52,85 @@ struct NativeContext {
     turn_id: Option<String>,
     #[serde(default)]
     checkpoint: Option<String>,
+    #[serde(default)]
+    user_turns: Option<Vec<NativeUserTurn>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NativeUserTurn {
+    pub(crate) turn_id: String,
+    pub(crate) messages: Vec<NativeUserMessage>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NativeUserMessage {
+    /// Ordinal among wire user envelopes containing text/image, excluding tool-only results.
+    pub(crate) index: usize,
+    pub(crate) sha256: String,
+}
+
+fn valid_user_turns(context: &NativeContext) -> bool {
+    let Some(turns) = &context.user_turns else {
+        return false;
+    };
+    if turns.is_empty()
+        || turns.len() > 16
+        || turns.last().map(|t| &t.turn_id) != context.turn_id.as_ref()
+    {
+        return false;
+    }
+    let mut previous = None;
+    let mut count = 0;
+    let mut seen = std::collections::BTreeSet::new();
+    for turn in turns {
+        if !id(&turn.turn_id) || !seen.insert(&turn.turn_id) || turn.messages.is_empty() {
+            return false;
+        }
+        for message in &turn.messages {
+            count += 1;
+            if count > 32
+                || message.index >= 128
+                || previous.is_some_and(|p| message.index <= p)
+                || message.sha256.len() != 64
+                || !message
+                    .sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                return false;
+            }
+            previous = Some(message.index);
+        }
+    }
+    true
+}
+
+/// DSH's optional semantic user proof is separate from execution authority.
+pub(crate) fn dsh_user_turns(headers: &HeaderMap) -> Option<Result<Vec<NativeUserTurn>, ()>> {
+    let known = matches!(header_value(headers, "x-hiroute-agent"), Field::Value(v) if v == "dsh")
+        || headers.contains_key("x-deepseek-harness-session-id")
+        || matches!(header_value(headers, "user-agent"), Field::Value(v) if v.starts_with("deepseek-harness/") || v.starts_with("dsh/"));
+    if !known {
+        return None;
+    }
+    let parsed = match single_header(headers, "x-hiroute-routing-context", 4096) {
+        Field::Value(value) => serde_json::from_str::<NativeContext>(&value).ok(),
+        _ => None,
+    };
+    Some(
+        parsed
+            .filter(|context| {
+                context.version == 1
+                    && context.agent == "dsh"
+                    && context.purpose == "main"
+                    && id(&context.session_id)
+                    && valid_user_turns(context)
+            })
+            .and_then(|context| context.user_turns)
+            .ok_or(()),
+    )
 }
 
 fn digest(value: &str) -> [u8; 32] {
@@ -204,6 +283,8 @@ pub(super) fn facts(
         || context.purpose != "main"
         || context.turn_id.as_deref().is_some_and(|v| !id(v))
         || context.checkpoint.as_deref().is_some_and(|v| !id(v))
+        || (agent == "dsh" && !valid_user_turns(&context))
+        || (agent != "dsh" && context.user_turns.is_some())
     {
         return RoutingFacts::detached();
     }

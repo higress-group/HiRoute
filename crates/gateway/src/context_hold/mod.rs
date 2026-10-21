@@ -16,6 +16,7 @@ use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 pub(crate) use history::visible_history;
 pub(crate) use history::{HistoryEvidence, visible_history_with_replay};
 pub(crate) use identity::{ContextIdentityFacts, identity_facts};
+pub(crate) use routing::{NativeUserTurn, dsh_user_turns};
 pub(crate) use store::{
     ContextHoldKey, ContextHoldStore, HistoryContinuity, HoldCompletion, HoldTicket, PreparedHold,
 };

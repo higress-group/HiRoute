@@ -9,6 +9,7 @@ use crate::server::core_runtime::model_ir::{
 
 pub(crate) struct AnalyzedRequest {
     pub(super) message_count: usize,
+    pub(super) output_after_latest_user: bool,
     pub(super) turns: Vec<AnalyzedTurn>,
     pub(super) tool_results: Vec<(usize, String, ToolStatus)>,
 }
@@ -33,8 +34,29 @@ pub(super) fn analyze_request(
         let user = project_user(&request.messages[user_index], replay)?;
         turns.push(AnalyzedTurn { user_index, user });
     }
+    let output_after_latest_user = user_indices.last().is_some_and(|latest| {
+        request
+            .messages
+            .iter()
+            .enumerate()
+            .skip(latest + 1)
+            .any(|(index, message)| {
+                (message.role == MessageRole::Assistant && !message.content.is_empty())
+                    || message.content.iter().any(|part| {
+                        matches!(
+                            part,
+                            ContentPart::ToolCall { .. }
+                                | ContentPart::ToolResult { .. }
+                                | ContentPart::ProviderState { .. }
+                        )
+                    })
+                    || request.responses_search_history.contains_key(&index)
+                    || request.responses_reasoning_history.contains_key(&index)
+            })
+    });
     Ok(AnalyzedRequest {
         message_count: request.messages.len(),
+        output_after_latest_user,
         turns,
         tool_results: project_tool_results(request),
     })

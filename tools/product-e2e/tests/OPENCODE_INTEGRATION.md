@@ -40,6 +40,15 @@ Missing inputs fail. The tests build the production CLI and daemon and use their
 
 The shared journeys cover saved Responses/Messages routes, daemon restart, grant rotation, default-reference refusal, independent model/Skill restore, passive source prepare/save with stale-credential refusal, actual installed Skill → public CLI → Worker, native Skill/read/edit/shell effects, concurrent routing/cancellation, missing-history refusal and exact Continue. OpenCode also exercises automatic native compaction and auxiliary requests on the frozen model route, including summary consumption after restart. A changed current Plan or current environment cannot select a new session on Continue.
 
+The ordinary saved-model journey also checks installed
+`plugins/hiroute-routing.js` auto-discovery through two native turns and actual
+custom-decision history. It runs without Worker pure mode and binds both `cwd`
+and `PWD` to the owned project. A missing-plugin control must still return the
+model result while decisions report empty partial history and no assessment.
+Restoring the plugin cannot conceal intervening uncaptured turns; restarting
+Gateway cannot revive process-local history. Model Restore must remove the owned
+plugin and preserve the full baseline, followed by real native ACP session startup.
+
 The explicit collaboration prerequisite check uses private configuration and history while loading the actual installed user Skill directory through OpenCode's resource loader. It disables native external `.agents`/`.claude` Skill discovery only for that isolated check, so an unrelated same-name global Skill cannot race the explicit resource. It validates exact path/body and a nonce-correlated trusted CLI result. It does not parse daily model configuration to authorize installation, inject a substitute installed Skill, or establish real delegated completion. Ordinary Agent and Worker Skill discovery remains native; a successful isolated check does not prove that an existing daily session loaded this file.
 
 On Windows this private check explicitly selects system Windows PowerShell and

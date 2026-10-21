@@ -43,6 +43,18 @@ pub(super) fn decode_responses_input(
                 name: optional_string(object, "name")?,
             });
         }
+        "agent_message" => {
+            decode_agent_message(context, object)?;
+            // Native peer messages carry their own author/recipient and can
+            // contain ciphertext. Keep the original Responses item intact;
+            // neither invent a portable role nor use it as routing history.
+            context.native_only.set(true);
+            messages.push(CanonicalMessage {
+                role: MessageRole::Assistant,
+                content: Vec::new(),
+                name: None,
+            });
+        }
         "function_call" => {
             ensure_keys(
                 context,
@@ -197,6 +209,44 @@ pub(super) fn decode_responses_input(
                 "responses input {other}"
             )));
         }
+    }
+    Ok(())
+}
+
+fn decode_agent_message(
+    context: &DecodeContext,
+    object: &Map<String, Value>,
+) -> Result<(), ModelIrError> {
+    ensure_keys(
+        context,
+        object,
+        &[
+            "type",
+            "id",
+            "author",
+            "recipient",
+            "content",
+            "internal_chat_message_metadata_passthrough",
+        ],
+        "responses agent_message",
+    )?;
+    required_string(object, "author")?;
+    required_string(object, "recipient")?;
+    for part in required_array(object, "content")? {
+        let part = part
+            .as_object()
+            .ok_or(ModelIrError::InvalidField("agent_message content[]"))?;
+        let field = match required_string(part, "type")?.as_str() {
+            "input_text" => "text",
+            "encrypted_content" => "encrypted_content",
+            _ => {
+                return Err(ModelIrError::UnsupportedField(
+                    "agent_message content".into(),
+                ));
+            }
+        };
+        ensure_keys(context, part, &["type", field], "agent_message content")?;
+        content_string(part, field)?;
     }
     Ok(())
 }

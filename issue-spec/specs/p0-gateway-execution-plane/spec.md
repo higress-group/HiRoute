@@ -91,6 +91,14 @@ judgment history, never by inspecting output text. Other supported history items
 accept only their legal lifecycle values. Empty native generated-call names use the
 narrow native-only exception in the request contract; declarations remain strict.
 
+Known Responses `agent_message` history preserves its author, recipient, ordered
+plaintext/encrypted content and native metadata on same-protocol requests. Its peer
+role has no declared portable mapping: cross-protocol candidates are excluded and
+optional routing history remains unavailable for that request. Peer text is never
+promoted to a user instruction or an accepted assistant output; encryption is not
+reinterpreted as reasoning state. Malformed or unknown content variants remain
+protocol errors.
+
 Thinking signature/redacted/encrypted values are payload, not interchangeable
 credentials. Same-protocol preserves raw values, empty versus absent, legal JSON
 encoding, and ordering. Cross-protocol can omit structurally unexpressible reasoning,
@@ -109,6 +117,14 @@ continuation with valid continuous decision does not. Instruction/tool/state cha
 may invalidate preference without changing that turn's category/group. Unrelated
 publication does not invalidate exact route/authority continuity; every request
 still uses current authorization.
+
+Routing continuity keeps a separate streaming digest that masks only text within
+same-position System/Developer messages. Roles, names, content-part counts,
+non-text parts, other messages and protocol sidecars remain exact. Changed native
+instruction text may preserve captured semantic history, but strict byte-prefix
+and instruction digests still govern preference, commit and reasoning-cleanup
+eligibility. Added/removed instructions or rewritten user/model/tool content do
+not gain continuity from this exception.
 
 The history store defaults to 500,000,000 bytes and one-hour idle TTL, retaining
 simplified sealed turns, one active decision, and actual contiguous execution stages.
@@ -130,6 +146,25 @@ failure uses the published decision fallback. Current authorization, canonical
 request/Replay integrity, source cancellation/deadline, and execution eligibility
 remain mandatory. Observation/capture failure cannot replace, truncate, retry, or
 delay delivery of the accepted model response; any lost history remains partial.
+
+Native envelope roles alone do not prove a user turn. DSH appends runtime context
+using the user role, so its installed adapter identifies native `source.kind=user`
+events and turn IDs, then binds them to serialized request user positions with
+SHA-256 over each ordered text-block array. Gateway verifies that optional proof
+before building a routing-only semantic view. Synthetic context cannot open a turn;
+same-turn user batches merge at their final original position without moving model
+or tool exchanges. Provider execution and Observation retain the original request.
+The adapter reads at most 512 events; proof is bounded to 4 KiB, 16 turns and 32
+real user messages among 128 user envelopes. Gateway limits the compact projection
+to 256 KiB and user text to 2 MiB, reserving its encoded, decoded and temporary
+storage before allocation. Missing/invalid proof, unknown/image content, compaction
+without a surviving true user, or insufficient projection capacity SHALL disable
+shared history and classify as unavailable using the published fallback. It SHALL
+NOT classify a trailing runtime instruction as a user task or fail model execution.
+
+A later proven native request may reveal user turns that bypassed optional capture.
+It may retain already accepted visible history, but SHALL mark the gap partial and
+discard the previous assessment segment instead of inventing missed executions.
 
 #### Scenario: Native auxiliary request overlaps the main tool turn
 
@@ -177,20 +212,49 @@ cannot prove a stored handle's owner.
 After frozen candidate ordering, RuntimeStateStore checks exact Binding/credential
 health and lease. Key order is fill-first; Key failure relays before another model.
 Credential 401/403 disables the exact credential, quota 429 cools its exact Key,
-and recognized overload/5xx/timeout/disconnect affect the relevant Binding.
+including the existing Binding fallback when no credential exists. These authority
+failures remain shared across requests. Recognized overload/5xx/timeout/disconnect
+are soft Binding failures. The default runtime kernel records their shared health;
+all production Gateway model execution (authenticated Agent model grants and
+verified delegated Workers) keeps that feedback within the current request. Their
+Binding health keys do not include a grant/run dimension. A grant also carries
+native auxiliary calls without portable purpose/session markers, so this policy
+does not guess Main/Aux/Unknown from a UA, payload or Agent-specific header. Real
+main calls, verified Worker calls and ordinary API calls using the grant also lose
+cross-request soft-failure suppression and may try an unavailable source more
+often. Frozen candidate order, key relay, Attempt limits, original
+failure responses and classification remain unchanged within each request.
 Ambiguous errors do not invent isolation. Attempt/deadline/cancel budgets never
 reset on relay, and committed output cannot be replayed.
 
-For Binding transient failure without trusted waiting guidance, backoff steps are
-2, 4, 8, 16, 30 seconds, saturating at step five. Trusted Retry-After/reset is used
+For shared Binding transient feedback without trusted waiting guidance, backoff
+steps are 2, 4, 8, 16, 30 seconds, saturating at step five. Trusted Retry-After/reset is used
 as given beyond the local cap and resets step zero. Recognized overload without
 hint defaults to 15 seconds/reset zero; credential quota defaults to 60 seconds,
 auth disables it, both with step zero. Successful recovery probe resets Binding
 step. Health/generation/step/lease update in the same CAS; acquisition/cancel cannot
 drop step and a stale CAS cannot repeatedly increment one observed failure.
 Current RuntimeState requires the step field without an alternate old-state reader.
+For an active Binding, request-local soft feedback does not change shared
+health/generation/backoff and cannot invalidate a concurrently executing main permit.
+If the failed Attempt owns an expired Binding or credential cooldown's probe, it
+releases only that exact generation's lease with CAS while preserving the preceding
+health/expiry/backoff step; it neither
+confirms recovery nor creates a new cooldown. A stale release cannot affect a newer
+probe, and required store operations still fail closed.
 Pure temporary pre-Attempt exhaustion exposes accurate retry time under the
 [request contract](../request-routing/spec.md); store failure never means healthy.
+
+#### Scenario: Auxiliary failure cannot suppress an independent main call
+
+- **WHEN** an authenticated Agent model grant's unmarked title request receives a
+  soft 503 from a source, even with trusted Retry-After
+- **THEN** its original normalized failure returns to that caller, while one
+  immediately following main HTTP request can reach the same source without client
+  retry or waiting for shared cooldown; an already in-flight main can still commit
+- **AND** credential authentication/quota failures retain exact shared authority
+  transitions; verified Worker model execution uses the same isolation, while the
+  default kernel/provider retains its shared Binding backoff contract
 
 ### Requirement: Replay externalizes large content without a second body owner
 

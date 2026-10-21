@@ -113,6 +113,8 @@ pub(super) enum ClassificationError {
 
 pub(super) struct ClassificationRequest<'a> {
     pub(super) request: &'a ModelRequestIRV1,
+    /// A native adapter could not prove which user envelope is a real input.
+    pub(super) native_user_unavailable: bool,
     pub(super) replay: &'a ReplayStore,
     pub(super) classifier: Option<&'a Arc<RestBranchClassifierAuthorityV1>>,
     pub(super) history: &'a AgentTurnHistorySnapshot,
@@ -265,6 +267,7 @@ impl ProductionGatewayRuntime {
                 &strategy,
                 ClassificationRequest {
                     request: &request,
+                    native_user_unavailable: false,
                     replay: &replay,
                     classifier: Some(&classifier),
                     history: &history,
@@ -325,12 +328,15 @@ impl ProductionGatewayRuntime {
         let call_deadline = fixed_deadline.min(request.overall_deadline);
         let fixed_timeout_wins = fixed_deadline < request.overall_deadline;
 
-        let (latest_user, local_input_unavailable) =
+        let (latest_user, local_input_unavailable) = if request.native_user_unavailable {
+            (None, true)
+        } else {
             match resolve_latest_user(request.request, request.replay) {
                 Ok(user) => (user, false),
                 Err(ClassificationError::Resource) => (None, true),
                 Err(error) => return Err(error),
-            };
+            }
+        };
         ensure_source_active(request.overall_deadline, &request.cancellation)?;
         let (local_decision, facts) = ComplexityV1::decide(
             latest_user.as_ref().map(|value| value.text.as_str()),

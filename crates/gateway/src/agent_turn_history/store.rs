@@ -305,7 +305,7 @@ impl AgentTurnHistoryStore {
             // A client may bring older messages when HiRoute first joins a session.
             // That prefix is missing from our history, but does not make the current
             // stage partial unless output after its user message was already missed.
-            let missing_current_output = analyzed.message_count > latest.user_index + 1;
+            let missing_current_output = analyzed.output_after_latest_user;
             let missing_history = analyzed.turns.len() > 1 || missing_current_output;
             let entry_token = inner.allocate_token()?;
             let request_token = inner.allocate_request_token()?;
@@ -396,6 +396,22 @@ impl AgentTurnHistoryStore {
             });
         }
 
+        let entry = inner
+            .entries
+            .get(&key)
+            .ok_or(AgentTurnHistoryError::Integrity)?;
+        let missed_user = decision_inputs.history_continuity.semantic_continuity()
+            && analyzed.turns.iter().any(|turn| {
+                turn.user_index >= entry.checkpoint.message_count
+                    && turn.user_index < latest.user_index
+            });
+        if missed_user {
+            // An optional admission/adapter miss may have executed normally.
+            // Native transcripts can expose its intervening user turn when
+            // capture resumes; retain accepted output, but close that gap's
+            // assessment boundary instead of claiming complete history.
+            inner.note_capture_gap(&key);
+        }
         let entry = inner
             .entries
             .get(&key)

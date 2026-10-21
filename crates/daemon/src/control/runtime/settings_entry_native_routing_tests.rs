@@ -93,6 +93,12 @@ fn native_routing_adapter_effects_restore_after_reopen_and_detect_drift() {
             .scanner
             .native_routing_adapter_target(kind)
             .unwrap();
+        if kind == AgentKindV1::Pi {
+            assert!(adapter.ends_with("extensions/hiroute-routing.js"));
+        }
+        if kind == AgentKindV1::OpenCode {
+            assert!(adapter.ends_with("plugins/hiroute-routing.js"));
+        }
         let baseline = fs::read(&fixture.native_config).unwrap();
         let mut spec = model_spec(&fixture);
         spec["model"]["settings"]["mode"] = json!(mode);

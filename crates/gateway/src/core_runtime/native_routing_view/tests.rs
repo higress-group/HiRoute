@@ -1,0 +1,206 @@
+use super::*;
+use crate::replay::{ReplayConfig, ReplayManager};
+use crate::server::core_runtime::adapters;
+use crate::server::request_plan::IngressProtocol;
+use hiroute_gateway_core::runtime::body::BudgetTree;
+use serde_json::{Value, json};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+struct Fixture {
+    root: std::path::PathBuf,
+    _manager: ReplayManager,
+    replay: ReplayStore,
+    budget: StreamBudget,
+}
+impl Fixture {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-routing-view-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = ReplayManager::open(ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: 4096,
+            record_bytes: 4096,
+            orphan_ttl: Duration::from_secs(60),
+        })
+        .unwrap();
+        let budget = BudgetTree::new(32 * 1024 * 1024, 32 * 1024 * 1024)
+            .unwrap()
+            .stream(32 * 1024 * 1024)
+            .unwrap();
+        let replay = manager.begin_request(budget.clone()).unwrap();
+        Self {
+            root,
+            _manager: manager,
+            replay,
+            budget,
+        }
+    }
+    fn view(&self, request: &ModelRequestIRV1, metadata: Value) -> NativeRoutingView {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-hiroute-agent", "dsh".parse().unwrap());
+        headers.insert(
+            "x-hiroute-routing-context",
+            metadata.to_string().parse().unwrap(),
+        );
+        NativeRoutingView::prepare(&headers, request, &self.replay, &self.budget)
+    }
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+fn request(protocol: IngressProtocol, messages: Value) -> ModelRequestIRV1 {
+    let body = match protocol {
+        IngressProtocol::Responses => json!({"model":"route","input":messages,"stream":false}),
+        IngressProtocol::Messages => {
+            json!({"model":"route","messages":messages,"max_tokens":1024,"stream":false})
+        }
+        _ => unreachable!(),
+    };
+    adapters::decode_ingress_request(protocol, &body).unwrap()
+}
+fn digest(text: &str) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&vec![text]).unwrap())
+    )
+}
+fn metadata() -> Value {
+    json!({"version":1,"agent":"dsh","session_id":"session","purpose":"main","turn_id":"1",
+        "user_turns":[{"turn_id":"1","messages":[{"index":0,"sha256":digest("real task")}]}]})
+}
+
+#[test]
+fn semantic_user_projection_preserves_execution_and_runtime_context() {
+    for protocol in [IngressProtocol::Responses, IngressProtocol::Messages] {
+        let fixture = Fixture::new();
+        let mut original = request(
+            protocol,
+            json!([
+                {"role":"user","content":"real task"}, {"role":"user","content":"native policy"}
+            ]),
+        );
+        original.native_body = Some(json!({"opaque":"x".repeat(MAX_COMPACT_IR_BYTES * 2)}));
+        let saved = original.clone();
+        let view = fixture.view(&original, metadata());
+        assert!(!view.disables_history());
+        let projected = view.request(&original);
+        assert_eq!(projected.messages[0].role, MessageRole::User);
+        assert_eq!(projected.messages[1].role, MessageRole::System);
+        assert_eq!(projected.messages[1].content, original.messages[1].content);
+        assert!(projected.native_body.is_none());
+        assert_eq!(
+            original, saved,
+            "routing view changed the execution or observed request"
+        );
+    }
+}
+
+#[test]
+fn native_user_batch_combines_all_inputs_and_keeps_tool_results_after_it() {
+    let fixture = Fixture::new();
+    let original = request(
+        IngressProtocol::Responses,
+        json!([
+            {"role":"user","content":"real task"}, {"role":"user","content":"second input"},
+            {"role":"user","content":"policy"},
+            {"type":"function_call","call_id":"call","name":"lookup","arguments":"{}"},
+            {"type":"function_call_output","call_id":"call","output":"tool receipt"}
+        ]),
+    );
+    let mut proof = metadata();
+    proof["user_turns"][0]["messages"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"index":1,"sha256":digest("second input")}));
+    let view = fixture.view(&original, proof);
+    assert!(!view.disables_history());
+    let projected = view.request(&original);
+    let real = projected
+        .messages
+        .iter()
+        .filter(|m| {
+            m.role == MessageRole::User
+                && m.content
+                    .iter()
+                    .any(|p| matches!(p, ContentPart::Text { .. }))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(real.len(), 1);
+    assert_eq!(real[0].content.len(), 2);
+    assert!(projected.messages.iter().any(|m| {
+        m.content
+            .iter()
+            .any(|p| matches!(p, ContentPart::ToolResult { .. }))
+    }));
+}
+
+#[test]
+fn malformed_missing_or_unmatched_native_user_proof_disables_history() {
+    let fixture = Fixture::new();
+    let original = request(
+        IngressProtocol::Responses,
+        json!([{"role":"user","content":"real task"}]),
+    );
+    let good = metadata();
+    let mut cases = Vec::new();
+    let mut missing = good.clone();
+    missing.as_object_mut().unwrap().remove("user_turns");
+    cases.push(missing);
+    let mut unknown = good.clone();
+    unknown["user_turns"][0]["messages"][0]["unknown"] = json!(true);
+    cases.push(unknown);
+    let mut wrong = good.clone();
+    wrong["user_turns"][0]["messages"][0]["sha256"] = json!(digest("different"));
+    cases.push(wrong);
+    let mut index = good.clone();
+    index["user_turns"][0]["messages"][0]["index"] = json!(127);
+    cases.push(index);
+    let mut duplicate = good.clone();
+    duplicate["user_turns"][0]["messages"]
+        .as_array_mut()
+        .unwrap()
+        .push(good["user_turns"][0]["messages"][0].clone());
+    cases.push(duplicate);
+    let mut no_current_user = good.clone();
+    no_current_user["turn_id"] = json!("2");
+    cases.push(no_current_user);
+    let mut auxiliary = good;
+    auxiliary["purpose"] = json!("compaction");
+    cases.push(auxiliary);
+    for proof in cases {
+        let view = fixture.view(&original, proof);
+        assert!(view.disables_history());
+        assert!(std::ptr::eq(view.request(&original), &original));
+    }
+}
+
+#[test]
+fn optional_view_capacity_and_budget_misses_preserve_original_execution() {
+    let fixture = Fixture::new();
+    let mut original = request(
+        IngressProtocol::Responses,
+        json!([{"role":"user","content":"real task"}]),
+    );
+    original.served_model_id = "x".repeat(MAX_COMPACT_IR_BYTES + 1);
+    assert!(fixture.view(&original, metadata()).disables_history());
+    original.served_model_id = "route".into();
+    let tiny = BudgetTree::new(64, 64).unwrap().stream(64).unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert("x-hiroute-agent", "dsh".parse().unwrap());
+    headers.insert(
+        "x-hiroute-routing-context",
+        metadata().to_string().parse().unwrap(),
+    );
+    assert!(
+        NativeRoutingView::prepare(&headers, &original, &fixture.replay, &tiny).disables_history()
+    );
+}

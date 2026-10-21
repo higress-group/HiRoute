@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import threading
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from publication_product import Product, V1, encoded
 from publication_process import bootstrap, plan_change, judgment_fixture
@@ -39,6 +40,63 @@ class DecisionEndpoint(BaseHTTPRequestHandler):
 
     def log_message(self, *_args):
         pass
+
+
+@contextmanager
+def native_history_decisions(product, plan_id, editor):
+    """Observe real native routing through a saved service and public Plan edits."""
+    endpoint_type = type('NativeHistoryEndpoint', (DecisionEndpoint,), {'requests': []})
+    endpoint = ThreadingHTTPServer(('127.0.0.1', 0), endpoint_type)
+    worker = threading.Thread(target=endpoint.serve_forever, daemon=True)
+    worker.start()
+    old_plan, old_editor = product.plan_id, product.editor
+    service = {'id': 'native-history', 'revision': 1, 'name': 'Native history witness',
+        'connection': {'kind': 'custom', 'endpoint': f'http://127.0.0.1:{endpoint.server_port}/decision',
+                       'timeout_ms': 3000}}
+    installed = changed = False
+
+    def mutate_service(value, revision, key):
+        change = {'id': service['id'], 'expected_revision': revision, 'service': value}
+        spec = {'schema_version': V1, 'command_id': 'decision.services.apply',
+                'resource_id': service['id'], 'desired_state': change}
+        preview = product.public_cli('decision services apply', {'schema_version': V1, 'spec': spec})[1]['data']
+        result = product.public_cli('decision services apply', {'schema_version': V1,
+            'spec': preview['normalized_spec'], 'accept_digest': preview['change_digest'],
+            'expected_revisions': preview['expected_revisions'], 'idempotency_key': key})[1]
+        assert result['data']['state'] == 'succeeded', result
+
+    def publish(value, key):
+        change = plan_change(product, 'update', **value)
+        preview = product.preview('routing preview', {'change': change})
+        product.apply('routing apply', 'ApplyAgentPlanChange', preview, {'change': change}, key)
+
+    try:
+        mutate_service(service, 0, 'native-history-create')
+        installed = True
+        product.plan_id, product.editor = plan_id, copy.deepcopy(editor)
+        routed = copy.deepcopy(editor)
+        routed['mode'] = 'custom_branches'
+        routed['branch_routing'] = {'classifier': {'kind': 'decision_service', 'service': service},
+            'branches': [{'id': name, 'name': name.title(), 'condition': condition,
+                'candidates': routed['candidates'], 'primary_candidates': [], 'judgment': None}
+                for name, condition in (('native', 'Ordinary native acceptance tasks'),
+                                        ('fallback', 'Other bounded tasks'))],
+            'default_branch_id': 'fallback', 'judgment': routed['smart']['judgment'],
+            'reselect_on_user_message': True}
+        publish(routed, 'native-history-plan')
+        changed = True
+        yield lambda: [body for _, body in endpoint_type.requests]
+    finally:
+        try:
+            if changed:
+                publish(editor, 'native-history-plan-restore')
+            if installed:
+                mutate_service(None, 1, 'native-history-delete')
+        finally:
+            product.plan_id, product.editor = old_plan, old_editor
+            endpoint.shutdown()
+            endpoint.server_close()
+            worker.join(timeout=5)
 
 
 def scenario(repository, routed=False):

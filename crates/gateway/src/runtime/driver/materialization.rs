@@ -110,6 +110,16 @@ impl ProductionProvider {
             target_resolver: TargetResolver::new(),
         }
     }
+
+    pub(crate) fn for_gateway_model_execution(ports: &ProductionPorts) -> Self {
+        Self {
+            // Agent grants and verified Workers share target keys, including
+            // unmarked auxiliary calls. Only the Gateway composition selects
+            // request-local soft feedback; the runtime default stays shared.
+            cooldowns: RuntimeCooldownPolicy::for_gateway_model_execution(),
+            ..Self::new(ports)
+        }
+    }
 }
 
 pub(super) fn begin_request(

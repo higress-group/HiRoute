@@ -187,6 +187,45 @@ fn close_turn(
 }
 
 #[test]
+fn trailing_instructions_do_not_invent_missing_execution_before_first_capture() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let cases = [
+        (text(MessageRole::System, "native runtime policy"), false),
+        (text(MessageRole::Developer, "native runtime policy"), false),
+        (
+            CanonicalMessage {
+                role: MessageRole::Assistant,
+                content: Vec::new(),
+                name: None,
+            },
+            false,
+        ),
+        (text(MessageRole::Assistant, "uncaptured answer"), true),
+        (tool_call("call", "lookup"), true),
+        (tool_result("call", false), true),
+    ];
+    for (index, (trailing, missing_output)) in cases.into_iter().enumerate() {
+        let key = store
+            .scope_key("workspace", &format!("trailing-{index}"))
+            .unwrap();
+        let (ticket, history) = new_turn(
+            store
+                .begin(
+                    key,
+                    plan(1),
+                    &request(vec![text(MessageRole::User, "real task"), trailing]),
+                    &replay,
+                    Instant::now(),
+                )
+                .unwrap(),
+        );
+        assert_eq!(history.history_partial, missing_output);
+        store.abort(&ticket);
+    }
+}
+
+#[test]
 fn appended_users_keep_distinct_history_when_reselection_is_off() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
@@ -792,7 +831,9 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
         "the old round must not close twice"
     );
     assert_eq!(retry_history.visible_conversation.len(), 1);
-    assert!(!retry_history.history_partial);
+    assert!(retry_history.history_partial);
+    assert!(retry_history.assessment_from.is_none());
+    assert!(retry_history.assessment_target.is_none());
     assert_ne!(retry_ticket.agent_turn_id, cancelled_turn_id);
     assert_eq!(store.inner.lock().entries[&key].active.ordinal, 2);
     drop(retry_history);
@@ -1159,7 +1200,9 @@ fn pinned_snapshot_prevents_lru_eviction_until_the_request_releases_it() {
     let probe = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
     let probe_key = probe.scope_key("workspace", "pinned").unwrap();
     let probe_history = pinned_entry_bytes(&probe, &probe_replay, &probe_key, Instant::now());
-    let pinned_bytes = probe.inner.lock().entries[&probe_key].accounted_bytes;
+    // Aborting the empty new turn invalidates its assessment segment and frees
+    // memory. Budget for the complete transition before that cleanup as well.
+    let pinned_bytes = probe.inner.lock().peak_accounted_bytes - store_fixed_bytes();
     drop(probe_history);
 
     let other_probe = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
@@ -1185,6 +1228,8 @@ fn pinned_snapshot_prevents_lru_eviction_until_the_request_releases_it() {
     let pinned_key = store.scope_key("workspace", "pinned").unwrap();
     let other_key = store.scope_key("workspace", "other").unwrap();
     let history = pinned_entry_bytes(&store, &replay, &pinned_key, Instant::now());
+    assert_eq!(history.visible_conversation.len(), 1);
+    assert_eq!(store.inner.lock().entries[&pinned_key].snapshot_pins, 1);
     let other_request = request(vec![text(MessageRole::User, "y".repeat(4_000))]);
     assert!(matches!(
         store.begin(

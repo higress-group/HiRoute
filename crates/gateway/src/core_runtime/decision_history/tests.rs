@@ -198,6 +198,49 @@ fn p2_failed_hold_admission_preserves_accepted_turns_and_reports_the_capture_gap
     }
 }
 
+#[test]
+fn detached_requests_cannot_hide_a_capture_gap_when_native_history_resumes() {
+    let fixture = Fixture::new();
+    let first = Fixture::request(json!([{"role":"user","content":"first"}]));
+    let mut admitted = fixture.begin(&first, fixture.prepare(&first));
+    fixture.finish(&mut admitted, &[text_event("first answer")], true);
+    drop(admitted);
+
+    let missed = Fixture::request(json!([
+        {"role":"user","content":"first"}, {"role":"assistant","content":"first answer"},
+        {"role":"user","content":"uncaptured"}
+    ]));
+    let detached = fixture
+        .runtime
+        .begin_decision_history(
+            &super::super::observation::accepted_request_for_runtime_test(),
+            PlanSnapshot {
+                plan_id: "plan".into(),
+                plan_revision: 1,
+            },
+            &missed,
+            &fixture.replay,
+            None,
+        )
+        .unwrap();
+    assert!(detached.guard.is_none());
+    let resumed = Fixture::request(json!([
+        {"role":"user","content":"first"}, {"role":"assistant","content":"first answer"},
+        {"role":"user","content":"uncaptured"}, {"role":"assistant","content":"detached answer"},
+        {"role":"user","content":"resumed"}
+    ]));
+    let history = fixture.begin(&resumed, fixture.prepare(&resumed));
+    assert!(history.history.history_partial);
+    assert!(history.history.assessment_target.is_none());
+    assert_eq!(history.history.visible_conversation.len(), 1);
+    assert_eq!(
+        history.history.visible_conversation[0].user,
+        vec![VisibleContentPart::Text {
+            text: "first".into()
+        }]
+    );
+}
+
 fn tool_event() -> ModelStreamEventV1 {
     ModelStreamEventV1::new(
         0,

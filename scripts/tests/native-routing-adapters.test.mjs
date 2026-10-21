@@ -3,6 +3,7 @@ import { test } from "node:test";
 import piRouting from "../../assets/agents/pi/hiroute-routing.mjs";
 import { HiRouteRouting } from "../../assets/agents/opencode/hiroute-routing.mjs";
 import { apply as dshRouting } from "../../assets/agents/dsh/hiroute-routing.mjs";
+import { createHash } from "node:crypto";
 
 test("Pi separates compaction, persists native checkpoint and contains hook failures", () => {
   const hooks = new Map();
@@ -97,5 +98,67 @@ test("DSH request-local middleware preserves concurrent streams, restored turns 
     assert.equal(requests.at(-1).has("x-hiroute-routing-context"), false);
     await fetch("http://localhost.invalid", { headers: { "x-hiroute-agent": "foreign" } });
     assert.equal(requests.at(-1).has("x-hiroute-routing-context"), false);
+  } finally { globalThis.fetch = original; delete globalThis[symbol]; }
+});
+
+test("DSH binds native semantic users to exact wire positions without changing model bytes", async () => {
+  const original = globalThis.fetch;
+  const symbol = Symbol.for("hiroute.dsh.routing-context.v1");
+  const sent = [];
+  globalThis.fetch = async (_url, init) => { sent.push(init); return "native-result"; };
+  delete globalThis[symbol];
+  const text = value => [{ type: "text", text: value }];
+  const user = (id, value, kind = "user") => ({ id, role: "user", content: text(value), source: { kind } });
+  const events = [{ type: "turn/start", data: { turn: 1 } },
+    ...[user("u1", "USER-A"), user("u2", "USER-B"), user("r", "POLICY", "runtime-context")]
+      .map(data => ({ type: "user/message", data }))];
+  let hook;
+  const session = { get seq() { return events.length; }, eventAt: i => events[i], header: { parentSession: "parent" } };
+  dshRouting({ sessions: { get: () => session }, on: (_event, callback) => { hook = callback; } });
+  const options = { provider: "hiroute-main-test", sessionId: "child", messages: [
+    { id: "sys", role: "system", source: { kind: "system-prompt" }, content: text("SYSTEM") },
+    user("u1", "USER-A"), user("u2", "USER-B"), user("r", "POLICY", "runtime-context"),
+  ] };
+  const body = JSON.stringify({ model: "alias", input: options.messages.slice(1).map(m => ({ role: m.role,
+    content: m.content.map(p => ({ type: "input_text", text: p.text })) })) });
+  const next = async function* () { yield await fetch("http://127.0.0.1/v1/responses", {
+    method: "POST", body, headers: { "x-hiroute-agent": "dsh", "x-hiroute-token": "synthetic" },
+  }); };
+  try {
+    assert.equal((await hook(options, next).next()).value, "native-result");
+    assert.equal(sent[0].body, body);
+    const headers = new Headers(sent[0].headers);
+    assert.equal(headers.get("x-deepseek-harness-parent-session-id"), "parent");
+    const metadata = JSON.parse(headers.get("x-hiroute-routing-context"));
+    const digest = value => createHash("sha256").update(JSON.stringify([value])).digest("hex");
+    assert.deepEqual(metadata.user_turns, [{ turn_id: "1", messages: [
+      { index: 0, sha256: digest("USER-A") }, { index: 1, sha256: digest("USER-B") },
+    ] }]);
+    assert.equal(metadata.users, undefined);
+    // A compacted surface without the current real user supplies no usable proof.
+    const compacted = { ...options, messages: [user("cp", "summary", "compact-checkpoint")] };
+    assert.equal((await hook(compacted, next).next()).value, "native-result");
+    assert.equal(JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context")).user_turns, undefined);
+    // A real body mismatch and unknown image conversion are conservative misses.
+    const changed = { ...options, messages: options.messages.map(m => m.id === "u1" ? { ...m, content: text("different") } : m) };
+    assert.equal((await hook(changed, next).next()).value, "native-result");
+    assert.equal(JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context")).user_turns, undefined);
+    const image = { ...options, messages: [user("u1", "USER-A"), { ...user("u2", "USER-B"), content: [{ type: "image", attachment: {} }] }] };
+    assert.equal((await hook(image, next).next()).value, "native-result");
+    assert.equal(JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context")).user_turns, undefined);
+    // A resumed real turn keeps both prior semantic users and the new input,
+    // preserving the intervening runtime-context ordinal without blessing it.
+    const nextUser = user("u3", "USER-C");
+    events.push({ type: "turn/start", data: { turn: 2 } }, { type: "user/message", data: nextUser });
+    const resumed = { ...options, messages: [...options.messages,
+      { role: "assistant", content: text("completed") }, nextUser] };
+    const resumedBody = JSON.stringify({ messages: resumed.messages.slice(1).map(m => ({ role: m.role, content: m.content })) });
+    const resumedNext = async function* () { yield await fetch("http://127.0.0.1/v1/messages", {
+      method: "POST", body: resumedBody, headers: { "x-hiroute-agent": "dsh", "x-hiroute-token": "synthetic" },
+    }); };
+    assert.equal((await hook(resumed, resumedNext).next()).value, "native-result");
+    assert.equal(sent.at(-1).body, resumedBody);
+    assert.deepEqual(JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context")).user_turns,
+      [...metadata.user_turns, { turn_id: "2", messages: [{ index: 3, sha256: digest("USER-C") }] }]);
   } finally { globalThis.fetch = original; delete globalThis[symbol]; }
 });

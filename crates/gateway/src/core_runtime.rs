@@ -12,6 +12,8 @@ pub use classification::{
 mod decision_history;
 #[path = "model_ir/mod.rs"]
 pub mod model_ir;
+#[path = "core_runtime/native_routing_view.rs"]
+mod native_routing_view;
 #[path = "observation.rs"]
 pub mod observation;
 #[path = "profiles/mod.rs"]
@@ -129,7 +131,9 @@ impl ProductionGatewayRuntime {
         let execution = Arc::new(
             ProductionExecution::new_bound(
                 ObservedProductionSelection::default(),
-                ObservedProductionProvider::new(ProductionProvider::new(&ports)),
+                ObservedProductionProvider::new(ProductionProvider::for_gateway_model_execution(
+                    &ports,
+                )),
                 NoopGatewayFilterManager,
                 connector.clone(),
                 GatewayCoreLifecycleLimits {
@@ -577,28 +581,6 @@ impl ProductionGatewayRuntime {
                 }
             };
             let parse_elapsed = parse_started.elapsed();
-            let (identity, mut prepared_hold) = prepare_context(
-                &self.context_holds,
-                &self.observation.correlation_key(),
-                &authorized,
-                ContextRequest {
-                    ingress: protocol,
-                    headers: &request.headers,
-                    document: &document,
-                    request: &canonical_request,
-                    replay: &replay,
-                },
-                Instant::now(),
-            );
-            if request
-                .path_and_query
-                .starts_with(hiroute_domain::QODER_MODEL_BASE_PATH)
-            {
-                // Qoder has no complete per-call subdialog contract yet.
-                prepared_hold = None;
-            }
-            drop(document);
-            drop(ingress_workspace);
             if canonical_request.web_search.is_some() && !authorized.web_search_allowed() {
                 return write_typed_error_phase(
                     session,
@@ -639,6 +621,37 @@ impl ProductionGatewayRuntime {
                 .await;
             }
             let externalize_elapsed = externalize_started.elapsed();
+            let routing_view = native_routing_view::NativeRoutingView::prepare(
+                &request.headers,
+                &canonical_request,
+                &replay,
+                &budget,
+            );
+            let routing_request = routing_view.request(&canonical_request);
+            let (identity, mut prepared_hold) = prepare_context(
+                &self.context_holds,
+                &self.observation.correlation_key(),
+                &authorized,
+                ContextRequest {
+                    ingress: protocol,
+                    headers: &request.headers,
+                    document: &document,
+                    request: routing_request,
+                    replay: &replay,
+                },
+                Instant::now(),
+            );
+            if routing_view.disables_history()
+                || request
+                    .path_and_query
+                    .starts_with(hiroute_domain::QODER_MODEL_BASE_PATH)
+            {
+                // Optional native user projection and Qoder's unknown subdialogs
+                // cannot admit shared routing history. Execution stays unchanged.
+                prepared_hold = None;
+            }
+            drop(document);
+            drop(ingress_workspace);
             let prevalidate_started = Instant::now();
             let mut replay_references = model_content_refs(&canonical_request);
             replay_references.push(raw_body.clone());
@@ -698,7 +711,7 @@ impl ProductionGatewayRuntime {
                         plan_id: plan_id.clone(),
                         plan_revision: *revision,
                     },
-                    &canonical_request,
+                    routing_request,
                     &replay,
                     prepared_hold,
                 ) {
@@ -720,7 +733,8 @@ impl ProductionGatewayRuntime {
                 let mut classification = Box::pin(self.classify_for_planner(
                     &strategy,
                     classification::ClassificationRequest {
-                        request: &canonical_request,
+                        request: routing_request,
+                        native_user_unavailable: routing_view.disables_history(),
                         replay: &replay,
                         classifier: authorized.classifier(),
                         history: &turn_history,
@@ -805,6 +819,7 @@ impl ProductionGatewayRuntime {
                     .map(Box::new);
                 None
             };
+            drop(routing_view);
             let mut planner_input = match self
                 .planner_inputs
                 .build_input(*canonical_request, &authorized)

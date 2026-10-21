@@ -28,6 +28,8 @@ pub(crate) struct HistoryDigests {
     pub(crate) message_count: usize,
     pub(crate) prefix_digest: Option<[u8; 32]>,
     pub(crate) complete_digest: [u8; 32],
+    pub(crate) semantic_prefix_digest: Option<[u8; 32]>,
+    pub(crate) semantic_complete_digest: [u8; 32],
 }
 
 impl HistoryEvidence<'_> {
@@ -36,24 +38,34 @@ impl HistoryEvidence<'_> {
         self.request.messages.len()
     }
 
-    /// Hashes the requested stored prefix and the complete visible history in
-    /// one streaming pass. No per-message digest array survives the call.
+    /// Measures strict model history and routing continuity together. The latter
+    /// only masks instruction-role text; positions and all other parts stay exact.
+    /// No per-message digest array survives the call.
     pub(crate) fn measure(&self, prefix_count: Option<usize>) -> Option<HistoryDigests> {
         let mut history = Encoder::new(self.key, b"visible-history/v1/messages", self.replay)?;
+        let mut semantic = Encoder::new(self.key, b"visible-history/v1/conversation", self.replay)?;
         let mut prefix_digest = match prefix_count {
             Some(0) => Some(history.snapshot()?),
             _ => None,
         };
+        let mut semantic_prefix_digest = match prefix_count {
+            Some(0) => Some(semantic.snapshot()?),
+            _ => None,
+        };
         for (index, message) in self.request.messages.iter().enumerate() {
-            history.history_item(self.request, index, message)?;
+            history.history_item(self.request, index, message, false)?;
+            semantic.history_item(self.request, index, message, true)?;
             if prefix_count == Some(index.saturating_add(1)) {
                 prefix_digest = Some(history.snapshot()?);
+                semantic_prefix_digest = Some(semantic.snapshot()?);
             }
         }
         Some(HistoryDigests {
             message_count: self.request.messages.len(),
             prefix_digest,
             complete_digest: history.finish()?,
+            semantic_prefix_digest,
+            semantic_complete_digest: semantic.finish()?,
         })
     }
 
@@ -69,6 +81,10 @@ impl HistoryEvidence<'_> {
         self.measure(Some(message_count))?.prefix_digest
     }
 }
+
+#[cfg(test)]
+#[path = "history_semantic_tests.rs"]
+mod semantic_tests;
 
 #[cfg(test)]
 pub(crate) fn visible_history<'a>(
@@ -93,7 +109,7 @@ pub(crate) fn visible_history_with_replay<'a>(
             InstructionRole::System => b"system",
             InstructionRole::Developer => b"developer",
         });
-        instructions.parts(&instruction.content)?;
+        instructions.parts(&instruction.content, false)?;
     }
     // Tool declarations and stable provider state are part of the effective
     // model setup. Treating their change as a rebuild is conservative for KV
@@ -325,13 +341,17 @@ impl<'a> Encoder<'a> {
         reader.verify_terminal().ok()
     }
 
-    fn parts(&mut self, parts: &[ContentPart]) -> Option<()> {
+    fn parts(&mut self, parts: &[ContentPart], omit_instruction_text: bool) -> Option<()> {
         self.usize(parts.len());
         for part in parts {
             match part {
                 ContentPart::Text { text } => {
                     self.tag(b"text");
-                    self.string(text);
+                    if omit_instruction_text {
+                        self.tag(b"instruction-text");
+                    } else {
+                        self.string(text);
+                    }
                 }
                 ContentPart::Image {
                     source: ImageSource::Url { url },
@@ -406,7 +426,7 @@ impl<'a> Encoder<'a> {
         Some(())
     }
 
-    fn message(&mut self, message: &CanonicalMessage) -> Option<()> {
+    fn message(&mut self, message: &CanonicalMessage, semantic: bool) -> Option<()> {
         self.tag(b"message");
         self.tag(match message.role {
             MessageRole::User => b"user",
@@ -415,7 +435,10 @@ impl<'a> Encoder<'a> {
             MessageRole::Developer => b"developer",
         });
         self.optional_string(message.name.as_deref());
-        self.parts(&message.content)
+        self.parts(
+            &message.content,
+            semantic && matches!(message.role, MessageRole::System | MessageRole::Developer),
+        )
     }
 
     fn history_item(
@@ -423,12 +446,13 @@ impl<'a> Encoder<'a> {
         request: &ModelRequestIRV1,
         message_index: usize,
         message: &CanonicalMessage,
+        semantic: bool,
     ) -> Option<()> {
         self.tag(b"history-item");
         if let Some(search) = request.responses_search_history.get(&message_index) {
             self.web_search_call(search);
         } else {
-            self.message(message)?;
+            self.message(message, semantic)?;
         }
         match request.responses_annotations.get(&message_index) {
             Some(parts) => {

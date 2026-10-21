@@ -70,6 +70,19 @@ fn native_fixture(agent: &str, providers: &[&NativeProvider]) -> RuntimeFixture 
     fixture
 }
 fn send(address: std::net::SocketAddr, headers: &[(String, String)], input: Value) -> WireResponse {
+    let mut headers = headers.to_vec();
+    if let Some((_, encoded)) = headers
+        .iter_mut()
+        .find(|(name, _)| name == "x-hiroute-routing-context")
+        && let Ok(mut context) = serde_json::from_str::<Value>(encoded)
+        && context["agent"] == "dsh"
+        && context["purpose"] == "main"
+        && let Some(turn) = context["turn_id"].as_str()
+        && let Some(proof) = super::dsh_native_routing::fixture_user_turns(&input, turn)
+    {
+        context["user_turns"] = proof;
+        *encoded = context.to_string();
+    }
     request(
         address,
         "POST",
@@ -102,11 +115,15 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
                 reply(RESPONSES_OK),
             ]);
             let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-            let classifier = NativeProvider::start(vec![
-                reply(CLASSIFIER_SIMPLE),
-                reply(CLASSIFIER_COMPLEX),
-                reply(CLASSIFIER_SIMPLE),
-            ]);
+            let classifier = NativeProvider::start(if agent == "dsh" {
+                vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE)]
+            } else {
+                vec![
+                    reply(CLASSIFIER_SIMPLE),
+                    reply(CLASSIFIER_COMPLEX),
+                    reply(CLASSIFIER_SIMPLE),
+                ]
+            });
             let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
             let main = headers(agent, "main", "main", "turn-1", "checkpoint-1");
             let user = json!({"role":"user","content":"MAIN_USER"});
@@ -142,10 +159,15 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
                 &auxiliary,
                 json!("AUXILIARY_MUST_NOT_ENTER_HISTORY"),
             ));
-            let detached = classifier_body(&classifier, 1);
-            assert_eq!(detached["history_partial"], true, "{agent}: {detached}");
-            assert_eq!(detached["visible_conversation"], json!([]));
-            assert!(detached["assessment_target"].is_null());
+            let calls_before_next = if agent == "dsh" { 1 } else { 2 };
+            if agent == "dsh" {
+                assert_eq!(classifier.calls(), 1, "unproved DSH input was classified");
+            } else {
+                let detached = classifier_body(&classifier, 1);
+                assert_eq!(detached["history_partial"], true, "{agent}: {detached}");
+                assert_eq!(detached["visible_conversation"], json!([]));
+                assert!(detached["assessment_target"].is_null());
+            }
             let first: Value = serde_json::from_slice(&first.body).unwrap();
             let call = &first["output"][0]["call_id"];
             let continued = json!([user,
@@ -154,7 +176,7 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
             accepted(&send(fixture.address, &main, continued.clone()));
             assert_eq!(
                 classifier.calls(),
-                2,
+                calls_before_next,
                 "{agent}: main continuation lost its decision"
             );
             let mut next = continued.as_array().unwrap().clone();
@@ -165,7 +187,7 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
                 &headers(agent, "main", "main", "turn-2", "checkpoint-1"),
                 json!(next),
             ));
-            let history = classifier_body(&classifier, 2);
+            let history = classifier_body(&classifier, calls_before_next);
             assert!(
                 !history
                     .to_string()
@@ -178,7 +200,7 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
             );
             assert_eq!(
                 (simple.calls(), complex.calls(), classifier.calls()),
-                (3, 1, 3)
+                (3, 1, calls_before_next + 1)
             );
         }
     }
@@ -250,7 +272,9 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
                 &headers(agent, "parent", "compaction", "turn-1", "checkpoint-1"),
                 json!("AUXILIARY_USER"),
             ));
-            for index in [1, 2] {
+            let classified_auxiliary = if agent == "dsh" { 2 } else { 3 };
+            assert_eq!(classifier.calls(), classified_auxiliary);
+            for index in 1..classified_auxiliary {
                 let history = classifier_body(&classifier, index);
                 assert_eq!(
                     history["visible_conversation"],
@@ -274,7 +298,7 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
         ));
         assert_eq!(
             (simple.calls(), complex.calls(), classifier.calls()),
-            (2, 2, 3),
+            (2, 2, if agent == "dsh" { 2 } else { 3 }),
             "{agent}"
         );
     }
@@ -282,7 +306,10 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
 
 #[test]
 fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_prefix_affinity() {
-    for agent in ["codex", "claude", "pi", "dsh", "opencode", "hermes"] {
+    // DSH checkpoints omit source.kind=user after compaction. Its stricter
+    // missing-user fallback is covered by dsh_native_routing, not by declaring
+    // this synthetic summary to be a real user input.
+    for agent in ["codex", "claude", "pi", "opencode", "hermes"] {
         let simple = NativeProvider::start(vec![
             reply(RESPONSES_OK),
             reply(RESPONSES_OK),

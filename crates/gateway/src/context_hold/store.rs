@@ -250,7 +250,8 @@ impl PreparedHold {
             None => HistoryContinuity::NoCheckpoint,
             Some(snapshot)
                 if self.measured.message_count >= snapshot.message_count
-                    && self.measured.prefix_digest == Some(snapshot.history_digest) =>
+                    && self.measured.semantic_prefix_digest
+                        == Some(snapshot.semantic_history_digest) =>
             {
                 if self.native.turn.is_some()
                     && snapshot.native.turn.is_some()
@@ -340,6 +341,7 @@ struct HoldEntry {
     instruction_digest: [u8; 32],
     message_count: usize,
     history_digest: [u8; 32],
+    semantic_history_digest: [u8; 32],
     native: super::routing::NativeCheckpoint,
     preference: Option<HoldPreferenceV1>,
     hint_valid: bool,
@@ -363,6 +365,7 @@ struct BeginSnapshot {
     instruction_digest: [u8; 32],
     message_count: usize,
     history_digest: [u8; 32],
+    semantic_history_digest: [u8; 32],
     native: super::routing::NativeCheckpoint,
 }
 
@@ -528,6 +531,7 @@ impl ContextHoldStore {
                     instruction_digest,
                     message_count: measured.message_count,
                     history_digest: measured.complete_digest,
+                    semantic_history_digest: measured.semantic_complete_digest,
                     native,
                     preference: message_history_continues
                         .then(|| entry.preference.clone())
@@ -571,6 +575,7 @@ impl ContextHoldStore {
             instruction_digest,
             message_count: measured.message_count,
             history_digest: measured.complete_digest,
+            semantic_history_digest: measured.semantic_complete_digest,
             native,
             preference: None,
             hint_valid: false,
@@ -804,6 +809,7 @@ impl BeginSnapshot {
             && entry.instruction_digest == self.instruction_digest
             && entry.message_count == self.message_count
             && entry.history_digest == self.history_digest
+            && entry.semantic_history_digest == self.semantic_history_digest
     }
 }
 
@@ -816,6 +822,7 @@ impl From<&HoldEntry> for BeginSnapshot {
             instruction_digest: entry.instruction_digest,
             message_count: entry.message_count,
             history_digest: entry.history_digest,
+            semantic_history_digest: entry.semantic_history_digest,
             native: entry.native,
         }
     }

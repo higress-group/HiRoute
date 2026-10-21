@@ -20,15 +20,24 @@ Worker uses a different transient profile with one frozen route and exact budget
 A native provider name alone never grants ownership of an existing user entry.
 
 [Routing adapters](../routing_adapters.rs) use protected file effects with exact
-content ownership, borrowing, rollback and restore. Pi auto-loads its user extension;
+content ownership, borrowing, rollback and restore. Pi auto-loads
+`extensions/hiroute-routing.js`; its native directory discovery skips `.mjs` files.
 DSH inserts a public Cordis middleware next to the selected patch; OpenCode loads
-the plugin from its selected resource root. The hooks only annotate managed model
+`plugins/hiroute-routing.js` from its selected resource root; its automatic scan
+also excludes `.mjs`. The hooks only annotate managed model
 calls. Missing evidence makes Gateway history request-scoped. Pi managed-provider
 warming is disabled because it lacks a separate native request purpose. DSH reads
 at most 512 existing event positions, and OpenCode's optional session lookup has a
 50 ms deadline and a 128-message bound. Huge/unknown native histories may therefore
 lose optimization. Restart/reload is needed for an existing process to load new
 resources; installed files alone are not proof of live activation.
+
+DSH's wire user role also carries runtime context. The adapter therefore binds
+native `source.kind=user` events to exact serialized text positions; Gateway's
+[optional semantic view](../../../../gateway/src/core_runtime/native_routing_view.rs)
+checks the bounded proof before routing. It leaves the execution body unchanged.
+Unknown content, missing proof or exhausted projection capacity uses the normal
+unavailable-input fallback and cannot add synthetic users to later history.
 
 ## Shared transaction and native leaves
 

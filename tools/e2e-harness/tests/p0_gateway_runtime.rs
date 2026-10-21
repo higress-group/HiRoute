@@ -1,13 +1,19 @@
 mod runtime_support;
 
+#[path = "p0_gateway_runtime/auxiliary_failure_isolation.rs"]
+mod auxiliary_failure_isolation;
 #[path = "p0_gateway_runtime/bearer_auth.rs"]
 mod bearer_auth;
 #[path = "p0_gateway_runtime/decision_branches.rs"]
 mod decision_branches;
+#[path = "p0_gateway_runtime/dsh_native_routing.rs"]
+mod dsh_native_routing;
 #[path = "p0_gateway_runtime/hermes_identity.rs"]
 mod hermes_identity;
 #[path = "p0_gateway_runtime/history_bypass.rs"]
 mod history_bypass;
+#[path = "p0_gateway_runtime/instruction_history.rs"]
+mod instruction_history;
 #[path = "p0_gateway_runtime/native_history.rs"]
 mod native_history;
 
@@ -704,6 +710,7 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
         primary_replies: Vec<ProviderReply>,
         max_attempts: u32,
         primary_after_first: usize,
+        primary_after_second: usize,
     }
 
     for case in [
@@ -723,16 +730,25 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
             ],
             max_attempts: 3,
             primary_after_first: 2,
+            primary_after_second: 2,
         },
         Case {
             name: "binding-overload",
-            primary_replies: vec![ProviderReply::Complete {
-                status: 429,
-                error_kind: None,
-                body: OVERLOAD_ERROR,
-            }],
+            primary_replies: vec![
+                ProviderReply::Complete {
+                    status: 429,
+                    error_kind: None,
+                    body: OVERLOAD_ERROR,
+                },
+                ProviderReply::Complete {
+                    status: 429,
+                    error_kind: None,
+                    body: OVERLOAD_ERROR,
+                },
+            ],
             max_attempts: 2,
             primary_after_first: 1,
+            primary_after_second: 2,
         },
     ] {
         let primary = NativeProvider::start(case.primary_replies);
@@ -769,8 +785,8 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
         assert_eq!(second.status, 200, "case={}", case.name);
         assert_eq!(
             primary.calls(),
-            case.primary_after_first,
-            "case={} must remain excluded by its exact state scope",
+            case.primary_after_second,
+            "case={} must retain its cross-request feedback scope",
             case.name
         );
         assert_eq!(fallback.calls(), 2, "case={}", case.name);
@@ -785,6 +801,12 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
                 wire_header(&requests[1], "authorization").as_deref(),
                 Some("Bearer provider-secret-1-2"),
                 "quota must cool one key and consume the next exact key before candidate fallback"
+            );
+        } else {
+            assert_eq!(
+                wire_header(&requests[1], "authorization").as_deref(),
+                Some("Bearer provider-secret-1-1"),
+                "a separate request retries the same usable key after Binding overload"
             );
         }
     }
@@ -892,10 +914,15 @@ fn real_listener_all_prebody_400_and_422_relay_without_quarantining() {
 }
 
 #[test]
-fn real_listener_first_byte_timeout_cools_binding_and_falls_back() {
-    let stalled = NativeProvider::start(vec![ProviderReply::Stall {
-        duration: Duration::from_millis(500),
-    }]);
+fn real_listener_first_byte_timeout_stays_request_local_and_falls_back() {
+    let stalled = NativeProvider::start(vec![
+        ProviderReply::Stall {
+            duration: Duration::from_millis(500),
+        },
+        ProviderReply::Stall {
+            duration: Duration::from_millis(500),
+        },
+    ]);
     let fallback = NativeProvider::start(vec![
         ProviderReply::Complete {
             status: 200,
@@ -923,7 +950,11 @@ fn real_listener_first_byte_timeout_cools_binding_and_falls_back() {
 
     let second = fixture.request();
     assert_eq!(second.status, 200);
-    assert_eq!(stalled.calls(), 1, "timed out binding must be cooling down");
+    assert_eq!(
+        stalled.calls(),
+        2,
+        "each request may try the timed out binding"
+    );
     assert_eq!(fallback.calls(), 2);
 }
 
@@ -958,7 +989,7 @@ fn real_listener_candidate_exhaustion_returns_a_sanitized_gateway_failure() {
 }
 
 #[test]
-fn real_listener_reports_cooling_recovers_once_and_resets_the_backoff_step() {
+fn real_listener_soft_binding_failures_do_not_suppress_independent_agent_requests() {
     let provider = NativeProvider::start(vec![
         ProviderReply::Complete {
             status: 503,
@@ -975,56 +1006,27 @@ fn real_listener_reports_cooling_recovers_once_and_resets_the_backoff_step() {
             error_kind: None,
             body: b"private transient failure after recovery",
         },
+        ProviderReply::Complete {
+            status: 200,
+            error_kind: None,
+            body: RESPONSES_OK,
+        },
     ]);
     let fixture = RuntimeFixture::launch(&[&provider], 1);
 
-    assert_eq!(fixture.request().status, 503, "seed the binding cooldown");
-    let response = fixture.request();
-
-    assert_eq!(response.status, 503);
-    assert_eq!(
-        provider.calls(),
-        1,
-        "cooling candidates must not reach upstream"
-    );
-    let retry_after = response.headers["retry-after"].parse::<u64>().unwrap();
-    assert!((1..=2).contains(&retry_after));
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
-        serde_json::json!({
-            "schema_version": "hiroute.gateway.error/v1",
-            "code": "CANDIDATES_COOLING_DOWN",
-            "phase": "runtime_state",
-            "retry_after_seconds": retry_after,
-        })
-    );
-
-    std::thread::sleep(Duration::from_millis(2_100));
-    assert_eq!(
-        fixture.request().status,
-        200,
-        "the sole recovery probe wins"
-    );
-    assert_eq!(provider.calls(), 2);
-
-    assert_eq!(
-        fixture.request().status,
-        503,
-        "a new transient failure follows the successful probe"
-    );
-    let reset_response = fixture.request();
-    assert_eq!(
-        provider.calls(),
-        3,
-        "the reset cooldown blocks upstream I/O"
-    );
-    let reset_retry_after = reset_response.headers["retry-after"]
-        .parse::<u64>()
-        .unwrap();
-    assert!(
-        (1..=2).contains(&reset_retry_after),
-        "successful recovery must reset the sequence to the two-second first step"
-    );
+    for (index, expected_status) in [503, 200, 503, 200].into_iter().enumerate() {
+        let response = fixture.request();
+        assert_eq!(response.status, expected_status);
+        assert_eq!(provider.calls(), index + 1);
+        if expected_status == 503 {
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
+                serde_json::json!({
+                    "error": {"code": "UPSTREAM_ATTEMPT_FAILED", "type": "upstream_error"}
+                })
+            );
+        }
+    }
 }
 
 #[test]

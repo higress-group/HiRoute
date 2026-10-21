@@ -533,3 +533,113 @@ fn checkpoint_cas_contention_does_not_claim_a_rewrite() {
         HistoryContinuity::Continuing
     );
 }
+
+#[test]
+fn native_instruction_text_changes_keep_semantic_history_without_kv_or_cleanup_reuse() {
+    for role in [MessageRole::System, MessageRole::Developer] {
+        let store = ContextHoldStore::default();
+        let now = Instant::now();
+        let mut original = history_request(1, &[1, 2]);
+        original.messages[0].role = role;
+        let evidence = super::super::visible_history(&original, &HISTORY_KEY).unwrap();
+        let mut prepared = store.prepare(key(1), &evidence, now).unwrap();
+        prepared.set_native(super::super::routing::NativeCheckpoint {
+            turn: Some([1; 32]),
+            requires_checkpoint: true,
+            ..Default::default()
+        });
+        let first = store.commit(prepared, now).unwrap();
+        assert_eq!(
+            store.complete_with_cleanup(&first, preference("accepted"), Some(2), now),
+            HoldCompleteOutcome::Applied
+        );
+        let mut changed = original.clone();
+        changed.messages[0].content[0] = ContentPart::Text {
+            text: "new native skills".into(),
+        };
+        changed
+            .messages
+            .push(history_request(1, &[3]).messages.remove(0));
+        let evidence = super::super::visible_history(&changed, &HISTORY_KEY).unwrap();
+        let mut prepared = store.prepare(key(1), &evidence, now).unwrap();
+        prepared.set_native(super::super::routing::NativeCheckpoint {
+            turn: Some([2; 32]),
+            requires_checkpoint: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            prepared.history_continuity(),
+            HistoryContinuity::NativeNewTurn
+        );
+        assert!(prepared.history_is_proven());
+        let next = store.commit(prepared, now).unwrap();
+        assert!(
+            next.hint.is_none(),
+            "semantic history cannot restore KV affinity"
+        );
+        assert_eq!(
+            next.cleaned_prefix_len, None,
+            "changed bytes cannot reuse cleanup"
+        );
+        assert_ne!(first.cycle, next.cycle);
+        assert_eq!(
+            store.complete(&first, preference("stale"), now),
+            HoldCompleteOutcome::Stale
+        );
+    }
+}
+
+#[test]
+fn a_new_native_turn_does_not_authorize_changed_user_assistant_or_tool_prefixes() {
+    let original = crate::server::core_runtime::adapters::decode_ingress_request(
+        IngressProtocol::Responses,
+        &serde_json::json!({"model":"route","input":[
+            {"role":"system","content":"native instructions"},
+            {"role":"user","content":"original user"},
+            {"role":"assistant","content":"original assistant"},
+            {"type":"function_call","call_id":"call","name":"lookup","arguments":"{}"},
+            {"type":"function_call_output","call_id":"call","output":"original receipt"}
+        ]}),
+    )
+    .unwrap();
+    for index in 1..5 {
+        let store = ContextHoldStore::default();
+        let now = Instant::now();
+        let evidence = super::super::visible_history(&original, &HISTORY_KEY).unwrap();
+        let mut prepared = store.prepare(key(1), &evidence, now).unwrap();
+        prepared.set_native(super::super::routing::NativeCheckpoint {
+            turn: Some([1; 32]),
+            requires_checkpoint: true,
+            ..Default::default()
+        });
+        store.commit(prepared, now).unwrap();
+        let mut changed = original.clone();
+        // Replacing any of these parts changes the prior conversational prefix,
+        // even when only the native instruction text also changes.
+        changed.messages[0].content[0] = ContentPart::Text {
+            text: "updated instructions".into(),
+        };
+        changed.messages[index].content[0] = ContentPart::Text {
+            text: "rewritten conversation".into(),
+        };
+        changed
+            .messages
+            .push(history_request(1, &[9]).messages.remove(0));
+        let evidence = super::super::visible_history(&changed, &HISTORY_KEY).unwrap();
+        let mut prepared = store.prepare(key(1), &evidence, now).unwrap();
+        prepared.set_native(super::super::routing::NativeCheckpoint {
+            turn: Some([2; 32]),
+            requires_checkpoint: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            prepared.history_continuity(),
+            HistoryContinuity::Rewritten,
+            "index={index}"
+        );
+        assert!(
+            !prepared.history_is_proven(),
+            "new turn accepted a rewritten prefix at {index}"
+        );
+    }
+}

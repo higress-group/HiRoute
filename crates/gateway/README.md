@@ -101,6 +101,12 @@ cannot overwrite the live request's hold. Optional write/observation failures do
 not reject or replace the model response; authorization, Replay integrity and
 source cancellation/deadlines still apply. This is best-effort context degradation,
 not a substitute for native purpose evidence.
+Native Codex peer `agent_message` items use the
+[Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
+forwarding preserves author/recipient, text and ciphertext, while optional history
+and cross-protocol conversion stay unavailable. The
+[native protocol regressions](src/adapters/tests/native_responses.rs) cover that
+boundary without fabricating a user role for peer content.
 [Native routing admission](src/context_hold/routing.rs) applies bounded native turn,
 purpose and checkpoint evidence before holds/history. Known auxiliary requests and
 uncertain known-client metadata have no history lease or write. Main/child scopes
@@ -203,6 +209,19 @@ Streaming headers alone leave relay open; a later failed model terminal stays a 
 request and Agent turn observations even when its native bytes were delivered.
 The decision diagnostic uses closed error codes; provider text is not a public
 error message or a substitute for evidence of credential failure.
+
+[Runtime health](src/runtime/state.rs) keeps the kernel's default shared Binding
+backoff. The production Gateway explicitly selects request-local soft Binding
+feedback for authenticated Agent model grants and verified Workers sharing the
+same target keys, including unmarked native auxiliary requests. A transient
+failure still relays and returns its original
+normalized error within that request, but cannot cool the next independent main
+call or invalidate its in-flight permit. An owned expired probe releases neutrally
+with exact-generation CAS. Credential authentication/quota state remains shared.
+Main calls, Worker calls and ordinary API calls using that grant consequently may retry an
+unavailable source more often across requests. The [owning contract](../../issue-spec/specs/p0-gateway-execution-plane/spec.md)
+and [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/auxiliary_failure_isolation.rs)
+cover both immediate recovery and concurrent main completion.
 
 ## Response failure evidence
 

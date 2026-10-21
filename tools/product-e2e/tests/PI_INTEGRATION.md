@@ -116,3 +116,12 @@ the native context/Continue journey with `HIROUTE_PRODUCT_AGENT_PROTOCOL=respons
 and `HIROUTE_PRODUCT_AGENT_PROTOCOL=messages` to cover both frozen Worker routes.
 This selector changes fixture inputs, never the production protocol or native CLI.
 Record both protocol outcomes explicitly; one successful default run is insufficient.
+
+The saved-model journey also runs ordinary Pi with native extension autoload and
+one persisted session. The selected custom decision service must receive the
+first accepted task in the next turn's history. An explicit disabled-extension
+control must still return both model receipts with empty partial history and no
+assessment target. Gateway restart must not revive accepted history from process
+memory. After model Restore, actual native RPC startup verifies the original
+default model and the absence of the owned extension. No explicit `-e` load may
+stand in for ordinary autoload acceptance.

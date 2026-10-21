@@ -27,7 +27,9 @@ impl FilesystemAgentScannerV1 {
             AgentKindV1::Pi => self
                 .pi_user_models_target()
                 .parent()?
-                .join("extensions/hiroute-routing.mjs"),
+                // Pi's directory discovery accepts .js/.ts, not .mjs. Explicit
+                // Worker loading must not hide an ordinary-client install gap.
+                .join("extensions/hiroute-routing.js"),
             AgentKindV1::DeepseekHarness => self
                 .dsh_user_models_target()
                 .parent()?
@@ -36,7 +38,7 @@ impl FilesystemAgentScannerV1 {
                 .opencode_native_context()
                 .ok()?
                 .resource_root()
-                .join("plugins/hiroute-routing.mjs"),
+                .join("plugins/hiroute-routing.js"),
             _ => return None,
         })
     }

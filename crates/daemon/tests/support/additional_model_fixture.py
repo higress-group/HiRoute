@@ -24,7 +24,11 @@ def select_model_context(product, harness="qoder"):
     product.additional_harness = harness
     if harness == "opencode":
         from opencode_native_context import select_context
-        return select_context(product)
+        config = select_context(product)
+        # Ordinary saved-model clients must discover their user plugins. The
+        # Worker profile still chooses its separate native pure mode explicitly.
+        product.env.pop('OPENCODE_PURE', None)
+        return config
     if harness == "pi":
         config = Path(product.env["HOME"]) / ".pi/agent"
         config.mkdir(mode=0o700, parents=True)
