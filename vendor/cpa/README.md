@@ -70,6 +70,25 @@ alongside its controls. CPA persists and synchronously discovers that version
 even when its watcher still holds the preceding metadata. No access or refresh
 token is included in this control request.
 
+The existing authenticated account-model response also carries the private
+`hiroute.cpa-model-discovery/v1` observation. CPA retains the first failed or
+discarded attempt and the latest attempt per account, including phase, closed
+reason, total/phase durations, HTTP or proxy status, model counts and up to six
+phase timings. Credentials, native version, account/model IDs, URLs and raw errors
+are excluded. The in-memory store holds at most 128 accounts and reports evictions;
+process exit loses it. Retention starts when this artifact starts, so it cannot
+recover historical failures from an older process. Older concurrent attempts
+cannot overwrite the latest attempt. No new endpoint, retry or maintenance
+channel is introduced, and the discovery deadline remains five seconds.
+
+HiRoute validates this metadata independently of model membership, emits bounded
+`cpa_model_discovery` transitions on its existing diagnostic context and explicitly
+marks missing, invalid or truncated observations. Repeated polling does not emit
+the same transition again. Proxy CONNECT rejection has its own status; it must
+not be interpreted as an upstream HTTP response. An empty successful upstream
+list, filtering to zero models and discarding a stale authorization are distinct
+observations. These facts diagnose listing and registration, not inference.
+
 On Windows, native Codex and Claude file borrowing uses
 [`borrowed_native_windows.rs`](../../crates/cpa-bridge/src/borrowed_native_windows.rs).
 The reader holds the inspected parent and regular file, rejects reparses and

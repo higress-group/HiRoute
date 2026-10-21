@@ -10,6 +10,7 @@ mod content;
 mod control;
 mod cpa;
 mod cpa_control;
+mod cpa_model_discovery;
 mod model;
 mod observation;
 mod protected_channel;
@@ -26,6 +27,7 @@ pub use content::*;
 pub use control::*;
 pub use cpa::*;
 pub use cpa_control::*;
+pub use cpa_model_discovery::*;
 pub use model::*;
 pub use observation::*;
 pub use protected_channel::*;
@@ -87,6 +89,7 @@ pub enum DiagnosticEvent {
     CredentialLease(CredentialLease),
     CpaStage(CpaStage),
     CpaControl(CpaControl),
+    CpaModelDiscovery(CpaModelDiscovery),
 }
 
 impl DiagnosticEvent {
@@ -203,6 +206,22 @@ impl DiagnosticEvent {
                 CpaStageOutcome::Failed { .. } => Warn,
                 _ => Debug,
             },
+            DiagnosticEvent::CpaModelDiscovery(discovery) => match &discovery.observation {
+                CpaDiscoveryObservation::Observed { attempt, .. }
+                    if matches!(
+                        attempt.outcome,
+                        CpaDiscoveryOutcome::Failed | CpaDiscoveryOutcome::Discarded
+                    ) || attempt.reason.is_some() =>
+                {
+                    Warn
+                }
+                CpaDiscoveryObservation::Unavailable {
+                    reason:
+                        CpaDiscoveryUnavailable::InvalidMetadata
+                        | CpaDiscoveryUnavailable::ObservationLimit,
+                } => Warn,
+                _ => Debug,
+            },
         }
     }
 
@@ -268,6 +287,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::CredentialLease(_) => "credential_lease",
             DiagnosticEvent::CpaStage(_) => "cpa_stage",
             DiagnosticEvent::CpaControl(_) => "cpa_control",
+            DiagnosticEvent::CpaModelDiscovery(_) => "cpa_model_discovery",
         }
     }
 }

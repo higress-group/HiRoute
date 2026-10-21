@@ -104,6 +104,78 @@ index 2b99077..a661fbb 100644
  			cmd.StartServiceWithPluginHost(cfg, configFilePath, password, pluginHost, serverOptions...)
  		}
  	}
+diff --git a/internal/api/handlers/management/auth_files.go b/internal/api/handlers/management/auth_files.go
+index 0a4ed74..744016b 100644
+--- a/internal/api/handlers/management/auth_files.go
++++ b/internal/api/handlers/management/auth_files.go
+@@ -16,6 +16,7 @@ import (
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+ 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+ 	log "github.com/sirupsen/logrus"
+@@ -374,7 +375,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
+ 		result = append(result, entry)
+ 	}
+ 
+-	c.JSON(200, gin.H{"models": result})
++	c.JSON(200, gin.H{"models": result, "hiroute_model_discovery": modeldiscovery.Read(authID)})
+ }
+ 
+ // List auth files from disk when the auth manager is unavailable.
+diff --git a/internal/api/handlers/management/auth_files_discovery_test.go b/internal/api/handlers/management/auth_files_discovery_test.go
+new file mode 100644
+index 0000000..fbca8b2
+--- /dev/null
++++ b/internal/api/handlers/management/auth_files_discovery_test.go
+@@ -0,0 +1,45 @@
++package management
++
++import (
++	"context"
++	"encoding/json"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/gin-gonic/gin"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
++	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++)
++
++func TestHiRouteDiscoveryExistingManagementResponseResolvesFileName(t *testing.T) {
++	manager := coreauth.NewManager(nil, nil, nil)
++	a := &coreauth.Auth{ID: "private/internal/account", FileName: "private-file.json", Provider: "codex"}
++	if _, err := manager.Register(context.Background(), a); err != nil {
++		t.Fatal(err)
++	}
++	trace := modeldiscovery.Begin(a.ID)
++	trace.Enter(modeldiscovery.ClientVersion)
++	trace.End(modeldiscovery.Failed, modeldiscovery.ClientVersionUnavailable)
++	handler := NewHandlerWithoutConfigFilePath(&config.Config{}, manager)
++	recorder := httptest.NewRecorder()
++	ctx, _ := gin.CreateTestContext(recorder)
++	ctx.Request = httptest.NewRequest("GET", "/v0/management/auth-files/models?name=private-file.json", nil)
++	handler.GetAuthFileModels(ctx)
++	var response struct {
++		Models    []any                   `json:"models"`
++		Discovery modeldiscovery.Snapshot `json:"hiroute_model_discovery"`
++	}
++	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
++		t.Fatal(err)
++	}
++	if recorder.Code != 200 || response.Models == nil || response.Discovery.FirstFailure == nil || response.Discovery.FirstFailure.Reason != modeldiscovery.ClientVersionUnavailable {
++		t.Fatalf("missing observation: %+v", response)
++	}
++	for _, private := range []string{a.ID, a.FileName, "access_token"} {
++		if strings.Contains(recorder.Body.String(), private) {
++			t.Fatal("private diagnostic material")
++		}
++	}
++}
 diff --git a/internal/api/handlers/management/auth_files_oauth_callback.go b/internal/api/handlers/management/auth_files_oauth_callback.go
 index f33f82e..3d87ba9 100644
 --- a/internal/api/handlers/management/auth_files_oauth_callback.go
@@ -1143,12 +1215,456 @@ index 7d69d46..44da6d5 100644
  	return t.transport.RoundTrip(req)
  }
  
+diff --git a/internal/modeldiscovery/diagnostics.go b/internal/modeldiscovery/diagnostics.go
+new file mode 100644
+index 0000000..d710907
+--- /dev/null
++++ b/internal/modeldiscovery/diagnostics.go
+@@ -0,0 +1,265 @@
++// Package modeldiscovery retains bounded, secret-free observations for the
++// existing authenticated management response. It never logs raw errors or I/O.
++package modeldiscovery
++
++import (
++	"context"
++	"crypto/x509"
++	"errors"
++	"net"
++	"os"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"time"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
++)
++
++const capacity = 128
++
++type Phase string
++type Outcome string
++type Reason string
++
++const (
++	Credentials              Phase   = "credentials"
++	ClientVersion            Phase   = "client_version"
++	Request                  Phase   = "request"
++	Response                 Phase   = "response"
++	Catalog                  Phase   = "catalog"
++	Registration             Phase   = "registration"
++	Entered                  Outcome = "entered"
++	Completed                Outcome = "completed"
++	Failed                   Outcome = "failed"
++	Discarded                Outcome = "discarded"
++	NoReason                 Reason  = ""
++	MissingAccessToken       Reason  = "missing_access_token"
++	ClientVersionUnavailable Reason  = "client_version_unavailable"
++	Cancelled                Reason  = "cancelled"
++	Timeout                  Reason  = "timeout"
++	DNSFailure               Reason  = "dns_failure"
++	ConnectFailure           Reason  = "connect_failure"
++	ProxyFailure             Reason  = "proxy_failure"
++	ProxyRejected            Reason  = "proxy_rejected"
++	TLSFailure               Reason  = "tls_failure"
++	TransportFailure         Reason  = "transport_failure"
++	HTTPRejected             Reason  = "http_rejected"
++	BodyReadFailure          Reason  = "body_read_failure"
++	ResponseTooLarge         Reason  = "response_too_large"
++	InvalidCatalog           Reason  = "invalid_catalog"
++	InvalidModelID           Reason  = "invalid_model_id"
++	DuplicateModelID         Reason  = "duplicate_model_id"
++	EmptyCatalog             Reason  = "empty_catalog"
++	EmptyAfterFiltering      Reason  = "empty_after_filtering"
++	AccountMissing           Reason  = "account_missing"
++	AccountDisabled          Reason  = "account_disabled"
++	AccountChanged           Reason  = "account_changed"
++)
++
++type PhaseTiming struct {
++	Phase      Phase   `json:"phase"`
++	Outcome    Outcome `json:"outcome"`
++	ElapsedMS  uint64  `json:"elapsed_ms"`
++	Reason     Reason  `json:"reason,omitempty"`
++	ModelCount *uint64 `json:"model_count,omitempty"`
++}
++
++type Attempt struct {
++	ID             uint64        `json:"attempt_id"`
++	Phase          Phase         `json:"phase"`
++	Outcome        Outcome       `json:"outcome"`
++	Reason         Reason        `json:"reason,omitempty"`
++	ElapsedMS      uint64        `json:"elapsed_ms"`
++	PhaseElapsedMS uint64        `json:"phase_elapsed_ms"`
++	HTTPStatus     *int          `json:"http_status,omitempty"`
++	ProxyStatus    *int          `json:"proxy_status,omitempty"`
++	ModelCount     *uint64       `json:"model_count,omitempty"`
++	Timings        []PhaseTiming `json:"timings"`
++}
++
++type Snapshot struct {
++	Schema          string   `json:"schema"`
++	ProcessID       int      `json:"process_id"`
++	EvictedAccounts uint64   `json:"evicted_accounts"`
++	FirstFailure    *Attempt `json:"first_failure"`
++	Latest          *Attempt `json:"latest"`
++}
++
++type entry struct {
++	first   *Attempt
++	latest  Attempt
++	updated time.Time
++}
++
++var store = struct {
++	sync.Mutex
++	entries map[string]*entry
++	evicted uint64
++}{entries: make(map[string]*entry)}
++var nextID atomic.Uint64
++
++type contextKey struct{}
++
++// Trace belongs to one synchronous discovery/registration attempt, not a goroutine
++// shared by independent registrations. Only immutable copies enter the store.
++type Trace struct {
++	account      string
++	started      time.Time
++	phaseStarted time.Time
++	value        Attempt
++}
++
++func Begin(account string) *Trace {
++	return &Trace{account: account, started: time.Now(), value: Attempt{ID: nextID.Add(1), Timings: []PhaseTiming{}}}
++}
++
++func WithTrace(ctx context.Context, trace *Trace) context.Context {
++	return context.WithValue(ctx, contextKey{}, trace)
++}
++
++func FromContext(ctx context.Context) *Trace {
++	trace, _ := ctx.Value(contextKey{}).(*Trace)
++	return trace
++}
++
++func (t *Trace) Enter(phase Phase) {
++	t.phaseStarted = time.Now()
++	t.value.Phase, t.value.Outcome, t.value.Reason = phase, Entered, NoReason
++	t.value.ElapsedMS, t.value.PhaseElapsedMS = millis(time.Since(t.started)), 0
++	t.publish()
++}
++
++func (t *Trace) End(outcome Outcome, reason Reason) {
++	t.value.Outcome, t.value.Reason = outcome, reason
++	t.value.ElapsedMS, t.value.PhaseElapsedMS = millis(time.Since(t.started)), millis(time.Since(t.phaseStarted))
++	if len(t.value.Timings) < 6 {
++		t.value.Timings = append(t.value.Timings, PhaseTiming{t.value.Phase, outcome, t.value.PhaseElapsedMS, reason, t.value.ModelCount})
++	}
++	t.publish()
++}
++
++func (t *Trace) HTTP(status int)  { t.value.HTTPStatus = &status }
++func (t *Trace) Models(count int) { value := uint64(count); t.value.ModelCount = &value }
++
++// Transport retains only closed categories. URLs, hostnames, proxy credentials
++// and arbitrary error strings are never copied into an observation.
++func (t *Trace) Transport(err error) {
++	var proxyError *proxyutil.ConnectStatusError
++	if errors.As(err, &proxyError) {
++		status := proxyError.StatusCode
++		t.value.ProxyStatus = &status
++		t.End(Failed, ProxyRejected)
++		return
++	}
++	reason := TransportFailure
++	var dns *net.DNSError
++	var network *net.OpError
++	var timeout net.Error
++	var unknownCA x509.UnknownAuthorityError
++	var hostname x509.HostnameError
++	var invalidCertificate x509.CertificateInvalidError
++	switch {
++	case errors.Is(err, context.Canceled):
++		reason = Cancelled
++	case errors.Is(err, context.DeadlineExceeded):
++		reason = Timeout
++	case errors.As(err, &timeout) && timeout.Timeout():
++		reason = Timeout
++	case errors.As(err, &dns):
++		reason = DNSFailure
++	case errors.As(err, &unknownCA), errors.As(err, &hostname), errors.As(err, &invalidCertificate):
++		reason = TLSFailure
++	case errors.As(err, &network) && network.Op == "dial":
++		reason = ConnectFailure
++	}
++	// The pinned transports own these fixed wrappers. Inspecting them refines a
++	// category without retaining the nested message or guessing an upstream status.
++	if reason == TransportFailure || reason == ConnectFailure {
++		for cause := err; cause != nil; cause = errors.Unwrap(cause) {
++			message := cause.Error()
++			switch {
++			case strings.HasPrefix(message, "utls: TLS handshake:"), strings.HasPrefix(message, "HTTPS proxy TLS handshake failed:"):
++				reason = TLSFailure
++			case strings.HasPrefix(message, "dial HTTP proxy failed:"), strings.HasPrefix(message, "write CONNECT request failed:"), strings.HasPrefix(message, "read CONNECT response failed:"):
++				reason = ProxyFailure
++			}
++		}
++	}
++	t.End(Failed, reason)
++}
++
++func (t *Trace) publish() {
++	if t.account == "" || len(t.account) > 4096 {
++		return
++	}
++	store.Lock()
++	defer store.Unlock()
++	current := store.entries[t.account]
++	if current == nil {
++		if len(store.entries) == capacity {
++			var oldest string
++			var id uint64 = ^uint64(0)
++			for key, value := range store.entries {
++				if value.latest.ID < id {
++					oldest, id = key, value.latest.ID
++				}
++			}
++			delete(store.entries, oldest)
++			store.evicted++
++		}
++		current = &entry{}
++		store.entries[t.account] = current
++	}
++	if current.first == nil && (t.value.Outcome == Failed || t.value.Outcome == Discarded) {
++		copy := clone(t.value)
++		current.first = &copy
++	}
++	if t.value.ID >= current.latest.ID {
++		current.latest, current.updated = clone(t.value), time.Now()
++	}
++}
++
++func Read(account string) Snapshot {
++	store.Lock()
++	defer store.Unlock()
++	result := Snapshot{Schema: "hiroute.cpa-model-discovery/v1", ProcessID: os.Getpid(), EvictedAccounts: store.evicted}
++	if current := store.entries[account]; current != nil {
++		latest := clone(current.latest)
++		if latest.Outcome == Entered {
++			delta := millis(time.Since(current.updated))
++			latest.ElapsedMS += delta
++			latest.PhaseElapsedMS += delta
++		}
++		result.Latest = &latest
++		if current.first != nil {
++			first := clone(*current.first)
++			result.FirstFailure = &first
++		}
++	}
++	return result
++}
++
++func clone(value Attempt) Attempt {
++	if value.HTTPStatus != nil {
++		copy := *value.HTTPStatus
++		value.HTTPStatus = &copy
++	}
++	if value.ProxyStatus != nil {
++		copy := *value.ProxyStatus
++		value.ProxyStatus = &copy
++	}
++	if value.ModelCount != nil {
++		copy := *value.ModelCount
++		value.ModelCount = &copy
++	}
++	value.Timings = append([]PhaseTiming{}, value.Timings...)
++	for index := range value.Timings {
++		if value.Timings[index].ModelCount != nil {
++			copy := *value.Timings[index].ModelCount
++			value.Timings[index].ModelCount = &copy
++		}
++	}
++	return value
++}
++func millis(value time.Duration) uint64 { return uint64(value.Milliseconds()) }
+diff --git a/internal/modeldiscovery/diagnostics_test.go b/internal/modeldiscovery/diagnostics_test.go
+new file mode 100644
+index 0000000..9c9d1d2
+--- /dev/null
++++ b/internal/modeldiscovery/diagnostics_test.go
+@@ -0,0 +1,100 @@
++package modeldiscovery
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"net"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
++)
++
++func TestHiRouteDiscoveryFirstFailureSurvivesRecoveryAndOutOfOrderCompletion(t *testing.T) {
++	id := "private-account-must-not-leak"
++	first := Begin(id)
++	first.Enter(ClientVersion)
++	first.End(Failed, ClientVersionUnavailable)
++	second := Begin(id)
++	second.Enter(Catalog)
++	second.Models(9)
++	second.End(Completed, NoReason)
++	first.Enter(Registration)
++	first.End(Discarded, AccountChanged)
++	snapshot := Read(id)
++	if snapshot.FirstFailure == nil || snapshot.FirstFailure.Reason != ClientVersionUnavailable || snapshot.Latest.ID != second.value.ID {
++		t.Fatal("first failure or latest attempt lost")
++	}
++	if *snapshot.Latest.ModelCount != 9 {
++		t.Fatal("model count lost")
++	}
++	*snapshot.Latest.ModelCount = 123
++	if *Read(id).Latest.ModelCount != 9 {
++		t.Fatal("snapshot mutates retained observation")
++	}
++	encoded, _ := json.Marshal(snapshot)
++	if strings.Contains(string(encoded), id) || strings.Contains(string(encoded), "access_token") {
++		t.Fatal("private identity leaked")
++	}
++}
++
++func TestHiRouteDiscoveryTransportCategoriesNeverRetainRawErrors(t *testing.T) {
++	for index, item := range []struct {
++		err    error
++		reason Reason
++		status int
++	}{
++		{context.DeadlineExceeded, Timeout, 0},
++		{context.Canceled, Cancelled, 0},
++		{&net.DNSError{Name: "private-host", Err: "private-token"}, DNSFailure, 0},
++		{&net.OpError{Op: "dial", Err: fmt.Errorf("private-token")}, ConnectFailure, 0},
++		{fmt.Errorf("utls: TLS handshake: private-token"), TLSFailure, 0},
++		{fmt.Errorf("read CONNECT response failed: private-token"), ProxyFailure, 0},
++		{fmt.Errorf("wrapped: %w", &proxyutil.ConnectStatusError{StatusCode: 503}), ProxyRejected, 503},
++		{fmt.Errorf("private-token"), TransportFailure, 0},
++	} {
++		id := fmt.Sprintf("transport-%d", index)
++		trace := Begin(id)
++		trace.Enter(Request)
++		trace.Transport(item.err)
++		value := Read(id).Latest
++		if value.Reason != item.reason {
++			t.Fatalf("case %d reason=%s", index, value.Reason)
++		}
++		if item.status != 0 && (value.ProxyStatus == nil || *value.ProxyStatus != item.status || value.HTTPStatus != nil) {
++			t.Fatal("proxy status was mislabeled as upstream status")
++		}
++		data, _ := json.Marshal(value)
++		if strings.Contains(string(data), "private-token") || strings.Contains(string(data), "private-host") {
++			t.Fatal("raw transport data leaked")
++		}
++	}
++}
++
++func TestHiRouteDiscoveryStorageAndPhaseHistoryAreBounded(t *testing.T) {
++	for index := 0; index < capacity+5; index++ {
++		trace := Begin(fmt.Sprintf("bounded-%d", index))
++		for phase := 0; phase < 10; phase++ {
++			trace.Enter(Request)
++			trace.End(Completed, NoReason)
++		}
++	}
++	store.Lock()
++	count := len(store.entries)
++	store.Unlock()
++	if count > capacity || Read("bounded-132").EvictedAccounts == 0 {
++		t.Fatal("unbounded account history")
++	}
++	latest := Read("bounded-132").Latest
++	if latest == nil || len(latest.Timings) != 6 {
++		t.Fatal("unbounded phase history")
++	}
++	trace := Begin("progress")
++	trace.Enter(Request)
++	time.Sleep(time.Millisecond)
++	if Read("progress").Latest.Outcome != Entered || Read("progress").Latest.ElapsedMS == 0 {
++		t.Fatal("blocked phase is not observable")
++	}
++}
+diff --git a/internal/runtime/executor/codex_model_diagnostics_test.go b/internal/runtime/executor/codex_model_diagnostics_test.go
+new file mode 100644
+index 0000000..30e6697
+--- /dev/null
++++ b/internal/runtime/executor/codex_model_diagnostics_test.go
+@@ -0,0 +1,61 @@
++package executor
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
++	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++)
++
++type discoveryDiagnosticTransport struct {
++	status int
++	body   string
++}
++
++func (d discoveryDiagnosticTransport) RoundTrip(req *http.Request) (*http.Response, error) {
++	return &http.Response{StatusCode: d.status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(d.body)), Request: req}, nil
++}
++
++func TestHiRouteCodexDiscoveryFailurePhaseAndSafeResponseFacts(t *testing.T) {
++	for _, item := range []struct {
++		name   string
++		status int
++		body   string
++		phase  modeldiscovery.Phase
++		reason modeldiscovery.Reason
++	}{
++		{"unauthorized", 401, `{"error":"private-token"}`, modeldiscovery.Response, modeldiscovery.HTTPRejected},
++		{"forbidden", 403, `private-token`, modeldiscovery.Response, modeldiscovery.HTTPRejected},
++		{"invalid-json", 200, `private-token`, modeldiscovery.Catalog, modeldiscovery.InvalidCatalog},
++		{"duplicate", 200, `{"models":[{"slug":"m"},{"slug":"m"}]}`, modeldiscovery.Catalog, modeldiscovery.DuplicateModelID},
++		{"empty", 200, `{"models":[]}`, modeldiscovery.Catalog, modeldiscovery.EmptyCatalog},
++	} {
++		t.Run(item.name, func(t *testing.T) {
++			id := "diagnostic-" + item.name
++			a := &cliproxyauth.Auth{ID: id, Metadata: map[string]any{"access_token": "private-token", "hiroute_client_version": "0.999.0"}}
++			ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", http.RoundTripper(discoveryDiagnosticTransport{item.status, item.body}))
++			_, err := NewCodexExecutor(nil).DiscoverModels(ctx, a, nil)
++			value := modeldiscovery.Read(id).Latest
++			if value == nil || value.Phase != item.phase || value.Reason != item.reason || value.HTTPStatus == nil || *value.HTTPStatus != item.status {
++				t.Fatal("failure boundary or HTTP status lost")
++			}
++			if item.name == "empty" {
++				if err != nil || value.Outcome != modeldiscovery.Completed || value.ModelCount == nil || *value.ModelCount != 0 {
++					t.Fatal("valid empty catalog mislabeled as failed transport")
++				}
++			} else if err == nil {
++				t.Fatal("invalid discovery succeeded")
++			}
++		})
++	}
++	id := "missing-version-diagnostic"
++	_, err := NewCodexExecutor(nil).DiscoverModels(context.Background(), &cliproxyauth.Auth{ID: id, Metadata: map[string]any{"access_token": "private-token"}}, nil)
++	value := modeldiscovery.Read(id).Latest
++	if err == nil || value.Phase != modeldiscovery.ClientVersion || value.Reason != modeldiscovery.ClientVersionUnavailable || value.HTTPStatus != nil {
++		t.Fatal("local version failure confused with an upstream response")
++	}
++}
 diff --git a/internal/runtime/executor/codex_models.go b/internal/runtime/executor/codex_models.go
 new file mode 100644
-index 0000000..403683d
+index 0000000..f17845a
 --- /dev/null
 +++ b/internal/runtime/executor/codex_models.go
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,173 @@
 +package executor
 +
 +import (
@@ -1161,6 +1677,7 @@ index 0000000..403683d
 +	"strings"
 +	"time"
 +
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 +	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -1171,16 +1688,32 @@ index 0000000..403683d
 +func (e *CodexExecutor) DiscoverModels(ctx context.Context, auth *cliproxyauth.Auth, known []*registry.ModelInfo) ([]*registry.ModelInfo, error) {
 +	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 +	defer cancel()
++	trace := modeldiscovery.FromContext(ctx)
++	if trace == nil {
++		id := ""
++		if auth != nil {
++			id = auth.ID
++		}
++		trace = modeldiscovery.Begin(id)
++	}
++	trace.Enter(modeldiscovery.Credentials)
 +	token, _ := codexCreds(auth)
 +	if strings.TrimSpace(token) == "" {
++		trace.End(modeldiscovery.Failed, modeldiscovery.MissingAccessToken)
 +		return nil, fmt.Errorf("codex model discovery: missing access token")
 +	}
++	trace.End(modeldiscovery.Completed, modeldiscovery.NoReason)
++	trace.Enter(modeldiscovery.ClientVersion)
 +	version, err := codexModelDiscoveryVersion(auth)
 +	if err != nil {
++		trace.End(modeldiscovery.Failed, modeldiscovery.ClientVersionUnavailable)
 +		return nil, err
 +	}
++	trace.End(modeldiscovery.Completed, modeldiscovery.NoReason)
++	trace.Enter(modeldiscovery.Request)
 +	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://chatgpt.com/backend-api/codex/models?client_version="+url.QueryEscape(version), nil)
 +	if err != nil {
++		trace.Transport(err)
 +		return nil, err
 +	}
 +	applyCodexHeadersFromSources(req, auth, token, false, e.cfg, nil)
@@ -1189,17 +1722,35 @@ index 0000000..403683d
 +	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 +	resp, err := client.Do(req)
 +	if err != nil {
++		trace.Transport(err)
 +		return nil, fmt.Errorf("codex model discovery: transport failed")
 +	}
 +	defer resp.Body.Close()
++	trace.HTTP(resp.StatusCode)
++	trace.End(modeldiscovery.Completed, modeldiscovery.NoReason)
++	trace.Enter(modeldiscovery.Response)
 +	if resp.StatusCode != http.StatusOK {
++		trace.End(modeldiscovery.Failed, modeldiscovery.HTTPRejected)
 +		return nil, fmt.Errorf("codex model discovery: HTTP %d", resp.StatusCode)
 +	}
 +	const limit = 16 << 20
 +	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 +	if err != nil || len(body) > limit {
++		reason := modeldiscovery.BodyReadFailure
++		if len(body) > limit {
++			reason = modeldiscovery.ResponseTooLarge
++		}
++		if ctx.Err() == context.DeadlineExceeded {
++			reason = modeldiscovery.Timeout
++		}
++		if ctx.Err() == context.Canceled {
++			reason = modeldiscovery.Cancelled
++		}
++		trace.End(modeldiscovery.Failed, reason)
 +		return nil, fmt.Errorf("codex model discovery: unreadable or oversized catalog")
 +	}
++	trace.End(modeldiscovery.Completed, modeldiscovery.NoReason)
++	trace.Enter(modeldiscovery.Catalog)
 +	var catalog struct {
 +		Models []struct {
 +			Slug             string   `json:"slug"`
@@ -1214,6 +1765,7 @@ index 0000000..403683d
 +		} `json:"models"`
 +	}
 +	if json.Unmarshal(body, &catalog) != nil || catalog.Models == nil {
++		trace.End(modeldiscovery.Failed, modeldiscovery.InvalidCatalog)
 +		return nil, fmt.Errorf("codex model discovery: invalid catalog")
 +	}
 +	byID := make(map[string]*registry.ModelInfo, len(known))
@@ -1227,6 +1779,11 @@ index 0000000..403683d
 +	for _, remote := range catalog.Models {
 +		id := strings.TrimSpace(remote.Slug)
 +		if id == "" || seen[id] {
++			reason := modeldiscovery.InvalidModelID
++			if seen[id] {
++				reason = modeldiscovery.DuplicateModelID
++			}
++			trace.End(modeldiscovery.Failed, reason)
 +			return nil, fmt.Errorf("codex model discovery: invalid or duplicate model ID")
 +		}
 +		seen[id] = true
@@ -1251,6 +1808,12 @@ index 0000000..403683d
 +		}
 +		models = append(models, &m)
 +	}
++	trace.Models(len(models))
++	reason := modeldiscovery.NoReason
++	if len(models) == 0 {
++		reason = modeldiscovery.EmptyCatalog
++	}
++	trace.End(modeldiscovery.Completed, reason)
 +	return models, nil
 +}
 +
@@ -2090,10 +2653,10 @@ index 0000000..91db81d
 +}
 diff --git a/sdk/cliproxy/service_codex_discovery_test.go b/sdk/cliproxy/service_codex_discovery_test.go
 new file mode 100644
-index 0000000..4b42cba
+index 0000000..f80821b
 --- /dev/null
 +++ b/sdk/cliproxy/service_codex_discovery_test.go
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,111 @@
 +package cliproxy
 +
 +import (
@@ -2103,6 +2666,7 @@ index 0000000..4b42cba
 +	"strings"
 +	"testing"
 +
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
 +	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 +	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 +)
@@ -2148,6 +2712,13 @@ index 0000000..4b42cba
 +	if len(GlobalModelRegistry().GetModelsForClient(a.ID)) != 0 {
 +		t.Fatal("empty authoritative list did not remove models")
 +	}
++	snapshot := modeldiscovery.Read(a.ID)
++	if snapshot.FirstFailure == nil || snapshot.FirstFailure.Reason != modeldiscovery.HTTPRejected || snapshot.Latest == nil || snapshot.Latest.Phase != modeldiscovery.Registration || snapshot.Latest.Reason != modeldiscovery.EmptyAfterFiltering {
++		t.Fatalf("lost first failure or empty registration facts: %+v", snapshot)
++	}
++	if snapshot.Latest.Timings[4].Reason != modeldiscovery.EmptyCatalog {
++		t.Fatal("upstream empty catalog was confused with filtering")
++	}
 +	status, body = 200, `{"models":[{"slug":"other-account-model"}]}`
 +	a.ID, a.Prefix = "other-account", "other"
 +	defer GlobalModelRegistry().UnregisterClient(a.ID)
@@ -2156,13 +2727,56 @@ index 0000000..4b42cba
 +		t.Fatal("cross-account catalog leakage")
 +	}
 +}
++
++func TestHiRouteDiscoveryRegistrationDiscard(t *testing.T) {
++	for _, reason := range []modeldiscovery.Reason{modeldiscovery.AccountMissing, modeldiscovery.AccountDisabled, modeldiscovery.AccountChanged, modeldiscovery.Cancelled} {
++		t.Run(string(reason), func(t *testing.T) {
++			manager := coreauth.NewManager(nil, nil, nil)
++			a := &coreauth.Auth{ID: "discard-" + string(reason), Provider: "codex", Metadata: map[string]any{"access_token": "private-test-token", "hiroute_client_version": "0.999.0"}}
++			registered, err := manager.Register(context.Background(), a)
++			if err != nil {
++				t.Fatal(err)
++			}
++			a = registered.Clone()
++			s := &Service{cfg: &config.Config{}, coreManager: manager}
++			ctx, cancel := context.WithCancel(context.Background())
++			defer cancel()
++			ctx = context.WithValue(ctx, "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
++				switch reason {
++				case modeldiscovery.AccountMissing:
++					manager.Remove(context.Background(), a.ID)
++				case modeldiscovery.AccountDisabled, modeldiscovery.AccountChanged:
++					current, _ := manager.GetByID(a.ID)
++					current.Disabled = reason == modeldiscovery.AccountDisabled
++					current.RegistrationEpoch++
++					if _, err := manager.Update(context.Background(), current); err != nil {
++						t.Fatal(err)
++					}
++				case modeldiscovery.Cancelled:
++					cancel()
++				}
++				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"safe-model"}]}`)), Request: r}, nil
++			}))
++			s.registerModelsForAuth(ctx, a)
++			snapshot := modeldiscovery.Read(a.ID)
++			if snapshot.Latest == nil || snapshot.Latest.Phase != modeldiscovery.Registration || snapshot.Latest.Outcome != modeldiscovery.Discarded || snapshot.Latest.Reason != reason {
++				t.Fatalf("wrong discard: %+v", snapshot.Latest)
++			}
++			if len(GlobalModelRegistry().GetModelsForClient(a.ID)) != 0 {
++				t.Fatal("discarded catalog registered")
++			}
++		})
++	}
++}
 diff --git a/sdk/cliproxy/service_models.go b/sdk/cliproxy/service_models.go
-index 1bb4b62..7d18fc8 100644
+index 1bb4b62..dc6bed8 100644
 --- a/sdk/cliproxy/service_models.go
 +++ b/sdk/cliproxy/service_models.go
-@@ -9,8 +9,10 @@ import (
+@@ -8,9 +8,12 @@ import (
+ 
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/modelconfig"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
  	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -2171,20 +2785,37 @@ index 1bb4b62..7d18fc8 100644
  )
  
  // registerModelsForAuth (re)binds provider models in the global registry using the core auth ID as client identifier.
-@@ -149,6 +151,22 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -71,6 +74,7 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+ 		return
+ 	}
+ 	var models []*ModelInfo
++	var discoveryTrace *modeldiscovery.Trace
+ 	switch provider {
+ 	case constant.Gemini:
+ 		models = registry.GetGeminiModels()
+@@ -149,6 +153,31 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  		default:
  			models = registry.GetCodexProModels()
  		}
 +		if token, _ := a.Metadata["access_token"].(string); strings.TrimSpace(token) != "" {
-+			discovered, err := executor.NewCodexExecutor(s.cfg).DiscoverModels(ctx, a, models)
++			discoveryTrace = modeldiscovery.Begin(a.ID)
++			discovered, err := executor.NewCodexExecutor(s.cfg).DiscoverModels(modeldiscovery.WithTrace(ctx, discoveryTrace), a, models)
 +			if err != nil {
 +				log.Warnf("Codex model discovery failed; retaining registered catalog: %v", err)
 +				return
 +			}
++			discoveryTrace.Enter(modeldiscovery.Registration)
 +			// An auth removed or replaced during the bounded request must not reappear.
 +			if s.coreManager != nil {
 +				current, ok := s.coreManager.GetByID(a.ID)
 +				if !ok || current.Disabled || current.Generation != a.Generation || current.RegistrationEpoch != a.RegistrationEpoch {
++					reason := modeldiscovery.AccountChanged
++					if !ok {
++						reason = modeldiscovery.AccountMissing
++					} else if current.Disabled {
++						reason = modeldiscovery.AccountDisabled
++					}
++					discoveryTrace.End(modeldiscovery.Discarded, reason)
 +					return
 +				}
 +			}
@@ -2194,6 +2825,50 @@ index 1bb4b62..7d18fc8 100644
  		models = applyExcludedModels(models, excluded)
  	case "kimi", "kimi-ai", "kimi.ai", "kimi.com":
  		models = registry.GetKimiModels()
+@@ -283,10 +312,16 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+ 		}
+ 	}
+ 	if ctx.Err() != nil {
++		if discoveryTrace != nil {
++			discoveryTrace.End(modeldiscovery.Discarded, modeldiscovery.Cancelled)
++		}
+ 		return
+ 	}
+ 	models = applyOAuthModelAliasForAuth(s.cfg, provider, authKind, a.Attributes, models)
+ 	if ctx.Err() != nil {
++		if discoveryTrace != nil {
++			discoveryTrace.End(modeldiscovery.Discarded, modeldiscovery.Cancelled)
++		}
+ 		return
+ 	}
+ 	key := provider
+@@ -297,6 +332,15 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+ 	if len(models) > 0 {
+ 		models = applyOAuthSettingsForAuth(s.cfg, provider, authKind, models)
+ 		s.registerResolvedModelsForAuth(a, key, applyModelPrefixes(models, a.Prefix, s.cfg != nil && s.cfg.ForceModelPrefix))
++		if discoveryTrace != nil {
++			registered := GlobalModelRegistry().GetModelsForClient(a.ID)
++			discoveryTrace.Models(len(registered))
++			reason := modeldiscovery.NoReason
++			if len(registered) == 0 {
++				reason = modeldiscovery.EmptyAfterFiltering
++			}
++			discoveryTrace.End(modeldiscovery.Completed, reason)
++		}
+ 		if strings.EqualFold(strings.TrimSpace(a.Provider), "antigravity") {
+ 			s.asyncProbeAntigravityCapabilities(ctx, a, key)
+ 		}
+@@ -304,6 +348,10 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+ 	}
+ 
+ 	GlobalModelRegistry().UnregisterClient(a.ID)
++	if discoveryTrace != nil {
++		discoveryTrace.Models(0)
++		discoveryTrace.End(modeldiscovery.Completed, modeldiscovery.EmptyAfterFiltering)
++	}
+ }
+ 
+ // refreshModelRegistrationForAuth re-applies the latest model registration for
 diff --git a/sdk/proxyutil/environment.go b/sdk/proxyutil/environment.go
 new file mode 100644
 index 0000000..46f700b
@@ -2252,3 +2927,35 @@ index 0000000..46f700b
 +	}
 +	return nil
 +}
+diff --git a/sdk/proxyutil/proxy.go b/sdk/proxyutil/proxy.go
+index 4119baa..8f6d675 100644
+--- a/sdk/proxyutil/proxy.go
++++ b/sdk/proxyutil/proxy.go
+@@ -20,6 +20,14 @@ import (
+ // Mode describes how a proxy setting should be interpreted.
+ type Mode int
+ 
++// ConnectStatusError preserves a machine-readable proxy status without carrying
++// its untrusted reason phrase into discovery diagnostics.
++type ConnectStatusError struct{ StatusCode int }
++
++func (e *ConnectStatusError) Error() string {
++	return fmt.Sprintf("proxy CONNECT returned status %d", e.StatusCode)
++}
++
+ const (
+ 	// ModeInherit means no explicit proxy behavior was configured.
+ 	ModeInherit Mode = iota
+@@ -312,10 +320,8 @@ func (d *httpConnectDialer) DialContext(ctx context.Context, network, addr strin
+ 		if resp.Body != nil {
+ 			_ = resp.Body.Close()
+ 		}
+-		if errClose := conn.Close(); errClose != nil {
+-			return nil, fmt.Errorf("proxy CONNECT returned status %s; close failed: %v", resp.Status, errClose)
+-		}
+-		return nil, fmt.Errorf("proxy CONNECT returned status %s", resp.Status)
++		_ = conn.Close()
++		return nil, &ConnectStatusError{StatusCode: resp.StatusCode}
+ 	}
+ 
+ 	if errContext := ctx.Err(); errContext != nil {

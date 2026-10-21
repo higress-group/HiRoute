@@ -15,6 +15,7 @@ pub(super) struct DiscoveryTrace<'a> {
     pub account_ordinal: Option<u32>,
     pub polls: u32,
     pub checks: CpaPinChecks,
+    model_discovery: super::model_discovery::Observations,
 }
 
 impl<'a> DiscoveryTrace<'a> {
@@ -27,6 +28,14 @@ impl<'a> DiscoveryTrace<'a> {
             account_ordinal: None,
             polls: 0,
             checks: CpaPinChecks::default(),
+            model_discovery: Default::default(),
+        }
+    }
+
+    pub fn model_discovery(&mut self, response: &serde_json::Value) {
+        for observation in self.model_discovery.read(response, self.account_ordinal) {
+            self.context
+                .emit(DiagnosticEvent::CpaModelDiscovery(observation));
         }
     }
 

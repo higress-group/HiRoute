@@ -76,6 +76,16 @@ empty account models, wrong prefixes and missing downstream models. Missing fiel
 mean the check was not reached; false is an actual unmet condition. These are last
 observations within one call, not an atomic snapshot of the external process.
 
+For the upstream cause, inspect `cpa_model_discovery` in the same span. It records
+CPA's credentials, client-version, request, response, catalog and registration
+phases, elapsed times and closed failure reasons. `retained_first_failure` marks
+an earlier failure retained by the same CPA process, not a new failure caused by
+the current read. Compare process/attempt IDs before attributing a retry. The
+record distinguishes proxy rejection from upstream HTTP status, and a successful
+empty list from filtering or a discarded stale account. Missing/invalid metadata,
+account eviction, observation limits and process exit constrain completeness;
+older logs lacking these facts cannot establish an original network cause.
+
 An empty account catalog after a failed initial discovery can coexist with correct
 persisted controls. Ordinary pin reads do not refresh an already-correct account;
 repeated reads alone therefore cannot establish that upstream discovery recovered.

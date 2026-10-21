@@ -22,6 +22,7 @@ const MAX_AUTH_FILES: usize = 10_000;
 const PIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 mod diagnostics;
+mod model_discovery;
 mod validation;
 
 use diagnostics::DiscoveryTrace;
@@ -251,6 +252,7 @@ fn wait_for_account_pin(
                 expected_version,
                 remaining_timeout(deadline)?,
                 &account.id,
+                trace,
             )?;
             trace.checks.account_model_count = Some(registered.len() as u32);
             trace.checks.account_models_nonempty = Some(!registered.is_empty());
@@ -475,6 +477,7 @@ fn get_account_models(
     expected_version: &str,
     timeout: Duration,
     id: &str,
+    trace: &mut DiscoveryTrace<'_>,
 ) -> Result<BTreeSet<String>, AccountDiscoveryError> {
     let path = format!(
         "/v0/management/auth-files/models?name={}",
@@ -492,6 +495,7 @@ fn get_account_models(
     let value: Value =
         serde_json::from_slice(&response.body).map_err(AccountDiscoveryError::Json)?;
     reject_secret_material(&value)?;
+    trace.model_discovery(&value);
     let models = value
         .get("models")
         .and_then(Value::as_array)
