@@ -269,7 +269,7 @@ impl OpenCodeNativeContext {
                     Ok(entries) => {
                         for entry in entries {
                             let entry = entry.map_err(|_| Error::SourceUnavailable)?;
-                            let bundled = entry.file_name() == "hiroute-routing.mjs"
+                            let bundled = entry.file_name() == "hiroute-routing.js"
                                 && entry
                                     .file_type()
                                     .map_err(|_| Error::SourceUnavailable)?

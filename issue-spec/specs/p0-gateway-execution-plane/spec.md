@@ -120,7 +120,8 @@ still uses current authorization.
 
 Routing continuity keeps a separate streaming digest that masks only text within
 same-position System/Developer messages. Roles, names, content-part counts,
-non-text parts, other messages and protocol sidecars remain exact. Changed native
+non-text parts, other messages and the measured search/annotation/reasoning
+sidecars remain exact. Changed native
 instruction text may preserve captured semantic history, but strict byte-prefix
 and instruction digests still govern preference, commit and reasoning-cleanup
 eligibility. Added/removed instructions or rewritten user/model/tool content do
