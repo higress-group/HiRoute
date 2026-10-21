@@ -108,7 +108,7 @@ fn accepted(response: &WireResponse) {
 
 #[test]
 fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history() {
-    for agent in ["codex", "pi", "dsh", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "dsh", "opencode"] {
         for fault in [false, true] {
             let simple = NativeProvider::start(vec![
                 reply(RESPONSES_TOOL_CALL),
@@ -205,7 +205,7 @@ impl Drop for Release {
 
 #[test]
 fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_history() {
-    for agent in ["codex", "pi", "dsh", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "dsh", "opencode"] {
         let barrier = ProviderBodyBarrier::default();
         let simple = NativeProvider::start(vec![
             ProviderReply::BodyReadBarrier {
@@ -299,7 +299,7 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
     // DSH checkpoints omit source.kind=user after compaction. Its stricter
     // missing-user fallback is covered by dsh_native_routing, not by declaring
     // this synthetic summary to be a real user input.
-    for agent in ["codex", "pi", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "opencode"] {
         let simple = NativeProvider::start(vec![
             reply(RESPONSES_OK),
             reply(RESPONSES_OK),
@@ -391,22 +391,18 @@ fn hermes_lineage(session: &str, turn: &str, ids: &[&str]) -> Vec<(String, Strin
 }
 
 #[test]
-fn real_listener_hermes_rotating_compression_and_gateway_restart_keep_only_proven_history() {
+fn real_listener_hermes_compression_and_fresh_gateway_remain_unavailable_without_user_origin() {
     for _restart in 0..2 {
-        let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
-        let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
+        let simple = NativeProvider::start(vec![]);
+        let complex = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
+        let classifier = NativeProvider::start(vec![]);
         let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
         accepted(&send(
             fixture.address,
             &hermes_lineage("root", "turn-1", &["root"]),
             json!("ORIGINAL_MAIN_TASK"),
         ));
-        assert_eq!(
-            classifier_body(&classifier, 0)["visible_conversation"],
-            json!([])
-        );
-        // Native auxiliary clients have authorization but no selected-conversation hook.
+        // Native auxiliary clients still authenticate without a conversation hook.
         accepted(&send(
             fixture.address,
             &[("X-HiRoute-Token".into(), TOKEN.into())],
@@ -418,24 +414,25 @@ fn real_listener_hermes_rotating_compression_and_gateway_restart_keep_only_prove
             &hermes_lineage("compressed", "turn-1", &["root", "compressed"]),
             json!([summary]),
         ));
-        assert_eq!(
-            classifier.calls(),
-            1,
-            "rotating native compaction lost its decision"
-        );
         accepted(&send(
             fixture.address,
             &hermes_lineage("compressed", "turn-2", &["root", "compressed"]),
-            json!([
-                summary, {"role":"assistant","content":"ok"}, {"role":"user","content":"NEW_MAIN_TASK"}
-            ]),
+            json!([summary, {"role":"assistant","content":"ok"}, {"role":"user","content":"NEW_MAIN_TASK"}]),
         ));
-        let history = classifier_body(&classifier, 1).to_string();
-        assert!(history.contains("ORIGINAL_MAIN_TASK"), "{history}");
-        assert!(!history.contains("AUXILIARY_CALCULATION"), "{history}");
         assert_eq!(
             (simple.calls(), complex.calls(), classifier.calls()),
-            (3, 1, 2)
+            (0, 4, 0)
+        );
+        let facts = wait_execution_facts(&fixture, 4);
+        let decisions = facts
+            .iter()
+            .filter(|fact| fact["fact"]["kind"] == "route_decision")
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 4);
+        assert!(
+            decisions
+                .iter()
+                .all(|fact| fact["fact"]["complexity"]["fallback_reason"] == "unavailable")
         );
     }
 }
@@ -479,7 +476,7 @@ fn real_listener_auxiliary_provider_failure_cannot_change_main_tool_continuation
 
 #[test]
 fn real_listener_native_new_turn_does_not_reuse_a_decision_for_identical_content() {
-    for agent in ["codex", "pi", "dsh", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "dsh", "opencode"] {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK)]);
         let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
         let classifier =
@@ -618,10 +615,10 @@ fn real_listener_unexplained_native_rewrites_cannot_replace_main_history() {
 }
 
 #[test]
-fn real_listener_hermes_in_place_compression_uses_its_native_conversation_turn() {
-    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-    let complex = NativeProvider::start(vec![]);
-    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
+fn real_listener_hermes_in_place_compression_does_not_bootstrap_an_unproven_turn() {
+    let simple = NativeProvider::start(vec![]);
+    let complex = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+    let classifier = NativeProvider::start(vec![]);
     let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
     let context = hermes_lineage("root", "native-conversation-turn", &["root"]);
     accepted(&send(
@@ -634,7 +631,10 @@ fn real_listener_hermes_in_place_compression_uses_its_native_conversation_turn()
         &context,
         json!("NATIVE_IN_PLACE_COMPRESSION_SUMMARY"),
     ));
-    assert_eq!((simple.calls(), classifier.calls()), (2, 1));
+    assert_eq!(
+        (simple.calls(), complex.calls(), classifier.calls()),
+        (0, 2, 0)
+    );
 }
 
 #[path = "native_history_continuation.rs"]

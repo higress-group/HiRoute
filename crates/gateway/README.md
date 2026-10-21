@@ -126,8 +126,10 @@ Codex 0.147 zero-window clean threads can start history; cold compressed threads
 remain unavailable even after a new question until a clean supported thread is
 created. Unknown producer versions retain this conservative behavior. Claude's
 one-call compaction marker has no persistent user provenance, so current Claude
-and Qoder calls omit cross-request history and unproved-user classification.
-Claude has no normal-history recovery path in this implementation. Native output
+Hermes and Qoder calls omit cross-request history and unproved-user classification.
+Hermes whole-turn hooks also receive native async notifications as User input,
+so neither their text equality nor older adapters' freshness flags prove origin.
+These clients have no normal-history recovery path in this implementation. Native output
 continues on the Plan's unavailable-input route, which can increase primary-model
 usage. [Continuation listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history_continuation.rs)
 keep these capability limits distinct from verified fresh-user recovery.
