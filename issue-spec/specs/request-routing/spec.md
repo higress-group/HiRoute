@@ -405,6 +405,13 @@ this contract; neither ordinary new questions nor changing prompt IDs restore th
 optimization. Requests retain native forwarding and the published unavailable-input
 route, potentially using the primary model for every task. This capability limit
 MUST remain distinct from successful full adaptation.
+Ordinary managed Qoder uses its reserved model base path; generic runtime
+User-Agent values such as Bun do not identify the client. Its reserved route MUST
+enforce unavailable-user handling independently of headers. Unidentified callers
+on the generic API route retain the generic contract and are not claimed as
+managed Qoder adaptation. Older bundled adapters without fresh-user provenance
+remain executable but may need explicit model-settings reapplication to install
+the current owned adapter before normal new-user recovery is possible.
 
 A verified new native user after compaction SHALL obtain a fresh judgment while
 retaining accepted prior execution history. Semantic

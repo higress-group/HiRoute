@@ -13,6 +13,12 @@ fn reply(body: &'static [u8]) -> ProviderReply {
     }
 }
 
+fn hermes_context(session: &str, turn: &str) -> String {
+    json!({"version":1,"agent":"hermes","session_id":session,"purpose":"main",
+        "turn_id":turn,"continuation_requires_existing_turn":false})
+    .to_string()
+}
+
 #[test]
 fn follow_up_keeps_an_in_group_backup_and_still_rejudges_the_group() {
     use hiroute_gateway::server::publication::{AliasGroupIdV1, AliasRequestOwnedRouteV1};
@@ -163,10 +169,27 @@ fn assert_turn_routing(hermes: bool) {
                     }
                     fixture.publish(&mut publication);
                 }
-                let send = |input: &[Value], instructions: &str| {
-                    let response = request(fixture.address, "POST", "/v1/responses", &[
-                    ("X-HiRoute-Token", TOKEN), (if hermes { "x-hermes-session-id" } else { "session-id" }, "relay-turn-boundary"),
-                ], &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"instructions":instructions,"input":input})).unwrap());
+                let send = |input: &[Value], instructions: &str, turn: &str| {
+                    let context = hermes_context("relay-turn-boundary", turn);
+                    let mut headers = vec![
+                        ("X-HiRoute-Token", TOKEN),
+                        (
+                            if hermes {
+                                "x-hermes-session-id"
+                            } else {
+                                "session-id"
+                            },
+                            "relay-turn-boundary",
+                        ),
+                    ];
+                    if hermes {
+                        headers.extend([
+                            ("x-hiroute-agent", "hermes"),
+                            ("x-hiroute-routing-context", context.as_str()),
+                        ]);
+                    }
+                    let response = request(fixture.address, "POST", "/v1/responses", &headers,
+                        &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"instructions":instructions,"input":input})).unwrap());
                     assert_eq!(
                         response.status,
                         200,
@@ -176,7 +199,7 @@ fn assert_turn_routing(hermes: bool) {
                     serde_json::from_slice::<Value>(&response.body).unwrap()
                 };
                 let mut history = vec![json!({"role":"user","content":"Look up the record."})];
-                let first = send(&history, "Use the lookup tool.");
+                let first = send(&history, "Use the lookup tool.", "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
                     (1, 1, 1)
@@ -188,7 +211,7 @@ fn assert_turn_routing(hermes: bool) {
                 } else {
                     "Use the lookup tool."
                 };
-                let continued = send(&history, instructions);
+                let continued = send(&history, instructions, "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
                     (1, 2, 1),
@@ -196,7 +219,7 @@ fn assert_turn_routing(hermes: bool) {
                 );
                 history.extend(continued["output"].as_array().unwrap().iter().cloned());
                 history.push(json!({"role":"user","content":"A new simple task: say hello."}));
-                send(&history, instructions);
+                send(&history, instructions, "real-user-2");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
                     (2, 2, 2),

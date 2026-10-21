@@ -145,7 +145,11 @@ fn real_listener_claude_without_persistent_user_proof_keeps_main_and_child_outpu
         reply(RESPONSES_OK),
     ]);
     let classifier = NativeProvider::start(vec![]);
-    let fixture = native_fixture("claude", &[&simple, &primary, &classifier]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+        &[&simple, &primary, &classifier],
+        1,
+        ObservationFaults::healthy(),
+    );
     let main = headers("claude", "session", "main", "prompt-1", "before");
     let user = json!({"role":"user","content":"REAL_CLAUDE_TASK"});
     let first = std::thread::scope(|scope| {
@@ -333,4 +337,31 @@ fn real_listener_invalid_or_legacy_native_origin_cannot_classify_wire_summaries(
             );
         }
     }
+}
+
+#[test]
+fn real_listener_managed_qoder_path_disables_unknown_bun_user_classification() {
+    let simple = NativeProvider::start(vec![]);
+    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+    let classifier = NativeProvider::start(vec![]);
+    let fixture = native_fixture("unknown", &[&simple, &primary, &classifier]);
+    let path = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);
+    for input in ["REAL_MANAGED_QODER_USER", "UNMARKED_MANAGED_QODER_SUMMARY"] {
+        let response = request(
+            fixture.address,
+            "POST",
+            &path,
+            &[
+                ("X-HiRoute-Token", TOKEN),
+                ("User-Agent", "Bun/1.4.2"),
+                ("session-id", "shared-native-qoder"),
+            ],
+            &serde_json::to_vec(&json!({"model":MODEL,"input":input,"stream":false})).unwrap(),
+        );
+        accepted(&response);
+    }
+    assert_eq!(
+        (simple.calls(), primary.calls(), classifier.calls()),
+        (0, 2, 0)
+    );
 }
