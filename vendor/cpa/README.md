@@ -60,11 +60,23 @@ upstream response bodies. An initial failure does not create model entries.
 This does not add polling or a new catalog cache. Inference does not discover
 models. Successful listing is not proof that inference succeeds.
 
+An enabled newer generation of the same registration can supersede an in-flight
+lookup. The stale result is discarded and the registration owner can discover
+once for the latest access-bearing generation, sharing the original five-second
+deadline. Removal, disable, lost access and a different registration epoch cannot
+request this handoff. Transport failure alone does not retry. Continued churn
+remains bounded and observable; an old account cannot populate a replacement.
+
 HiRoute's ordinary routing compilation and Codex preview read and verify the
 registered catalog without repeating an already-correct auth control PATCH.
 An explicit subscription check refreshes it; credential/version changes use the
 existing auth update path. This keeps remote directory availability out of
 unchanged preview/publication reads while retaining all account pin checks.
+When the directory is empty and the validated latest discovery is terminal, a
+pin read fails immediately instead of polling that empty result for 20 seconds.
+An entered phase still gets its existing convergence wait. Missing/malformed
+observations and an older retained failure cannot shorten the wait, and a
+nonempty retained directory still undergoes every normal pin check.
 For native borrowing, the fields PATCH carries the validated lease's current `hiroute_client_version`
 alongside its controls. CPA persists and synchronously discovers that version
 even when its watcher still holds the preceding metadata. No access or refresh
@@ -78,8 +90,9 @@ phase timings. Credentials, native version, account/model IDs, URLs and raw erro
 are excluded. The in-memory store holds at most 128 accounts and reports evictions;
 process exit loses it. Retention starts when this artifact starts, so it cannot
 recover historical failures from an older process. Older concurrent attempts
-cannot overwrite the latest attempt. No new endpoint, retry or maintenance
-channel is introduced, and the discovery deadline remains five seconds.
+cannot overwrite the latest attempt. No new endpoint or maintenance channel is
+introduced. Transport retry settings are unchanged; generation handoff shares
+the original five-second discovery deadline.
 
 HiRoute validates this metadata independently of model membership, emits bounded
 `cpa_model_discovery` transitions on its existing diagnostic context and explicitly

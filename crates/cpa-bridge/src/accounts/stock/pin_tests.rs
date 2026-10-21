@@ -49,6 +49,7 @@ impl Fixture {
         let fault_value = fault.clone();
         let worker = thread::spawn(move || {
             let mut account_reads = 0;
+            let mut model_reads = 0;
             for stream in listener.incoming() {
                 let mut stream = stream.unwrap();
                 if stopped.load(Ordering::SeqCst) {
@@ -103,10 +104,25 @@ impl Fixture {
                     }
                     (200, value.to_string())
                 } else if header.starts_with("GET /v0/management/auth-files/models?") {
+                    model_reads += 1;
                     let body = match fault_value.load(Ordering::SeqCst) {
                         1 => r#"{"models":[]}"#.to_owned(),
                         2 => r#"{"models":[{"id":"other-prefix/future-model"}]}"#.to_owned(),
                         9 => serde_json::json!({"models":[{"id":format!("hiroute-codex-current/{}", "a".repeat(257))}]}).to_string(),
+                        fault @ 10..=14 => {
+                            let empty = fault != 11 && (fault != 12 || model_reads < 3);
+                            let (phase, outcome, reason) = match fault {
+                                12 => ("request", "entered", None),
+                                13 => ("registration", "completed", Some("empty_after_filtering")),
+                                14 => ("registration", "discarded", Some("account_changed")),
+                                _ => ("request", "failed", Some("timeout")),
+                            };
+                            serde_json::json!({
+                                "models": if empty {serde_json::json!([])} else {serde_json::json!([{"id":"hiroute-codex-current/future-model"}])},
+                                "hiroute_model_discovery": {"schema":"hiroute.cpa-model-discovery/v1", "process_id":123,"evicted_accounts":0,"first_failure":null,
+                                    "latest":{"attempt_id":1,"phase":phase,"outcome":outcome,"reason":reason,"elapsed_ms":50,"phase_elapsed_ms":50,"timings":[]}}
+                            }).to_string()
+                        },
                         _ => r#"{"models":[{"id":"hiroute-codex-current/future-model"}]}"#.to_owned(),
                     };
                     (200, body)
@@ -178,6 +194,34 @@ impl Fixture {
 
 #[path = "diagnostic_tests.rs"]
 mod diagnostic_tests;
+
+#[test]
+fn terminal_empty_discovery_fails_without_spending_the_control_budget() {
+    for fault in [10, 13, 14] {
+        let fixture = Fixture::new();
+        fixture.fault.store(fault, Ordering::SeqCst);
+        let started = Instant::now();
+        assert!(matches!(
+            fixture.discover(false),
+            Err(AccountDiscoveryError::PinNotApplied)
+        ));
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert_eq!(fixture.patches.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[test]
+fn pending_discovery_and_retained_catalog_keep_their_existing_meaning() {
+    for fault in [11, 12] {
+        let fixture = Fixture::new();
+        fixture.fault.store(fault, Ordering::SeqCst);
+        assert_eq!(
+            fixture.discover(false).unwrap()[0].observed_model_ids,
+            BTreeSet::from(["future-model".into()])
+        );
+        assert_eq!(fixture.patches.load(Ordering::SeqCst), 0);
+    }
+}
 
 #[test]
 fn fixture_survives_abandoned_deadline_connections() {

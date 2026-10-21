@@ -152,3 +152,22 @@ fn registration_guard_reports_the_exact_unmet_version_checks() {
         }
     ));
 }
+
+#[test]
+fn only_the_latest_valid_terminal_attempt_can_shorten_an_empty_wait() {
+    let mut value = payload();
+    assert!(latest_is_terminal(&value));
+    value["hiroute_model_discovery"]["first_failure"] =
+        value["hiroute_model_discovery"]["latest"].clone();
+    value["hiroute_model_discovery"]["latest"]["outcome"] = json!("entered");
+    value["hiroute_model_discovery"]["latest"]["reason"] = Value::Null;
+    assert!(!latest_is_terminal(&value));
+    value["hiroute_model_discovery"]["latest"]["phase"] = json!("catalog");
+    value["hiroute_model_discovery"]["latest"]["outcome"] = json!("completed");
+    assert!(!latest_is_terminal(&value));
+    value["hiroute_model_discovery"]["latest"]["phase"] = json!("registration");
+    assert!(latest_is_terminal(&value));
+    value["hiroute_model_discovery"]["latest"]["unexpected"] = json!(true);
+    assert!(!latest_is_terminal(&value));
+    assert!(!latest_is_terminal(&json!({"models":[]})));
+}

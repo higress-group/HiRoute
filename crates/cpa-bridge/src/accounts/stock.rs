@@ -246,7 +246,7 @@ fn wait_for_account_pin(
         trace.checks.account_index_matches = Some(patched.auth_index == account.auth_index);
         trace.checks.account_retry_zero = Some(patched.request_retry == Some(0));
         if patched.auth_index == account.auth_index && patched.request_retry == Some(0) {
-            let registered = get_account_models(
+            let (registered, discovery_terminal) = get_account_models(
                 address,
                 secrets,
                 expected_version,
@@ -256,6 +256,9 @@ fn wait_for_account_pin(
             )?;
             trace.checks.account_model_count = Some(registered.len() as u32);
             trace.checks.account_models_nonempty = Some(!registered.is_empty());
+            if registered.is_empty() && discovery_terminal {
+                return Err(AccountDiscoveryError::PinNotApplied);
+            }
             let prefixed = strip_exact_prefix(&registered, prefix);
             let marker = format!("{prefix}/");
             let prefixes_match = registered.iter().all(|model| {
@@ -478,7 +481,7 @@ fn get_account_models(
     timeout: Duration,
     id: &str,
     trace: &mut DiscoveryTrace<'_>,
-) -> Result<BTreeSet<String>, AccountDiscoveryError> {
+) -> Result<(BTreeSet<String>, bool), AccountDiscoveryError> {
     let path = format!(
         "/v0/management/auth-files/models?name={}",
         percent_encode_query(id)
@@ -514,7 +517,8 @@ fn get_account_models(
             return Err(AccountDiscoveryError::DuplicateModel);
         }
     }
-    Ok(result)
+    let terminal = result.is_empty() && model_discovery::latest_is_terminal(&value);
+    Ok((result, terminal))
 }
 
 fn validate_prefixed_catalog(

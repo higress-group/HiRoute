@@ -2785,8 +2785,215 @@ index 0000000..8909d5d
 +		})
 +	}
 +}
+diff --git a/sdk/cliproxy/service_codex_registration.go b/sdk/cliproxy/service_codex_registration.go
+new file mode 100644
+index 0000000..8b8b61e
+--- /dev/null
++++ b/sdk/cliproxy/service_codex_registration.go
+@@ -0,0 +1,43 @@
++package cliproxy
++
++import (
++	"context"
++	"strings"
++	"time"
++
++	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++)
++
++func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreauth.Auth, cache *openAICompatibilityRegistrationCache) {
++	if !codexDiscoveryAccount(a) {
++		s.registerModelsForAuthAttempt(ctx, a, cache)
++		return
++	}
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	// A newer generation may supersede a lookup while it is in flight. Discard
++	// its result, then discover once for that latest generation in the SAME
++	// five-second budget. Transport failures do not request a handoff.
++	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
++	defer cancel()
++	if s != nil && s.coreManager != nil {
++		if latest, ok := s.coreManager.GetByID(a.ID); ok && latest != nil && latest.RegistrationEpoch == a.RegistrationEpoch && codexDiscoveryAccount(latest) {
++			a = latest
++		}
++	}
++	for attempt := 0; attempt < 2 && ctx.Err() == nil; attempt++ {
++		a = s.registerModelsForAuthAttempt(ctx, a, cache)
++		if a == nil {
++			return
++		}
++	}
++}
++
++func codexDiscoveryAccount(a *coreauth.Auth) bool {
++	if a == nil || !strings.EqualFold(strings.TrimSpace(a.Provider), "codex") || a.AuthKind() == "apikey" {
++		return false
++	}
++	token, _ := a.Metadata["access_token"].(string)
++	return strings.TrimSpace(token) != ""
++}
+diff --git a/sdk/cliproxy/service_codex_registration_test.go b/sdk/cliproxy/service_codex_registration_test.go
+new file mode 100644
+index 0000000..b95c554
+--- /dev/null
++++ b/sdk/cliproxy/service_codex_registration_test.go
+@@ -0,0 +1,152 @@
++package cliproxy
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
++	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
++)
++
++func TestHiRouteCodexRegistrationUsesLatestGeneration(t *testing.T) {
++	manager := coreauth.NewManager(nil, nil, nil)
++	original, err := manager.Register(context.Background(), &coreauth.Auth{ID: "generation-handoff", Provider: "codex", Prefix: "old", Metadata: map[string]any{"access_token": "old-access", "hiroute_client_version": "0.999.0"}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer GlobalModelRegistry().UnregisterClient(original.ID)
++	service := &Service{cfg: &config.Config{}, coreManager: manager}
++	service.cfg.ForceModelPrefix = true
++	calls := 0
++	var firstDeadline time.Time
++	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
++		calls++
++		deadline, ok := r.Context().Deadline()
++		if !ok {
++			t.Fatal("missing discovery bound")
++		}
++		body := `{"models":[{"slug":"old-only"}]}`
++		switch calls {
++		case 1:
++			firstDeadline = deadline
++			if r.Header.Get("Authorization") != "Bearer old-access" {
++				t.Fatal("wrong original credential")
++			}
++			next, _ := manager.GetByID(original.ID)
++			next.Prefix = "new"
++			next.Metadata["access_token"] = "new-access"
++			if _, err := manager.Update(context.Background(), next); err != nil {
++				t.Fatal(err)
++			}
++			time.Sleep(15 * time.Millisecond)
++		case 2:
++			if !deadline.Equal(firstDeadline) {
++				t.Fatal("handoff reset the discovery deadline")
++			}
++			if r.Header.Get("Authorization") != "Bearer new-access" {
++				t.Fatal("latest credential not used")
++			}
++			body = `{"models":[{"slug":"new-only"}]}`
++		default:
++			t.Fatal("unbounded generation handoff")
++		}
++		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
++	}))
++	service.completeModelRegistrationForAuth(ctx, original)
++	models := GlobalModelRegistry().GetModelsForClient(original.ID)
++	if calls != 2 || len(models) != 1 || models[0].ID != "new/new-only" {
++		t.Fatalf("latest authorization lost: calls=%d models=%+v", calls, models)
++	}
++	snapshot := modeldiscovery.Read(original.ID)
++	if snapshot.FirstFailure == nil || snapshot.FirstFailure.Reason != modeldiscovery.AccountChanged || snapshot.Latest == nil || snapshot.Latest.Phase != modeldiscovery.Registration || snapshot.Latest.Outcome != modeldiscovery.Completed {
++		t.Fatal("handoff lost failure/recovery evidence")
++	}
++}
++
++func TestHiRouteCodexRegistrationHandoffIsBoundedAndDoesNotRetryTransport(t *testing.T) {
++	for _, mutate := range []bool{false, true} {
++		name := "transport"
++		if mutate {
++			name = "continuous-generation-change"
++		}
++		t.Run(name, func(t *testing.T) {
++			manager := coreauth.NewManager(nil, nil, nil)
++			original, err := manager.Register(context.Background(), &coreauth.Auth{ID: "bounded-" + name, Provider: "codex", Metadata: map[string]any{"access_token": "test-access", "hiroute_client_version": "0.999.0"}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			service := &Service{cfg: &config.Config{}, coreManager: manager}
++			calls := 0
++			ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
++				calls++
++				if !mutate {
++					return nil, errors.New("synthetic transport failure")
++				}
++				if calls > 2 {
++					t.Fatal("unbounded registration handoff")
++				}
++				next, _ := manager.GetByID(original.ID)
++				if _, err := manager.Update(context.Background(), next); err != nil {
++					t.Fatal(err)
++				}
++				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"stale"}]}`)), Request: r}, nil
++			}))
++			service.completeModelRegistrationForAuth(ctx, original)
++			expected := 1
++			if mutate {
++				expected = 2
++			}
++			if calls != expected || len(GlobalModelRegistry().GetModelsForClient(original.ID)) != 0 {
++				t.Fatalf("wrong bounded outcome: calls=%d", calls)
++			}
++		})
++	}
++}
++
++func TestHiRouteCodexRegistrationDoesNotFollowRevokedOrReplacedAccount(t *testing.T) {
++	for _, action := range []string{"removed", "disabled", "no-access", "replaced"} {
++		t.Run(action, func(t *testing.T) {
++			manager := coreauth.NewManager(nil, nil, nil)
++			original, err := manager.Register(context.Background(), &coreauth.Auth{ID: "revoke-" + action, Provider: "codex", Metadata: map[string]any{"access_token": "test-access", "hiroute_client_version": "0.999.0"}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer GlobalModelRegistry().UnregisterClient(original.ID)
++			service := &Service{cfg: &config.Config{}, coreManager: manager}
++			calls := 0
++			ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
++				calls++
++				current, _ := manager.GetByID(original.ID)
++				switch action {
++				case "removed":
++					manager.Remove(context.Background(), original.ID)
++				case "replaced":
++					manager.Remove(context.Background(), original.ID)
++					if _, err := manager.Register(context.Background(), current); err != nil {
++						t.Fatal(err)
++					}
++				default:
++					if action == "disabled" {
++						current.Disabled = true
++					} else {
++						delete(current.Metadata, "access_token")
++					}
++					if _, err := manager.Update(context.Background(), current); err != nil {
++						t.Fatal(err)
++					}
++				}
++				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"stale"}]}`)), Request: r}, nil
++			}))
++			service.completeModelRegistrationForAuth(ctx, original)
++			if calls != 1 || len(GlobalModelRegistry().GetModelsForClient(original.ID)) != 0 {
++				t.Fatal("followed revoked/replaced authorization or introduced static fallback")
++			}
++		})
++	}
++}
 diff --git a/sdk/cliproxy/service_models.go b/sdk/cliproxy/service_models.go
-index 1bb4b62..736d4fb 100644
+index 1bb4b62..c8acf5d 100644
 --- a/sdk/cliproxy/service_models.go
 +++ b/sdk/cliproxy/service_models.go
 @@ -8,9 +8,12 @@ import (
@@ -2802,6 +3009,15 @@ index 1bb4b62..736d4fb 100644
  )
  
  // registerModelsForAuth (re)binds provider models in the global registry using the core auth ID as client identifier.
+@@ -18,7 +21,7 @@ func (s *Service) registerModelsForAuth(ctx context.Context, a *coreauth.Auth) {
+ 	s.registerModelsForAuthWithCache(ctx, a, nil)
+ }
+ 
+-func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreauth.Auth, compatCache *openAICompatibilityRegistrationCache) {
++func (s *Service) registerModelsForAuthAttempt(ctx context.Context, a *coreauth.Auth, compatCache *openAICompatibilityRegistrationCache) (rebind *coreauth.Auth) {
+ 	if a == nil || a.ID == "" {
+ 		return
+ 	}
 @@ -71,6 +74,7 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  		return
  	}
@@ -2810,7 +3026,7 @@ index 1bb4b62..736d4fb 100644
  	switch provider {
  	case constant.Gemini:
  		models = registry.GetGeminiModels()
-@@ -149,6 +153,34 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -149,6 +153,37 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  		default:
  			models = registry.GetCodexProModels()
  		}
@@ -2836,6 +3052,9 @@ index 1bb4b62..736d4fb 100644
 +						reason = modeldiscovery.AccountDisabled
 +					}
 +					discoveryTrace.End(modeldiscovery.Discarded, reason)
++					if ok && !current.Disabled && current.RegistrationEpoch == a.RegistrationEpoch && current.Generation != a.Generation && codexDiscoveryAccount(current) && ctx.Err() == nil {
++						return current
++					}
 +					return
 +				}
 +			}
@@ -2845,7 +3064,7 @@ index 1bb4b62..736d4fb 100644
  		models = applyExcludedModels(models, excluded)
  	case "kimi", "kimi-ai", "kimi.ai", "kimi.com":
  		models = registry.GetKimiModels()
-@@ -283,10 +315,16 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -283,10 +318,16 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  		}
  	}
  	if ctx.Err() != nil {
@@ -2862,7 +3081,7 @@ index 1bb4b62..736d4fb 100644
  		return
  	}
  	key := provider
-@@ -297,6 +335,15 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -297,6 +338,15 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  	if len(models) > 0 {
  		models = applyOAuthSettingsForAuth(s.cfg, provider, authKind, models)
  		s.registerResolvedModelsForAuth(a, key, applyModelPrefixes(models, a.Prefix, s.cfg != nil && s.cfg.ForceModelPrefix))
@@ -2878,7 +3097,7 @@ index 1bb4b62..736d4fb 100644
  		if strings.EqualFold(strings.TrimSpace(a.Provider), "antigravity") {
  			s.asyncProbeAntigravityCapabilities(ctx, a, key)
  		}
-@@ -304,6 +351,10 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -304,6 +354,11 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  	}
  
  	GlobalModelRegistry().UnregisterClient(a.ID)
@@ -2886,6 +3105,7 @@ index 1bb4b62..736d4fb 100644
 +		discoveryTrace.Models(0)
 +		discoveryTrace.End(modeldiscovery.Completed, modeldiscovery.EmptyAfterFiltering)
 +	}
++	return
  }
  
  // refreshModelRegistrationForAuth re-applies the latest model registration for

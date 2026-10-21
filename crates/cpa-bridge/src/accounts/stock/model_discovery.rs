@@ -1,6 +1,6 @@
 use hiroute_diagnostics::event::{
-    CpaDiscoveryAttempt, CpaDiscoveryObservation, CpaDiscoveryOutcome, CpaDiscoveryUnavailable,
-    CpaModelDiscovery,
+    CpaDiscoveryAttempt, CpaDiscoveryObservation, CpaDiscoveryOutcome, CpaDiscoveryPhase,
+    CpaDiscoveryUnavailable, CpaModelDiscovery,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -112,6 +112,20 @@ fn valid(attempt: &CpaDiscoveryAttempt) -> bool {
             attempt.outcome,
             CpaDiscoveryOutcome::Failed | CpaDiscoveryOutcome::Discarded
         ) || attempt.reason.is_some())
+}
+
+/// A terminal empty catalog has no observable discovery work left to await.
+/// Missing/malformed metadata and a retained older failure cannot shorten a wait.
+pub(super) fn latest_is_terminal(value: &Value) -> bool {
+    parse(value).is_ok_and(|observations| {
+        observations.into_iter().any(|observation| {
+            matches!(observation, CpaDiscoveryObservation::Observed {
+                retained_first_failure: false, attempt, ..
+            } if matches!(attempt.outcome, CpaDiscoveryOutcome::Failed | CpaDiscoveryOutcome::Discarded)
+                || (attempt.phase == CpaDiscoveryPhase::Registration
+                    && attempt.outcome == CpaDiscoveryOutcome::Completed))
+        })
+    })
 }
 
 #[cfg(test)]

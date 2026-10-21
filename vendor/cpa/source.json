@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/router-for-me/CLIProxyAPI",
   "commit": "a270e7b9e57aaecd8f82555f44c2108518ad2330",
-  "version": "8.0.4-hiroute.6",
+  "version": "8.0.4-hiroute.7",
   "built_at": "2026-09-29T00:00:00Z",
   "patch": "local-management-stdin.patch",
-  "patch_sha256": "30829aaae822a8b967515d2a39aaaa47183f0aac1bbe30aaf1d006987b86d84d"
+  "patch_sha256": "4a5e36c25c0ed66080aceb41dd7332436f91e6dfdddb91dc282d78e1201f2d70"
 }

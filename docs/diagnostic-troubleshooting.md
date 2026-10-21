@@ -90,6 +90,13 @@ An empty account catalog after a failed initial discovery can coexist with corre
 persisted controls. Ordinary pin reads do not refresh an already-correct account;
 repeated reads alone therefore cannot establish that upstream discovery recovered.
 Use an isolated explicit check to distinguish this state from slow management I/O.
+Current pin reads fail promptly for a validated latest terminal attempt with no
+account models. Pending or unobserved discovery remains subject to the ordinary
+control deadline; an older retained failure does not make the latest attempt fail.
+Generation-only supersession may hand off once to current access credentials in
+the same upstream deadline. A different registration epoch, disable or removal
+never follows that handoff. Inspect both attempts before attributing a new request
+to a transport retry.
 Keep remote availability, local pin convergence and successful inference separate.
 Do not infer the historical failing condition from the generic
 `control_pin_not_applied` code alone.
