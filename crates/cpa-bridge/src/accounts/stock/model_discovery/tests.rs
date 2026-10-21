@@ -128,3 +128,27 @@ fn observation_limit_is_explicit_and_bounded() {
         }
     ));
 }
+
+#[test]
+fn registration_guard_reports_the_exact_unmet_version_checks() {
+    let mut value = payload();
+    value["hiroute_model_discovery"]["latest"] = json!({
+        "attempt_id": 2, "phase":"registration", "outcome":"discarded",
+        "reason":"account_changed", "elapsed_ms":860, "phase_elapsed_ms":0,
+        "http_status":200, "model_count":9, "generation_matches":true,
+        "registration_epoch_matches":false, "timings":[]
+    });
+    let events = Observations::default().read(&value, Some(0));
+    assert!(matches!(
+        &events[0].observation,
+        CpaDiscoveryObservation::Observed {
+            attempt: CpaDiscoveryAttempt {
+                generation_matches: Some(true),
+                registration_epoch_matches: Some(false),
+                http_status: Some(200),
+                ..
+            },
+            ..
+        }
+    ));
+}

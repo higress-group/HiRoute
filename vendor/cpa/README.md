@@ -88,6 +88,9 @@ the same transition again. Proxy CONNECT rejection has its own status; it must
 not be interpreted as an upstream HTTP response. An empty successful upstream
 list, filtering to zero models and discarding a stale authorization are distinct
 observations. These facts diagnose listing and registration, not inference.
+Registration also records generation and registration-epoch equality as separate
+booleans, so a stale result identifies the actual failed guard without exposing
+authorization identifiers or generation values.
 
 On Windows, native Codex and Claude file borrowing uses
 [`borrowed_native_windows.rs`](../../crates/cpa-bridge/src/borrowed_native_windows.rs).

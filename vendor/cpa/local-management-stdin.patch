@@ -1217,10 +1217,10 @@ index 7d69d46..44da6d5 100644
  
 diff --git a/internal/modeldiscovery/diagnostics.go b/internal/modeldiscovery/diagnostics.go
 new file mode 100644
-index 0000000..d710907
+index 0000000..507b3f9
 --- /dev/null
 +++ b/internal/modeldiscovery/diagnostics.go
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,279 @@
 +// Package modeldiscovery retains bounded, secret-free observations for the
 +// existing authenticated management response. It never logs raw errors or I/O.
 +package modeldiscovery
@@ -1289,16 +1289,18 @@ index 0000000..d710907
 +}
 +
 +type Attempt struct {
-+	ID             uint64        `json:"attempt_id"`
-+	Phase          Phase         `json:"phase"`
-+	Outcome        Outcome       `json:"outcome"`
-+	Reason         Reason        `json:"reason,omitempty"`
-+	ElapsedMS      uint64        `json:"elapsed_ms"`
-+	PhaseElapsedMS uint64        `json:"phase_elapsed_ms"`
-+	HTTPStatus     *int          `json:"http_status,omitempty"`
-+	ProxyStatus    *int          `json:"proxy_status,omitempty"`
-+	ModelCount     *uint64       `json:"model_count,omitempty"`
-+	Timings        []PhaseTiming `json:"timings"`
++	ID                       uint64        `json:"attempt_id"`
++	Phase                    Phase         `json:"phase"`
++	Outcome                  Outcome       `json:"outcome"`
++	Reason                   Reason        `json:"reason,omitempty"`
++	ElapsedMS                uint64        `json:"elapsed_ms"`
++	PhaseElapsedMS           uint64        `json:"phase_elapsed_ms"`
++	HTTPStatus               *int          `json:"http_status,omitempty"`
++	ProxyStatus              *int          `json:"proxy_status,omitempty"`
++	ModelCount               *uint64       `json:"model_count,omitempty"`
++	GenerationMatches        *bool         `json:"generation_matches,omitempty"`
++	RegistrationEpochMatches *bool         `json:"registration_epoch_matches,omitempty"`
++	Timings                  []PhaseTiming `json:"timings"`
 +}
 +
 +type Snapshot struct {
@@ -1364,6 +1366,10 @@ index 0000000..d710907
 +
 +func (t *Trace) HTTP(status int)  { t.value.HTTPStatus = &status }
 +func (t *Trace) Models(count int) { value := uint64(count); t.value.ModelCount = &value }
++
++func (t *Trace) RegistrationChecks(generation, epoch bool) {
++	t.value.GenerationMatches, t.value.RegistrationEpochMatches = &generation, &epoch
++}
 +
 +// Transport retains only closed categories. URLs, hostnames, proxy credentials
 +// and arbitrary error strings are never copied into an observation.
@@ -1464,6 +1470,14 @@ index 0000000..d710907
 +}
 +
 +func clone(value Attempt) Attempt {
++	if value.GenerationMatches != nil {
++		copy := *value.GenerationMatches
++		value.GenerationMatches = &copy
++	}
++	if value.RegistrationEpochMatches != nil {
++		copy := *value.RegistrationEpochMatches
++		value.RegistrationEpochMatches = &copy
++	}
 +	if value.HTTPStatus != nil {
 +		copy := *value.HTTPStatus
 +		value.HTTPStatus = &copy
@@ -2653,10 +2667,10 @@ index 0000000..91db81d
 +}
 diff --git a/sdk/cliproxy/service_codex_discovery_test.go b/sdk/cliproxy/service_codex_discovery_test.go
 new file mode 100644
-index 0000000..f80821b
+index 0000000..8909d5d
 --- /dev/null
 +++ b/sdk/cliproxy/service_codex_discovery_test.go
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,114 @@
 +package cliproxy
 +
 +import (
@@ -2762,6 +2776,9 @@ index 0000000..f80821b
 +			if snapshot.Latest == nil || snapshot.Latest.Phase != modeldiscovery.Registration || snapshot.Latest.Outcome != modeldiscovery.Discarded || snapshot.Latest.Reason != reason {
 +				t.Fatalf("wrong discard: %+v", snapshot.Latest)
 +			}
++			if reason == modeldiscovery.AccountChanged && (snapshot.Latest.RegistrationEpochMatches == nil || *snapshot.Latest.RegistrationEpochMatches) {
++				t.Fatal("missing exact registration epoch mismatch")
++			}
 +			if len(GlobalModelRegistry().GetModelsForClient(a.ID)) != 0 {
 +				t.Fatal("discarded catalog registered")
 +			}
@@ -2769,7 +2786,7 @@ index 0000000..f80821b
 +	}
 +}
 diff --git a/sdk/cliproxy/service_models.go b/sdk/cliproxy/service_models.go
-index 1bb4b62..dc6bed8 100644
+index 1bb4b62..736d4fb 100644
 --- a/sdk/cliproxy/service_models.go
 +++ b/sdk/cliproxy/service_models.go
 @@ -8,9 +8,12 @@ import (
@@ -2793,7 +2810,7 @@ index 1bb4b62..dc6bed8 100644
  	switch provider {
  	case constant.Gemini:
  		models = registry.GetGeminiModels()
-@@ -149,6 +153,31 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -149,6 +153,34 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  		default:
  			models = registry.GetCodexProModels()
  		}
@@ -2808,6 +2825,9 @@ index 1bb4b62..dc6bed8 100644
 +			// An auth removed or replaced during the bounded request must not reappear.
 +			if s.coreManager != nil {
 +				current, ok := s.coreManager.GetByID(a.ID)
++				if ok {
++					discoveryTrace.RegistrationChecks(current.Generation == a.Generation, current.RegistrationEpoch == a.RegistrationEpoch)
++				}
 +				if !ok || current.Disabled || current.Generation != a.Generation || current.RegistrationEpoch != a.RegistrationEpoch {
 +					reason := modeldiscovery.AccountChanged
 +					if !ok {
@@ -2825,7 +2845,7 @@ index 1bb4b62..dc6bed8 100644
  		models = applyExcludedModels(models, excluded)
  	case "kimi", "kimi-ai", "kimi.ai", "kimi.com":
  		models = registry.GetKimiModels()
-@@ -283,10 +312,16 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -283,10 +315,16 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  		}
  	}
  	if ctx.Err() != nil {
@@ -2842,7 +2862,7 @@ index 1bb4b62..dc6bed8 100644
  		return
  	}
  	key := provider
-@@ -297,6 +332,15 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -297,6 +335,15 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  	if len(models) > 0 {
  		models = applyOAuthSettingsForAuth(s.cfg, provider, authKind, models)
  		s.registerResolvedModelsForAuth(a, key, applyModelPrefixes(models, a.Prefix, s.cfg != nil && s.cfg.ForceModelPrefix))
@@ -2858,7 +2878,7 @@ index 1bb4b62..dc6bed8 100644
  		if strings.EqualFold(strings.TrimSpace(a.Provider), "antigravity") {
  			s.asyncProbeAntigravityCapabilities(ctx, a, key)
  		}
-@@ -304,6 +348,10 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -304,6 +351,10 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
  	}
  
  	GlobalModelRegistry().UnregisterClient(a.ID)

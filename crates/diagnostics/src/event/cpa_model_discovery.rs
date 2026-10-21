@@ -50,6 +50,10 @@ pub struct CpaDiscoveryAttempt {
     pub proxy_status: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_matches: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registration_epoch_matches: Option<bool>,
     pub timings: Vec<CpaDiscoveryTiming>,
 }
 
