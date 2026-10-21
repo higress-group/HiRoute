@@ -624,6 +624,12 @@ impl AgentTurnHistoryStore {
             inner
                 .entries
                 .get(&key)
+                .filter(|entry| {
+                    entry
+                        .closed
+                        .back()
+                        .is_some_and(|turn| turn.completed.status == AgentTurnStatus::Completed)
+                })
                 .and_then(|entry| entry.current_segment.clone())
         } else {
             None
