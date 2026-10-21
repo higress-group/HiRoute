@@ -27,14 +27,15 @@ restoration must verify ownership rather than infer it from a provider name.
 [Native routing resources](../../crates/integrations/src/agents/routing_adapters.rs)
 use the same protected artifact journal as model settings. The
 [request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
-main/child history and detaches auxiliary or uncertain calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
+main/child history and detaches known auxiliary calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
 cover interleaving and semantic compaction independently of provider affinity.
 The [native continuity owner](../../crates/gateway/src/context_hold/continuity.rs)
-requires original-user provenance to restart capture after a gap. Claude/Qoder and
-pure OpenCode Workers without that producer omit optional routing history; their
-native execution and observation identities remain independent. Follow the
-[routing contract](../../issue-spec/specs/request-routing/spec.md#requirement-native-auxiliary-calls-cannot-change-conversation-routing-history)
-for current recovery limits rather than equating successful output with full adaptation.
+separates known continuations from usable observed input. Missing origin proof
+retains classification, actual capture and evaluation in an uncertain lane without
+replacing verified task history. Native identities remain scoped independently;
+Qoder's shared main/child identity has an accepted association limit. Follow the
+[routing contract](../../issue-spec/specs/request-routing/spec.md#requirement-native-routing-remains-available-without-perfect-input-provenance)
+for recovery limits rather than equating successful output with full adaptation.
 
 Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
 explains native provider-scoped session discovery before enabling routing. Default

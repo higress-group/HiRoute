@@ -25,11 +25,12 @@ content ownership, borrowing, rollback and restore. Pi auto-loads
 DSH inserts a public Cordis middleware next to the selected patch; OpenCode loads
 `plugins/hiroute-routing.js` from its selected resource root; its automatic scan
 also excludes `.mjs`. The hooks only annotate managed model
-calls. Missing evidence makes Gateway history request-scoped. Pi managed-provider
+calls. Missing native identity keeps request scope; missing source proof retains
+observed classification, capture and evaluation. Pi managed-provider
 warming is disabled because it lacks a separate native request purpose. DSH reads
 at most 512 existing event positions, and OpenCode's optional session lookup has a
 50 ms deadline and a 128-message bound. Huge/unknown native histories may therefore
-lose optimization. Restart/reload is needed for an existing process to load new
+lose verified continuity without globally disabling smart routing. Restart/reload is needed for an existing process to load new
 resources; installed files alone are not proof of live activation.
 
 DSH's wire user role also carries runtime context. The adapter therefore binds
@@ -39,12 +40,20 @@ checks the bounded proof before routing. It leaves the execution body unchanged.
 The native pi-ai leaf concatenates pure text blocks within each user envelope;
 the adapter verifies that projection before hashing the final wire blocks, without
 joining separate messages or inferring user input from unknown sources.
-Unknown content, missing proof or exhausted projection capacity uses the normal
-unavailable-input fallback and cannot add synthetic users to later history.
-Native subagent settlement notices are synthetic context, not new user tasks.
-An idle Agent relay with no current true user remains conservative; a matching
-main/session marker records the capture gap so a later proven user cannot inherit
-a complete-history claim or assessment across that uncaptured output.
+Unknown content, missing proof or exhausted projection capacity uses the separate
+observed lane with explicit source uncertainty. A relay/settlement following the
+latest real input cannot acquire its proof merely by arriving in the same native
+turn. The verified main lane records a capture gap rather than a complete-history
+claim; later actual new inputs can recover full capture and evaluation.
+
+Pi custom/unknown projected input remains observed; a known compacted continuation
+requires saved input. Pending compaction ends at a new native user/checkpoint even
+if its completion hook failed. OpenCode records prompt creation IDs and identifies
+known compaction continuations through the pinned producer's typed part marker and
+summary-parent relation. Overflow replay copies and unbound late child input stay
+observed instead of acquiring the newer main task. A cold plugin without prompt
+creation evidence keeps routing available; the next native prompt supplies it.
+These mechanisms do not establish semantic scoring accuracy.
 
 ## Shared transaction and native leaves
 

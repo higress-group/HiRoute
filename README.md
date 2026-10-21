@@ -40,15 +40,16 @@ delegated to other agents.
 
 Tool calls within a turn usually keep that turn's decision, so the growing context prefix stays
 cacheable when continuity and the captured decision remain valid. HiRoute decides again when a
-new original user input can be verified, and may keep the same model; cache reuse depends on the provider. HiRoute
-runs locally as a Desktop application or a headless CLI and daemon.
+usable new task input arrives, and may keep the same model; cache reuse depends on the provider.
+HiRoute runs locally as a Desktop application or a headless CLI and daemon.
 
-History optimization depends on the native client's evidence. Current Claude Code 2.1.287,
-Hermes 0.20 and Qoder 1.1.72 use the plan's unavailable-input route; new questions do not restore classification
-or history capture. Codex 0.147.0 cannot recover within an already compressed thread first seen
-after a Gateway restart; a new clean, uncompressed supported thread can resume optimization.
-These paths can increase primary-model usage. Successful output alone does not establish
-recovery. See the [routing and recovery limits](apps/website/content/guides/model-routing.en.md).
+Classification, history capture and cross-turn evaluation remain available when a native client
+cannot prove input origin. Such input carries explicit uncertainty; missing captured execution
+stays partial. Codex compressed sessions can recover on new questions after a Gateway restart
+without creating a new conversation. Claude, Hermes and Qoder retain smart routing while task
+association and scoring may be inaccurate. Qoder's shared main/child identity is an accepted
+limitation. Known auxiliary summaries stay outside main history. Successful output alone does
+not establish routing or scoring accuracy. See the [routing and recovery limits](apps/website/content/guides/model-routing.en.md).
 
 ## News
 

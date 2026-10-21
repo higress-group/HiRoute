@@ -438,8 +438,9 @@ continuity. Restarts rebuild only state for which the native client supplies
 evidence; Gateway in-memory history is not reconstructed from equal summaries.
 For Pi, DSH and OpenCode adapters, an unchanged copied turn marker cannot establish continuity
 for an otherwise rewritten transcript without a new native compaction checkpoint.
-Such uncertain requests SHALL neither replace the existing checkpoint nor append
-their execution to its routing history.
+Such uncertain requests SHALL neither replace that verified checkpoint nor append
+their execution to its routing history. A separate observed lane MAY retain their
+actual execution and evaluation with explicit source uncertainty.
 
 #### Scenario: A native summary overlaps its parent
 
