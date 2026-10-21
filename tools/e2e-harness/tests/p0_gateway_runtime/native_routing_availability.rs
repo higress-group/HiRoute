@@ -3,6 +3,38 @@ use super::native_history::{accepted, classifier_body, headers, native_fixture, 
 use super::*;
 use serde_json::json;
 
+fn observed_fixture(agent: &str, providers: &[&NativeProvider]) -> RuntimeFixture {
+    if agent == "hermes" {
+        native_fixture(agent, providers)
+    } else {
+        RuntimeFixture::launch_rest_classified_with_observation(
+            providers,
+            1,
+            ObservationFaults::healthy(),
+        )
+    }
+}
+
+fn assert_actual_evaluation(fixture: &RuntimeFixture) {
+    let facts = wait_execution_facts(fixture, 2);
+    let assessment = facts
+        .iter()
+        .find(|f| f["fact"]["kind"] == "branch_assessment_recorded")
+        .expect("B must record an actual evaluation of A");
+    assert_eq!(assessment["fact"]["score"], 0.75);
+    assert_eq!(assessment["fact"]["partial"], false);
+    assert_eq!(assessment["fact"]["target_from_ordinal"], 1);
+    assert_eq!(assessment["fact"]["target_through_ordinal"], 1);
+    let completed = facts
+        .iter()
+        .find(|f| f["fact"]["kind"] == "agent_turn_finished")
+        .expect("A must have a captured completed execution");
+    assert_eq!(
+        assessment["fact"]["model_configuration_id"],
+        completed["fact"]["model_configuration_id"]
+    );
+}
+
 #[test]
 fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_output() {
     for agent in [
@@ -13,7 +45,7 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
         let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(
             br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#
         )]);
-        let fixture = native_fixture(agent, &[&simple, &primary, &classifier]);
+        let fixture = observed_fixture(agent, &[&simple, &primary, &classifier]);
         let make_headers = |turn| {
             if agent == "qoder" {
                 vec![
@@ -70,6 +102,7 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
             b["history_partial"], true,
             "old uncaptured context stays partial"
         );
+        assert_actual_evaluation(&fixture);
     }
 }
 
@@ -81,7 +114,7 @@ fn real_listener_managed_qoder_reserved_entry_recovers_routing_without_inventing
         reply(CLASSIFIER_SIMPLE),
         reply(CLASSIFIER_SIMPLE_WITH_ASSESSMENT),
     ]);
-    let fixture = native_fixture("unknown", &[&simple, &primary, &classifier]);
+    let fixture = observed_fixture("unknown", &[&simple, &primary, &classifier]);
     let path = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);
     let bearer = format!("Bearer {TOKEN}");
     for input in [
@@ -114,4 +147,5 @@ fn real_listener_managed_qoder_reserved_entry_recovers_routing_without_inventing
             .to_string()
             .contains("unverified_request_user_origin")
     );
+    assert_actual_evaluation(&fixture);
 }
