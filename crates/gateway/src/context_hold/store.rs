@@ -41,6 +41,7 @@ impl ContextHoldKey {
             digest_key,
             false,
             false,
+            false,
         )
     }
 
@@ -56,6 +57,7 @@ impl ContextHoldKey {
             identity,
             digest_key,
             true,
+            false,
             false,
         )
     }
@@ -73,6 +75,25 @@ impl ContextHoldKey {
             digest_key,
             true,
             true,
+            false,
+        )
+        .map(|key| key.scope_id())
+    }
+
+    pub(crate) fn verified_capture_gap_scope(
+        authorized: &AuthorizedRequestPlan,
+        ingress_protocol: IngressProtocol,
+        identity: &ContextIdentityFacts,
+        digest_key: &[u8; 32],
+    ) -> Option<String> {
+        Self::scoped_key(
+            authorized,
+            ingress_protocol,
+            identity,
+            digest_key,
+            true,
+            true,
+            true,
         )
         .map(|key| key.scope_id())
     }
@@ -88,6 +109,7 @@ impl ContextHoldKey {
         digest_key: &[u8; 32],
         history: bool,
         capture_gap: bool,
+        verified_lane: bool,
     ) -> Option<Self> {
         let (identity_kind, identity_parts) = if capture_gap {
             identity.capture_gap_identity()
@@ -150,7 +172,7 @@ impl ContextHoldKey {
             ingress_label(ingress_protocol),
         );
         frame(&mut mac, b"identity_kind", identity_kind.as_bytes());
-        if identity.observed_routing_lane() && !capture_gap {
+        if identity.observed_routing_lane() && !verified_lane {
             // A failed native adapter cannot overwrite the verified lane.
             // Unknown-origin requests still have their own reusable history.
             frame(&mut mac, b"input_origin", b"observed-unverified/v1");

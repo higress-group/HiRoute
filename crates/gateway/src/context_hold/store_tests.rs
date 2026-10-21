@@ -7,6 +7,59 @@ use crate::server::request_plan::IngressProtocol;
 
 const HISTORY_KEY: [u8; 32] = [23; 32];
 
+#[test]
+fn observed_capture_misses_fence_their_own_history_and_the_verified_lane_separately() {
+    let authorized = crate::server::publication::authorized_native_consumer_fixture(None);
+    let request = history_request(1, &[1]);
+    let mut headers = http::HeaderMap::new();
+    headers.insert("session-id", "same-native-session".parse().unwrap());
+    let mut identity = crate::context_hold::identity_facts(
+        &authorized,
+        IngressProtocol::Responses,
+        &headers,
+        &serde_json::json!({}),
+        &request,
+        &HISTORY_KEY,
+        &[41; 32],
+    );
+    let verified = ContextHoldKey::routing_history(
+        &authorized,
+        IngressProtocol::Responses,
+        &identity,
+        &HISTORY_KEY,
+    )
+    .unwrap();
+    identity.mark_routing_origin_unverified();
+    let observed = ContextHoldKey::routing_history(
+        &authorized,
+        IngressProtocol::Responses,
+        &identity,
+        &HISTORY_KEY,
+    )
+    .unwrap();
+    assert_ne!(observed, verified);
+    assert_eq!(
+        ContextHoldKey::capture_gap_scope(
+            &authorized,
+            IngressProtocol::Responses,
+            &identity,
+            &HISTORY_KEY
+        ),
+        Some(observed.scope_id()),
+        "a failed optional scan must fence the history that actually missed output",
+    );
+    assert_eq!(
+        ContextHoldKey::verified_capture_gap_scope(
+            &authorized,
+            IngressProtocol::Responses,
+            &identity,
+            &HISTORY_KEY
+        ),
+        Some(verified.scope_id()),
+        "observed capture must separately disclose a missed verified-lane continuation",
+    );
+}
+
 fn key(id: usize) -> ContextHoldKey {
     let mut digest = [0_u8; 32];
     let bytes = id.to_be_bytes();

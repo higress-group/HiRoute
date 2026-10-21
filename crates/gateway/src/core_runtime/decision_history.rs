@@ -41,13 +41,32 @@ impl ProductionGatewayRuntime {
         protocol: crate::server::request_plan::IngressProtocol,
         identity: &crate::context_hold::ContextIdentityFacts,
     ) {
+        self.note_history_gap(authorized, protocol, identity, false);
+    }
+
+    pub(super) fn note_verified_decision_history_gap(
+        &self,
+        authorized: &crate::server::request_plan::AuthorizedRequestPlan,
+        protocol: crate::server::request_plan::IngressProtocol,
+        identity: &crate::context_hold::ContextIdentityFacts,
+    ) {
+        self.note_history_gap(authorized, protocol, identity, true);
+    }
+
+    fn note_history_gap(
+        &self,
+        authorized: &crate::server::request_plan::AuthorizedRequestPlan,
+        protocol: crate::server::request_plan::IngressProtocol,
+        identity: &crate::context_hold::ContextIdentityFacts,
+        verified_lane: bool,
+    ) {
         let Some(scope) = self.context_holds.digest_key().and_then(|digest_key| {
-            crate::context_hold::ContextHoldKey::capture_gap_scope(
-                authorized,
-                protocol,
-                identity,
-                &digest_key,
-            )
+            let scope = if verified_lane {
+                crate::context_hold::ContextHoldKey::verified_capture_gap_scope
+            } else {
+                crate::context_hold::ContextHoldKey::capture_gap_scope
+            };
+            scope(authorized, protocol, identity, &digest_key)
         }) else {
             return;
         };
