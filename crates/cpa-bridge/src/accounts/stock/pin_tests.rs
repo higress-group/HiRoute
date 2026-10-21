@@ -109,6 +109,17 @@ impl Fixture {
                         1 => r#"{"models":[]}"#.to_owned(),
                         2 => r#"{"models":[{"id":"other-prefix/future-model"}]}"#.to_owned(),
                         9 => serde_json::json!({"models":[{"id":format!("hiroute-codex-current/{}", "a".repeat(257))}]}).to_string(),
+                        fault @ 15..=16 if model_reads < 3 => {
+                            let latest = if fault == 15 {
+                                serde_json::json!({"attempt_id":1,"phase":"registration","outcome":"discarded","reason":"account_changed","elapsed_ms":50,"phase_elapsed_ms":0,"timings":[]})
+                            } else {
+                                serde_json::json!({"attempt_id":2,"phase":"registration","outcome":"completed","model_count":1,"elapsed_ms":60,"phase_elapsed_ms":0,"timings":[]})
+                            };
+                            serde_json::json!({"models":[],"hiroute_model_discovery":{
+                                "schema":"hiroute.cpa-model-discovery/v1","process_id":123,
+                                "evicted_accounts":0,"first_failure":null,"latest":latest
+                            }}).to_string()
+                        },
                         fault @ 10..=14 => {
                             let empty = fault != 11 && (fault != 12 || model_reads < 3);
                             let (phase, outcome, reason) = match fault {
@@ -221,6 +232,26 @@ fn pending_discovery_and_retained_catalog_keep_their_existing_meaning() {
         );
         assert_eq!(fixture.patches.load(Ordering::SeqCst), 0);
     }
+}
+
+#[test]
+fn authorization_handoff_gap_keeps_waiting_for_the_current_catalog() {
+    assert_concurrent_catalog_recovers(15);
+}
+
+#[test]
+fn mixed_empty_catalog_and_success_snapshot_keeps_waiting() {
+    assert_concurrent_catalog_recovers(16);
+}
+
+fn assert_concurrent_catalog_recovers(fault: usize) {
+    let fixture = Fixture::new();
+    fixture.fault.store(fault, Ordering::SeqCst);
+    assert_eq!(
+        fixture.discover(false).unwrap()[0].observed_model_ids,
+        BTreeSet::from(["future-model".into()])
+    );
+    assert_eq!(fixture.patches.load(Ordering::SeqCst), 0);
 }
 
 #[test]
