@@ -31,17 +31,24 @@
   </a>
 </p>
 
-Keep using Codex, Claude Code, Qoder, Pi or DeepSeek Harness. With a difficulty-routing plan, HiRoute
-judges each new message: routine work such as reading code or gathering facts can go to an
+Keep using Codex, Claude Code, Qoder, Pi, OpenCode, Hermes or DeepSeek Harness. With a difficulty-routing plan, HiRoute
+judges verified native user input: routine work such as reading code or gathering facts can go to an
 economical model, while design decisions and difficult fixes stay with your subscription or
 primary model. Subscriptions, API keys and local models are managed in one place, and each
 session shows which model actually ran, its usage and its cost. Independent tasks can also be
 delegated to other agents.
 
 Tool calls within a turn usually keep that turn's decision, so the growing context prefix stays
-cacheable. HiRoute decides again on a new user message, or when a context rebuild breaks the
-previous continuation, and may keep the same model; cache reuse depends on the provider. HiRoute
+cacheable when continuity and the captured decision remain valid. HiRoute decides again when a
+new original user input can be verified, and may keep the same model; cache reuse depends on the provider. HiRoute
 runs locally as a Desktop application or a headless CLI and daemon.
+
+History optimization depends on the native client's evidence. Current Claude Code 2.1.287 and
+Qoder 1.1.72 use the plan's unavailable-input route; new questions do not restore classification
+or history capture. Codex 0.147.0 cannot recover within an already compressed thread first seen
+after a Gateway restart; a new clean, uncompressed supported thread can resume optimization.
+These paths can increase primary-model usage. Successful output alone does not establish
+recovery. See the [routing and recovery limits](apps/website/content/guides/model-routing.en.md).
 
 ## News
 
