@@ -834,6 +834,7 @@ impl RuntimeFixture {
             None,
             RuntimeLaunchOptions {
                 test_control: true,
+                observation: Some(ObservationFaults::healthy()),
                 classified_route: true,
                 rest_classifier: true,
                 ..RuntimeLaunchOptions::default()
