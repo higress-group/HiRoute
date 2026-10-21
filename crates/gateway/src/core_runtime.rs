@@ -628,7 +628,7 @@ impl ProductionGatewayRuntime {
                 &budget,
             );
             let routing_request = routing_view.request(&canonical_request);
-            let (identity, mut prepared_hold, native_user_unavailable) = prepare_context(
+            let (identity, prepared_hold, native_user_unavailable) = prepare_context(
                 &self.context_holds,
                 &self.observation.correlation_key(),
                 &authorized,
@@ -638,23 +638,14 @@ impl ProductionGatewayRuntime {
                     document: &document,
                     request: &canonical_request,
                     semantic_request: Some(routing_request),
+                    user_origin_unverified: routing_view.origin_unverified()
+                        || request
+                            .path_and_query
+                            .starts_with(hiroute_domain::QODER_MODEL_BASE_PATH),
                     replay: &replay,
                 },
                 Instant::now(),
             );
-            let native_user_unavailable = native_user_unavailable
-                || request
-                    .path_and_query
-                    .starts_with(hiroute_domain::QODER_MODEL_BASE_PATH);
-            if routing_view.disables_history()
-                || request
-                    .path_and_query
-                    .starts_with(hiroute_domain::QODER_MODEL_BASE_PATH)
-            {
-                // Optional native user projection and Qoder's unknown subdialogs
-                // cannot admit shared routing history. Execution stays unchanged.
-                prepared_hold = None;
-            }
             drop(document);
             drop(ingress_workspace);
             let prevalidate_started = Instant::now();
@@ -710,7 +701,7 @@ impl ProductionGatewayRuntime {
                     )
                     .await;
                 };
-                if prepared_hold.is_none() {
+                if prepared_hold.is_none() || identity.observed_routing_lane() {
                     self.note_decision_history_gap(&authorized, protocol, &identity);
                 }
                 let tracking = match self.begin_decision_history(
@@ -742,8 +733,7 @@ impl ProductionGatewayRuntime {
                     &strategy,
                     classification::ClassificationRequest {
                         request: routing_request,
-                        native_user_unavailable: native_user_unavailable
-                            || routing_view.disables_history(),
+                        native_user_unavailable,
                         replay: &replay,
                         classifier: authorized.classifier(),
                         history: &turn_history,

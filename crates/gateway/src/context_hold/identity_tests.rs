@@ -132,7 +132,7 @@ fn legacy_hermes_fresh_flag_cannot_prove_human_or_async_user_origin() {
         assert_eq!(facts.session_scope(), "conversation");
         assert_eq!(
             facts.native_checkpoint().user_origin,
-            NativeUserOrigin::ExistingTurn
+            NativeUserOrigin::Observed
         );
     }
 }

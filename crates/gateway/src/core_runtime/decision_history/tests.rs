@@ -15,6 +15,8 @@ use std::time::Duration;
 
 #[path = "native_tests.rs"]
 mod native_tests;
+#[path = "observed_tests.rs"]
+mod observed_tests;
 
 struct Fixture {
     runtime: ProductionGatewayRuntime,
@@ -64,14 +66,22 @@ impl Fixture {
 
     fn prepare(&self, request: &model_ir::ModelRequestIRV1) -> PreparedHold {
         let history = visible_history_with_replay(request, &[23; 32], Some(&self.replay)).unwrap();
-        self.runtime
+        let mut prepared = self
+            .runtime
             .context_holds
             .prepare(
                 ContextHoldKey::for_runtime_test(1),
                 &history,
                 Instant::now(),
             )
-            .unwrap()
+            .unwrap();
+        // These admission tests supply a known current input. Dedicated observed
+        // tests override this fact and verify uncertainty without losing scoring.
+        prepared.set_native(crate::context_hold::NativeCheckpoint {
+            user_origin: crate::context_hold::NativeUserOrigin::CurrentUser,
+            ..Default::default()
+        });
+        prepared
     }
 
     fn begin(&self, request: &model_ir::ModelRequestIRV1, hold: PreparedHold) -> DecisionHistory {

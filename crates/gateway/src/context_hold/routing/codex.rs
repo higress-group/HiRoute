@@ -5,10 +5,10 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
     let header = match single_header(headers, "x-codex-turn-metadata", 8192) {
         Field::Absent => None,
         Field::Value(value) => serde_json::from_str::<Value>(&value).ok(),
-        Field::Invalid => return RoutingFacts::detached(),
+        Field::Invalid => return RoutingFacts::uncertain(),
     };
     if headers.contains_key("x-codex-turn-metadata") && header.is_none() {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     }
     let body = document
         .get("client_metadata")
@@ -18,10 +18,10 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
         .filter(|v| v.len() <= 8192)
         .and_then(|v| serde_json::from_str::<Value>(v).ok());
     if body.is_some() && body_value.is_none() {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     }
     let Some(metadata) = header.as_ref().or(body_value.as_ref()) else {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     };
     for field in [
         "session_id",
@@ -35,7 +35,7 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
             .zip(body_value.as_ref())
             .is_some_and(|(h, b)| h.get(field) != b.get(field))
         {
-            return RoutingFacts::detached();
+            return RoutingFacts::uncertain();
         }
     }
     for (field, name) in [("session_id", "session-id"), ("thread_id", "thread-id")] {
@@ -44,11 +44,11 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
             .and_then(Value::as_str)
             .filter(|v| id(v))
         else {
-            return RoutingFacts::detached();
+            return RoutingFacts::uncertain();
         };
         match header_value(headers, name) {
-            Field::Value(other) if other != value => return RoutingFacts::detached(),
-            Field::Invalid => return RoutingFacts::detached(),
+            Field::Value(other) if other != value => return RoutingFacts::uncertain(),
+            Field::Invalid => return RoutingFacts::uncertain(),
             _ => {}
         }
         if document
@@ -56,20 +56,27 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
             .and_then(|m| m.get(field))
             .is_some_and(|v| v.as_str() != Some(value))
         {
-            return RoutingFacts::detached();
+            return RoutingFacts::uncertain();
         }
     }
     let turn = metadata
         .get("turn_id")
         .and_then(Value::as_str)
         .filter(|v| id(v));
-    if metadata.get("request_kind").and_then(Value::as_str) != Some("turn") || turn.is_none() {
+    if metadata
+        .get("request_kind")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| kind != "turn")
+    {
         return RoutingFacts::detached();
+    }
+    if turn.is_none() {
+        return RoutingFacts::uncertain();
     }
     let window = metadata.get("window_id").and_then(Value::as_str);
     match single_header(headers, "x-codex-window-id", 160) {
-        Field::Value(value) if Some(value.as_str()) != window => return RoutingFacts::detached(),
-        Field::Invalid => return RoutingFacts::detached(),
+        Field::Value(value) if Some(value.as_str()) != window => return RoutingFacts::uncertain(),
+        Field::Invalid => return RoutingFacts::uncertain(),
         _ => {}
     }
     if document
@@ -77,7 +84,7 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
         .and_then(|m| m.get("x-codex-window-id"))
         .is_some_and(|value| value.as_str() != window)
     {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     }
     // rust-v0.147.0 emits thread_id:window_number. Every native compaction
     // increments that persisted number; it survives resume. It is negative
@@ -110,7 +117,7 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
             user_origin: if generation.is_some() && known_producer {
                 NativeUserOrigin::NativeTurn
             } else {
-                NativeUserOrigin::ExistingTurn
+                NativeUserOrigin::Observed
             },
             ..NativeCheckpoint::default()
         },

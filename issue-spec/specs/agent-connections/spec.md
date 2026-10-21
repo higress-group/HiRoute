@@ -504,16 +504,14 @@ without preventing the model request or changing its authorization. Ordinary
 children and forks SHALL NOT be reported as compression continuations.
 
 Hermes public whole-turn hooks cannot distinguish real input from native async
-completion notifications: both enter the same main-conversation User call site.
-Matching hook text, an opaque new turn, an initiated-turn flag or an empty live-job
-list SHALL NOT establish fresh-user provenance. The current producer always
-requires an already captured validated turn, and Gateway ignores older Hermes
-producers' false `continuation_requires_existing_turn` claim. Current Hermes
-classification/capture recovery is unsupported, including after a real new question
-or a new session. A future adapter needs independently verified input origin bound
-to the actual request/turn; a body-prefix heuristic is insufficient. Missing optional
-hooks SHALL NOT block otherwise compatible authorization, identity or native model
-execution. Compression lineage remains observation evidence, not user provenance.
+completion notifications. The producer SHALL NOT claim fresh human provenance.
+Gateway treats these as observed requests with explicit source uncertainty,
+including older producers' false freshness flag, and retains classification,
+actual execution history and cross-turn evaluation. Missing optional hooks SHALL
+NOT block compatible authorization or model execution; absent native identity
+retains request scope. Compression lineage does not authenticate input origin.
+Accuracy of callback/task association remains a separate limitation, not a reason
+to disable smart routing. Known auxiliary clients remain outside the main history.
 Pi uses native projected-entry provenance and treats compaction summaries, custom
 user-like contributions and unknown projection as continuations. OpenCode resolves
 the exact in-flight native user ID, excluding synthetic/compaction-only parts and

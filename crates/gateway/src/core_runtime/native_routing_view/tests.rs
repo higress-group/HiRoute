@@ -98,7 +98,7 @@ fn only_known_unprojected_peer_tasks_make_the_current_user_unavailable() {
             &fixture.replay,
             &fixture.budget,
         );
-        assert_eq!(view.disables_history(), peer);
+        assert_eq!(view.origin_unverified(), peer);
         assert!(std::ptr::eq(view.request(&original), &original));
     }
 }
@@ -116,7 +116,7 @@ fn semantic_user_projection_preserves_execution_and_runtime_context() {
         original.native_body = Some(json!({"opaque":"x".repeat(MAX_COMPACT_IR_BYTES * 2)}));
         let saved = original.clone();
         let view = fixture.view(&original, metadata());
-        assert!(!view.disables_history());
+        assert!(!view.origin_unverified());
         let projected = view.request(&original);
         assert_eq!(projected.messages[0].role, MessageRole::User);
         assert_eq!(projected.messages[1].role, MessageRole::System);
@@ -147,7 +147,7 @@ fn native_user_batch_combines_all_inputs_and_keeps_tool_results_after_it() {
         .unwrap()
         .push(json!({"index":1,"sha256":digest("second input")}));
     let view = fixture.view(&original, proof);
-    assert!(!view.disables_history());
+    assert!(!view.origin_unverified());
     let projected = view.request(&original);
     let real = projected
         .messages
@@ -169,7 +169,7 @@ fn native_user_batch_combines_all_inputs_and_keeps_tool_results_after_it() {
 }
 
 #[test]
-fn malformed_missing_or_unmatched_native_user_proof_disables_history() {
+fn malformed_missing_or_unmatched_native_user_proof_origin_unverified() {
     let fixture = Fixture::new();
     let original = request(
         IngressProtocol::Responses,
@@ -203,7 +203,7 @@ fn malformed_missing_or_unmatched_native_user_proof_disables_history() {
     cases.push(auxiliary);
     for proof in cases {
         let view = fixture.view(&original, proof);
-        assert!(view.disables_history());
+        assert!(view.origin_unverified());
         assert!(std::ptr::eq(view.request(&original), &original));
     }
 }
@@ -216,7 +216,7 @@ fn optional_view_capacity_and_budget_misses_preserve_original_execution() {
         json!([{"role":"user","content":"real task"}]),
     );
     original.served_model_id = "x".repeat(MAX_COMPACT_IR_BYTES + 1);
-    assert!(fixture.view(&original, metadata()).disables_history());
+    assert!(fixture.view(&original, metadata()).origin_unverified());
     original.served_model_id = "route".into();
     let tiny = BudgetTree::new(64, 64).unwrap().stream(64).unwrap();
     let mut headers = HeaderMap::new();
@@ -226,7 +226,7 @@ fn optional_view_capacity_and_budget_misses_preserve_original_execution() {
         metadata().to_string().parse().unwrap(),
     );
     assert!(
-        NativeRoutingView::prepare(&headers, &original, &fixture.replay, &tiny).disables_history()
+        NativeRoutingView::prepare(&headers, &original, &fixture.replay, &tiny).origin_unverified()
     );
 }
 
@@ -257,8 +257,8 @@ fn equivalent_native_user_batches_do_not_erase_strict_wire_message_boundaries() 
     };
     let first_view = fixture.view(&first, proof([&["A"], &["B", "C"]]));
     let second_view = fixture.view(&second, proof([&["A", "B"], &["C"]]));
-    assert!(!first_view.disables_history());
-    assert!(!second_view.disables_history());
+    assert!(!first_view.origin_unverified());
+    assert!(!second_view.origin_unverified());
     assert_eq!(first_view.request(&first), second_view.request(&second));
     let first_measured = crate::context_hold::visible_history(&first, &[37; 32])
         .unwrap()

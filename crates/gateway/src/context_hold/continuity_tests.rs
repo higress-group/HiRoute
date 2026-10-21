@@ -28,7 +28,7 @@ fn prepare(store: &ContextHoldStore, input: Value, turn: u8, generation: u64) ->
 }
 
 #[test]
-fn cold_compacted_or_preexisting_model_history_never_becomes_a_new_user() {
+fn cold_compacted_or_preexisting_model_history_is_observed_without_claiming_user_proof() {
     for (input, generation) in [
         (json!("summary only"), 1),
         (
@@ -43,7 +43,8 @@ fn cold_compacted_or_preexisting_model_history_never_becomes_a_new_user() {
         let store = ContextHoldStore::default();
         let prepared = prepare(&store, input, 1, generation);
         assert!(!prepared.history_is_proven());
-        assert!(prepared.native_user_unavailable());
+        assert!(!prepared.native_user_unavailable());
+        assert!(prepared.user_origin_unverified());
     }
 }
 
@@ -56,7 +57,8 @@ fn a_changed_native_id_needs_an_appended_user_and_cannot_restore_a_replayed_wind
     store.commit(first, Instant::now()).unwrap();
     let replay = prepare(&store, json!([user]), 2, 0);
     assert!(!replay.history_is_proven());
-    assert!(replay.native_user_unavailable());
+    assert!(!replay.native_user_unavailable());
+    assert!(replay.user_origin_unverified());
     let appended = json!([user,{"role":"assistant","content":"accepted"},{"role":"user","content":"new task"}]);
     assert!(prepare(&store, appended, 2, 0).history_is_proven());
     let compressed = prepare(
@@ -69,5 +71,6 @@ fn a_changed_native_id_needs_an_appended_user_and_cannot_restore_a_replayed_wind
     store.commit(compressed, Instant::now()).unwrap();
     let rollback = prepare(&store, json!([user]), 1, 0);
     assert!(!rollback.history_is_proven());
-    assert!(rollback.native_user_unavailable());
+    assert!(!rollback.native_user_unavailable());
+    assert!(rollback.user_origin_unverified());
 }

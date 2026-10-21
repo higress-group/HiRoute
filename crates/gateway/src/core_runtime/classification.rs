@@ -113,7 +113,7 @@ pub(super) enum ClassificationError {
 
 pub(super) struct ClassificationRequest<'a> {
     pub(super) request: &'a ModelRequestIRV1,
-    /// A native adapter could not prove which user envelope is a real input.
+    /// A recognized auxiliary call or continuation has no independent current input.
     pub(super) native_user_unavailable: bool,
     pub(super) replay: &'a ReplayStore,
     pub(super) classifier: Option<&'a Arc<RestBranchClassifierAuthorityV1>>,

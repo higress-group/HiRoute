@@ -30,6 +30,16 @@ enum Identity {
 }
 
 impl ContextIdentityFacts {
+    pub(crate) fn mark_routing_origin_unverified(&mut self) {
+        if self.routing.track {
+            self.routing.native.user_origin = super::routing::NativeUserOrigin::Observed;
+        }
+    }
+
+    pub(crate) fn observed_routing_lane(&self) -> bool {
+        self.routing.native.user_origin == super::routing::NativeUserOrigin::Observed
+    }
+
     pub(crate) fn native_checkpoint(&self) -> super::routing::NativeCheckpoint {
         self.routing.native
     }

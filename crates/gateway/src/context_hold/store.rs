@@ -150,6 +150,11 @@ impl ContextHoldKey {
             ingress_label(ingress_protocol),
         );
         frame(&mut mac, b"identity_kind", identity_kind.as_bytes());
+        if identity.observed_routing_lane() && !capture_gap {
+            // A failed native adapter cannot overwrite the verified lane.
+            // Unknown-origin requests still have their own reusable history.
+            frame(&mut mac, b"input_origin", b"observed-unverified/v1");
+        }
         frame_u64(
             &mut mac,
             b"identity_parts_len",

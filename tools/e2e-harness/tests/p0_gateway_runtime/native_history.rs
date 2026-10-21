@@ -2,20 +2,20 @@
 use super::*;
 use serde_json::{Value, json};
 
-fn reply(body: &'static [u8]) -> ProviderReply {
+pub(super) fn reply(body: &'static [u8]) -> ProviderReply {
     ProviderReply::Complete {
         status: 200,
         error_kind: None,
         body,
     }
 }
-fn classifier_body(classifier: &NativeProvider, index: usize) -> Value {
+pub(super) fn classifier_body(classifier: &NativeProvider, index: usize) -> Value {
     let requests = classifier.requests();
     let raw = &requests[index];
     let start = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
     serde_json::from_slice(&raw[start..]).unwrap()
 }
-fn headers(
+pub(super) fn headers(
     agent: &str,
     session: &str,
     purpose: &str,
@@ -54,7 +54,7 @@ fn headers(
     }
     headers
 }
-fn native_fixture(agent: &str, providers: &[&NativeProvider]) -> RuntimeFixture {
+pub(super) fn native_fixture(agent: &str, providers: &[&NativeProvider]) -> RuntimeFixture {
     let fixture = if agent == "hermes" {
         RuntimeFixture::launch_rest_classified_with_native_control(providers, 1)
     } else {
@@ -70,7 +70,11 @@ fn native_fixture(agent: &str, providers: &[&NativeProvider]) -> RuntimeFixture 
     }
     fixture
 }
-fn send(address: std::net::SocketAddr, headers: &[(String, String)], input: Value) -> WireResponse {
+pub(super) fn send(
+    address: std::net::SocketAddr,
+    headers: &[(String, String)],
+    input: Value,
+) -> WireResponse {
     let mut headers = headers.to_vec();
     if let Some((_, encoded)) = headers
         .iter_mut()
@@ -95,7 +99,7 @@ fn send(address: std::net::SocketAddr, headers: &[(String, String)], input: Valu
         &serde_json::to_vec(&json!({"model":MODEL,"input":input,"stream":false})).unwrap(),
     )
 }
-fn accepted(response: &WireResponse) {
+pub(super) fn accepted(response: &WireResponse) {
     assert_eq!(
         response.status,
         200,

@@ -46,7 +46,7 @@ fn codex_window_counter_is_negative_evidence_and_unknown_shapes_stay_conservativ
             if expected.is_some() {
                 NativeUserOrigin::NativeTurn
             } else {
-                NativeUserOrigin::ExistingTurn
+                NativeUserOrigin::Observed
             },
             "{window}"
         );
@@ -54,7 +54,7 @@ fn codex_window_counter_is_negative_evidence_and_unknown_shapes_stay_conservativ
 }
 
 #[test]
-fn unsupported_codex_producer_cannot_bootstrap_even_a_zero_window() {
+fn unsupported_codex_producer_records_uncertainty_even_at_zero_window() {
     for producer in [
         None,
         Some("codex_exec/0.146.0"),
@@ -66,7 +66,7 @@ fn unsupported_codex_producer_cannot_bootstrap_even_a_zero_window() {
             headers.insert("user-agent", producer.parse().unwrap());
         }
         let native = facts(&headers, &document(metadata(json!("thread:0")))).native;
-        assert_eq!(native.user_origin, NativeUserOrigin::ExistingTurn);
+        assert_eq!(native.user_origin, NativeUserOrigin::Observed);
     }
 }
 
@@ -90,10 +90,10 @@ fn codex_window_must_agree_in_every_present_native_channel() {
             }
         }
         let result = facts(&headers, &body);
-        assert!(!result.track, "{channel}");
+        assert!(result.track, "{channel}");
         assert_eq!(
             result.native.user_origin,
-            NativeUserOrigin::ExistingTurn,
+            NativeUserOrigin::Observed,
             "{channel}"
         );
     }

@@ -16,7 +16,7 @@ const MAX_USER_MESSAGES: usize = 128;
 
 pub(super) struct NativeRoutingView {
     projected: Option<Box<ModelRequestIRV1>>,
-    disable_history: bool,
+    origin_unverified: bool,
     _reservation: Option<Reservation>,
 }
 
@@ -27,10 +27,8 @@ impl NativeRoutingView {
         replay: &ReplayStore,
         budget: &StreamBudget,
     ) -> Self {
-        // Responses peer tasks have no portable user projection. An ancestor
-        // user copied into a native child is not evidence of its current task.
-        // Only this recognized native item suppresses classification; unrelated
-        // native-only fields may still carry a complete, usable user message.
+        // A copied ancestor User is not proof of the current peer task. Keep
+        // routing usable on observed input and disclose the missing provenance.
         let peer_task = request.native_only
             && request.ingress_protocol == crate::server::request_plan::IngressProtocol::Responses
             && request
@@ -47,14 +45,14 @@ impl NativeRoutingView {
         if peer_task {
             return Self {
                 projected: None,
-                disable_history: true,
+                origin_unverified: true,
                 _reservation: None,
             };
         }
         let Some(proof) = dsh_user_turns(headers) else {
             return Self {
                 projected: None,
-                disable_history: false,
+                origin_unverified: request.native_only,
                 _reservation: None,
             };
         };
@@ -64,12 +62,12 @@ impl NativeRoutingView {
         match projected {
             Some((request, reservation)) => Self {
                 projected: Some(request),
-                disable_history: false,
+                origin_unverified: false,
                 _reservation: Some(reservation),
             },
             None => Self {
                 projected: None,
-                disable_history: true,
+                origin_unverified: true,
                 _reservation: None,
             },
         }
@@ -79,8 +77,8 @@ impl NativeRoutingView {
         self.projected.as_deref().unwrap_or(original)
     }
 
-    pub(super) fn disables_history(&self) -> bool {
-        self.disable_history
+    pub(super) fn origin_unverified(&self) -> bool {
+        self.origin_unverified
     }
 }
 

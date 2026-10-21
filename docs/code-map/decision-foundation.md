@@ -105,14 +105,19 @@ keeps auxiliary requests separate. The [listener regression](../../tools/e2e-har
 also verifies that the live main request can finish and continue its tools while
 observation failures leave delivered model output intact. Native identity parsing
 remains a separate boundary. [Native routing evidence](../../crates/gateway/src/context_hold/routing.rs)
-admits independent main/child branches and detaches auxiliary or uncertain requests.
-The [native continuity guard](../../crates/gateway/src/context_hold/continuity.rs)
-keeps synthetic User continuations on their captured task without granting prefix
-affinity. [Recovery and unavailable-input regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history_continuation.rs)
-separate fresh-user capture from output-only degradation, including Claude/Hermes's
-current unavailable history and cold compressed Codex sessions. Hermes whole-turn
-text is not user-origin proof: its native async callback regression and legacy
-freshness rejection share that listener owner. Message-prefix continuity is
+admits independent main/child branches, detaches known auxiliary purposes and
+retains usable requests in an explicitly uncertain observed-input lane when
+origin evidence is missing. The [native continuity guard](../../crates/gateway/src/context_hold/continuity.rs)
+separates source proof from capture admission; known synthetic continuations keep
+their captured input without granting prefix affinity. [Availability regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_routing_availability.rs)
+require classification, actual A-to-B history, evaluation and model-group selection
+for all native families, including cold compressed Codex and Qoder. Historical
+capture records `unverified_request_user_origin` instead of asserting human input;
+complete accepted output remains evaluable despite that source limitation.
+[Observed-input unit checks](../../crates/gateway/src/core_runtime/decision_history/observed_tests.rs)
+keep uncaptured old summaries out of the actual execution target. Hermes whole-turn
+callbacks and Qoder shared main/child identity retain disclosed association limits,
+which must not globally disable routing. Message-prefix continuity is
 separate from system-instruction validity: [history entry](../../crates/gateway/src/context_hold/store.rs)
 distinguishes continuing, shortened, otherwise rewritten and unavailable checkpoints. [Turn history](../../crates/gateway/src/agent_turn_history/store.rs)
 records the opening cause on completion; [timeline projection](../../crates/observation/src/query_v2/routing_timeline/projection.rs)

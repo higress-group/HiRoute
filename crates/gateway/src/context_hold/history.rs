@@ -41,9 +41,7 @@ impl<'a> HistoryEvidence<'a> {
         mut self,
         request: Option<&'a ModelRequestIRV1>,
     ) -> Option<Self> {
-        if request.is_some_and(|value| {
-            value.native_only || value.messages.len() != self.request.messages.len()
-        }) {
+        if request.is_some_and(|value| value.messages.len() != self.request.messages.len()) {
             return None;
         }
         self.semantic_request = request;
@@ -63,7 +61,15 @@ impl<'a> HistoryEvidence<'a> {
         if semantic_request.messages.len() != self.request.messages.len() {
             return None;
         }
-        let mut history = Encoder::new(self.key, b"visible-history/v1/messages", self.replay)?;
+        let mut history = Encoder::new(
+            self.key,
+            if self.request.native_only {
+                b"visible-history/v1/opaque-projection"
+            } else {
+                b"visible-history/v1/messages"
+            },
+            self.replay,
+        )?;
         let mut semantic = Encoder::new(self.key, b"visible-history/v1/conversation", self.replay)?;
         let mut prefix_digest = match prefix_count {
             Some(0) => Some(history.snapshot()?),
@@ -88,7 +94,12 @@ impl<'a> HistoryEvidence<'a> {
         }
         Some(HistoryDigests {
             message_count: self.request.messages.len(),
-            prefix_digest,
+            // An incomplete projection must never establish provider/KV affinity.
+            prefix_digest: if self.request.native_only {
+                None
+            } else {
+                prefix_digest
+            },
             complete_digest: history.finish()?,
             semantic_prefix_digest,
             semantic_complete_digest: semantic.finish()?,
@@ -143,9 +154,6 @@ pub(crate) fn visible_history_with_replay<'a>(
     key: &'a [u8; 32],
     replay: Option<&'a ReplayStore>,
 ) -> Option<HistoryEvidence<'a>> {
-    if request.native_only {
-        return None;
-    }
     let mut instructions = Encoder::new(key, b"visible-history/v1/instructions", replay)?;
     instructions.usize(request.instructions.len());
     for instruction in &request.instructions {

@@ -18,6 +18,8 @@ mod instruction_history;
 mod native_history;
 #[path = "p0_gateway_runtime/native_peer_tasks.rs"]
 mod native_peer_tasks;
+#[path = "p0_gateway_runtime/native_routing_availability.rs"]
+mod native_routing_availability;
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};

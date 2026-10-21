@@ -14,6 +14,18 @@ pub(crate) struct AnalyzedRequest {
     pub(super) tool_results: Vec<(usize, String, ToolStatus)>,
 }
 
+impl AnalyzedRequest {
+    pub(crate) fn mark_user_origin_unverified(&mut self) {
+        // Reuse the existing visible-content vocabulary: uncertainty is not
+        // missing execution and must not disable assessment of accepted output.
+        for turn in &mut self.turns {
+            turn.user.push(VisibleContentPart::Unavailable {
+                source_kind: "unverified_request_user_origin".into(),
+            });
+        }
+    }
+}
+
 pub(super) struct AnalyzedTurn {
     pub(super) user_index: usize,
     pub(super) user: Vec<VisibleContentPart>,

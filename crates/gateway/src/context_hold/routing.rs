@@ -14,6 +14,9 @@ pub(crate) enum NativeUserOrigin {
     NativeTurn,
     CurrentUser,
     ExistingTurn,
+    /// The request is usable, but its wire User may be a native notification,
+    /// summary or copied task. This is not a claim of fresh human input.
+    Observed,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -46,6 +49,16 @@ impl Default for RoutingFacts {
 }
 
 impl RoutingFacts {
+    fn uncertain() -> Self {
+        Self {
+            native: NativeCheckpoint {
+                user_origin: NativeUserOrigin::Observed,
+                ..Default::default()
+            },
+            ..Self::default()
+        }
+    }
+
     fn detached() -> Self {
         Self {
             track: false,
@@ -180,7 +193,7 @@ pub(super) fn facts(
     let brand = match single_header(headers, "x-hiroute-agent", 32) {
         Field::Value(brand) => Some(brand),
         Field::Absent => None,
-        Field::Invalid => return RoutingFacts::detached(),
+        Field::Invalid => return RoutingFacts::uncertain(),
     };
     let user_agent = match single_header(headers, "user-agent", 1024) {
         Field::Value(value) => value.to_ascii_lowercase(),
@@ -217,16 +230,16 @@ pub(super) fn facts(
     });
     let Some(agent) = agent else {
         return if hermes {
-            RoutingFacts::detached()
+            RoutingFacts::uncertain()
         } else {
             RoutingFacts::default()
         };
     };
     if brand.as_deref().is_some_and(|brand| brand != agent) {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     }
     if agent == "qoder" {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     }
     if agent == "codex" {
         if worker.is_none()
@@ -235,7 +248,7 @@ pub(super) fn facts(
                 Some("codex_session" | "codex_thread" | "codex_thread_session")
             )
         {
-            return RoutingFacts::detached();
+            return RoutingFacts::uncertain();
         }
         return codex::facts(headers, document);
     }
@@ -246,10 +259,10 @@ pub(super) fn facts(
                 Some("claude_metadata_session" | "claude_native_agent")
             )
         {
-            return RoutingFacts::detached();
+            return RoutingFacts::uncertain();
         }
         let purpose = header_value(headers, "x-claude-code-request-class");
-        if !matches!(&purpose, Field::Value(value) if matches!(value.as_str(), "main" | "subagent"))
+        if matches!(&purpose, Field::Value(value) if !matches!(value.as_str(), "main" | "subagent"))
         {
             return RoutingFacts::detached();
         }
@@ -259,17 +272,17 @@ pub(super) fn facts(
                 Field::Value(_)
             )
         {
-            return RoutingFacts::detached();
+            return RoutingFacts::uncertain();
         }
         let turn = match header_value(headers, "x-claude-code-prompt-id") {
             Field::Value(value) => Some(digest(&value)),
             Field::Absent => None,
-            Field::Invalid => return RoutingFacts::detached(),
+            Field::Invalid => return RoutingFacts::uncertain(),
         };
         let compacted = match header_value(headers, "x-claude-code-context-compacted") {
             Field::Absent => false,
             Field::Value(value) if matches!(value.as_str(), "manual" | "auto") => true,
-            _ => return RoutingFacts::detached(),
+            _ => return RoutingFacts::uncertain(),
         };
         return RoutingFacts {
             native: NativeCheckpoint {
@@ -278,10 +291,7 @@ pub(super) fn facts(
                 checkpoint: None,
                 generation: None,
                 requires_checkpoint: false,
-                // This flag is consumed once per model call. Later User-only
-                // summaries have no stable original-user provenance, so they
-                // cannot bootstrap optional history from a wire role alone.
-                user_origin: NativeUserOrigin::ExistingTurn,
+                user_origin: NativeUserOrigin::Observed,
             },
             ..RoutingFacts::default()
         };
@@ -289,11 +299,10 @@ pub(super) fn facts(
     if worker == Some("opencode") {
         match header_value(headers, "x-hiroute-request-purpose") {
             Field::Value(value) if value == "main" => {
-                // Pure-mode Workers have no per-call user-origin adapter. The
-                // frozen route still executes, but a wire User may be synthetic.
-                return RoutingFacts::detached();
+                return RoutingFacts::uncertain();
             }
-            Field::Value(_) | Field::Invalid => return RoutingFacts::detached(),
+            Field::Value(_) => return RoutingFacts::detached(),
+            Field::Invalid => return RoutingFacts::uncertain(),
             Field::Absent => {}
         }
     }
@@ -304,24 +313,26 @@ pub(super) fn facts(
             // call site. Its independent auxiliary clients lack this identity.
             let mut result = RoutingFacts::default();
             result.native.requires_checkpoint = true;
-            result.native.user_origin = NativeUserOrigin::ExistingTurn;
+            result.native.user_origin = NativeUserOrigin::Observed;
             return hermes_root(headers, native_identity, result);
         }
         Field::Absent | Field::Invalid => None,
     };
     let Some(context) = context else {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     };
+    if context.purpose != "main" {
+        return RoutingFacts::detached();
+    }
     if context.version != 1
         || context.agent != agent
         || !id(&context.session_id)
-        || context.purpose != "main"
         || context.turn_id.as_deref().is_some_and(|v| !id(v))
         || context.checkpoint.as_deref().is_some_and(|v| !id(v))
         || context.continuation_requires_existing_turn == Some(false) && context.turn_id.is_none()
         || (agent != "dsh" && context.user_turns.is_some())
     {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     }
     // A plugin cannot silently rename the native conversation or another family.
     let expected = match agent {
@@ -329,33 +340,27 @@ pub(super) fn facts(
         "dsh" => "deepseek_harness_session",
         "opencode" => "opencode_session",
         "hermes" if hermes => "hermes_session",
-        _ => return RoutingFacts::detached(),
+        _ => return RoutingFacts::uncertain(),
     };
     let session_header = match agent {
         "pi" => "x-session-affinity",
         "dsh" => "x-deepseek-harness-session-id",
         "opencode" => "x-opencode-session-id",
         "hermes" => "x-hermes-session-id",
-        _ => return RoutingFacts::detached(),
+        _ => return RoutingFacts::uncertain(),
     };
     if worker.is_some() {
         if !matches!(header_value(headers, session_header), Field::Value(session) if session == context.session_id)
         {
-            return RoutingFacts::detached();
+            return RoutingFacts::uncertain();
         }
     } else if !native_identity
         .is_some_and(|(kind, parts)| kind == expected && parts.first() == Some(&context.session_id))
     {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     }
     if agent == "dsh" && !valid_user_turns(&context) {
-        // This proves only the affected main scope, not a semantic user. Record
-        // a capture gap without admitting this request or guessing its task.
-        return RoutingFacts {
-            track: false,
-            capture_gap: true,
-            ..RoutingFacts::default()
-        };
+        return RoutingFacts::uncertain();
     }
     let result = RoutingFacts {
         native: NativeCheckpoint {
@@ -366,15 +371,16 @@ pub(super) fn facts(
             // Hermes enters the native conversation call site, rather than a
             // shared provider-header hook; its turn ID also covers in-place compression.
             requires_checkpoint: agent != "hermes",
-            // Hermes whole-turn hooks also receive native async completion
-            // notifications as User input. Old adapters' false flag cannot prove
-            // a new original user; keep their transport compatible but conservative.
-            user_origin: if agent == "dsh"
-                || agent != "hermes" && context.continuation_requires_existing_turn == Some(false)
-            {
+            // Hermes whole-turn hooks cannot prove fresh human input. Capture
+            // actual requests with uncertainty rather than disabling routing.
+            user_origin: if agent == "hermes" {
+                NativeUserOrigin::Observed
+            } else if agent == "dsh" || context.continuation_requires_existing_turn == Some(false) {
                 NativeUserOrigin::CurrentUser
-            } else {
+            } else if context.continuation_requires_existing_turn == Some(true) {
                 NativeUserOrigin::ExistingTurn
+            } else {
+                NativeUserOrigin::Observed
             },
         },
         ..RoutingFacts::default()
@@ -392,10 +398,10 @@ fn hermes_root(
     mut result: RoutingFacts,
 ) -> RoutingFacts {
     let Some(("hermes_session", parts)) = identity else {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     };
     let Some(current) = parts.first() else {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     };
     if let Some(proof) =
         crate::server::core_runtime::observation::native_continuation::read(headers, current)

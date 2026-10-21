@@ -348,73 +348,66 @@ HiRoute SHALL accept the managed Hermes main conversation and its model/tool con
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
 
-### Requirement: Native auxiliary calls cannot change conversation routing history
+### Requirement: Native routing remains available without perfect input provenance
 
-The Gateway SHALL admit reusable routing history only after authenticating the
-request and resolving its conversation branch. Known native auxiliary requests
-(including title, summary, warming, memory and compaction calculation) and missing,
-contradictory, malformed or unsupported native routing evidence SHALL use independent
-empty partial history, without a history lease, inherited decision, assessment
-target or checkpoint mutation. Native children with a distinct native identity
-SHALL have independent branch state, including within a verified Worker task.
-These headers are optimization evidence, never authorization or a route override.
+After authorization, usable requests SHALL retain classification, model selection,
+actual execution capture and cross-turn quality evaluation independently of whether
+the client proves fresh human input. This applies to Codex, Claude, Hermes, Pi, DSH,
+OpenCode and Qoder. Origin uncertainty SHALL NOT globally disable these functions,
+force every request to Primary, or require repeatedly creating new conversations.
+A failed classification may use the existing temporary fallback; later usable
+requests in the same native session SHALL recover.
 
-Codex uses coherent native turn metadata and a recognized persistent native window
-counter. Claude request-class, prompt and native child identities preserve
-observation branches but do not prove a fresh user. Managed Pi, DSH and ordinary OpenCode install reversible
-native adapters that convey request purpose, session, logical turn and available
-durable compaction checkpoint. Hermes uses its selected conversation middleware
-and validated compression lineage. Unsupported Qoder purposes remain independent
-for every request. Generic API callers retain their existing identity behavior.
+Known native auxiliary purposes (including title, summary, warming, memory and
+compaction calculation) SHALL remain detached from main routing history. Invalid,
+missing or unsupported optional metadata instead permits observed-input routing,
+without asserting that a wire User came from a human. Observed-input history SHALL
+record the actual request and accepted output with an explicit
+`unverified_request_user_origin` visible-content marker. Source uncertainty alone
+SHALL NOT make complete accepted execution ineligible for cross-turn evaluation.
+Unknown-origin requests use a distinct optimization lane from verified adapter
+input, so a broken adapter cannot replace that lane's original task/checkpoint.
+Potentially missed verified captures retain the existing gap fence.
 
-Native same-turn evidence MUST take precedence over appended synthetic User
-envelopes, even when the previous message prefix remains unchanged. It MAY preserve
-the logical routing decision only when the history owner still has the matching
-native turn, complete original user and a decision valid for the current Plan.
-A checkpoint alone cannot recreate that turn. Missing/evicted user data or an
-invalidated decision MUST cause unavailable-input routing without capturing or
-reclassifying the synthetic wire user. Output gaps do not by themselves discard a
-still-complete original user. Tool outcomes require independently proven message
-positions; native identity never establishes a byte prefix.
+Native children with distinct identities SHALL remain independent, including in
+verified Worker tasks. These headers are optional evidence, never authorization or
+a route override. Qoder's shared main/child identity is an accepted association and
+scoring-accuracy limitation; it SHALL retain classification, historical execution
+and evaluation. Its reserved model base path retains the existing bearer contract
+and does not itself disable routing. No body-prefix heuristic proves human origin.
 
-Managed Pi and ordinary OpenCode adapters convey the bounded boolean
-`continuation_requires_existing_turn`. True or missing provenance MUST require the
-existing captured turn; explicit fresh-user provenance MAY restart capture after a
-gap. A real new question MUST be independently validated to produce a valid fresh
-classification, capture that user, and expose only trusted users on its next turn.
-Successful output and empty partial history establish degradation, not recovery.
-DSH retains its verified per-request native user proof instead of guessing a user
-from a compaction or peer envelope. Pure-mode OpenCode Workers without such a
-producer retain their frozen execution route and omit optional routing history.
+Native same-turn evidence takes precedence over appended synthetic User envelopes
+when the history owner still has the matching task, captured input and a valid
+current-Plan decision. An explicitly identified continuation without that captured
+input cannot reinterpret its summary as a new task; a subsequent verified fresh
+input can recover. Pi and OpenCode's explicit continuation constraint and DSH's
+verified semantic projection retain these protections. Missing or failed origin
+adapters may use the separate observed-input lane. Native identity never proves a
+byte prefix or supplies missing tool outcomes.
 
-Recognized Codex 0.147 producers use `<thread>:<u64 window>` consistently across
-present native channels. Cold admission requires a zero window and no existing
-model/tool/opaque history; a positive window is persistent negative evidence, never
-proof of a new user. A captured turn may survive compaction. A different turn needs
-a newly appended user after its captured semantic prefix. Counter rollback,
-missing/unsupported producer evidence or a cold compressed session MUST NOT recover
-by changing opaque IDs. Following a cold compressed restart, even a real new
-question remains unavailable until a new clean, uncompressed supported thread or a
-future verified fresh-user producer supplies admissible evidence.
+Codex persistent window counters and Claude's one-call compaction flag remain
+negative provenance evidence. Cold compacted Codex sessions can nevertheless start
+observed-input capture from their current usable request. Gateway restart discards
+in-memory history: it SHALL NOT import an old summary or claimed prior output as
+accepted execution. New A and B in that same session SHALL be classified and
+captured, and B SHALL be able to evaluate A's newly accepted execution. Uncaptured
+older context remains partial. Counter rollback and unsupported producers disclose
+uncertainty rather than permanently disabling smart routing.
 
-Claude's one-call compaction flag is insufficient after consumption, restart or
-eviction. Hermes 0.20 public whole-turn hooks also receive native async completion
-notifications as new User input; equality with their user_message and an initiated
-turn flag do not prove user origin. Hermes MUST require an existing validated turn,
-including for older producers that advertise a false continuation constraint.
-Until a supported producer supplies request-bound original-user provenance,
-Claude, Hermes and Qoder MUST omit history capture and classification from unproven
-wire users. They have no session-local or new-session recovery path in this contract;
-neither ordinary new questions nor changing prompt IDs restore the optimization. Requests retain native forwarding and the published unavailable-input
-route, potentially using the primary model for every task. This capability limit
-MUST remain distinct from successful full adaptation.
-Ordinary managed Qoder uses its reserved model base path; generic runtime
-User-Agent values such as Bun do not identify the client. Its reserved route MUST
-enforce unavailable-user handling independently of headers. Unidentified callers
-on the generic API route retain the generic contract and are not claimed as
-managed Qoder adaptation. Older bundled adapters without fresh-user provenance
-remain executable but may need explicit model-settings reapplication to install
-the current owned adapter before normal new-user recovery is possible.
+Hermes public whole-turn hooks also receive native async completion notifications.
+Matching text, a turn change, an initiated-turn flag and older producers' false
+continuation constraint do not prove human origin. Such requests are observed,
+including on supported Hermes 0.20, rather than globally unavailable. Compression
+lineage remains separate evidence. No adaptation may fabricate human provenance
+or claim accurate task association merely because output and routing succeed.
+
+Sustained availability and scoring accuracy SHALL be recorded as separate acceptance
+results. A-to-B acceptance requires valid decisions on both, captured A and B,
+evaluation of A's actual execution on B, and actual selection of different model
+groups. Optional history conflicts, resource pressure and side-call failures SHALL
+remain isolated from main output. Native acceptance uses the real configured client
+through Gateway to a controlled upstream, including compaction, same-session restart,
+adapter fault/recovery and full configuration Restore followed by actual startup.
 
 A verified new native user after compaction SHALL obtain a fresh judgment while
 retaining accepted prior execution history. Semantic

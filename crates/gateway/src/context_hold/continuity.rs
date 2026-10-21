@@ -4,6 +4,9 @@ use crate::context_hold::routing::{NativeCheckpoint, NativeUserOrigin};
 
 impl PreparedHold {
     pub(crate) fn history_is_proven(&self) -> bool {
+        if self.native.user_origin == NativeUserOrigin::Observed {
+            return false;
+        }
         let continuity = self.history_continuity();
         if self
             .native
@@ -46,7 +49,17 @@ impl PreparedHold {
     pub(crate) fn native_user_unavailable(&self) -> bool {
         self.native.user_origin == NativeUserOrigin::ExistingTurn
             || self.history_continuity().uses_saved_user()
-            || self.native.user_origin == NativeUserOrigin::NativeTurn && !self.history_is_proven()
+    }
+
+    pub(crate) fn history_can_capture(&self) -> bool {
+        self.native.user_origin != NativeUserOrigin::ExistingTurn || self.history_is_proven()
+    }
+
+    pub(crate) fn user_origin_unverified(&self) -> bool {
+        matches!(
+            self.native.user_origin,
+            NativeUserOrigin::Wire | NativeUserOrigin::Observed
+        ) || !self.history_is_proven()
     }
 
     pub(crate) fn native_turn(&self) -> Option<[u8; 32]> {
