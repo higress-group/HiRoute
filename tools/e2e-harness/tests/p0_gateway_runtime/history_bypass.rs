@@ -99,11 +99,10 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
             complete(RESPONSES_OK),
         ]);
         let complex = NativeProvider::start(vec![complete(RESPONSES_OK)]);
-        let classifier = NativeProvider::start(if dsh {
-            vec![complete(CLASSIFIER_SIMPLE)]
-        } else {
-            vec![complete(CLASSIFIER_SIMPLE), complete(CLASSIFIER_COMPLEX)]
-        });
+        let classifier = NativeProvider::start(vec![
+            complete(CLASSIFIER_SIMPLE),
+            complete(CLASSIFIER_COMPLEX),
+        ]);
         let fixture = RuntimeFixture::launch_rest_classified_with_observation(
             &[&simple, &complex, &classifier],
             1,
@@ -140,18 +139,10 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
                 1,
                 "a conflicting request must execute independently"
             );
-            if dsh {
-                assert_eq!(
-                    classifier.calls(),
-                    1,
-                    "unproved DSH background input must use Primary without classification"
-                );
-            } else {
-                let detached = classifier_body(&classifier, 1);
-                assert_eq!(detached["history_partial"], true, "{detached}");
-                assert_eq!(detached["visible_conversation"], json!([]), "{detached}");
-                assert!(detached["assessment_target"].is_null(), "{detached}");
-            }
+            let detached = classifier_body(&classifier, 1);
+            assert_eq!(detached["history_partial"], !dsh, "{detached}");
+            assert_eq!(detached["visible_conversation"], json!([]), "{detached}");
+            assert!(detached["assessment_target"].is_null(), "{detached}");
             release.0.release();
             main.join().unwrap()
         });
@@ -171,18 +162,28 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
         assert_eq!((simple.calls(), complex.calls()), (2, 1), "{identity:?}");
         assert_eq!(
             classifier.calls(),
-            if dsh { 1 } else { 2 },
+            2,
             "bypass must not invalidate the main tool continuation"
         );
         let facts = wait_execution_facts(&fixture, 3);
-        assert!(
-            facts.iter().any(|record| {
-                record
-                    .pointer("/fact/complexity/reason_codes")
-                    .and_then(Value::as_array)
-                    .is_some_and(|codes| codes.contains(&json!("TASK_CONTEXT_UNRESOLVED")))
-            }),
-            "the detached request must disclose unavailable history"
+        let decisions = facts
+            .iter()
+            .filter(|r| r["fact"]["kind"] == "route_decision")
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 3);
+        assert_eq!(
+            decisions
+                .iter()
+                .filter(|r| r["fact"]["complexity"]["decision_source"] == "external_classifier")
+                .count(),
+            2
+        );
+        assert_eq!(
+            decisions
+                .iter()
+                .filter(|r| r["fact"]["complexity"]["decision_source"] == "inherited")
+                .count(),
+            1
         );
         executed += 1;
     }

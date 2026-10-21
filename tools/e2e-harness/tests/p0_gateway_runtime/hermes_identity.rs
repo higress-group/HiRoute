@@ -26,9 +26,9 @@ fn assert_native_identity(chat: bool) {
         error_kind: None,
         body,
     };
-    let regular = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
-    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 11]);
-    let decider = NativeProvider::start(vec![reply(simple.as_slice()); 3]);
+    let regular = NativeProvider::start(vec![reply(RESPONSES_OK); 11]);
+    let primary = NativeProvider::start(vec![]);
+    let decider = NativeProvider::start(vec![reply(simple.as_slice()); 11]);
     let fixture = RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], true);
     let mut publication = fixture.publication();
     let grant = publication
@@ -88,7 +88,7 @@ fn assert_native_identity(chat: bool) {
     });
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
-        (0, 2, 0)
+        (2, 0, 2)
     );
     let long = "a".repeat(129);
     for claims in [
@@ -107,8 +107,8 @@ fn assert_native_identity(chat: bool) {
         send(&headers);
         assert_eq!(
             decider.calls(),
-            classified,
-            "missing or unproven native IDs cannot prove a current original User"
+            classified + 2,
+            "invalid identity stays request-scoped while observed input remains classifiable"
         );
     }
     // An equal raw ID under a different admitted connection is another conversation.
@@ -124,7 +124,7 @@ fn assert_native_identity(chat: bool) {
     ]);
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
-        (0, 11, 0)
+        (11, 0, 11)
     );
     let facts = wait_execution_facts(&fixture, 11);
     let decisions = facts
@@ -141,7 +141,7 @@ fn assert_native_identity(chat: bool) {
                     && decision["fallback_used"] == false
             })
             .count(),
-        0
+        11
     );
     assert_eq!(
         decisions
@@ -150,7 +150,7 @@ fn assert_native_identity(chat: bool) {
                 decision["fallback_used"] == true && decision["fallback_reason"] == "unavailable"
             })
             .count(),
-        11
+        0
     );
     let finished = facts
         .iter()

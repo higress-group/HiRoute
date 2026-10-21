@@ -8,14 +8,14 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
         let plain = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#;
         let chat_tool = br#"{"id":"chat-tool","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"native-call","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
         let chat_ok = br#"{"id":"chat-ok","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":"42"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
-        let primary = NativeProvider::start(vec![
+        let regular = NativeProvider::start(vec![
             reply(chat_tool),
             reply(chat_ok),
             reply(chat_ok),
             reply(chat_ok),
             reply(chat_ok),
         ]);
-        let regular = NativeProvider::start(vec![]);
+        let primary = NativeProvider::start(vec![]);
         let decider = NativeProvider::start(vec![
             reply(plain),
             reply(c_answer(true, false)),
@@ -92,15 +92,15 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
         let mut assistant = send(&history, "hermes-main", "lookup-user-1");
         assert_eq!(
             decider.calls(),
-            0,
-            "a tool continuation cannot establish original-user provenance"
+            1,
+            "a tool continuation inherits the observed task without claiming human provenance"
         );
         assistant["reasoning_content"] = json!(thinking);
         assistant["reasoning"] = json!(thinking);
         history.push(assistant);
         history.push(json!({"role":"user","content":"Add eight to that value."}));
         send(&history, "hermes-main", "lookup-user-2");
-        assert_eq!(decider.calls(), 0);
+        assert_eq!(decider.calls(), 2);
         // Another native session and rewritten main history also keep execution
         // without manufacturing a complete assessment target.
         send(&history, "hermes-other", "other-user-1");
@@ -109,7 +109,7 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
         send(&history, "hermes-main", "lookup-user-3");
         assert_eq!(
             (regular.calls(), primary.calls(), decider.calls()),
-            (0, 5, 0)
+            (5, 0, 4)
         );
         let facts = wait_execution_facts(&fixture, 5);
         let decisions = facts
@@ -120,19 +120,30 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
         assert!(
             decisions
                 .iter()
-                .all(|fact| fact["fact"]["complexity"]["fallback_reason"] == "unavailable")
+                .all(|fact| fact["fact"]["complexity"]["fallback_used"] == false)
+        );
+        assert!(
+            facts
+                .iter()
+                .any(|fact| fact["fact"]["kind"] == "branch_assessment_recorded")
         );
     }
 }
 
 #[test]
-fn hermes_legacy_freshness_does_not_recover_classification_for_real_users() {
+fn hermes_legacy_freshness_retains_routing_and_evaluation_without_claiming_human_origin() {
     use hiroute_gateway::server::request_plan::IngressProtocol;
 
     let uncaptured = br#"{"id":"uncaptured","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"LEGACY_UNCAPTURED_FALLBACK_OUTPUT"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
-    let regular = NativeProvider::start(vec![]);
-    let primary = NativeProvider::start(vec![reply(uncaptured); 4]);
-    let decider = NativeProvider::start(vec![]);
+    let regular = NativeProvider::start(vec![reply(uncaptured); 4]);
+    let primary = NativeProvider::start(vec![]);
+    let plain = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#;
+    let decider = NativeProvider::start(vec![
+        reply(plain),
+        reply(plain),
+        reply(c_answer(true, false)),
+        reply(c_answer(true, false)),
+    ]);
     let fixture = RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], true);
     let mut publication = fixture.publication();
     publication
@@ -168,8 +179,8 @@ fn hermes_legacy_freshness_does_not_recover_classification_for_real_users() {
         serde_json::from_slice::<Value>(&response.body).unwrap()["choices"][0]["message"].clone()
     };
     let mut history = vec![json!({"role":"user","content":"LEGACY_SYNTHETIC_SUMMARY"})];
-    // No adapter and a legacy adapter without the new boolean both keep native
-    // model execution, but neither can create a classifier User or shared history.
+    // Missing identity remains request-scoped; the later native identity permits
+    // observed history without upgrading the legacy producer to human proof.
     let legacy = json!({"version":1,"agent":"hermes","session_id":"hermes-recovery",
         "purpose":"main","turn_id":"legacy-turn"})
     .to_string();
@@ -183,13 +194,13 @@ fn hermes_legacy_freshness_does_not_recover_classification_for_real_users() {
         history.push(assistant);
         assert_eq!(
             decider.calls(),
-            0,
-            "legacy metadata cannot establish an original User"
+            history.len() - 1,
+            "origin uncertainty cannot disable classification"
         );
     }
-    assert_eq!((regular.calls(), primary.calls()), (0, 2));
+    assert_eq!((regular.calls(), primary.calls()), (2, 0));
 
-    // Even actual new questions cannot recover without independent origin proof.
+    // Real new questions retain classification and quality evaluation.
     for (turn, user) in [
         ("recovery-user-1", "FIRST_REAL_USER"),
         ("recovery-user-2", "SECOND_REAL_USER"),
@@ -205,7 +216,7 @@ fn hermes_legacy_freshness_does_not_recover_classification_for_real_users() {
     }
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
-        (0, 4, 0)
+        (4, 0, 4)
     );
     let facts = wait_execution_facts(&fixture, 4);
     let decisions = facts
@@ -216,6 +227,11 @@ fn hermes_legacy_freshness_does_not_recover_classification_for_real_users() {
     assert!(
         decisions
             .iter()
-            .all(|fact| fact["fact"]["complexity"]["fallback_reason"] == "unavailable")
+            .all(|fact| fact["fact"]["complexity"]["fallback_used"] == false)
+    );
+    assert!(
+        facts
+            .iter()
+            .any(|fact| fact["fact"]["kind"] == "branch_assessment_recorded")
     );
 }

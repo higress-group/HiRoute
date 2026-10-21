@@ -123,7 +123,7 @@ fn primary_relay_stays_in_this_turn_but_new_users_decide_again() {
     assert_turn_routing(false);
 }
 #[test]
-fn hermes_native_turns_keep_tools_but_cannot_recover_unproven_user_history() {
+fn hermes_native_turns_keep_tools_and_restore_observed_user_routing() {
     assert_turn_routing(true);
 }
 fn assert_turn_routing(hermes: bool) {
@@ -205,7 +205,7 @@ fn assert_turn_routing(hermes: bool) {
                 let first = send(&history, "Use the lookup tool.", "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
-                    if hermes { (0, 1, 0) } else { (1, 1, 1) }
+                    (1, 1, 1)
                 );
                 history.extend(first["output"].as_array().unwrap().iter().cloned());
                 history.push(json!({"type":"function_call_output","call_id":first["output"][0]["call_id"],"output":"record found"}));
@@ -217,7 +217,7 @@ fn assert_turn_routing(hermes: bool) {
                 let continued = send(&history, instructions, "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
-                    if hermes { (0, 2, 0) } else { (1, 2, 1) },
+                    (1, 2, 1),
                     "same-turn relay must not retry regular, even when instructions invalidate the candidate hold"
                 );
                 history.extend(continued["output"].as_array().unwrap().iter().cloned());
@@ -225,10 +225,10 @@ fn assert_turn_routing(hermes: bool) {
                 send(&history, instructions, "real-user-2");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
-                    if hermes { (0, 3, 0) } else { (2, 2, 2) },
+                    (2, 2, 2),
                     "{}",
                     if hermes {
-                        "a real new question cannot restore absent input-origin proof"
+                        "a real new question must restore routing without asserting human-origin proof"
                     } else {
                         "the next real user message must decide again, without a persistent primary floor"
                     }
