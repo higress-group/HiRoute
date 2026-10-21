@@ -15,6 +15,7 @@ struct Snapshot {
     evicted_accounts: u64,
     first_failure: Option<CpaDiscoveryAttempt>,
     latest: Option<CpaDiscoveryAttempt>,
+    registration_pending: Option<bool>,
 }
 
 /// Dedupe transitions, ignoring the growing elapsed time of an entered phase.
@@ -28,6 +29,7 @@ pub(super) struct Observations {
 impl Observations {
     pub fn read(&mut self, value: &Value, ordinal: Option<u32>) -> Vec<CpaModelDiscovery> {
         let observations = parse(value)
+            .map(|(_, observations)| observations)
             .unwrap_or_else(|reason| vec![CpaDiscoveryObservation::Unavailable { reason }]);
         let mut result = Vec::new();
         for observation in observations {
@@ -65,7 +67,9 @@ impl Observations {
     }
 }
 
-fn parse(value: &Value) -> Result<Vec<CpaDiscoveryObservation>, CpaDiscoveryUnavailable> {
+fn parse(
+    value: &Value,
+) -> Result<(Option<bool>, Vec<CpaDiscoveryObservation>), CpaDiscoveryUnavailable> {
     let raw = value
         .get("hiroute_model_discovery")
         .ok_or(CpaDiscoveryUnavailable::MetadataAbsent)?;
@@ -98,7 +102,7 @@ fn parse(value: &Value) -> Result<Vec<CpaDiscoveryObservation>, CpaDiscoveryUnav
     if result.is_empty() {
         return Err(CpaDiscoveryUnavailable::NoAttempt);
     }
-    Ok(result)
+    Ok((snapshot.registration_pending, result))
 }
 
 fn valid(attempt: &CpaDiscoveryAttempt) -> bool {
@@ -114,16 +118,17 @@ fn valid(attempt: &CpaDiscoveryAttempt) -> bool {
         ) || attempt.reason.is_some())
 }
 
-/// A terminal empty catalog has no observable discovery work left to await.
-/// Missing/malformed metadata and a retained older failure cannot shorten a wait.
+/// Only a stable catalog read with no registration in flight can end an empty wait.
+/// Missing/malformed metadata and retained older failures cannot establish this.
 pub(super) fn latest_is_terminal(value: &Value) -> bool {
-    parse(value).is_ok_and(|observations| {
-        observations.into_iter().any(|observation| {
+    parse(value).is_ok_and(|(pending, observations)| {
+        pending == Some(false) && observations.into_iter().any(|observation| {
             matches!(observation, CpaDiscoveryObservation::Observed {
                 retained_first_failure: false, attempt, ..
             } if matches!(attempt.outcome, CpaDiscoveryOutcome::Failed | CpaDiscoveryOutcome::Discarded)
                 || (attempt.phase == CpaDiscoveryPhase::Registration
-                    && attempt.outcome == CpaDiscoveryOutcome::Completed))
+                    && attempt.outcome == CpaDiscoveryOutcome::Completed
+                    && attempt.model_count == Some(0)))
         })
     })
 }

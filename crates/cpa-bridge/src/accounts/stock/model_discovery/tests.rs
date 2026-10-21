@@ -6,7 +6,7 @@ use serde_json::json;
 fn payload() -> Value {
     json!({"models":[], "hiroute_model_discovery": {
         "schema":"hiroute.cpa-model-discovery/v1", "process_id":123,
-        "evicted_accounts":0, "first_failure":null,
+        "evicted_accounts":0, "first_failure":null, "registration_pending":false,
         "latest": {"attempt_id":1,"phase":"request","outcome":"failed",
             "reason":"proxy_rejected","elapsed_ms":47,"phase_elapsed_ms":46,
             "proxy_status":503,"timings":[{"phase":"request","outcome":"failed",
@@ -166,7 +166,20 @@ fn only_the_latest_valid_terminal_attempt_can_shorten_an_empty_wait() {
     value["hiroute_model_discovery"]["latest"]["outcome"] = json!("completed");
     assert!(!latest_is_terminal(&value));
     value["hiroute_model_discovery"]["latest"]["phase"] = json!("registration");
+    assert!(!latest_is_terminal(&value));
+    value["hiroute_model_discovery"]["latest"]["model_count"] = json!(0);
     assert!(latest_is_terminal(&value));
+    value["hiroute_model_discovery"]["registration_pending"] = json!(true);
+    assert!(!latest_is_terminal(&value));
+    value["hiroute_model_discovery"]
+        .as_object_mut()
+        .unwrap()
+        .remove("registration_pending");
+    assert!(!latest_is_terminal(&value));
+    value["hiroute_model_discovery"]["registration_pending"] = json!(false);
+    value["hiroute_model_discovery"]["latest"]["model_count"] = json!(1);
+    assert!(!latest_is_terminal(&value));
+    value["hiroute_model_discovery"]["latest"]["model_count"] = json!(0);
     value["hiroute_model_discovery"]["latest"]["unexpected"] = json!(true);
     assert!(!latest_is_terminal(&value));
     assert!(!latest_is_terminal(&json!({"models":[]})));

@@ -72,11 +72,16 @@ registered catalog without repeating an already-correct auth control PATCH.
 An explicit subscription check refreshes it; credential/version changes use the
 existing auth update path. This keeps remote directory availability out of
 unchanged preview/publication reads while retaining all account pin checks.
-When the directory is empty and the validated latest discovery is terminal, a
-pin read fails immediately instead of polling that empty result for 20 seconds.
-An entered phase still gets its existing convergence wait. Missing/malformed
-observations and an older retained failure cannot shorten the wait, and a
-nonempty retained directory still undergoes every normal pin check.
+When the directory is empty and the whole registration is quiescent with a
+consistent terminal observation, a pin read fails immediately instead of polling
+that empty result for 20 seconds. The existing response's `registration_pending`
+flag covers the whole registration, including the gap before a bounded handoff.
+Queued auth updates and reconciliation passes share that same scope.
+Two observations bracket the local catalog read; any intervening transition makes
+that response pending. No registry lock spans discovery or management I/O.
+Pending work still gets its existing convergence wait. Missing/malformed
+observations, unknown registration state and an older retained failure cannot
+shorten the wait. A nonempty retained directory still undergoes every normal pin check.
 For native borrowing, the fields PATCH carries the validated lease's current `hiroute_client_version`
 alongside its controls. CPA persists and synchronously discovers that version
 even when its watcher still holds the preceding metadata. No access or refresh
@@ -93,6 +98,8 @@ recover historical failures from an older process. Older concurrent attempts
 cannot overwrite the latest attempt. No new endpoint or maintenance channel is
 introduced. Transport retry settings are unchanged; generation handoff shares
 the original five-second discovery deadline.
+In-flight registration counts are separate from the retained history, survive
+history eviction and are deleted when the last overlapping registration exits.
 
 HiRoute validates this metadata independently of model membership, emits bounded
 `cpa_model_discovery` transitions on its existing diagnostic context and explicitly

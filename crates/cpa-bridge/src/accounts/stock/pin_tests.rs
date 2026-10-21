@@ -117,7 +117,8 @@ impl Fixture {
                             };
                             serde_json::json!({"models":[],"hiroute_model_discovery":{
                                 "schema":"hiroute.cpa-model-discovery/v1","process_id":123,
-                                "evicted_accounts":0,"first_failure":null,"latest":latest
+                                "evicted_accounts":0,"first_failure":null,"latest":latest,
+                                "registration_pending":fault == 15
                             }}).to_string()
                         },
                         fault @ 10..=14 => {
@@ -131,7 +132,8 @@ impl Fixture {
                             serde_json::json!({
                                 "models": if empty {serde_json::json!([])} else {serde_json::json!([{"id":"hiroute-codex-current/future-model"}])},
                                 "hiroute_model_discovery": {"schema":"hiroute.cpa-model-discovery/v1", "process_id":123,"evicted_accounts":0,"first_failure":null,
-                                    "latest":{"attempt_id":1,"phase":phase,"outcome":outcome,"reason":reason,"elapsed_ms":50,"phase_elapsed_ms":50,"timings":[]}}
+                                    "registration_pending":false,
+                                    "latest":{"attempt_id":1,"phase":phase,"outcome":outcome,"reason":reason,"model_count":0,"elapsed_ms":50,"phase_elapsed_ms":50,"timings":[]}}
                             }).to_string()
                         },
                         _ => r#"{"models":[{"id":"hiroute-codex-current/future-model"}]}"#.to_owned(),

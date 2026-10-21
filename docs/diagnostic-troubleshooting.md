@@ -90,8 +90,11 @@ An empty account catalog after a failed initial discovery can coexist with corre
 persisted controls. Ordinary pin reads do not refresh an already-correct account;
 repeated reads alone therefore cannot establish that upstream discovery recovered.
 Use an isolated explicit check to distinguish this state from slow management I/O.
-Current pin reads fail promptly for a validated latest terminal attempt with no
-account models. Pending or unobserved discovery remains subject to the ordinary
+Current pin reads fail promptly only for a quiescent registration with a consistent
+terminal observation and no account models. The management response marks the
+whole registration as pending across an authorization handoff, and also marks a
+catalog/status read as pending when registration changes during that read.
+Pending, inconsistent or unobserved discovery remains subject to the ordinary
 control deadline; an older retained failure does not make the latest attempt fail.
 Generation-only supersession may hand off once to current access credentials in
 the same upstream deadline. A different registration epoch, disable or removal

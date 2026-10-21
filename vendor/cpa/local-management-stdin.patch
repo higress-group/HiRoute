@@ -105,7 +105,7 @@ index 2b99077..a661fbb 100644
  		}
  	}
 diff --git a/internal/api/handlers/management/auth_files.go b/internal/api/handlers/management/auth_files.go
-index 0a4ed74..744016b 100644
+index 0a4ed74..5678a80 100644
 --- a/internal/api/handlers/management/auth_files.go
 +++ b/internal/api/handlers/management/auth_files.go
 @@ -16,6 +16,7 @@ import (
@@ -116,21 +116,33 @@ index 0a4ed74..744016b 100644
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
  	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
  	log "github.com/sirupsen/logrus"
-@@ -374,7 +375,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
+@@ -355,7 +356,10 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
+ 
+ 	// Get models from registry
+ 	reg := registry.GetGlobalRegistry()
+-	models := reg.GetModelsForClient(authID)
++	var models []*registry.ModelInfo
++	discovery := modeldiscovery.ReadCatalog(authID, func() {
++		models = reg.GetModelsForClient(authID)
++	})
+ 
+ 	result := make([]gin.H, 0, len(models))
+ 	for _, m := range models {
+@@ -374,7 +378,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
  		result = append(result, entry)
  	}
  
 -	c.JSON(200, gin.H{"models": result})
-+	c.JSON(200, gin.H{"models": result, "hiroute_model_discovery": modeldiscovery.Read(authID)})
++	c.JSON(200, gin.H{"models": result, "hiroute_model_discovery": discovery})
  }
  
  // List auth files from disk when the auth manager is unavailable.
 diff --git a/internal/api/handlers/management/auth_files_discovery_test.go b/internal/api/handlers/management/auth_files_discovery_test.go
 new file mode 100644
-index 0000000..fbca8b2
+index 0000000..b4b2fb3
 --- /dev/null
 +++ b/internal/api/handlers/management/auth_files_discovery_test.go
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,47 @@
 +package management
 +
 +import (
@@ -155,6 +167,8 @@ index 0000000..fbca8b2
 +	trace := modeldiscovery.Begin(a.ID)
 +	trace.Enter(modeldiscovery.ClientVersion)
 +	trace.End(modeldiscovery.Failed, modeldiscovery.ClientVersionUnavailable)
++	done := modeldiscovery.Registering(a.ID)
++	defer done()
 +	handler := NewHandlerWithoutConfigFilePath(&config.Config{}, manager)
 +	recorder := httptest.NewRecorder()
 +	ctx, _ := gin.CreateTestContext(recorder)
@@ -167,7 +181,7 @@ index 0000000..fbca8b2
 +	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 +		t.Fatal(err)
 +	}
-+	if recorder.Code != 200 || response.Models == nil || response.Discovery.FirstFailure == nil || response.Discovery.FirstFailure.Reason != modeldiscovery.ClientVersionUnavailable {
++	if recorder.Code != 200 || response.Models == nil || !response.Discovery.RegistrationPending || response.Discovery.FirstFailure == nil || response.Discovery.FirstFailure.Reason != modeldiscovery.ClientVersionUnavailable {
 +		t.Fatalf("missing observation: %+v", response)
 +	}
 +	for _, private := range []string{a.ID, a.FileName, "access_token"} {
@@ -1217,10 +1231,10 @@ index 7d69d46..44da6d5 100644
  
 diff --git a/internal/modeldiscovery/diagnostics.go b/internal/modeldiscovery/diagnostics.go
 new file mode 100644
-index 0000000..507b3f9
+index 0000000..c444f23
 --- /dev/null
 +++ b/internal/modeldiscovery/diagnostics.go
-@@ -0,0 +1,279 @@
+@@ -0,0 +1,285 @@
 +// Package modeldiscovery retains bounded, secret-free observations for the
 +// existing authenticated management response. It never logs raw errors or I/O.
 +package modeldiscovery
@@ -1304,11 +1318,13 @@ index 0000000..507b3f9
 +}
 +
 +type Snapshot struct {
-+	Schema          string   `json:"schema"`
-+	ProcessID       int      `json:"process_id"`
-+	EvictedAccounts uint64   `json:"evicted_accounts"`
-+	FirstFailure    *Attempt `json:"first_failure"`
-+	Latest          *Attempt `json:"latest"`
++	Schema              string   `json:"schema"`
++	ProcessID           int      `json:"process_id"`
++	EvictedAccounts     uint64   `json:"evicted_accounts"`
++	FirstFailure        *Attempt `json:"first_failure"`
++	Latest              *Attempt `json:"latest"`
++	RegistrationPending bool     `json:"registration_pending"`
++	revision            uint64
 +}
 +
 +type entry struct {
@@ -1319,9 +1335,11 @@ index 0000000..507b3f9
 +
 +var store = struct {
 +	sync.Mutex
-+	entries map[string]*entry
-+	evicted uint64
-+}{entries: make(map[string]*entry)}
++	entries  map[string]*entry
++	evicted  uint64
++	active   map[string]uint64
++	revision uint64
++}{entries: make(map[string]*entry), active: make(map[string]uint64)}
 +var nextID atomic.Uint64
 +
 +type contextKey struct{}
@@ -1424,6 +1442,7 @@ index 0000000..507b3f9
 +	}
 +	store.Lock()
 +	defer store.Unlock()
++	store.revision++
 +	current := store.entries[t.account]
 +	if current == nil {
 +		if len(store.entries) == capacity {
@@ -1452,7 +1471,8 @@ index 0000000..507b3f9
 +func Read(account string) Snapshot {
 +	store.Lock()
 +	defer store.Unlock()
-+	result := Snapshot{Schema: "hiroute.cpa-model-discovery/v1", ProcessID: os.Getpid(), EvictedAccounts: store.evicted}
++	result := Snapshot{Schema: "hiroute.cpa-model-discovery/v1", ProcessID: os.Getpid(), EvictedAccounts: store.evicted,
++		RegistrationPending: store.active[account] != 0, revision: store.revision}
 +	if current := store.entries[account]; current != nil {
 +		latest := clone(current.latest)
 +		if latest.Outcome == Entered {
@@ -1604,6 +1624,151 @@ index 0000000..9c9d1d2
 +	time.Sleep(time.Millisecond)
 +	if Read("progress").Latest.Outcome != Entered || Read("progress").Latest.ElapsedMS == 0 {
 +		t.Fatal("blocked phase is not observable")
++	}
++}
+diff --git a/internal/modeldiscovery/registration.go b/internal/modeldiscovery/registration.go
+new file mode 100644
+index 0000000..9b51136
+--- /dev/null
++++ b/internal/modeldiscovery/registration.go
+@@ -0,0 +1,39 @@
++package modeldiscovery
++
++import "sync"
++
++// Registering spans the whole registration, including the gap between a
++// discarded attempt and its bounded handoff. Entries live only while work runs;
++// evicting diagnostic history cannot erase an in-flight registration.
++func Registering(account string) func() {
++	if account == "" || len(account) > 4096 {
++		return func() {}
++	}
++	store.Lock()
++	store.active[account]++
++	store.revision++
++	store.Unlock()
++	var once sync.Once
++	return func() {
++		once.Do(func() {
++			store.Lock()
++			defer store.Unlock()
++			store.active[account]--
++			if store.active[account] == 0 {
++				delete(store.active, account)
++			}
++			store.revision++
++		})
++	}
++}
++
++// ReadCatalog brackets a local catalog read without holding the diagnostics
++// mutex across registry work. A transition during the read is pending for this
++// response, so mixed snapshots cannot turn an empty read into a terminal result.
++func ReadCatalog(account string, read func()) Snapshot {
++	before := Read(account)
++	read()
++	after := Read(account)
++	after.RegistrationPending = before.RegistrationPending || after.RegistrationPending || before.revision != after.revision
++	return after
++}
+diff --git a/internal/modeldiscovery/registration_test.go b/internal/modeldiscovery/registration_test.go
+new file mode 100644
+index 0000000..55ff881
+--- /dev/null
++++ b/internal/modeldiscovery/registration_test.go
+@@ -0,0 +1,94 @@
++package modeldiscovery
++
++import (
++	"testing"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
++)
++
++func TestHiRouteRegistrationHandoffRemainsPendingBetweenAttempts(t *testing.T) {
++	const account = "handoff-gap"
++	gap, resume, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
++	go func() {
++		defer close(finished)
++		done := Registering(account)
++		defer done()
++		first := Begin(account)
++		first.Enter(Registration)
++		first.End(Discarded, AccountChanged)
++		close(gap)
++		<-resume
++		second := Begin(account)
++		second.Enter(Registration)
++		second.Models(1)
++		second.End(Completed, NoReason)
++	}()
++	<-gap
++	snapshot := ReadCatalog(account, func() {})
++	close(resume)
++	<-finished
++	if !snapshot.RegistrationPending || snapshot.Latest == nil || snapshot.Latest.Outcome != Discarded {
++		t.Fatal("discarded first attempt hid the pending handoff")
++	}
++	settled := ReadCatalog(account, func() {})
++	if settled.RegistrationPending || settled.Latest == nil || settled.Latest.ModelCount == nil || *settled.Latest.ModelCount != 1 {
++		t.Fatal("completed registration did not become quiescent")
++	}
++}
++
++func TestHiRouteCatalogReadDetectsConcurrentRegistrationCompletion(t *testing.T) {
++	const account = "mixed-catalog-snapshot"
++	reg := registry.GetGlobalRegistry()
++	defer reg.UnregisterClient(account)
++	first := Begin(account)
++	first.Enter(Request)
++	first.End(Failed, Timeout)
++	read, resume := make(chan struct{}), make(chan struct{})
++	result := make(chan Snapshot, 1)
++	var models []*registry.ModelInfo
++	go func() {
++		result <- ReadCatalog(account, func() {
++			models = reg.GetModelsForClient(account)
++			close(read)
++			<-resume
++		})
++	}()
++	<-read
++	done := Registering(account)
++	second := Begin(account)
++	second.Enter(Registration)
++	reg.RegisterClient(account, "codex", []*registry.ModelInfo{{ID: "current-model", Object: "model", Type: "codex"}})
++	second.Models(1)
++	second.End(Completed, NoReason)
++	done()
++	close(resume)
++	snapshot := <-result
++	if len(models) != 0 || snapshot.Latest == nil || snapshot.Latest.ModelCount == nil || *snapshot.Latest.ModelCount != 1 || !snapshot.RegistrationPending {
++		t.Fatal("mixed empty/success response was presented as quiescent")
++	}
++	settled := ReadCatalog(account, func() { models = reg.GetModelsForClient(account) })
++	if len(models) != 1 || settled.RegistrationPending {
++		t.Fatal("next stable read did not recover")
++	}
++}
++
++func TestHiRouteRegistrationTrackingIsAccountScopedAndSurvivesHistoryEviction(t *testing.T) {
++	const account = "active-during-eviction"
++	first, second := Registering(account), Registering(account)
++	for index := 0; index < capacity+1; index++ {
++		trace := Begin(string(rune(index + 1000)))
++		trace.Enter(Request)
++	}
++	first()
++	first() // Registration task completion and batch cleanup may both finish it.
++	if !Read(account).RegistrationPending || Read("other-account").RegistrationPending {
++		t.Fatal("overlapping work or account scope lost")
++	}
++	second()
++	store.Lock()
++	_, retained := store.active[account]
++	store.Unlock()
++	if retained || Read(account).RegistrationPending {
++		t.Fatal("finished registration state leaked")
 +	}
 +}
 diff --git a/internal/runtime/executor/codex_model_diagnostics_test.go b/internal/runtime/executor/codex_model_diagnostics_test.go
@@ -2665,6 +2830,56 @@ index 0000000..91db81d
 +		t.Fatalf("overflow trace=%q", trace.Header())
 +	}
 +}
+diff --git a/sdk/cliproxy/service_auth.go b/sdk/cliproxy/service_auth.go
+index c2b4f73..5d3d94a 100644
+--- a/sdk/cliproxy/service_auth.go
++++ b/sdk/cliproxy/service_auth.go
+@@ -5,6 +5,7 @@ import (
+ 	"strings"
+ 	"time"
+ 
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher"
+@@ -391,8 +392,9 @@ func (s *Service) prepareCoreAuthForModelRegistration(ctx context.Context, auth
+ }
+ 
+ type authRegistrationWait struct {
+-	id string
+-	ch chan struct{}
++	id   string
++	ch   chan struct{}
++	done func()
+ }
+ 
+ func (s *Service) authRegistrationWaitCh(id string) chan struct{} {
+@@ -413,13 +415,14 @@ func (s *Service) beginAuthRegistration(id string) authRegistrationWait {
+ 		close(ch)
+ 		return authRegistrationWait{id: id, ch: ch}
+ 	}
++	done := modeldiscovery.Registering(id)
+ 	s.authRegWaitMu.Lock()
+ 	if s.authRegWaiters == nil {
+ 		s.authRegWaiters = make(map[string]chan struct{})
+ 	}
+ 	s.authRegWaiters[id] = ch
+ 	s.authRegWaitMu.Unlock()
+-	return authRegistrationWait{id: id, ch: ch}
++	return authRegistrationWait{id: id, ch: ch, done: done}
+ }
+ 
+ func finishAuthRegistrations(s *Service, waits []authRegistrationWait) {
+@@ -442,6 +445,9 @@ func finishAuthRegistrations(s *Service, waits []authRegistrationWait) {
+ 		if wait.ch == nil {
+ 			continue
+ 		}
++		if wait.done != nil {
++			wait.done()
++		}
+ 		select {
+ 		case <-wait.ch:
+ 		default:
 diff --git a/sdk/cliproxy/service_codex_discovery_test.go b/sdk/cliproxy/service_codex_discovery_test.go
 new file mode 100644
 index 0000000..8909d5d
@@ -2787,10 +3002,10 @@ index 0000000..8909d5d
 +}
 diff --git a/sdk/cliproxy/service_codex_registration.go b/sdk/cliproxy/service_codex_registration.go
 new file mode 100644
-index 0000000..8b8b61e
+index 0000000..518a73f
 --- /dev/null
 +++ b/sdk/cliproxy/service_codex_registration.go
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,48 @@
 +package cliproxy
 +
 +import (
@@ -2798,10 +3013,15 @@ index 0000000..8b8b61e
 +	"strings"
 +	"time"
 +
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
 +	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 +)
 +
 +func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreauth.Auth, cache *openAICompatibilityRegistrationCache) {
++	if a != nil {
++		done := modeldiscovery.Registering(a.ID)
++		defer done()
++	}
 +	if !codexDiscoveryAccount(a) {
 +		s.registerModelsForAuthAttempt(ctx, a, cache)
 +		return
@@ -2836,10 +3056,10 @@ index 0000000..8b8b61e
 +}
 diff --git a/sdk/cliproxy/service_codex_registration_test.go b/sdk/cliproxy/service_codex_registration_test.go
 new file mode 100644
-index 0000000..b95c554
+index 0000000..41afdb3
 --- /dev/null
 +++ b/sdk/cliproxy/service_codex_registration_test.go
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,175 @@
 +package cliproxy
 +
 +import (
@@ -2869,6 +3089,9 @@ index 0000000..b95c554
 +	var firstDeadline time.Time
 +	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
 +		calls++
++		if !modeldiscovery.Read(original.ID).RegistrationPending {
++			t.Fatal("registration scope ended before its lookup/handoff")
++		}
 +		deadline, ok := r.Context().Deadline()
 +		if !ok {
 +			t.Fatal("missing discovery bound")
@@ -2906,6 +3129,9 @@ index 0000000..b95c554
 +		t.Fatalf("latest authorization lost: calls=%d models=%+v", calls, models)
 +	}
 +	snapshot := modeldiscovery.Read(original.ID)
++	if snapshot.RegistrationPending {
++		t.Fatal("registration scope leaked after completion")
++	}
 +	if snapshot.FirstFailure == nil || snapshot.FirstFailure.Reason != modeldiscovery.AccountChanged || snapshot.Latest == nil || snapshot.Latest.Phase != modeldiscovery.Registration || snapshot.Latest.Outcome != modeldiscovery.Completed {
 +		t.Fatal("handoff lost failure/recovery evidence")
 +	}
@@ -2992,8 +3218,25 @@ index 0000000..b95c554
 +		})
 +	}
 +}
++
++func TestHiRouteCodexRegistrationPendingIncludesQueuedWork(t *testing.T) {
++	service := &Service{}
++	const account = "queued-registration"
++	wait := service.beginAuthRegistration(account)
++	trace := modeldiscovery.Begin(account)
++	trace.Enter(modeldiscovery.Registration)
++	trace.End(modeldiscovery.Discarded, modeldiscovery.AccountChanged)
++	if !modeldiscovery.Read(account).RegistrationPending {
++		t.Fatal("queued registration looked terminal before its task began")
++	}
++	finishAuthRegistrations(service, []authRegistrationWait{wait})
++	finishAuthRegistrations(service, []authRegistrationWait{wait})
++	if modeldiscovery.Read(account).RegistrationPending {
++		t.Fatal("batch completion leaked pending registration")
++	}
++}
 diff --git a/sdk/cliproxy/service_models.go b/sdk/cliproxy/service_models.go
-index 1bb4b62..c8acf5d 100644
+index 1bb4b62..107749c 100644
 --- a/sdk/cliproxy/service_models.go
 +++ b/sdk/cliproxy/service_models.go
 @@ -8,9 +8,12 @@ import (
@@ -3109,6 +3352,15 @@ index 1bb4b62..c8acf5d 100644
  }
  
  // refreshModelRegistrationForAuth re-applies the latest model registration for
+@@ -325,6 +380,8 @@ func (s *Service) refreshModelRegistrationForAuthWithContext(ctx context.Context
+ 	if s == nil || s.coreManager == nil || current == nil || current.ID == "" {
+ 		return false
+ 	}
++	done := modeldiscovery.Registering(current.ID)
++	defer done()
+ 	if ctx == nil {
+ 		ctx = context.Background()
+ 	}
 diff --git a/sdk/proxyutil/environment.go b/sdk/proxyutil/environment.go
 new file mode 100644
 index 0000000..46f700b

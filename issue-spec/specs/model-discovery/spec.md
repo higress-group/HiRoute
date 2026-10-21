@@ -78,9 +78,13 @@ remain explicit bounded failures; no background restart is required.
 
 An empty account directory with a validated latest terminal discovery failure,
 discard or completed empty registration MUST fail promptly rather than consume
-the remaining control budget by polling the same empty result. An observed pending
-lookup may still converge within that budget. Missing or invalid diagnostic
-metadata and retained older failures do not establish a terminal latest lookup.
+the remaining control budget by polling the same empty result, only when the
+whole registration is quiescent and its observation is consistent with that
+directory read. An attempt discarded before an authorized handoff is not a
+terminal registration. Pending work and concurrent changes during the read may
+still converge within the original budget. Missing or invalid diagnostic
+metadata, unknown registration state and retained older failures do not establish
+a terminal empty directory.
 A nonempty retained directory keeps its existing pin and authorization checks.
 
 #### Scenario: Directory lookup fails and later recovers
@@ -103,6 +107,19 @@ A nonempty retained directory keeps its existing pin and authorization checks.
   terminal and the account directory is empty
 - **THEN** an ordinary pin read fails promptly without another remote lookup or
   waiting out the entire control budget; a later explicit check may recover it.
+
+#### Scenario: A pin read overlaps authorization handoff
+
+- **WHEN** an old attempt is discarded but the same registration still has a
+  bounded rediscovery to run
+- **THEN** an empty pin read continues its original convergence wait, without
+  another refresh, until the registration settles or the budget expires.
+
+#### Scenario: A catalog read overlaps successful registration
+
+- **WHEN** registration changes between the model read and its status observation
+- **THEN** the mixed response MUST NOT establish a terminal empty directory; a
+  subsequent stable read may observe the successful catalog within the same budget.
 
 ### Requirement: Native static API imports retain native precedence and evidence
 
