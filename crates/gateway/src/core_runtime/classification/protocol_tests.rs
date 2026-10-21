@@ -185,6 +185,109 @@ fn latest_user_streams_full_spilled_cjk_and_marker_literal_without_a_size_fallba
 }
 
 #[test]
+fn optional_hold_preparation_miss_discloses_origin_without_disabling_classification() {
+    use crate::context_hold::{
+        ContextHoldStore, ContextRequest, NativeUserOrigin, prepare_context,
+    };
+    use crate::replay::{ReplayConfig, ReplayManager};
+    use crate::server::core_runtime::native_routing_view::NativeRoutingView;
+    use hiroute_gateway_core::runtime::body::BudgetTree;
+    use http::HeaderMap;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-classifier-origin-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let manager = ReplayManager::open(ReplayConfig {
+        root: root.clone(),
+        memory_threshold_bytes: 4096,
+        record_bytes: 4096,
+        orphan_ttl: Duration::from_secs(60),
+    })
+    .unwrap();
+    let budget = BudgetTree::new(1024 * 1024, 1024 * 1024)
+        .unwrap()
+        .stream(1024 * 1024)
+        .unwrap();
+    let replay = manager.begin_request(budget.clone()).unwrap();
+    let authorized = crate::server::publication::authorized_native_consumer_fixture(None);
+    for generation in [0, 1] {
+        for busy in [false, true] {
+            let request = request("native task or compacted summary");
+            let metadata = json!({"session_id":"session", "thread_id":"thread",
+                "turn_id":"turn", "request_kind":"turn",
+                "window_id":format!("thread:{generation}")});
+            let mut headers = HeaderMap::new();
+            headers.insert("session-id", "session".parse().unwrap());
+            headers.insert("thread-id", "thread".parse().unwrap());
+            headers.insert("user-agent", "codex_exec/0.147.0".parse().unwrap());
+            headers.insert(
+                "x-codex-turn-metadata",
+                metadata.to_string().parse().unwrap(),
+            );
+            let view = NativeRoutingView::prepare(&headers, &request, &replay, &budget);
+            assert!(!view.origin_unverified());
+            let holds = ContextHoldStore::default();
+            let lock = busy.then(|| holds.lock_for_runtime_test());
+            let (identity, prepared, unavailable) = prepare_context(
+                &holds,
+                &[17; 32],
+                &authorized,
+                ContextRequest {
+                    ingress: IngressProtocol::Responses,
+                    headers: &headers,
+                    document: &json!({}),
+                    request: &request,
+                    semantic_request: Some(view.request(&request)),
+                    user_origin_unverified: view.origin_unverified(),
+                    replay: &replay,
+                },
+                Instant::now(),
+            );
+            assert_eq!(
+                identity.native_checkpoint().user_origin,
+                NativeUserOrigin::NativeTurn
+            );
+            assert_eq!(
+                prepared.is_none(),
+                busy,
+                "real optional preparation must miss under lock"
+            );
+            assert!(
+                !unavailable,
+                "origin uncertainty must leave classification available"
+            );
+            let unverified =
+                view.origin_unverified() || identity.input_origin_unverified(prepared.as_ref());
+            assert_eq!(unverified, busy || generation > 0);
+            let encoded =
+                classifier_request_template(&request, &history(false), &authority(), unverified)
+                    .expect("ordinary input remains classifiable");
+            let body: Value = serde_json::from_slice(&encoded.template.bytes).unwrap();
+            let mut expected =
+                vec![json!({"kind":"text", "text":"native task or compacted summary"})];
+            if unverified {
+                expected.push(
+                    json!({"kind":"unavailable", "source_kind":"unverified_request_user_origin"}),
+                );
+            }
+            assert_eq!(body["latest_user"], json!(expected));
+            assert!(body["assessment_target"].is_null());
+            assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
+            drop(lock);
+        }
+    }
+    drop(replay);
+    drop(manager);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn request_has_exact_five_fields_and_no_execution_identity() {
     let prepared =
         classifier_request_template(&request("next"), &history(false), &authority(), false)

@@ -40,6 +40,12 @@ impl ContextIdentityFacts {
         self.routing.native.user_origin == super::routing::NativeUserOrigin::Observed
     }
 
+    pub(crate) fn input_origin_unverified(&self, hold: Option<&super::PreparedHold>) -> bool {
+        // Optional preparation can miss under contention or bounded resources.
+        // Missing continuity evidence must not imply successful source verification.
+        self.observed_routing_lane() || hold.is_none_or(super::PreparedHold::user_origin_unverified)
+    }
+
     pub(crate) fn native_checkpoint(&self) -> super::routing::NativeCheckpoint {
         self.routing.native
     }

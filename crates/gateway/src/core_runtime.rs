@@ -647,10 +647,7 @@ impl ProductionGatewayRuntime {
                 Instant::now(),
             );
             let current_input_origin_unverified = routing_view.origin_unverified()
-                || identity.observed_routing_lane()
-                || prepared_hold
-                    .as_ref()
-                    .is_some_and(|hold| hold.user_origin_unverified());
+                || identity.input_origin_unverified(prepared_hold.as_ref());
             drop(document);
             drop(ingress_workspace);
             let prevalidate_started = Instant::now();
