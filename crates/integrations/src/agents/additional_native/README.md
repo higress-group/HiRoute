@@ -90,6 +90,9 @@ to its exact former bytes; an edited file loses only the owned provider member.
 New untouched files are removed, and harmless empty containers can remain to
 preserve comments. Selecting an alias as the user default blocks removal until
 that reference changes; retaining the alias while rotating a token remains valid.
+For DSH, the provider restore baseline also retains the original ownership of the
+Cordis adapter insert across unrelated edits and reconfiguration. Removing an owned
+adapter file removes its owned insert; a genuinely borrowed file/insert survives.
 A late dependency change blocks the file switch. A restore rejected before that
 switch rolls back safely and needs a fresh operation. An operation whose service
 activation was already sealed keeps its pending tail for retry.

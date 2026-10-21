@@ -5,7 +5,7 @@ use super::{
     ProductionGatewayRuntime, RequestObservation, model_ir, profiles,
 };
 use crate::agent_turn_history::{AgentTurnHistorySnapshot, TurnDecisionInputs};
-use crate::context_hold::{HistoryContinuity, HoldTicket, PreparedHold};
+use crate::context_hold::{HoldTicket, PreparedHold};
 use crate::replay::ReplayStore;
 use std::time::Instant;
 
@@ -43,7 +43,7 @@ impl ProductionGatewayRuntime {
         replay: &ReplayStore,
         prepared_hold: Option<PreparedHold>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
-        let Some(prepared) = prepared_hold.as_ref() else {
+        let Some(prepared) = prepared_hold else {
             return Ok(DecisionHistory::detached());
         };
         let Ok(key) = self
@@ -52,28 +52,43 @@ impl ProductionGatewayRuntime {
         else {
             return Ok(DecisionHistory::detached());
         };
-        let history_continuity = prepared_hold.as_ref().map_or(
-            HistoryContinuity::NoCheckpoint,
-            PreparedHold::history_continuity,
-        );
-        let begin = self.agent_turn_history.begin_with_context(
-            key,
-            plan,
-            request,
-            replay,
-            TurnDecisionInputs {
-                history_continuity,
-                reselect_on_user_message: true,
-            },
-            Instant::now(),
-        );
+        let history_continuity = prepared.history_continuity();
+        let begin =
+            crate::agent_turn_history::AgentTurnHistoryStore::prepare_request(request, replay)
+                .and_then(|analyzed| {
+                    self.agent_turn_history.begin_with_admission(
+                        key,
+                        plan,
+                        analyzed,
+                        TurnDecisionInputs {
+                            history_continuity,
+                            reselect_on_user_message: true,
+                        },
+                        Instant::now(),
+                        || self.context_holds.reserve_commit(prepared, Instant::now()),
+                    )
+                });
+        let (begin, hold_commit) = match begin {
+            Ok(Some(admitted)) => admitted,
+            Ok(None) => return Ok(DecisionHistory::detached()),
+            Err(AgentTurnHistoryError::Integrity) => {
+                // Replay corruption remains a request-integrity failure, not a cache miss.
+                return Err(AgentTurnHistoryError::Integrity);
+            }
+            Err(
+                AgentTurnHistoryError::SessionTurnConflict
+                | AgentTurnHistoryError::TurnContextUnavailable
+                | AgentTurnHistoryError::Resource
+                | AgentTurnHistoryError::NoUserTurn,
+            ) => return Ok(DecisionHistory::detached()),
+        };
         let (ticket, history, completed, correlated) = match begin {
-            Ok(AgentTurnBegin::NewTurn {
+            AgentTurnBegin::NewTurn {
                 ticket,
                 history,
                 completed,
                 inherited_decision,
-            }) => (
+            } => (
                 ticket,
                 history,
                 completed,
@@ -84,7 +99,7 @@ impl ProductionGatewayRuntime {
                     })
                 }),
             ),
-            Ok(AgentTurnBegin::Continuation { ticket, decision }) => {
+            AgentTurnBegin::Continuation { ticket, decision } => {
                 let kind = if request.messages.iter().any(|message| {
                     message
                         .content
@@ -105,33 +120,12 @@ impl ProductionGatewayRuntime {
                     })),
                 )
             }
-            Err(AgentTurnHistoryError::Integrity) => {
-                // Replay corruption remains a request-integrity failure, not a cache miss.
-                return Err(AgentTurnHistoryError::Integrity);
-            }
-            Err(
-                AgentTurnHistoryError::SessionTurnConflict
-                | AgentTurnHistoryError::TurnContextUnavailable
-                | AgentTurnHistoryError::Resource
-                | AgentTurnHistoryError::NoUserTurn,
-            ) => return Ok(DecisionHistory::detached()),
         };
         let guard = AgentTurnRequestGuard::new(self.agent_turn_history.clone(), ticket);
-        let hold_ticket = if let Some(prepared) = prepared_hold {
-            let Some(ticket) = self.context_holds.commit(prepared, Instant::now()) else {
-                // Admission owns the history lease before any checkpoint can change.
-                // A stale cache scan cannot authorize inherited routing or late writes.
-                drop(guard);
-                return Ok(DecisionHistory::detached());
-            };
-            if ticket.history_continuity != history_continuity {
-                drop(guard);
-                return Ok(DecisionHistory::detached());
-            }
-            Some(Box::new(ticket))
-        } else {
-            None
-        };
+        // Both stores admitted the request under nonblocking locks. Publishing
+        // the reserved checkpoint cannot fail after history has been changed.
+        let hold_ticket = hold_commit.commit();
+        debug_assert_eq!(hold_ticket.history_continuity, history_continuity);
         if let Some(completed) = completed {
             observation.agent_turn_finished(&completed);
         }
@@ -139,7 +133,7 @@ impl ProductionGatewayRuntime {
             guard: Some(guard),
             history,
             correlated,
-            hold_ticket,
+            hold_ticket: Some(Box::new(hold_ticket)),
         })
     }
 }

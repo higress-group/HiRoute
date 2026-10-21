@@ -1,6 +1,6 @@
 use super::*;
 use crate::agent_turn_history::{AgentTurnStatus, ToolStatus, VisibleContentPart};
-use crate::context_hold::{ContextHoldKey, visible_history_with_replay};
+use crate::context_hold::{ContextHoldKey, HistoryContinuity, visible_history_with_replay};
 use crate::replay::{ReplayConfig, ReplayManager};
 use crate::server::composition::ProductionPorts;
 use crate::server::core_runtime::model_ir::{
@@ -292,4 +292,46 @@ fn p2_failed_hold_admission_cannot_apply_an_unadmitted_tool_result() {
             ..
         }
     )));
+}
+
+#[test]
+fn history_capacity_miss_does_not_publish_its_reserved_checkpoint() {
+    let mut fixture = Fixture::new();
+    fixture.runtime.agent_turn_history = Arc::new(
+        crate::agent_turn_history::AgentTurnHistoryStore::new(1, Duration::from_secs(60)),
+    );
+    let request = Fixture::request(json!([{"role":"user","content":"first"}]));
+    let admitted = fixture.begin(&request, fixture.prepare(&request));
+    assert!(admitted.guard.is_none());
+    assert!(admitted.hold_ticket.is_none());
+    assert_eq!(
+        fixture.prepare(&request).history_continuity(),
+        HistoryContinuity::NoCheckpoint
+    );
+}
+
+#[test]
+fn aborting_an_empty_new_turn_marks_a_gap_instead_of_assessing_its_predecessor() {
+    let fixture = Fixture::new();
+    let first = Fixture::request(json!([{"role":"user","content":"first"}]));
+    let mut admitted = fixture.begin(&first, fixture.prepare(&first));
+    fixture.finish(&mut admitted, &[text_event("first answer")], true);
+    drop(admitted);
+    let second = Fixture::request(json!([
+        {"role":"user","content":"first"}, {"role":"assistant","content":"first answer"},
+        {"role":"user","content":"second"}
+    ]));
+    let admitted = fixture.begin(&second, fixture.prepare(&second));
+    assert!(admitted.guard.is_some());
+    // A failed optional decision write also relinquishes capture before output.
+    drop(admitted);
+    let third = Fixture::request(json!([
+        {"role":"user","content":"first"}, {"role":"assistant","content":"first answer"},
+        {"role":"user","content":"second"}, {"role":"assistant","content":"second answer"},
+        {"role":"user","content":"third"}
+    ]));
+    let admitted = fixture.begin(&third, fixture.prepare(&third));
+    assert!(admitted.history.history_partial);
+    assert!(admitted.history.assessment_target.is_none());
+    assert_eq!(admitted.history.visible_conversation.len(), 1);
 }

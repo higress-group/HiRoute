@@ -211,6 +211,7 @@ impl AgentTurnHistoryStore {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn begin_with_context(
         &self,
         key: AgentTurnHistoryKey,
@@ -220,11 +221,36 @@ impl AgentTurnHistoryStore {
         decision_inputs: TurnDecisionInputs,
         now: Instant,
     ) -> Result<AgentTurnBegin, AgentTurnHistoryError> {
-        let analyzed = analyze_request(request, replay)?;
-        let latest = analyzed
-            .turns
-            .last()
-            .ok_or(AgentTurnHistoryError::NoUserTurn)?;
+        self.begin_with_admission(
+            key,
+            plan,
+            Self::prepare_request(request, replay)?,
+            decision_inputs,
+            now,
+            || Some(()),
+        )
+        .map(|result| result.expect("unconditional test admission").0)
+    }
+
+    pub(crate) fn prepare_request(
+        request: &ModelRequestIRV1,
+        replay: &ReplayStore,
+    ) -> Result<super::projection::AnalyzedRequest, AgentTurnHistoryError> {
+        analyze_request(request, replay)
+    }
+
+    pub(crate) fn begin_with_admission<T>(
+        &self,
+        key: AgentTurnHistoryKey,
+        plan: PlanSnapshot,
+        analyzed: super::projection::AnalyzedRequest,
+        decision_inputs: TurnDecisionInputs,
+        now: Instant,
+        admit: impl FnOnce() -> Option<T>,
+    ) -> Result<Option<(AgentTurnBegin, T)>, AgentTurnHistoryError> {
+        if analyzed.turns.is_empty() {
+            return Err(AgentTurnHistoryError::NoUserTurn);
+        }
         let mut inner = self
             .inner
             .try_lock()
@@ -238,6 +264,43 @@ impl AgentTurnHistoryStore {
             return Err(AgentTurnHistoryError::SessionTurnConflict);
         }
 
+        // Projection ran before either cache lock. Validate and reserve the
+        // checkpoint before changing active turns, tool outcomes or snapshots.
+        // The callback must not wait: both stores use try_lock admission.
+        let Some(admission) = admit() else {
+            inner.note_capture_gap(&key);
+            return Ok(None);
+        };
+        match self.begin_locked(
+            &mut inner,
+            key.clone(),
+            plan,
+            analyzed,
+            decision_inputs,
+            now,
+        ) {
+            Ok(begin) => Ok(Some((begin, admission))),
+            Err(error) => {
+                inner.note_capture_gap(&key);
+                Err(error)
+            }
+        }
+    }
+
+    fn begin_locked(
+        &self,
+        inner: &mut StoreInner,
+        key: AgentTurnHistoryKey,
+        plan: PlanSnapshot,
+        analyzed: super::projection::AnalyzedRequest,
+        decision_inputs: TurnDecisionInputs,
+        now: Instant,
+    ) -> Result<AgentTurnBegin, AgentTurnHistoryError> {
+        let latest = analyzed
+            .turns
+            .last()
+            .ok_or(AgentTurnHistoryError::NoUserTurn)?;
+
         if !inner.entries.contains_key(&key) {
             // A client may bring older messages when HiRoute first joins a session.
             // That prefix is missing from our history, but does not make the current
@@ -246,7 +309,7 @@ impl AgentTurnHistoryStore {
             let missing_history = analyzed.turns.len() > 1 || missing_current_output;
             let entry_token = inner.allocate_token()?;
             let request_token = inner.allocate_request_token()?;
-            let turn_id = self.allocate_id(&mut inner, "turn")?;
+            let turn_id = self.allocate_id(inner, "turn")?;
             let active = ActiveTurn {
                 opening_cause: match decision_inputs.history_continuity {
                     crate::context_hold::HistoryContinuity::Shortened => {
@@ -440,9 +503,9 @@ impl AgentTurnHistoryStore {
                 inner.replace_accounting(old_bytes, new_bytes);
             }
             while inner.accounted_bytes > self.max_memory_bytes {
-                let changed = trim_oldest_closed_turn(&mut inner, &key)?;
+                let changed = trim_oldest_closed_turn(inner, &key)?;
                 if !changed {
-                    self.abort_locked(&mut inner, &ticket);
+                    self.abort_locked(inner, &ticket);
                     return Err(AgentTurnHistoryError::Resource);
                 }
             }
@@ -456,7 +519,7 @@ impl AgentTurnHistoryStore {
                 && entry.active.decision.is_some()
         });
         let next_segment_id = close_previous
-            .then(|| self.allocate_id(&mut inner, "segment"))
+            .then(|| self.allocate_id(inner, "segment"))
             .transpose()?;
         let completed = {
             let entry = inner
@@ -481,7 +544,7 @@ impl AgentTurnHistoryStore {
                 None
             }
         };
-        let turn_id = self.allocate_id(&mut inner, "turn")?;
+        let turn_id = self.allocate_id(inner, "turn")?;
         let (ticket, old_bytes, new_bytes) = {
             let entry = inner
                 .entries
@@ -544,7 +607,7 @@ impl AgentTurnHistoryStore {
         inner.evict_to_budget(self.max_memory_bytes, Some(&key));
         inner.note_peak();
         while inner.accounted_bytes > self.max_memory_bytes {
-            if !trim_oldest_closed_turn(&mut inner, &key)? {
+            if !trim_oldest_closed_turn(inner, &key)? {
                 break;
             }
         }
@@ -566,7 +629,7 @@ impl AgentTurnHistoryStore {
             inner.replace_accounting(old_bytes, new_bytes);
         }
         if inner.accounted_bytes > self.max_memory_bytes {
-            self.abort_locked(&mut inner, &ticket);
+            self.abort_locked(inner, &ticket);
             return Err(AgentTurnHistoryError::Resource);
         }
         if let Some(inherited_decision) = inherited_decision {
@@ -721,13 +784,9 @@ impl AgentTurnHistoryStore {
             && entry.pending_request == Some(ticket.request_token)
         {
             entry.pending_request = None;
-            if active_is_empty(&entry.active) {
-                return;
-            }
             // An externally dropped request cannot drain its capture worker.
             // Keep the accepted prefix, but never advertise a complete turn.
-            entry.active.capture_partial = true;
-            entry.history_partial = true;
+            inner.note_capture_gap(&ticket.key);
         }
     }
 
@@ -988,6 +1047,21 @@ fn snapshot(entry: &SessionEntry, pin: Arc<SnapshotPin>) -> AgentTurnHistorySnap
 }
 
 impl StoreInner {
+    fn note_capture_gap(&mut self, key: &AgentTurnHistoryKey) {
+        let Some(entry) = self.entries.get_mut(key) else {
+            return;
+        };
+        entry.history_partial = true;
+        entry.current_segment = None;
+        if !active_is_empty(&entry.active) {
+            entry.active.capture_partial = true;
+        }
+        let old = entry.accounted_bytes;
+        entry.accounted_bytes = entry_bytes(key, entry);
+        let new = entry.accounted_bytes;
+        self.replace_accounting(old, new);
+    }
+
     fn allocate_token(&mut self) -> Result<u64, AgentTurnHistoryError> {
         let token = self.next_token;
         self.next_token = token

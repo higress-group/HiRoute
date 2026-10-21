@@ -95,7 +95,10 @@ invalidate that route, and each request still reauthorizes.
 [Optional history admission](../../crates/gateway/src/core_runtime/decision_history.rs)
 owns the history lease before a prepared ContextHold checkpoint changes. Conflicts,
 capacity pressure and stale optional writes degrade to independent routing without
-an inherited decision or assessment target. The [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
+an inherited decision or assessment target. Checkpoint admission is reserved before
+history changes, and missed captures mark a gap rather than a complete assessment
+segment. [Atomic-admission regressions](../../crates/gateway/src/core_runtime/decision_history/tests.rs)
+cover rejected checkpoint writes and tool outcomes. The [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
 also verifies that the live main request can finish and continue its tools while
 observation failures leave delivered model output intact. Native identity parsing
 remains a separate boundary. [Native routing evidence](../../crates/gateway/src/context_hold/routing.rs)

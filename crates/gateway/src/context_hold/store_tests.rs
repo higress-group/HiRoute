@@ -121,6 +121,31 @@ fn a_stale_prepared_history_cannot_overwrite_the_winning_checkpoint() {
 }
 
 #[test]
+fn dropping_a_reserved_rewrite_preserves_the_live_checkpoint_and_completion() {
+    let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
+    let now = Instant::now();
+    let live = begin(&store, 1, 9, &[1], now).unwrap();
+    let rewritten = history_request(2, &[8]);
+    let evidence = super::super::visible_history(&rewritten, &HISTORY_KEY).unwrap();
+    let reservation = store
+        .reserve_commit(store.prepare(key(1), &evidence, now).unwrap(), now)
+        .unwrap();
+    drop(reservation);
+    assert_eq!(
+        store.complete(&live, preference("main"), now),
+        HoldCompleteOutcome::Applied
+    );
+    assert_eq!(
+        begin(&store, 1, 9, &[1, 2], now)
+            .unwrap()
+            .hint
+            .unwrap()
+            .candidate_id,
+        "main"
+    );
+}
+
+#[test]
 fn a_busy_hold_store_skips_optional_reads_and_writes() {
     let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
     let now = Instant::now();

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use hiroute_gateway_core::core::execution_plan::ResolvedTargetBindingId;
 use hmac::{Hmac, Mac};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use sha2::Sha256;
 
 use crate::server::core_runtime::profiles::HoldPreferenceV1;
@@ -184,6 +184,44 @@ pub(crate) struct PreparedHold {
     instruction_digest: [u8; 32],
     measured: HistoryDigests,
     native: super::routing::NativeCheckpoint,
+}
+
+/// A validated checkpoint write. Its lock keeps the CAS and capacity reservation
+/// valid until history admission succeeds; dropping it leaves this scope unchanged.
+pub(crate) struct HoldCommit<'a> {
+    inner: MutexGuard<'a, StoreInner>,
+    entry: HoldEntry,
+    ticket: HoldTicket,
+}
+
+impl HoldCommit<'_> {
+    pub(crate) fn commit(mut self) -> HoldTicket {
+        let key = self.ticket.key.clone();
+        let dynamic = self.entry.dynamic_bytes();
+        let record = LruRecord {
+            last_access: self.entry.last_access,
+            access_order: self.entry.access_order,
+            key: key.clone(),
+        };
+        if let Some(previous) = self.inner.entries.insert(key.clone(), self.entry) {
+            self.inner.lru.remove(&LruRecord {
+                last_access: previous.last_access,
+                access_order: previous.access_order,
+                key,
+            });
+            self.inner.dynamic_bytes = self
+                .inner
+                .dynamic_bytes
+                .saturating_sub(previous.dynamic_bytes());
+        }
+        self.inner.dynamic_bytes = self.inner.dynamic_bytes.saturating_add(dynamic);
+        self.inner.lru.insert(record);
+        self.inner.peak_accounted_bytes = self
+            .inner
+            .peak_accounted_bytes
+            .max(self.inner.accounted_bytes());
+        self.ticket
+    }
 }
 
 impl PreparedHold {
@@ -428,6 +466,14 @@ impl ContextHoldStore {
     }
 
     pub(crate) fn commit(&self, prepared: PreparedHold, now: Instant) -> Option<HoldTicket> {
+        self.reserve_commit(prepared, now).map(HoldCommit::commit)
+    }
+
+    pub(crate) fn reserve_commit(
+        &self,
+        prepared: PreparedHold,
+        now: Instant,
+    ) -> Option<HoldCommit<'_>> {
         let history_continuity = prepared.history_continuity();
         let PreparedHold {
             key,
@@ -465,8 +511,8 @@ impl ContextHoldStore {
                 current_value_version.checked_add(1)?
             };
             let access_order = inner.allocate_access_order()?;
-            let (hint, previous_success, cleaned_prefix_len, removed_dynamic) = {
-                let entry = inner.entries.get_mut(&key)?;
+            let (hint, previous_success, cleaned_prefix_len, entry) = {
+                let entry = inner.entries.get(&key)?;
                 let previous_success = entry.preference.clone();
                 let hint = (continues && entry.hint_valid)
                     .then(|| entry.preference.clone())
@@ -474,34 +520,39 @@ impl ContextHoldStore {
                 let cleaned_prefix_len = message_history_continues
                     .then_some(entry.cleaned_prefix_len)
                     .flatten();
-                let removed_dynamic = if message_history_continues {
-                    0
-                } else {
-                    entry.preference.take().as_ref().map_or(0, preference_bytes)
+                let replacement = HoldEntry {
+                    entry_token: entry.entry_token,
+                    cycle,
+                    checkpoint_revision,
+                    value_version,
+                    instruction_digest,
+                    message_count: measured.message_count,
+                    history_digest: measured.complete_digest,
+                    native,
+                    preference: message_history_continues
+                        .then(|| entry.preference.clone())
+                        .flatten(),
+                    hint_valid: entry.hint_valid && continues,
+                    cleaned_prefix_len,
+                    last_access: now,
+                    access_order,
                 };
-                entry.cycle = cycle;
-                entry.checkpoint_revision = checkpoint_revision;
-                entry.value_version = value_version;
-                entry.instruction_digest = instruction_digest;
-                entry.message_count = measured.message_count;
-                entry.history_digest = measured.complete_digest;
-                entry.native = native;
-                entry.hint_valid &= continues;
-                entry.cleaned_prefix_len = cleaned_prefix_len;
-                (hint, previous_success, cleaned_prefix_len, removed_dynamic)
+                (hint, previous_success, cleaned_prefix_len, replacement)
             };
-            inner.dynamic_bytes = inner.dynamic_bytes.saturating_sub(removed_dynamic);
-            inner.touch(&key, now, access_order);
-            return Some(HoldTicket {
-                key,
-                entry_token: snapshot.entry_token,
-                cycle,
-                value_version,
-                checkpoint_revision,
-                history_continuity,
-                hint,
-                previous_success,
-                cleaned_prefix_len,
+            return Some(HoldCommit {
+                inner,
+                entry,
+                ticket: HoldTicket {
+                    key,
+                    entry_token: snapshot.entry_token,
+                    cycle,
+                    value_version,
+                    checkpoint_revision,
+                    history_continuity,
+                    hint,
+                    previous_success,
+                    cleaned_prefix_len,
+                },
             });
         }
 
@@ -530,28 +581,20 @@ impl ContextHoldStore {
         if !inner.make_room_for_insert(&entry, self.max_memory_bytes) {
             return None;
         }
-        inner.entries.insert(key.clone(), entry);
-        inner.lru.insert(LruRecord {
-            last_access: now,
-            access_order,
-            key: key.clone(),
-        });
-        let accounted = inner.accounted_bytes();
-        inner.peak_accounted_bytes = inner.peak_accounted_bytes.max(accounted);
-        if accounted > self.max_memory_bytes {
-            inner.remove_entry(&key);
-            return None;
-        }
-        Some(HoldTicket {
-            key,
-            entry_token,
-            cycle: 1,
-            value_version: 0,
-            checkpoint_revision: 1,
-            history_continuity: HistoryContinuity::NoCheckpoint,
-            hint: None,
-            previous_success: None,
-            cleaned_prefix_len: None,
+        Some(HoldCommit {
+            inner,
+            entry,
+            ticket: HoldTicket {
+                key,
+                entry_token,
+                cycle: 1,
+                value_version: 0,
+                checkpoint_revision: 1,
+                history_continuity: HistoryContinuity::NoCheckpoint,
+                hint: None,
+                previous_success: None,
+                cleaned_prefix_len: None,
+            },
         })
     }
 
@@ -737,24 +780,6 @@ impl StoreInner {
     fn allocate_access_order(&mut self) -> Option<u64> {
         self.access_clock = self.access_clock.checked_add(1)?;
         Some(self.access_clock)
-    }
-
-    fn touch(&mut self, key: &ContextHoldKey, now: Instant, access_order: u64) {
-        let Some(entry) = self.entries.get_mut(key) else {
-            return;
-        };
-        self.lru.remove(&LruRecord {
-            last_access: entry.last_access,
-            access_order: entry.access_order,
-            key: key.clone(),
-        });
-        entry.last_access = now;
-        entry.access_order = access_order;
-        self.lru.insert(LruRecord {
-            last_access: now,
-            access_order,
-            key: key.clone(),
-        });
     }
 
     fn remove_entry(&mut self, key: &ContextHoldKey) -> bool {

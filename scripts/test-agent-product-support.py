@@ -15,6 +15,26 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'crates/daemon/tests/support'))
 from agent_product_support import apply_settings, run_native_command, expose_native_installation
 import standalone_headless_product as headless
+from dsh_native_context import DshModelSettings, read_patch, encode_patch
+
+
+class DshRestorationEvidenceTests(unittest.TestCase):
+    def test_restore_checks_rows_hidden_by_the_model_projection_and_the_adapter_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary)
+            (config / 'profiles/web').mkdir(parents=True)
+            settings = DshModelSettings(config, 'http://127.0.0.1:9/v1')
+            settings.assert_restored()
+            rows = read_patch(settings.path)
+            rows.append({'insert':[{'id':'hiroute-routing','name':'file:///fixture/hiroute-routing.mjs'}]})
+            settings.path.write_text(encode_patch(rows))
+            self.assertEqual(settings.read(), settings.baseline)
+            with self.assertRaisesRegex(AssertionError, 'native patch row'):
+                settings.assert_restored()
+            settings.write(settings.baseline)
+            settings.path.with_name('hiroute-routing.mjs').write_text('owned adapter')
+            with self.assertRaisesRegex(AssertionError, 'adapter file'):
+                settings.assert_restored()
 
 
 class ObservationReadRetryTests(unittest.TestCase):

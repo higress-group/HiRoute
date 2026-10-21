@@ -465,6 +465,11 @@ restore SHALL verify the adapter's exact owned bytes. A conflicting foreign file
 SHALL be preserved. Identical pre-existing files MAY be borrowed and SHALL survive
 restore. Published operations without adapter effects retain their original
 recovery contract; explicit reconfiguration can add the current adapter.
+DSH SHALL preserve the original ownership of its Cordis adapter registration across
+unrelated user edits, model changes and token rotation. Restore SHALL remove an owned
+registration together with its owned adapter file, while retaining a genuinely
+pre-existing registration and borrowed file. A registration created by an earlier
+HiRoute configuration MUST NOT become user-owned merely by reconfiguration.
 
 Pi uses its extension hooks and disables managed-provider cache warming, whose
 purpose is otherwise indistinguishable. DSH attaches one public Cordis middleware

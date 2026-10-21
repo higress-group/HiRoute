@@ -269,6 +269,14 @@ def run(repository, candidate):
         restore_models(product, context)
         model_active = False
         assert settings.read() == settings.baseline, 'model Restore did not preserve unrelated user edits'
+        if HARNESS == 'dsh':
+            settings.assert_restored()
+            from native_acp_client import prompt as acp_prompt
+            saved = Path(product.env['DSH_HOME']) / 'profiles/web/cordis.patch.yml'
+            before = [source.request_count() for source in sources]
+            _, session_id = acp_prompt(product, [str(binary), '--profile', 'acp', '--patch', str(saved)], None)
+            assert [source.request_count() for source in sources] == before, 'native restore startup made an unexpected model request'
+            report['native_restore_startup'] = {'state':'green', 'session_created':bool(session_id), 'model_requests':0}
         assert digest(skill) == skill_digest, 'model Restore changed the independent Skill'
         remaining = settings_status(product, context)['collaboration']
         assert remaining['state'] == 'configured' and remaining['restore_point_ref'] == collaboration['restore_point_ref']

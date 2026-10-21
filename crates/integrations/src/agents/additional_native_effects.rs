@@ -169,6 +169,18 @@ fn stage(
     .map_err(fields_error)?;
     if kind == AgentKindV1::DeepseekHarness {
         let path = port.native_target_path(intent.target())?;
+        if let Some(previous) = previous {
+            // Provider-only removal preserves unrelated user edits, including
+            // the previous adapter insert. Carry its original ownership forward
+            // instead of adopting our own insert as user-owned configuration.
+            edit.restore.original = additional_native::attach_routing_adapter(
+                &edit.restore.original,
+                &path,
+                Some(&previous.original),
+            )
+            .map_err(fields_error)?
+            .to_vec();
+        }
         edit.bytes = additional_native::attach_routing_adapter(&edit.bytes, &path, None)
             .map_err(fields_error)?;
         edit.restore.rendered_digest = CanonicalDigest::of_bytes(&edit.bytes);

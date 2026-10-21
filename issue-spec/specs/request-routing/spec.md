@@ -248,6 +248,12 @@ explicit partial history; they cannot advance its ContextHold checkpoint or inhe
 its pending decision. Busy/capacity/stale optional state never rejects an otherwise
 valid model request or changes an already accepted model response. This degradation
 does not establish separate native main/auxiliary/subagent identities.
+Checkpoint CAS and capacity MUST be reserved before decision-history admission can
+change active turns, tool outcomes or transcript checkpoints. Once history admission
+succeeds, publishing that reserved checkpoint MUST have no remaining fallible cache
+admission step. A missed capture in an existing main history MUST be marked partial
+and MUST NOT retain an assessment target across that gap; it cannot be silently
+reported as complete history or reconstructed from client-supplied assistant text.
 
 For smart-saving and custom-branch Plans, a valid retained candidate MUST be
 prioritized whenever its origin group is the freshly selected or inherited group,

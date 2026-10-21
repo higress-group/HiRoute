@@ -7,7 +7,7 @@ use crate::server::core_runtime::model_ir::{
     CanonicalMessage, ContentPart, ImageSource, MessageRole, ModelRequestIRV1, ToolResultStatusV1,
 };
 
-pub(super) struct AnalyzedRequest {
+pub(crate) struct AnalyzedRequest {
     pub(super) message_count: usize,
     pub(super) turns: Vec<AnalyzedTurn>,
     pub(super) tool_results: Vec<(usize, String, ToolStatus)>,

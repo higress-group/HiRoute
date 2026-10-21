@@ -205,7 +205,7 @@ def native_command(product, binary, selector, prompt):
     if getattr(product, 'additional_harness', 'qoder') == 'pi':
         provider, model = selector.split('/',1)
         return [os.environ['HIROUTE_WORKER_NODE'], str(binary), '--provider', provider, '--model', model,
-                '--mode', 'json', '--print', '--no-session', '--no-extensions', '--offline', '--tools', 'read', prompt]
+                '--mode', 'json', '--print', '--no-session', '--offline', '--tools', 'read', prompt]
     return [str(binary), '--cwd', str(product.project), '--config-dir', product.env['QODER_CONFIG_DIR'],
             '--model', selector, '--print', '--no-session-persistence', '--output-format', 'stream-json',
             '--tools', 'Read', '--permission-mode', 'dont_ask', '--max-model-request-retries', '0',
