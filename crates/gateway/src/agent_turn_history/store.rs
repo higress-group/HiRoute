@@ -616,6 +616,18 @@ impl AgentTurnHistoryStore {
                 None
             }
         };
+        // Unverified native input may rewrite its prefix on every question.
+        // Assess only the actual stage we captured before that rewrite. Keep
+        // the new segment separate and never restore a segment fenced by a gap.
+        let observed_assessment_segment = if analyzed.user_origin_unverified && reset_branch_context
+        {
+            inner
+                .entries
+                .get(&key)
+                .and_then(|entry| entry.current_segment.clone())
+        } else {
+            None
+        };
         let turn_id = self.allocate_id(inner, "turn")?;
         let (ticket, old_bytes, new_bytes) = {
             let entry = inner
@@ -740,7 +752,7 @@ impl AgentTurnHistoryStore {
                 .entries
                 .get(&key)
                 .ok_or(AgentTurnHistoryError::Resource)?;
-            let mut history = snapshot(entry, pin);
+            let mut history = snapshot(entry, pin, observed_assessment_segment.as_ref());
             let new_branch_task = !decision_inputs.history_continuity.semantic_continuity()
                 && history
                     .previous_decision
@@ -754,7 +766,7 @@ impl AgentTurnHistoryStore {
                     .assessment_target
                     .as_ref()
                     .is_some_and(|target| target.plan != entry.active.plan);
-            if new_branch_task || new_version {
+            if (new_branch_task && observed_assessment_segment.is_none()) || new_version {
                 history.assessment_from = None;
                 history.assessment_target = None;
             }
@@ -1072,13 +1084,20 @@ fn execution_attribution(
     }
 }
 
-fn snapshot(entry: &SessionEntry, pin: Arc<SnapshotPin>) -> AgentTurnHistorySnapshot {
+fn snapshot(
+    entry: &SessionEntry,
+    pin: Arc<SnapshotPin>,
+    observed_assessment_segment: Option<&SegmentState>,
+) -> AgentTurnHistorySnapshot {
     let visible_conversation = entry
         .closed
         .iter()
         .map(|turn| Arc::clone(&turn.wire))
         .collect::<Vec<_>>();
-    let target_segment = entry.current_segment.as_ref();
+    let target_segment = entry
+        .current_segment
+        .as_ref()
+        .or(observed_assessment_segment);
     let assessment_from = target_segment.and_then(|segment| {
         entry
             .closed

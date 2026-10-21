@@ -9,6 +9,7 @@ use crate::server::core_runtime::model_ir::{
 
 pub(crate) struct AnalyzedRequest {
     pub(super) message_count: usize,
+    pub(super) user_origin_unverified: bool,
     pub(super) output_after_latest_user: bool,
     pub(super) turns: Vec<AnalyzedTurn>,
     pub(super) tool_results: Vec<(usize, String, ToolStatus)>,
@@ -16,6 +17,7 @@ pub(crate) struct AnalyzedRequest {
 
 impl AnalyzedRequest {
     pub(crate) fn mark_user_origin_unverified(&mut self) {
+        self.user_origin_unverified = true;
         // Reuse the existing visible-content vocabulary: uncertainty is not
         // missing execution and must not disable assessment of accepted output.
         for turn in &mut self.turns {
@@ -68,6 +70,7 @@ pub(super) fn analyze_request(
     });
     Ok(AnalyzedRequest {
         message_count: request.messages.len(),
+        user_origin_unverified: false,
         output_after_latest_user,
         turns,
         tool_results: project_tool_results(request),

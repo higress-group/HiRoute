@@ -250,3 +250,75 @@ fn uncaptured_prefix_does_not_make_a_fully_captured_stage_partial() {
         );
     }
 }
+
+#[test]
+fn observed_rewrites_assess_captured_execution_without_merging_segments_or_reopening_gaps() {
+    use crate::context_hold::HistoryContinuity::{Rewritten, Shortened};
+    for continuity in [Rewritten, Shortened] {
+        for (gap, revision) in [(false, 1), (true, 1), (false, 2)] {
+            let (_directory, replay) = replay();
+            let store = AgentTurnHistoryStore::default();
+            let key = store.scope_key("workspace", "observed-rewrite").unwrap();
+            let now = Instant::now();
+            let observed = |user: &str, revision| {
+                let mut analyzed = AgentTurnHistoryStore::prepare_request(
+                    &request(vec![text(MessageRole::User, user)]),
+                    &replay,
+                )
+                .unwrap();
+                analyzed.mark_user_origin_unverified();
+                new_turn(
+                    store
+                        .begin_with_admission(
+                            key.clone(),
+                            plan(revision),
+                            analyzed,
+                            TurnDecisionInputs {
+                                native_turn: None,
+                                history_continuity: continuity,
+                                reselect_on_user_message: true,
+                            },
+                            now,
+                            || Some(()),
+                        )
+                        .unwrap()
+                        .unwrap()
+                        .0,
+                )
+            };
+            let (ticket, history) = observed("actual A", 1);
+            drop(history);
+            accepted_output::text_output(&store, &ticket, "accepted A output");
+            let a = close_branch_turn(&store, &ticket, now);
+            if gap {
+                store.note_capture_gap(&key);
+            }
+            let (ticket, history) = observed("actual B after a rewritten prefix", revision);
+            assert!(
+                history.previous_decision.is_none(),
+                "rewrite must reclassify"
+            );
+            let expected = !gap && revision == 1;
+            assert_eq!(history.assessment_target.is_some(), expected);
+            if expected {
+                let target = history.assessment_target.as_ref().unwrap();
+                assert_eq!(target.segment_id, a.segment_id);
+                assert_eq!((target.first_ordinal, target.through_ordinal), (1, 1));
+                assert!(!target.target_partial);
+                let visible = serde_json::to_string(&history.visible_conversation).unwrap();
+                assert!(visible.contains("accepted A output"));
+                assert!(visible.contains("unverified_request_user_origin"));
+            }
+            drop(history);
+            accepted_output::text_output(&store, &ticket, "accepted B output");
+            let b = close_branch_turn(&store, &ticket, now);
+            assert_ne!(a.segment_id, b.segment_id, "rewrites cannot merge stages");
+            let (_, history) = observed("actual C", revision);
+            assert_eq!(
+                history.assessment_target.as_ref().unwrap().segment_id,
+                b.segment_id,
+                "a complete new stage must recover after a gap or publication change"
+            );
+        }
+    }
+}

@@ -369,6 +369,13 @@ Unknown-origin requests use a distinct optimization lane from verified adapter
 input, so a broken adapter cannot replace that lane's original task/checkpoint.
 Potentially missed verified captures retain the existing gap fence.
 
+An unverified native prefix rewrite SHALL start a separate execution segment and
+fresh classification without permanently disabling evaluation of the preceding
+captured stage. Evaluation SHALL bind to that stage's actual execution, model and
+frozen rubric, retaining the source-uncertainty marker. A known capture gap or
+changed publication SHALL still fence the old evaluation target. No rewritten
+client summary may reconstruct missing accepted output.
+
 Native children with distinct identities SHALL remain independent, including in
 verified Worker tasks. These headers are optional evidence, never authorization or
 a route override. Qoder's shared main/child identity is an accepted association and

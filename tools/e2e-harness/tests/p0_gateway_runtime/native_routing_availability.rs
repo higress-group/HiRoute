@@ -118,9 +118,13 @@ fn real_listener_managed_qoder_reserved_entry_recovers_routing_without_inventing
     let path = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);
     let bearer = format!("Bearer {TOKEN}");
     for input in [
-        json!("QODER_A"),
         json!([
-            {"role":"user","content":"QODER_A"}, {"role":"assistant","content":"ok"},
+            {"role":"user","content":"old uncaptured summary"},
+            {"role":"user","content":"QODER_A"}
+        ]),
+        json!([
+            {"role":"user","content":"old uncaptured summary"},
+            {"role":"user","content":"QODER_A\n"}, {"role":"assistant","content":"ok"},
             {"role":"user","content":"QODER_B"}
         ]),
     ] {
@@ -142,6 +146,12 @@ fn real_listener_managed_qoder_reserved_entry_recovers_routing_without_inventing
     );
     let b = classifier_body(&classifier, 1);
     assert!(!b["assessment_target"].is_null());
+    assert_eq!(b["history_partial"], true);
+    assert!(
+        !b["visible_conversation"]
+            .to_string()
+            .contains("old uncaptured summary")
+    );
     assert!(
         b["visible_conversation"]
             .to_string()
