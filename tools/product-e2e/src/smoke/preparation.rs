@@ -46,12 +46,23 @@ pub fn prepare(root: &Path, cancel: Arc<AtomicBool>) -> Result<PathBuf> {
         "gateway_preparation_identity_changed",
     )?;
     tool.verify(&source)?;
+    // Bind the exact receipts selected by get_or_build, including their recipes.
+    // Distinct environments may legitimately produce identical executable bytes.
+    let mut records = Vec::new();
+    for artifact in &artifacts {
+        let receipt = artifact.path.with_file_name("receipt.json");
+        let mut record = serde_json::to_value(artifact)?;
+        record["receipt"] = json!({
+            "path":receipt, "sha256":super::digest(&std::fs::read(&receipt)?),
+        });
+        records.push(record);
+    }
     let report = directory.join("preparation.json");
     std::fs::write(
         &report,
         serde_json::to_vec_pretty(&json!({
             "schema":"hiroute.smoke.preparation/v1", "source_revision":source.revision,
-            "build_ms":started.elapsed().as_millis(), "artifacts":artifacts, "gateway":gateway,
+            "build_ms":started.elapsed().as_millis(), "artifacts":records, "gateway":gateway,
             "scenarios_executed":0,
         }))?,
     )?;

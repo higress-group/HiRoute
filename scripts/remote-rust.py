@@ -483,22 +483,26 @@ def gc_terminal_runs(root, older_than_days, apply, include_retained):
 
 
 def test_summary(log, cargo):
-    matches = re.findall(r"test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored", log)
-    counts = dict(zip(("passed", "failed", "ignored"),
-                      [sum(int(row[i]) for row in matches) for i in range(3)]))
+    parsed = reporting().parse_log(log)
+    modules = parsed["modules"]
+    # Only complete, uniquely attributed Cargo targets are independent results.
+    # A child summary may be the last observed output of an interrupted parent.
+    counts = {key: sum(module["counts"][key] for module in modules if module["complete"])
+              for key in ("passed", "failed", "ignored")}
     if cargo[1] != "test" or "--no-run" in cargo:
         state = "not_assessed"
-    elif not matches:
-        state = "unrecognized_test_output"
     elif counts["failed"]:
         state = "tests_failed"
+    elif not modules or parsed["unassigned_summaries"] or not all(module["complete"] for module in modules):
+        state = "unrecognized_test_output"
     elif not counts["passed"]:
         state = "zero_tests_passed"
     else:
         state = "rust_tests_passed"
     return {"counts": counts, "state": state,
             "scenario_state": "not_assessed",
-            "note": "Rust counts do not establish Product E2E green/expected_red/red; inspect scenario artifacts."}
+            "note": "Counts use complete Cargo targets and exclude nested child summaries. "
+                    "Rust counts do not establish Product E2E green/expected_red/red; inspect scenario artifacts."}
 
 
 def scheduled_test_summary(log, cargo, schedule_result=None):

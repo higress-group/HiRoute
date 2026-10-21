@@ -36,6 +36,25 @@ is not-executed with reason, not green or executed expected_red. Required red/mi
 expected-red capability prevents acceptance even if a fixture test legitimately exits
 zero. Existing runner result contracts cannot be weakened to obtain green.
 
+Ordinary Rust validation results, compact waits, and module reports MUST count
+independent cases from complete Cargo-target terminal summaries, excluding nested
+child-process summaries. Child assertions and diagnostic output MUST remain available.
+Unattributed output, ambiguous target identity, or an unfinished parent MUST NOT
+establish successful test execution, even if a child's test count matches its parent.
+Every completed target contributes its own passing, failing and ignored counts;
+a later successful target MUST NOT erase an earlier failed target. A nonzero command
+exit MUST fail the run independently of otherwise successful test summaries.
+
+#### Scenario: Nested subprocesses finish inside a successful parent target
+
+- **WHEN** a Cargo target completes its selected parent tests after printing nested child summaries
+- **THEN** run results, compact waits and module reports expose the parent target counts, retaining the child output without adding independent coverage.
+
+#### Scenario: A child finishes but its parent target is interrupted
+
+- **WHEN** the final observed child summary has no completed parent summary, including when both selected the same number of tests
+- **THEN** validation remains incomplete and the child summary cannot establish parent success or independent parent counts.
+
 ### Requirement: Evidence binds actual revision, artifact, role, and path
 
 Report MUST include checked source revision, build/executable identity, platform,
@@ -51,6 +70,23 @@ A missing essential publish/call step or substituted canned body MUST fail the
 relevant oracle. Evidence-generation integrity is verified before/after launch;
 large artifact verification time is runner overhead, not consumed from product-step
 budgets. Build and scenario time are recorded separately.
+
+Build preparation MUST bind each selected product role to its exact build receipt
+and receipt digest, including the recipe/environment identity verified by its
+producer. Different valid recipes MAY retain identical executable bytes in the
+same checkout. Unrelated receipts MUST NOT make the selected preparation ambiguous
+or substitute a different runtime environment. Admission still verifies the source,
+receipt and executable digests, checkout path containment and consistent selected
+environment. Missing, changed or conflicting selected evidence MUST fail admission.
+
+#### Scenario: Continue focused smoke with a full workspace preparation
+
+- **WHEN** focused smoke and full workspace preparation use one candidate checkout
+  with different build environments and identical resulting executable bytes
+- **THEN** each preparation selects its own exact product and Gateway receipts and
+  runtime environment without removing or rewriting the other receipts
+- **AND** a missing, corrupt, escaping or conflicting selected receipt remains a
+  failure even when another valid receipt has the same executable digest.
 
 ### Requirement: Validation tracks have independent evidence limits
 
@@ -110,6 +146,11 @@ worktree's normal target, and artifact cleanup preserves active use and unique
 evidence. A leak scan failure blocks acceptance. Concrete measured timing belongs
 to the runner/run record, not an unmeasured duration promise here.
 
+If preparation fails after independent targets execute, the run MUST retain their
+attributable terminal results and counts, the preparation failure, and explicit
+unexecuted target/doctest coverage. Completed independent targets cannot establish
+complete validation when dependent targets were not admitted.
+
 ## Implementation references
 
 - [Product control journey](../../../tools/product-e2e/tests/control_shell.rs),
@@ -117,3 +158,6 @@ to the runner/run record, not an unmeasured duration promise here.
   [controlled Gateway runtime](../../../tools/e2e-harness/tests/p0_gateway_runtime.rs).
 - [Evidence/fixture map](../../../docs/code-map/testing.md) and
   [validation selection](../../../docs/test-selection.md).
+- [Smoke preparation](../../../tools/product-e2e/src/smoke/preparation.rs),
+  [Gateway preparation](../../../tools/e2e-harness/src/p0/production/candidate.rs), and
+  [DAG admission and regressions](../../../scripts/test-validation-schedule.py).
