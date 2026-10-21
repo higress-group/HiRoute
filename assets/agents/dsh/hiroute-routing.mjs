@@ -5,6 +5,7 @@ export const inject = ["sessions"];
 const symbol = Symbol.for("hiroute.dsh.routing-context.v1");
 const id = (value) => typeof value === "string" && value.length > 0 &&
   Buffer.byteLength(value) <= 128 && !/[\x00-\x1f\x7f-\x9f]/.test(value);
+const nativeTurnId = (value) => Number.isSafeInteger(value) && value > 0 ? String(value) : undefined;
 const MAX_MESSAGES = 128;
 const MAX_USER_MESSAGES = 32;
 const MAX_TURNS = 16;
@@ -35,7 +36,10 @@ function nativeUsers(options, session, currentTurn) {
   let turn;
   for (let i = Math.max(0, session.seq - 512); i < session.seq; ++i) {
     const event = session.eventAt(i);
-    if (event?.type === "turn/start") turn = String(event.data.turn);
+    if (event?.type === "turn/start") {
+      turn = nativeTurnId(event.data?.turn);
+      if (!turn) return;
+    }
     if (event?.type === "user/message" && event.data?.source?.kind === "user" && id(turn) && id(event.data.id)) {
       if (turns.has(event.data.id)) return;
       turns.set(event.data.id, turn);
@@ -139,7 +143,7 @@ export function apply(ctx) {
         if (session && Number.isSafeInteger(session.seq)) {
           for (let i = session.seq - 1, floor = Math.max(0, session.seq - 512); i >= floor; --i) {
             const event = session.eventAt(i);
-            if (event?.type === "turn/start") { turn = String(event.data.turn); break; }
+            if (event?.type === "turn/start") { turn = nativeTurnId(event.data?.turn); break; }
           }
         }
         const checkpoint = options.messages.findLast((message) => message.source?.kind === "compact-checkpoint")?.source.compactionId;

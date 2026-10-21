@@ -240,3 +240,47 @@ test("DSH projects native pure-text blocks within each user envelope before bind
     }
   } finally { globalThis.fetch = original; delete globalThis[symbol]; }
 });
+
+test("DSH rejects missing or malformed native turn numbers without merging unknown user turns", async () => {
+  const original = globalThis.fetch;
+  const symbol = Symbol.for("hiroute.dsh.routing-context.v1");
+  const sent = [];
+  globalThis.fetch = async (_url, init) => { sent.push(init); return "native-result"; };
+  delete globalThis[symbol];
+  const users = ["FIRST", "SECOND"].map((text, i) => ({ id: "user-" + i, role: "user",
+    source: { kind: "user" }, content: [{ type: "text", text }] }));
+  let events = [];
+  let hook;
+  dshRouting({ sessions: { get: () => ({ get seq() { return events.length; }, eventAt: i => events[i] }) },
+    on: (_name, callback) => { hook = callback; } });
+  const options = { provider: "hiroute-main-test", sessionId: "session", messages: users };
+  const body = JSON.stringify({ input: users.map(m => ({ role: m.role, content: m.content })) });
+  const next = async function* () { yield await fetch("http://127.0.0.1/v1/responses", {
+    method: "POST", body, headers: { "x-hiroute-agent": "dsh", "x-hiroute-token": "synthetic" },
+  }); };
+  const send = async () => {
+    assert.equal((await hook(options, next).next()).value, "native-result");
+    assert.equal(sent.at(-1).body, body);
+    return JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context"));
+  };
+  try {
+    for (const invalid of [undefined, null, {}, [], "1", true, 0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      const bad = { type: "turn/start", data: { turn: invalid } };
+      events = [bad, { type: "user/message", data: users[0] },
+        bad, { type: "user/message", data: users[1] }];
+      const unknown = await send();
+      assert.equal(unknown.turn_id, undefined);
+      assert.equal(unknown.user_turns, undefined);
+      // A later valid native turn cannot retroactively bless an unknown one.
+      events[2] = { type: "turn/start", data: { turn: 2 } };
+      assert.equal((await send()).user_turns, undefined);
+    }
+    events = users.map(data => ({ type: "user/message", data }));
+    const missing = await send();
+    assert.equal(missing.turn_id, undefined);
+    assert.equal(missing.user_turns, undefined);
+    events = [{ type: "turn/start", data: { turn: 1 } }, { type: "user/message", data: users[0] },
+      { type: "turn/start", data: { turn: 2 } }, { type: "user/message", data: users[1] }];
+    assert.deepEqual((await send()).user_turns.map(g => g.turn_id), ["1", "2"]);
+  } finally { globalThis.fetch = original; delete globalThis[symbol]; }
+});
