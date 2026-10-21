@@ -226,6 +226,7 @@ fn assert_turn_routing(hermes: bool) {
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
                     if hermes { (0, 3, 0) } else { (2, 2, 2) },
+                    "{}",
                     if hermes {
                         "a real new question cannot restore absent input-origin proof"
                     } else {
