@@ -95,11 +95,12 @@ impl Fixture {
                     (200, value.to_string())
                 } else if header.starts_with("GET /v0/management/auth-files/models?") {
                     let body = match fault_value.load(Ordering::SeqCst) {
-                        1 => r#"{"models":[]}"#,
-                        2 => r#"{"models":[{"id":"other-prefix/future-model"}]}"#,
-                        _ => r#"{"models":[{"id":"hiroute-codex-current/future-model"}]}"#,
+                        1 => r#"{"models":[]}"#.to_owned(),
+                        2 => r#"{"models":[{"id":"other-prefix/future-model"}]}"#.to_owned(),
+                        9 => serde_json::json!({"models":[{"id":format!("hiroute-codex-current/{}", "a".repeat(257))}]}).to_string(),
+                        _ => r#"{"models":[{"id":"hiroute-codex-current/future-model"}]}"#.to_owned(),
                     };
-                    (200, body.to_owned())
+                    (200, body)
                 } else if header.starts_with("GET /v1/models ") {
                     let body = if fault_value.load(Ordering::SeqCst) == 3 {
                         r#"{"data":[]}"#

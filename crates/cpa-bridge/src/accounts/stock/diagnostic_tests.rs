@@ -25,6 +25,7 @@ fn each_unmet_pin_condition_is_reported_without_per_poll_logging() {
         (6, "persisted_prefix_matches", serde_json::json!(false)),
         (7, "persisted_retry_zero", serde_json::json!(false)),
         (8, "persisted_cooling_disabled", serde_json::json!(false)),
+        (9, "account_model_ids_valid", serde_json::json!(false)),
     ] {
         let fixture = Fixture::new();
         fixture.fault.store(fault, Ordering::SeqCst);
@@ -113,6 +114,10 @@ fn each_unmet_pin_condition_is_reported_without_per_poll_logging() {
                 assert_eq!(control["checks"][field], true);
             }
             assert_eq!(fixture.patches.load(Ordering::SeqCst), 0);
+        }
+        if fault == 9 {
+            assert_eq!(control["checks"]["account_models_nonempty"], true);
+            assert_eq!(control["checks"]["account_models_prefixed"], true);
         }
     }
 }

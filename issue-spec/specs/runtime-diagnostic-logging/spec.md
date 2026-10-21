@@ -96,7 +96,7 @@ visible at Warn; normal details remain Debug.
 
 Pin evidence SHALL report the last observed equality/boolean/count facts for account
 identity continuity, retry policy, persisted prefix/retry/cooling controls, nonempty
-account models, exact model prefixes and missing downstream membership. Unreached
+account models, exact model prefixes, valid stripped IDs and missing downstream membership. Unreached
 checks remain absent, rather than false. Polling MUST NOT emit a record per poll.
 Paths, credentials, account/model names and raw responses remain excluded. Historical
 records lacking these observations cannot establish which pin condition failed.

@@ -50,6 +50,8 @@ pub struct CpaPinChecks {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_models_prefixed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_model_ids_valid: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_model_count: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog_missing_count: Option<u32>,

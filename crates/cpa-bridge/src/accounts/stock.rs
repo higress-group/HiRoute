@@ -255,8 +255,16 @@ fn wait_for_account_pin(
             trace.checks.account_model_count = Some(registered.len() as u32);
             trace.checks.account_models_nonempty = Some(!registered.is_empty());
             let prefixed = strip_exact_prefix(&registered, prefix);
+            let marker = format!("{prefix}/");
+            let prefixes_match = registered.iter().all(|model| {
+                model
+                    .strip_prefix(&marker)
+                    .is_some_and(|model| !model.is_empty())
+            });
             trace.checks.account_models_prefixed =
-                (!registered.is_empty()).then_some(prefixed.is_ok());
+                (!registered.is_empty()).then_some(prefixes_match);
+            trace.checks.account_model_ids_valid =
+                (!registered.is_empty() && prefixes_match).then_some(prefixed.is_ok());
             if let Ok(models) = prefixed
                 && observe_persisted_controls(auth_dir, name, prefix, &mut trace.checks)?
             {
@@ -265,6 +273,7 @@ fn wait_for_account_pin(
         } else {
             trace.checks.account_models_nonempty = None;
             trace.checks.account_models_prefixed = None;
+            trace.checks.account_model_ids_valid = None;
             trace.checks.account_model_count = None;
         }
         let remaining = remaining_timeout(deadline)?;
