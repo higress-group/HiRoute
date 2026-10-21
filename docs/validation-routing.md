@@ -586,7 +586,7 @@ python3 scripts/validation.py frontend build --console-assets
 python3 scripts/validation.py --frontend-dist apps/desktop/dist backend run \
   --ref refs/heads/codex/my-change --sha CANDIDATE_SHA \
   --reuse-checkout BLOCKED_RUN_ID --retention always \
-  --plan my-change --phase final --related-run BLOCKED_RUN_ID -- \
+  --plan my-change --phase final -- \
   cargo test --locked -p hiroute-daemon --test publication_process installed_ -- --nocapture
 ```
 
@@ -600,7 +600,9 @@ managed checkout. A valid retained dist is rechecked on subsequent installed run
 An early console-blocked checkout retained by `always` or `on-failure` can be reused
 at the same SHA/driver; its original blocked result remains unchanged. `never`
 removes the checkout, so omit reuse for the next run. Usual completed-run reuse and
-cleanup ownership still apply. Do not replace production assets with a dummy page
+cleanup ownership still apply. The checkout owner records this setup association;
+`--related-run` accepts executed reports, so do not pass a setup-blocked run there.
+Do not replace production assets with a dummy page
 or weaken package assertions. Hosted CI retains its existing frontend artifact
 handoff; this SSH preflight does not change that boundary.
 
