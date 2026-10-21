@@ -49,6 +49,16 @@ def credential():
 
 
 def record_catalog(event, **facts):
+    # A test can hold each external inventory response while checking that its
+    # caller has released shared daemon storage. Production never loads this file.
+    if event == 'inventory' and (controls / 'probe-catalog-lock').exists():
+        probe = controls / ('catalog-probe-' + str(time.monotonic_ns()))
+        probe.touch(mode=0o600)
+        deadline = time.monotonic() + 3
+        while not probe.with_suffix('.resume').exists():
+            if time.monotonic() >= deadline:
+                raise RuntimeError('catalog lock probe was not released')
+            time.sleep(0.005)
     if not (controls / 'record-model-catalog').exists():
         return
     descriptor = os.open(controls / 'catalog.jsonl',
