@@ -97,6 +97,49 @@ class TurnInputTests(unittest.TestCase):
         native = registered()
         self.assertIs(flag(native, "real input"), True)
 
+    def test_optional_input_read_failure_preserves_auth_identity_and_native_kwargs_for_all_modes(self):
+        class BrokenInputs:
+            def __init__(self, error):
+                self.error, self.calls = error, 0
+
+            def requires_existing_turn(self, request, context):
+                self.calls += 1
+                raise self.error("optional input read failed")
+
+        for mode in ("chat_completions", "codex_responses", "anthropic_messages"):
+            for error in (OSError, RuntimeError):
+                with self.subTest(mode=mode, error=error.__name__):
+                    inputs = BrokenInputs(error)
+                    adapter = plugin._adapter(configuration(mode), inputs)
+                    user = "private original user must stay only in the native body"
+                    key = "input" if mode == "codex_responses" else "messages"
+                    native_body = [{"role": "user", "content": user}]
+                    tools = [{"type": "function", "function": {"name": "native_tool"}}]
+                    payload = {"model": "plan-alias", key: native_body, "tools": tools,
+                               "stream": True, "stream_options": {"include_usage": True},
+                               "extra_headers": {"X-Preserve": "yes", "x-hiroute-token": "stale"}}
+                    before = copy.deepcopy(payload)
+                    with patch.object(plugin, "_lineage_header", return_value="existing-native-lineage"):
+                        result = adapter(payload, **context(api_mode=mode))
+                    self.assertEqual(inputs.calls, 1)
+                    self.assertEqual(result["source"], "hiroute")
+                    self.assertEqual(payload, before)
+                    self.assertEqual(set(result["request"]), set(payload))
+                    for field in (key, "tools", "stream", "stream_options"):
+                        self.assertIs(result["request"][field], payload[field])
+                    headers = result["request"]["extra_headers"]
+                    self.assertEqual(headers["X-Preserve"], "yes")
+                    self.assertEqual(headers["X-HiRoute-Token"], "synthetic-local-token")
+                    self.assertNotIn("x-hiroute-token", headers)
+                    self.assertEqual(headers["X-HiRoute-Agent"], "hermes")
+                    self.assertEqual(headers["X-Hermes-Session-Id"], "parent")
+                    self.assertEqual(headers["X-Hermes-Compression-Lineage"], "existing-native-lineage")
+                    metadata = json.loads(headers["X-HiRoute-Routing-Context"])
+                    self.assertEqual(metadata, {"version": 1, "agent": "hermes", "session_id": "parent",
+                                                "purpose": "main", "turn_id": "turn",
+                                                "continuation_requires_existing_turn": True})
+                    self.assertNotIn(user, json.dumps(headers))
+
     def test_main_tool_continuation_and_physical_rotation_keep_the_same_real_turn(self):
         native = registered()
         observe(native, "real input")

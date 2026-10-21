@@ -405,12 +405,17 @@ def _adapter(config, turn_inputs=None):
         if _identity(session):
             headers["X-Hermes-Session-Id"] = session
             turn = context.get("turn_id")
+            try:
+                requires_existing_turn = (
+                    turn_inputs.requires_existing_turn(request, context) if turn_inputs else True
+                )
+            except Exception:
+                # Optional original-user evidence cannot interrupt the model adapter.
+                requires_existing_turn = True
             headers["X-HiRoute-Routing-Context"] = json.dumps({
                 "version": 1, "agent": "hermes", "session_id": session, "purpose": "main",
                 **({"turn_id": turn} if _identity(turn) else {}),
-                "continuation_requires_existing_turn": (
-                    turn_inputs.requires_existing_turn(request, context) if turn_inputs else True
-                ),
+                "continuation_requires_existing_turn": requires_existing_turn,
             }, separators=(",", ":"))
             lineage = _lineage_header(session)
             if lineage:
