@@ -60,8 +60,15 @@ impl Fixture {
                 let mut bytes = Vec::new();
                 let mut byte = [0];
                 while !bytes.ends_with(b"\r\n\r\n") {
-                    stream.read_exact(&mut byte).unwrap();
+                    if stream.read_exact(&mut byte).is_err() {
+                        break;
+                    }
                     bytes.push(byte[0]);
+                }
+                // A caller may exhaust its shared budget after connect or a partial
+                // write. That abandoned request must not kill the fixture server.
+                if !bytes.ends_with(b"\r\n\r\n") {
+                    continue;
                 }
                 let header = String::from_utf8(bytes).unwrap();
                 let length: usize = header
@@ -71,7 +78,9 @@ impl Fixture {
                     .parse()
                     .unwrap();
                 let mut body = vec![0; length];
-                stream.read_exact(&mut body).unwrap();
+                if stream.read_exact(&mut body).is_err() {
+                    continue;
+                }
                 let (status, body) = if header.starts_with("PATCH ") {
                     count.fetch_add(1, Ordering::SeqCst);
                     thread::sleep(Duration::from_millis(delay.load(Ordering::SeqCst) as u64));
@@ -116,9 +125,14 @@ impl Fixture {
                     "HTTP/1.1 {status} OK\r\nX-CPA-Version: 8.0.4-hiroute.4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
-                // The legacy-deadline negative case deliberately closes this socket early.
-                if delay.load(Ordering::SeqCst) == 0 {
-                    written.unwrap();
+                if let Err(error) = written {
+                    assert!(matches!(
+                        error.kind(),
+                        std::io::ErrorKind::BrokenPipe
+                            | std::io::ErrorKind::ConnectionReset
+                            | std::io::ErrorKind::TimedOut
+                            | std::io::ErrorKind::WouldBlock
+                    ));
                 }
             }
         });
@@ -164,6 +178,21 @@ impl Fixture {
 
 #[path = "diagnostic_tests.rs"]
 mod diagnostic_tests;
+
+#[test]
+fn fixture_survives_abandoned_deadline_connections() {
+    for partial in [
+        b"".as_slice(),
+        b"GET /v0/management/auth-files?name=codex-a.json HTTP/1.1\r\n".as_slice(),
+        b"PATCH /v0/management/auth-files/fields HTTP/1.1\r\nContent-Length: 3\r\n\r\nx".as_slice(),
+    ] {
+        let fixture = Fixture::new();
+        let mut stream = std::net::TcpStream::connect(fixture.address).unwrap();
+        stream.write_all(partial).unwrap();
+        drop(stream);
+        assert_eq!(fixture.discover(false).unwrap().len(), 1);
+    }
+}
 
 #[test]
 fn production_control_budget_covers_synchronous_refresh_and_pin_readback() {
