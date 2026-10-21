@@ -109,6 +109,11 @@ fn native_routing_adapter_effects_restore_after_reopen_and_detect_drift() {
         assert_eq!(model_status(&fixture)["state"], "configured");
         let fixture = reopen(fixture);
         assert_eq!(model_status(&fixture)["state"], "configured");
+        if kind == AgentKindV1::DeepseekHarness {
+            let mut edited = b"# unrelated user edit before token rotation\n".to_vec();
+            edited.extend_from_slice(&fs::read(&fixture.native_config).unwrap());
+            private_file(&fixture.native_config, &edited);
+        }
         let mut rotation = spec.clone();
         rotation["access_token"] = json!({"intent":"regenerate"});
         apply(
@@ -129,7 +134,16 @@ fn native_routing_adapter_effects_restore_after_reopen_and_detect_drift() {
         );
         assert_eq!(model_status(&fixture)["state"], "not_configured");
         assert!(!adapter.exists());
-        assert_eq!(fs::read(&fixture.native_config).unwrap(), baseline);
+        let restored = fs::read(&fixture.native_config).unwrap();
+        if kind == AgentKindV1::DeepseekHarness {
+            assert!(
+                !String::from_utf8_lossy(&restored).contains("hiroute-routing"),
+                "restoration must remove the owned plugin insert before deleting its file"
+            );
+            assert!(restored.starts_with(b"# unrelated user edit before token rotation\n"));
+        } else {
+            assert_eq!(restored, baseline);
+        }
         // Borrowing identical native resources must not turn into file ownership.
         private_file(&adapter, bundled);
         apply(

@@ -143,3 +143,7 @@ impl ProductionGatewayRuntime {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "decision_history/tests.rs"]
+mod tests;

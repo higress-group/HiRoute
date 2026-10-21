@@ -23,6 +23,11 @@ pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
 pub(crate) struct ContextHoldKey([u8; 32]);
 
 impl ContextHoldKey {
+    #[cfg(test)]
+    pub(crate) fn for_runtime_test(value: u8) -> Self {
+        Self([value; 32])
+    }
+
     pub(crate) fn from_request(
         authorized: &AuthorizedRequestPlan,
         ingress_protocol: IngressProtocol,
@@ -335,6 +340,11 @@ impl Default for ContextHoldStore {
 }
 
 impl ContextHoldStore {
+    #[cfg(test)]
+    pub(crate) fn lock_for_runtime_test(&self) -> impl Drop + '_ {
+        self.inner.lock()
+    }
+
     pub(crate) fn new(max_memory_bytes: usize, idle_ttl: Duration) -> Self {
         let mut key = [0_u8; 32];
         let key = getrandom::fill(&mut key).ok().map(|()| key);
