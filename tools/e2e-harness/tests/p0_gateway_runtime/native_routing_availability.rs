@@ -89,13 +89,14 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
             "{agent}"
         );
         let b = classifier_body(&classifier, 1);
-        assert!(
-            b["latest_user"].as_array().unwrap().iter().any(|part| {
+        let unverified = |input: &serde_json::Value| {
+            input["latest_user"].as_array().unwrap().iter().any(|part| {
                 part["kind"] == "unavailable"
                     && part["source_kind"] == "unverified_request_user_origin"
-            }),
-            "{agent}/{purpose}: {b}"
-        );
+            })
+        };
+        assert!(unverified(&classifier_body(&classifier, 0)));
+        assert_eq!(unverified(&b), agent != "codex", "{agent}/{purpose}: {b}");
         let visible = b["visible_conversation"].to_string();
         assert!(
             visible.contains("REAL_NEW_A") && visible.contains("ok"),
