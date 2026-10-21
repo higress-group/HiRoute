@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prove phase isolation, exact coverage and shared-slot execution without Rust."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -50,7 +51,7 @@ sys.exit(101 if bad else 0)
 class Schedule(unittest.TestCase):
     def run_dag_isolation_fixture(self, fail_cpa=False, fail_fast=True, omit_cpa=False,
                                   fail_observation=False, omit_observation=False,
-                                  duplicate_observation=False):
+                                  duplicate_observation=False, preparation_failure=None):
         """Exercise the real DAG controller with bounded fake build/target processes."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -71,6 +72,7 @@ class Schedule(unittest.TestCase):
             cpa_done = threading.Event()
             observation_done = threading.Event()
             admitted = []
+            ordinary_done = threading.Event()
 
             class FixtureRunner:
                 @staticmethod
@@ -126,14 +128,22 @@ class Schedule(unittest.TestCase):
                               or (fail_observation and name == 'hiroute_observation'))
                     path = run / ('fixture-' + name + '.log')
                     path.write_text(name + '\n')
-                    results.append(dict(name=name, log=str(path), complete=not failed,
+                    results.append(dict(name=name, index=item['index'], log=str(path), complete=not failed,
                                         process_exit=int(failed),
                                         counts=dict(passed=int(not failed), failed=int(failed), ignored=0)))
                     stop_event = kwargs.get('stop_event', _args[-1] if _args else None)
                     if failed and fail_fast and stop_event is not None:
                         stop_event.set()
                         break
+                if any(item['name'] == 'hiroute_gateway' for item in selected):
+                    ordinary_done.set()
                 return results
+
+            def prepare(*_args):
+                if preparation_failure:
+                    self.assertTrue(ordinary_done.wait(5), 'Independent target must finish first')
+                    raise ValueError(preparation_failure)
+                return {}
 
             mocks = dict(dag_catalog=lambda *_args: targets,
                          dag_list=lambda source, *_args: ['default_two_domain_smoke' if source == 'smoke_cli' else source],
@@ -142,7 +152,7 @@ class Schedule(unittest.TestCase):
                          dag_bind_daemon_fixture=lambda *_args: None,
                          dag_bind_metadata=lambda *_args: None,
                          dag_toolchain_context=lambda *_args: {'path': '/fixture/toolchain'},
-                         dag_products=lambda *_args: {},
+                         dag_products=prepare,
                          dag_publication_daemon=lambda *_args: root,
                          dag_run_targets=run_targets)
             output = io.StringIO()
@@ -163,6 +173,27 @@ class Schedule(unittest.TestCase):
         self.assertEqual(result['expected_tests'], 4)
         self.assertEqual(result['executed_targets'], 4)
         self.assertEqual(result['counts'], dict(passed=5, failed=0, ignored=0))
+
+    def test_preparation_failure_preserves_completed_targets_and_unexecuted_coverage(self):
+        for fail_fast in (True, False):
+            with self.subTest(fail_fast=fail_fast):
+                result, admitted, log = self.run_dag_isolation_fixture(
+                    preparation_failure='selected receipt changed', fail_fast=fail_fast)
+                self.assertFalse(result['complete'])
+                self.assertEqual(result['process_exit'], 1)
+                self.assertEqual(result['error'], 'selected receipt changed')
+                self.assertEqual(admitted, ['hiroute_cpa_bridge', 'hiroute_observation',
+                                            'hiroute_gateway'])
+                self.assertEqual(result['executed_targets'], 3)
+                self.assertEqual(len(result['target_results']), 3)
+                self.assertEqual(result['counts'], dict(passed=3, failed=0, ignored=0))
+                self.assertEqual([row['name'] for row in result['unexecuted_targets']], ['smoke_cli'])
+                self.assertEqual(result['unexecuted_targets'][0]['cases'], ['default_two_domain_smoke'])
+                self.assertFalse(result['doctests_executed'])
+                self.assertIn('hiroute_gateway', log)
+                summary = runner.scheduled_test_summary(log, COMMAND, result)
+                self.assertEqual(summary['counts']['passed'], 3)
+                self.assertNotEqual(summary['state'], 'rust_tests_passed')
 
     def test_observation_deadline_isolation_preserves_parallelism_and_all_targets(self):
         result, admitted, _ = self.run_dag_isolation_fixture()
@@ -499,7 +530,7 @@ class Schedule(unittest.TestCase):
             test_binary.chmod(0o700)
             (root / 'tools/product-e2e').mkdir(parents=True)
             cargo = binary / 'cargo'
-            cargo.write_text('#!' + sys.executable + '\n' + '''import os,sys,time,pathlib,json
+            cargo.write_text('#!' + sys.executable + '\n' + '''import os,sys,time,pathlib,json,hashlib
 a=sys.argv[1:]; root=pathlib.Path.cwd(); mode=os.environ['FIXTURE_MODE']
 if '--no-run' in a:
  assert os.environ['CARGO_BUILD_JOBS']=='64'
@@ -516,12 +547,18 @@ if 'prepare_default_smoke_builds' in a:
  env={'CARGO_BUILD_JOBS':'8','CARGO_PKG_NAME':'hiroute-product-e2e','CARGO_BIN_EXE_hiroute-smoke':'/fixture/hiroute-smoke','RUST_RECURSION_COUNT':'1'}
  artifacts=[]
  for package in ('hiroute-e2e','hiroute-cli','hiroute-daemon'):
-  sha='sha256:'+package
-  artifacts.append({'package':package,'sha256':sha})
+  binary={'hiroute-e2e':'hiroute-e2e','hiroute-cli':'hiroute','hiroute-daemon':'hirouted'}[package]
+  cached=root/'target/smoke/builds'/('f'*64)/package/binary
+  cached.parent.mkdir(parents=True)
+  cached.write_text(package)
+  sha='sha256:'+hashlib.sha256(cached.read_bytes()).hexdigest()
+  artifact={'package':package,'binary':binary,'sha256':sha,'source_revision':'a'*40}
+  receipt=cached.with_name('receipt.json')
+  value={'artifact':artifact,'path':str(cached),'recipe':{'source_revision':'a'*40,'package':package,'binary':binary,'environment':env}}
+  body=json.dumps(value)
+  artifacts.append(dict(artifact,receipt={'path':str(receipt),'sha256':'sha256:'+hashlib.sha256(body.encode()).hexdigest()}))
   if mode=='missing-receipt' and package=='hiroute-cli': continue
-  receipt=root/'target/smoke/builds/fixture'/package/'receipt.json'
-  receipt.parent.mkdir(parents=True)
-  receipt.write_text(json.dumps({'artifact':{'sha256':sha},'recipe':{'source_revision':'a'*40,'environment':env}}))
+  receipt.write_text(body)
  report=root/'target/smoke/prepare-fixture/preparation.json'
  report.parent.mkdir(parents=True)
  report.write_text(json.dumps({'schema':'hiroute.smoke.preparation/v1','source_revision':'a'*40,'scenarios_executed':0,'artifacts':artifacts}))
@@ -566,7 +603,7 @@ print(f'test result: ok. {passed} passed; 0 failed; 1 ignored; 0 measured; 0 fil
     def test_unattested_preparation_never_starts_runtime(self):
         result, _ = self.run_fixture('missing-receipt')
         self.assertNotEqual(result['process_exit'], 0)
-        self.assertIn('unique matching receipt', result['error'])
+        self.assertIn('receipt.json', result['error'])
 
     def test_red_or_omitted_tests_cannot_produce_aggregate_green(self):
         for mode in ('red-smoke', 'missing-remainder'):
@@ -574,6 +611,181 @@ print(f'test result: ok. {passed} passed; 0 failed; 1 ignored; 0 measured; 0 fil
                 result, _ = self.run_fixture(mode)
                 self.assertNotEqual(result['process_exit'], 0)
                 self.assertFalse(result['complete'])
+
+
+class Preparation(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        self.sha = 'a' * 40
+
+    def bind(self, path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+        return dict(path=str(path), sha256='sha256:' + scheduler.file_digest(path))
+
+    def prepare(self, jobs):
+        environment = dict(CARGO_BUILD_JOBS=str(jobs), CARGO_PKG_NAME='hiroute-product-e2e',
+                           **{'CARGO_BIN_EXE_hiroute-smoke': '/fixture/hiroute-smoke',
+                              'RUST_RECURSION_COUNT': '1'})
+        artifacts = []
+        for package, binary in (('hiroute-e2e', 'hiroute-e2e'), ('hiroute-cli', 'hiroute'),
+                                ('hiroute-daemon', 'hirouted'), ('hiroute-gateway', 'hirouted')):
+            key = hashlib.sha256(f'{package}-{jobs}'.encode()).hexdigest()
+            path = self.root / 'target/smoke/builds' / key / package / binary
+            path.parent.mkdir(parents=True)
+            path.write_bytes(package.encode())  # Deliberately identical bytes across recipes.
+            digest = 'sha256:' + scheduler.file_digest(path)
+            if package == 'hiroute-gateway':
+                attestation = dict(schema_version='hiroute.e2e.sut-build-attestation/v3',
+                                   source_revision=self.sha, executable_path=str(path),
+                                   executable_sha256=digest, build_nonce=str(jobs))
+                receipt = dict(recipe='sha256:' + key, attestation=attestation)
+                gateway = dict(schema='hiroute.e2e.current-preparation/v1', prepared=True,
+                               source_revision=self.sha, executable_sha256=digest,
+                               receipt=self.bind(path.with_name('receipt.json'), receipt))
+            else:
+                artifact = dict(package=package, binary=binary, source_revision=self.sha, sha256=digest)
+                recipe = dict(package=package, binary=binary, source_revision=self.sha,
+                              environment=environment)
+                receipt = dict(recipe=recipe, artifact=artifact, path=str(path))
+                artifacts.append(dict(artifact, receipt=self.bind(path.with_name('receipt.json'), receipt)))
+        report = self.root / f'target/smoke/prepare-{jobs}/preparation.json'
+        self.bind(report, dict(schema='hiroute.smoke.preparation/v1', source_revision=self.sha,
+                               scenarios_executed=0, artifacts=artifacts, gateway=gateway))
+        return report
+
+    def execute(self, report):
+        return scheduler.dag_products('build preparation=' + str(report) + '\n',
+                                      self.root, self.sha, 'fixture')
+
+    def test_focused_then_dag_selects_exact_receipts_without_removing_other_recipes(self):
+        focused = self.prepare(8)
+        full = self.prepare(32)
+        before = {path: path.read_bytes() for path in self.root.glob('target/smoke/builds/*/*/receipt.json')}
+        self.assertEqual(len(before), 8)
+        env8 = scheduler.prepared_environment('build preparation=' + str(focused), self.root, self.sha)
+        env32 = self.execute(full)
+        self.assertEqual(env8['CARGO_BUILD_JOBS'], '8')
+        self.assertEqual(env32['CARGO_BUILD_JOBS'], '32')
+        report = json.loads(full.read_text())
+        selected = Path(report['gateway']['receipt']['path']).with_name('hirouted')
+        self.assertEqual(env32['HIROUTE_VALIDATION_GATEWAY_BIN'], str(selected))
+        directory = Path(env32['HIROUTE_VALIDATION_PRODUCT_BIN_DIR'])
+        self.assertEqual((directory / 'hiroute').read_bytes(), b'hiroute-cli')
+        self.assertEqual((directory / 'hirouted').read_bytes(), b'hiroute-daemon')
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+
+    def test_ambiguous_role_selection_is_rejected_even_with_matching_bytes(self):
+        report = self.prepare(32)
+        data = json.loads(report.read_text())
+        data['artifacts'].append(data['artifacts'][0])
+        report.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'incomplete artifacts'):
+            self.execute(report)
+
+    def test_multiple_selected_receipts_cannot_stand_in_for_one_exact_identity(self):
+        report = self.prepare(32)
+        data = json.loads(report.read_text())
+        for item in (data['artifacts'][0], data['gateway']):
+            binding = item['receipt']
+            item['receipt'] = [binding, binding]
+            report.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, 'no exact receipt binding'):
+                self.execute(report)
+            item['receipt'] = binding
+
+    def test_selected_receipt_integrity_source_paths_and_environment_remain_required(self):
+        # Every mutation leaves unrelated same-byte receipts available. They must
+        # never rescue invalid or missing selected preparation evidence.
+        mutations = ('missing-binding', 'missing-receipt', 'corrupt-receipt', 'wrong-receipt-hash',
+                     'wrong-source', 'wrong-artifact-source', 'changed-binary', 'wrong-binary-hash',
+                     'escaping-receipt', 'escaping-binary', 'other-role-binary',
+                     'wrong-jobs', 'different-environment')
+        for package in ('hiroute-cli', 'hiroute-gateway'):
+            for mutation in mutations:
+                if package == 'hiroute-gateway' and mutation in (
+                        'wrong-artifact-source', 'wrong-jobs', 'different-environment'):
+                    continue
+                with self.subTest(package=package, mutation=mutation), tempfile.TemporaryDirectory() as temp:
+                    self.root = Path(temp).resolve()
+                    self.prepare(8)
+                    report = self.prepare(32)
+                    data = json.loads(report.read_text())
+                    item = (data['gateway'] if package == 'hiroute-gateway'
+                            else next(row for row in data['artifacts'] if row['package'] == package))
+                    binding = item['receipt']
+                    receipt_path = Path(binding['path'])
+                    receipt = json.loads(receipt_path.read_text())
+                    facts = receipt['attestation'] if package == 'hiroute-gateway' else receipt['recipe']
+                    binary_key = 'executable_path' if package == 'hiroute-gateway' else 'path'
+                    binary_facts = receipt['attestation'] if package == 'hiroute-gateway' else receipt
+                    binary = Path(binary_facts[binary_key])
+                    if mutation == 'missing-binding':
+                        del item['receipt']
+                    elif mutation == 'missing-receipt':
+                        receipt_path.unlink()
+                    elif mutation == 'corrupt-receipt':
+                        receipt_path.write_text('{')
+                    elif mutation == 'wrong-receipt-hash':
+                        binding['sha256'] = 'sha256:' + '0' * 64
+                    elif mutation == 'wrong-source':
+                        facts['source_revision'] = 'b' * 40
+                    elif mutation == 'wrong-artifact-source':
+                        receipt['artifact']['source_revision'] = 'b' * 40
+                    elif mutation == 'changed-binary':
+                        binary.write_bytes(b'changed')
+                    elif mutation == 'wrong-binary-hash':
+                        if package == 'hiroute-gateway':
+                            receipt['attestation']['executable_sha256'] = item['executable_sha256'] = 'sha256:wrong'
+                        else:
+                            receipt['artifact']['sha256'] = item['sha256'] = 'sha256:wrong'
+                    elif mutation == 'escaping-receipt':
+                        escaped = self.root / 'outside-receipt.json'
+                        escaped.write_bytes(receipt_path.read_bytes())
+                        receipt_path.unlink()
+                        receipt_path.symlink_to(escaped)
+                    elif mutation == 'escaping-binary':
+                        escaped = self.root / 'outside-binary'
+                        escaped.write_bytes(binary.read_bytes())
+                        binary.unlink()
+                        binary.symlink_to(escaped)
+                    elif mutation == 'other-role-binary':
+                        other = binary.parent / 'other-binary'
+                        other.write_bytes(binary.read_bytes())
+                        binary_facts[binary_key] = str(other)
+                    elif mutation == 'wrong-jobs':
+                        for row in data['artifacts']:
+                            path = Path(row['receipt']['path'])
+                            value = json.loads(path.read_text())
+                            value['recipe']['environment']['CARGO_BUILD_JOBS'] = '8'
+                            row['receipt'] = self.bind(path, value)
+                        receipt = json.loads(receipt_path.read_text())
+                    elif mutation == 'different-environment':
+                        facts['environment']['RUST_RECURSION_COUNT'] = '2'
+                    if mutation in ('wrong-source', 'wrong-artifact-source', 'wrong-binary-hash',
+                                    'other-role-binary', 'different-environment'):
+                        item['receipt'] = self.bind(receipt_path, receipt)
+                    report.write_text(json.dumps(data))
+                    with self.assertRaises((ValueError, OSError)):
+                        self.execute(report)
+                    self.assertFalse((self.root / 'target/validation-schedule').exists())
+
+    def test_report_source_containment_and_unique_identity_are_required(self):
+        report = self.prepare(32)
+        log = 'build preparation=' + str(report) + '\n'
+        for value in ('b' * 40,):
+            with self.assertRaises(ValueError):
+                scheduler.prepared_environment(log, self.root, value, jobs=32)
+        with self.assertRaisesRegex(ValueError, 'exactly one report'):
+            scheduler.prepared_environment(log + log, self.root, self.sha, jobs=32)
+        escaped = self.root / 'preparation.json'
+        escaped.write_bytes(report.read_bytes())
+        report.unlink()
+        report.symlink_to(escaped)
+        with self.assertRaisesRegex(ValueError, 'outside this checkout'):
+            self.execute(report)
 
 
 if __name__ == '__main__':

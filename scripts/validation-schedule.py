@@ -76,12 +76,44 @@ def snapshot_copy(source, destination):
         shutil.copy2(source, destination)
 
 
-def prepared_environment(log, checkout, sha, jobs=8):
-    """Recover Cargo's test runtime variables from the attested preparation."""
+def preparation_receipt(binding, target, package):
+    """Read only the receipt bound by this preparation, never a digest cache search."""
+    if (not isinstance(binding, dict) or set(binding) != {"path", "sha256"}
+            or not isinstance(binding["path"], str)):
+        raise ValueError("Build preparation has no exact receipt binding: " + package)
+    path = Path(binding["path"])
+    resolved = path.resolve(strict=True)
+    build_root = target / "smoke/builds"
+    try:
+        relative = resolved.relative_to(build_root)
+    except ValueError:
+        raise ValueError("Prepared receipt escapes this checkout: " + package) from None
+    if (not path.is_absolute() or path != resolved or len(relative.parts) != 3
+            or not re.fullmatch(r"[0-9a-f]{64}", relative.parts[0])
+            or relative.parts[1:] != (package, "receipt.json")):
+        raise ValueError("Prepared receipt has an invalid cache path: " + package)
+    if "sha256:" + file_digest(resolved) != binding["sha256"]:
+        raise ValueError("Prepared receipt changed: " + package)
+    return json.loads(resolved.read_text()), resolved.parent
+
+
+def prepared_binary(value, directory, binary, digest):
+    path = Path(value).resolve(strict=True)
+    if path != directory / binary:
+        raise ValueError("Product artifact escapes selected receipt directory")
+    if "sha256:" + file_digest(path) != digest:
+        raise ValueError("Prepared product binary changed")
+    return path
+
+
+def prepared_products(log, checkout, sha, jobs):
+    """Verify the exact product receipts and their captured Cargo environment."""
     paths = re.findall(r"^build preparation=(\S+)$", log, re.M)
     if len(paths) != 1:
         raise ValueError("Build preparation did not identify exactly one report")
     target = (Path(checkout) / "target").resolve(strict=True)
+    if target != Path(checkout).resolve(strict=True) / "target":
+        raise ValueError("Prepared target is outside this checkout")
     report = Path(paths[0]).resolve(strict=True)
     if (report.parent.parent != target / "smoke" or report.name != "preparation.json"
             or not report.parent.name.startswith("prepare-")):
@@ -97,19 +129,21 @@ def prepared_environment(log, checkout, sha, jobs=8):
             != {"hiroute-e2e", "hiroute-cli", "hiroute-daemon"}):
         raise ValueError("Build preparation has incomplete artifacts")
     receipts = []
+    products = {}
     for artifact in artifacts:
         package = artifact["package"]
-        if package not in {"hiroute-e2e", "hiroute-cli", "hiroute-daemon"}:
-            raise ValueError("Build preparation contains an unexpected package")
-        matches = []
-        for path in (target / "smoke/builds").glob("*/" + package + "/receipt.json"):
-            receipt = json.loads(path.read_text())
-            if (receipt.get("artifact", {}).get("sha256") == artifact["sha256"]
-                    and receipt.get("recipe", {}).get("source_revision") == sha):
-                matches.append(receipt)
-        if len(matches) != 1:
-            raise ValueError("Build preparation artifact has no unique matching receipt: " + package)
-        receipts.append(matches[0])
+        receipt, directory = preparation_receipt(artifact.get("receipt"), target, package)
+        binary = {"hiroute-e2e": "hiroute-e2e", "hiroute-cli": "hiroute",
+                  "hiroute-daemon": "hirouted"}[package]
+        facts = {key: value for key, value in artifact.items() if key != "receipt"}
+        recipe = receipt["recipe"]
+        if (receipt["artifact"] != facts or facts.get("source_revision") != sha
+                or facts.get("binary") != binary
+                or recipe.get("source_revision") != sha or recipe.get("package") != package
+                or recipe.get("binary") != binary):
+            raise ValueError("Prepared product receipt does not match the candidate: " + package)
+        products[package] = prepared_binary(receipt["path"], directory, binary, artifact["sha256"])
+        receipts.append(receipt)
     environments = [item["recipe"]["environment"] for item in receipts]
     if not all(env == environments[0] for env in environments):
         raise ValueError("Build preparation receipts disagree on runtime environment")
@@ -120,7 +154,11 @@ def prepared_environment(log, checkout, sha, jobs=8):
             or environment.get("CARGO_PKG_NAME") != "hiroute-product-e2e"
             or not environment.get("CARGO_BIN_EXE_hiroute-smoke")):
         raise ValueError("Build preparation has invalid Cargo test environment")
-    return environment
+    return data, environment, products
+
+
+def prepared_environment(log, checkout, sha, jobs=8):
+    return prepared_products(log, checkout, sha, jobs)[1]
 
 
 def lane_summary(parser, log):
@@ -489,48 +527,20 @@ def dag_toolchain_context(runner, checkout, sha, run):
 
 
 def dag_products(log, checkout, sha, run_id):
-    environment = prepared_environment(log, checkout, sha, jobs=32)
-    report_path = re.findall(r"^build preparation=(\S+)$", log, re.M)[0]
-    report = json.loads(Path(report_path).read_text())
-    build_root = Path(checkout) / "target/smoke/builds"
-    def within(path):
-        try:
-            path.relative_to(build_root.resolve(strict=True))
-            return True
-        except ValueError:
-            return False
-    artifacts = {}
-    for item in report["artifacts"]:
-        package = item["package"]
-        matches = []
-        for receipt_path in build_root.glob("*/" + package + "/receipt.json"):
-            receipt = json.loads(receipt_path.read_text())
-            artifact = receipt["artifact"]
-            if (receipt["recipe"]["source_revision"] == sha
-                    and artifact["sha256"] == item["sha256"]):
-                path = Path(receipt["path"]).resolve(strict=True)
-                if not within(path):
-                    raise ValueError("Product artifact escapes prepared target")
-                if "sha256:" + file_digest(path) != artifact["sha256"]:
-                    raise ValueError("Prepared product binary changed")
-                matches.append(path)
-        if len(matches) != 1:
-            raise ValueError("Prepared product receipt is not unique: " + package)
-        artifacts[package] = matches[0]
-    gateway = []
-    for receipt_path in build_root.glob("*/hiroute-gateway/receipt.json"):
-        receipt = json.loads(receipt_path.read_text())
-        attestation = receipt["attestation"]
-        if (attestation["schema_version"] == "hiroute.e2e.sut-build-attestation/v3"
-                and attestation["source_revision"] == sha
-                and attestation["executable_sha256"] == report["gateway"]["executable_sha256"]):
-            path = Path(attestation["executable_path"]).resolve(strict=True)
-            if (not within(path)
-                    or "sha256:" + file_digest(path) != attestation["executable_sha256"]):
-                raise ValueError("Prepared Gateway binary changed")
-            gateway.append(path)
-    if len(gateway) != 1:
-        raise ValueError("Prepared Gateway receipt is not unique")
+    report, environment, artifacts = prepared_products(log, checkout, sha, jobs=32)
+    gateway = report["gateway"]
+    receipt, directory = preparation_receipt(gateway.get("receipt"),
+                                             Path(checkout).resolve() / "target", "hiroute-gateway")
+    attestation = receipt["attestation"]
+    if (gateway.get("schema") != "hiroute.e2e.current-preparation/v1"
+            or gateway.get("prepared") is not True or gateway.get("source_revision") != sha
+            or attestation["schema_version"] != "hiroute.e2e.sut-build-attestation/v3"
+            or attestation["source_revision"] != sha
+            or attestation["executable_sha256"] != gateway["executable_sha256"]
+            or receipt["recipe"] != "sha256:" + directory.parent.name):
+        raise ValueError("Prepared Gateway receipt does not match the candidate")
+    gateway_path = prepared_binary(attestation["executable_path"], directory, "hirouted",
+                                   gateway["executable_sha256"])
     directory = Path(checkout) / "target/validation-schedule" / run_id / "products"
     directory.mkdir(parents=True, mode=0o700, exist_ok=False)
     for package, name in (("hiroute-cli", "hiroute"), ("hiroute-daemon", "hirouted")):
@@ -540,7 +550,7 @@ def dag_products(log, checkout, sha, run_id):
             raise ValueError("Prepared product copy changed")
     environment.update(HIROUTE_VALIDATION_EXECUTION="1",
                        HIROUTE_VALIDATION_PRODUCT_BIN_DIR=str(directory),
-                       HIROUTE_VALIDATION_GATEWAY_BIN=str(gateway[0]),
+                       HIROUTE_VALIDATION_GATEWAY_BIN=str(gateway_path),
                        HIROUTE_SMOKE_REQUIRE_PREPARED="1")
     return environment
 
@@ -649,7 +659,7 @@ def dag_run_targets(runner, root, run, targets, checkout, lease, environment, de
                     or sum(summary["counts"].values()) != len(item["cases"])
                     or dag_observed_cases(text) != set(item["cases"])):
                 raise ValueError("Test target did not complete its listed cases: " + name)
-            return dict(name=name, log=str(path), process_exit=code,
+            return dict(name=name, index=item["index"], log=str(path), process_exit=code,
                         complete=summary["complete"] and code == 0,
                         counts=summary["counts"], exec_audit=audit,
                         started_at=started_at, finished_at=time.time(),
@@ -676,7 +686,9 @@ def dag_run_targets(runner, root, run, targets, checkout, lease, environment, de
                     try:
                         result = future.result()
                     except Exception as error:
-                        result = dict(name=item["name"], complete=False, process_exit=1,
+                        result = dict(name=item["name"], index=item["index"],
+                                      log=str(run / ("dag-test-" + str(item["index"]) + ".log")),
+                                      complete=False, process_exit=1,
                                       error=str(error), counts=dict(passed=0, failed=0, ignored=0))
                     results.append(result)
                     if not result["complete"] and fail_fast and stop_event is not None:
@@ -693,7 +705,10 @@ def execute_dag(runner, root, run, checkout, request, lease, output, reserved_ha
     base = [arg for arg in request["command"] if arg != "--no-fail-fast"]
     fail_fast = "--no-fail-fast" not in request["command"]
     phase_records = []
-    outcome = dict(process_exit=1, timed_out=False, phases=phase_records, complete=False)
+    outcome = dict(process_exit=1, timed_out=False, phases=phase_records, complete=False,
+                   doctests_executed=False)
+    targets, results = [], []
+    expected = None
 
     def cargo_phase(name, argv, slots):
         path = run / ("dag-" + name + ".log")
@@ -777,9 +792,6 @@ def execute_dag(runner, root, run, checkout, request, lease, output, reserved_ha
                                   fail_fast=fail_fast, reserved_handles=reserved_handles,
                                   stop_event=stop_event)
         if stop_event is not None and stop_event.is_set():
-            for result in results:
-                if result.get("log"):
-                    output.write(Path(result["log"]).read_text(errors="replace") + "\n")
             outcome.update(expected_tests=expected, targets=len(targets),
                            executed_targets=len(results), target_results=results,
                            error="Isolated test target failed; remaining targets and doctests were not admitted")
@@ -789,37 +801,42 @@ def execute_dag(runner, root, run, checkout, request, lease, output, reserved_ha
             ordinary = pool.submit(dag_run_targets, runner, root, run, independent, checkout,
                                    lease, execution_env,
                                    deadline, 4, 4, fail_fast, reserved_handles, stop_event)
-            preparation_log = prepared.result()
-            summary = runner.test_summary(preparation_log, commands(base)["prepare"])
-            if summary["counts"] != dict(passed=1, failed=0, ignored=0):
-                raise ValueError("Build preparation did not execute exactly once")
-            prepared_env = dag_products(preparation_log, checkout, request["sha"], run.name)
-            prepared_env["HIROUTE_VALIDATION_TOOLCHAIN_JSON"] = toolchain_artifact["path"]
-            hooks_command = ["cargo", "build", "--locked", "-p", "hiroute-daemon",
-                             "--bin", "hirouted", "--features", "integration-test-hooks",
-                             "--profile", "dev", "--message-format=json"]
-            hooks_log = cargo_phase("publication-daemon", hooks_command, 4)
-            hooks_dir = dag_publication_daemon(hooks_log, checkout, metadata, run.name,
-                                               prepared_env, request["sha"], run)
-            for item in dependent:
-                if item["name"] == "publication_process":
-                    item["environment"] = {
-                        "HIROUTE_VALIDATION_PRODUCT_BIN_DIR": str(hooks_dir)}
-            remaining = dag_run_targets(runner, root, run, dependent, checkout, lease,
-                                        dict(os.environ, **prepared_env), deadline,
-                                        slots=4, workers=4, fail_fast=fail_fast,
-                                        reserved_handles=reserved_handles,
-                                        stop_event=stop_event)
-            first = ordinary.result()
-        results += first + remaining
-        for result in sorted(results, key=lambda item: item.get("log", "")):
-            if result.get("log"):
-                output.write(Path(result["log"]).read_text(errors="replace") + "\n")
+            try:
+                preparation_log = prepared.result()
+                summary = runner.test_summary(preparation_log, commands(base)["prepare"])
+                if summary["counts"] != dict(passed=1, failed=0, ignored=0):
+                    raise ValueError("Build preparation did not execute exactly once")
+                prepared_env = dag_products(preparation_log, checkout, request["sha"], run.name)
+                prepared_env["HIROUTE_VALIDATION_TOOLCHAIN_JSON"] = toolchain_artifact["path"]
+                hooks_command = ["cargo", "build", "--locked", "-p", "hiroute-daemon",
+                                 "--bin", "hirouted", "--features", "integration-test-hooks",
+                                 "--profile", "dev", "--message-format=json"]
+                hooks_log = cargo_phase("publication-daemon", hooks_command, 4)
+                hooks_dir = dag_publication_daemon(hooks_log, checkout, metadata, run.name,
+                                                   prepared_env, request["sha"], run)
+                for item in dependent:
+                    if item["name"] == "publication_process":
+                        item["environment"] = {
+                            "HIROUTE_VALIDATION_PRODUCT_BIN_DIR": str(hooks_dir)}
+                results.extend(dag_run_targets(runner, root, run, dependent, checkout, lease,
+                                              dict(os.environ, **prepared_env), deadline,
+                                              slots=4, workers=4, fail_fast=fail_fast,
+                                              reserved_handles=reserved_handles,
+                                              stop_event=stop_event))
+            except Exception:
+                if stop_event is not None:
+                    stop_event.set()
+                raise
+            finally:
+                # Preparation can fail after independent targets already finished.
+                # Retain those results even when dependent admission never begins.
+                results.extend(ordinary.result())
         if stop_event is not None and stop_event.is_set():
             outcome.update(expected_tests=expected, targets=len(targets),
                            executed_targets=len(results), target_results=results,
                            error="Test target failed; remaining targets and doctests were not admitted")
             return outcome
+        outcome["doctests_executed"] = True
         doc_log = cargo_phase("doctest", [*base, "--doc"], 8)
         output.write(doc_log + "\n")
         doc_summary = lane_summary(runner.reporting(), doc_log)
@@ -843,4 +860,17 @@ def execute_dag(runner, root, run, checkout, request, lease, output, reserved_ha
     except Exception as error:
         outcome["error"] = str(error)
         outcome["timed_out"] = time.monotonic() >= deadline
+    finally:
+        for result in sorted(results, key=lambda item: item.get("log", "")):
+            if result.get("log") and Path(result["log"]).is_file():
+                output.write(Path(result["log"]).read_text(errors="replace") + "\n")
+        if expected is not None:
+            executed = {row["index"] for row in results}
+            outcome.update(expected_tests=expected, targets=len(targets),
+                           executed_targets=len(results), target_results=results,
+                           unexecuted_targets=[dict(index=item["index"], name=item["name"],
+                                                    package=item["package_name"], cases=item["cases"])
+                                               for item in targets if item["index"] not in executed])
+            outcome.setdefault("counts", {key: sum(row["counts"][key] for row in results)
+                                          for key in ("passed", "failed", "ignored")})
     return outcome
