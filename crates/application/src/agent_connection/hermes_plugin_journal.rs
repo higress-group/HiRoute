@@ -6,6 +6,8 @@ use hiroute_domain::{
 };
 use serde::{Deserialize, Serialize};
 
+const MAX_NATIVE_PLUGIN_CONTENT_BYTES: usize = 32 * 1024;
+
 #[derive(Clone)]
 pub struct NativePluginFileFacts {
     pub role: AgentConnectionEffectRoleV1,
@@ -136,12 +138,18 @@ pub fn decode_settings_native_plugin_file(
         }
     }
     if let NativePluginFileAction::Configure { content, .. } = &payload.change
-        && (content.is_empty() || content.len() > 16 * 1024 || content.contains('\0'))
+        && (content.is_empty()
+            || content.len() > MAX_NATIVE_PLUGIN_CONTENT_BYTES
+            || content.contains('\0'))
     {
         return Err(invalid());
     }
     Ok(payload)
 }
+
+#[cfg(test)]
+#[path = "hermes_plugin_journal_tests.rs"]
+mod tests;
 
 pub fn settings_native_plugin_file_for_operation(
     op: &(impl AgentOperationRead + ?Sized),

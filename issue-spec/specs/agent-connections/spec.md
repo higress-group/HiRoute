@@ -531,6 +531,13 @@ Agent entries and allow selection of another directory.
 
 HiRoute SHALL configure the selected effective Hermes profile's default main model to the chosen published Plan alias and automatically install and enable the required HiRoute integration resources when the connection is applied from CLI or Desktop. Native connection fields and resources SHALL follow existing reversible ownership and transaction contracts, preserving unrelated native configuration and user data. Connection status/guidance SHALL identify the configured scope, report statically known selection overrides and applicable reload/model-selection actions, and keep unobserved live selection unknown. Installed/enabled resources SHALL NOT be represented as proof that an already-running Hermes process loaded them. HiRoute SHALL publish its Hermes integration requirements and reject a new connection before native writes only when required plugin/configuration or transport/header interfaces are incompatible. Older version labels and optional reasoning-replay limitations SHALL produce upgrade guidance rather than block an otherwise compatible connection. Independent Skill preparation, passive scan and existing owned recovery/restore SHALL use their own required capabilities rather than a blanket new-connection version gate.
 
+Each journaled native plugin module, manifest or routing adapter SHALL contain
+nonempty UTF-8 content of at most 32 KiB, measured in bytes, without NUL. Actual
+bundled Hermes, Pi, DSH and OpenCode resources SHALL fit through the current intent
+constructor and decoder. This per-file bound preserves admitted content of
+16 KiB or less and the existing ownership, authorization and digest bindings;
+independent Skill resources retain their 16 KiB limit.
+
 #### Scenario: Open Hermes before selecting a profile
 
 - **WHEN** Desktop has no discovered Hermes profile
