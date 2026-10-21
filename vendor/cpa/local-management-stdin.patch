@@ -2831,7 +2831,7 @@ index 0000000..91db81d
 +	}
 +}
 diff --git a/sdk/cliproxy/service_auth.go b/sdk/cliproxy/service_auth.go
-index c2b4f73..5d3d94a 100644
+index c2b4f73..035cda4 100644
 --- a/sdk/cliproxy/service_auth.go
 +++ b/sdk/cliproxy/service_auth.go
 @@ -5,6 +5,7 @@ import (
@@ -2842,44 +2842,18 @@ index c2b4f73..5d3d94a 100644
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher"
-@@ -391,8 +392,9 @@ func (s *Service) prepareCoreAuthForModelRegistration(ctx context.Context, auth
- }
- 
- type authRegistrationWait struct {
--	id string
--	ch chan struct{}
-+	id   string
-+	ch   chan struct{}
-+	done func()
- }
- 
- func (s *Service) authRegistrationWaitCh(id string) chan struct{} {
-@@ -413,13 +415,14 @@ func (s *Service) beginAuthRegistration(id string) authRegistrationWait {
- 		close(ch)
- 		return authRegistrationWait{id: id, ch: ch}
+@@ -100,6 +101,11 @@ func (s *Service) handleAuthUpdates(ctx context.Context, updates []watcher.AuthU
+ 	if s == nil {
+ 		return
  	}
-+	done := modeldiscovery.Registering(id)
- 	s.authRegWaitMu.Lock()
- 	if s.authRegWaiters == nil {
- 		s.authRegWaiters = make(map[string]chan struct{})
- 	}
- 	s.authRegWaiters[id] = ch
- 	s.authRegWaitMu.Unlock()
--	return authRegistrationWait{id: id, ch: ch}
-+	return authRegistrationWait{id: id, ch: ch, done: done}
- }
- 
- func finishAuthRegistrations(s *Service, waits []authRegistrationWait) {
-@@ -442,6 +445,9 @@ func finishAuthRegistrations(s *Service, waits []authRegistrationWait) {
- 		if wait.ch == nil {
- 			continue
- 		}
-+		if wait.done != nil {
-+			wait.done()
-+		}
- 		select {
- 		case <-wait.ch:
- 		default:
++	// Accepted updates are pending even while waiting for the update lock.
++	for _, update := range updates {
++		done := modeldiscovery.Registering(authUpdateID(update))
++		defer done()
++	}
+ 	// Keep this path limited to the targeted auths. Global plugin rebuilds and
+ 	// in-flight Antigravity probes can hold authUpdateMu for minutes and stall
+ 	// Management API PATCH responses.
 diff --git a/sdk/cliproxy/service_codex_discovery_test.go b/sdk/cliproxy/service_codex_discovery_test.go
 new file mode 100644
 index 0000000..8909d5d
@@ -3056,10 +3030,10 @@ index 0000000..518a73f
 +}
 diff --git a/sdk/cliproxy/service_codex_registration_test.go b/sdk/cliproxy/service_codex_registration_test.go
 new file mode 100644
-index 0000000..41afdb3
+index 0000000..63e93fc
 --- /dev/null
 +++ b/sdk/cliproxy/service_codex_registration_test.go
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,208 @@
 +package cliproxy
 +
 +import (
@@ -3072,6 +3046,7 @@ index 0000000..41afdb3
 +	"time"
 +
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher"
 +	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 +	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 +)
@@ -3220,19 +3195,51 @@ index 0000000..41afdb3
 +}
 +
 +func TestHiRouteCodexRegistrationPendingIncludesQueuedWork(t *testing.T) {
-+	service := &Service{}
-+	const account = "queued-registration"
-+	wait := service.beginAuthRegistration(account)
-+	trace := modeldiscovery.Begin(account)
-+	trace.Enter(modeldiscovery.Registration)
-+	trace.End(modeldiscovery.Discarded, modeldiscovery.AccountChanged)
-+	if !modeldiscovery.Read(account).RegistrationPending {
-+		t.Fatal("queued registration looked terminal before its task began")
++	manager := coreauth.NewManager(nil, nil, nil)
++	original, err := manager.Register(context.Background(), &coreauth.Auth{ID: "queued-registration", Provider: "codex", Prefix: "subscription", Metadata: map[string]any{"access_token": "synthetic-access", "hiroute_client_version": "0.999.0"}})
++	if err != nil {
++		t.Fatal(err)
 +	}
-+	finishAuthRegistrations(service, []authRegistrationWait{wait})
-+	finishAuthRegistrations(service, []authRegistrationWait{wait})
-+	if modeldiscovery.Read(account).RegistrationPending {
-+		t.Fatal("batch completion leaked pending registration")
++	defer GlobalModelRegistry().UnregisterClient(original.ID)
++	prior := modeldiscovery.Begin(original.ID)
++	prior.Enter(modeldiscovery.Request)
++	prior.End(modeldiscovery.Failed, modeldiscovery.Timeout)
++	next, _ := manager.GetByID(original.ID)
++	next, err = manager.Update(context.Background(), next)
++	if err != nil {
++		t.Fatal(err)
++	}
++	service := &Service{cfg: &config.Config{}, coreManager: manager}
++	service.cfg.ForceModelPrefix = true
++	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
++		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"current-model"}]}`)), Request: r}, nil
++	}))
++	service.authUpdateMu.Lock()
++	started, finished := make(chan struct{}), make(chan struct{})
++	go func() {
++		defer close(finished)
++		close(started)
++		service.handleAuthUpdate(ctx, watcher.AuthUpdate{Action: watcher.AuthUpdateActionModify, ID: next.ID, Auth: next})
++	}()
++	<-started
++	deadline := time.Now().Add(time.Second)
++	for !modeldiscovery.Read(original.ID).RegistrationPending && time.Now().Before(deadline) {
++		time.Sleep(time.Millisecond)
++	}
++	var models []*ModelInfo
++	blocked := modeldiscovery.ReadCatalog(original.ID, func() { models = GlobalModelRegistry().GetModelsForClient(original.ID) })
++	service.authUpdateMu.Unlock()
++	select {
++	case <-finished:
++	case <-time.After(2 * time.Second):
++		t.Fatal("queued registration did not finish")
++	}
++	if len(models) != 0 || !blocked.RegistrationPending || blocked.Latest == nil || blocked.Latest.Outcome != modeldiscovery.Failed {
++		t.Fatal("accepted update waiting for the lock looked terminal")
++	}
++	recovered := GlobalModelRegistry().GetModelsForClient(original.ID)
++	if len(recovered) != 1 || recovered[0].ID != "subscription/current-model" || modeldiscovery.Read(original.ID).RegistrationPending {
++		t.Fatal("queued registration did not recover and clear pending state")
 +	}
 +}
 diff --git a/sdk/cliproxy/service_models.go b/sdk/cliproxy/service_models.go
