@@ -157,19 +157,22 @@ fn native_plugin_constructor_and_decoder_reject_empty_nul_and_over_32_kib() {
         AgentConnectionEffectRoleV1::HermesPluginModule,
         "",
     );
-    for content in [
-        String::new(),
-        "native\0plugin".into(),
-        "x".repeat(32 * 1024 + 1),
+    for (case, content, domain_rejects) in [
+        ("empty", String::new(), false),
+        ("NUL", "native\0plugin".into(), true),
+        ("over 32 KiB", "x".repeat(32 * 1024 + 1), false),
     ] {
         let change = NativePluginFileAction::Configure {
             previous_operation: None,
             content,
         };
-        assert!(settings_native_plugin_file_intent(&control, &context, &facts, &change).is_err());
-        // Reconstruct a registered journal carrier without the command-specific
-        // constructor to prove its decoder independently enforces the same bound.
-        let intent = ExternalEffectIntentV1::from_agent_connection_planner(
+        assert!(
+            settings_native_plugin_file_intent(&control, &context, &facts, &change).is_err(),
+            "{case}: plugin constructor must reject invalid content"
+        );
+        // Domain rejects NUL before a carrier exists. Empty and 32 KiB+1 values
+        // remain valid carriers and must independently fail plugin decoding.
+        let carrier = ExternalEffectIntentV1::from_agent_connection_planner(
             &control,
             facts.role,
             None,
@@ -180,8 +183,23 @@ fn native_plugin_constructor_and_decoder_reject_empty_nul_and_over_32_kib() {
                 change,
             },
             0o644,
-        )
-        .unwrap();
-        assert!(decode_settings_native_plugin_file(&intent).is_err());
+        );
+        if domain_rejects {
+            assert!(
+                matches!(
+                    &carrier,
+                    Err(OperationValidationError::UnregisteredEffectPlan)
+                ),
+                "{case}: Domain rejects embedded NUL in every registered payload before plugin decoding"
+            );
+        } else {
+            let intent = carrier.unwrap_or_else(|error| {
+                panic!("{case}: empty and 32 KiB+1 content fit the Domain carrier: {error:?}")
+            });
+            assert!(
+                decode_settings_native_plugin_file(&intent).is_err(),
+                "{case}: a valid registered carrier must still fail the plugin-specific bound"
+            );
+        }
     }
 }
