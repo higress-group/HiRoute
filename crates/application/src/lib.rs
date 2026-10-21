@@ -713,7 +713,12 @@ impl ApplicationService {
                 .and_then(|intent| intent.get("view"))
                 .and_then(Value::as_str),
             Some("analysis" | "routing_timeline")
-        );
+        ) || matches!(operation, ObservationOperation::PlanQuality)
+            && request
+                .payload
+                .pointer("/intent/query/include_routing_observations")
+                .and_then(Value::as_bool)
+                == Some(true);
         let result = match operation {
             ObservationOperation::CapacityRead | ObservationOperation::CapacityUpdate => control
                 .capacity(
