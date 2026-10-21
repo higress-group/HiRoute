@@ -61,10 +61,10 @@ not adopt files by name or remove their authentication fields. Preserve your own
 resolve the conflicting entry manually before a fresh preview.
 
 Profile mode uses native `codex --profile hiroute`; it does not provide a Desktop profile
-launcher. History can differ between entry points. Cross-provider history restoration and
-session database changes are outside this feature. Gateway credentials authorize the selected
-models independently of the Codex client's OpenAI login; retaining original models still
-requires a usable upstream source configured in HiRoute.
+launcher. Session histories remain scoped to their native provider; HiRoute does not merge
+histories or modify the session database. Gateway credentials authorize the selected models
+independently of the Codex client's OpenAI login; retaining original models still requires a
+usable upstream source configured in HiRoute.
 
 A pending operation reserves the home even if Gateway access is already revoked. The Agent
 page shows the target and conflicting fields, and can recheck and resume the original Operation.
@@ -81,6 +81,45 @@ Local CLI callers can resume that same operation through `agents connect apply` 
 
 This retry accepts no new settings or grants. The daemon checks the stored operation and its
 context before continuing. First-time creation and edits still require normal Preview/Apply.
+
+### Find earlier Codex sessions
+
+Codex filters its native `/resume` picker by the active model provider. HiRoute uses
+its own provider, so sessions created with an earlier provider can disappear from
+the picker while their files remain in the same `CODEX_HOME`. Selecting all
+directories, or running `codex resume --all`, removes the directory filter; it does
+not remove the provider filter.
+
+The Codex model-routing form explains this before enabling, and the configured
+connection retains the recovery instructions. A separate HiRoute profile preserves
+ordinary configuration, but does not merge the two providers' session histories.
+
+### Return to the original provider
+
+1. In HiRoute, open **Agents → Codex** and turn off **Model routing**. Wait for
+   configuration restoration to complete. If a file conflict or incomplete
+   operation is reported, follow its recovery instructions before continuing.
+2. Exit the Codex instance using HiRoute. Open a terminal using the original
+   `CODEX_HOME` shown in the connection's configuration details. Use the same
+   original profile and working environment as before enabling HiRoute.
+3. Run `codex resume --all` and select the earlier session. If the original entry
+   used an explicit profile, retain it: `codex --profile <original-profile> resume --all`.
+   The `hiroute` profile is the managed route, not the original entry.
+4. Continuing the session uses the restored provider and its original account or
+   API credentials. Those requests **bypass HiRoute**. Re-enabling routing switches
+   the provider again and can hide the earlier sessions again.
+
+This path restores HiRoute-owned configuration fields through its existing
+conditional restoration transaction. It does not edit Codex's session files,
+provider labels or private session database. Keep a backup of important history;
+changing provider IDs or rewriting the database is not a supported migration.
+
+For sessions created under several different original providers, use each
+provider's original configuration and credentials. HiRoute cannot reconstruct a
+configuration or account that was already missing before it was enabled.
+
+The native commands are documented in the [official Codex CLI reference](https://developers.openai.com/codex/cli/reference/).
+The configuration contract belongs to [Agent connections](../issue-spec/specs/agent-connections/spec.md).
 
 ## OpenCode
 

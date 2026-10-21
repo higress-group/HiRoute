@@ -5,6 +5,18 @@ import { preferredCodexShell } from './codex-launch';
 export type { CodexAccess } from './types';
 import type { CodexAccess } from './types';
 
+export function CodexHistoryNotice({ language }: { language: 'zh' | 'en' }) {
+  const text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  return <div className="callout warn" role="note" data-codex-history-guidance>
+    <UiIcon name="warning" /><div>
+      <strong>{text('切换后如何找回原有会话', 'Finding earlier sessions after switching')}</strong>
+      <p>{text('Codex 按模型服务商筛选 /resume。使用 HiRoute 后，原有会话可能不再显示，即使选择全部目录；会话文件仍然保留。', 'Codex filters /resume by model provider. Earlier sessions may disappear while using HiRoute, even with all directories selected; their files remain.')}</p>
+      <p>{text('找回步骤：在 HiRoute 的“模型路由”点击“停用”，等待原配置恢复完成，再使用原 CODEX_HOME 和原 profile 运行 ', 'To recover: turn off Model routing in HiRoute and wait for configuration restoration to finish. Then use your original CODEX_HOME and profile to run ')}<code>codex resume --all</code>{text('，选择原有会话。', ' and select the earlier session.')}</p>
+      <p>{text('恢复后的会话使用原服务商，绕过 HiRoute，需要原账号或 API 凭据。', 'The resumed session uses the original provider, bypasses HiRoute, and needs its original account or API credentials.')}</p>
+    </div>
+  </div>;
+}
+
 export function CodexAccessSettings({ access, mode, language, disabled, onMode }: {
   access: CodexAccess; mode: 'profile' | 'root'; language: 'zh' | 'en'; disabled: boolean;
   onMode: (mode: 'profile' | 'root') => void;
@@ -22,7 +34,7 @@ export function CodexAccessSettings({ access, mode, language, disabled, onMode }
       <dl><div><dt>CODEX_HOME</dt><dd><code className="configuration-path">{access.codex_home}</code></dd></div>
         {access.slot_occupied && <div><dt>{text('目标文件', 'Target file')}</dt><dd><code className="configuration-path">{access.target_file}</code></dd></div>}
       </dl>
-      <p className="field-help">{text('不同入口的会话历史可能不同；不提供跨 provider 历史恢复。独立 profile 不支持启动 Desktop。', 'History may differ between entry points; cross-provider recovery is not provided. The separate profile cannot launch Desktop.')}</p>
+      <p className="field-help">{text('使用原有会话时需选择相同的 CODEX_HOME 和原 profile。独立 profile 不支持启动 Desktop。', 'Use the same CODEX_HOME and original profile for earlier sessions. The separate profile cannot launch Desktop.')}</p>
     </Disclosure>
   </div>;
 }
@@ -40,6 +52,7 @@ export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
     <p className="field-help">{mode === 'profile'
       ? text('按需使用 · Codex CLI：复制命令到终端启动。普通 Codex 与 Desktop 保持原配置。', 'On demand · Codex CLI: copy the command to start in a terminal. Ordinary Codex and Desktop keep their settings.')
       : text('默认接入 · Codex CLI 和 Desktop：共享此配置目录的入口使用 HiRoute。', 'Default connection · Codex CLI and Desktop: entry points sharing this directory use HiRoute.')}</p>
+    <CodexHistoryNotice language={language} />
     {mode === 'profile' && access.slot_occupied && !access.pending_operation && !access.access_revoked && <div>
       <div className="detail-section-head"><strong>{text('启动 Codex', 'Start Codex')}</strong><label className="field-label agent-launch-shell">Shell <select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label></div>
       <pre className="agent-launch-command"><code>{command}</code></pre>

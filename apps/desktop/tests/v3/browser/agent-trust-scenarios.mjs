@@ -318,11 +318,33 @@ const scenarios = [
     const route = dialog().querySelector('[data-agent-plan-id] input');
     assert(route?.checked && !submit().disabled, 'Sole route is not ready to submit');
     assert(!dialog().querySelector('details').open, 'Advanced settings are open on first enable');
+    const history = dialog().querySelector('[data-codex-history-guidance]');
+    assert(visible(history) && !history.closest('details'), 'Session-history warning is hidden before enabling');
+    assert(history.textContent.includes('/resume') && history.textContent.includes('全部目录')
+      && history.textContent.includes('会话文件仍然保留'), 'Warning hides provider filtering or preserved history');
+    assert(history.textContent.includes('停用') && history.textContent.includes('恢复完成')
+      && history.textContent.includes('原 CODEX_HOME') && history.textContent.includes('原 profile')
+      && history.textContent.includes('codex resume --all') && history.textContent.includes('绕过 HiRoute')
+      && history.textContent.includes('凭据'), 'Recovery omits restore completion, original context or bypass semantics');
     assert(!dialog().querySelector('[data-agent-capability-preview]') && calls('plan_editor_options').length === 0, 'Enable still loads a read-only capacity preview');
     assert(dialog().textContent.includes('开启新会话'), 'Profile activation step is missing');
     const cancel = [...dialog().querySelectorAll('button')].find(button => button.textContent.trim() === '取消');
     cancel.click(); await tick();
     assert(!dialog() && calls('preview_agent_settings').length === 0 && c().operations.length === 0, 'Cancel applied a draft');
+  }),
+  scenario('codex.history.root-and-configured-guidance', ['agent-model-routing'], 'Codex keeps history impact and the original-provider recovery path visible in root setup and saved settings', async () => {
+    await freshCodex('splitCodexStatus');
+    const saved = document.querySelector('[data-codex-history-guidance]');
+    assert(visible(saved) && saved.textContent.includes('codex resume --all')
+      && saved.textContent.includes('绕过 HiRoute'), 'Configured connection has no supported original-provider entry');
+    await openEditor('model', false);
+    const history = dialog().querySelector('[data-codex-history-guidance]');
+    assert(visible(history) && !history.closest('details'), 'Root takeover hides session-history warning in advanced settings');
+    assert(dialog().querySelector('[data-codex-shared-scope]').textContent.includes('设为默认'), 'The root configuration was not exercised');
+    assert(calls('preview_agent_settings').length === 0 && c().operations.length === 0, 'Reading history guidance changed configuration');
+    [...dialog().querySelectorAll('button')].find(button => button.textContent.trim() === '取消').click();
+    await tick();
+    assert(!dialog() && visible(saved), 'Cancelling lost the saved recovery instructions');
   }),
   scenario('claude.enable.shared-presets', ['agent-model-routing'], 'Claude first enable shares one route while retaining independent advanced presets', async () => {
     await fresh('notRunnable', true);

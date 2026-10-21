@@ -247,8 +247,19 @@ DTO may expose only the exact codex_home/target_file/commands needed for this ac
 other paths remain masked and no credential is included. This exception does not
 apply to diagnostics or remote telemetry. Gateway validates token/model scope,
 not directory hiding or launch argument filtering. Pure HiRoute needs no Codex
-OpenAI login and promises neither Desktop profile launch nor cross-provider history
-recovery. Native history labels/databases are not rewritten.
+OpenAI login and does not promise Desktop profile launch or migration of sessions
+between providers. Native history labels/databases are not rewritten.
+
+Before enabling model routing, the ordinary Codex form visibly explains that
+Codex's provider filter can hide earlier sessions from `/resume`, including its
+all-directories view, while retaining their files. This guidance is also available
+on the configured connection. It provides the supported return path: turn off
+model routing, wait for successful native configuration restoration, then use the
+original CODEX_HOME and original profile with `codex resume --all` to select an
+earlier session. It states that the resumed session uses the original provider,
+bypasses HiRoute and needs that provider's credentials. An incomplete or conflicting
+restore does not authorize claiming the original entry is restored. Separate
+profiles alone do not establish earlier-session discovery or native resume success.
 
 Restore preserves unrelated user fields and new content in a created profile.
 Originally missing profile fields resume inheriting current root rather than writing
