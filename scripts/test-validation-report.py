@@ -46,13 +46,15 @@ class Parsing(unittest.TestCase):
         self.assertEqual(result["build_events"], [dict(seconds=69., line=1, scope="outer")])
 
     def test_child_summary_does_not_complete_interrupted_parent(self):
-        log = ("Running unittests src/lib.rs (target/debug/deps/hiroute_daemon-abcdef0123456789)\n"
-               "running 2 tests\nrunning 1 test\ntest child ... ok\n"
-               "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20s\n")
-        result = report.build_report(row(process_exit=-9), log)
-        self.assertFalse(result["complete"])
-        self.assertFalse(result["modules"][0]["complete"])
-        self.assertEqual(result["top_modules"], [])
+        for count in (1, 2):
+            with self.subTest(parent_count=count):
+                log = ("Running unittests src/lib.rs (target/debug/deps/hiroute_daemon-abcdef0123456789)\n"
+                       f"running {count} tests\nrunning 1 test\ntest child ... ok\n"
+                       "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20s\n")
+                result = report.build_report(row(process_exit=-9), log)
+                self.assertFalse(result["complete"])
+                self.assertFalse(result["modules"][0]["complete"])
+                self.assertEqual(result["top_modules"], [])
 
     def test_failure_and_unfinished_target_remain_distinct(self):
         log = target(failed=True) + "Running tests/next.rs (target/debug/deps/next-abcdef0123456789)\nrunning 1 test\n"

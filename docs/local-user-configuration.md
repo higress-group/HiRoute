@@ -61,10 +61,10 @@ not adopt files by name or remove their authentication fields. Preserve your own
 resolve the conflicting entry manually before a fresh preview.
 
 Profile mode uses native `codex --profile hiroute`; it does not provide a Desktop profile
-launcher. History can differ between entry points. Cross-provider history restoration and
-session database changes are outside this feature. Gateway credentials authorize the selected
-models independently of the Codex client's OpenAI login; retaining original models still
-requires a usable upstream source configured in HiRoute.
+launcher. Session histories remain scoped to their native provider; HiRoute does not merge
+histories or modify the session database. Gateway credentials authorize the selected models
+independently of the Codex client's OpenAI login; retaining original models still requires a
+usable upstream source configured in HiRoute.
 
 A pending operation reserves the home even if Gateway access is already revoked. The Agent
 page shows the target and conflicting fields, and can recheck and resume the original Operation.
@@ -81,6 +81,50 @@ Local CLI callers can resume that same operation through `agents connect apply` 
 
 This retry accepts no new settings or grants. The daemon checks the stored operation and its
 context before continuing. First-time creation and edits still require normal Preview/Apply.
+
+### Find earlier Codex sessions
+
+Default **On demand** mode preserves ordinary Codex configuration and session
+history. Use the ordinary Codex entry to find earlier sessions; the HiRoute profile
+can remain enabled.
+
+Inside the HiRoute profile, Codex filters its native `/resume` picker by HiRoute's
+model provider. Sessions created with another provider can disappear from that
+picker while their files remain in the same `CODEX_HOME`. Advanced **Use by default**
+mode applies this provider change to ordinary Codex and Desktop as well. Selecting
+all directories, or running `codex resume --all`, removes the directory filter;
+it does not remove the provider filter. The model-routing form and configured
+connection explain the selected mode's scope and return path.
+
+### Return to the original provider
+
+1. For default **On demand** mode, return to the ordinary Codex entry without
+   the HiRoute profile. **No disable or configuration restoration is needed.**
+   For advanced **Use by default** mode, open **Agents → Codex** in HiRoute and
+   turn off **Model routing** first. Wait for configuration restoration to complete;
+   resolve any reported file conflict or incomplete operation before continuing.
+2. Exit the Codex instance using HiRoute. Open a terminal using the original
+   `CODEX_HOME` shown in the connection's configuration details. Use the same
+   original profile and working environment as before enabling HiRoute.
+3. Run `codex resume --all` and select the earlier session. If the original entry
+   used an explicit profile, retain it: `codex --profile <original-profile> resume --all`.
+   The `hiroute` profile is the managed route, not the original entry.
+4. Continuing the session uses the original provider and its account or API
+   credentials. Those requests **bypass HiRoute**. The on-demand HiRoute profile
+   remains available for separate sessions. Advanced default takeover changes the
+   ordinary entry's provider again when re-enabled.
+
+Advanced-mode restoration uses the existing conditional transaction for
+HiRoute-owned configuration fields. Neither return path edits Codex's session files,
+provider labels or private session database. Keep a backup of important history;
+changing provider IDs or rewriting the database is not a supported migration.
+
+For sessions created under several different original providers, use each
+provider's original configuration and credentials. HiRoute cannot reconstruct a
+configuration or account that was already missing before it was enabled.
+
+The native commands are documented in the [official Codex CLI reference](https://developers.openai.com/codex/cli/reference/).
+The configuration contract belongs to [Agent connections](../issue-spec/specs/agent-connections/spec.md).
 
 ## OpenCode
 

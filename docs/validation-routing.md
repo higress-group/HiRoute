@@ -547,6 +547,15 @@ finish. Missing or changed artifacts and missing listed cases fail rather than
 falling back to a runtime Cargo build. Default failure handling stops admitting
 new targets; `--no-fail-fast` explicitly collects the whole selected scope.
 
+The preparation report binds exact product and Gateway receipt paths and their
+file digests. Admission verifies only those selected receipts, preserving their
+attested candidate, executable identity, checkout containment and Cargo runtime
+environment. Different recipes (including different compiler job counts) can
+retain identical executable bytes in the same checkout; cache-wide digest
+uniqueness is not required. Missing or changed selected evidence still fails.
+If preparation fails, completed independent-target results remain in the aggregate,
+with the unexecuted target inventory and doctest admission explicitly recorded.
+
 The run result distinguishes correctness from the five-minute performance target.
 `queue_seconds`, `execution_seconds` and `end_to_end_seconds` use the workbench's
 monotonic clock; execution starts when capacity is acquired and includes checkout,

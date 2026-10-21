@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Non-compiling tests for the SSH workbench contract."""
 import importlib.util
+import contextlib
 import fcntl
 from pathlib import Path
 import signal
@@ -623,11 +624,13 @@ sys.exit(101 if bad else 0)
                 runner.validate(ref, sha, ["cargo", "test"])
 
     def test_zero_selected_is_not_success(self):
-        result = runner.test_summary("test result: ok. 0 passed; 0 failed; 80 ignored", ["cargo", "test"])
+        result = runner.test_summary("Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)\n"
+                                     "running 80 tests\ntest result: ok. 0 passed; 0 failed; 80 ignored", ["cargo", "test"])
         self.assertEqual(result["state"], "zero_tests_passed")
 
     def test_test_exit_is_not_scenario_verdict(self):
-        result = runner.test_summary("test result: ok. 80 passed; 0 failed; 0 ignored", ["cargo", "test"])
+        result = runner.test_summary("Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)\n"
+                                     "running 80 tests\ntest result: ok. 80 passed; 0 failed; 0 ignored", ["cargo", "test"])
         self.assertEqual(result["counts"]["passed"], 80)
         self.assertEqual(result["scenario_state"], "not_assessed")
 
@@ -643,6 +646,103 @@ sys.exit(101 if bad else 0)
 
     def test_compile_is_not_test(self):
         self.assertEqual(runner.test_summary("", ["cargo", "check"])["state"], "not_assessed")
+
+    def test_focused_worker_result_and_wait_use_parent_target_counts(self):
+        # Real worker, Git checkouts, command processes and compact wait; fake Cargo.
+        parent = ("Running unittests src/lib.rs (target/debug/deps/parent-abcdef0123456789)\n"
+                  "running 2 tests\nrunning 1 test\ntest child ... ok\n"
+                  "test result: ok. 1 passed; 0 failed; 0 ignored; finished in 0.01s\n"
+                  "test parent ... ok\ntest sibling ... ok\n"
+                  "test result: ok. 2 passed; 0 failed; 0 ignored; finished in 0.02s\n")
+        other = ("Running tests/other.rs (target/debug/deps/other-abcdef0123456789)\n"
+                 "running 3 tests\ntest one ... ok\ntest two ... ok\ntest three ... ok\n"
+                 "test result: ok. 3 passed; 0 failed; 0 ignored; finished in 0.01s\n")
+        failed = parent.replace("test sibling ... ok", "test sibling ... FAILED").replace(
+            "test result: ok. 2 passed; 0 failed", "test result: FAILED. 1 passed; 1 failed")
+        interrupted = parent[:parent.index("test parent ... ok")]
+        zero = ("Running tests/zero.rs (target/debug/deps/zero-abcdef0123456789)\n"
+                "running 0 tests\ntest result: ok. 0 passed; 0 failed; 0 ignored; finished in 0.00s\n")
+        cases = [
+            ("nested", parent, 0, "completed", "rust_tests_passed", (2, 0, 0)),
+            ("expected-child-failure", parent.replace("test child ... ok", "test child ... FAILED").replace(
+                "test result: ok. 1 passed; 0 failed", "test result: FAILED. 0 passed; 1 failed"),
+             0, "completed", "rust_tests_passed", (2, 0, 0)),
+            ("failed-parent", failed, 101, "failed", "tests_failed", (1, 1, 0)),
+            ("incomplete-parent", interrupted, 0, "failed", "unrecognized_test_output", (0, 0, 0)),
+            ("same-sized-child", interrupted.replace("running 2 tests", "running 1 test"),
+             0, "failed", "unrecognized_test_output", (0, 0, 0)),
+            ("zero-selected", zero, 0, "failed", "zero_tests_passed", (0, 0, 0)),
+            ("ignored-only", zero.replace("running 0 tests", "running 2 tests").replace(
+                "0 ignored", "2 ignored"), 0, "failed", "zero_tests_passed", (0, 0, 2)),
+            ("multiple-targets", parent + other, 0, "completed", "rust_tests_passed", (5, 0, 0)),
+            ("early-failure", failed + other, 101, "failed", "tests_failed", (4, 1, 0)),
+            ("later-incomplete", parent + other[:other.index("test one")],
+             0, "failed", "unrecognized_test_output", (2, 0, 0)),
+            ("unassigned", "test result: ok. 1 passed; 0 failed; 0 ignored\n" + parent,
+             0, "failed", "unrecognized_test_output", (2, 0, 0)),
+            ("repeated-identity", parent + parent, 0, "failed", "unrecognized_test_output", (0, 0, 0)),
+            ("nonzero-exit", parent, 7, "failed", "rust_tests_passed", (2, 0, 0)),
+        ]
+        with tempfile.TemporaryDirectory(dir='/tmp') as directory:
+            root = Path(directory)
+            source, home, workbench = root / 'source', root / 'home', root / 'workbench'
+            subprocess.run(['git', 'init', '-q', str(source)], check=True)
+            git = ['git', '-C', str(source)]
+            subprocess.run([*git, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                            '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'fixture'], check=True)
+            sha = subprocess.check_output([*git, 'rev-parse', 'HEAD'], text=True).strip()
+            ref = subprocess.check_output([*git, 'symbolic-ref', 'HEAD'], text=True).strip()
+            binary = home / '.cargo/bin'
+            binary.mkdir(parents=True)
+            fake = '''import sys,json,pathlib
+home=pathlib.Path(__file__).parents[2]
+if '--version' in sys.argv: print('fixture tool'); sys.exit(0)
+if 'metadata' in sys.argv:
+ print(json.dumps({'target_directory':str(pathlib.Path.cwd()/'target')})); sys.exit(0)
+print((home/'output.log').read_text(),end='')
+sys.exit(int((home/'exit-code').read_text()))
+'''
+            for name in ('cargo', 'rustc'):
+                path = binary / name
+                path.write_text('#!' + sys.executable + '\n' + fake)
+                path.chmod(0o700)
+            for index, (name, log, exit_code, status, state, counts) in enumerate(cases):
+                with self.subTest(case=name):
+                    (home / 'output.log').write_text(log)
+                    (home / 'exit-code').write_text(str(exit_code))
+                    key = f'20261021-0000{index:02}-abcdef12'
+                    run = workbench / 'runs' / key
+                    run.mkdir(parents=True)
+                    request = dict(id=key, ref=ref, sha=sha, executor_sha=sha, origin=str(source),
+                                   command=['cargo', 'test', '--no-fail-fast'], retention='always',
+                                   exclusive=False, timeout=10, plan='focused-counts', phase='focused')
+                    runner.save(run / 'request.json', request)
+                    with patch.object(runner.Path, 'home', return_value=home), \
+                         patch.dict(os.environ, {}, clear=False), contextlib.redirect_stdout(io.StringIO()), \
+                         patch.object(runner.tempfile, 'gettempdir', return_value=str(root.resolve())), \
+                         patch.object(runner, 'MIN_FREE_BYTES', 0), \
+                         patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}):
+                        runner.worker(run / 'request.json')
+                    result = json.loads((run / 'result.json').read_text())
+                    if result.get('temporary_directory'):
+                        runner.cleanup_temp_directory(result['temporary_directory'])
+                    observed = subprocess.run([sys.executable, '-c', runner.WAIT_BOOTSTRAP,
+                                               key, '0', str(workbench)], capture_output=True,
+                                              text=True, check=True)
+                    compact = json.loads(observed.stdout)
+                    self.assertEqual(result['status'], status, result)
+                    self.assertEqual(result['process_exit'], exit_code)
+                    self.assertEqual(result['tests']['state'], state)
+                    self.assertEqual(result['tests']['counts'], dict(zip(('passed', 'failed', 'ignored'), counts)))
+                    self.assertEqual(result['tests']['scenario_state'], 'not_assessed')
+                    self.assertEqual(compact['status'], status)
+                    self.assertEqual(compact['process_exit'], exit_code)
+                    self.assertEqual(compact['tests'], {k: result['tests'][k] for k in ('state', 'counts')})
+                    self.assertTrue((run / 'command.log').read_text().endswith(log))
+                    if status == 'completed':
+                        report = json.loads((run / 'validation-report.json').read_text())
+                        self.assertTrue(report['complete'])
+                        self.assertEqual(sum(m['counts']['passed'] for m in report['modules']), counts[0])
 
     def test_atomic_result(self):
         with tempfile.TemporaryDirectory() as directory:

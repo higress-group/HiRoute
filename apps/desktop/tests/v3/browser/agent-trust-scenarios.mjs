@@ -318,11 +318,52 @@ const scenarios = [
     const route = dialog().querySelector('[data-agent-plan-id] input');
     assert(route?.checked && !submit().disabled, 'Sole route is not ready to submit');
     assert(!dialog().querySelector('details').open, 'Advanced settings are open on first enable');
+    const history = dialog().querySelector('[data-codex-history-guidance]');
+    assert(visible(history) && !history.closest('details'), 'Session-history guidance is hidden before enabling');
+    assert(history.dataset.codexHistoryMode === 'profile' && !history.classList.contains('warn'), 'Default profile is presented as a root takeover warning');
+    assert(history.textContent.includes('普通 Codex 的配置和会话历史不变')
+      && history.textContent.includes('HiRoute profile 内的 /resume'), 'Default guidance does not limit provider filtering to the HiRoute profile');
+    assert(history.textContent.includes('无需停用 HiRoute') && !history.textContent.includes('恢复完成')
+      && history.textContent.includes('原 CODEX_HOME') && history.textContent.includes('原 profile')
+      && history.textContent.includes('codex resume --all') && history.textContent.includes('绕过 HiRoute')
+      && history.textContent.includes('凭据'), 'Default guidance requires disabling or omits the original entry and bypass semantics');
     assert(!dialog().querySelector('[data-agent-capability-preview]') && calls('plan_editor_options').length === 0, 'Enable still loads a read-only capacity preview');
     assert(dialog().textContent.includes('开启新会话'), 'Profile activation step is missing');
     const cancel = [...dialog().querySelectorAll('button')].find(button => button.textContent.trim() === '取消');
     cancel.click(); await tick();
     assert(!dialog() && calls('preview_agent_settings').length === 0 && c().operations.length === 0, 'Cancel applied a draft');
+  }),
+  scenario('codex.history.root-and-configured-guidance', ['agent-model-routing'], 'Codex distinguishes original-entry return from root restoration in setup and saved settings', async () => {
+    await freshCodex('splitCodexStatus');
+    const saved = document.querySelector('[data-codex-history-guidance]');
+    assert(visible(saved) && saved.dataset.codexHistoryMode === 'root'
+      && saved.textContent.includes('停用') && saved.textContent.includes('恢复完成')
+      && saved.textContent.includes('codex resume --all')
+      && saved.textContent.includes('绕过 HiRoute'), 'Configured connection has no supported original-provider entry');
+    await openEditor('model', false);
+    const history = dialog().querySelector('[data-codex-history-guidance]');
+    assert(visible(history) && !history.closest('details'), 'Root takeover hides session-history warning in advanced settings');
+    assert(history.classList.contains('warn') && history.textContent.includes('全部目录')
+      && history.textContent.includes('会话文件仍然保留') && history.textContent.includes('恢复完成'), 'Root takeover omits provider filtering, preserved history or restoration');
+    assert(dialog().querySelector('[data-codex-shared-scope]').textContent.includes('设为默认'), 'The root configuration was not exercised');
+    assert(calls('preview_agent_settings').length === 0 && c().operations.length === 0, 'Reading history guidance changed configuration');
+    [...dialog().querySelectorAll('button')].find(button => button.textContent.trim() === '取消').click();
+    await tick();
+    assert(!dialog() && visible(saved), 'Cancelling lost the saved recovery instructions');
+    const access = c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default').codex_access;
+    access.selected_mode = 'profile'; c().refresh(); await tick();
+    const profileSaved = document.querySelector('[data-codex-history-guidance]');
+    assert(profileSaved.dataset.codexHistoryMode === 'profile' && profileSaved.textContent.includes('无需停用 HiRoute')
+      && !profileSaved.classList.contains('warn'), 'Saved profile incorrectly requires restoration to use the ordinary entry');
+    access.slot_occupied = false; c().refresh(); await tick();
+    await openEditor('model');
+    const mode = dialog().querySelector('[data-codex-access-mode] select');
+    changeSelect(mode, 'root'); await tick();
+    assert(dialog().querySelector('[data-codex-history-guidance]').textContent.includes('恢复完成'), 'Switching to root keeps the profile return path');
+    changeSelect(mode, 'profile'); await tick();
+    assert(dialog().querySelector('[data-codex-history-guidance]').textContent.includes('无需停用 HiRoute'), 'Switching back to profile keeps root restoration instructions');
+    [...dialog().querySelectorAll('button')].find(button => button.textContent.trim() === '取消').click(); await tick();
+    assert(!dialog() && calls('preview_agent_settings').length === 0 && c().operations.length === 0, 'Reading or changing draft guidance applied settings');
   }),
   scenario('claude.enable.shared-presets', ['agent-model-routing'], 'Claude first enable shares one route while retaining independent advanced presets', async () => {
     await fresh('notRunnable', true);

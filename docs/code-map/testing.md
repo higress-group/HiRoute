@@ -218,7 +218,15 @@ Final backend DAG admission and preparation are owned by
 [validation-schedule.py](../../scripts/validation-schedule.py), with
 [regressions](../../scripts/test-validation-schedule.py). CPA bridge process fixtures
 run in an isolated lane before other listeners; Gateway runtime consumers wait for
-prepared product roles.
+prepared product roles. [Smoke preparation](../../tools/product-e2e/src/smoke/preparation.rs)
+and [Gateway preparation](../../tools/e2e-harness/src/p0/production/candidate.rs) bind
+the exact receipts consumed by admission; same-byte caches from another recipe do
+not replace them. Failed admission retains independent results and missing coverage.
+
+Ordinary local/SSH totals and module reports share Cargo-target attribution in
+[validation-report.py](../../scripts/validation-report.py). The
+[runner regressions](../../scripts/test-remote-rust.py) exercise worker results and
+compact waits with nested child summaries, failed and unfinished parents, and multiple targets.
 
 Shared private filesystem behavior has one [platform contract suite](../../crates/platform/src/private_fs/tests.rs): exclusive creation, protected handle reads, permission preservation and identity-bound cleanup. Storage and Worker tests keep domain errors, recovery and lifecycle assertions; the native Windows cases additionally exercise ACLs and held handles.
 

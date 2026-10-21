@@ -29,6 +29,12 @@ use the same protected artifact journal as model settings. The
 [request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
 main/child history and detaches auxiliary or uncertain calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
 cover interleaving and semantic compaction independently of provider affinity.
+
+Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
+explains native provider-scoped session discovery before enabling routing. Default
+on-demand access preserves the ordinary entry for earlier sessions; advanced default
+takeover first requires configuration restoration. See [session recovery](../local-user-configuration.md#find-earlier-codex-sessions). Worker Continue below
+has its own exact-history binding and does not replace the native `/resume` picker.
 OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)
