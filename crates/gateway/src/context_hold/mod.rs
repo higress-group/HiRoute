@@ -26,6 +26,7 @@ pub(crate) struct ContextRequest<'a> {
     pub(crate) headers: &'a HeaderMap,
     pub(crate) document: &'a Value,
     pub(crate) request: &'a ModelRequestIRV1,
+    pub(crate) semantic_request: Option<&'a ModelRequestIRV1>,
     pub(crate) replay: &'a ReplayStore,
 }
 
@@ -41,6 +42,7 @@ pub(crate) fn prepare_context(
         headers,
         document,
         request,
+        semantic_request,
         replay,
     } = input;
     let identity =
@@ -58,7 +60,8 @@ pub(crate) fn prepare_context(
                 )
             });
     let ticket = store.digest_key().and_then(|hold_key| {
-        let history = visible_history_with_replay(request, &hold_key, Some(replay))?;
+        let history = visible_history_with_replay(request, &hold_key, Some(replay))?
+            .with_semantic_request(semantic_request)?;
         let key = ContextHoldKey::from_request(authorized, ingress, &identity, &hold_key)?;
         let mut prepared = store.prepare(key, &history, now)?;
         prepared.set_native(identity.native_checkpoint());

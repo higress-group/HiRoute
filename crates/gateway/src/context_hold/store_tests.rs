@@ -643,3 +643,41 @@ fn a_new_native_turn_does_not_authorize_changed_user_assistant_or_tool_prefixes(
         );
     }
 }
+
+#[test]
+fn borrowed_native_user_batch_view_cannot_reuse_repartitioned_wire_kv_or_cleanup() {
+    let mut first_request = history_request(1, &[1, 2]);
+    let text = |value: &str| ContentPart::Text { text: value.into() };
+    first_request.messages[0].content = vec![text("A")];
+    first_request.messages[1].content = vec![text("B"), text("C")];
+    let mut next_request = first_request.clone();
+    next_request.messages[0].content = vec![text("A"), text("B")];
+    next_request.messages[1].content = vec![text("C")];
+    let mut semantic = first_request.clone();
+    semantic.messages[0].role = MessageRole::System;
+    semantic.messages[0].content.clear();
+    semantic.messages[1].content = vec![text("A"), text("B"), text("C")];
+    let store = ContextHoldStore::default();
+    let now = Instant::now();
+    let first = super::super::visible_history(&first_request, &HISTORY_KEY)
+        .unwrap()
+        .with_semantic_request(Some(&semantic))
+        .unwrap();
+    let first = store.begin(key(1), &first, now).unwrap();
+    assert_eq!(
+        store.complete_with_cleanup(&first, preference("accepted"), Some(2), now),
+        HoldCompleteOutcome::Applied
+    );
+    let next = super::super::visible_history(&next_request, &HISTORY_KEY)
+        .unwrap()
+        .with_semantic_request(Some(&semantic))
+        .unwrap();
+    let next = store.begin(key(1), &next, now).unwrap();
+    assert_eq!(next.history_continuity, HistoryContinuity::Continuing);
+    assert!(
+        next.hint.is_none(),
+        "normalized user batches are not byte-prefix proof"
+    );
+    assert_eq!(next.cleaned_prefix_len, None);
+    assert_ne!(first.cycle, next.cycle);
+}

@@ -204,3 +204,55 @@ fn optional_view_capacity_and_budget_misses_preserve_original_execution() {
         NativeRoutingView::prepare(&headers, &original, &fixture.replay, &tiny).disables_history()
     );
 }
+
+#[test]
+fn equivalent_native_user_batches_do_not_erase_strict_wire_message_boundaries() {
+    let fixture = Fixture::new();
+    let first = request(
+        IngressProtocol::Responses,
+        json!([
+            {"role":"user","content":[{"type":"input_text","text":"A"}]},
+            {"role":"user","content":[{"type":"input_text","text":"B"},{"type":"input_text","text":"C"}]}
+        ]),
+    );
+    let second = request(
+        IngressProtocol::Responses,
+        json!([
+            {"role":"user","content":[{"type":"input_text","text":"A"},{"type":"input_text","text":"B"}]},
+            {"role":"user","content":[{"type":"input_text","text":"C"}]}
+        ]),
+    );
+    let proof = |texts: [&[&str]; 2]| {
+        json!({
+            "version":1,"agent":"dsh","session_id":"session","purpose":"main","turn_id":"1",
+            "user_turns":[{"turn_id":"1","messages":texts.iter().enumerate().map(|(index,parts)| json!({
+                "index":index,"sha256":format!("{:x}",Sha256::digest(serde_json::to_vec(parts).unwrap()))
+            })).collect::<Vec<_>>()}]
+        })
+    };
+    let first_view = fixture.view(&first, proof([&["A"], &["B", "C"]]));
+    let second_view = fixture.view(&second, proof([&["A", "B"], &["C"]]));
+    assert!(!first_view.disables_history());
+    assert!(!second_view.disables_history());
+    assert_eq!(first_view.request(&first), second_view.request(&second));
+    let first_measured = crate::context_hold::visible_history(&first, &[37; 32])
+        .unwrap()
+        .with_semantic_request(Some(first_view.request(&first)))
+        .unwrap()
+        .measure(None)
+        .unwrap();
+    let second_measured = crate::context_hold::visible_history(&second, &[37; 32])
+        .unwrap()
+        .with_semantic_request(Some(second_view.request(&second)))
+        .unwrap()
+        .measure(None)
+        .unwrap();
+    assert_ne!(
+        first_measured.complete_digest,
+        second_measured.complete_digest
+    );
+    assert_eq!(
+        first_measured.semantic_complete_digest,
+        second_measured.semantic_complete_digest
+    );
+}

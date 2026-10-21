@@ -1268,7 +1268,9 @@ fn real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap() {
     // Every gap above became durable while traffic was idle. Only after that
     // terminal-heartbeat proof do we issue a second request for the separate
     // request-local soft-failure assertion.
-    let second_response = fixture.request();
+    let second_response = fixture.request_body(
+        br#"{"model":"runtime-model","input":"independent observation check","stream":false}"#,
+    );
     assert_eq!(second_response.status, 200);
     assert_eq!(
         response_tool_logical_id(&second_response.body),

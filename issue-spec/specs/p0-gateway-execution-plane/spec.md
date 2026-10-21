@@ -126,6 +126,10 @@ instruction text may preserve captured semantic history, but strict byte-prefix
 and instruction digests still govern preference, commit and reasoning-cleanup
 eligibility. Added/removed instructions or rewritten user/model/tool content do
 not gain continuity from this exception.
+Strict execution fingerprints always measure the original canonical request,
+including native user-message partitioning. A borrowed routing-only view may
+supply the semantic digest at identical message positions; its normalized batches
+cannot authorize provider affinity or reasoning-cleanup reuse.
 
 The history store defaults to 500,000,000 bytes and one-hour idle TTL, retaining
 simplified sealed turns, one active decision, and actual contiguous execution stages.

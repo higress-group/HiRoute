@@ -9,6 +9,7 @@ const MAX_MESSAGES = 128;
 const MAX_USER_MESSAGES = 32;
 const MAX_TURNS = 16;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+const USER_SOURCES = new Set(["user", "runtime-context", "compact-checkpoint", "agent-message"]);
 
 function textDigest(content) {
   const parts = typeof content === "string" ? [content] : Array.isArray(content) && content.length > 0
@@ -45,6 +46,7 @@ function nativeUsers(options, session, currentTurn) {
     // The selected native pi-ai adapter moves only the leading system message
     // into its system slot. Later system messages are projected as user text.
     if (message.role !== "user" && !(message.role === "system" && (i > 0 || options.system !== undefined))) continue;
+    if (message.role === "user" && !USER_SOURCES.has(message.source?.kind)) return;
     const fingerprint = textDigest(message.content);
     if (!fingerprint || (bytes += fingerprint.bytes) > MAX_BODY_BYTES) return;
     const real = message.role === "user" && message.source?.kind === "user";

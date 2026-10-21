@@ -146,6 +146,27 @@ test("DSH binds native semantic users to exact wire positions without changing m
     const image = { ...options, messages: [user("u1", "USER-A"), { ...user("u2", "USER-B"), content: [{ type: "image", attachment: {} }] }] };
     assert.equal((await hook(image, next).next()).value, "native-result");
     assert.equal(JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context")).user_turns, undefined);
+    const sendMatching = async current => {
+      const actualBody = JSON.stringify({ input: current.messages.slice(1).map(m => ({ role: m.role, content: m.content })) });
+      const actualNext = async function* () { yield await fetch("http://127.0.0.1/v1/responses", {
+        method: "POST", body: actualBody, headers: { "x-hiroute-agent": "dsh", "x-hiroute-token": "synthetic" },
+      }); };
+      assert.equal((await hook(current, actualNext).next()).value, "native-result");
+      assert.equal(sent.at(-1).body, actualBody);
+      return JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context"));
+    };
+    // A proven user earlier in this turn cannot authorize silently discarding
+    // a later envelope whose native source semantics are unknown.
+    for (const source of [{ kind: "future-user-source" }, undefined]) {
+      const unknown = { ...user("future", "UNKNOWN-INTENT"), source };
+      assert.equal((await sendMatching({ ...options, messages: [...options.messages, unknown] })).user_turns, undefined);
+    }
+    // Adjacent-Agent relays are native synthetic envelopes. The child's actual
+    // task uses source.kind=user and is covered by the real-user group above.
+    const relay = { ...user("relay", "PEER-RELAY", "agent-message"), source: {
+      kind: "agent-message", form: "relay", senderSessionId: "peer",
+    } };
+    assert.deepEqual((await sendMatching({ ...options, messages: [...options.messages, relay] })).user_turns, metadata.user_turns);
     // A resumed real turn keeps both prior semantic users and the new input,
     // preserving the intervening runtime-context ordinal without blessing it.
     const nextUser = user("u3", "USER-C");

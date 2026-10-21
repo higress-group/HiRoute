@@ -19,6 +19,7 @@ type HmacSha256 = Hmac<Sha256>;
 pub(crate) struct HistoryEvidence<'a> {
     pub(crate) instruction_digest: [u8; 32],
     request: &'a ModelRequestIRV1,
+    semantic_request: Option<&'a ModelRequestIRV1>,
     key: &'a [u8; 32],
     replay: Option<&'a ReplayStore>,
 }
@@ -32,7 +33,21 @@ pub(crate) struct HistoryDigests {
     pub(crate) semantic_complete_digest: [u8; 32],
 }
 
-impl HistoryEvidence<'_> {
+impl<'a> HistoryEvidence<'a> {
+    /// Borrow a verified routing-only view without changing strict execution evidence.
+    pub(crate) fn with_semantic_request(
+        mut self,
+        request: Option<&'a ModelRequestIRV1>,
+    ) -> Option<Self> {
+        if request.is_some_and(|value| {
+            value.native_only || value.messages.len() != self.request.messages.len()
+        }) {
+            return None;
+        }
+        self.semantic_request = request;
+        Some(self)
+    }
+
     #[cfg(test)]
     pub(crate) fn message_count(&self) -> usize {
         self.request.messages.len()
@@ -42,6 +57,10 @@ impl HistoryEvidence<'_> {
     /// only masks instruction-role text; positions and all other parts stay exact.
     /// No per-message digest array survives the call.
     pub(crate) fn measure(&self, prefix_count: Option<usize>) -> Option<HistoryDigests> {
+        let semantic_request = self.semantic_request.unwrap_or(self.request);
+        if semantic_request.messages.len() != self.request.messages.len() {
+            return None;
+        }
         let mut history = Encoder::new(self.key, b"visible-history/v1/messages", self.replay)?;
         let mut semantic = Encoder::new(self.key, b"visible-history/v1/conversation", self.replay)?;
         let mut prefix_digest = match prefix_count {
@@ -54,7 +73,12 @@ impl HistoryEvidence<'_> {
         };
         for (index, message) in self.request.messages.iter().enumerate() {
             history.history_item(self.request, index, message, false)?;
-            semantic.history_item(self.request, index, message, true)?;
+            semantic.history_item(
+                semantic_request,
+                index,
+                &semantic_request.messages[index],
+                true,
+            )?;
             if prefix_count == Some(index.saturating_add(1)) {
                 prefix_digest = Some(history.snapshot()?);
                 semantic_prefix_digest = Some(semantic.snapshot()?);
@@ -227,6 +251,7 @@ pub(crate) fn visible_history_with_replay<'a>(
     Some(HistoryEvidence {
         instruction_digest,
         request,
+        semantic_request: None,
         key,
         replay,
     })

@@ -125,3 +125,33 @@ fn semantic_digest_keeps_roles_content_tools_metadata_and_message_positions_stri
         measure(&with_tool, with_tool.messages.len()).semantic_complete_digest
     );
 }
+
+#[test]
+fn borrowed_semantic_view_cannot_replace_strict_execution_evidence_or_positions() {
+    let original = request("system");
+    let mut semantic = original.clone();
+    semantic.messages[1].content[0] = ContentPart::Text {
+        text: "verified native user projection".into(),
+    };
+    let strict = measure(&original, original.messages.len());
+    let view = measure(&semantic, semantic.messages.len());
+    let borrowed = visible_history(&original, &[37; 32])
+        .unwrap()
+        .with_semantic_request(Some(&semantic))
+        .unwrap()
+        .measure(Some(original.messages.len()))
+        .unwrap();
+    assert_eq!(borrowed.complete_digest, strict.complete_digest);
+    assert_eq!(borrowed.prefix_digest, strict.prefix_digest);
+    assert_eq!(
+        borrowed.semantic_complete_digest,
+        view.semantic_complete_digest
+    );
+    semantic.messages.pop();
+    assert!(
+        visible_history(&original, &[37; 32])
+            .unwrap()
+            .with_semantic_request(Some(&semantic))
+            .is_none()
+    );
+}

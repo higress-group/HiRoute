@@ -781,7 +781,9 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
         assert_eq!(fallback.calls(), 1, "case={}", case.name);
         assert!(String::from_utf8_lossy(&first.body).contains("accepted-fallback"));
 
-        let second = fixture.request();
+        let second = fixture.request_body(
+            br#"{"model":"runtime-model","input":"independent health check","stream":false}"#,
+        );
         assert_eq!(second.status, 200, "case={}", case.name);
         assert_eq!(
             primary.calls(),
@@ -948,7 +950,9 @@ fn real_listener_first_byte_timeout_stays_request_local_and_falls_back() {
     assert_eq!(stalled.calls(), 1);
     assert_eq!(fallback.calls(), 1);
 
-    let second = fixture.request();
+    let second = fixture.request_body(
+        br#"{"model":"runtime-model","input":"independent timeout check","stream":false}"#,
+    );
     assert_eq!(second.status, 200);
     assert_eq!(
         stalled.calls(),

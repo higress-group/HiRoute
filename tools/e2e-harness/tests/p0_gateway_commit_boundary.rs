@@ -49,7 +49,10 @@ fn real_listener_keeps_mechanical_failure_local_to_each_request() {
     let fixture = RuntimeFixture::launch(&[&first, &second], 2);
 
     let first_response = fixture.request();
-    let second_response = fixture.request();
+    // A different first user also excludes the generic API's inferred hold
+    // preference; this assertion measures health rather than same-turn affinity.
+    let second_response = fixture
+        .request_body(br#"{"model":"runtime-model","input":"independent request","stream":false}"#);
 
     assert_eq!(first_response.status, 200);
     assert_eq!(second_response.status, 200);
