@@ -37,8 +37,16 @@ fn assert_actual_evaluation(fixture: &RuntimeFixture) {
 
 #[test]
 fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_output() {
-    for agent in [
-        "codex", "claude", "hermes", "pi", "dsh", "opencode", "qoder",
+    for (agent, purpose) in [
+        ("codex", "main"),
+        ("claude", "main"),
+        ("hermes", "main"),
+        ("pi", "main"),
+        ("dsh", "main"),
+        ("opencode", "main"),
+        ("qoder", "main"),
+        ("claude", "workflow"),
+        ("claude", "future-native-main"),
     ] {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK)]);
         let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
@@ -54,7 +62,7 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
                     ("User-Agent".into(), "qodercli/1.1.72".into()),
                 ]
             } else {
-                let mut h = headers(agent, "same-session", "main", turn, "after");
+                let mut h = headers(agent, "same-session", purpose, turn, "after");
                 if matches!(agent, "pi" | "dsh" | "opencode") {
                     h.retain(|(k, _)| k != "x-hiroute-routing-context");
                 }
@@ -81,6 +89,13 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
             "{agent}"
         );
         let b = classifier_body(&classifier, 1);
+        assert!(
+            b["latest_user"].as_array().unwrap().iter().any(|part| {
+                part["kind"] == "unavailable"
+                    && part["source_kind"] == "unverified_request_user_origin"
+            }),
+            "{agent}/{purpose}: {b}"
+        );
         let visible = b["visible_conversation"].to_string();
         assert!(
             visible.contains("REAL_NEW_A") && visible.contains("ok"),
@@ -104,6 +119,74 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
         );
         assert_actual_evaluation(&fixture);
     }
+}
+
+#[test]
+fn real_listener_hermes_observed_intent_keeps_cold_execution_partial_then_restores_protection() {
+    use sha2::{Digest, Sha256};
+    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+    let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+    let low = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}},"assessment":{"score":0.1,"partial":false}}"#;
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(low), reply(low)]);
+    let fixture = observed_fixture("hermes", &[&simple, &primary, &classifier]);
+    let mut input = json!([
+        {"role":"user","content":"ORIGINAL_OBSERVED_INPUT"},
+        {"role":"assistant","content":"execution before Gateway restart"},
+        {"role":"user","content":"LATER_TODO_REMINDER"}
+    ]);
+    for (turn, text, reverse) in [
+        ("cold-turn", "ORIGINAL_OBSERVED_INPUT", 1),
+        ("fresh-a", "FRESH_A", 0),
+        ("fresh-b", "FRESH_B", 0),
+    ] {
+        if reverse == 0 {
+            input.as_array_mut().unwrap().extend([
+                json!({"role":"assistant","content":"ok"}),
+                json!({"role":"user","content":text}),
+            ]);
+        }
+        let mut h = headers("hermes", "same-session", "main", turn, "after");
+        h.push((
+            "x-hermes-observed-input".into(),
+            json!({
+                "version":1,"kind":"observed_turn_input","reverse_user_index":reverse,
+                "text_sha256":format!("{:x}", Sha256::digest(text.as_bytes()))
+            })
+            .to_string(),
+        ));
+        accepted(&send(fixture.address, &h, input.clone()));
+    }
+    assert_eq!(
+        (simple.calls(), primary.calls(), classifier.calls()),
+        (2, 1, 3)
+    );
+    let cold = classifier_body(&classifier, 0);
+    assert_eq!(cold["latest_user"][0]["text"], "ORIGINAL_OBSERVED_INPUT");
+    assert_eq!(
+        cold["latest_user"][1]["source_kind"],
+        "unverified_request_user_origin"
+    );
+    let b = classifier_body(&classifier, 2);
+    assert_eq!(b["latest_user"][0]["text"], "FRESH_B");
+    let from = b["assessment_target"]["from"].as_u64().unwrap() as usize;
+    let stage = &b["visible_conversation"].as_array().unwrap()[from..];
+    let stage = serde_json::to_string(stage).unwrap();
+    assert!(stage.contains("FRESH_A") && stage.contains("ok"));
+    assert!(!stage.contains("ORIGINAL_OBSERVED_INPUT") && !stage.contains("LATER_TODO_REMINDER"));
+    let facts = wait_execution_facts(&fixture, 3);
+    let assessments = facts
+        .iter()
+        .filter(|f| f["fact"]["kind"] == "branch_assessment_recorded")
+        .map(|f| &f["fact"])
+        .collect::<Vec<_>>();
+    assert!(
+        assessments
+            .iter()
+            .any(|f| f["target_through_ordinal"] == 1 && f["partial"] == true)
+    );
+    assert!(assessments.iter().any(|f| f["target_from_ordinal"] == 2
+        && f["target_through_ordinal"] == 2
+        && f["partial"] == false));
 }
 
 #[test]

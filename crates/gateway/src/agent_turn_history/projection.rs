@@ -10,12 +10,17 @@ use crate::server::core_runtime::model_ir::{
 pub(crate) struct AnalyzedRequest {
     pub(super) message_count: usize,
     pub(super) user_origin_unverified: bool,
+    pub(super) prior_history_missing: bool,
     pub(super) output_after_latest_user: bool,
     pub(super) turns: Vec<AnalyzedTurn>,
     pub(super) tool_results: Vec<(usize, String, ToolStatus)>,
 }
 
 impl AnalyzedRequest {
+    pub(crate) fn mark_prior_history_missing(&mut self) {
+        self.prior_history_missing = true;
+    }
+
     pub(crate) fn mark_user_origin_unverified(&mut self) {
         self.user_origin_unverified = true;
         // Reuse the existing visible-content vocabulary: uncertainty is not
@@ -71,6 +76,7 @@ pub(super) fn analyze_request(
     Ok(AnalyzedRequest {
         message_count: request.messages.len(),
         user_origin_unverified: false,
+        prior_history_missing: false,
         output_after_latest_user,
         turns,
         tool_results: project_tool_results(request),

@@ -46,9 +46,13 @@ test("Pi separates compaction, persists native checkpoint and contains hook fail
   const event = { headers: { existing: "retained" } };
   assert.doesNotThrow(() => hooks.get("before_provider_headers")(event, ctx));
   assert.deepEqual(event.headers, { existing: "retained" });
+  ctx.sessionManager.getSessionId = () => "session";
+  assert.equal(request().continuation_requires_existing_turn, false, "a transient hook failure must recover");
+  hooks.get("cache_warming_decision")({}, { get model() { throw Error("temporary model read"); } });
+  assert.equal(request().continuation_requires_existing_turn, false, "warming failure cannot latch routing off");
 });
 
-test("Pi treats unknown or synthetic projection origins as requiring an existing turn", () => {
+test("Pi leaves unknown extension origins observed while allowing new input to remain usable", () => {
   const user = { type: "message", id: "real-user", message: { role: "user" } };
   const checkpoint = { type: "compaction", id: "checkpoint" };
   const projected = sourceEntry => ({ sourceEntry, messages: [sourceEntry.message] });
@@ -78,15 +82,47 @@ test("Pi treats unknown or synthetic projection origins as requiring an existing
     } });
     const context = JSON.parse(event.headers["x-hiroute-routing-context"]);
     assert.equal(context.turn_id, user.id);
-    assert.equal(context.continuation_requires_existing_turn, true);
+    assert.equal(context.continuation_requires_existing_turn, undefined);
+  }
+});
+
+test("Pi recovers from a lost compaction-end hook at the next native input or checkpoint", () => {
+  for (const completed of [false, true]) {
+    const hooks = new Map();
+    piRouting({ on: (name, handler) => hooks.set(name, handler) });
+    const branch = [{ type: "message", id: "old-user", message: { role: "user" } }];
+    let broken = false;
+    const ctx = { model: { provider: "hiroute-main-test" }, sessionManager: {
+      getSessionId: () => { if (broken) throw Error("temporary session read"); return "session"; },
+      getBranch: () => branch,
+      buildSessionProjection: () => ({ entries: branch.map(sourceEntry => ({ sourceEntry,
+        messages: sourceEntry.type === "message" ? [sourceEntry.message] : [{ role: "compactionSummary" }],
+      })) }),
+    } };
+    const read = () => {
+      const event = { headers: {} };
+      hooks.get("before_provider_headers")(event, ctx);
+      return JSON.parse(event.headers["x-hiroute-routing-context"]);
+    };
+    hooks.get("session_before_compact")({ branchEntries: branch }, ctx);
+    assert.equal(read().purpose, "compaction");
+    broken = true;
+    hooks.get(completed ? "session_compact" : "session_compact_failed")({}, ctx);
+    broken = false;
+    if (completed) branch.push({ type: "compaction", id: "new-checkpoint" });
+    else branch.push({ type: "message", id: "fresh-user", message: { role: "user" } });
+    const recovered = read();
+    assert.equal(recovered.purpose, "main", "new native evidence retires stale pending state immediately");
+    assert.equal(recovered.continuation_requires_existing_turn, completed);
   }
 });
 
 test("OpenCode reads completed native checkpoints, real turns and isolates concurrent auxiliary calls", async () => {
   const entries = [
     { info: { role: "user", id: "01" }, parts: [{ type: "text" }] },
-    { info: { role: "assistant", id: "02", summary: true, time: { completed: 1 } }, parts: [] },
-    { info: { role: "user", id: "03" }, parts: [{ type: "text", synthetic: true }] },
+    { info: { role: "user", id: "01c" }, parts: [{ type: "compaction", auto: true }] },
+    { info: { role: "assistant", id: "02", parentID: "01c", summary: true, time: { completed: 1 } }, parts: [] },
+    { info: { role: "user", id: "03" }, parts: [{ type: "text", synthetic: true, metadata: { compaction_continue: true } }] },
     { info: { role: "assistant", id: "04", summary: true, time: {} }, parts: [] },
   ];
   const create = async () => HiRouteRouting({ client: { session: { messages: async () => ({ data: entries }) } } });
@@ -103,10 +139,15 @@ test("OpenCode reads completed native checkpoints, real turns and isolates concu
   assert.deepEqual(await headers(await create(), input("build")), output[0]);
   entries.push({ info: { role: "user", id: "05" }, parts: [{ type: "text" }] });
   const next = input("build"); next.message.id = "05";
+  await hook["chat.message"](next, { message: { id: "05" }, parts: entries.at(-1).parts });
   const nextContext = JSON.parse((await headers(hook, next))["x-hiroute-routing-context"]);
   assert.equal(nextContext.turn_id, "05");
   assert.equal(nextContext.continuation_requires_existing_turn, false);
-  assert.equal(JSON.parse((await headers(await create(), next))["x-hiroute-routing-context"])
+  const restarted = await create();
+  assert.equal(JSON.parse((await headers(restarted, next))["x-hiroute-routing-context"])
+    .continuation_requires_existing_turn, undefined, "a cold plugin must not claim an unseen prompt");
+  await restarted["chat.message"](next, { message: { id: "05" }, parts: entries.at(-1).parts });
+  assert.equal(JSON.parse((await headers(restarted, next))["x-hiroute-routing-context"])
     .continuation_requires_existing_turn, false);
   // A queued newer real user cannot change the identity of an earlier in-flight continuation.
   const earlier = JSON.parse((await headers(hook, input("build")))["x-hiroute-routing-context"]);
@@ -137,7 +178,7 @@ test("OpenCode requires an exact per-call native user and never admits unknown s
   assert.deepEqual(await read(undefined), { native: "retained" });
   assert.deepEqual(await read(""), { native: "retained" });
   entries = [{ info: { role: "user", id: "03" }, parts: [{ type: "text", synthetic: true }] }];
-  assert.deepEqual(await read("03"), { native: "retained" });
+  assert.equal(JSON.parse((await read("03"))["x-hiroute-routing-context"]).turn_id, "03");
   for (const parts of [
     [], [{ type: "compaction", auto: true }], [{ type: "text", synthetic: true }],
     [{ type: "text", ignored: true }], [{ type: "unknown" }],
@@ -145,14 +186,42 @@ test("OpenCode requires an exact per-call native user and never admits unknown s
   ]) {
     entries = [real, { info: { role: "user", id: "03" }, parts }];
     const context = JSON.parse((await read("03"))["x-hiroute-routing-context"]);
-    assert.equal(context.turn_id, "01");
-    assert.equal(context.continuation_requires_existing_turn, true);
+    assert.equal(context.turn_id, "03");
+    assert.equal(context.continuation_requires_existing_turn, undefined);
   }
   entries = [real, { info: { role: "user", id: "03" }, parts: [
     { type: "text", synthetic: true }, { type: "file" },
   ] }];
   assert.equal(JSON.parse((await read("03"))["x-hiroute-routing-context"])
-    .continuation_requires_existing_turn, false);
+    .continuation_requires_existing_turn, undefined, "a copied overflow user is not a newly observed prompt");
+});
+
+test("OpenCode binds typed compaction to its source and leaves late child input observed", async () => {
+  const entries = [
+    { info: { role: "user", id: "01" }, parts: [{ type: "text" }] },
+    { info: { role: "user", id: "02" }, parts: [{ type: "compaction", auto: true }] },
+    { info: { role: "user", id: "03" }, parts: [{ type: "text" }] },
+    { info: { role: "assistant", id: "04", parentID: "02", summary: true, time: { completed: 1 } }, parts: [] },
+    { info: { role: "user", id: "05" }, parts: [{ type: "text", synthetic: true, metadata: { compaction_continue: true } }] },
+    { info: { role: "user", id: "06" }, parts: [{ type: "text", synthetic: true }] },
+    { info: { role: "user", id: "07" }, parts: [{ type: "text" }] },
+  ];
+  const hooks = await HiRouteRouting({ client: { session: { messages: async () => ({ data: entries }) } } });
+  const input = id => ({ sessionID: "session", agent: "build", model: { providerID: "hiroute-main-test" }, message: { id } });
+  const read = async id => {
+    const output = { headers: {} };
+    await hooks["chat.headers"](input(id), output);
+    return JSON.parse(output.headers["x-hiroute-routing-context"]);
+  };
+  assert.equal((await read("05")).turn_id, "01", "queued B cannot own A's auto-continue");
+  assert.equal((await read("05")).continuation_requires_existing_turn, true);
+  assert.equal((await read("06")).turn_id, "06");
+  assert.equal((await read("06")).continuation_requires_existing_turn, undefined);
+  await hooks["chat.message"](input("07"), { message: { id: "07" }, parts: entries.at(-1).parts });
+  assert.equal((await read("07")).continuation_requires_existing_turn, false);
+  entries.splice(0, 3);
+  assert.equal((await read("05")).turn_id, undefined, "missing source cannot be replaced by the latest user");
+  assert.equal((await read("05")).continuation_requires_existing_turn, true, "known synthetic summary keeps capture guard");
 });
 
 test("DSH request-local middleware preserves concurrent streams, restored turns and transport failures", async () => {
@@ -253,11 +322,11 @@ test("DSH binds native semantic users to exact wire positions without changing m
     const relay = { ...user("relay", "PEER-RELAY", "agent-message"), source: {
       kind: "agent-message", form: "relay", senderSessionId: "peer",
     } };
-    assert.deepEqual((await sendMatching({ ...options, messages: [...options.messages, relay] })).user_turns, metadata.user_turns);
+    assert.equal((await sendMatching({ ...options, messages: [...options.messages, relay] })).user_turns, undefined);
     const settlement = { ...user("settled", "NATIVE-SETTLEMENT", "subagent-settled"), source: {
       kind: "subagent-settled", form: "notice", senderSessionId: "peer", summary: "native completion",
     } };
-    assert.deepEqual((await sendMatching({ ...options, messages: [...options.messages, settlement] })).user_turns, metadata.user_turns);
+    assert.equal((await sendMatching({ ...options, messages: [...options.messages, settlement] })).user_turns, undefined);
     // A resumed real turn keeps both prior semantic users and the new input,
     // preserving the intervening runtime-context ordinal without blessing it.
     const nextUser = user("u3", "USER-C");
@@ -272,6 +341,12 @@ test("DSH binds native semantic users to exact wire positions without changing m
     assert.equal(sent.at(-1).body, resumedBody);
     assert.deepEqual(JSON.parse(new Headers(sent.at(-1).headers).get("x-hiroute-routing-context")).user_turns,
       [...metadata.user_turns, { turn_id: "2", messages: [{ index: 3, sha256: digest("USER-C") }] }]);
+    assert.equal((await sendMatching({ ...resumed, messages: [...resumed.messages, settlement] })).user_turns,
+      undefined, "late child output must not acquire the newer human's proof");
+    const fresh = user("u4", "FRESH-D");
+    events.push({ type: "turn/start", data: { turn: 3 } }, { type: "user/message", data: fresh });
+    const recovered = await sendMatching({ ...resumed, messages: [...resumed.messages, settlement, fresh] });
+    assert.equal(recovered.user_turns.at(-1).turn_id, "3", "a later real input recovers native binding");
   } finally { globalThis.fetch = original; delete globalThis[symbol]; }
 });
 

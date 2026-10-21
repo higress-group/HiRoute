@@ -151,7 +151,7 @@ fn latest_user_streams_full_spilled_cjk_and_marker_literal_without_a_size_fallba
         .prevalidate(&model_content_refs(&request))
         .expect("prevalidate replay");
 
-    let prepared = classifier_request_template(&request, &history(false), &authority())
+    let prepared = classifier_request_template(&request, &history(false), &authority(), true)
         .expect("classification request template");
     let template = prepared.template;
     assert!(template.wire_len > 1024 * 1024);
@@ -164,6 +164,12 @@ fn latest_user_streams_full_spilled_cjk_and_marker_literal_without_a_size_fallba
     reader.release();
     let body: Value = serde_json::from_slice(&bytes).expect("valid classifier JSON");
     assert_eq!(body["latest_user"][0]["text"], document["input"]);
+    assert_eq!(
+        body["latest_user"][1],
+        json!({
+            "kind":"unavailable", "source_kind":"unverified_request_user_origin"
+        })
+    );
     assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
     assert!(
         !String::from_utf8(bytes)
@@ -181,7 +187,8 @@ fn latest_user_streams_full_spilled_cjk_and_marker_literal_without_a_size_fallba
 #[test]
 fn request_has_exact_five_fields_and_no_execution_identity() {
     let prepared =
-        classifier_request_template(&request("next"), &history(false), &authority()).unwrap();
+        classifier_request_template(&request("next"), &history(false), &authority(), false)
+            .unwrap();
     let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
     assert_eq!(body.as_object().unwrap().len(), 5);
     assert_eq!(body["decision"]["kind"], "ordinal");

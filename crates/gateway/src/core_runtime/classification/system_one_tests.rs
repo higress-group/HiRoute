@@ -68,7 +68,8 @@ fn history(with_target: bool) -> AgentTurnHistorySnapshot {
 }
 #[test]
 fn questions_are_opaque_and_degree_uses_probabilities_but_competence_uses_raw_score() {
-    let prepared = request_template(&authority(), &diagnostic_request(), &history(true)).unwrap();
+    let prepared =
+        request_template(&authority(), &diagnostic_request(), &history(true), false).unwrap();
     let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
     assert_eq!(body["questions"].as_object().unwrap().len(), 2);
     assert_eq!(
@@ -109,7 +110,7 @@ fn categorical_reduction_ignores_unselected_malformed_degree() {
             },
         ],
     };
-    let prepared = request_template(&a, &diagnostic_request(), &history(false)).unwrap();
+    let prepared = request_template(&a, &diagnostic_request(), &history(false), false).unwrap();
     let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
     assert_eq!(body["questions"]["q0"]["type"], "choice");
     assert_eq!(body["questions"].as_object().unwrap().len(), 3);
@@ -140,7 +141,7 @@ fn oversized_current_input_is_rejected_and_history_removal_marks_only_affected_t
         text: "界".repeat(MAX_REQUEST_BYTES),
     }];
     assert!(matches!(
-        request_template(&a, &request, &history(false)),
+        request_template(&a, &request, &history(false), false),
         Err(CallFailure::RejectedInput)
     ));
     let mut h = history(true);
@@ -149,7 +150,7 @@ fn oversized_current_input_is_rejected_and_history_removal_marks_only_affected_t
         text: "x".repeat(MAX_REQUEST_BYTES),
     }];
     h.visible_conversation.insert(0, Arc::new(oversized));
-    let prepared = request_template(&a, &diagnostic_request(), &h).unwrap();
+    let prepared = request_template(&a, &diagnostic_request(), &h, false).unwrap();
     assert!(prepared.has_target && prepared.target_partial);
     let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
     assert_eq!(
@@ -199,7 +200,7 @@ fn c_history(a: &RestBranchClassifierAuthorityV1) -> AgentTurnHistorySnapshot {
 fn c_stock_questions_exactly_match_the_appendix_and_isolate_invalid_q3() {
     let a = c_authority();
     let h = c_history(&a);
-    let p = request_template(&a, &diagnostic_request(), &h).unwrap();
+    let p = request_template(&a, &diagnostic_request(), &h, false).unwrap();
     let wire: Value = serde_json::from_slice(&p.template.bytes).unwrap();
     assert_eq!(wire["questions"], hiroute_domain::stock_c_questions());
     assert!(wire["state"].get("visible_conversation").is_none());
@@ -233,6 +234,42 @@ fn c_stock_questions_exactly_match_the_appendix_and_isolate_invalid_q3() {
 }
 
 #[test]
+fn observed_input_is_disclosed_without_dropping_native_assessment_or_applicability() {
+    for native_c in [false, true] {
+        let a = if native_c { c_authority() } else { authority() };
+        let h = if native_c {
+            c_history(&a)
+        } else {
+            history(true)
+        };
+        let original = request_template(&a, &diagnostic_request(), &h, false).unwrap();
+        let observed = request_template(&a, &diagnostic_request(), &h, true).unwrap();
+        let original_wire: Value = serde_json::from_slice(&original.template.bytes).unwrap();
+        let observed_wire: Value = serde_json::from_slice(&observed.template.bytes).unwrap();
+        let mut expected = original_wire.clone();
+        expected["state"]["latest_user"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "kind":"unavailable", "source_kind":"unverified_request_user_origin"
+            }));
+        assert_eq!(observed_wire, expected);
+        assert!(observed.has_target);
+        assert_eq!(observed.target_partial, original.target_partial);
+        if native_c {
+            let observed = observed.routing_observation.unwrap();
+            let original = original.routing_observation.unwrap();
+            assert_eq!(observed.target_complete, original.target_complete);
+            assert_eq!(
+                observed.applicability_requested,
+                original.applicability_requested
+            );
+            assert!(observed.applicability_requested);
+        }
+    }
+}
+
+#[test]
 fn c_rejects_oversized_current_input_without_truncating_it() {
     let a = c_authority();
     let mut request = diagnostic_request();
@@ -241,7 +278,7 @@ fn c_rejects_oversized_current_input_without_truncating_it() {
         text: "\"".repeat(140_000),
     }];
     assert!(matches!(
-        request_template(&a, &request, &c_history(&a)),
+        request_template(&a, &request, &c_history(&a), false),
         Err(CallFailure::RejectedInput)
     ));
 }
@@ -260,7 +297,7 @@ fn c_partitions_cap_only_background_and_preserve_a_ten_turn_target() {
             })
             .collect();
         h.assessment_from = Some(background);
-        let prepared = request_template(&a, &diagnostic_request(), &h).unwrap();
+        let prepared = request_template(&a, &diagnostic_request(), &h, false).unwrap();
         let wire: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
         assert_eq!(
             wire["state"]["prior_context"].as_array().unwrap().len(),
@@ -273,12 +310,12 @@ fn c_partitions_cap_only_background_and_preserve_a_ten_turn_target() {
         assert!(!prepared.target_partial);
         assert!(prepared.routing_observation.unwrap().target_complete);
         h.assessment_target.as_mut().unwrap().target_partial = true;
-        let partial = request_template(&a, &diagnostic_request(), &h).unwrap();
+        let partial = request_template(&a, &diagnostic_request(), &h, false).unwrap();
         assert!(partial.bindings.as_ref().unwrap().applicability.is_none());
         assert!(partial.target_partial);
         h.assessment_target = None;
         h.assessment_from = None;
-        let no_target = request_template(&a, &diagnostic_request(), &h).unwrap();
+        let no_target = request_template(&a, &diagnostic_request(), &h, false).unwrap();
         assert!(no_target.bindings.as_ref().unwrap().assessment.is_none());
     }
 }
@@ -286,7 +323,7 @@ fn c_partitions_cap_only_background_and_preserve_a_ten_turn_target() {
 fn c_reserves_q3_then_never_refills_a_budget_partial_target() {
     let a = c_authority();
     let mut h = c_history(&a);
-    let base = request_template(&a, &diagnostic_request(), &h)
+    let base = request_template(&a, &diagnostic_request(), &h, false)
         .unwrap()
         .template
         .wire_len;
@@ -299,8 +336,8 @@ fn c_reserves_q3_then_never_refills_a_budget_partial_target() {
         text: "a".repeat(1024),
     }];
     h.visible_conversation = vec![Arc::new(first), Arc::new(large)];
-    let p = request_template(&a, &diagnostic_request(), &h).unwrap();
-    let repeat = request_template(&a, &diagnostic_request(), &h).unwrap();
+    let p = request_template(&a, &diagnostic_request(), &h, false).unwrap();
+    let repeat = request_template(&a, &diagnostic_request(), &h, false).unwrap();
     assert_eq!(p.template.bytes, repeat.template.bytes);
     let o = p.routing_observation.as_ref().unwrap();
     assert!(p.target_partial);
@@ -334,7 +371,7 @@ fn c_background_keeps_bounded_interrupted_and_unknown_turns_in_chronology() {
                 if !with_target {
                     h.assessment_target = None;
                 }
-                let p = request_template(&a, &diagnostic_request(), &h).unwrap();
+                let p = request_template(&a, &diagnostic_request(), &h, false).unwrap();
                 let wire: Value = serde_json::from_slice(&p.template.bytes).unwrap();
                 let background = wire["state"]["prior_context"].as_array().unwrap();
                 let start = if with_target { 1 } else { 2 };
@@ -392,7 +429,7 @@ fn c_reopened_frozen_questions_ignore_changed_current_authority_defaults() {
             );
         }
         let bytes = serde_json::to_vec(a.native_protocol.as_ref().unwrap()).unwrap();
-        let original = request_template(&a, &diagnostic_request(), &history(false)).unwrap();
+        let original = request_template(&a, &diagnostic_request(), &history(false), false).unwrap();
         // Model a later binary's independently changed current category/degree defaults.
         a.decision = DecisionDefinitionV1::Categorical {
             instructions: "Changed current default; never execute for this publication".into(),
@@ -413,7 +450,7 @@ fn c_reopened_frozen_questions_ignore_changed_current_authority_defaults() {
                 .validate_branches(&a.branch_policies, "general")
                 .unwrap();
         }
-        let reopened = request_template(&a, &diagnostic_request(), &history(false)).unwrap();
+        let reopened = request_template(&a, &diagnostic_request(), &history(false), false).unwrap();
         assert_eq!(reopened.template.bytes, original.template.bytes);
         assert_eq!(
             reopened.bindings.unwrap().definition,
@@ -452,7 +489,7 @@ fn c_omitted_target_distinguishes_absent_evidence_from_policy_mismatch() {
                     .floor_millis += 1
             }
         }
-        let prepared = request_template(&a, &diagnostic_request(), &h).unwrap();
+        let prepared = request_template(&a, &diagnostic_request(), &h, false).unwrap();
         assert_eq!(prepared.routing_observation.unwrap().eligibility, expected);
         assert!(prepared.bindings.unwrap().assessment.is_none());
     }

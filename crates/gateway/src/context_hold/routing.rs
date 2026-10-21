@@ -1,5 +1,7 @@
 //! Optional native routing evidence. It never grants execution authority.
 mod codex;
+mod observed_input;
+pub(crate) use observed_input::{ObservedUserInput, hermes_observed_input};
 
 use super::identity::{ContextIdentityFacts, Field, header_value, single_header};
 use http::HeaderMap;
@@ -262,7 +264,7 @@ pub(super) fn facts(
             return RoutingFacts::uncertain();
         }
         let purpose = header_value(headers, "x-claude-code-request-class");
-        if matches!(&purpose, Field::Value(value) if !matches!(value.as_str(), "main" | "subagent"))
+        if matches!(&purpose, Field::Value(value) if matches!(value.as_str(), "auxiliary" | "compaction"))
         {
             return RoutingFacts::detached();
         }

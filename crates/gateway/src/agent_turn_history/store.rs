@@ -337,7 +337,9 @@ impl AgentTurnHistoryStore {
             // That prefix is missing from our history, but does not make the current
             // stage partial unless output after its user message was already missed.
             let missing_current_output = analyzed.output_after_latest_user;
-            let missing_history = analyzed.turns.len() > 1 || missing_current_output;
+            let missing_history = analyzed.prior_history_missing
+                || analyzed.turns.len() > 1
+                || missing_current_output;
             let entry_token = inner.allocate_token()?;
             let request_token = inner.allocate_request_token()?;
             let turn_id = self.allocate_id(inner, "turn")?;
@@ -990,11 +992,18 @@ fn close_active(
                 model_configuration_id: model_configuration_id.clone(),
                 profile_digest: profile_digest.clone(),
             };
-            if entry
-                .current_segment
-                .as_ref()
-                .is_some_and(|segment| segment.key == segment_key)
-            {
+            if entry.current_segment.as_ref().is_some_and(|segment| {
+                segment.key == segment_key
+                        // Missing execution in an earlier task must not keep
+                        // independently captured future tasks partial forever.
+                        // A retry/reclassification ID alone is not a new input
+                        // boundary, and refinalizing the same turn cannot heal it.
+                        && !(segment.partial
+                            && !entry.active.capture_partial
+                            && entry.active.opening_cause
+                                == hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
+                            && segment.through_turn_id != entry.active.agent_turn_id)
+            }) {
                 let segment = entry.current_segment.as_mut().expect("checked");
                 segment.through_turn_id = entry.active.agent_turn_id.clone();
                 segment.through_ordinal = entry.active.ordinal;

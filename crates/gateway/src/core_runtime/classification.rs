@@ -115,6 +115,8 @@ pub(super) struct ClassificationRequest<'a> {
     pub(super) request: &'a ModelRequestIRV1,
     /// A recognized auxiliary call or continuation has no independent current input.
     pub(super) native_user_unavailable: bool,
+    /// Missing source evidence is disclosed to judgment; usable input stays enabled.
+    pub(super) current_input_origin_unverified: bool,
     pub(super) replay: &'a ReplayStore,
     pub(super) classifier: Option<&'a Arc<RestBranchClassifierAuthorityV1>>,
     pub(super) history: &'a AgentTurnHistorySnapshot,
@@ -268,6 +270,7 @@ impl ProductionGatewayRuntime {
                 ClassificationRequest {
                     request: &request,
                     native_user_unavailable: false,
+                    current_input_origin_unverified: false,
                     replay: &replay,
                     classifier: Some(&classifier),
                     history: &history,
@@ -366,10 +369,20 @@ impl ProductionGatewayRuntime {
             match request.classifier {
                 Some(classifier) => {
                     let prepared = if classifier.system_one_model.is_some() {
-                        system_one::request_template(classifier, request.request, request.history)
+                        system_one::request_template(
+                            classifier,
+                            request.request,
+                            request.history,
+                            request.current_input_origin_unverified,
+                        )
                     } else {
-                        classifier_request_template(request.request, request.history, classifier)
-                            .map_err(|_| CallFailure::RejectedInput)
+                        classifier_request_template(
+                            request.request,
+                            request.history,
+                            classifier,
+                            request.current_input_origin_unverified,
+                        )
+                        .map_err(|_| CallFailure::RejectedInput)
                     };
                     match prepared {
                         Err(error) => Err(error),

@@ -66,6 +66,15 @@ impl PreparedHold {
         ) || !self.history_is_proven()
     }
 
+    pub(crate) fn uncaptured_native_prefix(&self) -> bool {
+        self.snapshot.is_none()
+            && (self.native.compacted
+                || self.native.generation.is_some_and(|generation| generation > 0)
+                // Hermes's lineage probe also stamps a fresh root session. It
+                // is continuity metadata, not by itself a compacted prefix.
+                || self.native.requires_checkpoint && self.native.checkpoint.is_some())
+    }
+
     pub(crate) fn native_turn(&self) -> Option<[u8; 32]> {
         self.native.turn
     }

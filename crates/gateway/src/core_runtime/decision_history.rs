@@ -103,11 +103,15 @@ impl ProductionGatewayRuntime {
         let history_continuity = prepared.history_continuity();
         let native_turn = prepared.native_turn();
         let user_origin_unverified = prepared.user_origin_unverified();
+        let uncaptured_native_prefix = prepared.uncaptured_native_prefix();
         let begin =
             crate::agent_turn_history::AgentTurnHistoryStore::prepare_request(request, replay)
                 .and_then(|mut analyzed| {
                     if user_origin_unverified {
                         analyzed.mark_user_origin_unverified();
+                    }
+                    if uncaptured_native_prefix {
+                        analyzed.mark_prior_history_missing();
                     }
                     self.agent_turn_history.begin_with_admission(
                         key,

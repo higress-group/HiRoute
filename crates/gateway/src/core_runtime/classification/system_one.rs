@@ -30,13 +30,19 @@ pub(super) fn request_template(
     authority: &RestBranchClassifierAuthorityV1,
     request: &ModelRequestIRV1,
     history: &AgentTurnHistorySnapshot,
+    current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, CallFailure> {
     if authority.native_protocol.is_some() {
-        return super::c_request::request_template(authority, request, history);
+        return super::c_request::request_template(
+            authority,
+            request,
+            history,
+            current_input_origin_unverified,
+        );
     }
     let mut refs = Vec::new();
-    let latest =
-        latest_user_wire_value(request, &mut refs).map_err(|_| CallFailure::RejectedInput)?;
+    let latest = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)
+        .map_err(|_| CallFailure::RejectedInput)?;
     let mut target = assessment_definition(history, authority);
     let (mut questions, mut bindings) = base_questions(authority);
     if let Some(target) = &target {

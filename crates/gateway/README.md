@@ -103,36 +103,36 @@ source cancellation/deadlines still apply. This is best-effort context degradati
 not a substitute for native purpose evidence.
 Native Codex peer `agent_message` items use the
 [Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
-forwarding preserves author/recipient, text and ciphertext, while optional history
-and cross-protocol conversion stay unavailable. The
-[native protocol regressions](src/adapters/tests/native_responses.rs) cover that
-boundary without fabricating a user role for peer content. The
-[optional semantic view](src/core_runtime/native_routing_view.rs) also prevents a
-copied ancestor user from becoming the peer task's classification input; the
-published unavailable-input fallback preserves native execution.
-[Native routing admission](src/context_hold/routing.rs) applies bounded native turn,
-purpose and checkpoint evidence before holds/history. Known auxiliary requests and
-uncertain known-client metadata have no history lease or write. Main/child scopes
-remain independent; verified same-turn compaction can retain logical decisions but
-cannot restore provider/KV affinity. Qoder routes conservatively detach. Hermes
-compression roots require a complete native proof and fresh current-state evidence.
-The [continuity guard](src/context_hold/continuity.rs) gives a matching native task
-precedence over newly appended synthetic User envelopes. Reuse also requires the
-history owner's original user and current decision; a ContextHold checkpoint
-cannot rebuild either. Adapter continuation flags and legacy/malformed provenance
-use unavailable-input routing when that original task is absent. Explicit fresh
-user evidence can restore capture, which is tested separately from output success.
-Codex 0.147 zero-window clean threads can start history; cold compressed threads
-remain unavailable even after a new question until a clean supported thread is
-created. Unknown producer versions retain this conservative behavior. Claude's
-one-call compaction marker has no persistent user provenance, so current Claude
-Hermes and Qoder calls omit cross-request history and unproved-user classification.
-Hermes whole-turn hooks also receive native async notifications as User input,
-so neither their text equality nor older adapters' freshness flags prove origin.
-These clients have no normal-history recovery path in this implementation. Native output
-continues on the Plan's unavailable-input route, which can increase primary-model
-usage. [Continuation listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history_continuation.rs)
-keep these capability limits distinct from verified fresh-user recovery.
+forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion
+and provider-prefix affinity remain unavailable. The readable request can still be
+classified and captured with explicit source uncertainty; encrypted peer task text
+cannot be reconstructed from an ancestor user. The
+[native protocol regressions](src/adapters/tests/native_responses.rs) cover forwarding
+without fabricating a user role for peer content.
+[Native routing admission](src/context_hold/routing.rs) separates usable input from
+source proof. Known auxiliary purposes remain detached. Missing or unsupported
+metadata instead uses an observed-input lane, with
+`unverified_request_user_origin` in both current classifier input and captured
+history. Complete accepted output stays eligible for cross-turn evaluation. This
+covers Claude main/subagent/workflow, Hermes, Qoder and cold compressed Codex;
+unknown provenance cannot permanently pin an Agent to Primary. Qoder's shared
+main/child identity remains an accepted association limit. Hermes compression roots
+still require complete native lineage and fresh current-state evidence.
+The [continuity guard](src/context_hold/continuity.rs) retains saved native tasks for
+known continuations without granting provider/KV affinity. A known summary with no
+captured original input uses the temporary unavailable-input route; subsequent real
+new A and B must restore classification, capture and evaluation in the same session.
+Gateway restart never imports claimed prior client execution as captured history.
+Partial old stages remain partial; a fully captured independent new input can start
+a complete stage even on the same model. Retries cannot repair missing execution.
+The optional [Hermes selector](src/core_runtime/native_routing_view/hermes.rs) binds
+exact observed text behind trailing reminders, keeps source uncertainty and marks
+uncaptured cold execution partial. Invalid, absent, ambiguous or resource-limited
+hints keep ordinary routing. Pi unknown extension input, DSH late native notices
+and unbound OpenCode overflow/background input use observed routing rather than
+acquiring a newer main task's proof. Known OpenCode compaction follows its typed
+marker and summary-parent link. These mechanisms keep availability separate from
+semantic scoring accuracy.
 [Native listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
 cover these boundaries; the managed producer hooks live in `assets/agents/`.
 [history_bypass.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)

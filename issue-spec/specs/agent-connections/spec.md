@@ -512,12 +512,28 @@ NOT block compatible authorization or model execution; absent native identity
 retains request scope. Compression lineage does not authenticate input origin.
 Accuracy of callback/task association remains a separate limitation, not a reason
 to disable smart routing. Known auxiliary clients remain outside the main history.
-Pi uses native projected-entry provenance and treats compaction summaries, custom
-user-like contributions and unknown projection as continuations. OpenCode resolves
-the exact in-flight native user ID, excluding synthetic/compaction-only parts and
-later queued users; lookup failure omits the optional envelope. These adapter facts
+Pi uses native projected-entry provenance: known compacted continuations require
+saved input, supported current user entries can open input, and custom/unknown
+projection remains observed. A transient optional hook failure SHALL NOT latch the
+adapter off. DSH relay/settlement envelopes after the latest actual input SHALL
+NOT acquire that input's proof merely by arriving in its active native turn.
+OpenCode binds new prompt IDs through `chat.message`; unobserved overflow copies
+and unbound synthetic child results remain observed. Known compaction followups
+use the producer's typed continuation marker and successful summary's parent
+compaction entry to select the old task, never a newer queued user. Missing old
+input retains the continuation guard; a later observed native prompt can recover.
+Lookup failure omits the optional envelope. These adapter facts
 do not authenticate arbitrary third-party transformations of the final provider
 payload. Such unsupported composition MUST NOT be claimed as verified recovery.
+
+The optional Hermes `X-Hermes-Observed-Input` v1 header SHALL be separate from the
+strict existing routing-context envelope, so older Gateways can ignore it. Its
+single-text UTF-8 digest and reverse-user ordinal bind observed input only. The
+producer SHALL retain no plaintext prompt cache, use bounded expiring task/turn
+entries and omit hints on conflicting callbacks, duplicate request text, missing
+hooks, unsupported transports or capacity failures. Existing adapters without the
+header remain usable. Gateway validation SHALL preserve original execution bytes,
+authorization and explicit origin uncertainty.
 
 ### Requirement: Reversible Hermes profile connection and activation guidance
 

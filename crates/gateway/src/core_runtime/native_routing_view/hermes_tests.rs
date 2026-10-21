@@ -1,0 +1,145 @@
+use super::*;
+
+fn headers(text: &str, reverse: usize) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert("x-hiroute-agent", "hermes".parse().unwrap());
+    headers.insert("x-hermes-session-id", "session".parse().unwrap());
+    headers.insert(
+        "x-hiroute-routing-context",
+        json!({
+            "version":1,"agent":"hermes","session_id":"session","purpose":"main","turn_id":"turn"
+        })
+        .to_string()
+        .parse()
+        .unwrap(),
+    );
+    headers.insert(
+        "x-hermes-observed-input",
+        json!({
+            "version":1,"kind":"observed_turn_input","reverse_user_index":reverse,
+            "text_sha256":format!("{:x}", Sha256::digest(text.as_bytes()))
+        })
+        .to_string()
+        .parse()
+        .unwrap(),
+    );
+    headers
+}
+
+fn input(text: &str) -> ModelRequestIRV1 {
+    request(
+        IngressProtocol::Responses,
+        json!([
+            {"role":"user","content":text},
+            {"role":"assistant","content":"actual earlier execution"},
+            {"type":"function_call","call_id":"call","name":"read","arguments":"{}"},
+            {"type":"function_call_output","call_id":"call","output":"actual tool result"},
+            {"role":"user","content":"a later native reminder"}
+        ]),
+    )
+}
+
+#[test]
+fn bound_observed_input_keeps_actual_output_and_never_rewrites_the_execution_request() {
+    let fixture = Fixture::new();
+    let mut input = input("原任务\nexact text");
+    let original = serde_json::to_value(&input).unwrap();
+    let view = NativeRoutingView::prepare(
+        &headers("原任务\nexact text", 1),
+        &input,
+        &fixture.replay,
+        &fixture.budget,
+    );
+    assert!(view.projected.is_some());
+    assert!(view.origin_unverified());
+    let projected = view.request(&input);
+    assert_eq!(projected.messages[0].role, MessageRole::User);
+    assert_eq!(projected.messages.last().unwrap().role, MessageRole::System);
+    assert_eq!(projected.messages[1].role, MessageRole::Assistant);
+    assert_eq!(projected.messages[3].content, input.messages[3].content);
+    assert_eq!(serde_json::to_value(&input).unwrap(), original);
+    // The source-only optional hint does not survive in execution/native IR.
+    input.native_only = true;
+    assert!(
+        !serde_json::to_string(&input)
+            .unwrap()
+            .contains("observed_turn_input")
+    );
+}
+
+#[test]
+fn observed_hint_misses_keep_the_ordinary_request_without_claiming_fresh_user_proof() {
+    let fixture = Fixture::new();
+    let input = input("actual task");
+    let valid = headers("actual task", 1);
+    for variant in 0..10 {
+        let mut headers = valid.clone();
+        match variant {
+            0 => {
+                headers.insert("x-hermes-observed-input", "bad-json".parse().unwrap());
+            }
+            1 => {
+                headers.insert("x-hermes-observed-input", serde_json::json!({"version":2,"kind":"observed_turn_input","reverse_user_index":1,"text_sha256":"a".repeat(64)}).to_string().parse().unwrap());
+            }
+            2 => {
+                headers = self::headers("different task", 1);
+            }
+            3 => {
+                headers = self::headers("actual task", 0);
+            }
+            4 => {
+                headers = self::headers("actual task", 128);
+            }
+            5 => {
+                headers.insert("x-hermes-session-id", "foreign-session".parse().unwrap());
+            }
+            6 => {
+                headers.insert("x-hiroute-agent", "pi".parse().unwrap());
+            }
+            7 => {
+                headers.append("x-hermes-observed-input", "duplicate".parse().unwrap());
+            }
+            8 => {
+                headers.insert("x-hermes-observed-input", "x".repeat(513).parse().unwrap());
+            }
+            9 => {
+                headers = self::headers("actual task\n", 1);
+            }
+            _ => unreachable!(),
+        }
+        let view = NativeRoutingView::prepare(&headers, &input, &fixture.replay, &fixture.budget);
+        assert!(view.projected.is_none(), "variant {variant}");
+        assert!(std::ptr::eq(view.request(&input), &input));
+    }
+    let repeated = request(
+        IngressProtocol::Responses,
+        json!([
+            {"role":"user","content":"actual task"},
+            {"role":"user","content":"actual task"},
+            {"role":"user","content":"a later native reminder"}
+        ]),
+    );
+    let view = NativeRoutingView::prepare(&valid, &repeated, &fixture.replay, &fixture.budget);
+    assert!(
+        view.projected.is_none(),
+        "identical text is not an input-position proof"
+    );
+    assert!(view.origin_unverified());
+}
+
+#[test]
+fn observed_hint_hashes_replay_bytes_and_capacity_failure_is_optional() {
+    let fixture = Fixture::new();
+    let text = "界\n".repeat(10_000);
+    let mut input = input(&text);
+    crate::content_ref::externalize_model_request(&mut input, &fixture.replay, 4096).unwrap();
+    let headers = headers(&text, 1);
+    let view = NativeRoutingView::prepare(&headers, &input, &fixture.replay, &fixture.budget);
+    assert!(view.projected.is_some());
+    drop(view);
+    let tiny = BudgetTree::new(4096, 4096).unwrap().stream(4096).unwrap();
+    let view = NativeRoutingView::prepare(&headers, &input, &fixture.replay, &tiny);
+    assert!(view.projected.is_none());
+    assert!(view.origin_unverified());
+    assert_eq!(tiny.snapshot().unwrap().live, 0);
+}

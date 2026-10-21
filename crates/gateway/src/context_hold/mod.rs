@@ -19,6 +19,7 @@ pub(crate) use identity::{ContextIdentityFacts, identity_facts};
 #[cfg(test)]
 pub(crate) use routing::{NativeCheckpoint, NativeUserOrigin};
 pub(crate) use routing::{NativeUserTurn, dsh_user_turns};
+pub(crate) use routing::{ObservedUserInput, hermes_observed_input};
 pub(crate) use store::{
     ContextHoldKey, ContextHoldStore, HistoryContinuity, HoldCompletion, HoldTicket, PreparedHold,
 };

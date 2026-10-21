@@ -10,6 +10,9 @@ use crate::content_ref::ContentValueExt;
 use crate::context_hold::{NativeUserTurn, dsh_user_turns};
 use crate::replay::ReplayStore;
 
+#[path = "native_routing_view/hermes.rs"]
+mod hermes;
+
 const MAX_COMPACT_IR_BYTES: usize = 256 * 1024;
 const MAX_USER_TEXT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_USER_MESSAGES: usize = 128;
@@ -47,6 +50,21 @@ impl NativeRoutingView {
                 projected: None,
                 origin_unverified: true,
                 _reservation: None,
+            };
+        }
+        if let Some(hint) = crate::context_hold::hermes_observed_input(headers) {
+            let projected = hermes::project(request, replay, budget, &hint);
+            return match projected {
+                Some((request, reservation)) => Self {
+                    projected: Some(request),
+                    origin_unverified: true,
+                    _reservation: Some(reservation),
+                },
+                None => Self {
+                    projected: None,
+                    origin_unverified: true,
+                    _reservation: None,
+                },
             };
         }
         let Some(proof) = dsh_user_turns(headers) else {

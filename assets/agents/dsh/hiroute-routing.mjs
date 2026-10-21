@@ -32,6 +32,13 @@ function textDigest(content, nativeProjection = false) {
 
 function nativeUsers(options, session, currentTurn) {
   if (!session || !Array.isArray(options.messages) || options.messages.length > MAX_MESSAGES) return;
+  // A late native relay/settlement can enter a newer human turn. Its current
+  // turn/start alone cannot bind that execution to the newer user's task.
+  // Omit proof for this request; Gateway keeps an explicitly observed lane.
+  const latestUser = options.messages.findLastIndex(message =>
+    message.role === "user" && message.source?.kind === "user");
+  if (options.messages.slice(latestUser + 1).some(message =>
+    ["agent-message", "subagent-settled"].includes(message.source?.kind))) return;
   const turns = new Map();
   let turn;
   for (let i = Math.max(0, session.seq - 512); i < session.seq; ++i) {

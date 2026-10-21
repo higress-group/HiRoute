@@ -646,6 +646,11 @@ impl ProductionGatewayRuntime {
                 },
                 Instant::now(),
             );
+            let current_input_origin_unverified = routing_view.origin_unverified()
+                || identity.observed_routing_lane()
+                || prepared_hold
+                    .as_ref()
+                    .is_some_and(|hold| hold.user_origin_unverified());
             drop(document);
             drop(ingress_workspace);
             let prevalidate_started = Instant::now();
@@ -737,6 +742,7 @@ impl ProductionGatewayRuntime {
                     classification::ClassificationRequest {
                         request: routing_request,
                         native_user_unavailable,
+                        current_input_origin_unverified,
                         replay: &replay,
                         classifier: authorized.classifier(),
                         history: &turn_history,

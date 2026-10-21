@@ -252,6 +252,161 @@ fn uncaptured_prefix_does_not_make_a_fully_captured_stage_partial() {
 }
 
 #[test]
+fn complete_new_input_recovers_assessment_after_a_partial_stage_on_the_same_model() {
+    for current_output_missing in [false, true] {
+        let (_directory, replay) = replay();
+        let store = AgentTurnHistoryStore::default();
+        let key = store
+            .scope_key("workspace", "recover-partial-stage")
+            .unwrap();
+        let now = Instant::now();
+        let mut messages = vec![
+            text(MessageRole::User, "task begun before Gateway restart"),
+            text(MessageRole::Assistant, "uncaptured execution"),
+        ];
+        let (ticket, history) = new_turn(
+            store
+                .begin(
+                    key.clone(),
+                    plan(1),
+                    &request(messages.clone()),
+                    &replay,
+                    now,
+                )
+                .unwrap(),
+        );
+        drop(history);
+        accepted_output::text_output(&store, &ticket, "captured suffix");
+        let partial = close_branch_turn(&store, &ticket, now);
+        assert!(partial.history_partial);
+        messages.push(text(MessageRole::Assistant, "captured suffix"));
+        messages.push(text(MessageRole::User, "fresh A"));
+        let (ticket, history) = new_turn(
+            store
+                .begin(
+                    key.clone(),
+                    plan(1),
+                    &request(messages.clone()),
+                    &replay,
+                    now,
+                )
+                .unwrap(),
+        );
+        let old_target = history.assessment_target.as_ref().unwrap();
+        assert_eq!(old_target.segment_id, partial.segment_id);
+        assert!(
+            old_target.target_partial,
+            "A cannot repair missing old execution"
+        );
+        drop(history);
+        if current_output_missing {
+            store.mark_output_partial(&ticket);
+        }
+        accepted_output::text_output(&store, &ticket, "actual A execution");
+        let a = close_branch_turn(&store, &ticket, now);
+        assert_eq!(a.history_partial, current_output_missing);
+        assert_eq!(a.segment_id == partial.segment_id, current_output_missing);
+        messages.push(text(MessageRole::Assistant, "actual A execution"));
+        messages.push(text(MessageRole::User, "fresh B"));
+        let (_, history) = new_turn(
+            store
+                .begin(key, plan(1), &request(messages), &replay, now)
+                .unwrap(),
+        );
+        assert!(
+            history.history_partial,
+            "global missing history remains disclosed"
+        );
+        let target = history.assessment_target.as_ref().unwrap();
+        assert_eq!(target.segment_id, a.segment_id);
+        assert_eq!(target.target_partial, current_output_missing);
+        assert_eq!(target.through_ordinal, 2);
+        assert_eq!(
+            target.first_ordinal,
+            if current_output_missing { 1 } else { 2 }
+        );
+        assert_eq!(
+            history.assessment_from,
+            Some(if current_output_missing { 0 } else { 1 })
+        );
+    }
+}
+
+#[test]
+fn retrying_or_reclassifying_a_turn_cannot_launder_a_partial_segment() {
+    use hiroute_domain::AgentTurnOpeningCauseV1 as Cause;
+    for new_execution_id in [false, true] {
+        let (_directory, replay) = replay();
+        let store = AgentTurnHistoryStore::default();
+        let key = store.scope_key("workspace", "partial-retry").unwrap();
+        let now = Instant::now();
+        let user = text(MessageRole::User, "same task");
+        let (ticket, history) = new_turn(
+            store
+                .begin(
+                    key.clone(),
+                    plan(1),
+                    &request(vec![user.clone()]),
+                    &replay,
+                    now,
+                )
+                .unwrap(),
+        );
+        drop(history);
+        accepted_output::text_output(&store, &ticket, "accepted execution");
+        let original = close_branch_turn(&store, &ticket, now);
+        // Eviction may mark the segment partial without losing the current
+        // turn's output. It must remain partial across a fully captured retry.
+        store
+            .inner
+            .lock()
+            .entries
+            .get_mut(&key)
+            .unwrap()
+            .current_segment
+            .as_mut()
+            .unwrap()
+            .partial = true;
+        let AgentTurnBegin::Continuation { ticket, .. } = store
+            .begin(key.clone(), plan(1), &request(vec![user]), &replay, now)
+            .unwrap()
+        else {
+            panic!("same input must resume the existing turn")
+        };
+        store
+            .inner
+            .lock()
+            .entries
+            .get_mut(&key)
+            .unwrap()
+            .active
+            .opening_cause = Cause::UserMessage;
+        let ticket = if new_execution_id {
+            // A reclassification can allocate an execution ID while retaining
+            // the input boundary. The ID is not fresh-user evidence.
+            let mut inner = store.inner.lock();
+            let entry = inner.entries.get_mut(&key).unwrap();
+            entry.active.agent_turn_id = "reclassified-same-input".into();
+            entry.active.opening_cause = Cause::Other;
+            AgentTurnTicket {
+                agent_turn_id: entry.active.agent_turn_id.clone(),
+                ..ticket
+            }
+        } else {
+            ticket
+        };
+        accepted_output::text_output(&store, &ticket, "retry output");
+        let retry = close_branch_turn(&store, &ticket, now);
+        assert!(retry.history_partial);
+        assert_eq!(retry.segment_id, original.segment_id);
+        assert_eq!(
+            retry.agent_turn_id != original.agent_turn_id,
+            new_execution_id
+        );
+    }
+}
+
+#[test]
 fn observed_rewrites_assess_captured_execution_without_merging_segments_or_reopening_gaps() {
     use crate::context_hold::HistoryContinuity::{Rewritten, Shortened};
     for continuity in [Rewritten, Shortened] {

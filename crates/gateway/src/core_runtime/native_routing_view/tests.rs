@@ -6,6 +6,9 @@ use hiroute_gateway_core::runtime::body::BudgetTree;
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[path = "hermes_tests.rs"]
+mod hermes;
+
 struct Fixture {
     root: std::path::PathBuf,
     _manager: ReplayManager,

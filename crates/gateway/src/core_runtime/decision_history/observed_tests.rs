@@ -56,3 +56,47 @@ fn cold_observed_input_recovers_a_b_history_and_an_actual_execution_target() {
         assert!(!visible.contains("actual question B"));
     }
 }
+
+#[test]
+fn a_known_native_checkpoint_discloses_missing_prefix_without_invalidating_new_execution() {
+    let fixture = Fixture::new();
+    let a = json!({"role":"user","content":"actual new A after native compaction"});
+    let input_a = Fixture::request(json!([a]));
+    let mut hold = fixture.prepare(&input_a);
+    hold.set_native(NativeCheckpoint {
+        turn: Some([1; 32]),
+        checkpoint: Some([7; 32]),
+        requires_checkpoint: true,
+        user_origin: NativeUserOrigin::CurrentUser,
+        ..Default::default()
+    });
+    let mut admitted = fixture.begin(&input_a, hold);
+    assert!(
+        admitted.history.history_partial,
+        "the known lost prefix is not an empty complete history"
+    );
+    fixture.finish(&mut admitted, &[text_event("actual A execution")], true);
+    drop(admitted);
+    let input_b = Fixture::request(json!([a,
+        {"role":"assistant","content":"actual A execution"},
+        {"role":"user","content":"actual new B"}
+    ]));
+    let mut hold = fixture.prepare(&input_b);
+    hold.set_native(NativeCheckpoint {
+        turn: Some([2; 32]),
+        checkpoint: Some([7; 32]),
+        requires_checkpoint: true,
+        user_origin: NativeUserOrigin::CurrentUser,
+        ..Default::default()
+    });
+    let next = fixture.begin(&input_b, hold);
+    assert!(next.history.history_partial);
+    assert!(
+        !next
+            .history
+            .assessment_target
+            .as_ref()
+            .unwrap()
+            .target_partial
+    );
+}

@@ -19,9 +19,10 @@ def context(**changes):
 class NativeContext:
     def __init__(self):
         self.middleware = {}
+        self.hooks = {}
 
     def register_hook(self, name, callback):
-        raise AssertionError("whole-turn hooks must not grant fresh-user provenance")
+        self.hooks[name] = callback
 
     def register_middleware(self, name, callback):
         self.middleware[name] = callback

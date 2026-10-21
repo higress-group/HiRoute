@@ -101,9 +101,10 @@ pub(super) fn classifier_request_template(
     request: &ModelRequestIRV1,
     history: &AgentTurnHistorySnapshot,
     authority: &RestBranchClassifierAuthorityV1,
+    current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, ProtocolAdapterError> {
     let mut refs = Vec::new();
-    let latest_user = latest_user_wire_value(request, &mut refs)?;
+    let latest_user = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)?;
     let target = assessment_definition(history, authority);
     let body = json!({
         "decision": authority.decision,
@@ -123,6 +124,7 @@ pub(super) fn classifier_request_template(
 pub(super) fn latest_user_wire_value(
     request: &ModelRequestIRV1,
     refs: &mut Vec<RequestedReplacement>,
+    current_input_origin_unverified: bool,
 ) -> Result<Value, ProtocolAdapterError> {
     let message = request
         .messages
@@ -139,7 +141,7 @@ pub(super) fn latest_user_wire_value(
                 "classification requires a current user message".into(),
             )
         })?;
-    let values = message
+    let mut values = message
         .content
         .iter()
         .filter_map(|part| match part {
@@ -159,6 +161,9 @@ pub(super) fn latest_user_wire_value(
         return Err(ProtocolAdapterError::Serialization(
             "classification current user message is empty".into(),
         ));
+    }
+    if current_input_origin_unverified {
+        values.push(json!({"kind":"unavailable","source_kind":"unverified_request_user_origin"}));
     }
     Ok(Value::Array(values))
 }

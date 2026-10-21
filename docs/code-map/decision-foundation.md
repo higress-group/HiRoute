@@ -114,10 +114,15 @@ require classification, actual A-to-B history, evaluation and model-group select
 for all native families, including cold compressed Codex and Qoder. Historical
 capture records `unverified_request_user_origin` instead of asserting human input;
 complete accepted output remains evaluable despite that source limitation.
+The same marker reaches the current classifier input through all decision codecs.
 The [history store](../../crates/gateway/src/agent_turn_history/store.rs) retains
 the preceding captured assessment target across unverified prefix rewrites while
 starting a new segment. Known capture gaps and changed rubrics still fence that
 target; rewritten wire history cannot reconstruct accepted execution.
+An independently captured new input can start a complete segment after a partial
+one on the same model; retries cannot repair missing old output. Hermes's optional
+[observed intent selector](../../crates/gateway/src/core_runtime/native_routing_view/hermes.rs)
+binds exact request text behind native reminders without asserting human origin.
 [Observed-input unit checks](../../crates/gateway/src/core_runtime/decision_history/observed_tests.rs)
 keep uncaptured old summaries out of the actual execution target. Hermes whole-turn
 callbacks and Qoder shared main/child identity retain disclosed association limits,

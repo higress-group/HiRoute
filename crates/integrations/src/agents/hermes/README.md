@@ -87,17 +87,28 @@ SDK headers. It preserves unrelated request parameters and headers. Invalid or
 missing IDs do not remove authorization. Gateway treats identity as Hermes only
 for a digest-bound managed consumer, then scopes it to that connection; equal
 content never supplies missing Hermes identity.
-Current public whole-turn hooks cannot establish original-user provenance. Hermes
-0.20 feeds native async delegation notifications into the same User input queue as
-real input; even its initiated-turn flag is shared. The adapter therefore always
-requires an existing validated turn, and Gateway rejects freshness claims from
-older adapters as optimization evidence. New real questions and new sessions do
-not recover classification/history capture. Model forwarding and observation
-continue through the Plan's unavailable-input route, potentially using Primary
-for every task. Independent child identity, an exact hook-text match or an empty
-active-job list does not establish safe recovery. A future integration needs
-structured input origin bound to each actual native request/turn, including async
-callbacks and restarts; this is not supplied by the current CLI/ACP public hooks.
+Current public whole-turn hooks cannot establish human provenance: Hermes 0.20
+feeds native async delegation notifications into the same input queue as real
+input. Gateway retains observed classification, actual execution history and
+cross-turn evaluation with explicit uncertainty, including for older adapters'
+freshness flags. Source uncertainty does not permanently pin requests to Primary.
+
+When available, `pre_llm_call` records only a bounded expiring task/turn text digest.
+The Chat middleware can send `X-Hermes-Observed-Input` v1 with the exact UTF-8 SHA-256
+and reverse ordinal of its unique single-text user envelope. Gateway validates the
+actual request before selecting that observed input behind native reminders; it
+never asserts human origin or changes execution bytes. Duplicate text, missing
+hooks, unsupported shapes/transports, cache pressure or adapter errors omit the
+hint and keep ordinary routing. The independent optional header leaves the strict
+existing routing-context envelope compatible with old consumers.
+
+The cache is process-local. After a client restart, absent original callback data
+cannot recover an old task's intent; the next public input callback can repopulate
+it without requiring a new session. Gateway restart discards capture, so model/tool
+output preceding its join remains partial even when original intent is selected.
+A complete new A followed by B can restore full stage evaluation and protection on
+the same model. Async notifications still lack a reliable origin-turn relationship;
+continued routing is not evidence of accurate scoring or callback attribution.
 
 Optional compression ancestry comes from the selected profile's read-only native
 SessionDB interfaces. Missing or unsupported evidence leaves a continuation gap;

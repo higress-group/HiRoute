@@ -21,14 +21,15 @@ pub(super) fn request_template(
     authority: &RestBranchClassifierAuthorityV1,
     request: &ModelRequestIRV1,
     history: &AgentTurnHistorySnapshot,
+    current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, CallFailure> {
     let protocol = authority
         .native_protocol
         .as_ref()
         .ok_or(CallFailure::RejectedInput)?;
     let mut refs = Vec::new();
-    let latest =
-        latest_user_wire_value(request, &mut refs).map_err(|_| CallFailure::RejectedInput)?;
+    let latest = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)
+        .map_err(|_| CallFailure::RejectedInput)?;
     let target_result = assessment_definition_result(history, authority);
     let omitted_eligibility = target_result.as_ref().err().copied().unwrap_or(E::Unrated);
     let target = target_result.ok();

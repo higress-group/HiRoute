@@ -365,6 +365,8 @@ without asserting that a wire User came from a human. Observed-input history SHA
 record the actual request and accepted output with an explicit
 `unverified_request_user_origin` visible-content marker. Source uncertainty alone
 SHALL NOT make complete accepted execution ineligible for cross-turn evaluation.
+Current classifier input SHALL disclose the same uncertainty without removing its
+readable content, assessment target or applicability question.
 Unknown-origin requests use a distinct optimization lane from verified adapter
 input, so a broken adapter cannot replace that lane's original task/checkpoint.
 Potentially missed verified captures retain the existing gap fence.
@@ -375,6 +377,13 @@ captured stage. Evaluation SHALL bind to that stage's actual execution, model an
 frozen rubric, retaining the source-uncertainty marker. A known capture gap or
 changed publication SHALL still fence the old evaluation target. No rewritten
 client summary may reconstruct missing accepted output.
+
+A partial execution segment SHALL NOT make all later tasks on the same model
+permanently partial. When a new input boundary completes with full capture, it
+SHALL start an independently evaluable segment. Its opening still evaluates the
+old partial target honestly; the next input can evaluate the newly captured stage.
+Same-turn retries, refinalization and a new execution ID without a new input
+boundary SHALL NOT repair missing earlier execution.
 
 Native children with distinct identities SHALL remain independent, including in
 verified Worker tasks. These headers are optional evidence, never authorization or
@@ -407,6 +416,11 @@ continuation constraint do not prove human origin. Such requests are observed,
 including on supported Hermes 0.20, rather than globally unavailable. Compression
 lineage remains separate evidence. No adaptation may fabricate human provenance
 or claim accurate task association merely because output and routing succeed.
+An optional Hermes observed-input selector MAY bind exact single-text content to
+its actual request position using a versioned reverse-user ordinal and UTF-8
+SHA-256. It SHALL remain observed input. Ambiguous, missing, expired, malformed or
+unsupported selectors SHALL retain ordinary routing. Selecting earlier input on a
+cold join SHALL keep uncaptured subsequent model/tool execution partial.
 
 Sustained availability and scoring accuracy SHALL be recorded as separate acceptance
 results. A-to-B acceptance requires valid decisions on both, captured A and B,
