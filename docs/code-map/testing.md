@@ -218,6 +218,11 @@ Final backend DAG admission and preparation are owned by
 run in an isolated lane before other listeners; Gateway runtime consumers wait for
 prepared product roles.
 
+Ordinary local/SSH totals and module reports share Cargo-target attribution in
+[validation-report.py](../../scripts/validation-report.py). The
+[runner regressions](../../scripts/test-remote-rust.py) exercise worker results and
+compact waits with nested child summaries, failed and unfinished parents, and multiple targets.
+
 Shared private filesystem behavior has one [platform contract suite](../../crates/platform/src/private_fs/tests.rs): exclusive creation, protected handle reads, permission preservation and identity-bound cleanup. Storage and Worker tests keep domain errors, recovery and lifecycle assertions; the native Windows cases additionally exercise ACLs and held handles.
 
 The [Windows iteration route](../validation-routing.md#windows-iteration-and-release-validation)

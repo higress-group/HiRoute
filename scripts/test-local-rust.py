@@ -189,6 +189,8 @@ class Cleanup(unittest.TestCase):
                          ' print("cargo fixture")\n'
                          'else:\n'
                          ' (target/"debug").mkdir(parents=True)\n'
+                         ' print("Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)")\n'
+                         ' print("running 1 test")\n'
                          ' print("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out")\n')
         cargo.chmod(0o700)
         for name in ('rustc', 'sccache'):
@@ -536,6 +538,8 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
                          ' (p/"debug").mkdir(parents=True)\n'
                          ' (p/"debug/binary").write_text("fixture")\n'
                          ' import time; time.sleep(' + str(delay) + ')\n'
+                         ' print("Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)")\n'
+                         ' print("running 1 test")\n'
                          ' print("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out")\n'
                          ' sys.exit(' + str(exit_code) + ')\n')
         cargo.chmod(0o700)

@@ -526,6 +526,8 @@ if 'prepare_default_smoke_builds' in a:
  report.parent.mkdir(parents=True)
  report.write_text(json.dumps({'schema':'hiroute.smoke.preparation/v1','source_revision':'a'*40,'scenarios_executed':0,'artifacts':artifacts}))
  print('build preparation='+str(report))
+ print('Running tests/smoke_cli.rs (target/debug/deps/smoke_cli-deadbeef01234567)')
+ print(f'running {n} tests')
  print(f'test result: ok. {n} passed; 0 failed; 0 ignored'); sys.exit(0)
 assert (root/'prepared').exists()
 assert '--skip' in a

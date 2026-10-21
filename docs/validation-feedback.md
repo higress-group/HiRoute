@@ -111,6 +111,12 @@ with build features, so only unique logical target identities are compared acros
 Unattributed summaries cannot establish module coverage. A successful Cargo process is
 not a Product scenario green verdict, and zero/ignored cases are not coverage evidence.
 
+Ordinary local/SSH run results and compact SSH waits use the same complete Cargo-target
+counts as the module report. Nested child summaries stay in the command log for
+diagnosis, without adding independent cases. An unfinished parent stays incomplete
+even when a child's selected count matches its own; a later successful target cannot
+erase an earlier failure. Process exit is retained separately from these test counts.
+
 Outer compile events, nested/later build events, execution times, queue/setup/checkout
 timings and total time use separate fields. They must not be blindly added together.
 Unknown time is not zero. Smoke's existing `build_ms`, `execution_ms` and

@@ -75,6 +75,7 @@ def parse_log(log):
     """
     modules, builds, unassigned = [], [], []
     current = None
+    open_harnesses = 0
     for number, raw in enumerate(log.splitlines(), 1):
         line = ANSI.sub("", raw)
         header = HEADER.match(line)
@@ -91,9 +92,12 @@ def parse_log(log):
             current = dict(module=key, identity=identity, label=label, line=number, cases={}, summaries=[],
                            seconds=None, counts=None, result=None, complete=False, expected_count=None)
             modules.append(current)
+            open_harnesses = 0
         running = re.fullmatch(r"running (\d+) tests?", line)
-        if running and current is not None and current["expected_count"] is None:
-            current["expected_count"] = int(running[1])
+        if running and current is not None:
+            open_harnesses += 1
+            if current["expected_count"] is None:
+                current["expected_count"] = int(running[1])
         summary = SUMMARY.match(line)
         if summary:
             state, passed, failed, ignored = summary.groups()
@@ -101,9 +105,12 @@ def parse_log(log):
             row = dict(result=state, counts=dict(passed=int(passed), failed=int(failed), ignored=int(ignored)),
                        seconds=float(duration[1]) if duration else None, summary_line=number)
             if current is not None:
+                # A same-sized child cannot close a still-running parent harness.
+                open_harnesses = max(0, open_harnesses - 1)
                 current["summaries"].append(row)
                 current.update(row)
-                current["complete"] = current["expected_count"] is not None and sum(row["counts"].values()) == current["expected_count"]
+                current["complete"] = (open_harnesses == 0 and current["expected_count"] is not None
+                                       and sum(row["counts"].values()) == current["expected_count"])
             else:
                 unassigned.append(row)
         case = CASE.match(line)

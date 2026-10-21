@@ -36,6 +36,25 @@ is not-executed with reason, not green or executed expected_red. Required red/mi
 expected-red capability prevents acceptance even if a fixture test legitimately exits
 zero. Existing runner result contracts cannot be weakened to obtain green.
 
+Ordinary Rust validation results, compact waits, and module reports MUST count
+independent cases from complete Cargo-target terminal summaries, excluding nested
+child-process summaries. Child assertions and diagnostic output MUST remain available.
+Unattributed output, ambiguous target identity, or an unfinished parent MUST NOT
+establish successful test execution, even if a child's test count matches its parent.
+Every completed target contributes its own passing, failing and ignored counts;
+a later successful target MUST NOT erase an earlier failed target. A nonzero command
+exit MUST fail the run independently of otherwise successful test summaries.
+
+#### Scenario: Nested subprocesses finish inside a successful parent target
+
+- **WHEN** a Cargo target completes its selected parent tests after printing nested child summaries
+- **THEN** run results, compact waits and module reports expose the parent target counts, retaining the child output without adding independent coverage.
+
+#### Scenario: A child finishes but its parent target is interrupted
+
+- **WHEN** the final observed child summary has no completed parent summary, including when both selected the same number of tests
+- **THEN** validation remains incomplete and the child summary cannot establish parent success or independent parent counts.
+
 ### Requirement: Evidence binds actual revision, artifact, role, and path
 
 Report MUST include checked source revision, build/executable identity, platform,
