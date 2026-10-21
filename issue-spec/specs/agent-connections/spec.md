@@ -250,16 +250,23 @@ not directory hiding or launch argument filtering. Pure HiRoute needs no Codex
 OpenAI login and does not promise Desktop profile launch or migration of sessions
 between providers. Native history labels/databases are not rewritten.
 
-Before enabling model routing, the ordinary Codex form visibly explains that
-Codex's provider filter can hide earlier sessions from `/resume`, including its
-all-directories view, while retaining their files. This guidance is also available
-on the configured connection. It provides the supported return path: turn off
-model routing, wait for successful native configuration restoration, then use the
-original CODEX_HOME and original profile with `codex resume --all` to select an
-earlier session. It states that the resumed session uses the original provider,
-bypasses HiRoute and needs that provider's credentials. An incomplete or conflicting
-restore does not authorize claiming the original entry is restored. Separate
-profiles alone do not establish earlier-session discovery or native resume success.
+Before enabling model routing, the ordinary Codex form visibly explains session
+discovery for the selected mode; the configured connection retains this guidance.
+Default on-demand mode preserves ordinary Codex configuration and session history.
+Earlier-provider sessions can be hidden from `/resume` inside the HiRoute profile;
+returning to the original entry does not require disabling HiRoute. Advanced
+default takeover warns that the provider filter can hide earlier sessions even
+in the all-directories view, while retaining their files. Only this mode requires
+turning off model routing and completing native configuration restoration before
+returning to the original default entry. An incomplete or conflicting restore
+does not authorize claiming that entry is restored.
+
+Both modes direct users to their original CODEX_HOME and original profile with
+`codex resume --all` to select an earlier session. This original entry uses the
+original provider, bypasses HiRoute and needs that provider's credentials. Native
+acceptance proves earlier-session discovery and resume through the ordinary entry
+while the on-demand HiRoute profile remains configured; profile isolation alone
+does not establish resume success.
 
 Restore preserves unrelated user fields and new content in a created profile.
 Originally missing profile fields resume inheriting current root rather than writing

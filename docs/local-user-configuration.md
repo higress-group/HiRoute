@@ -84,33 +84,38 @@ context before continuing. First-time creation and edits still require normal Pr
 
 ### Find earlier Codex sessions
 
-Codex filters its native `/resume` picker by the active model provider. HiRoute uses
-its own provider, so sessions created with an earlier provider can disappear from
-the picker while their files remain in the same `CODEX_HOME`. Selecting all
-directories, or running `codex resume --all`, removes the directory filter; it does
-not remove the provider filter.
+Default **On demand** mode preserves ordinary Codex configuration and session
+history. Use the ordinary Codex entry to find earlier sessions; the HiRoute profile
+can remain enabled.
 
-The Codex model-routing form explains this before enabling, and the configured
-connection retains the recovery instructions. A separate HiRoute profile preserves
-ordinary configuration, but does not merge the two providers' session histories.
+Inside the HiRoute profile, Codex filters its native `/resume` picker by HiRoute's
+model provider. Sessions created with another provider can disappear from that
+picker while their files remain in the same `CODEX_HOME`. Advanced **Use by default**
+mode applies this provider change to ordinary Codex and Desktop as well. Selecting
+all directories, or running `codex resume --all`, removes the directory filter;
+it does not remove the provider filter. The model-routing form and configured
+connection explain the selected mode's scope and return path.
 
 ### Return to the original provider
 
-1. In HiRoute, open **Agents → Codex** and turn off **Model routing**. Wait for
-   configuration restoration to complete. If a file conflict or incomplete
-   operation is reported, follow its recovery instructions before continuing.
+1. For default **On demand** mode, return to the ordinary Codex entry without
+   the HiRoute profile. **No disable or configuration restoration is needed.**
+   For advanced **Use by default** mode, open **Agents → Codex** in HiRoute and
+   turn off **Model routing** first. Wait for configuration restoration to complete;
+   resolve any reported file conflict or incomplete operation before continuing.
 2. Exit the Codex instance using HiRoute. Open a terminal using the original
    `CODEX_HOME` shown in the connection's configuration details. Use the same
    original profile and working environment as before enabling HiRoute.
 3. Run `codex resume --all` and select the earlier session. If the original entry
    used an explicit profile, retain it: `codex --profile <original-profile> resume --all`.
    The `hiroute` profile is the managed route, not the original entry.
-4. Continuing the session uses the restored provider and its original account or
-   API credentials. Those requests **bypass HiRoute**. Re-enabling routing switches
-   the provider again and can hide the earlier sessions again.
+4. Continuing the session uses the original provider and its account or API
+   credentials. Those requests **bypass HiRoute**. The on-demand HiRoute profile
+   remains available for separate sessions. Advanced default takeover changes the
+   ordinary entry's provider again when re-enabled.
 
-This path restores HiRoute-owned configuration fields through its existing
-conditional restoration transaction. It does not edit Codex's session files,
+Advanced-mode restoration uses the existing conditional transaction for
+HiRoute-owned configuration fields. Neither return path edits Codex's session files,
 provider labels or private session database. Keep a backup of important history;
 changing provider IDs or rewriting the database is not a supported migration.
 

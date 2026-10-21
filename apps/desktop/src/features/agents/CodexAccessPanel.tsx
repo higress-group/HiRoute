@@ -5,14 +5,21 @@ import { preferredCodexShell } from './codex-launch';
 export type { CodexAccess } from './types';
 import type { CodexAccess } from './types';
 
-export function CodexHistoryNotice({ language }: { language: 'zh' | 'en' }) {
+export function CodexHistoryNotice({ language, mode }: { language: 'zh' | 'en'; mode: 'profile' | 'root' }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
-  return <div className="callout warn" role="note" data-codex-history-guidance>
-    <UiIcon name="warning" /><div>
-      <strong>{text('切换后如何找回原有会话', 'Finding earlier sessions after switching')}</strong>
-      <p>{text('Codex 按模型服务商筛选 /resume。使用 HiRoute 后，原有会话可能不再显示，即使选择全部目录；会话文件仍然保留。', 'Codex filters /resume by model provider. Earlier sessions may disappear while using HiRoute, even with all directories selected; their files remain.')}</p>
-      <p>{text('找回步骤：在 HiRoute 的“模型路由”点击“停用”，等待原配置恢复完成，再使用原 CODEX_HOME 和原 profile 运行 ', 'To recover: turn off Model routing in HiRoute and wait for configuration restoration to finish. Then use your original CODEX_HOME and profile to run ')}<code>codex resume --all</code>{text('，选择原有会话。', ' and select the earlier session.')}</p>
-      <p>{text('恢复后的会话使用原服务商，绕过 HiRoute，需要原账号或 API 凭据。', 'The resumed session uses the original provider, bypasses HiRoute, and needs its original account or API credentials.')}</p>
+  const root = mode === 'root';
+  return <div className={`callout${root ? ' warn' : ''}`} role="note" data-codex-history-guidance data-codex-history-mode={mode}>
+    <UiIcon name={root ? 'warning' : 'info'} /><div>
+      <strong>{root
+        ? text('切换后如何找回原有会话', 'Finding earlier sessions after switching')
+        : text('原有会话仍可从原入口继续', 'Continue earlier sessions from the original entry')}</strong>
+      <p>{root
+        ? text('设为默认后，Codex 按模型服务商筛选 /resume。原有会话可能不再显示，即使选择全部目录；会话文件仍然保留。', 'After using HiRoute by default, Codex filters /resume by model provider. Earlier sessions may disappear, even with all directories selected; their files remain.')
+        : text('按需使用只影响 HiRoute profile，普通 Codex 的配置和会话历史不变。HiRoute profile 内的 /resume 可能不显示原服务商的会话。', 'On-demand access only affects the HiRoute profile. Ordinary Codex configuration and session history stay unchanged. Inside the HiRoute profile, /resume may hide sessions from the original provider.')}</p>
+      <p>{root
+        ? text('找回步骤：在 HiRoute 的“模型路由”点击“停用”，等待原配置恢复完成，再使用原 CODEX_HOME 和原 profile 运行 ', 'To recover: turn off Model routing in HiRoute and wait for configuration restoration to finish. Then use your original CODEX_HOME and profile to run ')
+        : text('无需停用 HiRoute。退出 HiRoute profile，用原 CODEX_HOME 和原 profile 运行 ', 'No need to disable HiRoute. Exit the HiRoute profile and use your original CODEX_HOME and profile to run ')}<code>codex resume --all</code>{text('，选择原有会话。', ' and select the earlier session.')}</p>
+      <p>{text('原入口使用原服务商，绕过 HiRoute，需要原账号或 API 凭据。', 'The original entry uses the original provider, bypasses HiRoute, and needs its original account or API credentials.')}</p>
     </div>
   </div>;
 }
@@ -52,7 +59,7 @@ export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
     <p className="field-help">{mode === 'profile'
       ? text('按需使用 · Codex CLI：复制命令到终端启动。普通 Codex 与 Desktop 保持原配置。', 'On demand · Codex CLI: copy the command to start in a terminal. Ordinary Codex and Desktop keep their settings.')
       : text('默认接入 · Codex CLI 和 Desktop：共享此配置目录的入口使用 HiRoute。', 'Default connection · Codex CLI and Desktop: entry points sharing this directory use HiRoute.')}</p>
-    <CodexHistoryNotice language={language} />
+    <CodexHistoryNotice language={language} mode={mode} />
     {mode === 'profile' && access.slot_occupied && !access.pending_operation && !access.access_revoked && <div>
       <div className="detail-section-head"><strong>{text('启动 Codex', 'Start Codex')}</strong><label className="field-label agent-launch-shell">Shell <select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label></div>
       <pre className="agent-launch-command"><code>{command}</code></pre>
