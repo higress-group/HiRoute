@@ -152,10 +152,11 @@ Follow discovery through an ordinary request using the saved source. The
 Scan → Prepare → Save → restart → native use, including stale-source rejection.
 
 The shared product-session layer in `crates/product-session` owns Preview composition, confirmation permits, retry identity and protected-input lifetime. Desktop supplies its inherited-channel `HostAuthority` adapter in `apps/desktop/src-tauri/src/bootstrap/authority.rs`; native startup, updater and window authority stay with the Desktop host.
-[Native recovery](../../apps/desktop/src-tauri/src/bootstrap/recovery.rs) uses separate
-inherited maintenance through the [daemon launcher](../../crates/daemon/src/control/maintenance.rs)
-to drain and replace only its exited owned child. The failed channel and old session
-remain unusable; status distinguishes daemon reachability from protected-read authority.
+[Native recovery](../../apps/desktop/src-tauri/src/bootstrap/recovery.rs) completes
+only the exact outstanding acknowledgement on the existing inherited channel,
+then transfers the running child to a fresh product session. It never restarts the
+daemon or pauses work. Old confirmations and authority remain invalid; malformed
+or closed channels fail closed. Status separates reachability from protected authority.
 
 ## State and lifecycle boundaries
 

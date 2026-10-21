@@ -1,4 +1,4 @@
-//! Native-owned child with private inherited shutdown, grant and maintenance channels. Never exposed over WebView IPC.
+//! Native-owned child with private inherited shutdown and grant channels. Never exposed over WebView IPC.
 use command_fds::{CommandFdExt, FdMapping};
 use fs2::FileExt;
 use hiroute_application_api::{CanonicalDigest, ComputeCandidateRefV2, RevisionSetV1};
@@ -44,7 +44,7 @@ struct OwnedChild {
     capability: File,
     ack: File,
     authority_healthy: bool,
-    maintenance: Option<recovery::MaintenanceChannel>,
+    pending_ack: Option<channel::PendingAck>,
     manual_input_candidates: BTreeSet<String>,
     diagnostics: Option<DiagnosticsPort>,
 }
@@ -315,8 +315,6 @@ impl Resident {
         let (shutdown_read, shutdown_write) = pipe()?;
         let (cap_read, cap_write) = pipe()?;
         let (ack_read, ack_write) = pipe()?;
-        let (maintenance_read, maintenance_write) = pipe()?;
-        let (maintenance_ack_read, maintenance_ack_write) = pipe()?;
         // The stable host address: a restart rebinds exactly the recorded address. A publication
         // (gateway.lkg) pins clients to it, so only the previously served address may be reused.
         let last_served = crate::resident_ownership::recorded_gateway_address(&mut lock)?;
@@ -346,10 +344,6 @@ impl Resident {
                 "4",
                 "--capability-ack-fd",
                 "5",
-                "--maintenance-fd",
-                "6",
-                "--maintenance-ack-fd",
-                "7",
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -403,14 +397,6 @@ impl Resident {
                     parent_fd: ack_write.into(),
                     child_fd: 5,
                 },
-                FdMapping {
-                    parent_fd: maintenance_read.into(),
-                    child_fd: 6,
-                },
-                FdMapping {
-                    parent_fd: maintenance_ack_write.into(),
-                    child_fd: 7,
-                },
             ])
             .map_err(|_| "PROTECTED_CHANNEL_UNAVAILABLE")?;
         reservation.release(); // A port race fails this exact target; it never selects another.
@@ -435,10 +421,7 @@ impl Resident {
             capability: cap_write,
             ack: ack_read,
             authority_healthy: true,
-            maintenance: Some(recovery::MaintenanceChannel::new(
-                maintenance_write,
-                maintenance_ack_read,
-            )?),
+            pending_ack: None,
             manual_input_candidates: BTreeSet::new(),
             diagnostics: Some(stages.clone()),
         };
@@ -703,6 +686,10 @@ impl Resident {
             .map_err(|_| "PROTECTED_INPUT_INVALID")?,
         );
         bytes.push(b'\n');
+        // Track even an uncertain registration so recovery can release its input.
+        owned
+            .manual_input_candidates
+            .insert(candidate.candidate_ref.clone());
         owned.exchange_ack(
             &bytes,
             &id,
@@ -723,35 +710,7 @@ impl Resident {
         {
             return Ok(());
         }
-        let id = crate::random_id()?;
-        #[derive(serde::Serialize)]
-        struct Release<'a> {
-            schema: &'static str,
-            registration_id: &'a str,
-            candidate_ref: &'a str,
-        }
-        let mut bytes = Zeroizing::new(
-            serde_json::to_vec(&Release {
-                schema: "hiroute.protected-input/v1",
-                registration_id: &id,
-                candidate_ref: &candidate.candidate_ref,
-            })
-            .map_err(|_| "PROTECTED_INPUT_INVALID")?,
-        );
-        bytes.push(b'\n');
-        let result = owned.exchange_ack(
-            &bytes,
-            &id,
-            hiroute_diagnostics::event::ProtectedExchangeKind::InputRelease,
-        );
-        if result.is_ok() {
-            owned
-                .manual_input_candidates
-                .remove(&candidate.candidate_ref);
-        } else {
-            owned.authority_healthy = false;
-        }
-        result
+        owned.release_input(&candidate.candidate_ref)
     }
     fn register_operation(
         &mut self,
@@ -822,6 +781,7 @@ impl Resident {
         Ok(capability)
     }
 }
+#[cfg(test)]
 fn receive_ack(reader: &mut impl Read, id: &str, timeout: Duration) -> Result<(), String> {
     let ack: Ack = serde_json::from_slice(&read_frame(reader, 1024, timeout, None)?)
         .map_err(|_| "REGISTRATION_ACK_INVALID")?;

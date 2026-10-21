@@ -110,7 +110,7 @@ fn live_daemon_after_ack_timeout_does_not_report_a_healthy_native_session() {
 }
 
 #[test]
-fn fresh_native_session_recovers_without_reusing_late_ack_or_saved_state_changes() {
+fn fresh_native_session_resynchronizes_without_restarting_the_daemon() {
     let root = tempfile::Builder::new()
         .prefix("hr187-")
         .tempdir_in(std::fs::canonicalize("/tmp").unwrap())
@@ -140,12 +140,10 @@ fn fresh_native_session_recovers_without_reusing_late_ack_or_saved_state_changes
     );
     drop(paused);
     // The daemon writes the original success ACK after the caller's absolute timeout.
-    // It stays unread in the tainted stream while independent maintenance drains/restarts.
+    // Recovery consumes only this exact pending ACK, then creates a new host session.
     std::thread::sleep(Duration::from_millis(100));
-    let replacement = resident
-        .recover_authority(root.path(), &binary, &NativeDiagnostics::disabled())
-        .unwrap();
-    assert_ne!(replacement.owned.as_ref().unwrap().child.id(), previous);
+    let replacement = resident.recover_authority().unwrap();
+    assert_eq!(replacement.owned.as_ref().unwrap().child.id(), previous);
     assert!(
         !resident.has_authority(),
         "captured old authority cannot authorize after replacement"
@@ -174,13 +172,68 @@ fn fresh_native_session_recovers_without_reusing_late_ack_or_saved_state_changes
     session.authority.release_model_input(&candidate).unwrap();
     assert!(!resident.has_authority());
     assert!(
+        resident
+            .register_operation(
+                &CanonicalDigest::of_bytes(b"old callback"),
+                &before.revisions,
+                "ListSessionsV2"
+            )
+            .is_err(),
+        "captured old authority must not regain grant issuance"
+    );
+    assert!(
         runtime
             .block_on(resident.client.query::<_, ClientServiceStatusV1>(
                 "GetClientServiceStatus",
-                "old-session-callback",
-                &serde_json::json!({}),
+                "same-daemon-still-responsive",
+                &serde_json::json!({})
             ))
-            .is_err(),
-        "captured old client must reject the replacement process identity"
+            .is_ok()
     );
+}
+
+#[test]
+fn resynchronization_releases_an_input_whose_registration_finished_after_timeout() {
+    let root = tempfile::Builder::new()
+        .prefix("hr187-input-")
+        .tempdir_in(std::fs::canonicalize("/tmp").unwrap())
+        .unwrap();
+    let mut resident = Resident::open(root.path(), &daemon()).unwrap();
+    let pid = resident.owned.as_ref().unwrap().child.id();
+    let candidate = ComputeCandidateRefV2 {
+        candidate_ref: format!("candidate/native/{}", crate::random_id().unwrap()),
+        candidate_revision: 1,
+    };
+    let paused = Paused::new(pid);
+    assert!(
+        resident
+            .register_model_input_once(&candidate, "synthetic abandoned input")
+            .is_err()
+    );
+    assert!(
+        resident
+            .owned
+            .as_ref()
+            .unwrap()
+            .manual_input_candidates
+            .contains(&candidate.candidate_ref)
+    );
+    drop(paused);
+    let mut replacement = resident.recover_authority().unwrap();
+    assert_eq!(replacement.owned.as_ref().unwrap().child.id(), pid);
+    assert!(
+        replacement
+            .owned
+            .as_ref()
+            .unwrap()
+            .manual_input_candidates
+            .is_empty()
+    );
+    // Reusing this private test identity would fail if the late registration's
+    // protected input remained in the daemon registry.
+    replacement
+        .register_model_input_once(&candidate, "synthetic fresh input")
+        .unwrap();
+    replacement.release_model_input(&candidate).unwrap();
+    assert!(!resident.has_authority());
 }

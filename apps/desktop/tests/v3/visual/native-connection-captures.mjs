@@ -13,12 +13,12 @@ export async function nativeConnectionCaptures(client, baseUrl, output) {
       const c = window.productShell;
       c.desktop.native_connection = 'recovery_required'; c.desktop.trusted_authority = false;
       c.handlers.observation_read = () => { throw { source: 'native', code: 'TRUSTED_AUTHORITY_UNAVAILABLE' }; };
-      c.handlers.recover_native_connection = () => { throw { source: 'native', code: 'AUTHORITY_RECOVERY_WORK_ACTIVE' }; };
+      c.handlers.recover_native_connection = () => { throw { source: 'native', code: 'AUTHORITY_RECOVERY_PENDING' }; };
       c.remount();
     })()`);
     await waitFor(client, 'Boolean(document.querySelector(".native-connection-recovery button"))');
     await evaluate(client, 'document.querySelector(".native-connection-recovery button").click()');
-    await waitFor(client, 'Boolean(document.querySelector("[data-error-code=AUTHORITY_RECOVERY_WORK_ACTIVE]"))');
+    await waitFor(client, 'Boolean(document.querySelector("[data-error-code=AUTHORITY_RECOVERY_PENDING]"))');
     const geometry = await evaluate(client, `(() => {
       const box = document.querySelector('.native-connection-recovery'); const action = box.querySelector('button');
       const b = box.getBoundingClientRect(), a = action.getBoundingClientRect();

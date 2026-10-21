@@ -55,10 +55,17 @@ A successful Local Control/CLI query does not establish that Desktop's separate
 inherited protected channel is healthy. Home and Sessions also require that
 channel. `TRUSTED_AUTHORITY_UNAVAILABLE` after an exchange failure stays denied;
 ordinary read retry cannot repair it. Use **Restore local connection** in Desktop.
-Recovery uses independent inherited maintenance, preserves live work, and replaces
-only the exact exited owned daemon with fresh channels and a new product session.
-If requests/tasks are active, it restores admission and asks the user to retry
-after they finish. Unknown maintenance state does not permit forced termination.
+Recovery completes the exact pending acknowledgement on the same inherited channel
+and creates a fresh product session. It never resends the failed business operation,
+pauses admission or restarts the daemon, so running requests/tasks continue. A
+pending reply can be retried; partial reply bytes are retained within the frame
+bound. Incomplete request writes, malformed/mismatched replies and closed channels
+require normal reopening after work finishes; they cannot be safely synchronized.
+
+Routing snapshot revalidation must release shared storage before waiting for CPA.
+Otherwise its control/lifecycle deadline can block native grant registration past
+the shorter host ACK deadline. A long CPA call and routing snapshot are evidence
+of contention, not proof of which historical protected exchange first failed.
 
 Inspect `protected_exchange` in both roles before attributing the original trigger.
 The event records a closed exchange family, phase, duration, failure category and

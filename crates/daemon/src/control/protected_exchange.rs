@@ -22,7 +22,7 @@ pub(super) fn process(
             ProtectedChannelFrame::Upgrade(request) => {
                 let status = role.upgrade_status(request.action, request.registration_id)?;
                 phase = ProtectedExchangePhase::AcknowledgementWrite;
-                return maintenance::write_status(writer, &status);
+                return write_status(writer, &status);
             }
             ProtectedChannelFrame::Apply { registration, .. } => {
                 role.register_apply_capability(registration)?
@@ -51,4 +51,29 @@ pub(super) fn process(
         authority_lost: false,
     }));
     result
+}
+
+pub(super) fn write_status(
+    writer: &mut std::fs::File,
+    status: &hiroute_host_runtime::LauncherUpgradeStatus,
+) -> Result<(), String> {
+    let mut bytes = serde_json::to_vec(status).map_err(|_| "upgrade response invalid")?;
+    bytes.push(b'\n');
+    let mut bytes = bytes.as_slice();
+    let deadline = std::time::Instant::now() + PROTECTED_FRAME_DEADLINE;
+    while !bytes.is_empty() {
+        if std::time::Instant::now() >= deadline {
+            return Err("upgrade acknowledgement timed out".into());
+        }
+        match writer.write(bytes) {
+            Ok(0) => return Err("upgrade channel closed".into()),
+            Ok(count) => bytes = &bytes[count..],
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(5))
+            }
+            Err(_) => return Err("upgrade channel unavailable".into()),
+        }
+    }
+    Ok(())
 }

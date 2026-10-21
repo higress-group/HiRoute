@@ -73,18 +73,22 @@ failure; service status SHALL distinguish that failure from daemon unavailabilit
 and from an intentional read-only connection. Existing loaded records and unsaved
 non-secret input SHALL remain available without being presented as fresh reads.
 
-Desktop SHALL offer safe recovery for an owned daemon through independent inherited
-maintenance authority, never by reusing an uncertain grant/acknowledgement stream,
-relaxing digests/revisions/principals or using unprotected observation reads. Recovery
-SHALL pause new work, preserve in-flight requests/tasks and confirm drainage before
-orderly shutdown. If work is active, it SHALL leave that daemon running and restore
-ordinary admission. A pending stop SHALL never be converted into a force kill.
-Only verified exit permits replacement under the same host lease and listener
-identity. Replacement SHALL use fresh protected channels and a distinct product
-session, expire old confirmations and prevent captured old-session callbacks from
-authorizing work. It SHALL preserve saved configuration, retained sessions and
-operation identities without automatically replaying business mutations. Missing or
-failed recovery authority SHALL be explicit and SHALL NOT grant a bypass.
+Desktop SHALL offer recovery for a fully written request whose exact acknowledgement
+is still pending. It SHALL retain partial reply bytes within the existing bound,
+require the original schema and registration identity, and complete that reply
+before any new registration. This only restores transport synchronization; it SHALL
+NOT authorize or automatically replay the failed business operation. Incomplete
+request writes, closed channels and malformed/mismatched replies SHALL remain
+denied and require normal reopening after existing work finishes.
+
+Successful synchronization SHALL create a distinct product session, expire old
+confirmations, retire old authority and release abandoned session-owned inputs.
+It SHALL keep the existing daemon, inherited descriptors, host lease and listener;
+it SHALL NOT pause admission or interrupt running requests/tasks. It SHALL preserve
+saved configuration, retained sessions and operation identities without relaxing
+digests, revisions or principals. A missing or failed recovery remains explicit.
+External CPA revalidation SHALL NOT hold the shared storage needed by native grant
+registration across a control/lifecycle wait.
 
 The first failed exchange SHALL have bounded diagnostics identifying its phase,
 closed failure category, duration and irreversible registration correlation. Neither
@@ -98,12 +102,18 @@ unobserved failure.
 - **THEN** Desktop reports loss of its trusted connection, protected reads remain
   denied and ordinary Retry cannot treat a late ACK as new authorization.
 
-#### Scenario: Recovery waits for owned work and starts a fresh session
+#### Scenario: Recovery synchronizes a pending reply without stopping work
 
-- **WHEN** the user restores an invalid native connection
-- **THEN** independent maintenance verifies drainage or preserves the running work;
-  after verified orderly exit a fresh session restores protected reads and actions
-  with the same saved records, while old confirmations and channels remain invalid.
+- **WHEN** the user restores a timed-out native connection with a fully written request
+- **THEN** only its exact pending reply can restore synchronization; a new Desktop
+  session restores protected reads/actions while the same daemon and running work
+  continue, and old confirmations and authority cannot resume.
+
+#### Scenario: Invalid framing cannot acquire recovery authority
+
+- **WHEN** a request is incompletely written or its reply is malformed, mismatched or closed
+- **THEN** in-place recovery remains unavailable, the daemon is not stopped, and
+  Desktop explains normal reopening after existing work finishes.
 
 Source Issue: https://github.com/higress-group/HiRoute/issues/187
 
