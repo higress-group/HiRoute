@@ -589,8 +589,8 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
         report = json.loads(Path(result['validation_report']['path']).read_text())
         self.assertEqual(report['sha'], result['sha'])
         self.assertEqual(report['process_exit'], 0)
-        # This fake tool prints only an unattributed summary; it is not target evidence.
-        self.assertFalse(report['complete'])
+        self.assertTrue(report['complete'])
+        self.assertEqual(report['modules'][0]['counts'], dict(passed=1, failed=0, ignored=0))
         self.assertIsNotNone(report['timing']['command_seconds'])
 
     def test_invalid_jobs_refuses_before_run_record(self):
