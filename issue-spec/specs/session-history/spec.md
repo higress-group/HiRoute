@@ -274,6 +274,13 @@ body stays unavailable and cannot be rebuilt from a score explanation. Public
 read-only facts, help/schema discovery, and cursor without content/model calls.
 Competence is stage performance, not task acceptance rate or universal model ranking.
 
+Plan-quality reads opting into `include_routing_observations=true` SHALL expose
+bounded-read failures through the existing `hiroute.observation.read-failure/v1`
+details. Timeout and reader exhaustion remain retryable failures with their
+distinct reasons and bounded retry hints, never empty success. This does not
+increase the read deadline, reader count or automatic retries. Omitted/false
+retains the released strict failure shape.
+
 #### Scenario: Read routing evidence beside unrelated retained facts
 
 - **WHEN** a Plan-quality read includes routing observations and the workspace retains many unrelated safe facts
