@@ -124,7 +124,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=CONFIG)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--frontend-dist", help="Desktop execution-host path, or caller-local console dist for SSH backend run")
+    parser.add_argument("--frontend-dist", help="Execution-host frontend directory for desktop run or SSH backend run")
     parser.add_argument("action", choices=("show", "doctor", *TARGETS, "pilot", "pilot-cli", "pilot-build", "windows"))
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()

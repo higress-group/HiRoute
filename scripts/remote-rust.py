@@ -598,13 +598,13 @@ def worker(request_path):
                           started_at=time.time(), checkout_finished_at=time.time())
             save(result_path, result)
             try:
-                supplied = run / "console-assets.json"
                 result["console_assets"] = console_assets().preflight(
-                    checkout, request, sys.platform,
-                    json.loads(supplied.read_text()) if supplied.exists() else None)
+                    checkout, request, sys.platform, request.get("frontend_dist"))
             except (ValueError, OSError, KeyError) as error:
                 result["console_assets"] = dict(state="blocked", reason=str(error))
-                rerun = ["python3", "scripts/validation.py", "--frontend-dist", "apps/desktop/dist",
+                staging = Path.home() / ".cache/hiroute/console-assets" / request["id"]
+                host = request["ssh_host"]
+                rerun = ["python3", "scripts/validation.py", "--frontend-dist", str(staging / "dist"),
                          "backend", "run", "--ref", request["ref"], "--sha", request["sha"],
                          "--retention", "always"]
                 if owner_id or request["retention"] != "never":
@@ -617,10 +617,13 @@ def worker(request_path):
                     rerun += ["--plan", request["plan"], "--phase", request.get("phase", "focused")]
                 rerun += ["--", *request["command"]]
                 result["console_assets"]["preparation"] = [
-                    "At the exact clean candidate on the configured frontend target:",
+                    "Use clean candidate " + request["sha"] + " on the configured frontend target:",
                     "python3 scripts/validation.py frontend ci",
                     "python3 scripts/validation.py frontend build --console-assets",
-                    "With that dist available on the caller, rerun:", shlex.join(rerun)]
+                    "From the machine with that dist, copy it to a separate backend staging directory:",
+                    shlex.join(["ssh", host, shlex.join(["mkdir", "-p", str(staging)])]),
+                    shlex.join(["scp", "-r", "apps/desktop/dist", host + ":" + str(staging) + "/"]),
+                    "Rerun from the caller; --frontend-dist is a path on the backend host:", shlex.join(rerun)]
                 raise RunBlocked("console_assets", str(error) +
                                  "; prepare with validation.py frontend build --console-assets, then pass "
                                  "--frontend-dist to SSH backend run; see result.console_assets.preparation") from error
@@ -775,8 +778,6 @@ if mode=="maintenance":
  subprocess.run([sys.executable,str(driver)]+p["driver_args"],check=True)
 elif mode=="worker":
  run=r/"runs"/p["id"];run.mkdir(parents=True)
- assets=p.pop("console_assets_bundle",None)
- if assets is not None: (run/"console-assets.json").write_text(json.dumps(assets))
  (run/"request.json").write_text(json.dumps(p))
  (run/"result.json").write_text(json.dumps(dict(p,status="queued",process_exit=None)))
  with (run/"worker.log").open("w") as log:
@@ -854,7 +855,7 @@ def main():
     run = sub.add_parser("run", help="Queue a focused Cargo command against a pushed commit")
     run.add_argument("--ref", required=True, help="Advertised branch, e.g. refs/heads/codex/my-proposal")
     run.add_argument("--sha", help="Default: current HEAD")
-    run.add_argument("--frontend-dist", type=Path, help="Caller-local exact-candidate dist from validation.py frontend build")
+    run.add_argument("--frontend-dist", help="Execution-host staging directory from validation.py frontend build --console-assets")
     run.add_argument("--exclusive", action="store_true", help="Reserve all 8 slots, 64 compiler jobs (bench/Gates)")
     run.add_argument("--timeout", type=int, default=3600)
     run.add_argument("--retention", choices=RETENTION_POLICIES, default="on-failure",
@@ -914,10 +915,9 @@ def main():
                        retention=args.retention, executor_sha=executor_sha,
                        reuse_checkout=args.reuse_checkout, continue_checkout=args.continue_checkout,
                        schedule=args.schedule,
+                       ssh_host=args.host, frontend_dist=args.frontend_dist,
                        executor_digest=hashlib.sha256(source.encode()).hexdigest(), source=source)
         payload.update(reporting().options(args), submitted_at=time.time())
-        if args.frontend_dist:
-            payload["console_assets_bundle"] = console_assets().bundle(args.frontend_dist.expanduser())
         helper = command(["git", "show", executor_sha + ":scripts/validation-report.py"]) + "\n"
         payload.update(report_source=helper, report_digest=hashlib.sha256(helper.encode()).hexdigest())
         scheduler = command(["git", "show", executor_sha + ":scripts/validation-schedule.py"]) + "\n"

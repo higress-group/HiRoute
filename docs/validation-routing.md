@@ -582,8 +582,18 @@ Use the exact clean committed candidate on the configured frontend target:
 ```sh
 python3 scripts/validation.py frontend ci
 python3 scripts/validation.py frontend build --console-assets
-# Use the resulting dist and its build receipt on the calling machine.
-python3 scripts/validation.py --frontend-dist apps/desktop/dist backend run \
+```
+
+Copy the resulting dist, including its receipt, with standard file tools to a
+separate directory on the configured backend host. For a local frontend target,
+using your configured SSH alias and a fresh staging directory:
+
+```sh
+backend_host=backend
+staging_dir=.cache/hiroute/console-assets/CANDIDATE_SHA-BLOCKED_RUN_ID
+ssh "$backend_host" "mkdir -p '$staging_dir'"
+scp -r apps/desktop/dist "$backend_host:$staging_dir/"
+python3 scripts/validation.py --frontend-dist "~/$staging_dir/dist" backend run \
   --ref refs/heads/codex/my-change --sha CANDIDATE_SHA \
   --reuse-checkout BLOCKED_RUN_ID --retention always \
   --plan my-change --phase final -- \
@@ -592,11 +602,15 @@ python3 scripts/validation.py --frontend-dist apps/desktop/dist backend run \
 
 `frontend build --console-assets` records the successful build's source SHA and every
 output hash. Ordinary `frontend build` keeps its development behavior without a receipt.
-For SSH backend runs, `--frontend-dist` is a **caller-local** directory, including
-that receipt; copy it unchanged from a remote frontend target if necessary. The
-runner transfers the bytes without a backend frontend toolchain, verifies source
-and hashes again under the existing checkout lease, and stages them into that
-managed checkout. A valid retained dist is rechecked on subsequent installed runs.
+For SSH backend runs, `--frontend-dist` is an **execution-host** absolute or `~/`
+directory, including that receipt. With a remote frontend target, copy its output
+from that host to the backend staging directory. The runner reads those files,
+verifies source and hashes under the existing checkout lease, and stages a verified
+snapshot into the managed checkout. It does not transfer frontend bytes or require
+a backend frontend toolchain. Do not copy files directly into a managed checkout.
+The supplied staging directory remains caller-owned and may be removed after the
+run finishes. A valid retained dist is rechecked on subsequent installed runs
+without supplying `--frontend-dist` again.
 An early console-blocked checkout retained by `always` or `on-failure` can be reused
 at the same SHA/driver; its original blocked result remains unchanged. `never`
 removes the checkout, so omit reuse for the next run. Usual completed-run reuse and

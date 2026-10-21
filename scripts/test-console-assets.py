@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Console selection, provenance and real managed-checkout admission regressions."""
-import base64
-import copy
 import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -55,7 +55,7 @@ class Selection(unittest.TestCase):
                         ['cargo', 'test', '--target', 'x86_64-pc-windows-msvc']):
             with self.subTest(command=command), patch.object(assets, 'stage') as stage:
                 self.assertEqual(assets.preflight(Path('/unused'), dict(command=command),
-                    'linux', {'invalid': 'unused'}), dict(state='not_required', cases=[]))
+                    'linux', '/unused/missing-dist'), dict(state='not_required', cases=[]))
                 stage.assert_not_called()
         self.assertEqual(assets.selected(['cargo', 'test'], 'darwin'), [])
 
@@ -109,31 +109,51 @@ class Artifact(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'clean committed'):
             assets.build(self.repo, {})
 
-    def test_transfer_rejects_old_sha_wrong_hash_missing_extra_and_linked_files(self):
-        value = assets.bundle(self.dist)
+    def test_staging_rejects_old_sha_wrong_hash_missing_extra_and_linked_files(self):
+        receipt = assets.verify(self.dist, self.sha)
         destination = self.root / 'destination'
         (destination / 'apps/desktop').mkdir(parents=True)
-        assets.stage(destination, self.sha, value)
-        self.assertEqual(assets.verify(destination / 'apps/desktop/dist', self.sha), value['receipt'])
-        for kind in ('old', 'hash', 'missing', 'extra', 'traversal'):
-            bad = copy.deepcopy(value)
+        assets.stage(destination, self.sha, self.dist)
+        retained = destination / 'apps/desktop/dist'
+        self.assertEqual(assets.verify(retained, self.sha), receipt)
+        self.assertEqual(assets.verify(self.dist, self.sha), receipt)
+        for kind in ('old', 'hash', 'missing', 'extra', 'file-link', 'directory-link', 'receipt-link', 'special'):
+            bad = self.root / kind
+            shutil.copytree(self.dist, bad)
             if kind == 'old':
-                bad['receipt']['source_revision'] = '0' * 40
+                (bad / assets.RECEIPT).write_text(json.dumps(dict(receipt, source_revision='0' * 40)))
             elif kind == 'hash':
-                bad['contents']['index.html'] = base64.b64encode(b'corrupted').decode()
+                (bad / 'index.html').write_text('corrupted')
             elif kind == 'missing':
-                del bad['contents']['index.html']
-            else:
-                bad['contents']['../foreign' if kind == 'traversal' else 'extra'] = ''
+                (bad / 'index.html').unlink()
+            elif kind == 'extra':
+                (bad / 'extra').write_text('')
+            elif kind in ('file-link', 'receipt-link'):
+                name = assets.RECEIPT if kind == 'receipt-link' else 'index.html'
+                (bad / name).unlink()
+                (bad / name).symlink_to(self.dist / name)
+            elif kind == 'directory-link':
+                shutil.rmtree(bad / 'assets')
+                (bad / 'assets').symlink_to(self.dist / 'assets', target_is_directory=True)
+            elif kind == 'special':
+                os.mkfifo(bad / 'pipe')
             with self.subTest(kind=kind), self.assertRaises(ValueError):
                 assets.stage(destination, self.sha, bad)
-        (self.dist / 'assets/app.js').write_text('tampered')
-        with self.assertRaisesRegex(ValueError, 'hashes'):
-            assets.bundle(self.dist)
-        (self.dist / 'assets/app.js').unlink()
-        (self.dist / 'assets/app.js').symlink_to(self.dist / 'index.html')
+            self.assertEqual(assets.verify(retained, self.sha), receipt)
+        with self.assertRaisesRegex(ValueError, 'outside'):
+            assets.stage(destination, self.sha, retained)
+        with patch.object(assets, 'MAX_BYTES', 1), self.assertRaisesRegex(ValueError, 'size limit'):
+            assets.stage(destination, self.sha, self.dist)
+        snapshots = [assets.files(self.dist), dict(assets.files(self.dist), **{'index.html': b'changed'})]
+        with patch.object(assets, 'files', side_effect=snapshots), self.assertRaisesRegex(ValueError, 'changed'):
+            assets.stage(destination, self.sha, self.dist)
+        with self.assertRaisesRegex(ValueError, 'execution-host'):
+            assets.preflight(destination, dict(command=['cargo', 'test'], sha=self.sha), 'linux', 'relative/dist')
+        (destination / 'apps/desktop/dist').rename(destination / 'apps/desktop/original')
+        retained.symlink_to(destination / 'apps/desktop/original', target_is_directory=True)
         with self.assertRaisesRegex(ValueError, 'link'):
-            assets.bundle(self.dist)
+            assets.stage(destination, self.sha, self.dist)
+        self.assertEqual(assets.verify(retained.parent / 'original', self.sha), receipt)
 
     def test_clean_worker_blocks_before_rust_then_reuses_same_checkout_with_verified_assets(self):
         root = self.root / 'workbench'
@@ -143,7 +163,8 @@ class Artifact(unittest.TestCase):
         request = dict(id=first, ref=ref, sha=self.sha, executor_sha=self.sha, origin=str(self.repo),
                        command=['cargo', 'test', '-p', 'hiroute-daemon', '--test', 'publication_process',
                                 'installed_', '--', '--nocapture'],
-                       retention='on-failure', exclusive=False, timeout=10, plan='console-assets', phase='focused')
+                       retention='on-failure', exclusive=False, timeout=10, plan='console-assets', phase='focused',
+                       ssh_host='fixture-backend')
         home = self.root / 'home'
         binary = home / '.cargo/bin'
         binary.mkdir(parents=True)
@@ -162,12 +183,12 @@ print('test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered ou
             path.write_text('#!' + sys.executable + '\n' + fake)
             path.chmod(0o700)
 
-        def execute(row, bundle=None):
+        def execute(row, source=None):
             run = root / 'runs' / row['id']
             run.mkdir(parents=True)
+            if source is not None:
+                row = dict(row, frontend_dist=str(source))
             runner.save(run / 'request.json', row)
-            if bundle is not None:
-                runner.save(run / 'console-assets.json', bundle)
             with patch.object(runner.Path, 'home', return_value=home), patch.dict(os.environ, {}, clear=False), \
                  patch.object(runner.sys, 'platform', 'linux'), \
                  patch.object(runner.tempfile, 'gettempdir', return_value=str(self.root)), \
@@ -183,24 +204,30 @@ print('test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered ou
         stats.assert_not_called()
         self.assertFalse((root / 'runs' / first / 'command.log').exists())
         self.assertIn('--reuse-checkout ' + first, before['console_assets']['preparation'][-1])
+        staging = home / '.cache/hiroute/console-assets' / first
+        preparation = before['console_assets']['preparation']
+        self.assertIn(shlex.join(['scp', '-r', 'apps/desktop/dist', 'fixture-backend:' + str(staging) + '/']), preparation)
+        self.assertEqual(shlex.split(preparation[-1])[2:4], ['--frontend-dist', str(staging / 'dist')])
         row = dict(request, id=second, reuse_checkout=first, retention='always')
         lease = runner.checkout_lease(root, first)
         try:
-            blocked, _ = execute(dict(row, id='20261021-000003-abcdef12'), assets.bundle(self.dist))
+            blocked, _ = execute(dict(row, id='20261021-000003-abcdef12'), self.dist)
             self.assertEqual(blocked.get('blocker'), 'checkout_busy')
         finally:
             lease.close()
         for index, kind in enumerate(('sha', 'hash'), 4):
-            bad = assets.bundle(self.dist)
+            bad = self.root / ('worker-' + kind)
+            shutil.copytree(self.dist, bad)
             if kind == 'sha':
-                bad['receipt']['source_revision'] = '0' * 40
+                receipt = json.loads((bad / assets.RECEIPT).read_text())
+                (bad / assets.RECEIPT).write_text(json.dumps(dict(receipt, source_revision='0' * 40)))
             else:
-                bad['contents']['index.html'] = base64.b64encode(b'corrupted').decode()
+                (bad / 'index.html').write_text('corrupted')
             invalid, stats = execute(dict(row, id='20261021-00000' + str(index) + '-abcdef12'), bad)
             self.assertEqual(invalid.get('blocker'), 'console_assets')
             self.assertNotIn('command_started_at', invalid)
             stats.assert_not_called()
-        after, _ = execute(row, assets.bundle(self.dist))
+        after, _ = execute(row, self.dist)
         self.assertEqual(after['status'], 'completed', after)
         self.assertEqual(after['checkout'], before['checkout'])
         self.assertEqual(after['console_assets']['state'], 'verified')

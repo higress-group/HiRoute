@@ -8,7 +8,8 @@ per-origin SSH workbenches, shared compiler capacity and separate candidate/driv
 revision identities. A runner setup failure is not a product test result.
 The [console artifact owner](../../scripts/console-assets.py) checks selected SSH
 installed-package prerequisites before Rust execution and verifies the same-candidate
-frontend handoff under the runner's checkout lease.
+frontend from an execution-host staging directory under the runner's checkout lease.
+Standard file tools supply that directory; the runner does not transport frontend bytes.
 Windows development execution is owned by [windows-dev.py](../../scripts/windows-dev.py)
 and its [native executor](../../scripts/windows-dev-host.py), reached through
 `validation.py windows`. HOME configuration owns machine/session/client locations;

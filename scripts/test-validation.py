@@ -105,15 +105,15 @@ class Routing(unittest.TestCase):
         self.assertEqual(result, 7)
         self.assertEqual(call.call_args.args[0][-4:], ['--host', 'linux', 'logs', 'RUN'])
 
-    def test_frontend_handoff_is_a_caller_path_only_for_ssh_backend_run(self):
+    def test_frontend_staging_path_routes_only_to_ssh_backend_run(self):
         target = {'backend': {'transport': 'ssh', 'host': 'linux'}}
         with patch.object(m.subprocess, 'check_output', return_value='a' * 40), \
              patch.object(m.subprocess, 'call', return_value=0) as call:
             m.dispatch(target, 'backend', ['run', '--ref', 'refs/heads/example', '--', 'cargo', 'test'],
-                       frontend_dist='/caller/candidate/dist')
+                       frontend_dist='~/.cache/candidate/dist')
         argv = call.call_args.args[0]
         self.assertEqual(argv[argv.index('run') + 1:argv.index('run') + 3],
-                         ['--frontend-dist', '/caller/candidate/dist'])
+                         ['--frontend-dist', '~/.cache/candidate/dist'])
         self.assertNotIn('--frontend-dist', argv[argv.index('--') + 1:])
         for transport, action, arguments in (('local', 'backend', ['run']),
                                               ('ssh', 'backend', ['status', 'RUN']),

@@ -61,10 +61,11 @@ When managed SSH backend selection includes installed-package acceptance requiri
 the console, the runner MUST verify the candidate's frontend source revision and
 output hashes before starting Rust execution. Missing or mismatched assets block
 setup with actionable preparation instructions; they are not product failures or
-successful acceptance. Prepared assets enter the retained candidate only under its
-checkout lease and are rechecked before use. Selections that exclude the installed
-scenarios MUST NOT require a frontend build. Real installed management and Quickstart
-assertions remain required after preparation; artifact verification alone does not
+successful acceptance. The caller supplies prepared assets in a separate execution-host
+staging directory; the runner verifies them and places them in the retained candidate
+only under its checkout lease. Retained assets are rechecked before use. Selections
+that exclude the installed scenarios MUST NOT require a frontend build. Real installed
+management and Quickstart assertions remain required after preparation; artifact verification alone does not
 establish their outcomes.
 
 ### Requirement: Evidence binds actual revision, artifact, role, and path

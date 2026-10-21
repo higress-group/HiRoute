@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Exact-candidate console handoff for managed installed-package acceptance."""
-import base64
 import fnmatch
 import hashlib
 import json
-from pathlib import Path, PurePosixPath
-import re
+from pathlib import Path
 import shutil
 import stat
 import subprocess
@@ -106,7 +104,7 @@ def files(dist):
         data = path.read_bytes()
         total += len(data)
         if total > MAX_BYTES:
-            raise ValueError("Console dist exceeds the transfer limit")
+            raise ValueError("Console dist exceeds the size limit")
         result[path.relative_to(dist).as_posix()] = data
     if not result.get("index.html"):
         raise ValueError("Console dist must contain a nonempty index.html")
@@ -148,31 +146,13 @@ def verify(dist, sha):
     return value
 
 
-def bundle(dist):
-    receipt = dist / RECEIPT
-    if receipt.is_symlink():
-        raise ValueError("Console receipt must not be a link")
-    sha = json.loads(receipt.read_text())["source_revision"]
-    value = verify(dist, sha)
-    contents = files(dist)
+def stage(checkout, sha, source):
+    if source.resolve() == checkout.resolve() or checkout.resolve() in source.resolve().parents:
+        raise ValueError("Console staging directory must be outside the managed checkout")
+    value = verify(source, sha)
+    contents = files(source)
     if value != manifest(sha, contents):
-        raise ValueError("Console bytes changed while preparing transfer")
-    return dict(receipt=value, contents={name: base64.b64encode(data).decode("ascii")
-                                        for name, data in contents.items()})
-
-
-def stage(checkout, sha, value):
-    contents = {}
-    for name, encoded in value["contents"].items():
-        path = PurePosixPath(name)
-        if (not name or path.is_absolute() or path.as_posix() != name or ".." in path.parts
-                or "\\" in name or name == RECEIPT):
-            raise ValueError("Invalid console artifact path")
-        contents[name] = base64.b64decode(encoded, validate=True)
-    if (not re.fullmatch(r"[0-9a-f]{40}", sha) or not contents.get("index.html")
-            or sum(map(len, contents.values())) > MAX_BYTES
-            or value["receipt"] != manifest(sha, contents)):
-        raise ValueError("Console transfer source revision or file hashes differ from the candidate")
+        raise ValueError("Console bytes changed while reading the staging directory")
     parent = checkout / "apps/desktop"
     if any(p.is_symlink() for p in (checkout, checkout / "apps", parent, parent / "dist")):
         raise ValueError("Console destination must not traverse links")
@@ -183,7 +163,7 @@ def stage(checkout, sha, value):
             path = temporary / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-        (temporary / RECEIPT).write_text(json.dumps(value["receipt"], indent=2) + "\n")
+        (temporary / RECEIPT).write_text(json.dumps(value, indent=2) + "\n")
         verify(temporary, sha)
         dist = parent / "dist"
         if dist.exists():
@@ -199,7 +179,10 @@ def preflight(checkout, request, platform, supplied=None):
     if not cases:
         return dict(state="not_required", cases=[])
     if supplied is not None:
-        stage(checkout, request["sha"], supplied)
+        source = Path(supplied).expanduser()
+        if not source.is_absolute():
+            raise ValueError("Console staging directory must be an execution-host absolute path or ~/ path")
+        stage(checkout, request["sha"], source)
     value = verify(checkout / "apps/desktop/dist", request["sha"])
     return dict(state="verified", cases=cases, source_revision=value["source_revision"],
                 files=len(value["files"]), receipt_sha256=hashlib.sha256(
