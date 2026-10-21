@@ -346,13 +346,29 @@ fn real_listener_managed_qoder_path_disables_unknown_bun_user_classification() {
     let classifier = NativeProvider::start(vec![]);
     let fixture = native_fixture("unknown", &[&simple, &primary, &classifier]);
     let path = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);
+    let bearer = format!("Bearer {TOKEN}");
+    let denied = request(
+        fixture.address,
+        "POST",
+        &path,
+        &[("X-HiRoute-Token", TOKEN)],
+        &serde_json::to_vec(&json!({"model":MODEL,"input":"wrong native carrier"})).unwrap(),
+    );
+    assert_eq!(
+        denied.status, 401,
+        "the reserved native entry must keep its bearer-only contract"
+    );
+    assert_eq!(
+        (simple.calls(), primary.calls(), classifier.calls()),
+        (0, 0, 0)
+    );
     for input in ["REAL_MANAGED_QODER_USER", "UNMARKED_MANAGED_QODER_SUMMARY"] {
         let response = request(
             fixture.address,
             "POST",
             &path,
             &[
-                ("X-HiRoute-Token", TOKEN),
+                ("Authorization", bearer.as_str()),
                 ("User-Agent", "Bun/1.4.2"),
                 ("session-id", "shared-native-qoder"),
             ],
