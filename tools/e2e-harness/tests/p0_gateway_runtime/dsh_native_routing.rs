@@ -178,7 +178,7 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
     for invalid in malformed {
         let model = NativeProvider::start(vec![reply(RESPONSES_OK)]);
         let unused_economy = NativeProvider::start(vec![]);
-        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_COMPLEX)]);
         let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
             &[&unused_economy, &model, &classifier],
             1,
@@ -195,8 +195,8 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
         assert_eq!(output["status"], "completed");
         assert_eq!(
             classifier.calls(),
-            0,
-            "an unproved native envelope must not be sent as a real classifier input"
+            1,
+            "an unproved native envelope remains observed input, not human proof"
         );
         assert_eq!(model.calls(), 1);
         assert_eq!(unused_economy.calls(), 0);
@@ -217,7 +217,7 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
     // source message. The old digest cannot authorize the summary as that user.
     let model = NativeProvider::start(vec![reply(RESPONSES_OK)]);
     let unused_economy = NativeProvider::start(vec![]);
-    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_COMPLEX)]);
     let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
         &[&unused_economy, &model, &classifier],
         1,
@@ -231,7 +231,7 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
         ]),
     );
     assert_eq!(response.status, 200);
-    assert_eq!(classifier.calls(), 0);
+    assert_eq!(classifier.calls(), 1);
     assert_eq!(model.calls(), 1);
 }
 
@@ -240,8 +240,15 @@ fn real_listener_dsh_detached_main_without_a_new_user_discloses_the_capture_gap(
     for failure in ["missing", "mismatched", "auxiliary"] {
         let model = NativeProvider::start(vec![reply(RESPONSES_OK), reply(RESPONSES_OK)]);
         let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-        let classifier =
-            NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE)]);
+        let classifier = NativeProvider::start(if failure == "auxiliary" {
+            vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE)]
+        } else {
+            vec![
+                reply(CLASSIFIER_SIMPLE),
+                reply(CLASSIFIER_COMPLEX),
+                reply(CLASSIFIER_SIMPLE),
+            ]
+        });
         let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
             &[&model, &primary, &classifier],
             1,
@@ -281,8 +288,8 @@ fn real_listener_dsh_detached_main_without_a_new_user_discloses_the_capture_gap(
         );
         assert_eq!(
             classifier.calls(),
-            1,
-            "unproved relay must not classify an ancestor user"
+            if failure == "auxiliary" { 1 } else { 2 },
+            "known auxiliary stays detached; unknown relay uses its observed lane"
         );
         assert_eq!(primary.calls(), 1);
         let mut next = vec![first, json!({"role":"assistant","content":"ok"})];
@@ -309,7 +316,7 @@ fn real_listener_dsh_detached_main_without_a_new_user_discloses_the_capture_gap(
             .status,
             200
         );
-        let decision = body(&classifier, 1);
+        let decision = body(&classifier, if failure == "auxiliary" { 1 } else { 2 });
         assert_eq!(
             decision["history_partial"],
             failure != "auxiliary",
