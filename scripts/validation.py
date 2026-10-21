@@ -84,8 +84,9 @@ def dispatch(targets, action, arguments, frontend_dist=None, dry_run=False):
     if name not in targets:
         raise ValueError("Configure a " + name + " target in ~/.config/hiroute/validation.json")
     target = targets[name]
-    if frontend_dist and not (action == "desktop" and arguments[:1] == ["run"]):
-        raise ValueError("--frontend-dist is only for desktop run")
+    if frontend_dist and not (arguments[:1] == ["run"] and (
+            action == "desktop" or (action == "backend" and target["transport"] == "ssh"))):
+        raise ValueError("--frontend-dist is only for desktop run or SSH backend run")
     if action in ("backend", "desktop", "pilot-build"):
         arguments = with_candidate(arguments, REPO)
     if name == "backend" and target["transport"] == "ssh":
@@ -93,6 +94,8 @@ def dispatch(targets, action, arguments, frontend_dist=None, dry_run=False):
             # This is read-only; no worker submission or sccache server startup.
             payload = dict(target=target, action="doctor", name=name, arguments=[], repo="~/git/HiRoute")
         else:
+            if frontend_dist:
+                arguments[1:1] = ["--frontend-dist", frontend_dist]
             argv = [sys.executable, str(REPO / "scripts/remote-rust.py"), "--host", target["host"], *arguments]
             if dry_run:
                 print(json.dumps({"target": target, "argv": argv}, indent=2))
@@ -121,7 +124,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=CONFIG)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--frontend-dist", help="Frontend path on the Desktop execution host")
+    parser.add_argument("--frontend-dist", help="Desktop execution-host path, or caller-local console dist for SSH backend run")
     parser.add_argument("action", choices=("show", "doctor", *TARGETS, "pilot", "pilot-cli", "pilot-build", "windows"))
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()

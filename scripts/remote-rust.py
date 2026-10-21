@@ -62,6 +62,16 @@ def scheduling():
     return module
 
 
+def console_assets():
+    path = Path(__file__).with_name("console-assets.py")
+    if not path.exists():
+        path = Path(__file__).with_name(Path(__file__).stem + "-console.py")
+    spec = importlib.util.spec_from_file_location("console_assets", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def full_test(cargo):
     before = cargo[:cargo.index("--")] if "--" in cargo else cargo
     return cargo[:2] == ["cargo", "test"] and "--workspace" in before
@@ -262,8 +272,13 @@ def verify_reused_checkout(root, request):
         raise RunBlocked("checkout_missing", "Reusable checkout owner run is missing")
     previous = json.loads(previous_path.read_text())
     checkout = root / "worktrees" / owner_id
-    if (previous.get("id") != owner_id or previous.get("status") != "completed"
-            or previous.get("retention") != "always" or previous.get("sha") != request["sha"]
+    console_blocked = (previous.get("status") == "blocked" and previous.get("blocker") == "console_assets"
+                       and previous.get("process_exit") is None and not previous.get("command_started_at"))
+    ready = previous.get("status") == "completed" or console_blocked
+    if (previous.get("id") != owner_id or not ready
+            or (previous.get("retention") != "always"
+                and not (console_blocked and previous.get("retention") == "on-failure"))
+            or previous.get("sha") != request["sha"]
             or previous.get("origin") != request["origin"]
             or previous.get("executor_sha") != request["executor_sha"]
             or previous.get("checkout") != str(checkout)
@@ -582,6 +597,34 @@ def worker(request_path):
             result.update(status="running", checkout=str(checkout), checkout_owner=owner_id or request["id"],
                           started_at=time.time(), checkout_finished_at=time.time())
             save(result_path, result)
+            try:
+                supplied = run / "console-assets.json"
+                result["console_assets"] = console_assets().preflight(
+                    checkout, request, sys.platform,
+                    json.loads(supplied.read_text()) if supplied.exists() else None)
+            except (ValueError, OSError, KeyError) as error:
+                result["console_assets"] = dict(state="blocked", reason=str(error))
+                rerun = ["python3", "scripts/validation.py", "--frontend-dist", "apps/desktop/dist",
+                         "backend", "run", "--ref", request["ref"], "--sha", request["sha"],
+                         "--retention", "always"]
+                if owner_id or request["retention"] != "never":
+                    rerun += ["--reuse-checkout", owner_id or request["id"]]
+                if request.get("schedule"):
+                    rerun += ["--schedule", request["schedule"]]
+                if request.get("exclusive"):
+                    rerun += ["--exclusive"]
+                if request.get("plan"):
+                    rerun += ["--plan", request["plan"], "--phase", request.get("phase", "focused")]
+                rerun += ["--", *request["command"]]
+                result["console_assets"]["preparation"] = [
+                    "At the exact clean candidate on the configured frontend target:",
+                    "python3 scripts/validation.py frontend ci",
+                    "python3 scripts/validation.py frontend build --console-assets",
+                    "With that dist available on the caller, rerun:", shlex.join(rerun)]
+                raise RunBlocked("console_assets", str(error) +
+                                 "; prepare with validation.py frontend build --console-assets, then pass "
+                                 "--frontend-dist to SSH backend run; see result.console_assets.preparation") from error
+            save(result_path, result)
             server_env = cache_server_environment(root)
             result["cache_server_environment"] = {
                 "temporary_directory": server_env["TMPDIR"], "idle_timeout": "0",
@@ -715,7 +758,7 @@ try:
  except FileExistsError: pass
  if driver.read_text()!=source: raise RuntimeError("immutable driver mismatch")
 finally: temporary.unlink()
-for kind in ("report","schedule"):
+for kind in ("report","schedule","console"):
  helper=p.pop(kind+"_source",None)
  if helper is not None:
   if hashlib.sha256(helper.encode()).hexdigest()!=p[kind+"_digest"]: raise RuntimeError(kind+" helper digest mismatch")
@@ -732,6 +775,8 @@ if mode=="maintenance":
  subprocess.run([sys.executable,str(driver)]+p["driver_args"],check=True)
 elif mode=="worker":
  run=r/"runs"/p["id"];run.mkdir(parents=True)
+ assets=p.pop("console_assets_bundle",None)
+ if assets is not None: (run/"console-assets.json").write_text(json.dumps(assets))
  (run/"request.json").write_text(json.dumps(p))
  (run/"result.json").write_text(json.dumps(dict(p,status="queued",process_exit=None)))
  with (run/"worker.log").open("w") as log:
@@ -809,6 +854,7 @@ def main():
     run = sub.add_parser("run", help="Queue a focused Cargo command against a pushed commit")
     run.add_argument("--ref", required=True, help="Advertised branch, e.g. refs/heads/codex/my-proposal")
     run.add_argument("--sha", help="Default: current HEAD")
+    run.add_argument("--frontend-dist", type=Path, help="Caller-local exact-candidate dist from validation.py frontend build")
     run.add_argument("--exclusive", action="store_true", help="Reserve all 8 slots, 64 compiler jobs (bench/Gates)")
     run.add_argument("--timeout", type=int, default=3600)
     run.add_argument("--retention", choices=RETENTION_POLICIES, default="on-failure",
@@ -870,10 +916,14 @@ def main():
                        schedule=args.schedule,
                        executor_digest=hashlib.sha256(source.encode()).hexdigest(), source=source)
         payload.update(reporting().options(args), submitted_at=time.time())
+        if args.frontend_dist:
+            payload["console_assets_bundle"] = console_assets().bundle(args.frontend_dist.expanduser())
         helper = command(["git", "show", executor_sha + ":scripts/validation-report.py"]) + "\n"
         payload.update(report_source=helper, report_digest=hashlib.sha256(helper.encode()).hexdigest())
         scheduler = command(["git", "show", executor_sha + ":scripts/validation-schedule.py"]) + "\n"
         payload.update(schedule_source=scheduler, schedule_digest=hashlib.sha256(scheduler.encode()).hexdigest())
+        console = command(["git", "show", executor_sha + ":scripts/console-assets.py"]) + "\n"
+        payload.update(console_source=console, console_digest=hashlib.sha256(console.encode()).hexdigest())
         # bashrc owns the user's proxy settings. No credentials or proxy URLs are serialized.
         remote = "source ~/.bashrc >/dev/null 2>&1; exec python3 -c " + shlex.quote(BOOTSTRAP)
         subprocess.run(["ssh", "-o", "BatchMode=yes", args.host, "bash -lc " + shlex.quote(remote)],

@@ -55,6 +55,18 @@ exit MUST fail the run independently of otherwise successful test summaries.
 - **WHEN** the final observed child summary has no completed parent summary, including when both selected the same number of tests
 - **THEN** validation remains incomplete and the child summary cannot establish parent success or independent parent counts.
 
+#### Scenario: Installed-package prerequisites fail before expensive execution
+
+When managed SSH backend selection includes installed-package acceptance requiring
+the console, the runner MUST verify the candidate's frontend source revision and
+output hashes before starting Rust execution. Missing or mismatched assets block
+setup with actionable preparation instructions; they are not product failures or
+successful acceptance. Prepared assets enter the retained candidate only under its
+checkout lease and are rechecked before use. Selections that exclude the installed
+scenarios MUST NOT require a frontend build. Real installed management and Quickstart
+assertions remain required after preparation; artifact verification alone does not
+establish their outcomes.
+
 ### Requirement: Evidence binds actual revision, artifact, role, and path
 
 Report MUST include checked source revision, build/executable identity, platform,

@@ -569,12 +569,40 @@ explicit rollback path and is never run automatically after a DAG failure. Other
 selectors, profiles and filters use the ordinary runner. A bridge over the old
 three-slot locks keeps legacy and eight-slot workers mutually exclusive.
 
-The installed Linux package scenario requires the same candidate's production frontend
-at `apps/desktop/dist`. Build it through the configured frontend target, then stage those
-bytes into the inactive managed backend checkout under its checkout lease before running
-`installed_standalone_cli_completes_the_headless_management_loop`. Do not replace them with
-a dummy page or install a second frontend toolchain on the backend. Hosted full CI uses
-its frontend artifact handoff for this prerequisite.
+The installed Linux management, Quickstart and model-feed scenarios require the same
+candidate's production frontend at `apps/desktop/dist`. The SSH backend inspects the
+Cargo/libtest selection and checks this prerequisite before Cargo or sccache starts.
+Missing receipts, another source SHA, missing/extra files and changed hashes block
+the run with `blocker=console_assets`, a null process exit and preparation commands
+in `result.console_assets.preparation`. Pure library checks, compilation, listing,
+other targets and filters excluding these cases do not require console assets.
+
+Use the exact clean committed candidate on the configured frontend target:
+
+```sh
+python3 scripts/validation.py frontend ci
+python3 scripts/validation.py frontend build --console-assets
+# Use the resulting dist and its build receipt on the calling machine.
+python3 scripts/validation.py --frontend-dist apps/desktop/dist backend run \
+  --ref refs/heads/codex/my-change --sha CANDIDATE_SHA \
+  --reuse-checkout BLOCKED_RUN_ID --retention always \
+  --plan my-change --phase final --related-run BLOCKED_RUN_ID -- \
+  cargo test --locked -p hiroute-daemon --test publication_process installed_ -- --nocapture
+```
+
+`frontend build --console-assets` records the successful build's source SHA and every
+output hash. Ordinary `frontend build` keeps its development behavior without a receipt.
+For SSH backend runs, `--frontend-dist` is a **caller-local** directory, including
+that receipt; copy it unchanged from a remote frontend target if necessary. The
+runner transfers the bytes without a backend frontend toolchain, verifies source
+and hashes again under the existing checkout lease, and stages them into that
+managed checkout. A valid retained dist is rechecked on subsequent installed runs.
+An early console-blocked checkout retained by `always` or `on-failure` can be reused
+at the same SHA/driver; its original blocked result remains unchanged. `never`
+removes the checkout, so omit reuse for the next run. Usual completed-run reuse and
+cleanup ownership still apply. Do not replace production assets with a dummy page
+or weaken package assertions. Hosted CI retains its existing frontend artifact
+handoff; this SSH preflight does not change that boundary.
 
 ## Pilot from either development machine
 

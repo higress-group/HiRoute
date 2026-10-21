@@ -319,10 +319,11 @@ class SelectionTests(unittest.TestCase):
 
     def test_validation_tooling_selects_runner_consumers_without_product_builds(self):
         result = plan.select(['scripts/validation.py', 'scripts/local-rust.py', 'scripts/pilot-builds.py',
-                              'scripts/desktop-pilot.py', 'docs/validation-routing.md'])
+                              'scripts/desktop-pilot.py', 'scripts/console-assets.py',
+                              'scripts/test-console-assets.py', 'docs/validation-routing.md'])
         self.assertFalse(result['rust'])
         self.assertFalse(result['frontend'])
-        for name in ('test-validation.py', 'test-local-rust.py', 'test-remote-rust.py',
+        for name in ('test-validation.py', 'test-console-assets.py', 'test-local-rust.py', 'test-remote-rust.py',
                      'test-ci-shards.py', 'test-desktop-pilot.py', 'test-pilot-builds.py'):
             self.assertIn(['python3', 'scripts/' + name], result['commands'])
         mixed = plan.select(['scripts/validation.py', 'crates/daemon/src/lib.rs'])

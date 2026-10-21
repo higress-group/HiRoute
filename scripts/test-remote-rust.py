@@ -239,8 +239,10 @@ sys.exit(101 if bad else 0)
                 runner.save(path, request)
                 with patch.object(runner.Path, 'home', return_value=home), patch.dict(os.environ, {}, clear=False), \
                      patch.object(runner.tempfile, 'gettempdir', return_value=str(base.resolve())), \
+                     patch.object(runner, 'console_assets') as console, \
                      patch.object(runner, 'MIN_FREE_BYTES', 0), \
                      patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}):
+                    console.return_value.preflight.return_value = dict(state='not_required', cases=[])
                     runner.worker(path)
                 result = json.loads((run / 'result.json').read_text())
                 if result.get('temporary_directory'):
