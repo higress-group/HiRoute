@@ -7,6 +7,9 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
+import urllib.request
+from http.server import ThreadingHTTPServer
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -16,6 +19,43 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'crates/daemon/test
 from agent_product_support import apply_settings, run_native_command, expose_native_installation
 import standalone_headless_product as headless
 from dsh_native_context import DshModelSettings, read_patch, encode_patch
+from decision_services_product import DecisionEndpoint
+
+
+class DecisionEndpointContractTests(unittest.TestCase):
+    def reply(self, option):
+        endpoint = type('ContractEndpoint', (DecisionEndpoint,), {'requests': []})
+        server = ThreadingHTTPServer(('127.0.0.1', 0), endpoint)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            body = {'decision': {'kind': 'categorical', 'options': [option]}}
+            request = urllib.request.Request(f'http://127.0.0.1:{server.server_port}/decision',
+                data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(request, timeout=5) as response:
+                result = json.load(response)
+            self.assertEqual(endpoint.requests[0][1], body)
+            return result['decision']
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
+
+    def test_plain_category_does_not_invent_an_ordinal_refinement(self):
+        result = self.reply({'id': 'native', 'criterion': 'Native task'})
+        self.assertEqual(result, {'kind': 'categorical', 'choice': 'native'})
+
+    def test_declared_refinement_uses_only_the_requested_levels(self):
+        option = {'id': 'native', 'criterion': 'Native task', 'refinement': {
+            'kind': 'ordinal', 'instructions': 'Use the declared levels',
+            'levels': [{'id': name, 'criterion': name} for name in ('small', 'medium', 'large')]}}
+        result = self.reply(option)
+        self.assertEqual(result['choice'], 'native')
+        self.assertEqual(result['refinement']['kind'], 'ordinal')
+        probabilities = result['refinement']['probabilities']
+        self.assertEqual(set(probabilities), {'small', 'medium', 'large'})
+        self.assertAlmostEqual(sum(probabilities.values()), 1)
+        self.assertGreater(probabilities['small'], probabilities['large'])
 
 
 class DshRestorationEvidenceTests(unittest.TestCase):

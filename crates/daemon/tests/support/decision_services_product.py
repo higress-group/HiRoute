@@ -29,8 +29,14 @@ class DecisionEndpoint(BaseHTTPRequestHandler):
                 if question['type'] == 'choice' else {'type': 'score', 'probabilities': {'0': 0.9, '1': 0.1}})
                 for key, question in body['questions'].items()}}
         else:
-            result = {'decision': {'kind': 'categorical', 'choice': body['decision']['options'][0]['id'],
-                'refinement': {'kind': 'ordinal', 'probabilities': {'simple': 0.9, 'complex': 0.1}}}}
+            option = body['decision']['options'][0]
+            decision = {'kind': 'categorical', 'choice': option['id']}
+            refinement = option.get('refinement')
+            if refinement is not None:
+                decision['refinement'] = {'kind': 'ordinal', 'probabilities': {
+                    level['id']: 1.0 if index == 0 else 0.0
+                    for index, level in enumerate(refinement['levels'])}}
+            result = {'decision': decision}
         raw = encoded(result)
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')

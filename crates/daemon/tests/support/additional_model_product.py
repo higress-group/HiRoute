@@ -228,6 +228,7 @@ def run(repository, candidate):
             with native_history_decisions(product, plans[0]['plan_id'], first_editor) as decisions:
                 history = exercise_native_history(product, binary, node, selector, oracles[0], decisions, HARNESS)
             report['cases'].extend(history['cases'])
+            report['native_routing_receipts'] = history['routing_receipts']
             stage = 'persist-model-routes'
         product.stop()
         product.start()

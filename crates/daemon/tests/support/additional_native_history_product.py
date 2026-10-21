@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import secrets
 import subprocess
+import time
 
 from additional_model_fixture import successful_native_result
 from contextlib import contextmanager
@@ -20,17 +21,50 @@ HISTORY_CASES = ("agent.models.native-adapter-autoload-history",
                     "agent.models.native-adapter-restart-conservative")
 
 
+def native_decision_receipt(product, since_ns):
+    """Prove the real selected branch, rather than accepting a classifier call plus fallback."""
+    deadline = time.monotonic() + 30
+    while True:
+        sessions = product.public_cli("sessions list --include-unlinked --limit 100")[1]["data"]["sessions"]
+        decisions, seen = [], set()
+        for session in sessions:
+            detail = product.public_cli("sessions show " + session["session_id"])[1]["data"]
+            for turn in detail["turns"]:
+                for receipt_id in turn["receipt_ids"]:
+                    if receipt_id in seen:
+                        continue
+                    seen.add(receipt_id)
+                    receipt = product.public_cli("sessions receipt " + receipt_id)[1]["data"]
+                    if receipt.get("outcome") != "accepted" or receipt["trust"].get("agent_plan_id") != product.plan_id:
+                        continue
+                    for event in receipt["ordered_facts"]:
+                        if event["fact"]["kind"] == "route_decision" and event["occurred_at_unix_nanos"] >= since_ns:
+                            decisions.append({"receipt_id": receipt_id, "request_id": receipt["request_id"],
+                                              "decision": event["fact"].get("complexity")})
+        if decisions:
+            assert len(decisions) == 1, "native prompt did not have exactly one accepted routing decision"
+            decision = decisions[0]["decision"]
+            assert decision and decision["decision_source"] == "external_classifier", \
+                "native classification request did not produce an actual external decision"
+            assert not decision["fallback_used"] and decision["branch_id"] == "native", \
+                "native prompt used fallback or ignored the selected non-default branch"
+            return decisions[0]
+        assert time.monotonic() < deadline, "native routing receipt was not retained"
+        time.sleep(.05)
+
+
 def exercise_native_history(product, binary, node, selector, oracle, decisions, harness):
     """decisions() returns actual custom-service request bodies in arrival order."""
     provider, model = selector.split("/", 1)
     session = "native-autoload-" + secrets.token_hex(10) if harness == "pi" else None
     required = list(HISTORY_CASES)
-    report = {"required_cases": required, "selected_cases": required, "cases": []}
+    report = {"required_cases": required, "selected_cases": required, "cases": [], "routing_receipts": []}
 
     def ask(label, disabled=False):
         nonlocal session
         prompt = oracle.arm(label)
         before = len(oracle.calls)
+        since_ns = time.time_ns()
         if harness == "pi":
             command = [str(node), str(binary), "--provider", provider, "--model", model,
                        "--session-id", session, "--mode", "json", "--print", "--offline", "--tools", "read"]
@@ -48,6 +82,7 @@ def exercise_native_history(product, binary, node, selector, oracle, decisions, 
             assert observed == session, "native client started a replacement session"
         session = observed
         assert oracle.calls[before:] == [label], "native client did not reach the selected production route once"
+        report["routing_receipts"].append({"label": label, **native_decision_receipt(product, since_ns)})
         return prompt
 
     @contextmanager
