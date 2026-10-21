@@ -1,4 +1,5 @@
 use super::*;
+use crate::context_hold::NativeUserOrigin;
 use crate::server::core_runtime::model_ir::{
     CanonicalMessage, MODEL_REQUEST_IR_SCHEMA, RequestedReasoningControl,
     ResponsesRequestOptionsV1, ToolChoice,
