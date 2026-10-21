@@ -19,13 +19,10 @@ fn cpa_snapshot_revalidation_does_not_block_native_grant_registration() {
     let mut probes = 0;
     std::thread::scope(|scope| {
         let (sender, receiver) = mpsc::channel();
-        scope.spawn(|| {
+        let adapter = fixture.adapter();
+        scope.spawn(move || {
             sender
-                .send(
-                    fixture
-                        .adapter()
-                        .routing_compilation_snapshot(&WorkspaceId::default()),
-                )
+                .send(adapter.routing_compilation_snapshot(&WorkspaceId::default()))
                 .unwrap();
         });
         let deadline = Instant::now() + Duration::from_secs(15);
