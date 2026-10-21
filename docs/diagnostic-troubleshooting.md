@@ -67,6 +67,23 @@ Otherwise its control/lifecycle deadline can block native grant registration pas
 the shorter host ACK deadline. A long CPA call and routing snapshot are evidence
 of contention, not proof of which historical protected exchange first failed.
 
+For slow subscription validation, follow `cpa_control` records sharing a span.
+`controls_patch` can include synchronous upstream model discovery; an entered phase
+without a terminal observation identifies the last reached boundary, not its cause.
+`account_pin` and `catalog_pin` report their elapsed/shared budget and poll counts.
+Their `checks` distinguish index continuity, retry settings, persisted controls,
+empty account models, wrong prefixes and missing downstream models. Missing fields
+mean the check was not reached; false is an actual unmet condition. These are last
+observations within one call, not an atomic snapshot of the external process.
+
+An empty account catalog after a failed initial discovery can coexist with correct
+persisted controls. Ordinary pin reads do not refresh an already-correct account;
+repeated reads alone therefore cannot establish that upstream discovery recovered.
+Use an isolated explicit check to distinguish this state from slow management I/O.
+Keep remote availability, local pin convergence and successful inference separate.
+Do not infer the historical failing condition from the generic
+`control_pin_not_applied` code alone.
+
 Inspect `protected_exchange` in both roles before attributing the original trigger.
 The event records a closed exchange family, phase, duration, failure category and
 HMAC registration correlation, with the authority-loss transition on the host.

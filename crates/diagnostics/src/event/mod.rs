@@ -9,6 +9,7 @@ mod common;
 mod content;
 mod control;
 mod cpa;
+mod cpa_control;
 mod model;
 mod observation;
 mod protected_channel;
@@ -24,6 +25,7 @@ pub use common::*;
 pub use content::*;
 pub use control::*;
 pub use cpa::*;
+pub use cpa_control::*;
 pub use model::*;
 pub use observation::*;
 pub use protected_channel::*;
@@ -84,6 +86,7 @@ pub enum DiagnosticEvent {
     CpaLifecycle(CpaLifecycle),
     CredentialLease(CredentialLease),
     CpaStage(CpaStage),
+    CpaControl(CpaControl),
 }
 
 impl DiagnosticEvent {
@@ -196,6 +199,10 @@ impl DiagnosticEvent {
             | DiagnosticEvent::CpaLifecycle(_)
             | DiagnosticEvent::CredentialLease(_) => Info,
             DiagnosticEvent::WorkerStage(_) | DiagnosticEvent::CpaStage(_) => Debug,
+            DiagnosticEvent::CpaControl(control) => match control.outcome {
+                CpaStageOutcome::Failed { .. } => Warn,
+                _ => Debug,
+            },
         }
     }
 
@@ -260,6 +267,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::CpaLifecycle(_) => "cpa_lifecycle",
             DiagnosticEvent::CredentialLease(_) => "credential_lease",
             DiagnosticEvent::CpaStage(_) => "cpa_stage",
+            DiagnosticEvent::CpaControl(_) => "cpa_control",
         }
     }
 }

@@ -223,6 +223,7 @@ impl CpaControlPlane for FakeControl {
         expected_version: &str,
         timeout: Duration,
         refresh_models: bool,
+        _diagnostics: &hiroute_diagnostics::context::DiagnosticContext,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         self.discoveries.fetch_add(1, Ordering::SeqCst);
         self.refresh_requested

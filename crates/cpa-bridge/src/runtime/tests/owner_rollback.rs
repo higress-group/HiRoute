@@ -29,6 +29,7 @@ impl CpaControlPlane for CancellingControl {
         _version: &str,
         _timeout: Duration,
         _refresh: bool,
+        _diagnostics: &hiroute_diagnostics::context::DiagnosticContext,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         panic!("a rejected orphan must never discover accounts")
     }

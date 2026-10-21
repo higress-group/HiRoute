@@ -19,10 +19,11 @@ struct PersistedControls<'a> {
     disable_cooling: Option<bool>,
 }
 
-pub(super) fn persisted_controls_match(
+pub(super) fn observe_persisted_controls(
     auth_dir: &Path,
     name: &str,
     prefix: &str,
+    checks: &mut hiroute_diagnostics::event::CpaPinChecks,
 ) -> Result<bool, AccountDiscoveryError> {
     if Path::new(name).file_name().and_then(|value| value.to_str()) != Some(name) {
         return Err(AccountDiscoveryError::InvalidAccount);
@@ -41,9 +42,12 @@ pub(super) fn persisted_controls_match(
     }
     let controls: PersistedControls<'_> =
         serde_json::from_slice(bytes.as_slice()).map_err(AccountDiscoveryError::Json)?;
-    Ok(controls.prefix == Some(prefix)
-        && controls.request_retry == Some(0)
-        && controls.disable_cooling == Some(true))
+    checks.persisted_prefix_matches = Some(controls.prefix == Some(prefix));
+    checks.persisted_retry_zero = Some(controls.request_retry == Some(0));
+    checks.persisted_cooling_disabled = Some(controls.disable_cooling == Some(true));
+    Ok(checks.persisted_prefix_matches == Some(true)
+        && checks.persisted_retry_zero == Some(true)
+        && checks.persisted_cooling_disabled == Some(true))
 }
 
 pub(super) fn validate_management_response(
