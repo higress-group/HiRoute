@@ -285,6 +285,7 @@ fn appended_users_keep_distinct_history_when_reselection_is_off() {
             &request(messages.clone()),
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: false,
             },
@@ -330,6 +331,7 @@ fn appended_users_keep_distinct_history_when_reselection_is_off() {
             &request(third_messages),
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
@@ -702,6 +704,7 @@ fn rebuilt_context_does_not_attribute_shifted_old_result_to_reused_id() {
                 &request(rebuilt),
                 &replay,
                 TurnDecisionInputs {
+                    native_turn: None,
                     history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
@@ -772,6 +775,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
             &request(rebuilt_messages.clone()),
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                 reselect_on_user_message: true,
             },
@@ -814,6 +818,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
             &request(rebuilt_messages),
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
@@ -888,6 +893,7 @@ fn missing_candidate_preference_does_not_reselect_when_messages_continue() {
             &follow_up,
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: false,
             },
@@ -1291,6 +1297,7 @@ fn completed_turn_preserves_its_opening_cause() {
                     &request(vec![first_message.clone()]),
                     &replay,
                     TurnDecisionInputs {
+                        native_turn: None,
                         history_continuity: NoCheckpoint,
                         reselect_on_user_message: true,
                     },
@@ -1317,6 +1324,7 @@ fn completed_turn_preserves_its_opening_cause() {
                     &request(vec![first_message, text(MessageRole::User, "next")]),
                     &replay,
                     TurnDecisionInputs {
+                        native_turn: None,
                         history_continuity: continuity,
                         reselect_on_user_message: true,
                     },

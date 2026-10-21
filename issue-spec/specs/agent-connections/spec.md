@@ -503,6 +503,19 @@ replaced or unsupported native state SHALL suppress optional continuity evidence
 without preventing the model request or changing its authorization. Ordinary
 children and forks SHALL NOT be reported as compression continuations.
 
+Hermes original-user evidence uses public pre/post whole-turn hooks, scoped to the
+native task and turn. Only an exact supported last-User text match may advertise a
+fresh user; missing hooks, conflicting/expired input, multipart content or unknown
+message shape SHALL require an already captured turn. The bounded cache stores at
+most 64 inputs of 64 KiB for one hour and removes a finished turn. Hook registration
+or read failure MUST preserve middleware authorization and native execution.
+Pi uses native projected-entry provenance and treats compaction summaries, custom
+user-like contributions and unknown projection as continuations. OpenCode resolves
+the exact in-flight native user ID, excluding synthetic/compaction-only parts and
+later queued users; lookup failure omits the optional envelope. These adapter facts
+do not authenticate arbitrary third-party transformations of the final provider
+payload. Such unsupported composition MUST NOT be claimed as verified recovery.
+
 ### Requirement: Reversible Hermes profile connection and activation guidance
 
 Desktop SHALL show Hermes alongside other supported Agents before a profile is

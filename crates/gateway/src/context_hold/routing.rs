@@ -1,4 +1,6 @@
 //! Optional native routing evidence. It never grants execution authority.
+mod codex;
+
 use super::identity::{ContextIdentityFacts, Field, header_value, single_header};
 use http::HeaderMap;
 use serde::Deserialize;
@@ -6,11 +8,22 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum NativeUserOrigin {
+    #[default]
+    Wire,
+    NativeTurn,
+    CurrentUser,
+    ExistingTurn,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct NativeCheckpoint {
     pub(crate) turn: Option<[u8; 32]>,
     pub(crate) checkpoint: Option<[u8; 32]>,
+    pub(crate) generation: Option<u64>,
     pub(crate) compacted: bool,
     pub(crate) requires_checkpoint: bool,
+    pub(crate) user_origin: NativeUserOrigin,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,6 +49,10 @@ impl RoutingFacts {
     fn detached() -> Self {
         Self {
             track: false,
+            native: NativeCheckpoint {
+                user_origin: NativeUserOrigin::ExistingTurn,
+                ..Default::default()
+            },
             ..Self::default()
         }
     }
@@ -56,6 +73,8 @@ struct NativeContext {
     checkpoint: Option<String>,
     #[serde(default)]
     user_turns: Option<Vec<NativeUserTurn>>,
+    #[serde(default)]
+    continuation_requires_existing_turn: Option<bool>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -197,7 +216,11 @@ pub(super) fn facts(
         _ => None,
     });
     let Some(agent) = agent else {
-        return RoutingFacts::default();
+        return if hermes {
+            RoutingFacts::detached()
+        } else {
+            RoutingFacts::default()
+        };
     };
     if brand.as_deref().is_some_and(|brand| brand != agent) {
         return RoutingFacts::detached();
@@ -214,7 +237,7 @@ pub(super) fn facts(
         {
             return RoutingFacts::detached();
         }
-        return codex(headers, document);
+        return codex::facts(headers, document);
     }
     if agent == "claude" {
         if worker.is_none()
@@ -253,14 +276,23 @@ pub(super) fn facts(
                 turn,
                 compacted,
                 checkpoint: None,
+                generation: None,
                 requires_checkpoint: false,
+                // This flag is consumed once per model call. Later User-only
+                // summaries have no stable original-user provenance, so they
+                // cannot bootstrap optional history from a wire role alone.
+                user_origin: NativeUserOrigin::ExistingTurn,
             },
             ..RoutingFacts::default()
         };
     }
     if worker == Some("opencode") {
         match header_value(headers, "x-hiroute-request-purpose") {
-            Field::Value(value) if value == "main" => return RoutingFacts::default(),
+            Field::Value(value) if value == "main" => {
+                // Pure-mode Workers have no per-call user-origin adapter. The
+                // frozen route still executes, but a wire User may be synthetic.
+                return RoutingFacts::detached();
+            }
             Field::Value(_) | Field::Invalid => return RoutingFacts::detached(),
             Field::Absent => {}
         }
@@ -272,6 +304,7 @@ pub(super) fn facts(
             // call site. Its independent auxiliary clients lack this identity.
             let mut result = RoutingFacts::default();
             result.native.requires_checkpoint = true;
+            result.native.user_origin = NativeUserOrigin::ExistingTurn;
             return hermes_root(headers, native_identity, result);
         }
         Field::Absent | Field::Invalid => None,
@@ -285,6 +318,7 @@ pub(super) fn facts(
         || context.purpose != "main"
         || context.turn_id.as_deref().is_some_and(|v| !id(v))
         || context.checkpoint.as_deref().is_some_and(|v| !id(v))
+        || context.continuation_requires_existing_turn == Some(false) && context.turn_id.is_none()
         || (agent != "dsh" && context.user_turns.is_some())
     {
         return RoutingFacts::detached();
@@ -327,10 +361,18 @@ pub(super) fn facts(
         native: NativeCheckpoint {
             turn: context.turn_id.as_deref().map(digest),
             checkpoint: context.checkpoint.as_deref().map(digest),
+            generation: None,
             compacted: false,
             // Hermes enters the native conversation call site, rather than a
             // shared provider-header hook; its turn ID also covers in-place compression.
             requires_checkpoint: agent != "hermes",
+            user_origin: if agent == "dsh"
+                || context.continuation_requires_existing_turn == Some(false)
+            {
+                NativeUserOrigin::CurrentUser
+            } else {
+                NativeUserOrigin::ExistingTurn
+            },
         },
         ..RoutingFacts::default()
     };
@@ -338,74 +380,6 @@ pub(super) fn facts(
         hermes_root(headers, native_identity, result)
     } else {
         result
-    }
-}
-
-fn codex(headers: &HeaderMap, document: &Value) -> RoutingFacts {
-    let header = match single_header(headers, "x-codex-turn-metadata", 8192) {
-        Field::Absent => None,
-        Field::Value(value) => serde_json::from_str::<Value>(&value).ok(),
-        Field::Invalid => return RoutingFacts::detached(),
-    };
-    if headers.contains_key("x-codex-turn-metadata") && header.is_none() {
-        return RoutingFacts::detached();
-    }
-    let body = document
-        .get("client_metadata")
-        .and_then(|v| v.get("x-codex-turn-metadata"));
-    let body_value = body
-        .and_then(Value::as_str)
-        .filter(|v| v.len() <= 8192)
-        .and_then(|v| serde_json::from_str::<Value>(v).ok());
-    if body.is_some() && body_value.is_none() {
-        return RoutingFacts::detached();
-    }
-    let Some(metadata) = header.as_ref().or(body_value.as_ref()) else {
-        return RoutingFacts::detached();
-    };
-    for field in ["session_id", "thread_id", "turn_id", "request_kind"] {
-        if header
-            .as_ref()
-            .zip(body_value.as_ref())
-            .is_some_and(|(h, b)| h.get(field) != b.get(field))
-        {
-            return RoutingFacts::detached();
-        }
-    }
-    for (field, name) in [("session_id", "session-id"), ("thread_id", "thread-id")] {
-        let Some(value) = metadata
-            .get(field)
-            .and_then(Value::as_str)
-            .filter(|v| id(v))
-        else {
-            return RoutingFacts::detached();
-        };
-        match header_value(headers, name) {
-            Field::Value(other) if other != value => return RoutingFacts::detached(),
-            Field::Invalid => return RoutingFacts::detached(),
-            _ => {}
-        }
-        if document
-            .get("client_metadata")
-            .and_then(|m| m.get(field))
-            .is_some_and(|v| v.as_str() != Some(value))
-        {
-            return RoutingFacts::detached();
-        }
-    }
-    let turn = metadata
-        .get("turn_id")
-        .and_then(Value::as_str)
-        .filter(|v| id(v));
-    if metadata.get("request_kind").and_then(Value::as_str) != Some("turn") || turn.is_none() {
-        return RoutingFacts::detached();
-    }
-    RoutingFacts {
-        native: NativeCheckpoint {
-            turn: turn.map(digest),
-            ..NativeCheckpoint::default()
-        },
-        ..RoutingFacts::default()
     }
 }
 

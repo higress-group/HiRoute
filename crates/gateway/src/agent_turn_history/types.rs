@@ -133,6 +133,7 @@ pub(crate) struct AgentTurnTicket {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct TurnDecisionInputs {
     pub(crate) history_continuity: crate::context_hold::HistoryContinuity,
+    pub(crate) native_turn: Option<[u8; 32]>,
     pub(crate) reselect_on_user_message: bool,
 }
 

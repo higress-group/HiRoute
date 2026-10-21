@@ -628,7 +628,7 @@ impl ProductionGatewayRuntime {
                 &budget,
             );
             let routing_request = routing_view.request(&canonical_request);
-            let (identity, mut prepared_hold) = prepare_context(
+            let (identity, mut prepared_hold, native_user_unavailable) = prepare_context(
                 &self.context_holds,
                 &self.observation.correlation_key(),
                 &authorized,
@@ -642,6 +642,10 @@ impl ProductionGatewayRuntime {
                 },
                 Instant::now(),
             );
+            let native_user_unavailable = native_user_unavailable
+                || request
+                    .path_and_query
+                    .starts_with(hiroute_domain::QODER_MODEL_BASE_PATH);
             if routing_view.disables_history()
                 || request
                     .path_and_query
@@ -738,7 +742,8 @@ impl ProductionGatewayRuntime {
                     &strategy,
                     classification::ClassificationRequest {
                         request: routing_request,
-                        native_user_unavailable: routing_view.disables_history(),
+                        native_user_unavailable: native_user_unavailable
+                            || routing_view.disables_history(),
                         replay: &replay,
                         classifier: authorized.classifier(),
                         history: &turn_history,

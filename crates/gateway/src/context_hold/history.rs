@@ -31,6 +31,8 @@ pub(crate) struct HistoryDigests {
     pub(crate) complete_digest: [u8; 32],
     pub(crate) semantic_prefix_digest: Option<[u8; 32]>,
     pub(crate) semantic_complete_digest: [u8; 32],
+    pub(crate) contains_model_history: bool,
+    pub(crate) latest_user_index: Option<usize>,
 }
 
 impl<'a> HistoryEvidence<'a> {
@@ -90,6 +92,24 @@ impl<'a> HistoryEvidence<'a> {
             complete_digest: history.finish()?,
             semantic_prefix_digest,
             semantic_complete_digest: semantic.finish()?,
+            contains_model_history: self.request.messages.iter().any(|message| {
+                message.role == MessageRole::Assistant
+                    || message.content.iter().any(|part| {
+                        matches!(
+                            part,
+                            ContentPart::ToolCall { .. }
+                                | ContentPart::ToolResult { .. }
+                                | ContentPart::ProviderState { .. }
+                        )
+                    })
+            }) || !self.request.responses_search_history.is_empty()
+                || !self.request.responses_reasoning_history.is_empty(),
+            latest_user_index: semantic_request.messages.iter().rposition(|message| {
+                message.role == MessageRole::User
+                    && message.content.iter().any(|part| {
+                        matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. })
+                    })
+            }),
         })
     }
 

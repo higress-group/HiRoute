@@ -74,6 +74,7 @@ fn first_history_admission_cannot_acknowledge_a_concurrent_uncaptured_main() {
             plan(1),
             AgentTurnHistoryStore::prepare_request(&first, &replay).unwrap(),
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },

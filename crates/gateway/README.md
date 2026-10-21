@@ -116,6 +116,21 @@ uncertain known-client metadata have no history lease or write. Main/child scope
 remain independent; verified same-turn compaction can retain logical decisions but
 cannot restore provider/KV affinity. Qoder routes conservatively detach. Hermes
 compression roots require a complete native proof and fresh current-state evidence.
+The [continuity guard](src/context_hold/continuity.rs) gives a matching native task
+precedence over newly appended synthetic User envelopes. Reuse also requires the
+history owner's original user and current decision; a ContextHold checkpoint
+cannot rebuild either. Adapter continuation flags and legacy/malformed provenance
+use unavailable-input routing when that original task is absent. Explicit fresh
+user evidence can restore capture, which is tested separately from output success.
+Codex 0.147 zero-window clean threads can start history; cold compressed threads
+remain unavailable even after a new question until a clean supported thread is
+created. Unknown producer versions retain this conservative behavior. Claude's
+one-call compaction marker has no persistent user provenance, so current Claude
+and Qoder calls omit cross-request history and unproved-user classification.
+Claude has no normal-history recovery path in this implementation. Native output
+continues on the Plan's unavailable-input route, which can increase primary-model
+usage. [Continuation listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history_continuation.rs)
+keep these capability limits distinct from verified fresh-user recovery.
 [Native listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
 cover these boundaries; the managed producer hooks live in `assets/agents/`.
 [history_bypass.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)

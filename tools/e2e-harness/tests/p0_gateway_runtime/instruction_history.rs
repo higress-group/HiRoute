@@ -51,7 +51,7 @@ fn real_listener_instruction_text_changes_keep_captured_native_history() {
                 ]),
             ),
         ] {
-            let metadata = json!({"version":1,"agent":"opencode","session_id":"dynamic-system","purpose":"main","turn_id":turn}).to_string();
+            let metadata = json!({"version":1,"agent":"opencode","session_id":"dynamic-system","purpose":"main","turn_id":turn,"continuation_requires_existing_turn":false}).to_string();
             let response = request(
                 fixture.address,
                 "POST",

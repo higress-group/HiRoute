@@ -1317,7 +1317,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -1910,11 +1910,26 @@
       "field": "Hermes 0.20 public SessionDB row and unique-live-child API producer",
       "mode": "legacy_adapter",
       "owner": "agent-integrations/hermes",
-      "reason": "Compatible installed Hermes 0.20 exposes get_compression_lineage with unbounded descendant enumeration. The optional producer instead verifies at most 32 ancestor rows, compression closures, non-fork child provenance and the unique live child through public read-only SDK methods. Current SDKs use their bounded canonical chain API. Missing or failed native reads suppress continuity without failing model calls.",
+      "reason": "Compatible installed Hermes 0.20 exposes get_compression_lineage with unbounded descendant enumeration. The optional producer instead verifies at most 32 ancestor rows, compression closures, non-fork child provenance and the unique live child through public read-only SDK methods. Current SDKs use their bounded canonical chain API. Missing or failed native reads suppress continuity without failing model calls. Public 0.20/current whole-turn pre/post hooks supply bounded task/turn original-user evidence. Missing, partial or failed registration retains authorization but cannot bootstrap history; old routing envelopes without the new boolean require an already captured native turn.",
       "removal_condition": "Remove only when the supported native Hermes interface floor deliberately excludes the 0.20 row API, with updated connection guidance and native compression acceptance.",
       "allowed_paths": [
         "assets/agents/hermes/__init__.py",
-        "scripts/tests/test_hermes_lineage.py"
+        "scripts/tests/test_hermes_lineage.py",
+        "scripts/tests/test_hermes_turn_input.py"
+      ]
+    },
+    {
+      "contract": "hiroute.codex-native-responses/v1",
+      "field": "Codex 0.147 persistent native window metadata for optional history",
+      "mode": "legacy_adapter",
+      "owner": "gateway/native-routing",
+      "reason": "The verified rust-v0.147.0 producer be6e8eac029b183056b7e4402879f15d2c85f61b emits thread-prefixed u64 window counters on every request and reconstructs them on resume/fork/rollback. Known producer names and version plus coherent window channels permit only clean zero-window bootstrap; positive cold windows, regressing counters and unknown producer versions cannot establish a new user. These process-local optimization checks never grant execution authority. Claude lacks a persistent equivalent and remains unavailable without an original-user producer.",
+      "removal_condition": "Replace or retire only after a supported original-user producer supersedes this window adapter or the native client support floor deliberately changes, with independent real-question recovery and compressed-restart regression evidence.",
+      "allowed_paths": [
+        "crates/gateway/src/context_hold/routing/codex.rs",
+        "crates/gateway/src/context_hold/routing/codex_tests.rs",
+        "crates/gateway/src/context_hold/continuity.rs",
+        "crates/gateway/src/context_hold/continuity_tests.rs"
       ]
     }
   ]

@@ -16,6 +16,8 @@ use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 pub(crate) use history::visible_history;
 pub(crate) use history::{HistoryEvidence, visible_history_with_replay};
 pub(crate) use identity::{ContextIdentityFacts, identity_facts};
+#[cfg(test)]
+pub(crate) use routing::{NativeCheckpoint, NativeUserOrigin};
 pub(crate) use routing::{NativeUserTurn, dsh_user_turns};
 pub(crate) use store::{
     ContextHoldKey, ContextHoldStore, HistoryContinuity, HoldCompletion, HoldTicket, PreparedHold,
@@ -36,7 +38,7 @@ pub(crate) fn prepare_context(
     authorized: &AuthorizedRequestPlan,
     input: ContextRequest<'_>,
     now: Instant,
-) -> (ContextIdentityFacts, Option<PreparedHold>) {
+) -> (ContextIdentityFacts, Option<PreparedHold>, bool) {
     let ContextRequest {
         ingress,
         headers,
@@ -59,12 +61,20 @@ pub(crate) fn prepare_context(
                     observation_key,
                 )
             });
+    let native = identity.native_checkpoint();
+    // A failed optional scan cannot turn unknown native provenance into a new
+    // user. Explicit producer evidence still permits independent classification.
+    let mut native_user_unavailable = matches!(
+        native.user_origin,
+        routing::NativeUserOrigin::ExistingTurn | routing::NativeUserOrigin::NativeTurn
+    );
     let ticket = store.digest_key().and_then(|hold_key| {
         let history = visible_history_with_replay(request, &hold_key, Some(replay))?
             .with_semantic_request(semantic_request)?;
         let key = ContextHoldKey::from_request(authorized, ingress, &identity, &hold_key)?;
         let mut prepared = store.prepare(key, &history, now)?;
-        prepared.set_native(identity.native_checkpoint());
+        prepared.set_native(native);
+        native_user_unavailable = prepared.native_user_unavailable();
         if !prepared.history_is_proven() {
             return None;
         }
@@ -73,5 +83,5 @@ pub(crate) fn prepare_context(
         )?);
         Some(prepared)
     });
-    (identity, ticket)
+    (identity, ticket, native_user_unavailable)
 }

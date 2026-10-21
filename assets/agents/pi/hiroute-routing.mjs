@@ -21,11 +21,34 @@ export default function hirouteRouting(pi) {
       const session = ctx.sessionManager.getSessionId();
       if (!identity(session)) return;
       const entries = ctx.sessionManager.getBranch();
-      const checkpoint = entries.findLast((entry) => entry.type === "compaction");
-      const user = entries.findLast((entry) => entry.type === "message" && entry.message?.role === "user");
+      const checkpointIndex = entries.findLastIndex((entry) => entry.type === "compaction");
+      const userIndex = entries.findLastIndex((entry) => entry.type === "message" && entry.message?.role === "user");
+      const checkpoint = entries[checkpointIndex];
+      const user = entries[userIndex];
+      let continuationRequiresExistingTurn = true;
+      if (identity(user?.id) && userIndex > checkpointIndex &&
+          !entries.some((entry) => entry.type === "context_edit" && entry.targetId === user.id)) {
+        const projection = ctx.sessionManager.buildSessionProjection?.();
+        // This is native entry provenance, not proof of a provider payload after
+        // other extensions transform it. Unknown user-like contributions stay conservative.
+        const latestInput = Array.isArray(projection?.entries) && projection.entries.findLast(({ messages }) =>
+          !Array.isArray(messages) || messages.some((message) =>
+            !["system", "assistant", "toolResult"].includes(message?.role))
+        );
+        continuationRequiresExistingTurn = !(
+          latestInput?.sourceEntry?.type === "message" &&
+          latestInput.sourceEntry.id === user.id &&
+          latestInput.sourceEntry.message?.role === "user" &&
+          !latestInput.sourceEntry.message.synthetic &&
+          Array.isArray(latestInput.messages) && latestInput.messages.length === 1 &&
+          latestInput.messages[0].role === "user" &&
+          !latestInput.messages[0].synthetic
+        );
+      }
       const context = {
         version: 1, agent: "pi", session_id: session,
         purpose: compacting.has(session) ? "compaction" : "main",
+        continuation_requires_existing_turn: continuationRequiresExistingTurn,
         ...(identity(user?.id) ? { turn_id: user.id } : {}),
         ...(identity(checkpoint?.id) ? { checkpoint: checkpoint.id } : {}),
       };

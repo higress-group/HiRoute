@@ -106,6 +106,7 @@ struct CaptureAdmission {
 struct ActiveTurn {
     opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     agent_turn_id: String,
+    native_turn: Option<[u8; 32]>,
     ordinal: u64,
     user: Vec<VisibleContentPart>,
     steps: Vec<Vec<VisibleContentPart>>,
@@ -166,6 +167,18 @@ impl Default for AgentTurnHistoryStore {
 }
 
 impl AgentTurnHistoryStore {
+    #[cfg(test)]
+    pub(crate) fn clear_decision_for_runtime_test(&self, ticket: &AgentTurnTicket) {
+        let mut inner = self.inner.lock();
+        let entry = inner
+            .entries
+            .get_mut(&ticket.key)
+            .expect("retained session");
+        assert_eq!(entry.entry_token, ticket.entry_token);
+        assert_eq!(entry.active.agent_turn_id, ticket.agent_turn_id);
+        entry.active.decision = None;
+    }
+
     pub(crate) fn new(max_memory_bytes: usize, idle_ttl: Duration) -> Self {
         let mut instance_nonce = [0_u8; 32];
         let _ = getrandom::fill(&mut instance_nonce);
@@ -215,6 +228,7 @@ impl AgentTurnHistoryStore {
             request,
             replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
@@ -316,6 +330,9 @@ impl AgentTurnHistoryStore {
             .ok_or(AgentTurnHistoryError::NoUserTurn)?;
 
         if !inner.entries.contains_key(&key) {
+            if decision_inputs.history_continuity.uses_saved_user() {
+                return Err(AgentTurnHistoryError::TurnContextUnavailable);
+            }
             // A client may bring older messages when HiRoute first joins a session.
             // That prefix is missing from our history, but does not make the current
             // stage partial unless output after its user message was already missed.
@@ -335,6 +352,7 @@ impl AgentTurnHistoryStore {
                     _ => hiroute_domain::AgentTurnOpeningCauseV1::NoComparableHistory,
                 },
                 agent_turn_id: turn_id.clone(),
+                native_turn: decision_inputs.native_turn,
                 ordinal: 1,
                 user: latest.user.clone(),
                 steps: Vec::new(),
@@ -415,7 +433,27 @@ impl AgentTurnHistoryStore {
             .entries
             .get(&key)
             .ok_or(AgentTurnHistoryError::Integrity)?;
-        let missed_user = decision_inputs.history_continuity.semantic_continuity()
+        if decision_inputs.history_continuity.uses_saved_user() {
+            let original_user = if entry.active.finalized {
+                entry
+                    .closed
+                    .back()
+                    .filter(|turn| turn.completed.agent_turn_id == entry.active.agent_turn_id)
+                    .map(|turn| turn.wire.user.as_slice())
+            } else {
+                Some(entry.active.user.as_slice())
+            };
+            if decision_inputs.native_turn.is_none()
+                || decision_inputs.native_turn != entry.active.native_turn
+                || entry.active.plan != plan
+                || entry.active.decision.is_none()
+                || original_user.is_none_or(|user| user.is_empty())
+            {
+                return Err(AgentTurnHistoryError::TurnContextUnavailable);
+            }
+        }
+        let missed_user = !decision_inputs.history_continuity.uses_saved_user()
+            && decision_inputs.history_continuity.semantic_continuity()
             && analyzed.turns.iter().any(|turn| {
                 turn.user_index >= entry.checkpoint.message_count
                     && turn.user_index < latest.user_index
@@ -458,6 +496,7 @@ impl AgentTurnHistoryStore {
                 hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
             }
             crate::context_hold::HistoryContinuity::Continuing
+            | crate::context_hold::HistoryContinuity::NativeSameTurn
             | crate::context_hold::HistoryContinuity::NativeContinuation
             | crate::context_hold::HistoryContinuity::NativeNewTurn => {
                 hiroute_domain::AgentTurnOpeningCauseV1::Other
@@ -492,11 +531,13 @@ impl AgentTurnHistoryStore {
                 if entry.active.finalized {
                     output::reopen_finalized(entry, &latest.user);
                 }
-                output::apply_tool_results(
-                    &mut entry.active,
-                    &analyzed.tool_results,
-                    entry.checkpoint.message_count,
-                );
+                if decision_inputs.history_continuity.retains_message_prefix() {
+                    output::apply_tool_results(
+                        &mut entry.active,
+                        &analyzed.tool_results,
+                        entry.checkpoint.message_count,
+                    );
+                }
                 entry.active.output.next_step();
                 entry.active.last_request_status = AgentTurnStatus::Unknown;
                 entry.checkpoint = TranscriptCheckpoint {
@@ -604,6 +645,7 @@ impl AgentTurnHistoryStore {
             entry.active = ActiveTurn {
                 opening_cause,
                 agent_turn_id: turn_id.clone(),
+                native_turn: decision_inputs.native_turn,
                 ordinal,
                 user: latest.user.clone(),
                 steps: Vec::new(),

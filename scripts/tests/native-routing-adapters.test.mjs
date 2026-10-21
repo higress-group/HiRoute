@@ -11,6 +11,9 @@ test("Pi separates compaction, persists native checkpoint and contains hook fail
   let branch = [{ type: "message", id: "user-1", message: { role: "user" } }];
   const ctx = { model: { provider: "hiroute-main-test" }, sessionManager: {
     getSessionId: () => "session", getBranch: () => branch,
+    buildSessionProjection: () => ({ entries: branch.map(sourceEntry => ({ sourceEntry,
+      messages: sourceEntry.type === "message" ? [sourceEntry.message] : [{ role: "compactionSummary" }],
+    })) }),
   } };
   const request = () => {
     const event = { headers: {} };
@@ -18,6 +21,7 @@ test("Pi separates compaction, persists native checkpoint and contains hook fail
     return JSON.parse(event.headers["x-hiroute-routing-context"]);
   };
   assert.equal(request().purpose, "main");
+  assert.equal(request().continuation_requires_existing_turn, false);
   assert.deepEqual(hooks.get("cache_warming_decision")({}, ctx), { action: "stop" });
   assert.equal(hooks.get("cache_warming_decision")({ model: { provider: "foreign" } }, ctx), undefined);
   hooks.get("session_before_compact")({}, ctx);
@@ -26,9 +30,15 @@ test("Pi separates compaction, persists native checkpoint and contains hook fail
   assert.equal(request().purpose, "main");
   branch.push({ type: "compaction", id: "checkpoint" });
   assert.equal(request().checkpoint, "checkpoint");
+  assert.equal(request().continuation_requires_existing_turn, true);
   // Fresh plugin instance reads restored native history rather than process memory.
   piRouting({ on: (name, hook) => hooks.set(name, hook) });
   assert.equal(request().checkpoint, "checkpoint");
+  assert.equal(request().continuation_requires_existing_turn, true);
+  branch.push({ type: "message", id: "user-2", message: { role: "user" } });
+  assert.equal(request().turn_id, "user-2");
+  assert.equal(request().checkpoint, "checkpoint");
+  assert.equal(request().continuation_requires_existing_turn, false);
   ctx.sessionManager.getSessionId = () => { throw Error("unavailable native state"); };
   for (const name of ["session_before_compact", "session_compact", "session_compact_failed"]) {
     assert.doesNotThrow(() => hooks.get(name)({}, ctx));
@@ -36,6 +46,40 @@ test("Pi separates compaction, persists native checkpoint and contains hook fail
   const event = { headers: { existing: "retained" } };
   assert.doesNotThrow(() => hooks.get("before_provider_headers")(event, ctx));
   assert.deepEqual(event.headers, { existing: "retained" });
+});
+
+test("Pi treats unknown or synthetic projection origins as requiring an existing turn", () => {
+  const user = { type: "message", id: "real-user", message: { role: "user" } };
+  const checkpoint = { type: "compaction", id: "checkpoint" };
+  const projected = sourceEntry => ({ sourceEntry, messages: [sourceEntry.message] });
+  const contexts = [
+    { branch: [user], projection: undefined },
+    { branch: [checkpoint, user], projection: { entries: [] } },
+    { branch: [checkpoint, user], projection: { entries: [{ sourceEntry: user, messages: [] }] } },
+    { branch: [checkpoint, user], projection: { entries: [projected(user), {
+      sourceEntry: { type: "custom_message", id: "injected" }, messages: [{ role: "custom" }],
+    }] } },
+    { branch: [checkpoint, user], projection: { entries: [projected(user), {
+      sourceEntry: { type: "unknown", id: "injected" }, messages: [{ role: "user" }],
+    }] } },
+    { branch: [checkpoint, user], projection: { entries: [{ sourceEntry: user,
+      messages: [{ role: "user", synthetic: true }],
+    }] } },
+    { branch: [checkpoint, user, { type: "context_edit", targetId: user.id,
+      replacement: { content: "replacement" } }], projection: { entries: [projected(user)] } },
+  ];
+  for (const { branch, projection } of contexts) {
+    let hook;
+    piRouting({ on: (name, handler) => { if (name === "before_provider_headers") hook = handler; } });
+    const event = { headers: {} };
+    hook(event, { model: { provider: "hiroute-main-test" }, sessionManager: {
+      getSessionId: () => "restored-session", getBranch: () => branch,
+      buildSessionProjection: () => projection,
+    } });
+    const context = JSON.parse(event.headers["x-hiroute-routing-context"]);
+    assert.equal(context.turn_id, user.id);
+    assert.equal(context.continuation_requires_existing_turn, true);
+  }
 });
 
 test("OpenCode reads completed native checkpoints, real turns and isolates concurrent auxiliary calls", async () => {
@@ -54,11 +98,20 @@ test("OpenCode reads completed native checkpoints, real turns and isolates concu
   const main = JSON.parse(output[0]["x-hiroute-routing-context"]);
   assert.equal(main.turn_id, "01");
   assert.equal(main.checkpoint, "02");
+  assert.equal(main.continuation_requires_existing_turn, true);
   assert.equal(JSON.parse(output[3]["x-hiroute-routing-context"]).session_id, "child");
   assert.deepEqual(await headers(await create(), input("build")), output[0]);
   entries.push({ info: { role: "user", id: "05" }, parts: [{ type: "text" }] });
   const next = input("build"); next.message.id = "05";
-  assert.equal(JSON.parse((await headers(hook, next))["x-hiroute-routing-context"]).turn_id, "05");
+  const nextContext = JSON.parse((await headers(hook, next))["x-hiroute-routing-context"]);
+  assert.equal(nextContext.turn_id, "05");
+  assert.equal(nextContext.continuation_requires_existing_turn, false);
+  assert.equal(JSON.parse((await headers(await create(), next))["x-hiroute-routing-context"])
+    .continuation_requires_existing_turn, false);
+  // A queued newer real user cannot change the identity of an earlier in-flight continuation.
+  const earlier = JSON.parse((await headers(hook, input("build")))["x-hiroute-routing-context"]);
+  assert.equal(earlier.turn_id, "01");
+  assert.equal(earlier.continuation_requires_existing_turn, true);
   const broken = await HiRouteRouting({ client: { session: { messages: async () => { throw Error("native read failed"); } } } });
   assert.deepEqual(await headers(broken, next), {});
   const hung = await HiRouteRouting({ client: { session: { messages: () => new Promise(() => {}) } } });
@@ -66,6 +119,40 @@ test("OpenCode reads completed native checkpoints, real turns and isolates concu
   assert.deepEqual(await headers(hung, next), {});
   assert.ok(performance.now() - start < 300);
   assert.deepEqual(await headers(hook, { ...next, model: { providerID: "foreign" } }), {});
+});
+
+test("OpenCode requires an exact per-call native user and never admits unknown synthetic parts as new input", async () => {
+  const real = { info: { role: "user", id: "01" }, parts: [{ type: "text" }] };
+  let entries = [real];
+  const hooks = await HiRouteRouting({ client: { session: {
+    messages: async () => ({ data: entries }),
+  } } });
+  const read = async id => {
+    const output = { headers: { native: "retained" } };
+    await hooks["chat.headers"]({ agent: "build", sessionID: "session",
+      model: { providerID: "hiroute-main-test" }, message: { id } }, output);
+    return output.headers;
+  };
+  assert.deepEqual(await read("missing"), { native: "retained" });
+  assert.deepEqual(await read(undefined), { native: "retained" });
+  assert.deepEqual(await read(""), { native: "retained" });
+  entries = [{ info: { role: "user", id: "03" }, parts: [{ type: "text", synthetic: true }] }];
+  assert.deepEqual(await read("03"), { native: "retained" });
+  for (const parts of [
+    [], [{ type: "compaction", auto: true }], [{ type: "text", synthetic: true }],
+    [{ type: "text", ignored: true }], [{ type: "unknown" }],
+    [{ type: "compaction" }, { type: "text", synthetic: true }],
+  ]) {
+    entries = [real, { info: { role: "user", id: "03" }, parts }];
+    const context = JSON.parse((await read("03"))["x-hiroute-routing-context"]);
+    assert.equal(context.turn_id, "01");
+    assert.equal(context.continuation_requires_existing_turn, true);
+  }
+  entries = [real, { info: { role: "user", id: "03" }, parts: [
+    { type: "text", synthetic: true }, { type: "file" },
+  ] }];
+  assert.equal(JSON.parse((await read("03"))["x-hiroute-routing-context"])
+    .continuation_requires_existing_turn, false);
 });
 
 test("DSH request-local middleware preserves concurrent streams, restored turns and transport failures", async () => {

@@ -359,16 +359,55 @@ target or checkpoint mutation. Native children with a distinct native identity
 SHALL have independent branch state, including within a verified Worker task.
 These headers are optimization evidence, never authorization or a route override.
 
-Codex uses coherent native turn metadata; Claude uses request-class, prompt and
-native child identities. Managed Pi, DSH and ordinary OpenCode install reversible
+Codex uses coherent native turn metadata and a recognized persistent native window
+counter. Claude request-class, prompt and native child identities preserve
+observation branches but do not prove a fresh user. Managed Pi, DSH and ordinary OpenCode install reversible
 native adapters that convey request purpose, session, logical turn and available
 durable compaction checkpoint. Hermes uses its selected conversation middleware
 and validated compression lineage. Unsupported Qoder purposes remain independent
 for every request. Generic API callers retain their existing identity behavior.
 
-Native same-turn evidence MAY preserve the logical routing decision across a
-rewritten compacted transcript. A new native turn after a proven compaction SHALL
-obtain a fresh judgment while retaining accepted prior execution history. Semantic
+Native same-turn evidence MUST take precedence over appended synthetic User
+envelopes, even when the previous message prefix remains unchanged. It MAY preserve
+the logical routing decision only when the history owner still has the matching
+native turn, complete original user and a decision valid for the current Plan.
+A checkpoint alone cannot recreate that turn. Missing/evicted user data or an
+invalidated decision MUST cause unavailable-input routing without capturing or
+reclassifying the synthetic wire user. Output gaps do not by themselves discard a
+still-complete original user. Tool outcomes require independently proven message
+positions; native identity never establishes a byte prefix.
+
+Managed Pi, ordinary OpenCode and Hermes adapters convey the bounded boolean
+`continuation_requires_existing_turn`. True or missing provenance MUST require the
+existing captured turn; explicit fresh-user provenance MAY restart capture after a
+gap. A real new question MUST be independently validated to produce a valid fresh
+classification, capture that user, and expose only trusted users on its next turn.
+Successful output and empty partial history establish degradation, not recovery.
+DSH retains its verified per-request native user proof instead of guessing a user
+from a compaction or peer envelope. Pure-mode OpenCode Workers without such a
+producer retain their frozen execution route and omit optional routing history.
+
+Recognized Codex 0.147 producers use `<thread>:<u64 window>` consistently across
+present native channels. Cold admission requires a zero window and no existing
+model/tool/opaque history; a positive window is persistent negative evidence, never
+proof of a new user. A captured turn may survive compaction. A different turn needs
+a newly appended user after its captured semantic prefix. Counter rollback,
+missing/unsupported producer evidence or a cold compressed session MUST NOT recover
+by changing opaque IDs. Following a cold compressed restart, even a real new
+question remains unavailable until a new clean, uncompressed supported thread or a
+future verified fresh-user producer supplies admissible evidence.
+
+Claude's one-call compaction flag is insufficient after consumption, restart or
+eviction. Until a supported producer supplies persistent original-user provenance,
+Claude and Qoder MUST omit cross-request routing history and classification from
+unproven wire users. Claude has no session-local or new-session recovery path in
+this contract; neither ordinary new questions nor changing prompt IDs restore the
+optimization. Requests retain native forwarding and the published unavailable-input
+route, potentially using the primary model for every task. This capability limit
+MUST remain distinct from successful full adaptation.
+
+A verified new native user after compaction SHALL obtain a fresh judgment while
+retaining accepted prior execution history. Semantic
 continuity SHALL NOT establish byte-prefix, provider-cache, instruction or opaque
 response affinity. Missing evidence permits an optimization miss, never invented
 continuity. Restarts rebuild only state for which the native client supplies

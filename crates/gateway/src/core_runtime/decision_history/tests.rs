@@ -13,6 +13,9 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
 
+#[path = "native_tests.rs"]
+mod native_tests;
+
 struct Fixture {
     runtime: ProductionGatewayRuntime,
     replay: ReplayStore,

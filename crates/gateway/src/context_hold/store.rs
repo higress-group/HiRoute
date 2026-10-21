@@ -188,6 +188,7 @@ pub(crate) enum HistoryContinuity {
     Shortened,
     Rewritten,
     NoCheckpoint,
+    NativeSameTurn,
     NativeContinuation,
     NativeNewTurn,
 }
@@ -196,8 +197,19 @@ impl HistoryContinuity {
     pub(crate) fn semantic_continuity(self) -> bool {
         matches!(
             self,
-            Self::Continuing | Self::NativeContinuation | Self::NativeNewTurn
+            Self::Continuing
+                | Self::NativeSameTurn
+                | Self::NativeContinuation
+                | Self::NativeNewTurn
         )
+    }
+
+    pub(crate) fn uses_saved_user(self) -> bool {
+        matches!(self, Self::NativeSameTurn | Self::NativeContinuation)
+    }
+
+    pub(crate) fn retains_message_prefix(self) -> bool {
+        matches!(self, Self::Continuing | Self::NativeSameTurn)
     }
 }
 
@@ -264,64 +276,12 @@ impl HoldCommit<'_> {
     }
 }
 
-impl PreparedHold {
-    pub(crate) fn history_is_proven(&self) -> bool {
-        self.snapshot.is_none()
-            || !self.native.requires_checkpoint
-            || self.history_continuity().semantic_continuity()
-    }
-    pub(crate) fn set_native(&mut self, native: super::routing::NativeCheckpoint) {
-        self.native = native;
-    }
-    pub(crate) fn set_history_key(&mut self, key: ContextHoldKey) {
-        self.history_key = Some(key);
-    }
-    pub(crate) fn scope_id(&self) -> String {
-        self.history_key.as_ref().unwrap_or(&self.key).scope_id()
-    }
-    pub(crate) fn history_continuity(&self) -> HistoryContinuity {
-        match self.snapshot {
-            None => HistoryContinuity::NoCheckpoint,
-            Some(snapshot)
-                if self.measured.message_count >= snapshot.message_count
-                    && self.measured.semantic_prefix_digest
-                        == Some(snapshot.semantic_history_digest) =>
-            {
-                if self.native.turn.is_some()
-                    && snapshot.native.turn.is_some()
-                    && self.native.turn != snapshot.native.turn
-                {
-                    HistoryContinuity::NativeNewTurn
-                } else {
-                    HistoryContinuity::Continuing
-                }
-            }
-            Some(snapshot)
-                if self.native.turn.is_some()
-                    && self.native.turn == snapshot.native.turn
-                    && (!self.native.requires_checkpoint
-                        || self.native.compacted
-                        || self.native.checkpoint.is_some()
-                            && self.native.checkpoint != snapshot.native.checkpoint) =>
-            {
-                HistoryContinuity::NativeContinuation
-            }
-            Some(snapshot)
-                if self.native.turn.is_some()
-                    && snapshot.native.turn.is_some()
-                    && (self.native.compacted
-                        || self.native.checkpoint.is_some()
-                            && self.native.checkpoint != snapshot.native.checkpoint) =>
-            {
-                HistoryContinuity::NativeNewTurn
-            }
-            Some(snapshot) if self.measured.message_count < snapshot.message_count => {
-                HistoryContinuity::Shortened
-            }
-            Some(_) => HistoryContinuity::Rewritten,
-        }
-    }
-}
+#[path = "continuity.rs"]
+mod continuity;
+
+#[cfg(test)]
+#[path = "continuity_tests.rs"]
+mod continuity_tests;
 
 #[derive(Clone, Debug)]
 pub(crate) struct HoldCompletion {

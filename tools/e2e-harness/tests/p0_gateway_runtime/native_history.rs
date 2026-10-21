@@ -25,8 +25,9 @@ fn headers(
     let mut headers = vec![("X-HiRoute-Token".into(), TOKEN.into())];
     if agent == "codex" {
         headers.extend([
+            ("user-agent".into(), "codex_exec/0.147.0 (test-os; test-arch)".into()),
             ("thread-id".into(), session.into()), ("session-id".into(), session.into()),
-            ("x-codex-turn-metadata".into(), json!({"session_id":session,"thread_id":session,"turn_id":turn,"request_kind":if purpose == "main" { "turn" } else { purpose }}).to_string()),
+            ("x-codex-turn-metadata".into(), json!({"session_id":session,"thread_id":session,"turn_id":turn,"window_id":format!("{session}:{}", if checkpoint == "after" { 1 } else { 0 }),"request_kind":if purpose == "main" { "turn" } else { purpose }}).to_string()),
         ]);
     } else if agent == "claude" {
         headers.extend([
@@ -44,7 +45,7 @@ fn headers(
         };
         headers.extend([
             (native.into(), session.into()), ("x-hiroute-agent".into(), agent.into()),
-            ("x-hiroute-routing-context".into(), json!({"version":1,"agent":agent,"session_id":session,"purpose":purpose,"turn_id":turn,"checkpoint":checkpoint}).to_string()),
+            ("x-hiroute-routing-context".into(), json!({"version":1,"agent":agent,"session_id":session,"purpose":purpose,"turn_id":turn,"checkpoint":checkpoint,"continuation_requires_existing_turn":false}).to_string()),
         ]);
         if agent == "pi" {
             headers.push(("User-Agent".into(), "pi (linux; x64)".into()));
@@ -107,7 +108,7 @@ fn accepted(response: &WireResponse) {
 
 #[test]
 fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history() {
-    for agent in ["codex", "claude", "pi", "dsh", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "dsh", "opencode", "hermes"] {
         for fault in [false, true] {
             let simple = NativeProvider::start(vec![
                 reply(RESPONSES_TOOL_CALL),
@@ -115,15 +116,7 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
                 reply(RESPONSES_OK),
             ]);
             let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-            let classifier = NativeProvider::start(if agent == "dsh" {
-                vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE)]
-            } else {
-                vec![
-                    reply(CLASSIFIER_SIMPLE),
-                    reply(CLASSIFIER_COMPLEX),
-                    reply(CLASSIFIER_SIMPLE),
-                ]
-            });
+            let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
             let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
             let main = headers(agent, "main", "main", "turn-1", "checkpoint-1");
             let user = json!({"role":"user","content":"MAIN_USER"});
@@ -159,15 +152,12 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
                 &auxiliary,
                 json!("AUXILIARY_MUST_NOT_ENTER_HISTORY"),
             ));
-            let calls_before_next = if agent == "dsh" { 1 } else { 2 };
-            if agent == "dsh" {
-                assert_eq!(classifier.calls(), 1, "unproved DSH input was classified");
-            } else {
-                let detached = classifier_body(&classifier, 1);
-                assert_eq!(detached["history_partial"], true, "{agent}: {detached}");
-                assert_eq!(detached["visible_conversation"], json!([]));
-                assert!(detached["assessment_target"].is_null());
-            }
+            let calls_before_next = 1;
+            assert_eq!(
+                classifier.calls(),
+                1,
+                "{agent}: unknown auxiliary input was classified"
+            );
             let first: Value = serde_json::from_slice(&first.body).unwrap();
             let call = &first["output"][0]["call_id"];
             let continued = json!([user,
@@ -215,7 +205,7 @@ impl Drop for Release {
 
 #[test]
 fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_history() {
-    for agent in ["codex", "claude", "pi", "dsh", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "dsh", "opencode", "hermes"] {
         let barrier = ProviderBodyBarrier::default();
         let simple = NativeProvider::start(vec![
             ProviderReply::BodyReadBarrier {
@@ -263,7 +253,7 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
                     .unwrap()
                     .1 = "parent".into();
                 child.iter_mut().find(|(key, _)| key == "x-codex-turn-metadata").unwrap().1 = json!({
-                    "session_id":"parent","thread_id":"child","turn_id":"child-turn","request_kind":"turn"
+                    "session_id":"parent","thread_id":"child","turn_id":"child-turn","window_id":"child:0","request_kind":"turn"
                 }).to_string();
             }
             accepted(&send(address, &child, json!("CHILD_USER")));
@@ -272,7 +262,7 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
                 &headers(agent, "parent", "compaction", "turn-1", "checkpoint-1"),
                 json!("AUXILIARY_USER"),
             ));
-            let classified_auxiliary = if agent == "dsh" { 2 } else { 3 };
+            let classified_auxiliary = 2;
             assert_eq!(classifier.calls(), classified_auxiliary);
             for index in 1..classified_auxiliary {
                 let history = classifier_body(&classifier, index);
@@ -298,7 +288,7 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
         ));
         assert_eq!(
             (simple.calls(), complex.calls(), classifier.calls()),
-            (2, 2, if agent == "dsh" { 2 } else { 3 }),
+            (2, 2, 2),
             "{agent}"
         );
     }
@@ -309,18 +299,14 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
     // DSH checkpoints omit source.kind=user after compaction. Its stricter
     // missing-user fallback is covered by dsh_native_routing, not by declaring
     // this synthetic summary to be a real user input.
-    for agent in ["codex", "claude", "pi", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "opencode", "hermes"] {
         let simple = NativeProvider::start(vec![
             reply(RESPONSES_OK),
             reply(RESPONSES_OK),
             reply(RESPONSES_OK),
         ]);
         let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-        let classifier = NativeProvider::start(vec![
-            reply(CLASSIFIER_SIMPLE),
-            reply(CLASSIFIER_COMPLEX),
-            reply(CLASSIFIER_SIMPLE),
-        ]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
         let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
         accepted(&send(
             fixture.address,
@@ -340,7 +326,7 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
         ));
         assert_eq!(
             classifier.calls(),
-            2,
+            1,
             "{agent}: proven same turn reclassified after compression"
         );
         accepted(&send(
@@ -349,7 +335,7 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
             json!([
             compacted,{"role":"assistant","content":"ok"},{"role":"user","content":"a new actual task"}]),
         ));
-        let history = classifier_body(&classifier, 2);
+        let history = classifier_body(&classifier, 1);
         assert!(
             !history.to_string().contains("COMPACTION_CALCULATION"),
             "{agent}: {history}"
@@ -360,7 +346,7 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
         );
         assert_eq!(
             (simple.calls(), complex.calls(), classifier.calls()),
-            (3, 1, 3)
+            (3, 1, 2)
         );
     }
 }
@@ -368,11 +354,10 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
 #[test]
 fn real_listener_restart_and_qoder_degradation_never_recover_an_unproven_history() {
     for _restart in 0..2 {
-        let simple = NativeProvider::start(vec![reply(RESPONSES_OK), reply(RESPONSES_OK)]);
-        let complex = NativeProvider::start(Vec::new());
-        let classifier =
-            NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE)]);
-        let fixture = RuntimeFixture::launch_rest_classified(&[&simple, &complex, &classifier], 1);
+        let simple = NativeProvider::start(vec![]);
+        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+        let classifier = NativeProvider::start(vec![]);
+        let fixture = RuntimeFixture::launch_rest_classified(&[&simple, &primary, &classifier], 1);
         let mut qoder = vec![
             ("X-HiRoute-Token".into(), TOKEN.into()),
             ("session-id".into(), "shared-qoder".into()),
@@ -381,15 +366,12 @@ fn real_listener_restart_and_qoder_degradation_never_recover_an_unproven_history
         for text in ["real main user", "unmarked native child or summary"] {
             accepted(&send(fixture.address, &qoder, json!(text)));
         }
-        for index in 0..2 {
-            let history = classifier_body(&classifier, index);
-            assert_eq!(history["visible_conversation"], json!([]));
-            assert!(history["assessment_target"].is_null());
-            assert_eq!(history["history_partial"], true);
-        }
         qoder[0].1 = "invalid-grant".into();
         assert_ne!(send(fixture.address, &qoder, json!("denied")).status, 200);
-        assert_eq!((simple.calls(), classifier.calls()), (2, 2));
+        assert_eq!(
+            (simple.calls(), primary.calls(), classifier.calls()),
+            (0, 2, 0)
+        );
     }
 }
 
@@ -413,11 +395,7 @@ fn real_listener_hermes_rotating_compression_and_gateway_restart_keep_only_prove
     for _restart in 0..2 {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
         let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-        let classifier = NativeProvider::start(vec![
-            reply(CLASSIFIER_SIMPLE),
-            reply(CLASSIFIER_COMPLEX),
-            reply(CLASSIFIER_SIMPLE),
-        ]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
         let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
         accepted(&send(
             fixture.address,
@@ -442,7 +420,7 @@ fn real_listener_hermes_rotating_compression_and_gateway_restart_keep_only_prove
         ));
         assert_eq!(
             classifier.calls(),
-            2,
+            1,
             "rotating native compaction lost its decision"
         );
         accepted(&send(
@@ -452,12 +430,12 @@ fn real_listener_hermes_rotating_compression_and_gateway_restart_keep_only_prove
                 summary, {"role":"assistant","content":"ok"}, {"role":"user","content":"NEW_MAIN_TASK"}
             ]),
         ));
-        let history = classifier_body(&classifier, 2).to_string();
+        let history = classifier_body(&classifier, 1).to_string();
         assert!(history.contains("ORIGINAL_MAIN_TASK"), "{history}");
         assert!(!history.contains("AUXILIARY_CALCULATION"), "{history}");
         assert_eq!(
             (simple.calls(), complex.calls(), classifier.calls()),
-            (3, 1, 3)
+            (3, 1, 2)
         );
     }
 }
@@ -496,12 +474,12 @@ fn real_listener_auxiliary_provider_failure_cannot_change_main_tool_continuation
             {"type":"function_call_output","call_id":call,"output":"found"}
         ]),
     ));
-    assert_eq!(classifier.calls(), 2);
+    assert_eq!(classifier.calls(), 1);
 }
 
 #[test]
 fn real_listener_native_new_turn_does_not_reuse_a_decision_for_identical_content() {
-    for agent in ["codex", "claude", "pi", "dsh", "opencode", "hermes"] {
+    for agent in ["codex", "pi", "dsh", "opencode", "hermes"] {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK)]);
         let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
         let classifier =
@@ -511,7 +489,11 @@ fn real_listener_native_new_turn_does_not_reuse_a_decision_for_identical_content
             accepted(&send(
                 fixture.address,
                 &headers(agent, "session", "main", turn, "checkpoint"),
-                json!("identical real user task"),
+                if turn == "native-turn-1" {
+                    json!("identical real user task")
+                } else {
+                    json!([{"role":"user","content":"identical real user task"},{"role":"assistant","content":"ok"},{"role":"user","content":"identical real user task"}])
+                },
             ));
         }
         assert_eq!(
@@ -532,57 +514,26 @@ fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_share
         "claude-cli/2.1.287 (external,cli)",
         "qodercli/1.1.72",
     ] {
-        let dsh = user_agent.starts_with("deepseek-harness/");
-        let simple = NativeProvider::start(if dsh {
-            vec![]
-        } else {
-            vec![reply(RESPONSES_OK); 2]
-        });
-        let complex = NativeProvider::start(if dsh {
-            vec![reply(RESPONSES_OK); 2]
-        } else {
-            vec![]
-        });
-        let classifier = NativeProvider::start(if dsh {
-            vec![]
-        } else {
-            vec![reply(CLASSIFIER_SIMPLE); 2]
-        });
-        let fixture = native_fixture("unknown", &[&simple, &complex, &classifier]);
-        let unadapted = [
+        let simple = NativeProvider::start(vec![]);
+        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+        let classifier = NativeProvider::start(vec![]);
+        let fixture = native_fixture("unknown", &[&simple, &primary, &classifier]);
+        let headers = [
             ("X-HiRoute-Token".into(), TOKEN.into()),
             ("User-Agent".into(), user_agent.into()),
         ];
         for _ in 0..2 {
             accepted(&send(
                 fixture.address,
-                &unadapted,
+                &headers,
                 json!("identical native input"),
             ));
         }
-        if dsh {
-            assert_eq!(
-                (simple.calls(), complex.calls(), classifier.calls()),
-                (0, 2, 0),
-                "DSH without a semantic user proof must complete both requests through Primary"
-            );
-        } else {
-            for index in 0..2 {
-                let history = classifier_body(&classifier, index);
-                assert_eq!(history["history_partial"], true, "{user_agent}: {history}");
-                assert_eq!(
-                    history["visible_conversation"],
-                    json!([]),
-                    "{user_agent}: {history}"
-                );
-                assert!(history["assessment_target"].is_null());
-            }
-            assert_eq!(
-                (simple.calls(), complex.calls(), classifier.calls()),
-                (2, 0, 2),
-                "{user_agent}"
-            );
-        }
+        assert_eq!(
+            (simple.calls(), primary.calls(), classifier.calls()),
+            (0, 2, 0),
+            "{user_agent}"
+        );
     }
 }
 
@@ -685,3 +636,6 @@ fn real_listener_hermes_in_place_compression_uses_its_native_conversation_turn()
     ));
     assert_eq!((simple.calls(), classifier.calls()), (2, 1));
 }
+
+#[path = "native_history_continuation.rs"]
+mod continuation;

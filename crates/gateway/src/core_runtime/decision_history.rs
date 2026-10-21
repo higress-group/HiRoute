@@ -77,7 +77,12 @@ impl ProductionGatewayRuntime {
             return Ok(DecisionHistory::detached());
         };
         let gap_key = key.clone();
+        if !prepared.history_is_proven() {
+            self.agent_turn_history.note_capture_gap(&gap_key);
+            return Ok(DecisionHistory::detached());
+        }
         let history_continuity = prepared.history_continuity();
+        let native_turn = prepared.native_turn();
         let begin =
             crate::agent_turn_history::AgentTurnHistoryStore::prepare_request(request, replay)
                 .and_then(|analyzed| {
@@ -87,6 +92,7 @@ impl ProductionGatewayRuntime {
                         analyzed,
                         TurnDecisionInputs {
                             history_continuity,
+                            native_turn,
                             reselect_on_user_message: true,
                         },
                         Instant::now(),

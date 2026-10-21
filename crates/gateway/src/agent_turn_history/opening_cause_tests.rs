@@ -49,6 +49,7 @@ fn user_message_cause_does_not_depend_on_decision_inheritance() {
                 &request(messages),
                 &replay,
                 TurnDecisionInputs {
+                    native_turn: None,
                     history_continuity: HistoryContinuity::Continuing,
                     reselect_on_user_message: false,
                 },
