@@ -59,7 +59,7 @@ def native_history_decisions(product, plan_id, editor):
     service = {'id': 'native-history', 'revision': 1, 'name': 'Native history witness',
         'connection': {'kind': 'custom', 'endpoint': f'http://127.0.0.1:{endpoint.server_port}/decision',
                        'timeout_ms': 3000}}
-    installed = changed = False
+    changed = False
 
     def mutate_service(value, revision, key):
         change = {'id': service['id'], 'expected_revision': revision, 'service': value}
@@ -78,7 +78,6 @@ def native_history_decisions(product, plan_id, editor):
 
     try:
         mutate_service(service, 0, 'native-history-create')
-        installed = True
         product.plan_id, product.editor = plan_id, copy.deepcopy(editor)
         routed = copy.deepcopy(editor)
         routed['mode'] = 'custom_branches'
@@ -96,8 +95,9 @@ def native_history_decisions(product, plan_id, editor):
         try:
             if changed:
                 publish(editor, 'native-history-plan-restore')
-            if installed:
-                mutate_service(None, 1, 'native-history-delete')
+            # The published temporary version still pins this service even after
+            # restoring the head. Retain that immutable reference until the owned
+            # Product workspace closes; deleting it would violate the real contract.
         finally:
             product.plan_id, product.editor = old_plan, old_editor
             endpoint.shutdown()
