@@ -49,7 +49,9 @@ mod host_settings;
 mod subscription_proxy;
 use host_settings::*;
 use subscription_proxy::*;
+mod connection_recovery;
 mod startup;
+use connection_recovery::*;
 pub use diagnostics::DiagnosticsState;
 pub use startup::StartupState;
 use startup::*;
@@ -857,6 +859,7 @@ pub fn run() {
             quit_desktop,
             diagnostic_status,
             startup_status,
+            recover_native_connection,
             open_startup_recovery_directory,
             update_status,
             update_check,

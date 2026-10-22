@@ -547,6 +547,15 @@ finish. Missing or changed artifacts and missing listed cases fail rather than
 falling back to a runtime Cargo build. Default failure handling stops admitting
 new targets; `--no-fail-fast` explicitly collects the whole selected scope.
 
+The preparation report binds exact product and Gateway receipt paths and their
+file digests. Admission verifies only those selected receipts, preserving their
+attested candidate, executable identity, checkout containment and Cargo runtime
+environment. Different recipes (including different compiler job counts) can
+retain identical executable bytes in the same checkout; cache-wide digest
+uniqueness is not required. Missing or changed selected evidence still fails.
+If preparation fails, completed independent-target results remain in the aggregate,
+with the unexecuted target inventory and doctest admission explicitly recorded.
+
 The run result distinguishes correctness from the five-minute performance target.
 `queue_seconds`, `execution_seconds` and `end_to_end_seconds` use the workbench's
 monotonic clock; execution starts when capacity is acquired and includes checkout,
@@ -560,12 +569,56 @@ explicit rollback path and is never run automatically after a DAG failure. Other
 selectors, profiles and filters use the ordinary runner. A bridge over the old
 three-slot locks keeps legacy and eight-slot workers mutually exclusive.
 
-The installed Linux package scenario requires the same candidate's production frontend
-at `apps/desktop/dist`. Build it through the configured frontend target, then stage those
-bytes into the inactive managed backend checkout under its checkout lease before running
-`installed_standalone_cli_completes_the_headless_management_loop`. Do not replace them with
-a dummy page or install a second frontend toolchain on the backend. Hosted full CI uses
-its frontend artifact handoff for this prerequisite.
+The installed Linux management, Quickstart and model-feed scenarios require the same
+candidate's production frontend at `apps/desktop/dist`. The SSH backend inspects the
+Cargo/libtest selection and checks this prerequisite before Cargo or sccache starts.
+Missing receipts, another source SHA, missing/extra files and changed hashes block
+the run with `blocker=console_assets`, a null process exit and preparation commands
+in `result.console_assets.preparation`. Pure library checks, compilation, listing,
+other targets and filters excluding these cases do not require console assets.
+
+Use the exact clean committed candidate on the configured frontend target:
+
+```sh
+python3 scripts/validation.py frontend ci
+python3 scripts/validation.py frontend build --console-assets
+```
+
+Copy the resulting dist, including its receipt, with standard file tools to a
+separate directory on the configured backend host. For a local frontend target,
+using your configured SSH alias and a fresh staging directory:
+
+```sh
+backend_host=backend
+staging_dir=.cache/hiroute/console-assets/CANDIDATE_SHA-BLOCKED_RUN_ID
+ssh "$backend_host" "mkdir -p '$staging_dir'"
+scp -r apps/desktop/dist "$backend_host:$staging_dir/"
+python3 scripts/validation.py --frontend-dist "~/$staging_dir/dist" backend run \
+  --ref refs/heads/codex/my-change --sha CANDIDATE_SHA \
+  --reuse-checkout BLOCKED_RUN_ID --retention always \
+  --plan my-change --phase final -- \
+  cargo test --locked -p hiroute-daemon --test publication_process installed_ -- --nocapture
+```
+
+`frontend build --console-assets` records the successful build's source SHA and every
+output hash. Ordinary `frontend build` keeps its development behavior without a receipt.
+For SSH backend runs, `--frontend-dist` is an **execution-host** absolute or `~/`
+directory, including that receipt. With a remote frontend target, copy its output
+from that host to the backend staging directory. The runner reads those files,
+verifies source and hashes under the existing checkout lease, and stages a verified
+snapshot into the managed checkout. It does not transfer frontend bytes or require
+a backend frontend toolchain. Do not copy files directly into a managed checkout.
+The supplied staging directory remains caller-owned and may be removed after the
+run finishes. A valid retained dist is rechecked on subsequent installed runs
+without supplying `--frontend-dist` again.
+An early console-blocked checkout retained by `always` or `on-failure` can be reused
+at the same SHA/driver; its original blocked result remains unchanged. `never`
+removes the checkout, so omit reuse for the next run. Usual completed-run reuse and
+cleanup ownership still apply. The checkout owner records this setup association;
+`--related-run` accepts executed reports, so do not pass a setup-blocked run there.
+Do not replace production assets with a dummy page
+or weaken package assertions. Hosted CI retains its existing frontend artifact
+handoff; this SSH preflight does not change that boundary.
 
 ## Pilot from either development machine
 
@@ -580,6 +633,38 @@ toolchain/build environment and executor hashes, and rechecks exported frontend
 contents and all three executable identities/digests. Same-owner acquire is
 idempotent; different owners share binaries with independent leases and sessions.
 An invalid existing bundle is retained and reported, not silently rebuilt.
+
+The recipe binds the effective Desktop CPA manifest's exact content digest. The
+checked-in default is read from the exact candidate blob; an explicit
+`HIROUTE_CPA_MANIFEST` is read on the execution host, resolving relative paths from
+the execution repository's `apps/desktop/src-tauri` directory. Ingestion captures
+and validates the bytes once, then hashes that buffer. Equal bytes reuse the same
+build even at different paths or through default versus explicit selection, when
+all other inputs match. The original path is not retained in recipes, lease state
+or status output.
+
+Compilation consumes a private build-owned snapshot of the captured bytes. Reuse
+and each Pilot start check that snapshot along with the existing frontend and
+executable attestations. Changing or deleting the ingestion source afterwards does
+not invalidate an acquired build or lease. A fresh acquisition reads the current
+input: changed bytes select another identity, and a missing, unreadable, symbolic-link,
+non-regular or invalid-JSON input fails before the managed build starts. JSON must be
+a UTF-8 object without non-finite constants (`NaN` or `Infinity`); Python does not
+duplicate the native manifest schema. Hardlinked regular source files are admitted
+by their captured contents.
+
+`python3 scripts/test-pilot-builds.py` runs the default local fixture suite. It
+checks snapshot bytes/permissions, build-environment wiring, source changes,
+rejection paths and lease/cleanup ownership with fake build and launch tools, even
+when `rustc` is installed. It does not establish native product acceptance.
+The explicit `python3 scripts/test-pilot-builds.py --real-consumer` entry belongs
+to required CI validation, selected through `test-plan.py` for affected manifest
+producer/consumer/tooling paths and full CI plans. It must execute exactly one
+case with a real compiler; a missing compiler, skipped case, empty selection or
+failure is nonzero. Each subprocess phase retains exit, stdout and stderr in
+`artifacts/ci/pilot-manifest-consumer/` before temporary fixture cleanup. The case
+checks the production `build.rs` and embedding declaration after the original
+source is removed; it does not launch Desktop, CPA or a provider.
 
 Use `pilot-build start --lease LEASE --case CASE` to launch each scenario with
 the existing isolated Pilot launcher. It returns the session and socket for

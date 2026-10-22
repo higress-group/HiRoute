@@ -23,6 +23,7 @@ const TOKEN_DOMAIN_PREFIX: &[u8] = b"hiroute.diagnostic.token.v1";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CorrelationDomain {
     ControlRequest,
+    ProtectedRegistration,
     ModelRequest,
     Decision,
     Attempt,
@@ -39,6 +40,7 @@ impl CorrelationDomain {
     fn tag(self) -> &'static [u8] {
         match self {
             CorrelationDomain::ControlRequest => b"control_request",
+            CorrelationDomain::ProtectedRegistration => b"protected_registration",
             CorrelationDomain::ModelRequest => b"model_request",
             CorrelationDomain::Decision => b"decision",
             CorrelationDomain::Attempt => b"attempt",

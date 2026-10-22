@@ -814,6 +814,9 @@ impl LocalControlAdapter {
                 expected_revisions
                     .dependencies
                     .insert("release.model_data".into(), provenance.release_sequence);
+                // Revalidation can wait for CPA control or lifecycle work. Native
+                // grants use this same store mutex and have a shorter ACK deadline.
+                drop(stores);
                 if let Some(batch) = cpa_batch
                     && !batch.finish().unwrap_or(false)
                 {

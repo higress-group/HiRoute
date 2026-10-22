@@ -2,7 +2,7 @@ import { agentModelStatus } from './status';
 import React from 'react';
 import { Disclosure, UiIcon } from '../../ui';
 import type { AgentModelEditorProps } from './AgentModelEditor';
-import { CodexAccessSettings } from './CodexAccessPanel';
+import { CodexAccessSettings, CodexHistoryNotice } from './CodexAccessPanel';
 import { codexSurfaceFacts } from './codex-surfaces';
 import { surfaceName } from './ecosystems';
 import { codexDefaultChoiceValid } from './editor-state';
@@ -165,6 +165,7 @@ export function CodexModelEditor({
     <p className="field-help" data-codex-shared-scope>{activeCodexMode === 'profile'
       ? text('按需使用 · 仅 Codex CLI。启用后将启动命令粘贴到终端，开启新会话。普通 Codex 和 Desktop 保持原配置。', 'On demand · Codex CLI only. After enabling, paste the launch command into a terminal to start a new session. Ordinary Codex and Desktop keep their settings.')
       : text('设为默认 · 修改同一配置目录下 Codex CLI 和 Desktop 的模型接入。保存后重新启动对应客户端即可生效。', 'Use by default · changes model access for Codex CLI and Desktop sharing this directory. Restart the client after saving to apply the settings.')}</p>
+    <CodexHistoryNotice language={language} mode={activeCodexMode} />
     <fieldset><legend className="field-label">{text('允许的智能路由', 'Allowed smart routes')}</legend>
       {enabledPlans.length === 1 && creatingModelConnection && <p className="field-help">{text('唯一可用路由已选为默认，可直接启用。', 'The only available route is selected as the default. Enable to continue.')}</p>}
       {enabledPlans.map(plan => <label className="check-row agent-route-choice" data-agent-plan-id={plan.agent_plan_id} key={plan.agent_plan_id}><input type="checkbox" checked={editorValues.allowedPlanIds.includes(plan.agent_plan_id)} onChange={() => toggleAllowedPlan(plan.agent_plan_id)} /><div><strong>{plan.desired.display_name}</strong></div></label>)}
@@ -199,7 +200,7 @@ export function CodexModelEditor({
       : text('保存一次即作用于共享此配置作用域与 CODEX_HOME 的 Codex CLI 和 Desktop。', 'One save applies to Codex CLI and Desktop when they share this configuration scope and CODEX_HOME.')}</p>{codexSurfaces.map(({surface, detected, applicable}) => {
       return <span className="field-help" key={surface} data-agent-surface-fact={surface} data-agent-surface-detected={detected ? 'true' : 'false'} data-agent-surface-applicable={applicable ? 'true' : 'false'}>{surfaceName(surface)} · {detected ? text('当前已发现可执行入口', 'currently detected as runnable') : text('当前未发现可执行入口', 'not currently detected as runnable')} · {applicable ? text('适用当前模式', 'applies to this mode') : text('不适用当前模式', 'does not apply to this mode')}</span>;
     })}</div></div>
-      <p className="field-help" data-agent-plan-compatibility>{text('保存时会核对路由的 Codex Responses 能力。不同入口的会话历史可能不同。', 'Saving checks the routes’ Codex Responses capabilities. History may differ between entry points.')}</p>
+      <p className="field-help" data-agent-plan-compatibility>{text('保存时会核对路由的 Codex Responses 能力。', 'Saving checks the routes’ Codex Responses capabilities.')}</p>
     </Disclosure>
     {modelFormInvalid && <span className="oc-inline-error">{text('请选择可用路由或固定模型，并修正不可用项。', 'Choose an available route or fixed model and resolve unavailable selections.')}</span>}
   </div>;

@@ -16,6 +16,7 @@ import type { CacheHitSummary } from '../features/usage-presentation';
 import type { Draft, Plan, Selection } from '../plan-editor';
 
 export type DesktopSnapshot = {
+  native_connection?: import('../native-connection').NativeConnectionStatus;
   catalog_error: unknown | null;
   service: {
     daemon_role: string;
@@ -95,6 +96,7 @@ export function projectHomeService(snapshot: DesktopSnapshot): HomeService {
   }[snapshot.service.gateway] as HomeService['gateway'] | undefined;
   return {
     daemon: snapshot.trusted_authority ? 'running' : 'read_only',
+    nativeConnectionLost: snapshot.native_connection === 'recovery_required' || snapshot.native_connection === 'restart_required',
     gateway: gateway ?? 'unknown',
     recoveryReady: snapshot.service.recovery_ready,
   };

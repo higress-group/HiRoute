@@ -319,15 +319,36 @@ class SelectionTests(unittest.TestCase):
 
     def test_validation_tooling_selects_runner_consumers_without_product_builds(self):
         result = plan.select(['scripts/validation.py', 'scripts/local-rust.py', 'scripts/pilot-builds.py',
-                              'scripts/desktop-pilot.py', 'docs/validation-routing.md'])
+                              'scripts/desktop-pilot.py', 'scripts/console-assets.py',
+                              'scripts/test-console-assets.py', 'docs/validation-routing.md'])
         self.assertFalse(result['rust'])
         self.assertFalse(result['frontend'])
-        for name in ('test-validation.py', 'test-local-rust.py', 'test-remote-rust.py',
+        for name in ('test-validation.py', 'test-console-assets.py', 'test-local-rust.py', 'test-remote-rust.py',
                      'test-ci-shards.py', 'test-desktop-pilot.py', 'test-pilot-builds.py'):
             self.assertIn(['python3', 'scripts/' + name], result['commands'])
         mixed = plan.select(['scripts/validation.py', 'crates/daemon/src/lib.rs'])
         self.assertTrue(mixed['rust'])
         self.assertIn('daemon', mixed['groups'])
+
+    def test_real_pilot_manifest_consumer_is_selected_only_for_applicable_ci_plans(self):
+        command = ['python3', 'scripts/test-pilot-builds.py', '--real-consumer']
+        inputs = ('scripts/pilot-builds.py', 'scripts/test-pilot-builds.py',
+                  'scripts/test-plan.py', 'scripts/test-test-plan.py',
+                  'apps/desktop/src-tauri/build.rs',
+                  'apps/desktop/src-tauri/src/development_cpa.rs',
+                  'apps/desktop/src-tauri/development-cpa-artifacts.v1.json')
+        with mock.patch.dict(plan.os.environ, {'GITHUB_ACTIONS': 'false'}):
+            for path in inputs:
+                self.assertNotIn(command, plan.select([path])['commands'])
+            self.assertNotIn(command, plan.select([], full=True)['commands'])
+        with mock.patch.dict(plan.os.environ, {'GITHUB_ACTIONS': 'true'}):
+            for path in inputs:
+                with self.subTest(path=path):
+                    self.assertIn(command, plan.select([path])['commands'])
+            self.assertIn(command, plan.select([], full=True)['commands'])
+            for path in ('docs/validation-routing.md', 'scripts/windows-dev.py'):
+                self.assertNotIn(command, plan.select([path])['commands'])
+
 
     def test_windows_development_runner_does_not_select_product_or_hosted_matrix(self):
         result = plan.select(['scripts/windows-dev.py', 'scripts/windows-dev-host.py',

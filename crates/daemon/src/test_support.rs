@@ -120,8 +120,15 @@ fn isolated_agent_home_inner(
     ]) {
         command.env_remove(name);
     }
-    let status = command.status().unwrap();
-    assert!(status.success(), "isolated daemon test failed: {test_name}");
+    // Parallel child harnesses must not interleave their summaries with the
+    // parent harness. Retain their diagnostics when a child actually fails.
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "isolated daemon test failed: {test_name}\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
     true
 }
 

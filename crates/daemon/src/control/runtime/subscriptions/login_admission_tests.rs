@@ -39,6 +39,8 @@ use super::super::{LocalControlAdapter, ProductionControlRuntime, RuntimeOpenOve
 #[path = "discovery_tests.rs"]
 mod discovery_tests;
 
+mod routing_lock_tests;
+
 struct Fixture {
     runtime: ProductionControlRuntime,
     runtimes: Arc<ManagedCpaRuntimeSet>,

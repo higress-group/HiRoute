@@ -65,6 +65,7 @@
 .agent-form .agent-route-choice {padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft);}
 .agent-form .agent-route-choice:has(input:checked) {border-color:var(--accent);background:var(--accent-soft);}
 .configuration-path {white-space:pre-wrap;overflow-wrap:anywhere;}
+[data-codex-history-guidance] code {white-space:nowrap;}
 .agent-launch-command {white-space:pre-wrap;overflow-wrap:anywhere;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft);font-size:calc(12px * var(--hr-text-scale));}
 .agent-launch-shell {display:flex;align-items:center;gap:8px;}
 .agent-launch-shell .select {width:auto;max-width:160px;}

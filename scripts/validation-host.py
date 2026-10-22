@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Execution-host adapter. Receives a JSON request from validation.py over stdin."""
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -149,8 +150,13 @@ def execute(payload):
                  str(Path(payload["frontend_dist"]).expanduser())], cwd=repo, env=env, text=True).strip()
         argv = [sys.executable, str(script), *arguments]
     elif action == "frontend":
-        if arguments not in (["ci"], ["build"], ["test"]):
-            raise ValueError("frontend expects ci, build or test")
+        if arguments not in (["ci"], ["build"], ["build", "--console-assets"], ["test"]):
+            raise ValueError("frontend expects ci, build, build --console-assets or test")
+        if arguments == ["build", "--console-assets"]:
+            spec = importlib.util.spec_from_file_location("console_assets", repo / "scripts/console-assets.py")
+            console = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(console)
+            return console.build(repo, env)
         argv = ["npm", "--prefix", "apps/desktop", *(arguments if arguments == ["ci"] else ["run", *arguments])]
     elif action == "pilot":
         if not arguments:

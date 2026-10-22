@@ -139,6 +139,7 @@ impl CpaControlPlane for GatedControl {
         version: &str,
         timeout: Duration,
         refresh_models: bool,
+        diagnostics: &hiroute_diagnostics::context::DiagnosticContext,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         self.inner.discover_and_pin(
             address,
@@ -148,6 +149,7 @@ impl CpaControlPlane for GatedControl {
             version,
             timeout,
             refresh_models,
+            diagnostics,
         )
     }
 }

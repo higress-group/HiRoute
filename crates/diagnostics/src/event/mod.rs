@@ -9,8 +9,11 @@ mod common;
 mod content;
 mod control;
 mod cpa;
+mod cpa_control;
+mod cpa_model_discovery;
 mod model;
 mod observation;
+mod protected_channel;
 mod startup;
 mod system;
 mod worker;
@@ -23,8 +26,11 @@ pub use common::*;
 pub use content::*;
 pub use control::*;
 pub use cpa::*;
+pub use cpa_control::*;
+pub use cpa_model_discovery::*;
 pub use model::*;
 pub use observation::*;
+pub use protected_channel::*;
 pub use startup::*;
 pub use system::*;
 pub use worker::*;
@@ -53,6 +59,7 @@ pub enum DiagnosticEvent {
     Apply(ApplyEvent),
     ControlCallEnd(ControlCallEnd),
     ControlStage(ControlStage),
+    ProtectedExchange(ProtectedExchange),
     RequestBegin(RequestBegin),
     RequestEnd(RequestEnd),
     RouteSelected(RouteSelected),
@@ -81,6 +88,8 @@ pub enum DiagnosticEvent {
     CpaLifecycle(CpaLifecycle),
     CredentialLease(CredentialLease),
     CpaStage(CpaStage),
+    CpaControl(CpaControl),
+    CpaModelDiscovery(CpaModelDiscovery),
 }
 
 impl DiagnosticEvent {
@@ -136,6 +145,13 @@ impl DiagnosticEvent {
                 }
             }
             DiagnosticEvent::ControlStage(_) => Debug,
+            DiagnosticEvent::ProtectedExchange(exchange) => {
+                if exchange.error.is_some() {
+                    Warn
+                } else {
+                    Debug
+                }
+            }
             DiagnosticEvent::RequestBegin(_)
             | DiagnosticEvent::RouteSelected(_)
             | DiagnosticEvent::AttemptBegin(_) => Info,
@@ -186,6 +202,26 @@ impl DiagnosticEvent {
             | DiagnosticEvent::CpaLifecycle(_)
             | DiagnosticEvent::CredentialLease(_) => Info,
             DiagnosticEvent::WorkerStage(_) | DiagnosticEvent::CpaStage(_) => Debug,
+            DiagnosticEvent::CpaControl(control) => match control.outcome {
+                CpaStageOutcome::Failed { .. } => Warn,
+                _ => Debug,
+            },
+            DiagnosticEvent::CpaModelDiscovery(discovery) => match &discovery.observation {
+                CpaDiscoveryObservation::Observed { attempt, .. }
+                    if matches!(
+                        attempt.outcome,
+                        CpaDiscoveryOutcome::Failed | CpaDiscoveryOutcome::Discarded
+                    ) || attempt.reason.is_some() =>
+                {
+                    Warn
+                }
+                CpaDiscoveryObservation::Unavailable {
+                    reason:
+                        CpaDiscoveryUnavailable::InvalidMetadata
+                        | CpaDiscoveryUnavailable::ObservationLimit,
+                } => Warn,
+                _ => Debug,
+            },
         }
     }
 
@@ -221,6 +257,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::Apply(_) => "apply",
             DiagnosticEvent::ControlCallEnd(_) => "control_call_end",
             DiagnosticEvent::ControlStage(_) => "control_stage",
+            DiagnosticEvent::ProtectedExchange(_) => "protected_exchange",
             DiagnosticEvent::RequestBegin(_) => "request_begin",
             DiagnosticEvent::RequestEnd(_) => "request_end",
             DiagnosticEvent::RouteSelected(_) => "route_selected",
@@ -249,6 +286,8 @@ impl DiagnosticEvent {
             DiagnosticEvent::CpaLifecycle(_) => "cpa_lifecycle",
             DiagnosticEvent::CredentialLease(_) => "credential_lease",
             DiagnosticEvent::CpaStage(_) => "cpa_stage",
+            DiagnosticEvent::CpaControl(_) => "cpa_control",
+            DiagnosticEvent::CpaModelDiscovery(_) => "cpa_model_discovery",
         }
     }
 }

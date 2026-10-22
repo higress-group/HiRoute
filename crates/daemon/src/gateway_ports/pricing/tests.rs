@@ -9,6 +9,7 @@ fn identity(seed: &str) -> CanonicalDigest {
 
 fn entry(source: &str, model: &str, offer: &str, rate: u64) -> PriceIndexEntryV1 {
     PriceIndexEntryV1 {
+        execution_binding_id: None,
         target: PriceTargetV1 {
             workspace_id: WorkspaceId::default(),
             source_id: source.into(),
@@ -268,5 +269,139 @@ fn workspace_identity_is_part_of_the_price_target() {
     assert_eq!(
         quote.rates.input_uncached,
         TokenRateV1::unknown(PriceUnknownReasonV1::TargetNotInSnapshot)
+    );
+}
+
+#[test]
+fn configured_api_equivalent_price_is_frozen_when_billing_price_is_unavailable() {
+    let mut actual = entry("source-a", "model-a", "offer-a", 100);
+    actual.catalog_rules.clear();
+    actual.actual_offer_ref = None;
+    let mut reference = actual.clone();
+    reference.target.valuation_kind = PriceValuationKindV1::ApiEquivalent;
+    reference.source_override = Some(SourcePriceOverrideV1 {
+        target: reference.target.clone(),
+        revision: 1,
+        setting: SourcePriceSettingV1::Set {
+            rates: TokenRatesV1::from_legacy(300_000, 1_200_000),
+        },
+    });
+    let slot = Arc::new(PriceSnapshotSlot::default());
+    slot.install(
+        PriceSnapshot::build(1, vec![], vec![actual, reference]).unwrap(),
+        None,
+    )
+    .unwrap();
+    let evidence = source(slot)
+        .capture_request(
+            WorkspaceId::DEFAULT,
+            &[binding(
+                "binding", "source-a", "model-a", "profile", "offer-a",
+            )],
+            1000,
+        )
+        .freeze_attempt("binding", "model-a", "profile", 2000);
+    let quote = evidence.quote.as_ref().unwrap();
+    assert_eq!(quote.valuation_kind, PriceValuationKindV1::ApiEquivalent);
+    assert_eq!(quote.origin, PriceOriginV1::Manual);
+    assert_eq!(quote.rates.input_uncached, TokenRateV1::known(300_000));
+    assert_eq!(
+        quote.rates.cache_read,
+        TokenRateV1::unknown(PriceUnknownReasonV1::CacheRateNotCollected)
+    );
+    evidence.validate().unwrap();
+}
+
+#[test]
+fn configured_reference_does_not_replace_a_verified_billing_price() {
+    let actual = entry("source-a", "model-a", "offer-a", 100);
+    let mut reference = actual.clone();
+    reference.target.valuation_kind = PriceValuationKindV1::ApiEquivalent;
+    reference.catalog_rules.clear();
+    reference.source_override = Some(SourcePriceOverrideV1 {
+        target: reference.target.clone(),
+        revision: 1,
+        setting: SourcePriceSettingV1::Set {
+            rates: TokenRatesV1::from_legacy(900, 900),
+        },
+    });
+    let slot = Arc::new(PriceSnapshotSlot::default());
+    slot.install(
+        PriceSnapshot::build(1, vec![], vec![actual, reference]).unwrap(),
+        None,
+    )
+    .unwrap();
+    let evidence = source(slot)
+        .capture_request(
+            WorkspaceId::DEFAULT,
+            &[binding(
+                "binding", "source-a", "model-a", "profile", "offer-a",
+            )],
+            1000,
+        )
+        .freeze_attempt("binding", "model-a", "profile", 2000);
+    let quote = evidence.quote.unwrap();
+    assert_eq!(quote.valuation_kind, PriceValuationKindV1::UsageEstimate);
+    assert_eq!(quote.rates.input_uncached, TokenRateV1::known(100));
+}
+
+#[test]
+fn pinned_publication_keeps_reference_price_after_source_revision_changes() {
+    let mut reference = entry("source-a", "current-execution", "offer-a", 2_000_000);
+    reference.target.model_identity = PriceModelIdentityV1::LocalModel("authoring-model".into());
+    reference.target.valuation_kind = PriceValuationKindV1::ApiEquivalent;
+    reference.execution_binding_id = Some("stable-binding".into());
+    reference.catalog_rules.clear();
+    reference.source_override = Some(SourcePriceOverrideV1 {
+        target: reference.target.clone(),
+        revision: 2,
+        setting: SourcePriceSettingV1::Set {
+            rates: TokenRatesV1::from_legacy(2_000_000, 2_000_000),
+        },
+    });
+    let slot = Arc::new(PriceSnapshotSlot::default());
+    slot.install(
+        PriceSnapshot::build(2, vec![], vec![reference]).unwrap(),
+        None,
+    )
+    .unwrap();
+    let bindings = [binding(
+        "stable-binding",
+        "source-a",
+        "pinned-older-execution",
+        "profile",
+        "older-offer",
+    )];
+    let captured = source(slot).capture_request(WorkspaceId::DEFAULT, &bindings, 100_000);
+    let evidence = captured.freeze_attempt(
+        "stable-binding",
+        "pinned-older-execution",
+        "profile",
+        100_001,
+    );
+    evidence.validate().unwrap();
+    let quote = evidence.quote.unwrap();
+    assert_eq!(quote.valuation_kind, PriceValuationKindV1::ApiEquivalent);
+    assert_eq!(quote.rates.input_uncached, TokenRateV1::known(2_000_000));
+    assert_eq!(
+        quote.exact_target.model_identity,
+        PriceModelIdentityV1::CatalogModel("pinned-older-execution".into())
+    );
+    assert!(
+        captured
+            .freeze_attempt("stable-binding", "different-model", "profile", 100_001)
+            .quote
+            .is_none()
+    );
+    assert!(
+        captured
+            .freeze_attempt(
+                "other-binding",
+                "pinned-older-execution",
+                "profile",
+                100_001
+            )
+            .quote
+            .is_none()
     );
 }

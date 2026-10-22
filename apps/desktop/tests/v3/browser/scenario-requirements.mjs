@@ -12,6 +12,7 @@ export const agentTrustRequired = ['codex.restore.conflict-active',
   'hermes.routing.unavailable-and-exact-recovery',
   'claude.routing.blocker-guidance',
   'codex.enable.draft-cancel',
+  'codex.history.root-and-configured-guidance',
   'claude.enable.shared-presets',
   'codex.enable.confirmed-command',
   'codex.routing.fixed-binding',
@@ -62,6 +63,9 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.connection.unowned-service',
+  'desktop.connection.loss-retry-recovery',
+  'desktop.connection.pending-and-failed-recovery',
   'desktop.settings.storage-capacity',
   'desktop.routing.native-default',
   'desktop.decisions.connectivity-test',

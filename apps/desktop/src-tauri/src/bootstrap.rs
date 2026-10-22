@@ -1,4 +1,4 @@
-//! Native-owned child and three private inherited channels. Never exposed over WebView IPC.
+//! Native-owned child with private inherited shutdown and grant channels. Never exposed over WebView IPC.
 use command_fds::{CommandFdExt, FdMapping};
 use fs2::FileExt;
 use hiroute_application_api::{CanonicalDigest, ComputeCandidateRefV2, RevisionSetV1};
@@ -24,6 +24,8 @@ use zeroize::Zeroizing;
 use crate::native_diagnostics::NativeDiagnostics;
 
 const DAEMON_READY_TIMEOUT: Duration = Duration::from_secs(210);
+mod channel;
+mod recovery;
 mod startup_progress;
 pub enum ApplyPurpose {
     AgentPlan,
@@ -42,6 +44,7 @@ struct OwnedChild {
     capability: File,
     ack: File,
     authority_healthy: bool,
+    pending_ack: Option<channel::PendingAck>,
     manual_input_candidates: BTreeSet<String>,
     diagnostics: Option<DiagnosticsPort>,
 }
@@ -107,8 +110,11 @@ impl Resident {
         })
         .map_err(|_| "UPGRADE_FRAME_INVALID")?;
         bytes.push(b'\n');
+        let started = Instant::now();
+        let mut phase = hiroute_diagnostics::event::ProtectedExchangePhase::RequestWrite;
         let exchange = (|| {
             write_frame(&mut owned.capability, &bytes)?;
+            phase = hiroute_diagnostics::event::ProtectedExchangePhase::AcknowledgementRead;
             let bytes = read_frame(&mut owned.ack, 4096, Duration::from_secs(10), None)?;
             let status: hiroute_host_runtime::LauncherUpgradeStatus =
                 serde_json::from_slice(&bytes).map_err(|_| "UPGRADE_ACK_INVALID")?;
@@ -123,6 +129,15 @@ impl Resident {
         if exchange.is_err() {
             owned.authority_healthy = false;
         }
+        channel::emit_exchange(
+            owned.diagnostics.as_ref(),
+            hiroute_diagnostics::event::ProtectedExchangeKind::Upgrade,
+            phase,
+            &id,
+            started,
+            exchange.as_ref().err(),
+            exchange.is_err(),
+        );
         exchange
     }
 
@@ -406,6 +421,7 @@ impl Resident {
             capability: cap_write,
             ack: ack_read,
             authority_healthy: true,
+            pending_ack: None,
             manual_input_candidates: BTreeSet::new(),
             diagnostics: Some(stages.clone()),
         };
@@ -670,8 +686,15 @@ impl Resident {
             .map_err(|_| "PROTECTED_INPUT_INVALID")?,
         );
         bytes.push(b'\n');
-        write_frame(&mut owned.capability, &bytes)?;
-        receive_ack(&mut owned.ack, &id, Duration::from_secs(2))
+        // Track even an uncertain registration so recovery can release its input.
+        owned
+            .manual_input_candidates
+            .insert(candidate.candidate_ref.clone());
+        owned.exchange_ack(
+            &bytes,
+            &id,
+            hiroute_diagnostics::event::ProtectedExchangeKind::InputRegister,
+        )
     }
     pub fn release_model_input(&mut self, candidate: &ComputeCandidateRefV2) -> Result<(), String> {
         candidate
@@ -687,32 +710,7 @@ impl Resident {
         {
             return Ok(());
         }
-        let id = crate::random_id()?;
-        #[derive(serde::Serialize)]
-        struct Release<'a> {
-            schema: &'static str,
-            registration_id: &'a str,
-            candidate_ref: &'a str,
-        }
-        let mut bytes = Zeroizing::new(
-            serde_json::to_vec(&Release {
-                schema: "hiroute.protected-input/v1",
-                registration_id: &id,
-                candidate_ref: &candidate.candidate_ref,
-            })
-            .map_err(|_| "PROTECTED_INPUT_INVALID")?,
-        );
-        bytes.push(b'\n');
-        let result = write_frame(&mut owned.capability, &bytes)
-            .and_then(|()| receive_ack(&mut owned.ack, &id, Duration::from_secs(2)));
-        if result.is_ok() {
-            owned
-                .manual_input_candidates
-                .remove(&candidate.candidate_ref);
-        } else {
-            owned.authority_healthy = false;
-        }
-        result
+        owned.release_input(&candidate.candidate_ref)
     }
     fn register_operation(
         &mut self,
@@ -726,7 +724,7 @@ impl Resident {
         let result = self.register_once(digest, revisions, operation);
         if result.is_err() {
             // A partial/timed-out channel cannot be reused for a different registration.
-            // Keep the owned daemon alive for reads; a new native session re-establishes authority.
+            // Local Control can remain live, but protected observation reads also need authority.
             if let Some(owned) = &mut self.owned {
                 owned.authority_healthy = false;
             }
@@ -775,11 +773,15 @@ impl Resident {
             .map_err(|_| "REGISTRATION_INVALID")?,
         );
         bytes.push(b'\n');
-        write_frame(&mut owned.capability, &bytes)?;
-        receive_ack(&mut owned.ack, &id, Duration::from_secs(2))?;
+        owned.exchange_ack(
+            &bytes,
+            &id,
+            hiroute_diagnostics::event::ProtectedExchangeKind::Grant,
+        )?;
         Ok(capability)
     }
 }
+#[cfg(test)]
 fn receive_ack(reader: &mut impl Read, id: &str, timeout: Duration) -> Result<(), String> {
     let ack: Ack = serde_json::from_slice(&read_frame(reader, 1024, timeout, None)?)
         .map_err(|_| "REGISTRATION_ACK_INVALID")?;
@@ -964,6 +966,9 @@ pub(crate) fn acquire_host_lock(root: &Path) -> Result<File, String> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, target_os = "macos"))]
+mod channel_native_tests;
 
 mod authority;
 pub use authority::{NativeAuthority, resident};

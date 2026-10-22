@@ -351,6 +351,18 @@ pub(super) fn installed_test_layout(test: &str) -> bool {
     let cli = staged.path().join("hiroute");
     std::fs::copy(std::env::current_exe().unwrap(), &daemon).unwrap();
     std::fs::copy(&daemon, &cli).unwrap();
+    #[cfg(target_os = "macos")]
+    for executable in [&daemon, &cli] {
+        // macOS can reject a copied Rust test executable's CT signature before
+        // the installed-layout child reaches any assertion. Sign only these
+        // private, self-built fixture copies; production signing is unchanged.
+        let status = std::process::Command::new("/usr/bin/codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(executable)
+            .status()
+            .unwrap();
+        assert!(status.success(), "private installed fixture signing failed");
+    }
     let bin = home.join(".local/bin");
     std::fs::create_dir_all(&bin).unwrap();
     std::os::unix::fs::symlink(&cli, bin.join("hiroute")).unwrap();

@@ -64,7 +64,7 @@ export function visibleData<T>(read: HomeRead<T>): T | undefined {
 }
 
 export function deriveHomeServiceStatus(read: HomeRead<HomeService>): {
-  state: 'ready' | 'read_only' | 'unavailable' | 'unknown';
+  state: 'ready' | 'read_only' | 'connection_lost' | 'unavailable' | 'unknown';
   operational: boolean;
 } {
   if (read.status !== 'ready') {
@@ -74,10 +74,10 @@ export function deriveHomeServiceStatus(read: HomeRead<HomeService>): {
   const running = service.daemon === 'running'
     && ['ready', 'empty', 'no_new_calls'].includes(service.gateway);
   return {
-    state: service.daemon === 'read_only' ? 'read_only'
+    state: service.nativeConnectionLost ? 'connection_lost' : service.daemon === 'read_only' ? 'read_only'
       : service.daemon === 'unavailable' ? 'unavailable'
         : running ? 'ready' : 'unknown',
-    operational: running && Boolean(service.recoveryReady),
+    operational: running && Boolean(service.recoveryReady) && !service.nativeConnectionLost,
   };
 }
 

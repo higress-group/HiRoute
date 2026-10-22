@@ -24,6 +24,12 @@ report the actual installed consumers; [safe conflict facts](../../crates/domain
 retain rejection identity through compensation and client observation.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
+
+Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
+explains native provider-scoped session discovery before enabling routing. Default
+on-demand access preserves the ordinary entry for earlier sessions; advanced default
+takeover first requires configuration restoration. See [session recovery](../local-user-configuration.md#find-earlier-codex-sessions). Worker Continue below
+has its own exact-history binding and does not replace the native `/resume` picker.
 OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)

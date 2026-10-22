@@ -3,10 +3,10 @@ use hiroute_application_api::{ErrorCode, ObservationReadIntentV2, ObservationRea
 use hiroute_domain::RoutingTimelineQueryV1;
 
 #[test]
-fn review_timeline_dispatch_exhausts_real_readers_then_recovers() {
+fn review_timeline_and_quality_dispatch_exhaust_real_readers_then_recover() {
     #[cfg(unix)]
     if crate::test_support::isolated_agent_home(
-        "control::runtime::tests::timeline_retry_tests::review_timeline_dispatch_exhausts_real_readers_then_recovers",
+        "control::runtime::tests::timeline_retry_tests::review_timeline_and_quality_dispatch_exhaust_real_readers_then_recover",
     ) {
         return;
     }
@@ -47,21 +47,55 @@ fn review_timeline_dispatch_exhausts_real_readers_then_recovers() {
         payload: serde_json::to_value(query).unwrap(),
         protected_grant: None,
     };
-    // Keep all production reader permits held across two real dispatches. No
-    // port or failure envelope is mocked; releasing the permits permits recovery.
-    runtime.observation.with_all_query_permits_for_test(|| {
-        for _ in 0..2 {
+    let quality = ObservationReadRequestV2::new(ObservationReadIntentV2::PlanQuality(Box::new(
+        serde_json::from_value(json!({
+            "plan_id": "plan/codex-daily", "limit": 50,
+            "include_routing_observations": true,
+        }))
+        .unwrap(),
+    )));
+    let quality_request = LocalControlRequestV2 {
+        request_id: "quality-busy".into(),
+        operation_id: quality.operation().into(),
+        payload: serde_json::to_value(quality).unwrap(),
+        ..request.clone()
+    };
+    let mut legacy_request = quality_request.clone();
+    legacy_request.payload["intent"]["query"]
+        .as_object_mut()
+        .unwrap()
+        .remove("include_routing_observations");
+    let mut disabled_request = quality_request.clone();
+    disabled_request.payload["intent"]["query"]["include_routing_observations"] = json!(false);
+    for (request, detailed) in [
+        (request, true),
+        (quality_request, true),
+        (legacy_request, false),
+        (disabled_request, false),
+    ] {
+        // Exercise real permit exhaustion and recovery through Application.
+        // Released strict quality readers retain their original failure shape.
+        runtime.observation.with_all_query_permits_for_test(|| {
             let response = application.dispatch(request.clone());
             let wire = serde_json::to_value(&response).unwrap();
+            assert_eq!(
+                response.request_id.as_deref(),
+                Some(request.request_id.as_str())
+            );
             let error = response.error.unwrap();
             assert_eq!(error.code, ErrorCode::ObservationUnavailable, "{wire}");
-            assert!(error.retryable, "{wire}");
-            assert_eq!(error.details_schema, "hiroute.observation.read-failure/v1");
-            assert_eq!(wire["error"]["observation_read"]["reason"], "reader_busy");
-            assert_eq!(wire["error"]["observation_read"]["retry_after_ms"], 100);
-        }
-    });
-    let response = application.dispatch(request);
-    assert!(response.error.is_none(), "{response:?}");
-    assert!(response.data.is_some());
+            assert_eq!(error.retryable, detailed, "{wire}");
+            if detailed {
+                assert_eq!(error.details_schema, "hiroute.observation.read-failure/v1");
+                assert_eq!(wire["error"]["observation_read"]["reason"], "reader_busy");
+                assert_eq!(wire["error"]["observation_read"]["retry_after_ms"], 100);
+            } else {
+                assert_eq!(error.details_schema, "hiroute.error-details/none-v1");
+                assert!(error.observation_read.is_none());
+            }
+        });
+        let response = application.dispatch(request);
+        assert!(response.error.is_none(), "{response:?}");
+        assert!(response.data.is_some());
+    }
 }

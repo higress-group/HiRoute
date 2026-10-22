@@ -36,6 +36,38 @@ is not-executed with reason, not green or executed expected_red. Required red/mi
 expected-red capability prevents acceptance even if a fixture test legitimately exits
 zero. Existing runner result contracts cannot be weakened to obtain green.
 
+Ordinary Rust validation results, compact waits, and module reports MUST count
+independent cases from complete Cargo-target terminal summaries, excluding nested
+child-process summaries. Child assertions and diagnostic output MUST remain available.
+Unattributed output, ambiguous target identity, or an unfinished parent MUST NOT
+establish successful test execution, even if a child's test count matches its parent.
+Every completed target contributes its own passing, failing and ignored counts;
+a later successful target MUST NOT erase an earlier failed target. A nonzero command
+exit MUST fail the run independently of otherwise successful test summaries.
+
+#### Scenario: Nested subprocesses finish inside a successful parent target
+
+- **WHEN** a Cargo target completes its selected parent tests after printing nested child summaries
+- **THEN** run results, compact waits and module reports expose the parent target counts, retaining the child output without adding independent coverage.
+
+#### Scenario: A child finishes but its parent target is interrupted
+
+- **WHEN** the final observed child summary has no completed parent summary, including when both selected the same number of tests
+- **THEN** validation remains incomplete and the child summary cannot establish parent success or independent parent counts.
+
+#### Scenario: Installed-package prerequisites fail before expensive execution
+
+When managed SSH backend selection includes installed-package acceptance requiring
+the console, the runner MUST verify the candidate's frontend source revision and
+output hashes before starting Rust execution. Missing or mismatched assets block
+setup with actionable preparation instructions; they are not product failures or
+successful acceptance. The caller supplies prepared assets in a separate execution-host
+staging directory; the runner verifies them and places them in the retained candidate
+only under its checkout lease. Retained assets are rechecked before use. Selections
+that exclude the installed scenarios MUST NOT require a frontend build. Real installed
+management and Quickstart assertions remain required after preparation; artifact verification alone does not
+establish their outcomes.
+
 ### Requirement: Evidence binds actual revision, artifact, role, and path
 
 Report MUST include checked source revision, build/executable identity, platform,
@@ -47,10 +79,50 @@ current source/build/artifact proof rather than lower trust checks. Real process
 listener/protocol and independent outcome evidence are required; static goldens/
 fixture self-report/model success text are not actual user content or effects.
 
+Reusable native Desktop build identity MUST bind the exact CPA manifest bytes
+captured and validated at acquisition, resolving the default from the exact
+candidate or an explicit package-relative source. Compilation MUST consume a private
+build-owned snapshot of that same captured buffer. Equal bytes MUST permit reuse
+across source paths and default/explicit selection when all other build inputs
+match. Original source paths MUST NOT be retained in recipes, lease state or public
+evidence. Reuse and startup MUST verify the snapshot and existing artifact
+attestations; later source modification or deletion MUST NOT invalidate an acquired
+build or lease. A fresh acquisition MUST inspect its current input and reject
+missing, unreadable, symbolic-link, special-file or invalid UTF-8 JSON object input,
+including non-finite JSON constants, before starting the managed build. A hardlinked
+regular source is admissible by its captured contents.
+
 A missing essential publish/call step or substituted canned body MUST fail the
 relevant oracle. Evidence-generation integrity is verified before/after launch;
 large artifact verification time is runner overhead, not consumed from product-step
 budgets. Build and scenario time are recorded separately.
+
+Build preparation MUST bind each selected product role to its exact build receipt
+and receipt digest, including the recipe/environment identity verified by its
+producer. Different valid recipes MAY retain identical executable bytes in the
+same checkout. Unrelated receipts MUST NOT make the selected preparation ambiguous
+or substitute a different runtime environment. Admission still verifies the source,
+receipt and executable digests, checkout path containment and consistent selected
+environment. Missing, changed or conflicting selected evidence MUST fail admission.
+
+#### Scenario: Continue focused smoke with a full workspace preparation
+
+- **WHEN** focused smoke and full workspace preparation use one candidate checkout
+  with different build environments and identical resulting executable bytes
+- **THEN** each preparation selects its own exact product and Gateway receipts and
+  runtime environment without removing or rewriting the other receipts
+- **AND** a missing, corrupt, escaping or conflicting selected receipt remains a
+  failure even when another valid receipt has the same executable digest.
+
+#### Scenario: A changed CPA source selects a new build without invalidating an old lease
+
+- **WHEN** an explicit CPA manifest is selected for a reusable Desktop Pilot build and its bytes later change at the same path
+- **THEN** a fresh acquisition has a different build identity, while the old lease remains usable with its verified frozen snapshot even if the source is subsequently deleted.
+
+#### Scenario: Equivalent CPA sources reuse the same frozen build
+
+- **WHEN** different paths or default/explicit selections resolve to equal manifest bytes and all other build inputs match
+- **THEN** acquisition reuses the same verified build without retaining the original source path.
 
 ### Requirement: Validation tracks have independent evidence limits
 
@@ -110,10 +182,20 @@ worktree's normal target, and artifact cleanup preserves active use and unique
 evidence. A leak scan failure blocks acceptance. Concrete measured timing belongs
 to the runner/run record, not an unmeasured duration promise here.
 
+If preparation fails after independent targets execute, the run MUST retain their
+attributable terminal results and counts, the preparation failure, and explicit
+unexecuted target/doctest coverage. Completed independent targets cannot establish
+complete validation when dependent targets were not admitted.
+
 ## Implementation references
 
 - [Product control journey](../../../tools/product-e2e/tests/control_shell.rs),
   [oracle](../../../tools/product-e2e/tests/product_oracle.rs), and
   [controlled Gateway runtime](../../../tools/e2e-harness/tests/p0_gateway_runtime.rs).
+- [Desktop Pilot reusable build owner](../../../scripts/pilot-builds.py) and
+  [lifecycle regressions](../../../scripts/test-pilot-builds.py).
 - [Evidence/fixture map](../../../docs/code-map/testing.md) and
   [validation selection](../../../docs/test-selection.md).
+- [Smoke preparation](../../../tools/product-e2e/src/smoke/preparation.rs),
+  [Gateway preparation](../../../tools/e2e-harness/src/p0/production/candidate.rs), and
+  [DAG admission and regressions](../../../scripts/test-validation-schedule.py).

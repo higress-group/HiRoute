@@ -189,6 +189,8 @@ class Cleanup(unittest.TestCase):
                          ' print("cargo fixture")\n'
                          'else:\n'
                          ' (target/"debug").mkdir(parents=True)\n'
+                         ' print("Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)")\n'
+                         ' print("running 1 test")\n'
                          ' print("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out")\n')
         cargo.chmod(0o700)
         for name in ('rustc', 'sccache'):
@@ -536,6 +538,8 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
                          ' (p/"debug").mkdir(parents=True)\n'
                          ' (p/"debug/binary").write_text("fixture")\n'
                          ' import time; time.sleep(' + str(delay) + ')\n'
+                         ' print("Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)")\n'
+                         ' print("running 1 test")\n'
                          ' print("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out")\n'
                          ' sys.exit(' + str(exit_code) + ')\n')
         cargo.chmod(0o700)
@@ -585,8 +589,8 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
         report = json.loads(Path(result['validation_report']['path']).read_text())
         self.assertEqual(report['sha'], result['sha'])
         self.assertEqual(report['process_exit'], 0)
-        # This fake tool prints only an unattributed summary; it is not target evidence.
-        self.assertFalse(report['complete'])
+        self.assertTrue(report['complete'])
+        self.assertEqual(report['modules'][0]['counts'], dict(passed=1, failed=0, ignored=0))
         self.assertIsNotNone(report['timing']['command_seconds'])
 
     def test_invalid_jobs_refuses_before_run_record(self):

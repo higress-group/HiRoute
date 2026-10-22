@@ -105,6 +105,22 @@ class Routing(unittest.TestCase):
         self.assertEqual(result, 7)
         self.assertEqual(call.call_args.args[0][-4:], ['--host', 'linux', 'logs', 'RUN'])
 
+    def test_frontend_staging_path_routes_only_to_ssh_backend_run(self):
+        target = {'backend': {'transport': 'ssh', 'host': 'linux'}}
+        with patch.object(m.subprocess, 'check_output', return_value='a' * 40), \
+             patch.object(m.subprocess, 'call', return_value=0) as call:
+            m.dispatch(target, 'backend', ['run', '--ref', 'refs/heads/example', '--', 'cargo', 'test'],
+                       frontend_dist='~/.cache/candidate/dist')
+        argv = call.call_args.args[0]
+        self.assertEqual(argv[argv.index('run') + 1:argv.index('run') + 3],
+                         ['--frontend-dist', '~/.cache/candidate/dist'])
+        self.assertNotIn('--frontend-dist', argv[argv.index('--') + 1:])
+        for transport, action, arguments in (('local', 'backend', ['run']),
+                                              ('ssh', 'backend', ['status', 'RUN']),
+                                              ('local', 'frontend', ['build'])):
+            with self.subTest(transport=transport, action=action), self.assertRaises(ValueError):
+                m.dispatch({action: {'transport': transport}}, action, arguments, frontend_dist='/dist')
+
     def test_pilot_build_routes_to_desktop_with_small_tooling_bundle(self):
         target = {'transport': 'ssh', 'host': 'mac', 'repo': '~/git/HiRoute'}
         with patch.object(m.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as call:
@@ -308,6 +324,19 @@ pilot.record('build:' + sys.argv[1])
         with patch.object(host.subprocess, 'run', return_value=subprocess.CompletedProcess([], 12)) as run:
             self.assertEqual(host.execute(p), 12)
         self.assertEqual(run.call_args.args[0], ['npm', '--prefix', 'apps/desktop', 'run', 'test'])
+        p['arguments'] = ['build']
+        with patch.object(host.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
+            self.assertEqual(host.execute(p), 0)
+        self.assertEqual(run.call_args.args[0], ['npm', '--prefix', 'apps/desktop', 'run', 'build'])
+
+    def test_console_frontend_build_explicitly_uses_the_provenance_owner(self):
+        p = self.payload('frontend', ['build', '--console-assets'])
+        p['name'] = 'frontend'
+        with patch.object(host.importlib.util, 'module_from_spec') as module:
+            module.return_value.build.return_value = 17
+            with patch.object(host.importlib.util, 'spec_from_file_location'):
+                self.assertEqual(host.execute(p), 17)
+        self.assertEqual(module.return_value.build.call_args.args[0], Path(p['repo']).resolve())
 
     def test_executor_runs_as_json_stdin_program(self):
         p = self.payload('frontend', ['not-a-command'])

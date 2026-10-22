@@ -48,3 +48,65 @@ Run the `stream_replay PRIVATE_CAPTURE` example in the same candidate's Debug bu
 Replay supports only successful cross-protocol decoder paths. It skips 1xx and requires one final status. Same-protocol projectors and unsuccessful statuses explicitly return `unsupported_capture_path`; they must not produce decoder judgments from a substitute production entry. Raw captures must not be committed or attached to an Issue. A separate owner with a bounded lifetime stops the isolated candidate's entire process group, including descendants after the main process exits, and reaps the main process. It does not stop other sessions or processes with reused identities. After the CLI returns, retain the session for at most 24 hours, then delete it. Output includes the owner PID; SIGTERM to that owner stops the candidate early and deletes the session immediately. Do not force-kill the owner during retention. Host shutdown or SIGKILL prevents cleanup; after recovery, use `private-stream-capture.py cleanup ROOT` to delete the exact expired session. Locks use kernel ownership and release when the candidate crashes. A leftover lock file does not permanently block cleanup; an active writer still prevents it.
 
 macOS may stop reporting PGID/SID for an exited but unreaped child. The supervisor may use the process group ID established at creation only if it created the candidate with `start_new_session` and `waitid(WNOWAIT)` still proves that child is waitable. This fallback remains forbidden for live, reaped or unknown-origin processes. After normal exit, retain sealed samples until their deadline; a failed zombie PGID query must not trigger early deletion. Darwin may also return EPERM when signaling a group containing only a zombie. Accept this result only when kernel PID and process-group snapshots match exactly and prove the group contains only that unreaped leader. Other members or a failed query remain errors. Report diagnostic repairs, historical failure attribution and semantic repairs backed by actual old failing samples separately. Failure to reproduce does not establish a repair.
+
+## Native connection lost while the daemon responds
+
+A successful Local Control/CLI query does not establish that Desktop's separate
+inherited protected channel is healthy. Home and Sessions also require that
+channel. `TRUSTED_AUTHORITY_UNAVAILABLE` after an exchange failure stays denied;
+ordinary read retry cannot repair it. Use **Restore local connection** in Desktop.
+Recovery completes the exact pending acknowledgement on the same inherited channel
+and creates a fresh product session. It never resends the failed business operation,
+pauses admission or restarts the daemon, so running requests/tasks continue. A
+pending reply can be retried; partial reply bytes are retained within the frame
+bound. Incomplete request writes, malformed/mismatched replies and closed channels
+require normal reopening after work finishes; they cannot be safely synchronized.
+
+Routing snapshot revalidation must release shared storage before waiting for CPA.
+Otherwise its control/lifecycle deadline can block native grant registration past
+the shorter host ACK deadline. A long CPA call and routing snapshot are evidence
+of contention, not proof of which historical protected exchange first failed.
+
+For slow subscription validation, follow `cpa_control` records sharing a span.
+`controls_patch` can include synchronous upstream model discovery; an entered phase
+without a terminal observation identifies the last reached boundary, not its cause.
+`account_pin` and `catalog_pin` report their elapsed/shared budget and poll counts.
+Their `checks` distinguish index continuity, retry settings, persisted controls,
+empty account models, wrong prefixes and missing downstream models. Missing fields
+mean the check was not reached; false is an actual unmet condition. These are last
+observations within one call, not an atomic snapshot of the external process.
+
+For the upstream cause, inspect `cpa_model_discovery` in the same span. It records
+CPA's credentials, client-version, request, response, catalog and registration
+phases, elapsed times and closed failure reasons. `retained_first_failure` marks
+an earlier failure retained by the same CPA process, not a new failure caused by
+the current read. Compare process/attempt IDs before attributing a retry. The
+record distinguishes proxy rejection from upstream HTTP status, and a successful
+empty list from filtering or a discarded stale account. Missing/invalid metadata,
+account eviction, observation limits and process exit constrain completeness;
+older logs lacking these facts cannot establish an original network cause.
+
+An empty account catalog after a failed initial discovery can coexist with correct
+persisted controls. Ordinary pin reads do not refresh an already-correct account;
+repeated reads alone therefore cannot establish that upstream discovery recovered.
+Use an isolated explicit check to distinguish this state from slow management I/O.
+Current pin reads fail promptly only for a quiescent registration with a consistent
+terminal observation and no account models. The management response marks the
+whole registration as pending across an authorization handoff, and also marks a
+catalog/status read as pending when registration changes during that read.
+Pending, inconsistent or unobserved discovery remains subject to the ordinary
+control deadline; an older retained failure does not make the latest attempt fail.
+Generation-only supersession may hand off once to current access credentials in
+the same upstream deadline. A different registration epoch, disable or removal
+never follows that handoff. Inspect both attempts before attributing a new request
+to a transport retry.
+Keep remote availability, local pin convergence and successful inference separate.
+Do not infer the historical failing condition from the generic
+`control_pin_not_applied` code alone.
+
+Inspect `protected_exchange` in both roles before attributing the original trigger.
+The event records a closed exchange family, phase, duration, failure category and
+HMAC registration correlation, with the authority-loss transition on the host.
+A late successful daemon ACK can coexist with a host timeout; it does not authorize
+reuse. A successful later recovery is not proof of the earlier failure's cause.
+Keep raw diagnostics private and report only revision-bound observable outcomes.

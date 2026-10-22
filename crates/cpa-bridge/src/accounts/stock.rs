@@ -5,6 +5,8 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use hiroute_diagnostics::context::DiagnosticContext;
+use hiroute_diagnostics::event::{CpaControlPhase, CpaPinChecks};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -19,9 +21,14 @@ use crate::http::{LoopbackRequest, percent_encode_query, request};
 const MAX_AUTH_FILES: usize = 10_000;
 const PIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
+mod diagnostics;
+mod model_discovery;
 mod validation;
 
-use validation::{persisted_controls_match, reject_secret_material, validate_management_response};
+use diagnostics::DiscoveryTrace;
+use validation::{
+    observe_persisted_controls, reject_secret_material, validate_management_response,
+};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct StockCpaControlPlane;
@@ -78,20 +85,24 @@ impl CpaControlPlane for StockCpaControlPlane {
         expected_version: &str,
         timeout: Duration,
         refresh_models: bool,
+        diagnostics: &DiagnosticContext,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or(AccountDiscoveryError::PinNotApplied)?;
-        let mut names = fs::read_dir(auth_dir)
-            .map_err(AccountDiscoveryError::AuthDirectory)?
-            .filter_map(Result::ok)
-            .filter_map(|entry| {
-                let file_type = entry.file_type().ok()?;
-                let name = entry.file_name().into_string().ok()?;
-                (file_type.is_file() && name.to_ascii_lowercase().ends_with(".json"))
-                    .then_some(name)
-            })
-            .collect::<Vec<_>>();
+        let mut trace = DiscoveryTrace::new(diagnostics, timeout, refresh_models);
+        let mut names = trace.run(CpaControlPhase::InventoryRead, |_| {
+            Ok(fs::read_dir(auth_dir)
+                .map_err(AccountDiscoveryError::AuthDirectory)?
+                .filter_map(Result::ok)
+                .filter_map(|entry| {
+                    let file_type = entry.file_type().ok()?;
+                    let name = entry.file_name().into_string().ok()?;
+                    (file_type.is_file() && name.to_ascii_lowercase().ends_with(".json"))
+                        .then_some(name)
+                })
+                .collect::<Vec<_>>())
+        })?;
         names.sort();
         if names.len() > MAX_AUTH_FILES {
             return Err(AccountDiscoveryError::TooManyAccounts);
@@ -107,14 +118,18 @@ impl CpaControlPlane for StockCpaControlPlane {
         let mut matched_managed = BTreeSet::new();
         let mut snapshots = Vec::new();
         let mut seen_indexes = BTreeSet::new();
-        for name in names {
-            let Some(account) = get_oauth_account(
-                address,
-                secrets,
-                expected_version,
-                remaining_timeout(deadline)?,
-                &name,
-            )?
+        for (ordinal, name) in names.into_iter().enumerate() {
+            trace.account_ordinal = Some(ordinal as u32);
+            trace.checks = CpaPinChecks::default();
+            let Some(account) = trace.run(CpaControlPhase::AccountRead, |_| {
+                get_oauth_account(
+                    address,
+                    secrets,
+                    expected_version,
+                    remaining_timeout(deadline)?,
+                    &name,
+                )
+            })?
             else {
                 continue;
             };
@@ -144,28 +159,36 @@ impl CpaControlPlane for StockCpaControlPlane {
             // only repair changed controls or honor an explicit subscription check.
             if refresh_models
                 || account.request_retry != Some(0)
-                || !persisted_controls_match(auth_dir, &name, &prefix)?
+                || !trace.run(CpaControlPhase::ControlsRead, |trace| {
+                    observe_persisted_controls(auth_dir, &name, &prefix, &mut trace.checks)
+                })?
             {
-                patch_account_controls(
+                trace.checks = CpaPinChecks::default();
+                trace.run(CpaControlPhase::ControlsPatch, |_| {
+                    patch_account_controls(
+                        address,
+                        secrets,
+                        expected_version,
+                        remaining_timeout(deadline)?,
+                        &account.id,
+                        &prefix,
+                        managed,
+                    )
+                })?;
+            }
+            let models = trace.run(CpaControlPhase::AccountPin, |trace| {
+                wait_for_account_pin(
                     address,
+                    auth_dir,
                     secrets,
                     expected_version,
-                    remaining_timeout(deadline)?,
-                    &account.id,
+                    deadline,
+                    &name,
+                    &account,
                     &prefix,
-                    managed,
-                )?;
-            }
-            let models = wait_for_account_pin(
-                address,
-                auth_dir,
-                secrets,
-                expected_version,
-                deadline,
-                &name,
-                &account,
-                &prefix,
-            )?;
+                    trace,
+                )
+            })?;
             snapshots.push(AccountSnapshotRecord {
                 account_kind: account.kind,
                 stock_id: account.id,
@@ -181,7 +204,11 @@ impl CpaControlPlane for StockCpaControlPlane {
         if matched_managed.len() != managed_identities.len() {
             return Err(AccountDiscoveryError::AccountDisappeared);
         }
-        wait_for_prefixed_catalog(address, secrets, deadline, &snapshots)?;
+        trace.account_ordinal = None;
+        trace.checks = CpaPinChecks::default();
+        trace.run(CpaControlPhase::CatalogPin, |trace| {
+            wait_for_prefixed_catalog(address, secrets, deadline, &snapshots, trace)
+        })?;
         snapshots.sort_by(|left, right| left.account_digest.cmp(&right.account_digest));
         Ok(snapshots)
     }
@@ -204,8 +231,10 @@ fn wait_for_account_pin(
     name: &str,
     account: &StockAccount,
     prefix: &str,
+    trace: &mut DiscoveryTrace<'_>,
 ) -> Result<BTreeSet<String>, AccountDiscoveryError> {
     loop {
+        trace.polls = trace.polls.saturating_add(1);
         let patched = get_oauth_account(
             address,
             secrets,
@@ -214,19 +243,43 @@ fn wait_for_account_pin(
             name,
         )?
         .ok_or(AccountDiscoveryError::AccountDisappeared)?;
+        trace.checks.account_index_matches = Some(patched.auth_index == account.auth_index);
+        trace.checks.account_retry_zero = Some(patched.request_retry == Some(0));
         if patched.auth_index == account.auth_index && patched.request_retry == Some(0) {
-            let registered = get_account_models(
+            let (registered, discovery_terminal) = get_account_models(
                 address,
                 secrets,
                 expected_version,
                 remaining_timeout(deadline)?,
                 &account.id,
+                trace,
             )?;
-            if let Ok(models) = strip_exact_prefix(&registered, prefix)
-                && persisted_controls_match(auth_dir, name, prefix)?
+            trace.checks.account_model_count = Some(registered.len() as u32);
+            trace.checks.account_models_nonempty = Some(!registered.is_empty());
+            if registered.is_empty() && discovery_terminal {
+                return Err(AccountDiscoveryError::PinNotApplied);
+            }
+            let prefixed = strip_exact_prefix(&registered, prefix);
+            let marker = format!("{prefix}/");
+            let prefixes_match = registered.iter().all(|model| {
+                model
+                    .strip_prefix(&marker)
+                    .is_some_and(|model| !model.is_empty())
+            });
+            trace.checks.account_models_prefixed =
+                (!registered.is_empty()).then_some(prefixes_match);
+            trace.checks.account_model_ids_valid =
+                (!registered.is_empty() && prefixes_match).then_some(prefixed.is_ok());
+            if let Ok(models) = prefixed
+                && observe_persisted_controls(auth_dir, name, prefix, &mut trace.checks)?
             {
                 return Ok(models);
             }
+        } else {
+            trace.checks.account_models_nonempty = None;
+            trace.checks.account_models_prefixed = None;
+            trace.checks.account_model_ids_valid = None;
+            trace.checks.account_model_count = None;
         }
         let remaining = remaining_timeout(deadline)?;
         thread::sleep(PIN_POLL_INTERVAL.min(remaining));
@@ -238,9 +291,17 @@ fn wait_for_prefixed_catalog(
     secrets: &InstanceSecrets,
     deadline: Instant,
     snapshots: &[AccountSnapshotRecord],
+    trace: &mut DiscoveryTrace<'_>,
 ) -> Result<(), AccountDiscoveryError> {
     loop {
-        match validate_prefixed_catalog(address, secrets, remaining_timeout(deadline)?, snapshots) {
+        trace.polls = trace.polls.saturating_add(1);
+        match validate_prefixed_catalog(
+            address,
+            secrets,
+            remaining_timeout(deadline)?,
+            snapshots,
+            trace,
+        ) {
             Ok(()) => return Ok(()),
             Err(AccountDiscoveryError::PinNotApplied) => {
                 let remaining = remaining_timeout(deadline)?;
@@ -419,7 +480,8 @@ fn get_account_models(
     expected_version: &str,
     timeout: Duration,
     id: &str,
-) -> Result<BTreeSet<String>, AccountDiscoveryError> {
+    trace: &mut DiscoveryTrace<'_>,
+) -> Result<(BTreeSet<String>, bool), AccountDiscoveryError> {
     let path = format!(
         "/v0/management/auth-files/models?name={}",
         percent_encode_query(id)
@@ -436,6 +498,7 @@ fn get_account_models(
     let value: Value =
         serde_json::from_slice(&response.body).map_err(AccountDiscoveryError::Json)?;
     reject_secret_material(&value)?;
+    trace.model_discovery(&value);
     let models = value
         .get("models")
         .and_then(Value::as_array)
@@ -454,7 +517,8 @@ fn get_account_models(
             return Err(AccountDiscoveryError::DuplicateModel);
         }
     }
-    Ok(result)
+    let terminal = result.is_empty() && model_discovery::latest_is_terminal(&value);
+    Ok((result, terminal))
 }
 
 fn validate_prefixed_catalog(
@@ -462,6 +526,7 @@ fn validate_prefixed_catalog(
     secrets: &InstanceSecrets,
     timeout: Duration,
     snapshots: &[AccountSnapshotRecord],
+    trace: &mut DiscoveryTrace<'_>,
 ) -> Result<(), AccountDiscoveryError> {
     let response = request(LoopbackRequest {
         address,
@@ -485,14 +550,20 @@ fn validate_prefixed_catalog(
         .iter()
         .filter_map(|model| model.get("id").and_then(Value::as_str))
         .collect::<BTreeSet<_>>();
+    let mut missing = 0_u32;
     for snapshot in snapshots {
         for model in &snapshot.observed_model_ids {
             if !available.contains(format!("{}/{model}", snapshot.prefix).as_str()) {
-                return Err(AccountDiscoveryError::PinNotApplied);
+                missing = missing.saturating_add(1);
             }
         }
     }
-    Ok(())
+    trace.checks.catalog_missing_count = Some(missing);
+    if missing == 0 {
+        Ok(())
+    } else {
+        Err(AccountDiscoveryError::PinNotApplied)
+    }
 }
 
 fn account_digest(kind: CpaAccountKind, auth_index: &str) -> String {

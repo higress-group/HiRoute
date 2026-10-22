@@ -1,6 +1,6 @@
 use super::*;
 
-fn recovery_resident(root: &Path, slow: bool) -> Resident {
+pub(super) fn recovery_resident(root: &Path, slow: bool) -> Resident {
     let (reader, writer) = pipe().unwrap();
     let (_, capability) = pipe().unwrap();
     let (ack, _) = pipe().unwrap();
@@ -24,6 +24,7 @@ fn recovery_resident(root: &Path, slow: bool) -> Resident {
             capability,
             ack,
             authority_healthy: true,
+            pending_ack: None,
             manual_input_candidates: BTreeSet::new(),
             diagnostics: None,
         }),
@@ -125,6 +126,7 @@ fn upgrade_prepare_status_cancel_exchange_complete_correlated_frames() {
             capability,
             ack,
             authority_healthy: true,
+            pending_ack: None,
             manual_input_candidates: BTreeSet::new(),
             diagnostics: None,
         }),

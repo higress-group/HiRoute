@@ -475,9 +475,11 @@ pub fn prepare_current_candidate(root: &Path) -> Result<Value, ProductionError> 
         .as_ref()
         .expect("current bundle has identity");
     identity.verify_live_sut(&sut)?;
+    let receipt = sut.canonical_path.with_file_name("receipt.json");
     Ok(
         json!({"schema":"hiroute.e2e.current-preparation/v1", "prepared":true,
-        "source_revision":identity.revision, "executable_sha256":sut.executable_sha256}),
+        "source_revision":identity.revision, "executable_sha256":sut.executable_sha256,
+        "receipt":{"path":receipt, "sha256":sha256_hex(&fs::read(&receipt)?)}}),
     )
 }
 

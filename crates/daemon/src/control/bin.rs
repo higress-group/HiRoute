@@ -23,6 +23,7 @@ use hiroute_local_storage::ApplyCapabilityRegistrationV1;
 use serde::Deserialize;
 use zeroize::{Zeroize, Zeroizing};
 
+mod protected_exchange;
 mod ready;
 #[cfg(any(unix, windows))]
 mod standalone;
@@ -486,41 +487,17 @@ fn run_all(
         #[cfg(unix)]
         protected_inputs.poll(&role)?;
         for frame in capabilities.read_available()? {
-            let registration_id = frame.registration_id();
             if acknowledgements.is_none() {
                 return Err(
                     "v2 capability registration requires a protected acknowledgement channel"
                         .into(),
                 );
             }
-            match frame {
-                ProtectedChannelFrame::Upgrade(request) => {
-                    let status = role.upgrade_status(request.action, request.registration_id)?;
-                    let writer = acknowledgements.as_mut().expect("checked channel");
-                    serde_json::to_writer(&mut *writer, &status)
-                        .map_err(|_| "upgrade acknowledgement failed")?;
-                    use std::io::Write;
-                    writer
-                        .write_all(b"\n")
-                        .map_err(|_| "upgrade acknowledgement failed")?;
-                    writer
-                        .flush()
-                        .map_err(|_| "upgrade acknowledgement failed")?;
-                    continue;
-                }
-                ProtectedChannelFrame::Apply { registration, .. } => {
-                    role.register_apply_capability(registration)?;
-                }
-                ProtectedChannelFrame::InputRegister {
-                    candidate, secret, ..
-                } => role.register_manual_protected_input(candidate, secret)?,
-                ProtectedChannelFrame::InputRelease { candidate_ref, .. } => {
-                    role.release_manual_protected_input(&candidate_ref)?;
-                }
-            }
-            write_ack(
+            protected_exchange::process(
+                &role,
+                frame,
                 acknowledgements.as_mut().expect("checked channel"),
-                &registration_id,
+                diagnostics,
             )?;
         }
         std::thread::sleep(Duration::from_millis(5));

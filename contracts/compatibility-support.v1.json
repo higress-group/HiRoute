@@ -160,6 +160,7 @@
     "hiroute.cpa-managed-login/v1",
     "hiroute.cpa-managed-oauth-binding/v1",
     "hiroute.cpa-managed-subscription-discovery/v1",
+    "hiroute.cpa-model-discovery/v1",
     "hiroute.cpa-owner/v1",
     "hiroute.cpa-source-binding-identity/v1",
     "hiroute.cpa-subscription-catalog-capability/v1",
