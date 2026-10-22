@@ -4,7 +4,7 @@ use super::*;
 fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
     use hiroute_gateway::server::request_plan::IngressProtocol;
 
-    for reasoning_bytes in [32, 32 * 1024] {
+    for reasoning_bytes in [0, 32, 32 * 1024] {
         let plain = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#;
         let chat_tool = br#"{"id":"chat-tool","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"native-call","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
         let chat_ok = br#"{"id":"chat-ok","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":"42"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
@@ -16,12 +16,12 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
             reply(chat_ok),
         ]);
         let primary = NativeProvider::start(vec![]);
-        let decider = NativeProvider::start(vec![
-            reply(plain),
-            reply(c_answer(true, false)),
-            reply(plain),
-            reply(plain),
-        ]);
+        let mut replies = vec![reply(plain)];
+        if reasoning_bytes > 0 {
+            replies.push(reply(plain));
+        }
+        replies.extend([reply(c_answer(true, false)), reply(plain), reply(plain)]);
+        let decider = NativeProvider::start(replies);
         let fixture =
             RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], true);
         let mut publication = fixture.publication();
@@ -84,23 +84,27 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
         let mut history = vec![json!({"role":"user","content":"Read the value with lookup."})];
         let mut assistant = send(&history, "hermes-main", "lookup-user-1");
         assert_eq!(assistant["tool_calls"][0]["function"]["name"], "lookup");
-        assistant["reasoning_content"] = json!(thinking);
-        assistant["reasoning"] = json!(thinking);
+        if reasoning_bytes > 0 {
+            assistant["reasoning_content"] = json!(thinking);
+            assistant["reasoning"] = json!(thinking);
+        }
         let call_id = assistant["tool_calls"][0]["id"].clone();
         history.push(assistant);
         history.push(json!({"role":"tool","tool_call_id":call_id,"content":"42"}));
         let mut assistant = send(&history, "hermes-main", "lookup-user-1");
         assert_eq!(
             decider.calls(),
-            1,
-            "a tool continuation inherits the observed task without claiming human provenance"
+            if reasoning_bytes == 0 { 1 } else { 2 },
+            "exact delivered tools inherit; injected uncaptured reasoning cannot establish a boundary"
         );
-        assistant["reasoning_content"] = json!(thinking);
-        assistant["reasoning"] = json!(thinking);
+        if reasoning_bytes > 0 {
+            assistant["reasoning_content"] = json!(thinking);
+            assistant["reasoning"] = json!(thinking);
+        }
         history.push(assistant);
         history.push(json!({"role":"user","content":"Add eight to that value."}));
         send(&history, "hermes-main", "lookup-user-2");
-        assert_eq!(decider.calls(), 2);
+        assert_eq!(decider.calls(), if reasoning_bytes == 0 { 2 } else { 3 });
         // Another native session and rewritten main history also keep execution
         // without manufacturing a complete assessment target.
         send(&history, "hermes-other", "other-user-1");
@@ -109,7 +113,7 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
         send(&history, "hermes-main", "lookup-user-3");
         assert_eq!(
             (regular.calls(), primary.calls(), decider.calls()),
-            (5, 0, 4)
+            (5, 0, if reasoning_bytes == 0 { 4 } else { 5 })
         );
         let facts = wait_execution_facts(&fixture, 5);
         let decisions = facts

@@ -140,7 +140,7 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
                 "a conflicting request must execute independently"
             );
             let detached = classifier_body(&classifier, 1);
-            assert_eq!(detached["history_partial"], !dsh, "{detached}");
+            assert_eq!(detached["history_partial"], false, "{detached}");
             assert_eq!(detached["visible_conversation"], json!([]), "{detached}");
             assert!(detached["assessment_target"].is_null(), "{detached}");
             release.0.release();

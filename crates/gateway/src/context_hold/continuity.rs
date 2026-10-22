@@ -60,9 +60,11 @@ impl PreparedHold {
     }
 
     pub(crate) fn user_origin_unverified(&self) -> bool {
+        // A native turn/window identifies an activation, not who supplied its
+        // input. Cache presence must not promote or demote that source claim.
         matches!(
             self.native.user_origin,
-            NativeUserOrigin::Wire | NativeUserOrigin::Observed
+            NativeUserOrigin::Wire | NativeUserOrigin::Observed | NativeUserOrigin::NativeTurn
         ) || !self.history_is_proven()
     }
 

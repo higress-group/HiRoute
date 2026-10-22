@@ -96,7 +96,7 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
             })
         };
         assert!(unverified(&classifier_body(&classifier, 0)));
-        assert_eq!(unverified(&b), agent != "codex", "{agent}/{purpose}: {b}");
+        assert!(unverified(&b), "{agent}/{purpose}: {b}");
         let visible = b["visible_conversation"].to_string();
         assert!(
             visible.contains("REAL_NEW_A") && visible.contains("ok"),
@@ -123,10 +123,10 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
 }
 
 #[test]
-fn real_listener_hermes_observed_intent_keeps_cold_execution_partial_then_restores_protection() {
+fn real_listener_hermes_legacy_text_hint_cannot_relocate_input_or_disable_protection() {
     use sha2::{Digest, Sha256};
-    let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-    let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+    let simple = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+    let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
     let low = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}},"assessment":{"score":0.1,"partial":false}}"#;
     let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(low), reply(low)]);
     let fixture = observed_fixture("hermes", &[&simple, &primary, &classifier]);
@@ -159,10 +159,10 @@ fn real_listener_hermes_observed_intent_keeps_cold_execution_partial_then_restor
     }
     assert_eq!(
         (simple.calls(), primary.calls(), classifier.calls()),
-        (2, 1, 3)
+        (1, 2, 3)
     );
     let cold = classifier_body(&classifier, 0);
-    assert_eq!(cold["latest_user"][0]["text"], "ORIGINAL_OBSERVED_INPUT");
+    assert_eq!(cold["latest_user"][0]["text"], "LATER_TODO_REMINDER");
     assert_eq!(
         cold["latest_user"][1]["source_kind"],
         "unverified_request_user_origin"
@@ -183,7 +183,7 @@ fn real_listener_hermes_observed_intent_keeps_cold_execution_partial_then_restor
     assert!(
         assessments
             .iter()
-            .any(|f| f["target_through_ordinal"] == 1 && f["partial"] == true)
+            .any(|f| f["target_through_ordinal"] == 1 && f["partial"] == false)
     );
     assert!(assessments.iter().any(|f| f["target_from_ordinal"] == 2
         && f["target_through_ordinal"] == 2

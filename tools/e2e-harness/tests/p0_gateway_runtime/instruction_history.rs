@@ -74,7 +74,8 @@ fn real_listener_instruction_text_changes_keep_captured_native_history() {
         assert_eq!(classifier.calls(), 2);
         assert_eq!(model.calls(), 2);
         let decision = classifier_body(&classifier, 1);
-        assert_eq!(decision["history_partial"], false);
+        assert_eq!(decision["history_partial"], true);
+        assert!(!decision["assessment_target"].is_null());
         let visible = decision["visible_conversation"].to_string();
         assert!(visible.contains("FIRST_NATIVE_TASK"), "{decision}");
         assert!(visible.contains("ok"), "{decision}");

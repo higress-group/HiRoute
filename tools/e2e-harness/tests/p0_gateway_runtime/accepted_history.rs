@@ -218,7 +218,7 @@ fn real_listener_accepted_history_survives_rewrite_and_compaction_without_observ
             let body: serde_json::Value = serde_json::from_slice(&raw[start..]).unwrap();
             let turns = body["visible_conversation"].as_array().unwrap();
             assert_eq!(turns.len(), index);
-            assert_eq!(body["history_partial"], false);
+            assert_eq!(body["history_partial"], true);
             for turn in turns {
                 assert_eq!(
                     turn["steps"],

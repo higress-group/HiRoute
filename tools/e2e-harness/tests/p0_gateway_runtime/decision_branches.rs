@@ -148,7 +148,7 @@ fn assert_turn_routing(hermes: bool) {
                     reply(RESPONSES_OK),
                     reply(RESPONSES_OK),
                 ]);
-                let decider = NativeProvider::start(vec![reply(simple), reply(simple)]);
+                let decider = NativeProvider::start(vec![reply(simple); 3]);
                 let fixture =
                     RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], smart);
                 if hermes || c {
@@ -217,15 +217,23 @@ fn assert_turn_routing(hermes: bool) {
                 let continued = send(&history, instructions, "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
-                    (1, 2, 1),
-                    "same-turn relay must not retry regular, even when instructions invalidate the candidate hold"
+                    if change_instructions {
+                        (2, 1, 2)
+                    } else {
+                        (1, 2, 1)
+                    },
+                    "unchanged execution inherits the actual primary relay; changed model instructions require a new decision"
                 );
                 history.extend(continued["output"].as_array().unwrap().iter().cloned());
                 history.push(json!({"role":"user","content":"A new simple task: say hello."}));
                 send(&history, instructions, "real-user-2");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
-                    (2, 2, 2),
+                    if change_instructions {
+                        (3, 1, 3)
+                    } else {
+                        (2, 2, 2)
+                    },
                     "{}",
                     if hermes {
                         "a real new question must restore routing without asserting human-origin proof"

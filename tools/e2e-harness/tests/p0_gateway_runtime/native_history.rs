@@ -304,10 +304,9 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
 }
 
 #[test]
-fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_prefix_affinity() {
-    // DSH checkpoints omit source.kind=user after compaction. Its stricter
-    // missing-user fallback is covered by dsh_native_routing, not by declaring
-    // this synthetic summary to be a real user input.
+fn real_listener_native_cursor_alone_cannot_inherit_a_pre_compaction_decision() {
+    // These legacy contexts explicitly lack a known-continuation descriptor.
+    // A cursor alone neither proves an exact boundary nor a human input source.
     for agent in ["codex", "pi", "opencode"] {
         let simple = NativeProvider::start(vec![
             reply(RESPONSES_OK),
@@ -315,7 +314,7 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
             reply(RESPONSES_OK),
         ]);
         let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 3]);
         let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
         accepted(&send(
             fixture.address,
@@ -335,8 +334,8 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
         ));
         assert_eq!(
             classifier.calls(),
-            1,
-            "{agent}: proven same turn reclassified after compression"
+            2,
+            "{agent}: a native cursor cannot replace the missing captured boundary"
         );
         accepted(&send(
             fixture.address,
@@ -344,7 +343,7 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
             json!([
             compacted,{"role":"assistant","content":"ok"},{"role":"user","content":"a new actual task"}]),
         ));
-        let history = classifier_body(&classifier, 1);
+        let history = classifier_body(&classifier, 2);
         assert!(
             !history.to_string().contains("COMPACTION_CALCULATION"),
             "{agent}: {history}"
@@ -355,7 +354,7 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
         );
         assert_eq!(
             (simple.calls(), complex.calls(), classifier.calls()),
-            (3, 1, 2)
+            (3, 1, 3)
         );
     }
 }
@@ -405,7 +404,7 @@ fn real_listener_hermes_compression_and_fresh_gateway_retain_observed_routing_wi
     for _restart in 0..2 {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
         let complex = NativeProvider::start(vec![]);
-        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 3]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 4]);
         let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
         accepted(&send(
             fixture.address,
@@ -431,7 +430,7 @@ fn real_listener_hermes_compression_and_fresh_gateway_retain_observed_routing_wi
         ));
         assert_eq!(
             (simple.calls(), complex.calls(), classifier.calls()),
-            (4, 0, 3)
+            (4, 0, 4)
         );
         let facts = wait_execution_facts(&fixture, 4);
         let decisions = facts
@@ -538,7 +537,7 @@ fn real_listener_known_native_clients_without_loaded_adapters_retain_observed_ro
         }
         assert_eq!(
             (simple.calls(), primary.calls(), classifier.calls()),
-            (2, 0, 1),
+            (2, 0, 2),
             "{user_agent}"
         );
     }
@@ -600,12 +599,21 @@ fn real_listener_unexplained_native_rewrites_cannot_replace_main_history() {
             json!("UNEXPLAINED_BACKGROUND_REWRITE"),
         ));
         let detached = classifier_body(&classifier, 1);
-        assert_eq!(
-            detached["visible_conversation"],
-            json!([]),
+        assert!(
+            detached["visible_conversation"]
+                .to_string()
+                .contains("REAL_MAIN_TASK"),
             "{agent}: {detached}"
         );
-        assert!(detached["assessment_target"].is_null());
+        assert!(
+            !detached["assessment_target"].is_null(),
+            "{agent}: actual context remains eligible"
+        );
+        assert!(
+            !detached["visible_conversation"]
+                .to_string()
+                .contains("UNEXPLAINED_BACKGROUND_REWRITE")
+        );
         let response: Value = serde_json::from_slice(&response.body).unwrap();
         let call = &response["output"][0]["call_id"];
         accepted(&send(
@@ -628,7 +636,7 @@ fn real_listener_unexplained_native_rewrites_cannot_replace_main_history() {
 fn real_listener_hermes_in_place_compression_retains_observed_original_task() {
     let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
     let complex = NativeProvider::start(vec![]);
-    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
     let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
     let context = hermes_lineage("root", "native-conversation-turn", &["root"]);
     accepted(&send(
@@ -643,8 +651,16 @@ fn real_listener_hermes_in_place_compression_retains_observed_original_task() {
     ));
     assert_eq!(
         (simple.calls(), complex.calls(), classifier.calls()),
-        (2, 0, 1)
+        (2, 0, 2)
     );
+    let after = classifier_body(&classifier, 1);
+    assert!(
+        after["visible_conversation"]
+            .to_string()
+            .contains("ORIGINAL_MAIN_TASK")
+    );
+    assert!(after["visible_conversation"].to_string().contains("ok"));
+    assert!(!after["assessment_target"].is_null());
 }
 
 #[path = "native_history_continuation.rs"]

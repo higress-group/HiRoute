@@ -54,13 +54,19 @@ fn a_changed_native_id_needs_an_appended_user_and_cannot_restore_a_replayed_wind
     let user = json!({"role":"user","content":"original"});
     let first = prepare(&store, json!([user]), 1, 0);
     assert!(first.history_is_proven());
+    assert!(
+        first.user_origin_unverified(),
+        "a clean native window is not human-source proof"
+    );
     store.commit(first, Instant::now()).unwrap();
     let replay = prepare(&store, json!([user]), 2, 0);
     assert!(!replay.history_is_proven());
     assert!(!replay.native_user_unavailable());
     assert!(replay.user_origin_unverified());
     let appended = json!([user,{"role":"assistant","content":"accepted"},{"role":"user","content":"new task"}]);
-    assert!(prepare(&store, appended, 2, 0).history_is_proven());
+    let appended = prepare(&store, appended, 2, 0);
+    assert!(appended.history_is_proven());
+    assert!(appended.user_origin_unverified());
     let compressed = prepare(
         &store,
         json!([user,{"role":"user","content":"summary"}]),

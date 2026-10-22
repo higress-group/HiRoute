@@ -102,7 +102,7 @@ fn real_listener_dsh_semantic_user_excludes_runtime_context_and_keeps_tool_conti
     let response = send(&fixture, &h1, json!([first, policy]));
     assert_eq!(response.status, 200);
     let decision = body(&classifier, 0);
-    assert_eq!(decision["history_partial"], false);
+    assert_eq!(decision["history_partial"], true);
     assert_eq!(decision["visible_conversation"], json!([]));
     assert!(
         decision["latest_user"]
@@ -112,7 +112,7 @@ fn real_listener_dsh_semantic_user_excludes_runtime_context_and_keeps_tool_conti
     assert!(!decision.to_string().contains("NATIVE_RUNTIME_POLICY"));
     let call: Value = serde_json::from_slice(&response.body).unwrap();
     let continued = json!([first,policy,
-        {"type":"function_call","call_id":call["output"][0]["call_id"],"name":"lookup","arguments":"{}"},
+        {"type":"function_call","call_id":call["output"][0]["call_id"],"namespace":"tools","name":"lookup","arguments":"{}"},
         {"type":"function_call_output","call_id":call["output"][0]["call_id"],"output":"native tool receipt"}]);
     assert_eq!(send(&fixture, &h1, continued.clone()).status, 200);
     assert_eq!(
@@ -139,7 +139,9 @@ fn real_listener_dsh_semantic_user_excludes_runtime_context_and_keeps_tool_conti
         200
     );
     let decision = body(&classifier, 1);
-    assert_eq!(decision["history_partial"], false);
+    // The current-input descriptor cannot prove that other User envelopes are
+    // complete historical execution, or demote them to system instructions.
+    assert_eq!(decision["history_partial"], true);
     assert!(
         decision["latest_user"]
             .to_string()
@@ -236,7 +238,7 @@ fn real_listener_dsh_missing_compacted_or_bad_user_proofs_are_independent_and_co
 }
 
 #[test]
-fn real_listener_dsh_detached_main_without_a_new_user_discloses_the_capture_gap() {
+fn real_listener_dsh_invalid_input_proof_keeps_actual_capture_and_auxiliary_isolation() {
     for failure in ["missing", "mismatched", "auxiliary"] {
         let model = NativeProvider::start(vec![reply(RESPONSES_OK), reply(RESPONSES_OK)]);
         let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
@@ -322,14 +324,20 @@ fn real_listener_dsh_detached_main_without_a_new_user_discloses_the_capture_gap(
             failure != "auxiliary",
             "{failure}: missing main output must be disclosed"
         );
-        assert_eq!(
-            decision["assessment_target"].is_null(),
-            failure != "auxiliary",
-            "{failure}: stale assessment survived a main capture gap"
+        assert!(
+            !decision["assessment_target"].is_null(),
+            "{failure}: {decision}"
         );
         let visible = decision["visible_conversation"].to_string();
         assert!(visible.contains("ORIGINAL_MAIN_TASK"));
-        assert!(!visible.contains("NATIVE_AGENT_RELAY"));
+        assert_eq!(
+            visible.contains("NATIVE_AGENT_RELAY"),
+            failure != "auxiliary"
+        );
+        assert!(
+            visible.contains("ok"),
+            "actual Gateway output must remain captured"
+        );
         assert!(!visible.contains("UNCAPTURED_RELAY_OUTPUT"));
         assert_eq!(model.calls(), 2);
     }

@@ -1458,7 +1458,7 @@ fn real_listener_rest_classifier_reclassifies_each_decision_boundary() {
 }
 
 #[test]
-fn real_listener_context_hold_boundary_seals_unknown_without_reusing_old_competence() {
+fn real_listener_context_boundary_retains_unknown_progress_as_disclosed_assessment_context() {
     let simple = NativeProvider::start(vec![ProviderReply::Complete {
         status: 200,
         error_kind: None,
@@ -1560,8 +1560,8 @@ fn real_listener_context_hold_boundary_seals_unknown_without_reusing_old_compete
         "unchanged latest_user must not suppress a ContextHold boundary"
     );
     assert!(
-        body["assessment_target"].is_null(),
-        "rebuilt context cannot grade an old stage"
+        !body["assessment_target"].is_null(),
+        "actual prior execution remains eligible as uncertain context"
     );
     assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
     assert_eq!(body["visible_conversation"][0]["status"], "unknown");
@@ -1604,10 +1604,13 @@ fn real_listener_context_hold_boundary_seals_unknown_without_reusing_old_compete
         prior.pointer("/fact/segment_id"),
         current.pointer("/fact/segment_id")
     );
-    assert!(
-        facts.iter().all(|fact| fact.pointer("/fact/kind")
-            != Some(&serde_json::json!("branch_assessment_recorded"))),
-        "an unsolicited response score without an eligible target must be ignored"
+    let assessment = facts
+        .iter()
+        .find(|fact| fact["fact"]["kind"] == "branch_assessment_recorded")
+        .expect("the actual unknown-progress stage remains assessable");
+    assert_eq!(
+        assessment["fact"]["history_membership"]["association_unverified"],
+        true
     );
 }
 
