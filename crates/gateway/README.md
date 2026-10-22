@@ -14,6 +14,9 @@ their HiRoute connection token as `Authorization: Bearer <token>`. The current
 publication still verifies the issued grant, protocol and aliases. Retained
 `X-HiRoute-Token` clients keep explicit-header precedence, including when native
 SDKs also send Authorization; an invalid explicit token never falls back to it.
+Messages SDKs may send the same issued model-grant token through a single
+`x-api-key` when both higher-priority carriers are absent. This carrier still uses
+current grant/protocol/alias verification; arbitrary provider keys grant no access.
 Qoder's dedicated entry and delegated run authority keep their existing rules.
 Upstream authorization is rebuilt from the selected provider lease. The
 [listener scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/bearer_auth.rs)

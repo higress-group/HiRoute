@@ -22,10 +22,16 @@ an issued current model grant. This carrier does not authorize native provider
 API Keys, OAuth credentials, revoked grants, another protocol or another alias.
 Retained `X-HiRoute-Token` clients SHALL continue to work: when present, that
 explicit carrier remains authoritative and an invalid value SHALL NOT fall back
-to Authorization. Duplicate or malformed credentials SHALL fail authentication.
+to Authorization. Ordinary Messages requests MAY also carry an issued current
+model-grant token through one `x-api-key` header when neither explicit HiRoute
+token nor Authorization is present. An invalid higher-priority carrier SHALL NOT
+fall back to `x-api-key`. This Messages-only carrier grants no additional protocol,
+alias or credential authority; the same current-grant verification and revocation
+apply. Duplicate or malformed selected credentials SHALL fail authentication.
 Qoder's dedicated local model-provider route retains its existing single-bearer,
 no-run-authority and no-mixed-`X-HiRoute-Token` rules. An arbitrary `x-api-key`
-is not model authority. The separately validated DSH run-model carrier follows
+is not model authority: provider keys, OAuth secrets and unissued tokens still
+fail current-grant verification. The separately validated DSH run-model carrier follows
 [Worker delegation](../agent-delegation/spec.md). Worker run-model and run-control
 authority remain distinct. Outbound auth is rebuilt for the exact leased destination;
 inbound HiRoute/native tokens or account-override headers cannot pass through.
@@ -49,9 +55,18 @@ account/model or an otherwise allowed Plan. Plan relay remains in published scop
 - **WHEN** a Bearer value is a native provider API Key, OAuth credential, revoked token, run-control credential or an unissued value
 - **THEN** ordinary model access is denied by the existing current-grant or separately validated run-model authority, and no upstream model attempt is made.
 
+#### Scenario: Native Messages auxiliary requests use the issued connection token
+
+- **WHEN** a native Anthropic SDK sends only `x-api-key` with an issued current
+  Messages connection token, including a request without optional Agent middleware
+- **THEN** only that grant's current protocol and aliases are authorized; token
+  rotation or revocation rejects the old value, and inbound credentials are not
+  forwarded to the provider. Classification and optional history use their normal
+  evidence rules without manufacturing Agent identity from the credential carrier.
+
 #### Scenario: Inbound credentials never become provider authorization
 
-- **WHEN** a model request is accepted through either supported carrier
+- **WHEN** a model request is accepted through a supported carrier
 - **THEN** the outbound attempt reconstructs authorization from the exact leased provider credential and strips the inbound model token and private metadata.
 
 Source SPEC comments:
