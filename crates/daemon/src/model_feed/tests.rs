@@ -686,3 +686,51 @@ fn model_feed_registry_qualification_changes_advance_once_without_changing_seman
         old_generation + 1
     );
 }
+
+#[test]
+fn embedded_v2_upgrade_preserves_choices_and_acceptance_without_network() {
+    let root = tempfile::tempdir().unwrap();
+    let service = open(root.path(), 0);
+    fetch(&service, 5).unwrap();
+    service.settings(Some(false), Some(true)).unwrap();
+    let captured = service.current();
+    let previous_state = service.store.read_state().unwrap();
+    drop(service);
+    let embedded = crate::release_catalog::current_fixture_catalog();
+    let mut updated = captured.official_snapshot();
+    updated.data.connection_hints[0]
+        .description
+        .insert("en".into(), "A reviewed metadata correction.".into());
+    updated.data_revision += 1;
+    updated.data_digest = CanonicalDigest::of(&updated.data).unwrap();
+    let installed = embedded
+        .with_embedded_official_data(updated.clone())
+        .unwrap();
+    for _ in 0..2 {
+        let reopened = ModelFeedService::open(root.path(), installed.clone(), 0, 0).unwrap();
+        let status = reopened.status().unwrap();
+        assert!(!status.retrieval_enabled);
+        assert!(status.disclosure_acknowledged);
+        assert_eq!(status.highest_accepted_sequence, Some(5));
+        assert_eq!(
+            status.highest_accepted_data_revision,
+            Some(updated.data_revision)
+        );
+        assert_eq!(reopened.current().official_snapshot(), updated);
+        assert_eq!(
+            reopened
+                .store
+                .read_state()
+                .unwrap()
+                .highest_accepted
+                .unwrap()
+                .payload_digest,
+            previous_state
+                .highest_accepted
+                .as_ref()
+                .unwrap()
+                .payload_digest
+        );
+        assert_eq!(captured.official_snapshot().data_revision, 5);
+    }
+}

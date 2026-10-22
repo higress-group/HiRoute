@@ -337,3 +337,115 @@ fn model_feed_current_and_recorded_v2_sources_require_the_complete_snapshot() {
         assert_eq!(result.is_err(), require_complete);
     }
 }
+
+fn bootstrap_repository() -> (tempfile::TempDir, String) {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    for relative in [
+        "assets/release-facts/current/bundle/official-model-data.json",
+        "assets/release-facts/current/bundle/manifest.json",
+        "assets/release-facts/current/bundle/connector-registry.json",
+        "assets/release-facts/current/bundle/model-data.json",
+        "assets/model-feed/policy.json",
+        "assets/model-feed/publication.json",
+        "assets/model-feed/featured.json",
+    ] {
+        let destination = root.join(relative);
+        std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        std::fs::copy(source.join(relative), destination).unwrap();
+    }
+    std::fs::create_dir_all(root.join("contracts/releases")).unwrap();
+    std::fs::write(
+        root.join("contracts/releases/index.v1.json"),
+        br#"{"schema":"hiroute.release-contract-index/v1","releases":[]}"#,
+    )
+    .unwrap();
+    std::fs::write(root.join("assets/model-feed/payload.json"), b"null\n").unwrap();
+    repository_git(root, &["init", "-b", "main"]);
+    repository_git(root, &["add", "."]);
+    repository_git(root, &["commit", "-m", "Initial embedded snapshot"]);
+    let base = repository_git(root, &["rev-parse", "HEAD"]);
+    (directory, base)
+}
+
+fn repository_git(root: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(root)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "Feed test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
+        .env("GIT_COMMITTER_NAME", "Feed test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.invalid")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+fn bootstrap_rejects_changed_embedded_data_without_a_revision_increase() {
+    let (directory, base) = bootstrap_repository();
+    let root = directory.path();
+    build_against(root, true, Some(&base)).unwrap();
+    let file = root.join("assets/release-facts/current/bundle/official-model-data.json");
+    let mut snapshot: hiroute_domain::OfficialModelSnapshotV1 =
+        serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    snapshot.data.connection_hints[0]
+        .description
+        .insert("en".into(), "A reviewed metadata correction.".into());
+    snapshot.data_digest = CanonicalDigest::of(&snapshot.data).unwrap();
+    let write = |snapshot: &hiroute_domain::OfficialModelSnapshotV1| {
+        std::fs::write(&file, crate::canonical_sorted_json_line(snapshot).unwrap()).unwrap();
+    };
+    write(&snapshot);
+    assert!(build(root, true).unwrap_err().contains("data revision"));
+    // A committed candidate must also be compared with its PR/push baseline.
+    repository_git(root, &["add", "."]);
+    repository_git(
+        root,
+        &[
+            "commit",
+            "-m",
+            "Correct metadata without increasing its revision",
+        ],
+    );
+    assert!(
+        build_against(root, true, Some(&base))
+            .unwrap_err()
+            .contains("data revision")
+    );
+    snapshot.data_revision += 1;
+    write(&snapshot);
+    build_against(root, true, Some(&base)).unwrap();
+    build_against(root, true, Some(&base)).unwrap();
+    assert_eq!(
+        std::fs::read(root.join("assets/model-feed/payload.json")).unwrap(),
+        b"null\n"
+    );
+}
+
+#[test]
+fn bootstrap_rejects_an_embedded_revision_rollback_with_unchanged_content() {
+    let (directory, _) = bootstrap_repository();
+    let root = directory.path();
+    let file = root.join("assets/release-facts/current/bundle/official-model-data.json");
+    let mut snapshot: hiroute_domain::OfficialModelSnapshotV1 =
+        serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    snapshot.data_revision += 1;
+    std::fs::write(&file, crate::canonical_sorted_json_line(&snapshot).unwrap()).unwrap();
+    repository_git(root, &["add", "."]);
+    repository_git(root, &["commit", "-m", "Advance embedded data revision"]);
+    let base = repository_git(root, &["rev-parse", "HEAD"]);
+    snapshot.data_revision -= 1;
+    std::fs::write(&file, crate::canonical_sorted_json_line(&snapshot).unwrap()).unwrap();
+    assert!(
+        build_against(root, true, Some(&base))
+            .unwrap_err()
+            .contains("data revision")
+    );
+}

@@ -46,12 +46,26 @@ try {
     await click('.model-feed-actions button',lang==='zh'?'详情':'Details');
     await click('.model-feed-details button',lang==='zh'?'浏览全部模型资料':'Browse all model information');
     await waitFor(client,`document.querySelectorAll('.model-metadata-records li').length===1`);
+    // These are actual generated records: Gemini fields are inferred; Spark's are observed.
+    assert.equal(await evaluate(client,`document.querySelectorAll('.model-metadata-records > li:first-child .model-metadata-inferred').length`),4);
+    assert.ok(await evaluate(client,`document.querySelector('.model-metadata-records').textContent.includes(${JSON.stringify(lang==='zh'?'推断':'Inferred')})`));
+    await evaluate(client,`metadataFixture.evidenceFail=true;true`);
+    await click('.model-metadata-records summary',lang==='zh'?'来源与推断依据':'Sources and inference');
+    await waitFor(client,`!!document.querySelector('.model-metadata-evidence [role=alert]')`);
+    await evaluate(client,`metadataFixture.evidenceFail=false;true`);
+    await click('.model-metadata-evidence button',lang==='zh'?'重试':'Retry');
+    await waitFor(client,`!!document.querySelector('.model-metadata-evidence .model-metadata-rule')`);
+    assert.ok(await evaluate(client,`document.querySelector('.model-metadata-evidence').textContent.includes('rule.google.gemini/v1')`));
+    assert.ok(await evaluate(client,`[...document.querySelectorAll('.model-metadata-evidence a')].some(a=>a.href.includes('github.com/NousResearch/hermes-agent'))`));
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='get_model_metadata').every(x=>x.payload.input.snapshot?.generation===1)`),true);
+    await geometry(width);await shot(`metadata-inferred-sources-${lang}-${theme}-${width}`);
     await evaluate(client,`metadataFixture.stale=true;true`);
     await click('[role=dialog] button',lang==='zh'?'加载更多':'Load more');
     await waitFor(client,`trialTrace.filter(x=>x.command==='list_model_metadata').length>=3`);
     assert.equal(await evaluate(client,`document.querySelectorAll('.model-metadata-records li').length`),1);
     await click('[role=dialog] button',lang==='zh'?'加载更多':'Load more');
     await waitFor(client,`document.querySelectorAll('.model-metadata-records li').length===2`);
+    assert.equal(await evaluate(client,`document.querySelectorAll('.model-metadata-records > li:nth-child(2) .model-metadata-inferred').length`),0);
     await geometry(width);await shot(`metadata-paged-${lang}-${theme}-${width}`);
     await select('.model-metadata-filters select','price');
     await waitFor(client,`document.querySelector('.model-metadata-records')?.textContent.includes('0.125')`);
