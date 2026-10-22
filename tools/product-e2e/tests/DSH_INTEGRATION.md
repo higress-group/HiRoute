@@ -73,6 +73,21 @@ An adapter-absence test removes or disables the full native plugin registration.
 A broken required import is a separate native installation failure. After Restore,
 verify actual inference with the restored default and no model override separately
 from successful startup.
+For ACP, seed and prove that same default inference before installation. Its
+`acp` provider/model configuration selects the initial route independently of
+the Web `agent-default-model` row; a valid Web default alone does not establish
+an ACP default. Retain both original baseline files and require their exact
+restoration; omit model-selection RPCs during both default-inference checks.
+
+ACP sends slash-command text as ordinary prompt input. Exercise real automatic
+compaction through native context pressure, and distinguish explicit public SDK
+calls from automatic native features. SDK fault, overlap and iterator fixtures
+can run inside an owned native tool without changing the production middleware.
+Native patch rows replace the complete plugin configuration: an overridden
+`tool-subagent` row still needs its provider and tool name. A broken middleware
+import may leave ACP available with a plugin-loader error; record the failed
+installation and any inference availability separately.
+
 The controlled main-Agent journey explicitly selects DSH's `danger-full-access`
 mode for its fixture-owned commands, matching the Worker journey's `approve-all`
 policy. It does not establish `workspace-write` sandbox support on the host.
