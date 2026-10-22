@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { invoke } from '../../host/index.ts';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { invoke, isTauriHost } from '../../host/index.ts';
 import { safeDiagnosticCode } from '../../error-code.ts';
 import { Disclosure } from '../../ui';
 import { inferenceRule, metadataReferences, type MetadataReference } from './metadata-facts.ts';
@@ -23,9 +23,16 @@ export function ModelMetadataEvidence({value,snapshot,zh,onReload}:{value:Record
   const [records,setRecords] = useState<Evidence[]|null>(null);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState<'stale'|'unavailable'|null>(null);
+  const [linkError,setLinkError] = useState(false);
   const epoch = useRef(0);
   const references = metadataReferences(value);
   useEffect(() => () => {++epoch.current;},[]);
+  async function openSource(event:MouseEvent<HTMLAnchorElement>,url:string) {
+    if (!isTauriHost()) return;
+    event.preventDefault();setLinkError(false);
+    try {await invoke('open_external_url',{url});}
+    catch {setLinkError(true);}
+  }
   async function load() {
     const serial = ++epoch.current;
     setBusy(true);setError(null);
@@ -52,10 +59,11 @@ export function ModelMetadataEvidence({value,snapshot,zh,onReload}:{value:Record
       return <section className={rule?'model-metadata-rule':'model-metadata-source'} key={`${record.kind}/${record.key}`}>
         <strong>{rule ? (zh?'推断依据':'Inference basis') : repository ? (zh?'客户端资料':'Client source') : (zh?'资料来源':'Source')}</strong>
         {rule && <p>{text(record.value.reason)}</p>}
-        {source && <p><a href={source} target="_blank" rel="noreferrer">{source}</a></p>}
+        {source && <p><a href={source} target="_blank" rel="noreferrer" onClick={event => void openSource(event,source)}>{source}</a></p>}
         {repository && <p className="field-help">{zh?'来源版本':'Source revision'}: {text(record.value.commit)}</p>}
         <p className="field-help">{record.key}{record.value.collected_on ? ` · ${zh?'资料日期':'Collected'}: ${text(record.value.collected_on)}` : ''}</p>
       </section>;
     })}
+    {linkError && <p className="model-metadata-link-error" role="alert">{zh?'无法打开浏览器。来源资料仍可查看，请重试链接。':'Could not open the browser. Sources are still available; try the link again.'}</p>}
   </Disclosure>;
 }

@@ -7,9 +7,13 @@ const modelRecords = [
   catalog.model_records.find(record => record.model_record_key === 'hermes-agent/openai-codex/gpt-5.3-codex-spark')!,
 ];
 const snapshot = {generation:1,data_revision:officialData.data_revision,data_digest:officialData.data_digest};
-const state = { fail: false, stale: false, evidenceFail: false, evidenceStale: false };
+const state = { fail: false, stale: false, evidenceFail: false, evidenceStale: false, linkFail: false };
 Object.assign(window,{metadataFixture:state});
 export function metadataFixtureInvoke(command: string, payload: any, params: URLSearchParams): unknown {
+  if(command === 'open_external_url') {
+    if(state.linkFail) throw Error('EXTERNAL_URL_OPEN_FAILED');
+    return null;
+  }
   if (command === 'compute_defaults') {
     if(state.fail) throw Error('DAEMON_UNAVAILABLE');
     const source = readyManagement.sources.find(s=>s.source_id===payload.input.source_id)!;

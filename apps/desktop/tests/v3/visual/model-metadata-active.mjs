@@ -58,6 +58,12 @@ try {
     assert.ok(await evaluate(client,`document.querySelector('.model-metadata-evidence').textContent.includes('rule.google.gemini/v1')`));
     assert.ok(await evaluate(client,`[...document.querySelectorAll('.model-metadata-evidence a')].some(a=>a.href.includes('github.com/NousResearch/hermes-agent'))`));
     assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='get_model_metadata').every(x=>x.payload.input.snapshot?.generation===1)`),true);
+    await evaluate(client,`metadataFixture.linkFail=true;document.querySelector('.model-metadata-evidence a').dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));true`);
+    await waitFor(client,`!!document.querySelector('.model-metadata-link-error')`);
+    assert.equal(await evaluate(client,`document.querySelectorAll('.model-metadata-inferred').length`),4);
+    await evaluate(client,`metadataFixture.linkFail=false;document.querySelector('.model-metadata-evidence a').dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));true`);
+    await waitFor(client,`!document.querySelector('.model-metadata-link-error')`);
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='open_external_url').length`),2);
     await geometry(width);await shot(`metadata-inferred-sources-${lang}-${theme}-${width}`);
     await client.send('Page.bringToFront');
     await evaluate(client,`document.querySelector('.model-metadata-evidence summary').focus();true`);
@@ -100,5 +106,14 @@ try {
     assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='model_feed_remove_apply').length`),0);
     results.push({id:`metadata.defaults-pages-impact.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked IPC'});
   }
+  await client.send('Page.navigate',{url:`${base}new-model-trial.html?metadata=1&transport=console&lang=en`});
+  await click('.model-feed-actions button','Details');
+  await click('.model-feed-details button','Browse all model information');
+  await click('.model-metadata-records summary','Sources and inference');
+  await waitFor(client,`!!document.querySelector('.model-metadata-rule')`);
+  const prevented=await evaluate(client,`(()=>{let before=null;document.addEventListener('click',event=>{before=event.defaultPrevented;event.preventDefault();},{once:true});document.querySelector('.model-metadata-evidence a').dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));return before;})()`);
+  assert.equal(prevented,false,'web anchors retain their normal browser action; the harness alone cancels navigation');
+  assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='open_external_url').length`),0);
+  results.push({id:'metadata.sources.console.en',status:'passed',scope:'production UI; mocked IPC; no external navigation'});
 } catch(error) {results.push({status:'failed',error:String(error)});process.exitCode=1;}
 finally {await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2));clearInterval(keepAlive);client.close();}
