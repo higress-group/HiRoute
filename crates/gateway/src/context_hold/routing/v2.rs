@@ -30,6 +30,7 @@ struct Envelope {
 pub(crate) enum NativeInput {
     ObservedBatch { event_id: Option<String> },
     NativeMessages(NativeMessageWindow),
+    ExistingTurn { event_id: String },
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -194,6 +195,17 @@ pub(super) fn routing_facts(
     if !consistent {
         return Some(RoutingFacts::uncertain());
     }
+    // A positive native synthetic-input marker limits only this request. It
+    // grants no ancestry: a named predecessor/checkpoint cannot recover input
+    // or a decision without an independently captured execution boundary.
+    let user_origin = if matches!(
+        native_input(headers),
+        Some(Ok(NativeInput::ExistingTurn { .. }))
+    ) {
+        NativeUserOrigin::ExistingTurn
+    } else {
+        NativeUserOrigin::Observed
+    };
     let branch = context
         .branch
         .and_then(|v| object_json::<Branch>(v.get()))
@@ -217,7 +229,7 @@ pub(super) fn routing_facts(
             compacted: continuation.is_some_and(|c| c.kind == "compression"),
             branch_leaf: branch.as_ref().map(|b| digest(&b.leaf_id)),
             branch_path: branch.as_ref().map(|b| digest(&b.path_digest)),
-            user_origin: NativeUserOrigin::Observed,
+            user_origin,
             ..Default::default()
         },
         ..Default::default()
@@ -255,6 +267,7 @@ pub(crate) fn native_input(headers: &HeaderMap) -> Option<Result<NativeInput, ()
     {
         return Some(Err(()));
     }
+    let turn = optional_id(&context.turn_id);
     let input: NativeInput = match context
         .input
         .and_then(|value| serde_json::from_str(value.get()).ok())
@@ -264,6 +277,7 @@ pub(crate) fn native_input(headers: &HeaderMap) -> Option<Result<NativeInput, ()
     };
     let valid = match &input {
         NativeInput::ObservedBatch { event_id } => event_id.as_deref().is_none_or(id),
+        NativeInput::ExistingTurn { event_id } => id(event_id) && turn == Some(digest(event_id)),
         NativeInput::NativeMessages(window) => {
             id(&window.event_id)
                 && window.coverage == "window"
@@ -433,5 +447,86 @@ mod tests {
                 .turn,
             Some(digest("turn"))
         );
+    }
+
+    #[test]
+    fn existing_turn_is_a_bound_main_input_guard_not_a_history_claim() {
+        for (agent, native_header, native_kind) in [
+            ("pi", "x-session-affinity", "pi_session"),
+            (
+                "dsh",
+                "x-deepseek-harness-session-id",
+                "deepseek_harness_session",
+            ),
+            ("opencode", "x-opencode-session-id", "opencode_session"),
+            ("hermes", "x-hermes-session-id", "hermes_session"),
+        ] {
+            let mut h = headers(json!({"version":2,"agent":agent,"purpose":"main",
+                "session_id":"session","turn_id":"current",
+                "input":{"kind":"existing_turn","event_id":"current"},
+                "branch":false,"continuation":{"kind":"compression","from_turn_id":"unproved"}}));
+            h.insert("x-hiroute-agent", agent.parse().unwrap());
+            h.insert(native_header, "session".parse().unwrap());
+            for worker in [false, true] {
+                let facts =
+                    routing_facts(&h, agent, Some((native_kind, &["session".into()])), worker)
+                        .unwrap();
+                assert!(facts.track);
+                assert_eq!(facts.native.user_origin, NativeUserOrigin::ExistingTurn);
+                assert_eq!(facts.native.turn, Some(digest("current")));
+                assert!(facts.native.branch_leaf.is_none());
+            }
+            h.insert(native_header, "other".parse().unwrap());
+            assert!(matches!(native_input(&h), Some(Err(()))));
+            assert_ne!(
+                routing_facts(&h, agent, Some((native_kind, &["session".into()])), false)
+                    .unwrap()
+                    .native
+                    .user_origin,
+                NativeUserOrigin::ExistingTurn
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_existing_turn_and_compression_cursor_alone_keep_observed_routing() {
+        for input in [
+            json!({"kind":"observed_batch","event_id":"current"}),
+            json!({"kind":"existing_turn","event_id":"old"}),
+            json!({"kind":"existing_turn","event_id":""}),
+            json!({"kind":"existing_turn","event_id":"x".repeat(129)}),
+            json!({"kind":"existing_turn","event_id":true}),
+            json!({"kind":"existing_turn"}),
+            json!({"kind":"existing_turn","event_id":"current","unexpected":true}),
+            json!(["existing_turn", "current"]),
+            Value::Null,
+        ] {
+            let mut h = headers(json!({"version":2,"agent":"pi","purpose":"main",
+                "session_id":"session","turn_id":"current","checkpoint":"summary",
+                "continuation":{"kind":"compression","from_turn_id":"old"},"input":input}));
+            h.insert("x-session-affinity", "session".parse().unwrap());
+            let facts =
+                routing_facts(&h, "pi", Some(("pi_session", &["session".into()])), false).unwrap();
+            assert!(facts.track && facts.native.compacted);
+            assert_eq!(facts.native.turn, Some(digest("current")));
+            assert_eq!(facts.native.user_origin, NativeUserOrigin::Observed);
+        }
+    }
+
+    #[test]
+    fn existing_turn_does_not_override_auxiliary_or_unknown_purpose() {
+        for purpose in ["summary", "unknown"] {
+            let mut h = headers(json!({"version":2,"agent":"pi","purpose":purpose,
+                "session_id":"session","turn_id":"current",
+                "input":{"kind":"existing_turn","event_id":"current"}}));
+            h.insert("x-session-affinity", "session".parse().unwrap());
+            let facts =
+                routing_facts(&h, "pi", Some(("pi_session", &["session".into()])), false).unwrap();
+            assert_eq!(facts.track, purpose == "unknown");
+            assert!(matches!(native_input(&h), Some(Err(()))));
+            if purpose == "unknown" {
+                assert_eq!(facts.native.user_origin, NativeUserOrigin::Observed);
+            }
+        }
     }
 }

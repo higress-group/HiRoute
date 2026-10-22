@@ -131,6 +131,10 @@ content vocabulary discloses them without disabling evaluation or changing the
 custom v1 schema. Unavailable known continuation input permits temporary fallback;
 subsequent actual A/B must recover within the same native session. Neither a
 compression link nor a native turn ID reconstructs discarded execution after restart.
+The v2 `existing_turn` input descriptor applies that request-local guard while
+retaining main execution output; a compression cursor alone does not apply it.
+The [listener recovery regression](../../tools/e2e-harness/tests/p0_gateway_runtime/native_existing_turn.rs)
+covers cold and previously captured sessions followed by actual A/B assessment.
 [Continuation regressions](../../crates/gateway/src/core_runtime/decision_history/native_tests.rs)
 keep summaries and unproved tool outcomes out of accepted history. The
 [listener availability cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_routing_availability.rs)
