@@ -240,3 +240,45 @@ fn pre_membership_format_roundtrips_unchanged_and_cannot_claim_new_membership() 
     }
     assert!(decoded.validate_persisted_contract().is_err());
 }
+
+#[test]
+fn captured_pre_membership_producer_bytes_keep_their_authenticated_storage_identity() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/captured-pre-membership-facts.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        fixture["source_revision"],
+        "8d1863e0db1219e1a983d394a052504f744711fa"
+    );
+    assert_eq!(
+        fixture["source_artifact_sha256"],
+        "8b4bfec3f77814afca208740a7b049c710f4b2ccf2a532c6735cddcec1da0951"
+    );
+    let facts = fixture["facts"].as_array().unwrap();
+    assert_eq!(facts.len(), 2);
+    for captured in facts {
+        let bytes = captured["envelope_json"].as_str().unwrap();
+        let envelope: hiroute_domain::ExecutionFactEnvelopeV1 =
+            serde_json::from_str(bytes).unwrap();
+        envelope.validate_persisted_contract().unwrap();
+        assert!(
+            envelope.validate().is_err(),
+            "an older authenticated format is storage-only"
+        );
+        assert_eq!(serde_json::to_string(&envelope).unwrap(), bytes);
+        assert_eq!(
+            CanonicalDigest::of(&envelope).unwrap().as_str(),
+            captured["envelope_digest"].as_str().unwrap()
+        );
+        match envelope.fact {
+            ExecutionFactV1::AgentTurnFinished {
+                history_membership, ..
+            }
+            | ExecutionFactV1::BranchAssessmentRecorded {
+                history_membership, ..
+            } => assert!(history_membership.is_none()),
+            _ => panic!("both changed storage fact types require old-producer evidence"),
+        }
+    }
+}

@@ -242,9 +242,6 @@ fn tool_digest(
     }
     hash.update(text_digest(name, replay)?);
     // Canonical JSON includes arguments and their types, never only the tool name.
-    if contains_reference(args) {
-        return None;
-    }
     struct Sink<'a>(&'a mut Sha256);
     impl Write for Sink<'_> {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
@@ -255,7 +252,11 @@ fn tool_digest(
             Ok(())
         }
     }
-    write_canonical_json(&mut Sink(&mut hash), args).ok()?;
+    if contains_reference(args) {
+        crate::context_hold::write_canonical_json_with_replay(&mut Sink(&mut hash), args, replay?)?;
+    } else {
+        write_canonical_json(&mut Sink(&mut hash), args).ok()?;
+    }
     Some(hash.finalize().into())
 }
 

@@ -697,7 +697,7 @@ fn contains_content_ref(value: &Value) -> bool {
     }
 }
 
-fn write_canonical_json_with_replay(
+pub(crate) fn write_canonical_json_with_replay(
     writer: &mut impl Write,
     value: &Value,
     replay: &ReplayStore,

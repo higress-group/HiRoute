@@ -396,7 +396,7 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
     use crate::server::core_runtime::model_ir::{
         CanonicalInstruction, InstructionRole, ModelEvent, ModelStreamEventV1, ResponseItemStatus,
     };
-    for changed in ["none", "arguments", "instructions"] {
+    for changed in ["none", "replay-arguments", "arguments", "instructions"] {
         let (_directory, replay) = replay();
         let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
         let scope = store.scope_key("workspace", changed).unwrap();
@@ -445,6 +445,14 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
             },
             tool_result("call", false),
         ]);
+        if changed == "replay-arguments" {
+            let mut pool = replay.begin_content_pool().unwrap();
+            let reference = pool.append_json(&json!({"id": 7}), true).unwrap();
+            pool.seal().unwrap();
+            if let ContentPart::ToolCall { arguments, .. } = &mut continued.messages[1].content[0] {
+                *arguments = reference.json_marker();
+            }
+        }
         if changed == "instructions" {
             continued.instructions.push(CanonicalInstruction {
                 role: InstructionRole::System,
@@ -456,7 +464,7 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
         let begin = scoped(&store, &scope, &continued, &replay).unwrap();
         match begin {
             AgentTurnBegin::Continuation { ticket, decision } => {
-                assert_eq!(changed, "none");
+                assert!(matches!(changed, "none" | "replay-arguments"));
                 assert_eq!(ticket.key, a.key);
                 assert_eq!(decision.branch_id, "regular");
                 store.abort(&ticket);
@@ -464,9 +472,9 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
             AgentTurnBegin::NewTurn {
                 ticket, history, ..
             } => {
-                assert_ne!(
-                    changed, "none",
-                    "a captured exact tool receipt should inherit"
+                assert!(
+                    !matches!(changed, "none" | "replay-arguments"),
+                    "a captured exact tool receipt should inherit: {changed}"
                 );
                 assert_ne!(ticket.key, a.key);
                 assert!(history.previous_decision.is_none());
