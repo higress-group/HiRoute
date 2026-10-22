@@ -20,22 +20,26 @@ from agent_product_support import apply_settings, run_native_command, expose_nat
 import standalone_headless_product as headless
 from dsh_native_context import DshModelSettings, read_patch, encode_patch
 from decision_services_product import DecisionEndpoint
+from additional_native_history_product import assert_assessed_execution
 
 
 class DecisionEndpointContractTests(unittest.TestCase):
-    def reply(self, option):
-        endpoint = type('ContractEndpoint', (DecisionEndpoint,), {'requests': []})
+    def reply(self, option, assessment=False, target=None):
+        endpoint = type('ContractEndpoint', (DecisionEndpoint,),
+                        {'requests': [], 'native_history_assessment': assessment})
         server = ThreadingHTTPServer(('127.0.0.1', 0), endpoint)
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         try:
             body = {'decision': {'kind': 'categorical', 'options': [option]}}
+            if target is not None:
+                body['assessment_target'] = target
             request = urllib.request.Request(f'http://127.0.0.1:{server.server_port}/decision',
                 data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
             with urllib.request.urlopen(request, timeout=5) as response:
                 result = json.load(response)
             self.assertEqual(endpoint.requests[0][1], body)
-            return result['decision']
+            return result if assessment else result['decision']
         finally:
             server.shutdown()
             server.server_close()
@@ -56,6 +60,36 @@ class DecisionEndpointContractTests(unittest.TestCase):
         self.assertEqual(set(probabilities), {'small', 'medium', 'large'})
         self.assertAlmostEqual(sum(probabilities.values()), 1)
         self.assertGreater(probabilities['small'], probabilities['large'])
+
+    def test_native_endpoint_returns_quality_only_for_a_captured_target(self):
+        option = {'id': 'native', 'criterion': 'Native task'}
+        self.assertNotIn('assessment', self.reply(option, assessment=True))
+        self.assertEqual(self.reply(option, assessment=True, target={'from': 0})['assessment'],
+                         {'score': 0.75, 'partial': False})
+
+
+class NativeHistoryOracleTests(unittest.TestCase):
+    def body(self):
+        return {'assessment_target': {'from': 1},
+                'visible_conversation': ['OLD', 'ACTUAL_A', 'ACCEPTED_A_OUTPUT'],
+                'latest_user': 'ACTUAL_B'}
+
+    def test_actual_preceding_execution_is_required(self):
+        assert_assessed_execution([self.body()], 'ACTUAL_A', 'ACCEPTED_A_OUTPUT', 'ACTUAL_B')
+
+    def test_empty_history_missing_output_wrong_target_and_current_input_are_rejected(self):
+        for mutate in [
+                lambda b: b.update(assessment_target=None),
+                lambda b: b.update(visible_conversation=[]),
+                lambda b: b.update(assessment_target={'from': True}),
+                lambda b: b.update(assessment_target={'from': 2}),
+                lambda b: b.update(visible_conversation=['OLD', 'ACTUAL_A']),
+                lambda b: b['visible_conversation'].append('ACTUAL_B'),
+                lambda b: b.update(latest_user='OLDER_INPUT')]:
+            body = self.body()
+            mutate(body)
+            with self.assertRaises(AssertionError):
+                assert_assessed_execution([body], 'ACTUAL_A', 'ACCEPTED_A_OUTPUT', 'ACTUAL_B')
 
 
 class DshRestorationEvidenceTests(unittest.TestCase):

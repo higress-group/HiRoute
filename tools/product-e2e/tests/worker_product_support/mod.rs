@@ -249,8 +249,8 @@ fn assert_scenario(output: Output, scenario: &str, harness: &str, candidate: &st
             "agent.models.independent-restore",
             "agent.models.default-reference-guard",
             "agent.models.native-adapter-autoload-history",
-            "agent.models.native-adapter-missing-request-scope",
-            "agent.models.native-adapter-restart-conservative",
+            "agent.models.native-adapter-missing-observed-recovery",
+            "agent.models.native-adapter-restart-recovery",
         ],
         "qoder-persisted-model-routes" | "dsh-persisted-model-routes" => &[
             "agent.models.persisted-routes",

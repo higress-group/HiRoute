@@ -17,11 +17,11 @@ from agent_product_support import run_native_command
 
 
 HISTORY_CASES = ("agent.models.native-adapter-autoload-history",
-                    "agent.models.native-adapter-missing-request-scope",
-                    "agent.models.native-adapter-restart-conservative")
+                    "agent.models.native-adapter-missing-observed-recovery",
+                    "agent.models.native-adapter-restart-recovery")
 
 
-def native_decision_receipt(product, since_ns):
+def native_decision_receipt(product, since_ns, assess_request_id=None):
     """Prove the real selected branch, rather than accepting a classifier call plus fallback."""
     deadline = time.monotonic() + 30
     while True:
@@ -39,8 +39,10 @@ def native_decision_receipt(product, since_ns):
                         continue
                     for event in receipt["ordered_facts"]:
                         if event["fact"]["kind"] == "route_decision" and event["occurred_at_unix_nanos"] >= since_ns:
+                            scores = [row["fact"] for row in receipt["ordered_facts"]
+                                      if row["fact"]["kind"] == "branch_assessment_recorded"]
                             decisions.append({"receipt_id": receipt_id, "request_id": receipt["request_id"],
-                                              "decision": event["fact"].get("complexity")})
+                                              "decision": event["fact"].get("complexity"), "assessments": scores})
         if decisions:
             assert len(decisions) == 1, "native prompt did not have exactly one accepted routing decision"
             decision = decisions[0]["decision"]
@@ -48,9 +50,28 @@ def native_decision_receipt(product, since_ns):
                 "native classification request did not produce an actual external decision"
             assert not decision["fallback_used"] and decision["branch_id"] == "native", \
                 "native prompt used fallback or ignored the selected non-default branch"
-            return decisions[0]
+            if assess_request_id is None or any(
+                    score.get("score") == 0.75 and
+                    score.get("history_membership", {}).get("request_ids") == [assess_request_id]
+                    for score in decisions[0]["assessments"]):
+                return decisions[0]
         assert time.monotonic() < deadline, "native routing receipt was not retained"
         time.sleep(.05)
+
+
+def assert_assessed_execution(bodies, prompt, output, current):
+    """Bind an assessment to the previous actual input/output, excluding current input."""
+    assert bodies, "no native classification was observed"
+    for body in bodies:
+        target = body.get("assessment_target")
+        assert isinstance(target, dict), "previous captured execution is not assessed"
+        start = target.get("from")
+        visible = body["visible_conversation"]
+        assert type(start) is int and 0 <= start < len(visible), "invalid assessment boundary"
+        assessed = json.dumps(visible[start:])
+        assert prompt in assessed and output in assessed, "assessment lost actual previous execution"
+        assert current not in assessed, "assessment incorrectly includes the new input"
+        assert current in json.dumps(body["latest_user"]), "new native input was not classified"
 
 
 def exercise_native_history(product, binary, node, selector, oracle, decisions, harness):
@@ -60,7 +81,7 @@ def exercise_native_history(product, binary, node, selector, oracle, decisions, 
     required = list(HISTORY_CASES)
     report = {"required_cases": required, "selected_cases": required, "cases": [], "routing_receipts": []}
 
-    def ask(label, disabled=False):
+    def ask(label, disabled=False, assess_request_id=None):
         nonlocal session
         prompt = oracle.arm(label)
         before = len(oracle.calls)
@@ -82,7 +103,8 @@ def exercise_native_history(product, binary, node, selector, oracle, decisions, 
             assert observed == session, "native client started a replacement session"
         session = observed
         assert oracle.calls[before:] == [label], "native client did not reach the selected production route once"
-        report["routing_receipts"].append({"label": label, **native_decision_receipt(product, since_ns)})
+        report["routing_receipts"].append({"label": label,
+            **native_decision_receipt(product, since_ns, assess_request_id)})
         return prompt
 
     @contextmanager
@@ -101,37 +123,47 @@ def exercise_native_history(product, binary, node, selector, oracle, decisions, 
             disabled.rename(adapter)
 
     first = ask("adapter-first")
+    first_output = oracle.receipt
+    first_request = report["routing_receipts"][-1]["request_id"]
     before = len(decisions())
-    ask("adapter-second")
+    second = ask("adapter-second", assess_request_id=first_request)
     actual = decisions()[before:]
-    assert actual and any(first in json.dumps(body["visible_conversation"]) for body in actual), \
-        "ordinary native client did not autoload the installed routing adapter or lost accepted Main history"
+    assert_assessed_execution(actual, first, first_output, second)
     report["cases"].append({"id": required[0], "state": "green", "native_session_id": session})
 
-    before = len(decisions())
     with missing_adapter():
-        ask("adapter-disabled-first", True)
-        ask("adapter-disabled-second", True)
+        disabled_a = ask("adapter-disabled-first", True)
+        disabled_output = oracle.receipt
+        disabled_request = report["routing_receipts"][-1]["request_id"]
+        before = len(decisions())
+        disabled_b = ask("adapter-disabled-second", True, disabled_request)
     actual = decisions()[before:]
-    assert len(actual) >= 2 and all(body["history_partial"] and body["visible_conversation"] == []
-                                  and body["assessment_target"] is None for body in actual), \
-        "a real client without its extension inferred shared history"
+    assert_assessed_execution(actual, disabled_a, disabled_output, disabled_b)
+    assert all("unverified_request_user_origin" in json.dumps(body["visible_conversation"])
+               for body in actual), "missing adapter fabricated verified input origin"
     report["cases"].append({"id": required[1], "state": "green", "native_session_id": session})
 
-    # Refresh proven history after the explicit unavailable-adapter control.
+    # Missing enrichment does not erase the actual execution captured on the
+    # observed lane. Restoring enrichment must not create an artificial gap.
+    disabled_output = oracle.receipt
+    disabled_request = report["routing_receipts"][-1]["request_id"]
     before = len(decisions())
-    ask("adapter-restored")
+    restored = ask("adapter-restored", assess_request_id=disabled_request)
     actual = decisions()[before:]
-    assert actual and all(body["history_partial"] and body["assessment_target"] is None for body in actual), \
-        "restoring the adapter concealed intervening uncaptured native user turns"
+    assert_assessed_execution(actual, disabled_b, disabled_output, restored)
     product.stop()
     product.start()
     before = len(decisions())
-    ask("adapter-gateway-restart")
+    restart_a = ask("adapter-gateway-restart")
     actual = decisions()[before:]
     assert actual and all(body["history_partial"] and body["visible_conversation"] == []
                          and body["assessment_target"] is None for body in actual), \
         "Gateway restart revived an unproven accepted execution"
+    restart_output = oracle.receipt
+    restart_request = report["routing_receipts"][-1]["request_id"]
+    before = len(decisions())
+    restart_b = ask("adapter-gateway-restart-followup", assess_request_id=restart_request)
+    assert_assessed_execution(decisions()[before:], restart_a, restart_output, restart_b)
     report["cases"].append({"id": required[2], "state": "green", "native_session_id": session})
     return report
 
