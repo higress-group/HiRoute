@@ -268,10 +268,7 @@ pub(crate) fn native_input(headers: &HeaderMap) -> Option<Result<NativeInput, ()
         return Some(Err(()));
     }
     let turn = optional_id(&context.turn_id);
-    let input: NativeInput = match context
-        .input
-        .and_then(|value| serde_json::from_str(value.get()).ok())
-    {
+    let input: NativeInput = match context.input.and_then(|value| object_json(value.get())) {
         Some(input) => input,
         None => return Some(Err(())),
     };
@@ -509,7 +506,11 @@ mod tests {
                 routing_facts(&h, "pi", Some(("pi_session", &["session".into()])), false).unwrap();
             assert!(facts.track && facts.native.compacted);
             assert_eq!(facts.native.turn, Some(digest("current")));
-            assert_eq!(facts.native.user_origin, NativeUserOrigin::Observed);
+            assert_eq!(
+                facts.native.user_origin,
+                NativeUserOrigin::Observed,
+                "{input}"
+            );
         }
     }
 
