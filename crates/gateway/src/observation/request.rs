@@ -1082,7 +1082,9 @@ fn fallback_reason(start_reason: &str) -> FallbackReason {
         | "quota"
         | "binding_overload" => FallbackReason::RateLimited,
         "credential" => FallbackReason::AuthenticationRejected,
-        "permanent_client" | "reasoning_history" => FallbackReason::InputRejected,
+        "permanent_client" | "reasoning_history" | "context_length" => {
+            FallbackReason::InputRejected
+        }
         "timeout" => FallbackReason::Timeout,
         "protocol" => FallbackReason::InvalidOutput,
         "connector_unavailable" | "connector_not_ready" => FallbackReason::ConnectorUnavailable,

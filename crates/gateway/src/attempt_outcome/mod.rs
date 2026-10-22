@@ -27,6 +27,7 @@ impl ConnectorErrorProfile {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderFailureKind {
+    ContextLength,
     ReasoningHistory,
     Credential,
     Quota,
@@ -79,6 +80,7 @@ pub enum PreOutputStreamClass {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AttemptFailureClass {
+    ContextLength,
     ReasoningHistory,
     Credential,
     Quota,
@@ -145,7 +147,8 @@ impl AttemptFailure {
             | AttemptFailureClass::PreOutputStream(
                 PreOutputStreamClass::BindingOverload | PreOutputStreamClass::Transient,
             ) => Some(FailureStateScope::Binding),
-            AttemptFailureClass::Protocol
+            AttemptFailureClass::ContextLength
+            | AttemptFailureClass::Protocol
             | AttemptFailureClass::ReasoningHistory
             | AttemptFailureClass::PermanentClient
             | AttemptFailureClass::PreOutputStream(
@@ -223,6 +226,9 @@ fn classify_http(
             _ => AttemptFailureClass::Unclassified,
         },
         400 | 404 | 422 => match kind {
+            Some(ProviderFailureKind::ContextLength) if status == 400 => {
+                AttemptFailureClass::ContextLength
+            }
             Some(ProviderFailureKind::ReasoningHistory) if status == 400 => {
                 AttemptFailureClass::ReasoningHistory
             }
@@ -232,6 +238,7 @@ fn classify_http(
         },
         500..=599 => AttemptFailureClass::Transient,
         _ => match kind {
+            Some(ProviderFailureKind::ContextLength) => AttemptFailureClass::Unclassified,
             Some(ProviderFailureKind::ReasoningHistory) => AttemptFailureClass::Unclassified,
             Some(ProviderFailureKind::Protocol) => AttemptFailureClass::Protocol,
             Some(ProviderFailureKind::PermanentClient) => AttemptFailureClass::PermanentClient,
@@ -251,6 +258,7 @@ fn classify_http(
 
 fn stream_class(kind: ProviderFailureKind) -> PreOutputStreamClass {
     match kind {
+        ProviderFailureKind::ContextLength => PreOutputStreamClass::PermanentClient,
         ProviderFailureKind::ReasoningHistory => PreOutputStreamClass::PermanentClient,
         ProviderFailureKind::Credential => PreOutputStreamClass::Credential,
         ProviderFailureKind::Quota => PreOutputStreamClass::Quota,

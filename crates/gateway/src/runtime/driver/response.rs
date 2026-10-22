@@ -673,6 +673,9 @@ fn sanitized_provider_kind(
     if !sealed_connector_semantics(profile) {
         return None;
     }
+    if super::context_overflow::matches(profile.capability.upstream_protocol, error) {
+        return Some(ProviderFailureKind::ContextLength);
+    }
     let code = error.code.as_deref()?.to_ascii_lowercase();
     // Preserve a precise cause without guessing one for generic InvalidParameter.
     // Relay eligibility is independent of this diagnostic classification.
@@ -786,14 +789,19 @@ fn classify_state_failure(
     }
     let failure = classify_failure(&raw, connector_error_profile(&state.profile)?);
     let facts = failure_facts(&failure);
+    let context_overflow = failure.class == AttemptFailureClass::ContextLength;
     state.classified_failure = Some(failure);
-    let body = serde_json::to_vec(&serde_json::json!({
-        "error": {
-            "type": "upstream_error",
-            "code": "UPSTREAM_ATTEMPT_FAILED"
-        }
-    }))
-    .map_err(|_| Arc::from("sanitized error serialization failed"))?;
+    let body = if context_overflow {
+        super::context_overflow::BODY.to_vec()
+    } else {
+        serde_json::to_vec(&serde_json::json!({
+            "error": {
+                "type": "upstream_error",
+                "code": "UPSTREAM_ATTEMPT_FAILED"
+            }
+        }))
+        .map_err(|_| Arc::from("sanitized error serialization failed"))?
+    };
     let terminal_body =
         ChargedBytes::from_exact_vec(&state.budget, MemoryRole::ResponsePrefix, body)
             .map_err(safe_error)?;
@@ -1108,6 +1116,7 @@ fn rendered_response_parts(
 pub(super) fn failure_facts(failure: &AttemptFailure) -> ProviderClassificationFacts {
     ProviderClassificationFacts {
         error_class: Some(label(match failure.class {
+            AttemptFailureClass::ContextLength => "context_length",
             AttemptFailureClass::ReasoningHistory => "reasoning_history",
             AttemptFailureClass::Credential => "credential",
             AttemptFailureClass::Quota => "quota",

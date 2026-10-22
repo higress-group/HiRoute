@@ -263,6 +263,29 @@ probe, and required store operations still fail closed.
 Pure temporary pre-Attempt exhaustion exposes accurate retry time under the
 [request contract](../request-routing/spec.md); store failure never means healthy.
 
+A sealed Connector's HTTP 400 with exact `context_length_exceeded` code retains
+a closed client-recoverable cause. Messages also recognizes only
+`invalid_request_error` with the complete `prompt is too long: <input> tokens >
+<maximum> maximum` form, where both counts are unsigned decimal integers and
+input exceeds a positive maximum. Generic 400/413, arbitrary message substrings,
+unsealed profiles and stream errors do not establish this cause. Normal frozen
+candidate relay runs first. If the last attempted response has this cause and
+no further attempt is available before the original deadline, return HTTP 400
+with `error.type=invalid_request_error`, `error.code=context_length_exceeded` and
+the static message `Input exceeds the context window.` Provider text and token
+counts never pass through. A later transport, preparation or response failure
+supersedes this cause. The cause neither quarantines a binding nor rotates a key;
+it does not reset budgets, bypass cancellation or perform Gateway compaction.
+
+#### Scenario: Native context recovery survives exhausted relay
+
+- **WHEN** a native client's input receives a recognized context-overflow 400
+  and no frozen candidate can be attempted within the remaining attempt budget
+- **THEN** the sanitized 400 retains the closed context-overflow code so the
+  client can apply its own compaction/retry policy
+- **AND** an available next candidate may still answer successfully first;
+  unrelated client errors and later failures never inherit the overflow cause
+
 #### Scenario: Auxiliary failure cannot suppress an independent main call
 
 - **WHEN** an authenticated Agent model grant's unmarked title request receives a
