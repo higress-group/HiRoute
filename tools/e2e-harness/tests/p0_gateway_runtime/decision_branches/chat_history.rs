@@ -140,7 +140,10 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
                 .any(|fact| fact["fact"]["kind"] == "branch_assessment_recorded")
         );
         if reasoning_bytes == 0 {
-            let tool_requests = json!([decisions[0]["request_id"], decisions[1]["request_id"]]);
+            let tool_requests = json!([
+                decisions[0]["correlation"]["request_id"],
+                decisions[1]["correlation"]["request_id"]
+            ]);
             let complete = facts
                 .iter()
                 .find(|event| {
@@ -159,7 +162,8 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
                 .iter()
                 .find(|event| {
                     event["fact"]["kind"] == "branch_assessment_recorded"
-                        && event["request_id"] == decisions[2]["request_id"]
+                        && event["correlation"]["request_id"]
+                            == decisions[2]["correlation"]["request_id"]
                 })
                 .expect("next real question must assess the complete tool execution");
             assert_eq!(
