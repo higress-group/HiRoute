@@ -71,7 +71,17 @@ fn real_listener_native_peer_tasks_retain_observed_routing_and_original_wire() {
                 .unwrap()["fact"]["complexity"];
             assert_eq!(decision["fallback_used"], opaque);
             if opaque {
-                assert_eq!(decision["fallback_reason"], "unavailable");
+                if external {
+                    assert_eq!(decision["fallback_reason"], "unavailable");
+                } else {
+                    assert_eq!(decision["decision_source"], "unresolved");
+                    assert!(
+                        decision["reason_codes"]
+                            .as_array()
+                            .unwrap()
+                            .contains(&json!("task_context_unresolved"))
+                    );
+                }
             } else if external {
                 let classified = classifier_body(&classifier, 0);
                 assert_eq!(
@@ -108,6 +118,19 @@ fn real_listener_opaque_peer_is_not_ancestor_input_and_same_session_a_b_recovers
         1,
         ObservationFaults::healthy(),
     );
+    // The generic fixture intentionally reuses one capability configuration ID.
+    // Publish two distinct actual configurations for this attribution assertion.
+    let mut publication = fixture.publication();
+    for candidate in &mut publication.aliases[0].candidates {
+        for profile in &mut candidate.protocol_profiles {
+            profile.capability.model_configuration_id =
+                format!("codex-peer-config-{}", candidate.local_id);
+        }
+        candidate.protocol_profile_digest =
+            hiroute_domain::CanonicalDigest::of(&candidate.protocol_profiles).unwrap();
+    }
+    publication.publication_revision += 1;
+    fixture.publish(&mut publication);
     let mut input = json!([
         {"role":"user","content":"UNCAPTURED_ANCESTOR_TASK"},
         {"type":"agent_message","author":"child","recipient":"parent","content":[
