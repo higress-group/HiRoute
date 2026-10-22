@@ -398,9 +398,10 @@ pub(crate) fn routing_reason(
             &format!(
                 "WITH quality AS ({SCOPE}) {SAMPLE_SELECT}
       WHERE q.session_id=:session
-        AND (q.first_request_id=:request OR q.last_request_id=:request OR q.segment_id=(
-          SELECT t.segment_id FROM observation_analysis_turns_v1 t WHERE t.workspace_id=q.workspace_id
-            AND t.request_id=:request AND t.partial=0))
+        AND ((q.history_membership_json IS NOT NULL AND EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') member WHERE member.value=:request))
+          OR (q.history_membership_json IS NULL AND (q.first_request_id=:request OR q.last_request_id=:request OR q.segment_id=(
+            SELECT t.segment_id FROM observation_analysis_turns_v1 t WHERE t.workspace_id=q.workspace_id
+              AND t.request_id=:request AND t.partial=0))))
         AND EXISTS(SELECT 1 FROM logical_requests request WHERE request.workspace_id=q.workspace_id
           AND request.session_id=q.session_id AND request.request_id=:request)
       ORDER BY q.first_at_ms DESC,q.segment_id LIMIT 1"

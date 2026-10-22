@@ -89,6 +89,19 @@ pub(crate) struct AgentTurnHistorySnapshot {
     pub(crate) _pin: Option<Arc<super::store::SnapshotPin>>,
 }
 
+impl AgentTurnHistorySnapshot {
+    pub(crate) fn empty(history_partial: bool) -> Self {
+        Self {
+            previous_decision: None,
+            visible_conversation: Vec::new(),
+            history_partial,
+            assessment_from: None,
+            assessment_target: None,
+            _pin: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct AssessmentTarget {
     pub(crate) history_membership: Option<hiroute_domain::HistoryMembershipV1>,
@@ -140,6 +153,12 @@ pub(crate) struct TurnDecisionInputs {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct AgentTurnHistoryKey(pub(super) [u8; 32]);
+
+impl AgentTurnHistoryKey {
+    pub(crate) fn branch_digest(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) enum AgentTurnBegin {

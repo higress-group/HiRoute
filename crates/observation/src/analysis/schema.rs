@@ -52,6 +52,15 @@ pub(crate) fn migrate(db: &mut Connection) -> rusqlite::Result<()> {
             rebuild_turns = true;
         }
     }
+    let membership_version: Option<String> = tx
+        .query_row(
+            "SELECT value FROM observation_analysis_meta_v1 WHERE key='turn_membership_version'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    rebuild_turns |= membership_version.as_deref() != Some("2");
+    tx.execute("INSERT INTO observation_analysis_meta_v1(key,value) VALUES('turn_membership_version','2') ON CONFLICT(key) DO UPDATE SET value=excluded.value", [])?;
     if rebuild_turns {
         tx.execute_batch(
             "INSERT OR IGNORE INTO observation_analysis_dirty_v1(workspace_id,request_id,sequence)

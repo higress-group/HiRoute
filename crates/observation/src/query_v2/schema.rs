@@ -64,7 +64,12 @@ pub(crate) fn migrate(transaction: &Connection) -> Result<(), ObservationStoreEr
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?
         .collect::<Result<std::collections::BTreeSet<_>, _>>()
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    for column in ["branch_execution_json", "upgrade_json"] {
+    for column in [
+        "branch_execution_json",
+        "upgrade_json",
+        "history_membership_json",
+        "assessment_membership_json",
+    ] {
         if !columns.contains(column) {
             transaction
                 .execute(

@@ -23,6 +23,12 @@ pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
 pub(crate) struct ContextHoldKey([u8; 32]);
 
 impl ContextHoldKey {
+    fn on_branch(&self, branch: &[u8; 32]) -> Option<Self> {
+        let mut mac = HmacSha256::new_from_slice(&self.0).ok()?;
+        mac.update(b"context-hold-execution-branch/v2");
+        mac.update(branch);
+        Some(Self(mac.finalize().into_bytes().into()))
+    }
     #[cfg(test)]
     pub(crate) fn for_runtime_test(value: u8) -> Self {
         Self([value; 32])
@@ -491,6 +497,22 @@ impl ContextHoldStore {
 
     pub(crate) fn commit(&self, prepared: PreparedHold, now: Instant) -> Option<HoldTicket> {
         self.reserve_commit(prepared, now).map(HoldCommit::commit)
+    }
+
+    pub(crate) fn commit_on_branch(
+        &self,
+        prepared: PreparedHold,
+        branch: &[u8; 32],
+        request: &crate::server::core_runtime::model_ir::ModelRequestIRV1,
+        replay: &crate::replay::ReplayStore,
+        now: Instant,
+    ) -> Option<HoldTicket> {
+        let digest_key = self.digest_key()?;
+        let evidence = super::observed_history_with_replay(request, &digest_key, Some(replay))?;
+        let mut scoped = self.prepare(prepared.key.on_branch(branch)?, &evidence, now)?;
+        scoped.native = prepared.native;
+        scoped.history_key = prepared.history_key;
+        self.commit(scoped, now)
     }
 
     pub(crate) fn reserve_commit(

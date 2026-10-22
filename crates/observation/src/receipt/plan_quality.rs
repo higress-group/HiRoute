@@ -345,6 +345,7 @@ pub(super) fn apply(
         _ => false,
     };
     if changed {
+        apply_membership(transaction, envelope)?;
         transaction
             .execute(
                 "UPDATE observation_meta SET value=CAST(value AS INTEGER)+1
@@ -353,6 +354,59 @@ pub(super) fn apply(
             )
             .map_err(|_| FactProjectionError::Storage)?;
     }
+    Ok(())
+}
+
+fn apply_membership(
+    transaction: &Transaction<'_>,
+    envelope: &ExecutionFactEnvelopeV1,
+) -> Result<(), FactProjectionError> {
+    let (segment, membership, column, union) = match &envelope.fact {
+        ExecutionFactV1::AgentTurnFinished {
+            segment_id,
+            history_membership: Some(m),
+            ..
+        } => (segment_id, m, "history_membership_json", true),
+        ExecutionFactV1::BranchAssessmentRecorded {
+            segment_id,
+            history_membership: Some(m),
+            ..
+        } => (segment_id, m, "assessment_membership_json", false),
+        _ => return Ok(()),
+    };
+    let mut current = membership.clone();
+    if union {
+        let previous: Option<String> = transaction.query_row(
+            "SELECT history_membership_json FROM plan_quality_segments WHERE workspace_id=?1 AND segment_id=?2",
+            params![envelope.correlation.workspace_id.as_str(), segment], |r| r.get(0))
+            .map_err(|_| FactProjectionError::Storage)?;
+        if let Some(previous) = previous {
+            let old: hiroute_domain::HistoryMembershipV1 =
+                serde_json::from_str(&previous).map_err(|_| FactProjectionError::Invalid)?;
+            if old.branch_id != current.branch_id {
+                return Err(FactProjectionError::ImmutableConflict);
+            }
+            if old.revision > current.revision {
+                return Ok(());
+            }
+            current.source_unverified |= old.source_unverified;
+            current.capture_partial |= old.capture_partial;
+            current.clipped |= old.clipped;
+            for id in old.request_ids {
+                if current.request_ids.contains(&id) {
+                    continue;
+                }
+                if current.request_ids.len() < 128 {
+                    current.request_ids.push(id);
+                } else {
+                    current.clipped = true;
+                }
+            }
+        }
+    }
+    let encoded = serde_json::to_string(&current).map_err(|_| FactProjectionError::Invalid)?;
+    transaction.execute(&format!("UPDATE plan_quality_segments SET {column}=?3 WHERE workspace_id=?1 AND segment_id=?2"),
+        params![envelope.correlation.workspace_id.as_str(), segment, encoded]).map_err(|_| FactProjectionError::Storage)?;
     Ok(())
 }
 

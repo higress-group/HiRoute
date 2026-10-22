@@ -272,20 +272,13 @@ impl AgentTurnHistoryStore {
                 return Err(AgentTurnHistoryError::Resource);
             }
         }
+        let mut frozen = self
+            .pinned_snapshot(inner, &selection.key, selection.segment.as_ref())
+            .unwrap_or_else(|| AgentTurnHistorySnapshot::empty(true));
         let entry = inner
             .entries
-            .get_mut(&selection.key)
+            .get(&selection.key)
             .ok_or(AgentTurnHistoryError::Resource)?;
-        entry.snapshot_pins = entry
-            .snapshot_pins
-            .checked_add(1)
-            .ok_or(AgentTurnHistoryError::Resource)?;
-        let pin = Arc::new(SnapshotPin {
-            inner: Arc::downgrade(&self.inner),
-            key: selection.key,
-            entry_token: entry.entry_token,
-        });
-        let mut frozen = snapshot(entry, pin, selection.segment.as_ref());
         frozen.previous_decision = None;
         if let Some(membership) = frozen
             .assessment_target

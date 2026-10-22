@@ -96,6 +96,7 @@ impl ProductionGatewayRuntime {
             capture,
             prepared_hold,
             None,
+            request,
         )
     }
 
@@ -108,6 +109,7 @@ impl ProductionGatewayRuntime {
         capture: Option<CaptureScope>,
         prepared_hold: Option<PreparedHold>,
         current_input: Option<&[model_ir::ContentPart]>,
+        original_request: &model_ir::ModelRequestIRV1,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
         self.begin_history(
             observation,
@@ -117,6 +119,7 @@ impl ProductionGatewayRuntime {
             capture,
             prepared_hold,
             current_input,
+            original_request,
         )
     }
 
@@ -129,6 +132,7 @@ impl ProductionGatewayRuntime {
         capture: Option<CaptureScope>,
         prepared_hold: Option<PreparedHold>,
         current_input: Option<&[model_ir::ContentPart]>,
+        original_request: &model_ir::ModelRequestIRV1,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
         let Some(capture) = capture else {
             return Ok(DecisionHistory::detached());
@@ -230,11 +234,21 @@ impl ProductionGatewayRuntime {
                 )
             }
         };
+        self.agent_turn_history
+            .bind_request(&ticket, observation.logical_request_id());
+        let branch_digest = *ticket.key.branch_digest();
         let guard = AgentTurnRequestGuard::new(self.agent_turn_history.clone(), ticket);
         // Affinity is subordinate to execution capture. A stale or busy cache
         // can only lose its hint, never the admitted request or its snapshot.
-        let hold_ticket =
-            prepared_hold.and_then(|prepared| self.context_holds.commit(prepared, Instant::now()));
+        let hold_ticket = prepared_hold.and_then(|prepared| {
+            self.context_holds.commit_on_branch(
+                prepared,
+                &branch_digest,
+                original_request,
+                replay,
+                Instant::now(),
+            )
+        });
         if let Some(completed) = completed {
             observation.agent_turn_finished(&completed);
         }

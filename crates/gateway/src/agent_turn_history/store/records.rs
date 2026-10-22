@@ -592,3 +592,43 @@ fn stage_membership(
     }
     Some(result)
 }
+
+impl AgentTurnHistoryStore {
+    pub(super) fn pinned_snapshot(
+        &self,
+        inner: &mut StoreInner,
+        key: &AgentTurnHistoryKey,
+        segment: Option<&SegmentState>,
+    ) -> Option<AgentTurnHistorySnapshot> {
+        let entry = inner.entries.get(key)?;
+        // Charge the immutable snapshot separately: reopening or trimming a
+        // live branch cannot make retained Arc payloads disappear from budget.
+        let charge = 2048usize.saturating_add(
+            entry
+                .closed
+                .iter()
+                .map(|turn| {
+                    turn.wire.retained_bytes()
+                        + completed_bytes(&turn.completed)
+                        + decision_bytes(&turn.decision)
+                })
+                .sum::<usize>(),
+        );
+        inner.evict_to_budget(self.max_memory_bytes.saturating_sub(charge), Some(key));
+        if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
+            return None;
+        }
+        let entry = inner.entries.get_mut(key)?;
+        entry.snapshot_pins = entry.snapshot_pins.checked_add(1)?;
+        let pin = Arc::new(SnapshotPin {
+            inner: Arc::downgrade(&self.inner),
+            key: key.clone(),
+            entry_token: entry.entry_token,
+            reserved_bytes: charge,
+        });
+        let result = snapshot(entry, pin, segment);
+        inner.accounted_bytes = inner.accounted_bytes.saturating_add(charge);
+        inner.note_peak();
+        Some(result)
+    }
+}

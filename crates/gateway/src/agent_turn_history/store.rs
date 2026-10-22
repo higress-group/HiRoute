@@ -77,6 +77,7 @@ pub(crate) struct SnapshotPin {
     inner: Weak<Mutex<StoreInner>>,
     key: AgentTurnHistoryKey,
     entry_token: u64,
+    reserved_bytes: usize,
 }
 
 impl std::fmt::Debug for SnapshotPin {
@@ -93,6 +94,7 @@ impl Drop for SnapshotPin {
             return;
         };
         let mut inner = inner.lock();
+        inner.accounted_bytes = inner.accounted_bytes.saturating_sub(self.reserved_bytes);
         if let Some(entry) = inner.entries.get_mut(&self.key)
             && entry.entry_token == self.entry_token
         {
@@ -778,27 +780,14 @@ impl AgentTurnHistoryStore {
                 inherited_decision: Some(inherited_decision),
             });
         }
-        let pin = {
-            let entry = inner
-                .entries
-                .get_mut(&key)
-                .ok_or(AgentTurnHistoryError::Resource)?;
-            entry.snapshot_pins = entry
-                .snapshot_pins
-                .checked_add(1)
-                .ok_or(AgentTurnHistoryError::Resource)?;
-            Arc::new(SnapshotPin {
-                inner: Arc::downgrade(&self.inner),
-                key: key.clone(),
-                entry_token: entry.entry_token,
-            })
-        };
         let history = {
+            let mut history = self
+                .pinned_snapshot(inner, &key, observed_assessment_segment.as_ref())
+                .unwrap_or_else(|| AgentTurnHistorySnapshot::empty(true));
             let entry = inner
                 .entries
                 .get(&key)
                 .ok_or(AgentTurnHistoryError::Resource)?;
-            let mut history = snapshot(entry, pin, observed_assessment_segment.as_ref());
             let new_branch_task = !decision_inputs.history_continuity.semantic_continuity()
                 && history
                     .previous_decision
@@ -846,6 +835,34 @@ impl AgentTurnHistoryStore {
         Ok(())
     }
 
+    pub(crate) fn bind_request(&self, ticket: &AgentTurnTicket, request_id: &str) {
+        let mut inner = self.inner.lock();
+        let charge = request_id.len().saturating_mul(3).saturating_add(256);
+        inner.evict_to_budget(
+            self.max_memory_bytes.saturating_sub(charge),
+            Some(&ticket.key),
+        );
+        let fits = inner.accounted_bytes.saturating_add(charge) <= self.max_memory_bytes;
+        let Ok(entry) = matching_entry_mut(&mut inner, ticket) else {
+            return;
+        };
+        if !fits || entry.active.request_ids.len() >= 128 {
+            entry.active.request_ids_clipped = true;
+            return;
+        }
+        entry.active.request_ids.push(request_id.to_owned());
+        entry
+            .active
+            .first_request_id
+            .get_or_insert_with(|| request_id.to_owned());
+        entry.active.last_request_id = Some(request_id.to_owned());
+        let old = entry.accounted_bytes;
+        entry.accounted_bytes = entry_bytes(&ticket.key, entry);
+        let new = entry.accounted_bytes;
+        inner.replace_accounting(old, new);
+        inner.note_peak();
+    }
+
     pub(crate) fn finish_request(
         &self,
         ticket: &AgentTurnTicket,
@@ -856,6 +873,28 @@ impl AgentTurnHistoryStore {
         now: Instant,
     ) -> Result<Option<CompletedAgentTurn>, AgentTurnHistoryError> {
         let mut inner = self.inner.lock();
+        let charge = executions
+            .iter()
+            .map(|e| {
+                e.model_configuration_id.len()
+                    + e.profile_digest.len()
+                    + e.executed_branch_id.len()
+                    + e.request_id.len()
+                    + 512
+            })
+            .sum::<usize>()
+            .saturating_mul(3)
+            .saturating_add(request_id.len() * 3 + 4096);
+        inner.evict_to_budget(
+            self.max_memory_bytes.saturating_sub(charge),
+            Some(&ticket.key),
+        );
+        if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
+            let entry = matching_entry_mut(&mut inner, ticket)?;
+            entry.pending_request = None;
+            inner.note_capture_gap(&ticket.key);
+            return Err(AgentTurnHistoryError::Resource);
+        }
         let next_segment_id = terminal
             .then(|| self.allocate_id(&mut inner, "segment"))
             .transpose()?;
@@ -869,7 +908,9 @@ impl AgentTurnHistoryStore {
             if entry.active.first_request_id.is_none() {
                 entry.active.first_request_id = Some(request_id.clone());
             }
-            if entry.active.request_ids.len() < 128 {
+            if entry.active.request_ids.contains(&request_id) {
+                // The Gateway identifier was already bound before classification.
+            } else if entry.active.request_ids.len() < 128 {
                 entry.active.request_ids.push(request_id.clone());
             } else {
                 entry.active.request_ids_clipped = true;

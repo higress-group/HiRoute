@@ -723,6 +723,7 @@ impl ProductionGatewayRuntime {
                     capture_scope,
                     prepared_hold,
                     routing_view.current_input(),
+                    &canonical_request,
                 ) {
                     Ok(tracking) => tracking,
                     Err(_) => {

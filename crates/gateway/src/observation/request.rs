@@ -853,6 +853,10 @@ impl RequestObservation {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    pub(crate) fn logical_request_id(&self) -> &str {
+        &self.inner.metadata.request_id
+    }
+
     pub fn has_accepted_attempt(&self) -> bool {
         self.lock_state().accepted_attempt.is_some()
     }

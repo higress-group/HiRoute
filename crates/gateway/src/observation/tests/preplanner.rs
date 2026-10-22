@@ -27,6 +27,7 @@ fn native_timeline_early_turn_facts_keep_authorized_plan_identity() {
     );
     // A preceding tool stage may close at ingress, before this request is planned.
     request.agent_turn_finished(&crate::agent_turn_history::CompletedAgentTurn {
+        history_membership: None,
         opening_cause: hiroute_domain::AgentTurnOpeningCauseV1::NoComparableHistory,
         branch_execution: None,
         agent_turn_id: "turn/previous".into(),

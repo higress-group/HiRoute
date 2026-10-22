@@ -11,7 +11,6 @@ use super::protocol::{
 use super::{CallFailure, ClassifierAssessment, ClassifierResponse, PreparedDecisionRequest};
 use crate::agent_turn_history::AgentTurnHistorySnapshot;
 use crate::server::core_runtime::adapters::prepare_replay_json_template;
-use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 
 // A bounded wire allocation, not a tokenizer or a business-model context limit.
