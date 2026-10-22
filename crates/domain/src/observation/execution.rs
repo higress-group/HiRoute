@@ -31,7 +31,52 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069";
+    "sha256:3cb9b100385c1f05a92097c2f28eb5c47d61ca495d32d41a8528b7227c81a465";
+
+/// Exact bounded membership of an immutable captured stage revision. Source
+/// uncertainty and association uncertainty do not mean execution is missing.
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryMembershipV1 {
+    pub version: u8,
+    pub branch_id: String,
+    pub revision: u64,
+    pub request_ids: Vec<String>,
+    pub clipped: bool,
+    pub relation: HistoryRelationV1,
+    pub source_unverified: bool,
+    pub association_unverified: bool,
+    pub capture_partial: bool,
+}
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryRelationV1 {
+    Root,
+    ExactPrefix,
+    AmbiguousPrefix,
+    Contextual,
+}
+
+impl HistoryMembershipV1 {
+    pub fn validate(&self) -> Result<(), ExecutionFactError> {
+        let mut seen = std::collections::BTreeSet::new();
+        if self.version != 1
+            || self.branch_id.is_empty()
+            || self.branch_id.len() > 128
+            || self.branch_id.chars().any(char::is_control)
+            || self.revision == 0
+            || self.request_ids.len() > 128
+            || self
+                .request_ids
+                .iter()
+                .any(|id| LogicalRequestId::parse(id).is_err() || !seen.insert(id))
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
+        Ok(())
+    }
+}
 
 /// What the Gateway observed when it opened an agent turn. This is not proof
 /// of human authorship or of a particular native compaction command.
@@ -722,6 +767,8 @@ pub enum ExecutionFactV1 {
     },
     AgentTurnFinished {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        history_membership: Option<HistoryMembershipV1>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         opening_cause: Option<AgentTurnOpeningCauseV1>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch_execution: Option<crate::BranchExecutionV1>,
@@ -743,6 +790,8 @@ pub enum ExecutionFactV1 {
         last_request_id: Option<LogicalRequestId>,
     },
     BranchAssessmentRecorded {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        history_membership: Option<HistoryMembershipV1>,
         segment_id: String,
         plan_id: AgentPlanId,
         plan_revision: u64,

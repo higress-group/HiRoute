@@ -13,6 +13,12 @@ fn reply(body: &'static [u8]) -> ProviderReply {
     }
 }
 
+fn hermes_context(session: &str, turn: &str) -> String {
+    json!({"version":1,"agent":"hermes","session_id":session,"purpose":"main",
+        "turn_id":turn,"continuation_requires_existing_turn":false})
+    .to_string()
+}
+
 #[test]
 fn follow_up_keeps_an_in_group_backup_and_still_rejudges_the_group() {
     use hiroute_gateway::server::publication::{AliasGroupIdV1, AliasRequestOwnedRouteV1};
@@ -117,7 +123,7 @@ fn primary_relay_stays_in_this_turn_but_new_users_decide_again() {
     assert_turn_routing(false);
 }
 #[test]
-fn hermes_native_turns_reuse_only_their_own_tool_decision() {
+fn hermes_native_turns_keep_tools_and_restore_observed_user_routing() {
     assert_turn_routing(true);
 }
 fn assert_turn_routing(hermes: bool) {
@@ -137,9 +143,12 @@ fn assert_turn_routing(hermes: bool) {
                 reply(RESPONSES_OK),
                 reply(RESPONSES_OK),
             ]);
-                let primary =
-                    NativeProvider::start(vec![reply(RESPONSES_TOOL_CALL), reply(RESPONSES_OK)]);
-                let decider = NativeProvider::start(vec![reply(simple), reply(simple)]);
+                let primary = NativeProvider::start(vec![
+                    reply(RESPONSES_TOOL_CALL),
+                    reply(RESPONSES_OK),
+                    reply(RESPONSES_OK),
+                ]);
+                let decider = NativeProvider::start(vec![reply(simple); 3]);
                 let fixture =
                     RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], smart);
                 if hermes || c {
@@ -163,10 +172,27 @@ fn assert_turn_routing(hermes: bool) {
                     }
                     fixture.publish(&mut publication);
                 }
-                let send = |input: &[Value], instructions: &str| {
-                    let response = request(fixture.address, "POST", "/v1/responses", &[
-                    ("X-HiRoute-Token", TOKEN), (if hermes { "x-hermes-session-id" } else { "session-id" }, "relay-turn-boundary"),
-                ], &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"instructions":instructions,"input":input})).unwrap());
+                let send = |input: &[Value], instructions: &str, turn: &str| {
+                    let context = hermes_context("relay-turn-boundary", turn);
+                    let mut headers = vec![
+                        ("X-HiRoute-Token", TOKEN),
+                        (
+                            if hermes {
+                                "x-hermes-session-id"
+                            } else {
+                                "session-id"
+                            },
+                            "relay-turn-boundary",
+                        ),
+                    ];
+                    if hermes {
+                        headers.extend([
+                            ("x-hiroute-agent", "hermes"),
+                            ("x-hiroute-routing-context", context.as_str()),
+                        ]);
+                    }
+                    let response = request(fixture.address, "POST", "/v1/responses", &headers,
+                        &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"instructions":instructions,"input":input})).unwrap());
                     assert_eq!(
                         response.status,
                         200,
@@ -176,7 +202,7 @@ fn assert_turn_routing(hermes: bool) {
                     serde_json::from_slice::<Value>(&response.body).unwrap()
                 };
                 let mut history = vec![json!({"role":"user","content":"Look up the record."})];
-                let first = send(&history, "Use the lookup tool.");
+                let first = send(&history, "Use the lookup tool.", "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
                     (1, 1, 1)
@@ -188,19 +214,32 @@ fn assert_turn_routing(hermes: bool) {
                 } else {
                     "Use the lookup tool."
                 };
-                let continued = send(&history, instructions);
+                let continued = send(&history, instructions, "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
-                    (1, 2, 1),
-                    "same-turn relay must not retry regular, even when instructions invalidate the candidate hold"
+                    if change_instructions {
+                        (2, 1, 2)
+                    } else {
+                        (1, 2, 1)
+                    },
+                    "unchanged execution inherits the actual primary relay; changed model instructions require a new decision"
                 );
                 history.extend(continued["output"].as_array().unwrap().iter().cloned());
                 history.push(json!({"role":"user","content":"A new simple task: say hello."}));
-                send(&history, instructions);
+                send(&history, instructions, "real-user-2");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
-                    (2, 2, 2),
-                    "the next real user message must decide again, without a persistent primary floor"
+                    if change_instructions {
+                        (3, 1, 3)
+                    } else {
+                        (2, 2, 2)
+                    },
+                    "{}",
+                    if hermes {
+                        "a real new question must restore routing without asserting human-origin proof"
+                    } else {
+                        "the next real user message must decide again, without a persistent primary floor"
+                    }
                 );
             }
         }

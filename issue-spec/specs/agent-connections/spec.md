@@ -474,6 +474,117 @@ all configured Agents or future service state. Verification uses isolated config
 rather than altering a live user's environment, and cannot substitute for ordinary
 native saved-route or real main-Agent delegation acceptance.
 
+### Requirement: Routing adapters share native configuration ownership
+
+Applying managed Pi, DSH or ordinary OpenCode model settings SHALL install the
+bundled native routing adapter through the existing protected artifact transaction.
+Reconfiguration, activation, drift detection, interrupted-operation retry and
+restore SHALL verify the adapter's exact owned bytes. A conflicting foreign file
+SHALL be preserved. Identical pre-existing files MAY be borrowed and SHALL survive
+restore. Published operations without adapter effects retain their original
+recovery contract; explicit reconfiguration can add the current adapter.
+DSH SHALL preserve the original ownership of its Cordis adapter registration across
+unrelated user edits, model changes and token rotation. Restore SHALL remove an owned
+registration together with its owned adapter file, while retaining a genuinely
+pre-existing registration and borrowed file. A registration created by an earlier
+HiRoute configuration MUST NOT become user-owned merely by reconfiguration.
+
+Pi delegates managed physical Responses and Messages providers through the public
+provider registry and registration seam. It disables managed-provider cache warming,
+whose purpose is otherwise indistinguishable. DSH attaches one public Cordis middleware
+insert and preserves unrelated patch rows. OpenCode uses its native per-call hook
+with a bounded optional session read. OpenCode Workers retain pure mode and split
+main and auxiliary provider declarations within the same authorized frozen Plan;
+they do not enable arbitrary external plugins to obtain routing evidence.
+
+Hermes optional compression evidence SHALL support both the bounded current SDK
+chain API and the compatible 0.20 public row/unique-live-child APIs. The legacy
+unbounded lineage enumeration SHALL NOT run. Missing, locked, ambiguous, corrupt,
+replaced or unsupported native state SHALL suppress optional continuity evidence
+without preventing the model request or changing its authorization. Ordinary
+children and forks SHALL NOT be reported as compression continuations.
+
+Hermes public whole-turn hooks cannot distinguish real input from native async
+completion notifications. The producer SHALL NOT claim fresh human provenance.
+Gateway treats these as observed requests with explicit source uncertainty,
+including older producers' false freshness flag, and retains classification,
+actual execution history and cross-turn evaluation. Missing optional hooks SHALL
+NOT block compatible authorization or model execution; absent native identity
+retains request scope. Compression lineage does not authenticate input origin.
+Accuracy of callback/task association remains a separate limitation, not a reason
+to disable smart routing. Known auxiliary clients remain outside the main history.
+Pi compaction and requested nonempty tree summaries SHALL bind purpose to the
+actual native operation's AbortSignal. Serial calls and retries on that signal
+remain auxiliary without a session phase, timeout or terminal callback. A failed,
+cancelled, extension-supplied or omitted summary SHALL NOT mark subsequent ordinary
+requests. Known summary purpose survives unavailable optional cursor evidence.
+Ordinary calls SHALL attach the extension session's cursor only when the provider
+call's sessionId matches that live native session; a summary requires its own
+matched operation signal. An unmatched call keeps its original provider options.
+Missing signal remains unknown. Session, purpose and branch facts SHALL be frozen
+before asynchronous provider execution. Native projection tri-state supplies
+observed event/compression cursor evidence, never final wire input positions or
+human provenance. Branch evidence includes the leaf and ordered native path; a
+shared user entry alone cannot distinguish branches.
+Pi SHALL write request metadata through options.headers at the provider seam and
+retain the original stream implementation exactly once, including auth, payload,
+retry and cancellation semantics. Reload, session/model replacement and provider
+refresh SHALL NOT stack wrappers or revive a superseded delegate. Missing public
+registration-identity capability or optional metadata failure SHALL preserve native
+provider availability. The exact-metadata scope is one managed CLI runtime per
+process; arbitrary SDK hosts that share and independently unload a mutable
+provider registry, third-party virtual routes and signal-replacing summaries
+require separate evidence. A transient optional failure SHALL NOT latch routing
+off, and summary content SHALL NOT reconstruct prior accepted task execution.
+DSH relay/settlement envelopes after the latest actual input SHALL
+NOT acquire that input's proof merely by arriving in its active native turn.
+OpenCode binds new prompt IDs through `chat.message`; unobserved overflow copies
+and unbound synthetic child results remain observed. Known compaction followups
+use the producer's typed continuation marker and successful summary's parent
+compaction entry to select the old task, never a newer queued user. Missing old
+input retains the continuation guard; a later observed native prompt can recover.
+Lookup failure omits the optional envelope. These adapter facts
+do not authenticate arbitrary third-party transformations of the final provider
+payload. Such unsupported composition MUST NOT be claimed as verified recovery.
+
+Retained Hermes `X-Hermes-Observed-Input` v1 headers are non-authoritative
+compatibility hints. A clean-text digest or reverse ordinal SHALL NOT select a
+current event, remove later Users or reconstruct original task input. Current
+Hermes adapters SHALL use observed-batch semantics and retain actual execution
+and cross-turn evaluation with explicit source and association uncertainty.
+
+### Requirement: Optional native routing evidence separates purpose, input and history
+
+The `X-HiRoute-Routing-Context` v2 object SHALL carry `version:2`, the matching
+`agent` family and `purpose`. Known auxiliary purposes (`compaction`, `summary`,
+`title`, `session-title`, `prewarm`) are resolved before optional enrichment.
+Ordinary purposes are `main` and `unknown`. One header of at most 4096 bytes is
+accepted. Duplicate fields/headers and contradictory identity channels reject the
+affected evidence; malformed JSON is never mined for a trusted purpose substring.
+Missing/invalid enrichment cannot disable compatible model execution.
+
+Optional `session_id`, `turn_id`, `request_id` and `checkpoint` use the existing
+printable native-ID limit of 128 UTF-8 bytes. `session_id` must match an independently
+admitted native identity. `request_id` is advisory and never deduplicates Gateway
+executions. `branch:{leaf_id,path_digest}` supplies a bounded native cursor;
+`continuation:{kind,from_turn_id?,from_checkpoint?,to_checkpoint?}` supplies an
+optional `same_turn` or `compression` claim. Neither grants history authority.
+Only the existing authenticated consumer/workspace/grant/route/protocol scope may
+own captures. Unknown versions retain independently usable native identity and
+ordinary observed routing.
+
+`input` is either `observed_batch` with optional `event_id`, or `native_messages`
+with `event_id`, `coverage:"window"`, `messages:[{index,sha256}]` and `scope_digest`.
+The latter admits at most 32 strictly ordered unique positions among at most 128
+final User envelopes and 2 MiB supported text. Each message digest hashes the UTF-8
+compact JSON array of its text parts; scope_digest hashes the compact ordered array
+of lowercase per-User digest strings. Tool-only envelopes do not take User ordinals.
+Unsupported media/tool/provider-state parts invalidate the proof instead of being
+dropped. Valid proof selects only current input and never reclassifies unlisted
+Users as System or proves human authorship. Failure falls back to the full latest
+wire User envelope. Legacy v1 inputs remain readable through one ingress normalization;
+they cannot acquire stronger current-version semantics by adding unknown fields.
+
 ### Requirement: Reversible Hermes profile connection and activation guidance
 
 Desktop SHALL show Hermes alongside other supported Agents before a profile is
@@ -488,6 +599,13 @@ back to another profile. A failed default-profile read SHALL preserve the other
 Agent entries and allow selection of another directory.
 
 HiRoute SHALL configure the selected effective Hermes profile's default main model to the chosen published Plan alias and automatically install and enable the required HiRoute integration resources when the connection is applied from CLI or Desktop. Native connection fields and resources SHALL follow existing reversible ownership and transaction contracts, preserving unrelated native configuration and user data. Connection status/guidance SHALL identify the configured scope, report statically known selection overrides and applicable reload/model-selection actions, and keep unobserved live selection unknown. Installed/enabled resources SHALL NOT be represented as proof that an already-running Hermes process loaded them. HiRoute SHALL publish its Hermes integration requirements and reject a new connection before native writes only when required plugin/configuration or transport/header interfaces are incompatible. Older version labels and optional reasoning-replay limitations SHALL produce upgrade guidance rather than block an otherwise compatible connection. Independent Skill preparation, passive scan and existing owned recovery/restore SHALL use their own required capabilities rather than a blanket new-connection version gate.
+
+Each journaled native plugin module, manifest or routing adapter SHALL contain
+nonempty UTF-8 content of at most 32 KiB, measured in bytes, without NUL. Actual
+bundled Hermes, Pi, DSH and OpenCode resources SHALL fit through the current intent
+constructor and decoder. This per-file bound preserves admitted content of
+16 KiB or less and the existing ownership, authorization and digest bindings;
+independent Skill resources retain their 16 KiB limit.
 
 #### Scenario: Open Hermes before selecting a profile
 

@@ -103,6 +103,23 @@ impl AgentTurnHistoryStore {
             return;
         }
         for event in events {
+            // Reserve the bounded digest state before accepting any block.
+            inner.evict_to_budget(
+                self.max_memory_bytes.saturating_sub(1024),
+                Some(&ticket.key),
+            );
+            let available = inner.accounted_bytes.saturating_add(1024) <= self.max_memory_bytes;
+            if let Ok(entry) = matching_entry_mut(&mut inner, ticket) {
+                if available {
+                    entry.active.boundary.accept(&event.event);
+                } else {
+                    entry.active.boundary.invalidate();
+                }
+                let old = entry.accounted_bytes;
+                entry.accounted_bytes = entry_bytes(&ticket.key, entry);
+                let new = entry.accounted_bytes;
+                inner.replace_accounting(old, new);
+            }
             let (index, part, append, tool_id) = match &event.event {
                 ModelEvent::TextDelta { index, text }
                 | ModelEvent::RefusalDelta { index, text } => {

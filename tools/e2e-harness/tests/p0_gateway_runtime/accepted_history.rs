@@ -177,7 +177,10 @@ fn real_listener_accepted_history_survives_rewrite_and_compaction_without_observ
                 })
                 .collect(),
         );
-        let fixture = RuntimeFixture::launch_rest_classified(&[&simple, &complex, &classifier], 2);
+        let fixture = RuntimeFixture::launch_rest_classified_with_diagnostics(
+            &[&simple, &complex, &classifier],
+            2,
+        );
         assert!(fixture.observation_root.is_none());
         let message = |role: &str, value: &str| {
             serde_json::json!({
@@ -215,7 +218,7 @@ fn real_listener_accepted_history_survives_rewrite_and_compaction_without_observ
             let body: serde_json::Value = serde_json::from_slice(&raw[start..]).unwrap();
             let turns = body["visible_conversation"].as_array().unwrap();
             assert_eq!(turns.len(), index);
-            assert_eq!(body["history_partial"], false);
+            assert_eq!(body["history_partial"], true);
             for turn in turns {
                 assert_eq!(
                     turn["steps"],

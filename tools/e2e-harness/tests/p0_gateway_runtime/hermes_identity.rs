@@ -73,10 +73,23 @@ fn assert_native_identity(chat: bool) {
         for session in ["native-conversation-one", "native-conversation-two"] {
             let send = &send;
             scope.spawn(move || {
-                send(&[("X-HiRoute-Token", token), ("x-hermes-session-id", session)])
+                let context = json!({"version":1,"agent":"hermes","session_id":session,
+                    "purpose":"main","turn_id":"first-real-user",
+                    "continuation_requires_existing_turn":false})
+                .to_string();
+                send(&[
+                    ("X-HiRoute-Token", token),
+                    ("x-hermes-session-id", session),
+                    ("x-hiroute-agent", "hermes"),
+                    ("x-hiroute-routing-context", &context),
+                ])
             });
         }
     });
+    assert_eq!(
+        (regular.calls(), primary.calls(), decider.calls()),
+        (2, 0, 2)
+    );
     let long = "a".repeat(129);
     for claims in [
         vec![],
@@ -89,19 +102,56 @@ fn assert_native_identity(chat: bool) {
     ] {
         let mut headers = vec![("X-HiRoute-Token", token)];
         headers.extend(claims);
+        let classified = decider.calls();
         send(&headers);
         send(&headers);
+        assert_eq!(
+            decider.calls(),
+            classified + 2,
+            "invalid identity stays request-scoped while observed input remains classifiable"
+        );
     }
     // An equal raw ID under a different admitted connection is another conversation.
+    let context = json!({"version":1,"agent":"hermes","session_id":"native-conversation-one",
+        "purpose":"main","turn_id":"first-real-user",
+        "continuation_requires_existing_turn":false})
+    .to_string();
     send(&[
         ("X-HiRoute-Token", "another-hermes-fixture-token"),
         ("x-hermes-session-id", "native-conversation-one"),
+        ("x-hiroute-agent", "hermes"),
+        ("x-hiroute-routing-context", &context),
     ]);
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
         (11, 0, 11)
     );
     let facts = wait_execution_facts(&fixture, 11);
+    let decisions = facts
+        .iter()
+        .filter(|fact| fact.pointer("/fact/kind") == Some(&json!("route_decision")))
+        .map(|fact| &fact["fact"]["complexity"])
+        .collect::<Vec<_>>();
+    assert_eq!(decisions.len(), 11);
+    assert_eq!(
+        decisions
+            .iter()
+            .filter(|decision| {
+                decision["decision_source"] == "external_classifier"
+                    && decision["fallback_used"] == false
+            })
+            .count(),
+        11
+    );
+    assert_eq!(
+        decisions
+            .iter()
+            .filter(|decision| {
+                decision["fallback_used"] == true && decision["fallback_reason"] == "unavailable"
+            })
+            .count(),
+        0
+    );
     let finished = facts
         .iter()
         .filter(|fact| fact.pointer("/fact/kind") == Some(&json!("request_finished")))

@@ -189,7 +189,7 @@ finally:
                                   'DISABLE_COMPACT', 'DISABLE_AUTO_COMPACT',
                                   'DEEPSEEK_API_KEY', 'GROQ_API_KEY', 'MISTRAL_API_KEY',
                                   'XAI_API_KEY', 'CEREBRAS_API_KEY')}
-        self.env.update(HOME=str(home), CODEX_HOME=str(home / '.codex'),
+        self.env.update(HOME=str(home), PWD=str(self.project), CODEX_HOME=str(home / '.codex'),
                         CLAUDE_CONFIG_DIR=str(home / '.claude'),
                         QODER_CONFIG_DIR=str(home / '.qoder'),
                         PI_CODING_AGENT_DIR=str(home / '.pi/agent'),

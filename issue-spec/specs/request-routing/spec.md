@@ -22,10 +22,16 @@ an issued current model grant. This carrier does not authorize native provider
 API Keys, OAuth credentials, revoked grants, another protocol or another alias.
 Retained `X-HiRoute-Token` clients SHALL continue to work: when present, that
 explicit carrier remains authoritative and an invalid value SHALL NOT fall back
-to Authorization. Duplicate or malformed credentials SHALL fail authentication.
+to Authorization. Ordinary Messages requests MAY also carry an issued current
+model-grant token through one `x-api-key` header when neither explicit HiRoute
+token nor Authorization is present. An invalid higher-priority carrier SHALL NOT
+fall back to `x-api-key`. This Messages-only carrier grants no additional protocol,
+alias or credential authority; the same current-grant verification and revocation
+apply. Duplicate or malformed selected credentials SHALL fail authentication.
 Qoder's dedicated local model-provider route retains its existing single-bearer,
 no-run-authority and no-mixed-`X-HiRoute-Token` rules. An arbitrary `x-api-key`
-is not model authority. The separately validated DSH run-model carrier follows
+is not model authority: provider keys, OAuth secrets and unissued tokens still
+fail current-grant verification. The separately validated DSH run-model carrier follows
 [Worker delegation](../agent-delegation/spec.md). Worker run-model and run-control
 authority remain distinct. Outbound auth is rebuilt for the exact leased destination;
 inbound HiRoute/native tokens or account-override headers cannot pass through.
@@ -49,9 +55,18 @@ account/model or an otherwise allowed Plan. Plan relay remains in published scop
 - **WHEN** a Bearer value is a native provider API Key, OAuth credential, revoked token, run-control credential or an unissued value
 - **THEN** ordinary model access is denied by the existing current-grant or separately validated run-model authority, and no upstream model attempt is made.
 
+#### Scenario: Native Messages auxiliary requests use the issued connection token
+
+- **WHEN** a native Anthropic SDK sends only `x-api-key` with an issued current
+  Messages connection token, including a request without optional Agent middleware
+- **THEN** only that grant's current protocol and aliases are authorized; token
+  rotation or revocation rejects the old value, and inbound credentials are not
+  forwarded to the provider. Classification and optional history use their normal
+  evidence rules without manufacturing Agent identity from the credential carrier.
+
 #### Scenario: Inbound credentials never become provider authorization
 
-- **WHEN** a model request is accepted through either supported carrier
+- **WHEN** a model request is accepted through a supported carrier
 - **THEN** the outbound attempt reconstructs authorization from the exact leased provider credential and strips the inbound model token and private metadata.
 
 Source SPEC comments:
@@ -242,6 +257,25 @@ partial response, stale completion, or eviction cannot overwrite newer checkpoin
 The default process-local budget is 50,000,000 bytes with one-hour idle TTL, refreshed
 on valid entry but not on completion; no fixed count or absolute TTL substitutes.
 Restart/expiry/eviction/unavailable cache returns to normal routing without blocking.
+Checkpoint preparation is read-only until optional decision-history admission
+succeeds. Requests sharing an in-flight history scope use independent routing with
+explicit partial history; they cannot advance its ContextHold checkpoint or inherit
+its pending decision. Busy/capacity/stale optional state never rejects an otherwise
+valid model request or changes an already accepted model response. This degradation
+does not establish separate native main/auxiliary/subagent identities.
+Checkpoint CAS and capacity MUST be reserved before decision-history admission can
+change active turns, tool outcomes or transcript checkpoints. Once history admission
+succeeds, publishing that reserved checkpoint MUST have no remaining fallible cache
+admission step. A missed capture in an existing main history MUST be marked partial
+and MUST NOT retain an assessment target across that gap; it cannot be silently
+reported as complete history or reconstructed from client-supplied assistant text.
+A native main marker with a matching authenticated session MAY identify only a
+capture gap when its user proof is unavailable; it MUST NOT authorize history
+admission or classification of an ancestor user. This includes missing same-user
+continuation output, even when the next transcript contains no intervening true
+user. Gap disclosure MUST remain nonblocking. If lock contention prevents a scoped
+update, a fixed-size process-local fence MAY conservatively mark other retained
+histories partial and discard their assessment segments on next admission.
 
 For smart-saving and custom-branch Plans, a valid retained candidate MUST be
 prioritized whenever its origin group is the freshly selected or inherited group,
@@ -328,6 +362,167 @@ HiRoute SHALL accept the managed Hermes main conversation and its model/tool con
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
+
+### Requirement: Native routing remains available without perfect input provenance
+
+After authorization, usable requests SHALL retain classification, model selection,
+actual execution capture and cross-turn quality evaluation independently of whether
+the client proves fresh human input. This applies to Codex, Claude, Hermes, Pi, DSH,
+OpenCode and Qoder. Origin uncertainty SHALL NOT globally disable these functions,
+force every request to Primary, or require repeatedly creating new conversations.
+A failed classification may use the existing temporary fallback; later usable
+requests in the same native session SHALL recover.
+
+Known native auxiliary purposes (including title, summary, warming, memory and
+compaction calculation) SHALL remain detached from main routing history. Invalid,
+missing or unsupported optional metadata instead permits observed-input routing,
+without asserting that a wire User came from a human. Observed-input history SHALL
+record the actual request and accepted output with an explicit
+`unverified_request_user_origin` visible-content marker. Source uncertainty alone
+SHALL NOT make complete accepted execution ineligible for cross-turn evaluation.
+Current classifier input SHALL disclose the same uncertainty without removing its
+readable content, assessment target or applicability question.
+Observed and verified source evidence share the same authorized execution scope;
+source uncertainty is retained on each record, not used to select separate stores.
+An uncertain request cannot overwrite or advance a stronger branch head. Without
+a validated predecessor it starts an independent branch, while a retained completed
+stage may remain an explicitly uncertain contextual evaluation target. Exact
+predecessors rank before contextual candidates, and potentially missed captures
+retain the existing gap fence. Native identity alone cannot grant ContextHold reuse.
+
+An unverified native prefix rewrite SHALL start a separate execution segment and
+fresh classification without permanently disabling evaluation of the preceding
+captured stage. Evaluation SHALL bind to that stage's actual execution, model and
+frozen rubric, retaining the source-uncertainty marker. A known capture gap or
+changed publication SHALL still fence the old evaluation target. No rewritten
+client summary may reconstruct missing accepted output.
+
+A partial execution segment SHALL NOT make all later tasks on the same model
+permanently partial. When a new input boundary completes with full capture, it
+SHALL start an independently evaluable segment. Its opening still evaluates the
+old partial target honestly; the next input can evaluate the newly captured stage.
+Same-turn retries, refinalization and a new execution ID without a new input
+boundary SHALL NOT repair missing earlier execution.
+
+Native children with distinct identities SHALL remain independent, including in
+verified Worker tasks. These headers are optional evidence, never authorization or
+a route override. Qoder's shared main/child identity is an accepted association and
+scoring-accuracy limitation; it SHALL retain classification, historical execution
+and evaluation. Its reserved model base path retains the existing bearer contract
+and does not itself disable routing. No body-prefix heuristic proves human origin.
+
+Claude's native `auxiliary` and `compaction` request classes SHALL be recognized
+before optional session, prompt or compression enrichment. A missing or invalid
+optional identity SHALL NOT turn a positively recognized auxiliary into ordinary
+history. An unknown, missing or malformed class remains observed and routable.
+Claude prompt IDs identify routing activations, including notifications; they do
+not prove fresh human input or completion of the previous logical task. The whole
+latest native User envelope remains the current observed batch, including repeated
+text and supplemental parts. Child/workflow requests are separated only by actual
+native agent IDs; absent IDs SHALL NOT be replaced with an invented main/child ID.
+Actual child results in a parent notification remain external context and SHALL
+NOT acquire credit as the parent model's accepted output.
+
+When a Claude producer supplies active-turn steering only as native System or
+instruction context, without current-event evidence, that content SHALL remain
+available to upstream execution without being relabelled as a new User through
+text-template matching. The observed-User classifier and assessment context may
+then lack that steering intent; this is an explicit capability limit, not a
+source-verification or task-completion claim. Subsequent usable User activations
+in the same native session SHALL recover classification, actual capture and
+cross-turn evaluation without treating the System text as reconstructed User
+execution. This condition depends on the actual producer, not all Claude versions.
+
+Native same-turn evidence takes precedence over appended synthetic User envelopes
+when the history owner still has the matching task, captured input and a valid
+current-Plan decision. An explicitly identified continuation without that captured
+input cannot reinterpret its summary as a new task; a subsequent verified fresh
+input can recover. Pi and OpenCode's explicit continuation constraint and DSH's
+verified semantic projection retain these protections. Missing or failed origin
+adapters may use the separate observed-input lane. Native identity never proves a
+byte prefix or supplies missing tool outcomes.
+
+Codex persistent window counters and Claude's one-call compaction flag remain
+negative provenance evidence. Cold compacted Codex sessions can nevertheless start
+observed-input capture from their current usable request. Gateway restart discards
+in-memory history: it SHALL NOT import an old summary or claimed prior output as
+accepted execution. New A and B in that same session SHALL be classified and
+captured, and B SHALL be able to evaluate A's newly accepted execution. Uncaptured
+older context remains partial. Counter rollback and unsupported producers disclose
+uncertainty rather than permanently disabling smart routing.
+
+Codex native metadata SHALL recognize only the supported explicit auxiliary kinds
+`memory`, `prewarm` and `compaction`. A coherent canonical memory request remains
+auxiliary when it omits thread/session/turn identities; compatibility projections
+may still carry those identities. Unknown kinds remain observed and routable.
+Duplicate or conflicting metadata SHALL NOT splice purpose or identity across
+channels. Confirmed competing session/thread claims lose session association;
+missing or malformed optional enrichment alone does not discard independently
+valid native identity. Parent and fork references never join a child's execution
+to the parent's stage.
+
+The latest supported plaintext Codex peer batch MAY supply current classifier and
+capture input at its actual native event position, with source uncertainty. The
+original typed peer items, including author, recipient, content variants and order,
+SHALL remain unchanged in execution and fingerprint evidence. A later ordinary
+User event supersedes earlier peer context. Mixed plaintext/encrypted peer content
+remains opaque: its readable wrapper cannot reconstruct encrypted intent or prior
+accepted output, and its current event SHALL NOT fall back to an ancestor User as
+the task input. Native turn/window metadata proves neither task completion nor
+execution deduplication. Optional projection failure retains observed routing and
+cannot reject otherwise successful provider output.
+
+Hermes public whole-turn hooks also receive native async completion notifications.
+Matching text, a turn change, an initiated-turn flag and older producers' false
+continuation constraint do not prove human origin. Such requests are observed,
+including on supported Hermes 0.20, rather than globally unavailable. Compression
+lineage remains separate evidence. No adaptation may fabricate human provenance
+or claim accurate task association merely because output and routing succeed.
+Current Hermes adapters SHALL preserve observed-batch semantics and SHALL NOT emit
+clean-text input selectors. Retained observed-input v1 digests and reverse ordinals
+are non-authoritative compatibility hints: a unique old match cannot identify a
+decorated current input, select an earlier User or demote later Users. Without a
+validated final native message-instance descriptor, routing SHALL retain the
+complete latest wire User envelope, including multipart content and reminders,
+with explicit source uncertainty. Missing optional hooks or lineage SHALL preserve
+normal authorization, classification, actual capture and cross-turn evaluation;
+uncaptured old execution remains unavailable.
+
+Sustained availability and scoring accuracy SHALL be recorded as separate acceptance
+results. A-to-B acceptance requires valid decisions on both, captured A and B,
+evaluation of A's actual execution on B, and actual selection of different model
+groups. Optional history conflicts, resource pressure and side-call failures SHALL
+remain isolated from main output. Native acceptance uses the real configured client
+through Gateway to a controlled upstream, including compaction, same-session restart,
+adapter fault/recovery and full configuration Restore followed by actual startup.
+
+A verified new native user after compaction SHALL obtain a fresh judgment while
+retaining accepted prior execution history. Semantic
+continuity SHALL NOT establish byte-prefix, provider-cache, instruction or opaque
+response affinity. Missing evidence permits an optimization miss, never invented
+continuity. Restarts rebuild only state for which the native client supplies
+evidence; Gateway in-memory history is not reconstructed from equal summaries.
+For Pi, DSH and OpenCode adapters, an unchanged copied turn marker cannot establish continuity
+for an otherwise rewritten transcript without a new native compaction checkpoint.
+Such uncertain requests SHALL neither replace that verified checkpoint nor append
+their execution to its proven branch. Independent observed branches in the same
+authorized scope retain actual execution and contextual evaluation with explicit
+source and association uncertainty.
+
+#### Scenario: A native summary overlaps its parent
+
+- **WHEN** a main tool call is in flight and a same-session auxiliary request arrives
+- **THEN** the auxiliary request can execute independently, its output cannot enter
+  main routing history, and main output and subsequent tool routing remain valid.
+
+#### Scenario: Optional adaptation or history storage fails
+
+- **WHEN** native metadata reads time out, a hook fails, a lease conflicts, history
+  capacity is insufficient or an optional checkpoint write becomes stale
+- **THEN** the affected optimization degrades without changing delivered model
+  bytes or committing partial history; subsequent admitted main requests retain
+  their valid history. Authentication, actual provider failures, cancellation and
+  required native compaction retain their existing errors.
 
 ## Implementation references
 

@@ -730,3 +730,6 @@ mod opencode;
 
 #[path = "settings_entry_model_budget_tests.rs"]
 mod budget_tests;
+
+#[path = "settings_entry_native_routing_tests.rs"]
+mod native_routing;

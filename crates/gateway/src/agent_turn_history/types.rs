@@ -89,8 +89,22 @@ pub(crate) struct AgentTurnHistorySnapshot {
     pub(crate) _pin: Option<Arc<super::store::SnapshotPin>>,
 }
 
+impl AgentTurnHistorySnapshot {
+    pub(crate) fn empty(history_partial: bool) -> Self {
+        Self {
+            previous_decision: None,
+            visible_conversation: Vec::new(),
+            history_partial,
+            assessment_from: None,
+            assessment_target: None,
+            _pin: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct AssessmentTarget {
+    pub(crate) history_membership: Option<hiroute_domain::HistoryMembershipV1>,
     pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) segment_id: String,
     pub(crate) first_turn_id: String,
@@ -133,11 +147,18 @@ pub(crate) struct AgentTurnTicket {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct TurnDecisionInputs {
     pub(crate) history_continuity: crate::context_hold::HistoryContinuity,
+    pub(crate) native_turn: Option<[u8; 32]>,
     pub(crate) reselect_on_user_message: bool,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct AgentTurnHistoryKey(pub(super) [u8; 32]);
+
+impl AgentTurnHistoryKey {
+    pub(crate) fn branch_digest(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) enum AgentTurnBegin {
@@ -156,7 +177,7 @@ pub(crate) enum AgentTurnBegin {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AgentTurnHistoryError {
     TurnContextUnavailable,
-    SessionTurnConflict,
+    NoUserTurn,
     Resource,
     Integrity,
 }
@@ -172,6 +193,7 @@ pub(crate) struct AcceptedExecution {
 
 #[derive(Clone, Debug)]
 pub(crate) struct CompletedAgentTurn {
+    pub(crate) history_membership: Option<hiroute_domain::HistoryMembershipV1>,
     pub(crate) opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) agent_turn_id: String,

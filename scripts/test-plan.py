@@ -557,6 +557,10 @@ def select(paths, full=False):
                                    "crates/daemon/src/delegation/profile/pi")) for path in paths):
         commands.append(["node", "--test", PI_SDK_CONTRACT_TEST])
         commands.append(["node", "--test", PI_WORKER_BRIDGE_TEST])
+    if full or any(path.startswith("assets/agents/") or path.startswith("scripts/tests/test_hermes_")
+                   or path == "scripts/tests/native-routing-adapters.test.mjs" for path in paths):
+        commands.append(["node", "--test", "scripts/tests/native-routing-adapters.test.mjs"])
+        commands.append(["python3", "-m", "unittest", "discover", "-s", "scripts/tests", "-p", "test_hermes_*.py"])
     if full or release_contract_tooling:
         commands.extend([["python3", "scripts/test-release-contracts.py"],
                          ["python3", "scripts/test-release-contract-pr.py"],

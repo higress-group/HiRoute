@@ -23,7 +23,7 @@ mod producer;
 mod provider;
 pub(super) use provider::wire_diagnostic;
 #[path = "observation/native_continuation.rs"]
-mod native_continuation;
+pub(crate) mod native_continuation;
 #[path = "observation/request.rs"]
 mod request;
 #[path = "observation/schema.rs"]

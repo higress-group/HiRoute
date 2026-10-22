@@ -18,6 +18,10 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_pre_membership = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069";
         let persisted_pre_opening = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
@@ -39,6 +43,7 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_digest.as_str()
                 == "sha256:80b4ff13af8abc79d7721fea42141300beade2acf1d2659983ceaafcdc6e4799";
         if !(current
+            || persisted_pre_membership
             || persisted_pre_opening
             || persisted_v1
             || persisted_pre_branch
@@ -66,7 +71,7 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidEnvelope);
         }
-        if !current
+        if !(current || persisted_pre_membership)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::AgentTurnFinished {
@@ -77,22 +82,36 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
+        if !current
+            && matches!(
+                &self.fact,
+                ExecutionFactV1::AgentTurnFinished {
+                    history_membership: Some(_),
+                    ..
+                } | ExecutionFactV1::BranchAssessmentRecorded {
+                    history_membership: Some(_),
+                    ..
+                }
+            )
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
         self.trust.validate()?;
         self.fact.validate()?;
-        if (current || persisted_pre_opening)
+        if (current || persisted_pre_membership || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
             if route.complexity.as_ref().is_some_and(|d| d.decision_protocol.is_none()
                 || (d.decision_protocol != Some(DecisionProtocolV1::SystemOneC) && d.routing_observation.is_some())))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_opening)
+        if !(current || persisted_pre_membership || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
                 if route.complexity.as_ref().is_some_and(|decision| decision.routing_observation.is_some()))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_opening || persisted_pre_c)
+        if !(current || persisted_pre_membership || persisted_pre_opening || persisted_pre_c)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::RouteDecision(route)
@@ -112,7 +131,11 @@ impl ExecutionFactEnvelopeV1 {
             return Err(ExecutionFactError::InvalidFact);
         }
         if let Some(pricing) = &self.pricing {
-            if !(current || persisted_pre_opening || persisted_function_only || persisted_pre_c)
+            if !(current
+                || persisted_pre_membership
+                || persisted_pre_opening
+                || persisted_function_only
+                || persisted_pre_c)
                 || !matches!(self.fact, ExecutionFactV1::AttemptStarted { .. })
             {
                 return Err(ExecutionFactError::InvalidFact);
@@ -300,6 +323,7 @@ impl ExecutionFactV1 {
                 }
             }
             Self::AgentTurnFinished {
+                history_membership,
                 branch_execution,
                 agent_turn_id,
                 segment_id,
@@ -316,6 +340,9 @@ impl ExecutionFactV1 {
                 last_request_id,
                 ..
             } => {
+                if let Some(membership) = history_membership {
+                    membership.validate()?;
+                }
                 nonempty([agent_turn_id, segment_id, selected_branch_id])?;
                 if *ordinal == 0
                     || branch_execution.as_ref().is_some_and(|execution| {
@@ -359,6 +386,7 @@ impl ExecutionFactV1 {
                 }
             }
             Self::BranchAssessmentRecorded {
+                history_membership,
                 segment_id,
                 model_configuration_id,
                 profile_digest,
@@ -370,6 +398,9 @@ impl ExecutionFactV1 {
                 reason,
                 ..
             } => {
+                if let Some(membership) = history_membership {
+                    membership.validate()?;
+                }
                 nonempty([segment_id, model_configuration_id])?;
                 if *plan_revision == 0
                     || *target_from_ordinal == 0

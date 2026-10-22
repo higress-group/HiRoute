@@ -6,7 +6,9 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::attempt_outcome::{AttemptFailure, AttemptFailureClass};
+use crate::attempt_outcome::{
+    AttemptFailure, AttemptFailureClass, AttemptTimeoutPhase, PreOutputStreamClass,
+};
 use crate::ports::{
     CasOutcome, ExecutionScope, InMemoryRuntimeStateStore, ProbeLeaseOutcome, RuntimeHealth,
     RuntimeStateEntry, RuntimeStateError, RuntimeStateKey, RuntimeStateStore,
@@ -390,4 +392,276 @@ async fn overload_uses_default_and_successful_probe_resets_transient_step() {
     let active = store.entry(&key);
     assert_eq!(active.health, RuntimeHealth::Active);
     assert_eq!(active.transient_backoff_step, 0);
+}
+
+#[tokio::test]
+async fn agent_grant_soft_failures_leave_shared_state_and_inflight_main_permits_unchanged() {
+    for class in [
+        AttemptFailureClass::Transient,
+        AttemptFailureClass::BindingOverload,
+        AttemptFailureClass::Timeout(AttemptTimeoutPhase::FirstByte),
+        AttemptFailureClass::Disconnect,
+        AttemptFailureClass::PreOutputStream(PreOutputStreamClass::Transient),
+        AttemptFailureClass::PreOutputStream(PreOutputStreamClass::BindingOverload),
+    ] {
+        let store = InMemoryRuntimeStateStore::default();
+        let key = RuntimeStateKey::binding("shared-agent-binding");
+        let request_scope = scope();
+        let main = acquire_target_permit(&store, &key, &request_scope)
+            .await
+            .unwrap()
+            .unwrap();
+        let auxiliary = acquire_target_permit(&store, &key, &request_scope)
+            .await
+            .unwrap()
+            .unwrap();
+        let permits = OwnedAttemptStatePermits::without_credential(key.clone(), auxiliary);
+        record_failure(
+            &store,
+            permits.borrowed(),
+            &AttemptFailure {
+                class,
+                status: Some(503),
+                retry_after: Some(Duration::from_secs(77)),
+            },
+            &RuntimeCooldownPolicy::for_gateway_model_execution(),
+            &request_scope,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(store.entry(&key), RuntimeStateEntry::default(), "{class:?}");
+        let main = OwnedAttemptStatePermits::without_credential(key.clone(), main);
+        confirm_success(&store, main.borrowed(), &request_scope)
+            .await
+            .expect("an independent soft failure must not invalidate the in-flight main");
+        assert!(
+            acquire_target_permit(&store, &key, &request_scope)
+                .await
+                .unwrap()
+                .is_some(),
+            "{class:?} must not suppress the next request"
+        );
+    }
+}
+
+#[tokio::test]
+async fn agent_grant_failed_probe_releases_lease_without_changing_prior_health_or_step() {
+    for (class, status) in [
+        (AttemptFailureClass::Transient, 503),
+        (AttemptFailureClass::PermanentClient, 400),
+    ] {
+        let store = InMemoryRuntimeStateStore::default();
+        let key = RuntimeStateKey::binding("expired-agent-binding");
+        let credential =
+            RuntimeStateKey::credential("expired-agent-binding", "agent-credential", "key-a", 1);
+        let expired_until = Instant::now() - Duration::from_secs(1);
+        store.insert(
+            key.clone(),
+            RuntimeStateEntry {
+                generation: 7,
+                health: RuntimeHealth::CoolingDown {
+                    until: expired_until,
+                },
+                probe_lease_until: None,
+                transient_backoff_step: 3,
+            },
+        );
+        store.insert(
+            credential.clone(),
+            RuntimeStateEntry {
+                generation: 11,
+                health: RuntimeHealth::CoolingDown {
+                    until: expired_until,
+                },
+                probe_lease_until: None,
+                transient_backoff_step: 0,
+            },
+        );
+        let request_scope = scope();
+        let permit = acquire_target_permit(&store, &key, &request_scope)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(store.entry(&key).generation, 8);
+        assert!(store.entry(&key).probe_lease_until.is_some());
+        let credential_permit = acquire_target_permit(&store, &credential, &request_scope)
+            .await
+            .unwrap()
+            .unwrap();
+        let permits = OwnedAttemptStatePermits::new(
+            key.clone(),
+            permit,
+            credential.clone(),
+            credential_permit,
+        );
+        record_failure(
+            &store,
+            permits.borrowed(),
+            &AttemptFailure {
+                class,
+                status: Some(status),
+                retry_after: None,
+            },
+            &RuntimeCooldownPolicy::for_gateway_model_execution(),
+            &request_scope,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            store.entry(&key),
+            RuntimeStateEntry {
+                generation: 9,
+                health: RuntimeHealth::CoolingDown {
+                    until: expired_until,
+                },
+                probe_lease_until: None,
+                transient_backoff_step: 3,
+            }
+        );
+        assert_eq!(
+            store.entry(&credential),
+            RuntimeStateEntry {
+                generation: 13,
+                health: RuntimeHealth::CoolingDown {
+                    until: expired_until,
+                },
+                probe_lease_until: None,
+                transient_backoff_step: 0,
+            }
+        );
+        assert!(
+            acquire_target_permit(&store, &key, &request_scope)
+                .await
+                .unwrap()
+                .is_some(),
+            "the next request can probe immediately without treating the failure as a recovery"
+        );
+        assert!(
+            acquire_target_permit(&store, &credential, &request_scope)
+                .await
+                .unwrap()
+                .is_some(),
+            "the soft failure must not leave an expired-quota probe busy"
+        );
+    }
+}
+
+#[tokio::test]
+async fn agent_grant_stale_failed_probe_cannot_release_another_generation() {
+    let store = InMemoryRuntimeStateStore::default();
+    let key = RuntimeStateKey::binding("stale-agent-probe");
+    store.insert(
+        key.clone(),
+        RuntimeStateEntry {
+            generation: 7,
+            health: RuntimeHealth::CoolingDown {
+                until: Instant::now() - Duration::from_secs(1),
+            },
+            probe_lease_until: None,
+            transient_backoff_step: 3,
+        },
+    );
+    let request_scope = scope();
+    let permit = acquire_target_permit(&store, &key, &request_scope)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut newer = store.entry(&key);
+    newer.generation += 1;
+    newer.probe_lease_until = Some(Instant::now() + Duration::from_secs(30));
+    store.insert(key.clone(), newer.clone());
+    let permits = OwnedAttemptStatePermits::without_credential(key.clone(), permit);
+    assert!(
+        record_failure(
+            &store,
+            permits.borrowed(),
+            &AttemptFailure {
+                class: AttemptFailureClass::Transient,
+                status: Some(503),
+                retry_after: None,
+            },
+            &RuntimeCooldownPolicy::for_gateway_model_execution(),
+            &request_scope,
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(store.entry(&key), newer);
+}
+
+#[tokio::test]
+async fn agent_grant_credential_and_quota_failures_still_update_shared_authority() {
+    for (class, status) in [
+        (AttemptFailureClass::Credential, 401),
+        (AttemptFailureClass::Quota, 429),
+        (
+            AttemptFailureClass::PreOutputStream(PreOutputStreamClass::Credential),
+            401,
+        ),
+        (
+            AttemptFailureClass::PreOutputStream(PreOutputStreamClass::Quota),
+            429,
+        ),
+    ] {
+        for has_credential in [true, false] {
+            let store = InMemoryRuntimeStateStore::default();
+            let binding = RuntimeStateKey::binding("agent-binding");
+            let credential =
+                RuntimeStateKey::credential("agent-binding", "agent-credential", "key-a", 1);
+            let request_scope = scope();
+            let binding_permit = acquire_target_permit(&store, &binding, &request_scope)
+                .await
+                .unwrap()
+                .unwrap();
+            let permits = if has_credential {
+                let permit = acquire_target_permit(&store, &credential, &request_scope)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                OwnedAttemptStatePermits::new(
+                    binding.clone(),
+                    binding_permit,
+                    credential.clone(),
+                    permit,
+                )
+            } else {
+                OwnedAttemptStatePermits::without_credential(binding.clone(), binding_permit)
+            };
+            record_failure(
+                &store,
+                permits.borrowed(),
+                &AttemptFailure {
+                    class,
+                    status: Some(status),
+                    retry_after: Some(Duration::from_secs(60)),
+                },
+                &RuntimeCooldownPolicy::for_gateway_model_execution(),
+                &request_scope,
+            )
+            .await
+            .unwrap();
+
+            let target = if has_credential {
+                &credential
+            } else {
+                &binding
+            };
+            let state = store.entry(target);
+            assert_eq!(
+                state.generation, 1,
+                "{class:?}, credential={has_credential}"
+            );
+            assert_eq!(state.transient_backoff_step, 0);
+            if status == 401 {
+                assert_eq!(state.health, RuntimeHealth::Disabled);
+            } else {
+                assert!(matches!(state.health, RuntimeHealth::CoolingDown { .. }));
+            }
+            if has_credential {
+                assert_eq!(store.entry(&binding), RuntimeStateEntry::default());
+            }
+        }
+    }
 }

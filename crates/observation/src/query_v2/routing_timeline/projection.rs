@@ -111,6 +111,7 @@ pub(super) fn project(
     for fact in finished.into_values() {
         let ExecutionFactV1::AgentTurnFinished {
             agent_turn_id,
+            history_membership,
             opening_cause,
             segment_id,
             ordinal,
@@ -131,35 +132,52 @@ pub(super) fn project(
         else {
             continue;
         };
-        let Some((first, last)) = first_request_id
-            .as_ref()
-            .zip(last_request_id.as_ref())
-            .and_then(|(first, last)| {
-                positions
-                    .get(first.as_str())
-                    .zip(positions.get(last.as_str()))
-            })
-        else {
-            continue;
-        };
-        if first > last {
-            return Err(ObservationV2Error::Unavailable);
-        }
-        let opening = ordered[*first];
-        let closing = ordered[*last];
-        // Use the same endpoint/time rule as retained analysis. Timestamp ties
-        // outside the recorded endpoints remain unassigned in both readers.
-        let start = by_time.partition_point(|r| r.view.started_at_ms <= opening.view.started_at_ms);
-        let end = by_time.partition_point(|r| r.view.started_at_ms < closing.view.started_at_ms);
-        let mut members = if start < end {
-            by_time[start..end].to_vec()
+        let mut members = if let Some(membership) = history_membership {
+            membership
+                .request_ids
+                .iter()
+                .filter_map(|id| requests.get(id))
+                .collect::<Vec<_>>()
         } else {
-            Vec::new()
+            let Some((first, last)) = first_request_id
+                .as_ref()
+                .zip(last_request_id.as_ref())
+                .and_then(|(first, last)| {
+                    positions
+                        .get(first.as_str())
+                        .zip(positions.get(last.as_str()))
+                })
+            else {
+                continue;
+            };
+            if first > last {
+                return Err(ObservationV2Error::Unavailable);
+            }
+            let opening = ordered[*first];
+            let closing = ordered[*last];
+            // Use the same endpoint/time rule as retained analysis. Timestamp ties
+            // outside the recorded endpoints remain unassigned in both readers.
+            let start =
+                by_time.partition_point(|r| r.view.started_at_ms <= opening.view.started_at_ms);
+            let end =
+                by_time.partition_point(|r| r.view.started_at_ms < closing.view.started_at_ms);
+            let mut legacy_members = if start < end {
+                by_time[start..end].to_vec()
+            } else {
+                Vec::new()
+            };
+            legacy_members.push(opening);
+            if opening.view.request_id != closing.view.request_id {
+                legacy_members.push(closing);
+            }
+            legacy_members
         };
-        members.push(opening);
-        if opening.view.request_id != closing.view.request_id {
-            members.push(closing);
+        if members.is_empty() {
+            continue;
         }
+        let missing_members = history_membership
+            .as_ref()
+            .is_some_and(|m| m.clipped || m.request_ids.len() != members.len());
         members.sort_by_key(|r| (r.first_fact, &r.view.request_id));
         let members = members.as_slice();
         if members
@@ -212,7 +230,7 @@ pub(super) fn project(
             .as_str()
             .ok_or(ObservationV2Error::Unavailable)?
             .into();
-        turn.view.evidence_partial |= *history_partial;
+        turn.view.evidence_partial |= *history_partial || missing_members;
         ordinals.insert(turn.view.turn_id.clone(), *ordinal);
         let turn = Arc::new(turn);
         next_bases.insert(turn.view.turn_id.clone(), turn.clone());
@@ -286,6 +304,7 @@ pub(super) fn project(
                 let ExecutionFactV1::BranchAssessmentRecorded {
                     plan_id,
                     plan_revision,
+                    history_membership,
                     model_configuration_id,
                     target_from_ordinal,
                     target_through_ordinal,
@@ -297,9 +316,21 @@ pub(super) fn project(
                 base.view.plan_id.as_deref() == Some(plan_id.as_str())
                     && base.view.plan_revision == Some(*plan_revision)
                     && base.view.model_configuration_id.as_ref() == Some(model_configuration_id)
-                    && ordinals
-                        .get(&base.view.turn_id)
-                        .is_some_and(|n| n >= target_from_ordinal && n <= target_through_ordinal)
+                    && history_membership.as_ref().map_or_else(
+                        || {
+                            ordinals.get(&base.view.turn_id).is_some_and(|n| {
+                                n >= target_from_ordinal && n <= target_through_ordinal
+                            })
+                        },
+                        |membership| {
+                            !membership.clipped
+                                && base
+                                    .view
+                                    .requests
+                                    .iter()
+                                    .all(|r| membership.request_ids.contains(&r.request_id))
+                        },
+                    )
             })
             .max_by_key(|fact| match &fact.value {
                 ExecutionFactV1::BranchAssessmentRecorded { assessed_at_ms, .. } => {

@@ -125,6 +125,7 @@ impl SkillFileEffectRef {
                 | "agent-connection-collaboration-skill"
                 | "agent-connection-hermes-plugin-module"
                 | "agent-connection-hermes-plugin-manifest"
+                | "agent-connection-native-routing-adapter"
         ) || !identity(&self.target)
             || CanonicalDigest::parse(self.intent_digest.as_str().to_owned()).is_err()
         {

@@ -7,6 +7,9 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
+import urllib.request
+from http.server import ThreadingHTTPServer
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -15,6 +18,63 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'crates/daemon/tests/support'))
 from agent_product_support import apply_settings, run_native_command, expose_native_installation
 import standalone_headless_product as headless
+from dsh_native_context import DshModelSettings, read_patch, encode_patch
+from decision_services_product import DecisionEndpoint
+
+
+class DecisionEndpointContractTests(unittest.TestCase):
+    def reply(self, option):
+        endpoint = type('ContractEndpoint', (DecisionEndpoint,), {'requests': []})
+        server = ThreadingHTTPServer(('127.0.0.1', 0), endpoint)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            body = {'decision': {'kind': 'categorical', 'options': [option]}}
+            request = urllib.request.Request(f'http://127.0.0.1:{server.server_port}/decision',
+                data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(request, timeout=5) as response:
+                result = json.load(response)
+            self.assertEqual(endpoint.requests[0][1], body)
+            return result['decision']
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
+
+    def test_plain_category_does_not_invent_an_ordinal_refinement(self):
+        result = self.reply({'id': 'native', 'criterion': 'Native task'})
+        self.assertEqual(result, {'kind': 'categorical', 'choice': 'native'})
+
+    def test_declared_refinement_uses_only_the_requested_levels(self):
+        option = {'id': 'native', 'criterion': 'Native task', 'refinement': {
+            'kind': 'ordinal', 'instructions': 'Use the declared levels',
+            'levels': [{'id': name, 'criterion': name} for name in ('small', 'medium', 'large')]}}
+        result = self.reply(option)
+        self.assertEqual(result['choice'], 'native')
+        self.assertEqual(result['refinement']['kind'], 'ordinal')
+        probabilities = result['refinement']['probabilities']
+        self.assertEqual(set(probabilities), {'small', 'medium', 'large'})
+        self.assertAlmostEqual(sum(probabilities.values()), 1)
+        self.assertGreater(probabilities['small'], probabilities['large'])
+
+
+class DshRestorationEvidenceTests(unittest.TestCase):
+    def test_restore_checks_rows_hidden_by_the_model_projection_and_the_adapter_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary)
+            (config / 'profiles/web').mkdir(parents=True)
+            settings = DshModelSettings(config, 'http://127.0.0.1:9/v1')
+            settings.assert_restored()
+            rows = read_patch(settings.path)
+            rows.append({'insert':[{'id':'hiroute-routing','name':'file:///fixture/hiroute-routing.mjs'}]})
+            settings.path.write_text(encode_patch(rows))
+            self.assertEqual(settings.read(), settings.baseline)
+            with self.assertRaisesRegex(AssertionError, 'native patch row'):
+                settings.assert_restored()
+            settings.write(settings.baseline)
+            settings.path.with_name('hiroute-routing.mjs').write_text('owned adapter')
+            with self.assertRaisesRegex(AssertionError, 'adapter file'):
+                settings.assert_restored()
 
 
 class ObservationReadRetryTests(unittest.TestCase):
@@ -128,6 +188,17 @@ class ObservationReadRetryTests(unittest.TestCase):
 
 
 class NativeInstallationTests(unittest.TestCase):
+    def test_dsh_uses_the_explicit_native_runtime_instead_of_an_ambient_older_node(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / 'bin').mkdir()
+            cli = root / 'selected-cli'; cli.write_text('fixture')
+            node = root / 'selected-node'; node.write_text('fixture')
+            with patch.dict(os.environ, {'HIROUTE_WORKER_NODE': str(node)}), patch('shutil.which', return_value=None):
+                expose_native_installation(SimpleNamespace(root=root), 'dsh', cli)
+            self.assertEqual((root / 'bin/node').resolve(), node)
+            self.assertEqual((root / 'bin/dsh').resolve(), cli)
+
     def test_opencode_gets_only_the_native_ripgrep_dependency_in_its_private_path(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

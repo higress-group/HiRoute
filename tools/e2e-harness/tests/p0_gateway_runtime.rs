@@ -1,11 +1,27 @@
 mod runtime_support;
 
+#[path = "p0_gateway_runtime/auxiliary_failure_isolation.rs"]
+mod auxiliary_failure_isolation;
 #[path = "p0_gateway_runtime/bearer_auth.rs"]
 mod bearer_auth;
+#[path = "p0_gateway_runtime/context_overflow.rs"]
+mod context_overflow;
 #[path = "p0_gateway_runtime/decision_branches.rs"]
 mod decision_branches;
+#[path = "p0_gateway_runtime/dsh_native_routing.rs"]
+mod dsh_native_routing;
 #[path = "p0_gateway_runtime/hermes_identity.rs"]
 mod hermes_identity;
+#[path = "p0_gateway_runtime/history_bypass.rs"]
+mod history_bypass;
+#[path = "p0_gateway_runtime/instruction_history.rs"]
+mod instruction_history;
+#[path = "p0_gateway_runtime/native_history.rs"]
+mod native_history;
+#[path = "p0_gateway_runtime/native_peer_tasks.rs"]
+mod native_peer_tasks;
+#[path = "p0_gateway_runtime/native_routing_availability.rs"]
+mod native_routing_availability;
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -429,89 +445,115 @@ const FAILED_STREAM: &[u8] = b"event: response.failed\ndata: {\"type\":\"respons
 #[test]
 fn streaming_failure_after_delivered_body_stays_failed_and_retains_usage() {
     use std::io::Read;
-    let early = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"failed-stream\",\"model\":\"runtime-native\"}}\n\n";
-    let first = NativeProvider::start(vec![ProviderReply::StreamDrip {
-        status: 200,
-        chunks: vec![early.to_vec(), FAILED_STREAM.to_vec()],
-        interval: Duration::from_secs(1),
-    }]);
-    let fallback = NativeProvider::start(vec![ProviderReply::StreamComplete {
-        status: 200,
-        body: RESPONSES_STREAM_OK,
-    }]);
-    let fixture = RuntimeFixture::launch_classified_with_observation(
-        &[&first, &fallback],
-        2,
-        ObservationFaults::healthy(),
-    );
-    let mut stream = open_request(
-        fixture.address,
-        "POST",
-        "/v1/responses",
-        &[("X-HiRoute-Token", "runtime-token")],
-        br#"{"model":"runtime-model","input":"hello","stream":true}"#,
-    );
-    stream
-        .set_read_timeout(Some(Duration::from_millis(800)))
-        .unwrap();
-    let mut received = Vec::new();
-    let mut chunk = [0u8; 4096];
-    // Native model identifiers are rewritten to the served alias. Match the
-    // delivered event, not the provider's pre-projection JSON bytes.
-    let first_body_marker = b"event: response.created\n";
-    while !received
-        .windows(first_body_marker.len())
-        .any(|part| part == first_body_marker)
-    {
-        let count = stream
-            .read(&mut chunk)
-            .expect("first body must be delivered before failure");
-        assert!(count > 0);
-        received.extend_from_slice(&chunk[..count]);
-    }
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    stream.read_to_end(&mut received).unwrap();
-    assert!(String::from_utf8_lossy(&received).contains("response.failed"));
-    assert_eq!(first.calls(), 1);
-    assert_eq!(
-        fallback.calls(),
-        0,
-        "body delivery closes transparent relay"
-    );
-    let facts = wait_execution_facts(&fixture, 1);
-    assert!(
-        facts
-            .iter()
-            .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
-                == Some("agent_turn_finished")
-                && row.pointer("/fact/status").and_then(|v| v.as_str()) == Some("failed")),
-        "a delivered model failure must not complete the Agent turn: {facts:?}"
-    );
-    for (kind, outcome) in [
-        ("request_finished", "failed"),
-        ("attempt_finished", "rejected"),
+    const INCOMPLETE: &[u8] = br#"event: response.incomplete
+data: {"type":"response.incomplete","response":{"id":"failed-stream","model":"runtime-native","status":"incomplete","output":[],"incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":7,"output_tokens":2}}}
+
+"#;
+    for (event, terminal) in [
+        ("response.failed", FAILED_STREAM),
+        ("response.incomplete", INCOMPLETE),
     ] {
+        let early = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"failed-stream\",\"model\":\"runtime-native\"}}\n\n";
+        let first = NativeProvider::start(vec![ProviderReply::StreamDrip {
+            status: 200,
+            chunks: vec![early.to_vec(), terminal.to_vec()],
+            interval: Duration::from_secs(1),
+        }]);
+        let fallback = NativeProvider::start(vec![ProviderReply::StreamComplete {
+            status: 200,
+            body: RESPONSES_STREAM_OK,
+        }]);
+        let fixture = RuntimeFixture::launch_classified_with_observation(
+            &[&first, &fallback],
+            2,
+            ObservationFaults::healthy(),
+        );
+        let mut stream = open_request(
+            fixture.address,
+            "POST",
+            "/v1/responses",
+            &[("X-HiRoute-Token", "runtime-token")],
+            br#"{"model":"runtime-model","input":"hello","stream":true}"#,
+        );
+        stream
+            .set_read_timeout(Some(Duration::from_millis(800)))
+            .unwrap();
+        let mut received = Vec::new();
+        let mut chunk = [0u8; 4096];
+        // Native model identifiers are rewritten to the served alias. Match the
+        // delivered event, not the provider's pre-projection JSON bytes.
+        let first_body_marker = b"event: response.created\n";
+        while !received
+            .windows(first_body_marker.len())
+            .any(|part| part == first_body_marker)
+        {
+            let count = stream
+                .read(&mut chunk)
+                .expect("first body must be delivered before failure");
+            assert!(count > 0);
+            received.extend_from_slice(&chunk[..count]);
+        }
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        stream.read_to_end(&mut received).unwrap();
+        assert!(String::from_utf8_lossy(&received).contains(event));
+        assert_eq!(first.calls(), 1);
+        assert_eq!(
+            fallback.calls(),
+            0,
+            "body delivery closes transparent relay"
+        );
+        let facts = wait_execution_facts(&fixture, 1);
         assert!(
             facts
                 .iter()
-                .any(
-                    |row| row.pointer("/fact/kind").and_then(|v| v.as_str()) == Some(kind)
-                        && row.pointer("/fact/outcome").and_then(|v| v.as_str()) == Some(outcome)
-                ),
-            "transport completion must retain model failure: {facts:?}"
+                .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                    == Some("agent_turn_finished")
+                    && row.pointer("/fact/status").and_then(|v| v.as_str()) == Some("failed")),
+            "a delivered model failure must not complete the Agent turn: {facts:?}"
         );
-    }
-    assert!(
-        facts
+        for (kind, outcome) in [
+            ("request_finished", "failed"),
+            ("attempt_finished", "accepted"),
+        ] {
+            assert!(
+                facts
+                    .iter()
+                    .any(
+                        |row| row.pointer("/fact/kind").and_then(|v| v.as_str()) == Some(kind)
+                            && row.pointer("/fact/outcome").and_then(|v| v.as_str())
+                                == Some(outcome)
+                    ),
+                "transport completion must retain model failure: {facts:?}"
+            );
+        }
+        assert!(
+            facts
+                .iter()
+                .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                    == Some("usage_and_cache")
+                    && row.pointer("/fact/input_tokens").and_then(|v| v.as_u64()) == Some(7)
+                    && row.pointer("/fact/output_tokens").and_then(|v| v.as_u64()) == Some(2)),
+            "failed stream must retain reported usage: {facts:?}"
+        );
+        let attempt = facts
             .iter()
-            .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
-                == Some("usage_and_cache")
-                && row.pointer("/fact/input_tokens").and_then(|v| v.as_u64()) == Some(7)
-                && row.pointer("/fact/output_tokens").and_then(|v| v.as_u64()) == Some(2)),
-        "failed stream must retain reported usage: {facts:?}"
-    );
+            .find(|row| row["fact"]["kind"] == "attempt_finished")
+            .unwrap();
+        assert_eq!(attempt["fact"]["error_class"], "provider_rejected");
+        assert_eq!(attempt["fact"]["retryable"], false);
+        assert_eq!(attempt["fact"]["disposition"], "accept");
+        assert_eq!(
+            attempt["fact"]["provider_model_event"],
+            event.replace('.', "_")
+        );
+        let request = facts
+            .iter()
+            .find(|row| row["fact"]["kind"] == "request_finished")
+            .unwrap();
+        assert_eq!(request["fact"]["accepted_attempt_ordinal"], 1);
+    }
 }
 
 #[test]
@@ -700,6 +742,7 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
         primary_replies: Vec<ProviderReply>,
         max_attempts: u32,
         primary_after_first: usize,
+        primary_after_second: usize,
     }
 
     for case in [
@@ -719,16 +762,25 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
             ],
             max_attempts: 3,
             primary_after_first: 2,
+            primary_after_second: 2,
         },
         Case {
             name: "binding-overload",
-            primary_replies: vec![ProviderReply::Complete {
-                status: 429,
-                error_kind: None,
-                body: OVERLOAD_ERROR,
-            }],
+            primary_replies: vec![
+                ProviderReply::Complete {
+                    status: 429,
+                    error_kind: None,
+                    body: OVERLOAD_ERROR,
+                },
+                ProviderReply::Complete {
+                    status: 429,
+                    error_kind: None,
+                    body: OVERLOAD_ERROR,
+                },
+            ],
             max_attempts: 2,
             primary_after_first: 1,
+            primary_after_second: 2,
         },
     ] {
         let primary = NativeProvider::start(case.primary_replies);
@@ -761,12 +813,14 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
         assert_eq!(fallback.calls(), 1, "case={}", case.name);
         assert!(String::from_utf8_lossy(&first.body).contains("accepted-fallback"));
 
-        let second = fixture.request();
+        let second = fixture.request_body(
+            br#"{"model":"runtime-model","input":"independent health check","stream":false}"#,
+        );
         assert_eq!(second.status, 200, "case={}", case.name);
         assert_eq!(
             primary.calls(),
-            case.primary_after_first,
-            "case={} must remain excluded by its exact state scope",
+            case.primary_after_second,
+            "case={} must retain its cross-request feedback scope",
             case.name
         );
         assert_eq!(fallback.calls(), 2, "case={}", case.name);
@@ -781,6 +835,12 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
                 wire_header(&requests[1], "authorization").as_deref(),
                 Some("Bearer provider-secret-1-2"),
                 "quota must cool one key and consume the next exact key before candidate fallback"
+            );
+        } else {
+            assert_eq!(
+                wire_header(&requests[1], "authorization").as_deref(),
+                Some("Bearer provider-secret-1-1"),
+                "a separate request retries the same usable key after Binding overload"
             );
         }
     }
@@ -888,10 +948,15 @@ fn real_listener_all_prebody_400_and_422_relay_without_quarantining() {
 }
 
 #[test]
-fn real_listener_first_byte_timeout_cools_binding_and_falls_back() {
-    let stalled = NativeProvider::start(vec![ProviderReply::Stall {
-        duration: Duration::from_millis(500),
-    }]);
+fn real_listener_first_byte_timeout_stays_request_local_and_falls_back() {
+    let stalled = NativeProvider::start(vec![
+        ProviderReply::Stall {
+            duration: Duration::from_millis(500),
+        },
+        ProviderReply::Stall {
+            duration: Duration::from_millis(500),
+        },
+    ]);
     let fallback = NativeProvider::start(vec![
         ProviderReply::Complete {
             status: 200,
@@ -917,9 +982,15 @@ fn real_listener_first_byte_timeout_cools_binding_and_falls_back() {
     assert_eq!(stalled.calls(), 1);
     assert_eq!(fallback.calls(), 1);
 
-    let second = fixture.request();
+    let second = fixture.request_body(
+        br#"{"model":"runtime-model","input":"independent timeout check","stream":false}"#,
+    );
     assert_eq!(second.status, 200);
-    assert_eq!(stalled.calls(), 1, "timed out binding must be cooling down");
+    assert_eq!(
+        stalled.calls(),
+        2,
+        "each request may try the timed out binding"
+    );
     assert_eq!(fallback.calls(), 2);
 }
 
@@ -954,7 +1025,7 @@ fn real_listener_candidate_exhaustion_returns_a_sanitized_gateway_failure() {
 }
 
 #[test]
-fn real_listener_reports_cooling_recovers_once_and_resets_the_backoff_step() {
+fn real_listener_soft_binding_failures_do_not_suppress_independent_agent_requests() {
     let provider = NativeProvider::start(vec![
         ProviderReply::Complete {
             status: 503,
@@ -971,56 +1042,27 @@ fn real_listener_reports_cooling_recovers_once_and_resets_the_backoff_step() {
             error_kind: None,
             body: b"private transient failure after recovery",
         },
+        ProviderReply::Complete {
+            status: 200,
+            error_kind: None,
+            body: RESPONSES_OK,
+        },
     ]);
     let fixture = RuntimeFixture::launch(&[&provider], 1);
 
-    assert_eq!(fixture.request().status, 503, "seed the binding cooldown");
-    let response = fixture.request();
-
-    assert_eq!(response.status, 503);
-    assert_eq!(
-        provider.calls(),
-        1,
-        "cooling candidates must not reach upstream"
-    );
-    let retry_after = response.headers["retry-after"].parse::<u64>().unwrap();
-    assert!((1..=2).contains(&retry_after));
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
-        serde_json::json!({
-            "schema_version": "hiroute.gateway.error/v1",
-            "code": "CANDIDATES_COOLING_DOWN",
-            "phase": "runtime_state",
-            "retry_after_seconds": retry_after,
-        })
-    );
-
-    std::thread::sleep(Duration::from_millis(2_100));
-    assert_eq!(
-        fixture.request().status,
-        200,
-        "the sole recovery probe wins"
-    );
-    assert_eq!(provider.calls(), 2);
-
-    assert_eq!(
-        fixture.request().status,
-        503,
-        "a new transient failure follows the successful probe"
-    );
-    let reset_response = fixture.request();
-    assert_eq!(
-        provider.calls(),
-        3,
-        "the reset cooldown blocks upstream I/O"
-    );
-    let reset_retry_after = reset_response.headers["retry-after"]
-        .parse::<u64>()
-        .unwrap();
-    assert!(
-        (1..=2).contains(&reset_retry_after),
-        "successful recovery must reset the sequence to the two-second first step"
-    );
+    for (index, expected_status) in [503, 200, 503, 200].into_iter().enumerate() {
+        let response = fixture.request();
+        assert_eq!(response.status, expected_status);
+        assert_eq!(provider.calls(), index + 1);
+        if expected_status == 503 {
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
+                serde_json::json!({
+                    "error": {"code": "UPSTREAM_ATTEMPT_FAILED", "type": "upstream_error"}
+                })
+            );
+        }
+    }
 }
 
 #[test]
@@ -1444,7 +1486,7 @@ fn real_listener_rest_classifier_reclassifies_each_decision_boundary() {
 }
 
 #[test]
-fn real_listener_context_hold_boundary_seals_unknown_without_reusing_old_competence() {
+fn real_listener_context_boundary_retains_unknown_progress_as_disclosed_assessment_context() {
     let simple = NativeProvider::start(vec![ProviderReply::Complete {
         status: 200,
         error_kind: None,
@@ -1546,8 +1588,8 @@ fn real_listener_context_hold_boundary_seals_unknown_without_reusing_old_compete
         "unchanged latest_user must not suppress a ContextHold boundary"
     );
     assert!(
-        body["assessment_target"].is_null(),
-        "rebuilt context cannot grade an old stage"
+        !body["assessment_target"].is_null(),
+        "actual prior execution remains eligible as uncertain context"
     );
     assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
     assert_eq!(body["visible_conversation"][0]["status"], "unknown");
@@ -1590,10 +1632,13 @@ fn real_listener_context_hold_boundary_seals_unknown_without_reusing_old_compete
         prior.pointer("/fact/segment_id"),
         current.pointer("/fact/segment_id")
     );
-    assert!(
-        facts.iter().all(|fact| fact.pointer("/fact/kind")
-            != Some(&serde_json::json!("branch_assessment_recorded"))),
-        "an unsolicited response score without an eligible target must be ignored"
+    let assessment = facts
+        .iter()
+        .find(|fact| fact["fact"]["kind"] == "branch_assessment_recorded")
+        .expect("the actual unknown-progress stage remains assessable");
+    assert_eq!(
+        assessment["fact"]["history_membership"]["association_unverified"],
+        true
     );
 }
 

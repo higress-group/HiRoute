@@ -23,6 +23,7 @@ pub(super) fn render(
             path_string(input.native_context.config_root())?,
         ),
         ("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1".into()),
+        ("CLAUDE_CODE_GATEWAY_HINT_HEADERS", "1".into()),
         ("CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST", "1".into()),
         ("ANTHROPIC_BASE_URL", format!("http://{}", input.gateway)),
         ("ANTHROPIC_AUTH_TOKEN", secret_string(&input.token)?),

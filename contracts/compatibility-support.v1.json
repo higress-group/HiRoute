@@ -279,6 +279,7 @@
     "hiroute.native-files/v1",
     "hiroute.native-launch/v1",
     "hiroute.native-observation/v2",
+    "hiroute.native-plugin-restore/v1",
     "hiroute.native-protocol-diagnostic/v1",
     "hiroute.native-restoration-ack/v1",
     "hiroute.observation-retention/v1",
@@ -395,6 +396,7 @@
     "hiroute.settings-hermes-plugin-file/v1",
     "hiroute.settings-login-item/v1",
     "hiroute.settings-model-publication/v1",
+    "hiroute.settings-native-plugin-file/v1",
     "hiroute.settings-opencode-model-file/v1",
     "hiroute.settings-pi-model-file/v1",
     "hiroute.settings-qoder-model-file/v1",
@@ -1316,7 +1318,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -1899,6 +1901,45 @@
       "owner": "observation-storage",
       "reason": "Authenticate retained pre-opening facts without adding a field or changing canonical bytes; those facts use conservative read-time timeline inference. The old digest cannot authenticate the new opening field and is never admitted to live ingestion.",
       "removal_condition": "Remove only when all supported activity stores and backups have no pre-opening facts or an authenticated conversion preserving the evidence replaces this reader.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.native-continuation/v1",
+      "field": "Hermes 0.20 public SessionDB row and unique-live-child API producer",
+      "mode": "legacy_adapter",
+      "owner": "agent-integrations/hermes",
+      "reason": "Compatible installed Hermes 0.20 exposes get_compression_lineage with unbounded descendant enumeration. The optional producer instead verifies at most 32 ancestor rows, compression closures, non-fork child provenance and the unique live child through public read-only SDK methods. Current SDKs use their bounded canonical chain API. Missing or failed native reads suppress continuity without failing model calls. Public whole-turn hooks also receive synthetic async notifications and cannot prove fresh-user origin. Current and older Hermes metadata never establish human origin through a freshness flag. Usable requests retain observed-input classification, actual execution history and cross-turn evaluation with explicit source uncertainty; known auxiliaries remain detached. Missing optional hooks retain authorization and native execution. Retained observed-input v1 headers remain diagnostic and non-authoritative. The current producer emits the v2 observed_batch with native session, turn and API request IDs; it never relocates input by text hash or demotes later User messages. Older SDKs without the optional whole-turn hook retain middleware authorization and native execution. Missing or malformed optional metadata loses only its enrichment, without disabling classification, capture or cross-turn evaluation. Native API compatibility does not establish scoring accuracy.",
+      "removal_condition": "Remove only when the supported native Hermes interface floor deliberately excludes the 0.20 row API, with updated connection guidance and native compression acceptance.",
+      "allowed_paths": [
+        "assets/agents/hermes/__init__.py",
+        "scripts/tests/test_hermes_lineage.py",
+        "scripts/tests/test_hermes_turn_input.py"
+      ]
+    },
+    {
+      "contract": "hiroute.codex-native-responses/v1",
+      "field": "Codex 0.147 persistent native window metadata for optional history",
+      "mode": "legacy_adapter",
+      "owner": "gateway/native-routing",
+      "reason": "The verified rust-v0.147.0 producer be6e8eac029b183056b7e4402879f15d2c85f61b emits thread-prefixed u64 window counters on every request and reconstructs them on resume/fork/rollback. Known producer names and coherent window channels provide bounded continuity evidence; positive cold windows, regressing counters and unknown producers cannot prove human origin. They permit observed-input routing and newly captured actual execution with explicit uncertainty, rather than permanently disabling classification, history or evaluation. These process-local checks never grant execution or provider-cache authority.",
+      "removal_condition": "Replace or retire only after a supported original-user producer supersedes this window adapter or the native client support floor deliberately changes, with independent real-question recovery and compressed-restart regression evidence.",
+      "allowed_paths": [
+        "crates/gateway/src/context_hold/routing/codex.rs",
+        "crates/gateway/src/context_hold/routing/codex_tests.rs",
+        "crates/gateway/src/context_hold/continuity.rs",
+        "crates/gateway/src/context_hold/continuity_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-membership digest 806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069 without history_membership",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained exact bytes without inventing branch membership. New facts carry bounded request membership; older facts retain conservative range inference and cannot authenticate the added field.",
+      "removal_condition": "Retire only when supported stores and backups no longer retain pre-membership facts or an authenticated conversion preserves the original evidence.",
       "allowed_paths": [
         "crates/domain/src/observation/execution_validation.rs",
         "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"

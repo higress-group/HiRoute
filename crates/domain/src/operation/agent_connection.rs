@@ -186,6 +186,7 @@ pub enum AgentConnectionEffectRoleV1 {
     ManagementSkill,
     CollaborationSkill,
     HermesPluginModule,
+    NativeRoutingAdapter,
     HermesPluginManifest,
     InstructionOverlay,
     SpawnGuidanceRewrite,
@@ -232,6 +233,7 @@ impl AgentConnectionEffectRoleV1 {
             Self::ManagementSkill => "management_skill",
             Self::CollaborationSkill => "collaboration_skill",
             Self::HermesPluginModule => "hermes_plugin_module",
+            Self::NativeRoutingAdapter => "native_routing_adapter",
             Self::HermesPluginManifest => "hermes_plugin_manifest",
             Self::InstructionOverlay => "instruction_overlay",
             Self::SpawnGuidanceRewrite => "spawn_guidance_rewrite",
@@ -279,6 +281,7 @@ impl AgentConnectionEffectRoleV1 {
             Self::ManagementSkill => "agent-connection-management-skill",
             Self::CollaborationSkill => "agent-connection-collaboration-skill",
             Self::HermesPluginModule => "agent-connection-hermes-plugin-module",
+            Self::NativeRoutingAdapter => "agent-connection-native-routing-adapter",
             Self::HermesPluginManifest => "agent-connection-hermes-plugin-manifest",
             Self::InstructionOverlay => "agent-connection-instruction-overlay",
             Self::SpawnGuidanceRewrite => "agent-connection-spawn-guidance",
@@ -295,6 +298,7 @@ impl AgentConnectionEffectRoleV1 {
             Self::ManagementSkill => "management-skill",
             Self::CollaborationSkill => "collaboration-skill",
             Self::HermesPluginModule => "hermes-plugin-module",
+            Self::NativeRoutingAdapter => "native-routing-adapter",
             Self::HermesPluginManifest => "hermes-plugin-manifest",
             Self::InstructionOverlay => "instruction-overlay",
             Self::SpawnGuidanceRewrite => "spawn-guidance",
@@ -310,6 +314,7 @@ impl AgentConnectionEffectRoleV1 {
             | Self::RoutingSkill
             | Self::ManagementSkill
             | Self::CollaborationSkill
+            | Self::NativeRoutingAdapter
             | Self::HermesPluginModule
             | Self::HermesPluginManifest
             | Self::InstructionOverlay
@@ -327,6 +332,7 @@ impl AgentConnectionEffectRoleV1 {
             "management_skill" => Ok(Self::ManagementSkill),
             "collaboration_skill" => Ok(Self::CollaborationSkill),
             "hermes_plugin_module" => Ok(Self::HermesPluginModule),
+            "native_routing_adapter" => Ok(Self::NativeRoutingAdapter),
             "hermes_plugin_manifest" => Ok(Self::HermesPluginManifest),
             "instruction_overlay" => Ok(Self::InstructionOverlay),
             "spawn_guidance_rewrite" => Ok(Self::SpawnGuidanceRewrite),

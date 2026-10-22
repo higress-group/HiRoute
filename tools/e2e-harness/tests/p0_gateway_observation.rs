@@ -538,16 +538,11 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
                 .and_then(Value::as_str)
                 .is_some()
     }));
-    assert!(facts.iter().any(|fact| {
+    assert!(!facts.iter().any(|fact| {
         fact.pointer("/fact/kind").and_then(Value::as_str) == Some("runtime_state")
             && fact.pointer("/fact/operation").and_then(Value::as_str)
                 == Some("compare_and_swap_exact")
-            && fact.pointer("/fact/health").and_then(Value::as_str) == Some("cooling_down")
-            && fact
-                .pointer("/fact/cooldown_remaining_millis")
-                .and_then(Value::as_u64)
-                .is_some_and(|millis| millis > 0)
-            && fact.pointer("/fact/outcome").and_then(Value::as_str) == Some("applied")
+            && fact.pointer("/fact/key_scope").and_then(Value::as_str) == Some("binding")
     }));
     assert!(
         facts
@@ -1207,11 +1202,18 @@ fn real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap() {
             "observation.content_gap"
         ]
     );
-    let first = NativeProvider::start(vec![ProviderReply::Complete {
-        status: 503,
-        error_kind: None,
-        body: REJECTED_BODY,
-    }]);
+    let first = NativeProvider::start(vec![
+        ProviderReply::Complete {
+            status: 503,
+            error_kind: None,
+            body: REJECTED_BODY,
+        },
+        ProviderReply::Complete {
+            status: 503,
+            error_kind: None,
+            body: REJECTED_BODY,
+        },
+    ]);
     let second = NativeProvider::start(vec![
         ProviderReply::Complete {
             status: 200,
@@ -1265,14 +1267,20 @@ fn real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap() {
 
     // Every gap above became durable while traffic was idle. Only after that
     // terminal-heartbeat proof do we issue a second request for the separate
-    // cooldown-isolation assertion.
-    let second_response = fixture.request();
+    // request-local soft-failure assertion.
+    let second_response = fixture.request_body(
+        br#"{"model":"runtime-model","input":"independent observation check","stream":false}"#,
+    );
     assert_eq!(second_response.status, 200);
     assert_eq!(
         response_tool_logical_id(&second_response.body),
         "call-22008"
     );
-    assert_eq!(first.calls(), 1, "cooldown must survive observation faults");
+    assert_eq!(
+        first.calls(),
+        2,
+        "observation faults must not add shared Binding cooldown"
+    );
     assert_eq!(second.calls(), 2);
 }
 

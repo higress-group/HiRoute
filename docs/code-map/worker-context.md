@@ -24,6 +24,26 @@ report the actual installed consumers; [safe conflict facts](../../crates/domain
 retain rejection identity through compensation and client observation.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
+[Native routing resources](../../crates/integrations/src/agents/routing_adapters.rs)
+use the same protected artifact journal as model settings. The
+[request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
+main/child history and detaches known auxiliary calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
+cover interleaving and semantic compaction independently of provider affinity.
+Pi's [provider adapter](../../assets/agents/pi/hiroute-routing.mjs) binds native
+compaction/tree-summary signals at the public provider seam and retains branch
+cursors as observed evidence. Its [native guide](../../tools/product-e2e/tests/PI_INTEGRATION.md#ordinary-routing-metadata)
+separates installed SDK fixtures, actual CLI acceptance and Restore inference.
+Claude's native [identity leaf](../../crates/gateway/src/context_hold/identity/claude.rs)
+keeps session/agent scope separate from its [request-class and prompt leaf](../../crates/gateway/src/context_hold/routing/claude.rs);
+known auxiliary classes survive optional enrichment failure, while unknown classes
+retain complete observed input and normal routing.
+The [native continuity owner](../../crates/gateway/src/context_hold/continuity.rs)
+separates known continuations from usable observed input. Missing origin proof
+retains classification, actual capture and evaluation in an uncertain lane without
+replacing verified task history. Native identities remain scoped independently;
+Qoder's shared main/child identity has an accepted association limit. Follow the
+[routing contract](../../issue-spec/specs/request-routing/spec.md#requirement-native-routing-remains-available-without-perfect-input-provenance)
+for recovery limits rather than equating successful output with full adaptation.
 
 Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
 explains native provider-scoped session discovery before enabling routing. Default
@@ -48,8 +68,11 @@ its native host resolves the caller's existing default profile and its details c
 select another through the same target-read flow before settings become available.
 The common [discovery preference](../../apps/desktop/src/features/agents/discovery.ts)
 remembers explicit targets as hints, with backend revalidation and per-profile failure isolation.
-Its bundled native middleware carries the real
-session into trusted Gateway correlation. The managed provider also uses the same
+Its [native request middleware](../../assets/agents/hermes/__init__.py) carries the real
+session into trusted Gateway correlation and emits observed batch context
+independently from optional bounded read-only compression evidence;
+clean callback text and retained legacy hints cannot select an input instance.
+The managed provider also uses the same
 scoped model grant as its native API key for auxiliary Chat requests; global model
 headers are not a credential carrier. All six supported Agents have independent management and collaboration Skills;
 [shared Skill facts](../../crates/daemon/src/control/runtime/settings_facts/skills.rs)

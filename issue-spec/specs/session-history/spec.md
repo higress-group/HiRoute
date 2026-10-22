@@ -19,7 +19,7 @@ Ordinary native correlation uses these current inputs:
 
 | Client | Recognized identity |
 | --- | --- |
-| Claude Code | `X-Claude-Code-Session-Id`; Messages JSON session inside `metadata.user_id` |
+| Claude Code | Coherent `X-Claude-Code-Session-Id` / Messages JSON session inside `metadata.user_id`, plus the optional actual `X-Claude-Code-Agent-Id` |
 | Codex | `thread-id` / `session-id` and coherent Responses `client_metadata` dimensions |
 | Qoder | `session-id` in its existing namespace |
 | Pi / branded pi-ai | Native Responses `x-client-request-id` / optional `session_id`, or configured `x-session-id` / Messages `x-session-affinity` |
@@ -41,6 +41,13 @@ Absent native fields use conservative complete-first-real-user inference when le
 empty/unreliable/incomplete/generic wrapper input remains request-scoped. Raw native
 IDs are not persisted. Equal content cannot merge distinct native IDs; rewriting
 content does not change an established native session.
+
+Claude session header and Messages metadata use the same released session
+namespace and SHALL agree when both are present. Duplicate session claims inside
+the metadata JSON are invalid, even when equal. An actual native agent ID adds a
+separate scope dimension for children or teammates. Missing agent identity keeps
+the supplied session with source/association uncertainty; prompt IDs, request
+classes and notification text SHALL NOT invent that missing dimension.
 
 Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connection/authorization. Equal raw native IDs under distinct connections cannot merge conversations. For a trusted registered Hermes consumer, absent or invalid native identity remains request-scoped without first-user content inference. A caller-supplied header or user-agent does not establish managed-consumer authority; session identity itself grants no model or management access. Native cache/root affinity is not Hermes conversation proof.
 
@@ -488,11 +495,11 @@ Source SPEC comments:
 
 ### Requirement: The routing timeline re-emits late evidence without duplicates
 
-Session detail MUST show actual agent-turn selection, boundary, group, model/reasoning, probability/threshold, continuations, relays, assessments and request usage/cost beside retained conversation. New AgentTurnFinished writes SHALL record an optional opening cause, preserved across tool continuation and completion: continuing message history with an appended user message means UserMessage, independently of whether the prior decision can be inherited; fewer canonical messages than an existing comparable checkpoint means HistoryShortened; an equal or greater count with a changed prefix means HistoryRewrite; absent checkpoints (first entry, expiry, eviction, contention or disabled tracking) mean NoComparableHistory; other boundaries, including a Plan change without an appended user message, mean Other. System/developer instructions are excluded from the message count; changing only those instructions does not rewrite message history even if it invalidates a hold preference.
+Session detail MUST show actual agent-turn selection, boundary, group, model/reasoning, probability/threshold, continuations, relays, assessments and request usage/cost beside retained conversation. New AgentTurnFinished writes SHALL record an optional opening cause, preserved across tool continuation and completion: continuing message history with an appended user message means UserMessage, independently of whether the prior decision can be inherited; fewer canonical messages than an existing comparable checkpoint means HistoryShortened; an equal or greater count with a changed prefix means HistoryRewrite; absent checkpoints (first entry, expiry, eviction, contention or disabled tracking) mean NoComparableHistory; other boundaries, including a Plan change without an appended user message, mean Other. System/developer instructions are excluded from the message count. Changed instructions or model/tool setup invalidate exact execution inheritance even when conversation text is unchanged; that invalidation alone does not establish compaction.
 
 Explicit causes override legacy hints. UserMessage displays New message. HistoryShortened displays Context rebuilt and is attributed to compaction by the owner-selected step-count heuristic. A step is one canonical request message, not a token, tool or timeline turn. Details disclose that a shorter rewind or shared-scope background/subagent request can also satisfy this heuristic. HistoryRewrite and Other remain unknown. NoComparableHistory displays New message only for the first session turn. Without the field, legacy inference displays New message for the first session turn or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. A retained tail with a known later ordinal is not the first session turn. Invalidation alone never proves compaction. Unknown headings omit the badge and details disclose the gap. Supported old bytes and authenticated digests remain readable unchanged; unreleased experimental digests are not admitted.
 
-The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools and timing SHALL NOT establish native provenance. Issue #185 separately tracks shared-history background/subagent isolation and active-turn conflicts; this repair does not infer subdialog identity or claim isolation is fixed. The legend states that a turn keeps its model to preserve cache and new messages or rebuilt context trigger fresh judgment.
+The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools, native activation/window identifiers and cache presence SHALL NOT establish native provenance. Concurrent execution membership follows the independent branch contract below; an unknown main/child relationship remains explicitly uncertain. The legend states that an eligible exact continuation keeps its model and new messages or rebuilt context trigger fresh judgment.
 
 The opening request supplies stable display identity before completion. Late assessments and valuations update that turn. When late authoritative request membership absorbs provisional rows into a completed turn, Desktop SHALL remove the absorbed rows by their exact opening-request identities, transfer their selection/focus to the owning turn, and reconcile overview, request and turn counts. Names, timing or model similarity SHALL NOT infer membership. Incremental cursors MUST be authenticated and bound to reader, session, page size and retained visibility; pagination freezes fact, valuation and link positions until its changed page is consumed. Reconnect deduplicates equal content digests. Cleared or expired scope invalidates the cursor. Unknown usage/cost remains unknown; per-model currency and valuation basis are preserved. A per-model sum SHALL retain available known amounts when another contribution is unknown, disclose that it is a known subtotal and retain the missing contribution. No known contribution means amount unknown, not zero. Frozen API-equivalent amounts SHALL be labeled estimates in summary and request detail.
 
@@ -648,3 +655,33 @@ Source SPEC comments:
   [receipt scenarios](../../../crates/observation/src/store/tests/store_flow.rs).
 - [Quality aggregation scenarios](../../../crates/observation/src/store/tests/plan_quality/summary.rs)
   and [Desktop quality identity](../../../apps/desktop/src/features/plan-quality-state.ts).
+
+### Requirement: New routing stages retain exact execution membership
+
+Current AgentTurnFinished and BranchAssessmentRecorded facts SHALL carry optional
+versioned `history_membership`: version 1, opaque execution branch ID, immutable
+revision, up to 128 exact Gateway request IDs, an explicit clipped flag, relation
+kind and separate source/association/capture uncertainty. Relation kinds are root,
+exact_prefix, ambiguous_prefix and contextual. Producer/native request IDs cannot
+replace Gateway IDs. Current writes use the single current envelope descriptor;
+a registered previous descriptor remains read-only and cannot authenticate the new
+field. Old authenticated bytes/digests remain unchanged.
+
+For facts with membership, analysis, timeline, quality and cost consumers SHALL use
+those members, never an inclusive ordinal or first/last-time interval across
+concurrent branches. Missing/clipped membership is explicit incomplete evidence.
+Later stage extensions cannot broaden an earlier assessment's frozen membership.
+Facts without membership retain their supported historical reader semantics.
+Rebuildable projections MAY be refreshed through a versioned migration; original
+facts, sensitive carriers and their digests SHALL NOT be reset or rewritten.
+Matched ordinary reopen SHALL not repeatedly rebuild current projections.
+
+#### Scenario: Interleaved branches and a late stage extension
+
+- **WHEN** A1, B1 and A2 interleave in one session and an assessment was frozen before A2
+- **THEN** A contains only A1/A2, B only B1, and the earlier assessment does not claim to assess A2, including after the observation store reopens.
+
+#### Scenario: Previous producer envelope is retained
+
+- **WHEN** a supported pre-membership envelope is read after upgrading
+- **THEN** its original digest and bytes still authenticate, historical projections remain readable, and adding new membership to that old descriptor is rejected.

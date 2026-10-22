@@ -14,10 +14,20 @@ their HiRoute connection token as `Authorization: Bearer <token>`. The current
 publication still verifies the issued grant, protocol and aliases. Retained
 `X-HiRoute-Token` clients keep explicit-header precedence, including when native
 SDKs also send Authorization; an invalid explicit token never falls back to it.
+Messages SDKs may send the same issued model-grant token through a single
+`x-api-key` when both higher-priority carriers are absent. This carrier still uses
+current grant/protocol/alias verification; arbitrary provider keys grant no access.
 Qoder's dedicated entry and delegated run authority keep their existing rules.
 Upstream authorization is rebuilt from the selected provider lease. The
 [listener scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/bearer_auth.rs)
 covers admission, rejection, token rotation and outbound isolation.
+
+[Context overflow classification](src/runtime/driver/context_overflow.rs)
+preserves a closed HTTP 400 cause for native compaction recovery after bounded
+candidate relay is exhausted. It emits static sanitized error text and does not
+infer overflow from generic errors or replay committed output. The
+[listener scenarios](../../tools/e2e-harness/tests/p0_gateway_runtime/context_overflow.rs)
+cover all three ingress protocols, successful relay and stale-cause rejection.
 
 Branch candidates may use distinct execution keys for different reasoning settings
 on the same model. Publication freezes `source_binding_id` for their current Native
@@ -37,6 +47,9 @@ reports transport writes only after they succeed, including an empty end-stream 
 zero byte count and frame identity; the [bounded receiver](../observation/src/writer/lifecycle.rs)
 ACKs it in sequence before RequestFinished. These transport events describe delivery;
 semantic output, usage and the business receipt retain their own facts.
+An accepted Attempt means its output was delivered. A later native model failure
+or truncation retains that identity and its failed model event; the Request and
+history stage remain failed, allowing the receipt to preserve actual execution.
 
 Messages thinking computation is projected in
 [request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
@@ -49,13 +62,14 @@ covers the listener boundary, including tool continuation.
 
 ## Native session correlation
 
-[context_hold/identity.rs](src/context_hold/identity.rs) resolves one identity for
-ContextHold, decision history and observation before request content is externalized.
+[context_hold/identity.rs](src/context_hold/identity.rs) resolves native identity
+before request content is externalized. Routing purpose and validated lineage
+select history branches; observations retain the native physical identity.
 Verified Worker tasks take precedence. Ordinary clients supply these native fields:
 
 | Client | Accepted native identity |
 | --- | --- |
-| Claude Code | `X-Claude-Code-Session-Id`; Messages also retains the JSON session inside `metadata.user_id` |
+| Claude Code | Coherent `X-Claude-Code-Session-Id` / Messages JSON session inside `metadata.user_id`; optional actual `X-Claude-Code-Agent-Id` separates native agents |
 | Codex | `thread-id` / `session-id`, with matching Responses `client_metadata` dimensions |
 | Qoder | `session-id`, retaining its existing generic session namespace |
 | Pi | pi-ai session headers scoped by `pi (...)` User-Agent |
@@ -87,9 +101,98 @@ stay request-scoped. Coherent generic Codex dimensions retain their historical
 namespace, including Pi's Codex transport. Claude header and metadata share the
 existing Claude namespace. Session storage uses the producer's scoped HMAC;
 raw IDs are not persisted and existing observations are not rewritten.
+[Claude identity](src/context_hold/identity/claude.rs) retains the released session
+namespace, requires header/metadata agreement and rejects duplicate metadata
+session claims. Its actual agent ID is a separate scope dimension; missing agent
+identity is never replaced with an invented main or child.
 [p0_gateway_native_sessions.rs](../../tools/e2e-harness/tests/p0_gateway_native_sessions.rs)
 covers the real listener and observation boundary across Responses and Messages,
 plus OpenCode's native identity across Chat Completions and shared cache affinity.
+
+[decision_history.rs](src/core_runtime/decision_history.rs) derives optional capture
+scope from authorization independently of ContextHold. One native session can have
+multiple concurrent executions. [Branch resolution](src/agent_turn_history/store/branches.rs)
+combines the typed request prefix with captured accepted response boundaries;
+identical text, native request IDs and completion order do not establish parentage.
+The response comparison ignores zero-byte text placeholders added to a tool-only
+response by a native client, after checking any Replay reference. Whitespace and
+other actual content remain significant; original requests and capture are preserved.
+Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
+commits are branch-scoped; optional cache misses cannot discard execution capture.
+Same-scope actual completed stages remain contextual candidates with disclosed
+association uncertainty when no unique predecessor is established. Unknown association
+never grants provider-prefix affinity. Unsupported response shapes may lose an exact
+edge while retaining capture and evaluation.
+
+The store retains a 500 MB total budget and a one-hour idle lifetime, with 32 live
+requests/heads and 128 retained terminal records per scope. Snapshot pins and indexes
+are charged. A full budget or optional capture fault records a recoverable gap and
+cannot replace delivered model output. Scope-hash gap stripes are fixed at 256;
+collisions disclose extra uncertainty rather than false complete capture. Authorization,
+Replay integrity, provider failures and source cancellation retain their own behavior.
+Native Codex peer `agent_message` items use the
+[Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
+forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion
+and provider-prefix affinity remain unavailable. The
+[Codex current-input codec](src/core_runtime/native_routing_view/codex.rs) selects
+the latest plaintext peer batch at its canonical event position, including when no
+wire User exists, without changing original roles or history. A later User event
+supersedes old peer context. Classification and capture disclose source uncertainty;
+mixed plaintext/ciphertext stays opaque and cannot recover encrypted intent from
+a wrapper or ancestor User. The
+[native protocol regressions](src/adapters/tests/native_responses.rs) cover forwarding
+without fabricating a user role for peer content.
+[Codex metadata admission](src/context_hold/routing/codex.rs) checks coherent native
+channels before purpose, accepts memory without thread/turn IDs, and detaches only
+known memory/prewarm/compaction calls. Unknown kinds remain observed. Positive
+session/thread contradictions discard association; malformed optional enrichment
+alone does not erase independently valid identity. Parent/fork references remain
+separate from the current thread's scope.
+[Claude native routing](src/context_hold/routing/claude.rs) recognizes only its
+supported `auxiliary` and `compaction` request classes before optional identity and
+prompt enrichment. Unknown classes stay observed and routable. A prompt ID enables
+a routing activation without proving human origin, a clean input instance or prior
+task completion; the complete native User batch remains visible with uncertainty.
+The observed Claude Code 2.1.287 runtime sends messages queued during an active
+tool call as native System context with the same prompt ID. Those bytes still
+reach the upstream, but the observed-User classifier and assessment context can
+miss their intent. This is a current producer capability limit: no English
+wrapper is extracted or promoted into a new User. A later actual User activation
+in that same live session restores classification, capture and exact-target
+evaluation. Other Claude versions need their own producer evidence.
+[Native routing admission](src/context_hold/routing.rs) separates usable input from
+source proof. Known auxiliary purposes remain detached. Missing or unsupported
+metadata instead uses an observed-input lane, with
+`unverified_request_user_origin` in both current classifier input and captured
+history. Complete accepted output stays eligible for cross-turn evaluation. This
+covers Claude main/subagent/workflow, Hermes, Qoder and cold compressed Codex;
+unknown provenance cannot permanently pin an Agent to Primary. Qoder's shared
+main/child identity remains an accepted association limit. Hermes compression roots
+still require complete native lineage and fresh current-state evidence.
+The [continuity guard](src/context_hold/continuity.rs) retains saved native tasks for
+known continuations without granting provider/KV affinity. A known summary with no
+captured original input uses the temporary unavailable-input route; subsequent real
+new A and B must restore classification, capture and evaluation in the same session.
+Gateway restart never imports claimed prior client execution as captured history.
+Partial old stages remain partial; a fully captured independent new input can start
+a complete stage even on the same model. Retries cannot repair missing execution.
+The [current input view](src/core_runtime/native_routing_view.rs) uses a validated
+final-wire v2 event window, or the complete latest observed User envelope. It keeps
+all original message roles and content. Legacy DSH v1 proofs can select their last
+validated input batch without demoting other Users; Hermes clean-text v1 hints are
+non-authoritative and cannot reposition input. Source, association and capture
+uncertainty are disclosed separately using existing decision content markers.
+Known summary input is never recorded as an executed original user task. Its actual
+accepted output can still be captured with unavailable-input evidence. New real A/B
+must restore ordinary classification, history and evaluation after compaction,
+optional faults or Gateway restart. Logical task completion is separate from
+response delivery. These boundaries preserve availability without claiming scoring
+accuracy for ambiguous callbacks or Qoder's shared main/child identity.
+[Native listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
+cover these boundaries; the managed producer hooks live in `assets/agents/`.
+[history_bypass.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
+covers same-identity overlap across the supported native identity families, main
+tool continuation, capacity exhaustion and observation faults through the listener.
 
 ## Decision operation
 
@@ -181,6 +284,19 @@ Streaming headers alone leave relay open; a later failed model terminal stays a 
 request and Agent turn observations even when its native bytes were delivered.
 The decision diagnostic uses closed error codes; provider text is not a public
 error message or a substitute for evidence of credential failure.
+
+[Runtime health](src/runtime/state.rs) keeps the kernel's default shared Binding
+backoff. The production Gateway explicitly selects request-local soft Binding
+feedback for authenticated Agent model grants and verified Workers sharing the
+same target keys, including unmarked native auxiliary requests. A transient
+failure still relays and returns its original
+normalized error within that request, but cannot cool the next independent main
+call or invalidate its in-flight permit. An owned expired probe releases neutrally
+with exact-generation CAS. Credential authentication/quota state remains shared.
+Main calls, Worker calls and ordinary API calls using that grant consequently may retry an
+unavailable source more often across requests. The [owning contract](../../issue-spec/specs/p0-gateway-execution-plane/spec.md)
+and [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/auxiliary_failure_isolation.rs)
+cover both immediate recovery and concurrent main completion.
 
 ## Response failure evidence
 

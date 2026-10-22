@@ -91,6 +91,18 @@ judgment history, never by inspecting output text. Other supported history items
 accept only their legal lifecycle values. Empty native generated-call names use the
 narrow native-only exception in the request contract; declarations remain strict.
 
+Known Responses `agent_message` history preserves its author, recipient, ordered
+plaintext/encrypted content and native metadata on same-protocol requests. Its peer
+role has no declared portable mapping: cross-protocol candidates are excluded.
+Known visible messages may support observed-input classification and actual
+execution history, with explicit missing-origin evidence and no provider-cache
+prefix claim. The copied ancestor User is observed request content, not proof of
+the current peer task; its association accuracy remains a disclosed limitation.
+Origin uncertainty alone SHALL NOT permanently disable subsequent classification,
+capture or cross-turn evaluation. Peer text is never fabricated as a human User
+or accepted assistant output; encryption is not reinterpreted as reasoning state.
+Malformed or unknown content variants retain their protocol errors.
+
 Thinking signature/redacted/encrypted values are payload, not interchangeable
 credentials. Same-protocol preserves raw values, empty versus absent, legal JSON
 encoding, and ordering. Cross-protocol can omit structurally unexpressible reasoning,
@@ -101,20 +113,88 @@ or persistent watermark.
 
 ### Requirement: Decision history has one bounded process-local owner
 
-One ContextHold scan returns message continuity and stronger candidate preference.
-Before pure Planner, smart-saving/custom judgment inherits or starts exactly one
-routing turn using that result; history store cannot independently hash prefixes,
-compare latest text, or identify compaction. New user input always rejudges; tool
-continuation with valid continuous decision does not. Instruction/tool/state changes
-may invalidate preference without changing that turn's category/group. Unrelated
-publication does not invalidate exact route/authority continuity; every request
-still uses current authorization.
+The history owner resolves bounded predecessor evidence and admits independent
+request captures under the current authorized native scope, following the
+[concurrent execution contract](../decision-services/spec.md#requirement-concurrent-executions-own-independent-history-and-assessment-snapshots).
+ContextHold is a subordinate branch-scoped cache for stronger candidate preference;
+successful hold admission is not required for capture or evaluation. Before pure
+Planner, smart-saving/custom judgment inherits a valid decision only with sufficient
+continuity, or starts a fresh routing decision. New usable input rejudges; a tool
+continuation with a valid continuous decision can inherit it. Instruction/tool/state
+changes may invalidate preference without changing that decision's category/group.
+Unrelated publication does not invalidate exact route/authority continuity; every
+request still uses current authorization. Equal input or native request IDs alone
+cannot establish predecessor identity or deduplicate executions.
+
+Routing continuity keeps a separate streaming digest that masks only text within
+same-position System/Developer messages. Roles, names, content-part counts,
+non-text parts, other messages and the measured search/annotation/reasoning
+sidecars remain exact. Changed native
+instruction text may preserve captured semantic history, but strict byte-prefix
+and instruction digests still govern preference, commit and reasoning-cleanup
+eligibility. Added/removed instructions or rewritten user/model/tool content do
+not gain continuity from this exception.
+Strict execution fingerprints always measure the original canonical request,
+including native user-message partitioning. A borrowed routing-only view may
+supply the semantic digest at identical message positions; its normalized batches
+cannot authorize provider affinity or reasoning-cleanup reuse.
 
 The history store defaults to 500,000,000 bytes and one-hour idle TTL, retaining
-simplified sealed turns, one active decision, and actual contiguous execution stages.
-It does not read Observation disk/SQLite or add another branch/cache state machine.
-Concurrent same-session/late CAS rejects unsafe updates. LRU/TTL/restart yields
-explicit partial history without blocking independent requests.
+bounded independent captures, branch heads and immutable assessment membership.
+It does not read Observation disk/SQLite to reconstruct routing history. Concurrent
+requests in one session receive independent guards; completion can update only the
+owned execution and eligible branch. A late completion cannot change an assessment
+snapshot already sent for judgment. LRU/TTL/restart yields explicit missing history
+without blocking subsequent independent classification, capture and evaluation.
+
+History is optional routing context, not model-request admission. A same-scope
+request already in flight SHALL NOT serialize or displace another request. Without
+a unique strong predecessor, an admitted request may evaluate a retained completed
+stage as explicitly uncertain context; that target is not a proven parent. Known
+missing execution remains partial, while source or association uncertainty alone
+does not make a complete target partial. An exhausted/busy history store loses only
+unavailable history/assessment and decision inheritance; a usable current input
+still classifies independently. Only unavailable classification, including a request
+without usable current input, uses the existing temporary decision fallback.
+ContextHold scans SHALL NOT advance shared checkpoints before history admission;
+rejected side-path admission cannot invalidate the live request's completion or
+tool continuation. A stale/failed optional decision write relinquishes its history
+and hold write authority while retaining the request's validated routing decision.
+Such failures SHALL NOT become `SESSION_TURN_CONFLICT`, `TURN_CONTEXT_UNAVAILABLE`,
+or history-capacity HTTP errors. Optional judgment projection/transport resource
+failure uses the published decision fallback. Current authorization, canonical
+request/Replay integrity, source cancellation/deadline, and execution eligibility
+remain mandatory. Observation/capture failure cannot replace, truncate, retry, or
+delay delivery of the accepted model response; any lost history remains partial.
+
+Native envelope roles alone do not prove human input. DSH may append runtime context
+using the user role. Its bounded native event mapping can describe the current
+event using the [optional input-window contract](../agent-connections/spec.md#requirement-optional-native-routing-evidence-separates-purpose-input-and-history).
+Gateway validates final wire positions and their complete bounded digest scope
+before selecting that event. The proof does not require complete old history,
+demote unlisted Users to System, identify a logical task, or authorize execution
+ancestry. Provider execution and Observation retain the original request. Missing,
+invalid or unsupported proof, or insufficient optional projection capacity, keeps
+the complete observed current User batch and explicit uncertainty; it SHALL NOT
+globally disable classification, capture or evaluation. Known auxiliary purpose
+survives an optional mapping failure. A known continuation without usable current
+input may temporarily fall back, but later same-session usable input SHALL recover.
+
+A later proven native request may reveal user turns that bypassed optional capture.
+It may retain already accepted visible history, but SHALL mark the gap partial and
+discard the previous assessment segment instead of inventing missed executions.
+
+#### Scenario: Native auxiliary request overlaps the main tool turn
+
+- **WHEN** two authorized requests share one native session identity while the first model response is still in flight
+- **THEN** the second is classified and executed independently without modifying the first history checkpoint, and both can deliver their complete responses.
+- **AND** the first request's subsequent valid tool continuation can retain its decision.
+
+#### Scenario: Optional state or observation is unavailable
+
+- **WHEN** bounded history cannot admit a request, a history write is stale, or observation/capture is full, slow, failing or panicking
+- **THEN** the authorized model request still completes through normal routing, optional writes cannot overwrite another request, and unavailable context is disclosed without inventing an assessment target.
+- **AND** an unauthorized request still cannot invoke the classifier or model.
 
 Decision preparation, narrow header Secret lease, Replay/history, DNS/connect/write/
 read share the earlier of classifier timeout and source absolute deadline/cancel.
@@ -150,20 +230,80 @@ cannot prove a stored handle's owner.
 After frozen candidate ordering, RuntimeStateStore checks exact Binding/credential
 health and lease. Key order is fill-first; Key failure relays before another model.
 Credential 401/403 disables the exact credential, quota 429 cools its exact Key,
-and recognized overload/5xx/timeout/disconnect affect the relevant Binding.
+including the existing Binding fallback when no credential exists. These authority
+failures remain shared across requests. Recognized overload/5xx/timeout/disconnect
+are soft Binding failures. The default runtime kernel records their shared health;
+all production Gateway model execution (authenticated Agent model grants and
+verified delegated Workers) keeps that feedback within the current request. Their
+Binding health keys do not include a grant/run dimension. A grant also carries
+native auxiliary calls without portable purpose/session markers, so this policy
+does not guess Main/Aux/Unknown from a UA, payload or Agent-specific header. Real
+main calls, verified Worker calls and ordinary API calls using the grant also lose
+cross-request soft-failure suppression and may try an unavailable source more
+often. Frozen candidate order, key relay, Attempt limits, original
+failure responses and classification remain unchanged within each request.
 Ambiguous errors do not invent isolation. Attempt/deadline/cancel budgets never
 reset on relay, and committed output cannot be replayed.
 
-For Binding transient failure without trusted waiting guidance, backoff steps are
-2, 4, 8, 16, 30 seconds, saturating at step five. Trusted Retry-After/reset is used
+For shared Binding transient feedback without trusted waiting guidance, backoff
+steps are 2, 4, 8, 16, 30 seconds, saturating at step five. Trusted Retry-After/reset is used
 as given beyond the local cap and resets step zero. Recognized overload without
 hint defaults to 15 seconds/reset zero; credential quota defaults to 60 seconds,
 auth disables it, both with step zero. Successful recovery probe resets Binding
 step. Health/generation/step/lease update in the same CAS; acquisition/cancel cannot
 drop step and a stale CAS cannot repeatedly increment one observed failure.
 Current RuntimeState requires the step field without an alternate old-state reader.
+For an active Binding, request-local soft feedback does not change shared
+health/generation/backoff and cannot invalidate a concurrently executing main permit.
+If the failed Attempt owns an expired Binding or credential cooldown's probe, it
+releases only that exact generation's lease with CAS while preserving the preceding
+health/expiry/backoff step; it neither
+confirms recovery nor creates a new cooldown. A stale release cannot affect a newer
+probe, and required store operations still fail closed.
 Pure temporary pre-Attempt exhaustion exposes accurate retry time under the
 [request contract](../request-routing/spec.md); store failure never means healthy.
+
+A sealed Connector's HTTP 400 with exact `context_length_exceeded` code retains
+a closed client-recoverable cause. Messages also recognizes only
+`invalid_request_error` with the complete `prompt is too long: <input> tokens >
+<maximum> maximum` form, where both counts are unsigned decimal integers and
+input exceeds a positive maximum. Generic 400/413, arbitrary message substrings,
+unsealed profiles and stream errors do not establish this cause. Normal frozen
+candidate relay runs first. If the last attempted response has this cause and
+no further attempt is available before the original deadline, return HTTP 400
+with `error.type=invalid_request_error`, `error.code=context_length_exceeded` and
+the static message `Input exceeds the context window.` Provider text and token
+counts never pass through. A later transport, preparation or response failure
+supersedes this cause. The cause neither quarantines a binding nor rotates a key;
+it does not reset budgets, bypass cancellation or perform Gateway compaction.
+
+When native `response_failed` or `response_incomplete` arrives after output has
+been delivered and downstream transport completes, the Attempt retains its
+`accepted` transport identity and accepted ordinal. Its provider failure class
+and terminal model event remain recorded, while the Request and history stage
+are `failed`. Receipt validation must accept this combination without inventing
+successful task completion or discarding the actual execution. A rejected
+pre-delivery attempt still cannot become an accepted ordinal.
+
+#### Scenario: Native context recovery survives exhausted relay
+
+- **WHEN** a native client's input receives a recognized context-overflow 400
+  and no frozen candidate can be attempted within the remaining attempt budget
+- **THEN** the sanitized 400 retains the closed context-overflow code so the
+  client can apply its own compaction/retry policy
+- **AND** an available next candidate may still answer successfully first;
+  unrelated client errors and later failures never inherit the overflow cause
+
+#### Scenario: Auxiliary failure cannot suppress an independent main call
+
+- **WHEN** an authenticated Agent model grant's unmarked title request receives a
+  soft 503 from a source, even with trusted Retry-After
+- **THEN** its original normalized failure returns to that caller, while one
+  immediately following main HTTP request can reach the same source without client
+  retry or waiting for shared cooldown; an already in-flight main can still commit
+- **AND** credential authentication/quota failures retain exact shared authority
+  transitions; verified Worker model execution uses the same isolation, while the
+  default kernel/provider retains its shared Binding backoff contract
 
 ### Requirement: Replay externalizes large content without a second body owner
 

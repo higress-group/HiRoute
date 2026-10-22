@@ -263,12 +263,33 @@ impl LocalControlAdapter {
                         | SettingsAgentClass::Dsh
                         | SettingsAgentClass::OpenCode
                 ) {
-                    hiroute_integrations::additional_native_configuration_is_applied(
-                        &self.artifacts,
-                        &operation.operation_id,
-                        intent,
-                    )
-                    .map_err(super::map_port)?
+                    let model_applied =
+                        hiroute_integrations::additional_native_configuration_is_applied(
+                            &self.artifacts,
+                            &operation.operation_id,
+                            intent,
+                        )
+                        .map_err(super::map_port)?;
+                    // Published operations predating routing adapters retain their
+                    // original contract. New operations also own the adapter bytes.
+                    let mut adapter_applied = true;
+                    for plugin in operation
+                        .plan
+                        .external()
+                        .iter()
+                        .filter(|i| i.effect_id() == "agent-connection-native-routing-adapter")
+                    {
+                        hiroute_application::agent_connection::settings_native_plugin_file_for_operation(
+                            &operation, plugin,
+                        ).map_err(super::map_port)?;
+                        adapter_applied &= hiroute_integrations::native_plugin_is_applied(
+                            &self.artifacts,
+                            &operation.operation_id,
+                            plugin,
+                        )
+                        .map_err(super::map_port)?;
+                    }
+                    model_applied && adapter_applied
                 } else if class == SettingsAgentClass::Hermes {
                     self.hermes_operation_files_applied(&operation, intent)
                         .map_err(super::map_port)?

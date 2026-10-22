@@ -227,6 +227,8 @@ pub enum ExecutionFactV1 {
     },
     AgentTurnFinished {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        history_membership: Option<hiroute_domain::HistoryMembershipV1>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         opening_cause: Option<hiroute_domain::AgentTurnOpeningCauseV1>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch_execution: Option<hiroute_domain::BranchExecutionV1>,
@@ -248,6 +250,8 @@ pub enum ExecutionFactV1 {
         last_request_id: Option<String>,
     },
     BranchAssessmentRecorded {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        history_membership: Option<hiroute_domain::HistoryMembershipV1>,
         segment_id: String,
         plan_id: String,
         plan_revision: u64,

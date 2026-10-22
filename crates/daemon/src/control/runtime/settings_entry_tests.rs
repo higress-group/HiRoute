@@ -1145,6 +1145,7 @@ fn record_attributed_session(
     };
     let request_id = LogicalRequestId::parse(format!("request-{suffix}")).unwrap();
     let fact = ExecutionFactV1::AgentTurnFinished {
+        history_membership: None,
         opening_cause: Some(AgentTurnOpeningCauseV1::NoComparableHistory),
         branch_execution: None,
         agent_turn_id: format!("agent-turn-{suffix}"),

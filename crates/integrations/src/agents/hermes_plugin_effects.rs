@@ -1,4 +1,4 @@
-//! Ownership and rollback for the two dependency-free native plugin resources.
+//! Ownership and rollback for dependency-free bundled native plugin resources.
 use super::native_effects::replay;
 use hiroute_domain::{
     CanonicalDigest, ExternalEffectIntentV1, NativeAgentArtifactPort, OperationId, OwnedEffectV1,
@@ -10,6 +10,14 @@ use zeroize::Zeroizing;
 pub const HERMES_PLUGIN_MODULE: &str = include_str!("../../../../assets/agents/hermes/__init__.py");
 pub const HERMES_PLUGIN_MANIFEST: &str =
     include_str!("../../../../assets/agents/hermes/plugin.yaml");
+
+fn restore_schema(intent: &ExternalEffectIntentV1) -> &'static str {
+    if intent.effect_id() == "agent-connection-native-routing-adapter" {
+        "hiroute.native-plugin-restore/v1"
+    } else {
+        "hiroute.hermes-plugin-restore/v1"
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -38,13 +46,13 @@ fn load(
     };
     let restore: Restore =
         serde_json::from_slice(&bytes).map_err(|_| invalid("hermes.plugin.restore.record"))?;
-    if restore.schema != "hiroute.hermes-plugin-restore/v1" {
+    if restore.schema != restore_schema(intent) {
         return Err(invalid("hermes.plugin.restore.record"));
     }
     Ok(restore)
 }
 
-pub fn validate_hermes_plugin_configuration(
+pub fn validate_native_plugin_configuration(
     port: &dyn NativeAgentArtifactPort,
     target: &str,
     content: &[u8],
@@ -65,7 +73,7 @@ pub fn validate_hermes_plugin_configuration(
     Ok(())
 }
 
-pub fn validate_hermes_plugin_restoration(
+pub fn validate_native_plugin_restoration(
     port: &dyn NativeAgentArtifactPort,
     target: &str,
     operation: &OperationId,
@@ -84,7 +92,7 @@ pub fn validate_hermes_plugin_restoration(
     Ok(())
 }
 
-pub fn hermes_plugin_is_applied(
+pub fn native_plugin_is_applied(
     port: &dyn NativeAgentArtifactPort,
     operation: &OperationId,
     intent: &ExternalEffectIntentV1,
@@ -97,7 +105,7 @@ pub fn hermes_plugin_is_applied(
         == Some(restore.content_digest))
 }
 
-pub fn stage_hermes_plugin_configuration(
+pub fn stage_native_plugin_configuration(
     port: &dyn NativeAgentArtifactPort,
     operation: &OperationId,
     intent: &ExternalEffectIntentV1,
@@ -108,7 +116,7 @@ pub fn stage_hermes_plugin_configuration(
     if let Some(effect) = replay(port, operation, intent)? {
         return Ok(effect);
     }
-    validate_hermes_plugin_configuration(port, intent.target(), content, previous)?;
+    validate_native_plugin_configuration(port, intent.target(), content, previous)?;
     let current = port.read_native_target(intent.target())?;
     if CanonicalDigest::of_bytes(current.as_deref().map_or(&[], Vec::as_slice)) != *expected_content
     {
@@ -118,7 +126,7 @@ pub fn stage_hermes_plugin_configuration(
         .map(|(id, original)| load(port, id, original))
         .transpose()?;
     let restore = Restore {
-        schema: "hiroute.hermes-plugin-restore/v1".into(),
+        schema: restore_schema(intent).into(),
         borrowed: previous_restore
             .as_ref()
             .map_or(current.is_some(), |p| p.borrowed),
@@ -147,7 +155,7 @@ pub fn stage_hermes_plugin_configuration(
     port.stage_native_skill_target(operation, intent, Some(content), lineage.as_ref())
 }
 
-pub fn stage_hermes_plugin_restoration(
+pub fn stage_native_plugin_restoration(
     port: &dyn NativeAgentArtifactPort,
     operation: &OperationId,
     intent: &ExternalEffectIntentV1,
@@ -161,7 +169,7 @@ pub fn stage_hermes_plugin_restoration(
     if let Some(effect) = replay(port, operation, intent)? {
         return Ok(effect);
     }
-    validate_hermes_plugin_restoration(port, intent.target(), original_operation, original)?;
+    validate_native_plugin_restoration(port, intent.target(), original_operation, original)?;
     let restore = load(port, original_operation, original)?;
     let current = port.read_native_target(intent.target())?;
     if CanonicalDigest::of_bytes(current.as_deref().map_or(&[], Vec::as_slice)) != *expected_content
