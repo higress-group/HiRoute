@@ -62,6 +62,29 @@ origin. Actual child/fork session identity stays separate from parent/cache affi
 Fresh same-session A/B must still classify, capture and evaluate actual A after
 lookup failure, saturation, compaction and restart.
 
+In OpenCode 1.19.3, failed native compaction can leave summary work pending. The
+first ordinary input can trigger only the summary retry, leaving that input's main
+task unexecuted. Preserve this limitation even when a later new A/B succeeds.
+The verified recovery conditions are a new independent A/B after that retry, or
+a successful explicit user ACP `/compact` retry followed by a new independent
+A/B. Both require the additional summary request; summaries remain auxiliary and
+must not acquire main-task capture. Conditional recovery does not establish
+unconditional delivery of the first input.
+
+OpenCode 1.19.3 background subagents require the explicit experimental opt-in
+`OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`. Without it, the native task gate
+can refuse before child creation. Scope the flag to the selected isolated ACP
+process and report flag-enabled acceptance separately from default support.
+
+Cold continuation acceptance resumes the same owned session in a new native
+process without `chat.message` prewarming. The exact OpenCode 1.19.3 installed
+legacy JavaScript SDK forwards `auto: true` in `session.summarize` although its
+legacy types omit that field. Bind this version-specific engine path to the exact
+session/project and actually advertised provider/model. Require auxiliary-summary
+exclusion, typed continuation, actual completed output capture and subsequent
+independent A/B. Keep its evidence separate from ordinary CLI automatic pressure
+and portable typed SDK support.
+
 The Node hook regressions are component evidence. Native acceptance additionally
 requires the actual installed loader, both transports, actual model-group changes,
 exact assessment membership, tools/children, compaction/restarts, injected faults
