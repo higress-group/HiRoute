@@ -233,6 +233,25 @@ try {
  assert.equal(await evaluate(client,`document.querySelectorAll('.routing-ticks .failed').length`),2,'actual request failures retain failed ticks');
  assert.ok(await evaluate(client,`document.querySelectorAll('.routing-request.failed').length>0`),'actual request failures retain failed detail rows');
  results.push({id:'timeline.actual-request-outcomes',status:'passed'});
+ await open('lang=en&view=timeline&absorbed-turn=1');
+ await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
+ await click('.routing-turn','Turn 2');
+ await waitFor(client,`document.querySelectorAll('.routing-turn').length===1`);
+ assert.equal(await evaluate(client,`document.querySelector('.routing-turn-detail').textContent.includes('Requests (2)')`),true,'selection follows the completed opening turn');
+ assert.equal(await evaluate(client,`document.querySelector('.routing-tile:last-child strong').textContent`),'1','the absorbed row is not counted as another Agent turn');
+ assert.equal(await evaluate(client,`${timelineReadsExpr}>1 && trialTrace.filter(x=>x.command==='observation_read'&&x.payload.request.intent.view==='routing_timeline').every((x,i)=>i===0||x.payload.request.intent.query.after_watermark!==null)`),true,'normal completion needs no failed read or full reload');
+ await shot('timeline-completion-removes-provisional-row-en-755');
+ results.push({id:'timeline.completion-removes-provisional-row-and-preserves-selection',status:'passed'});
+ for(const lang of ['en','zh']) {
+  await open(`lang=${lang}&view=timeline&partial-cost=1`);
+  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
+  const subtotal=await evaluate(client,`document.querySelector('.routing-tile').textContent`);
+  assert.ok(subtotal.includes('0.0013'),'known request amounts survive another request with unknown amount');
+  assert.ok(subtotal.includes(lang==='zh'?'另有未知部分':'Plus an unknown portion'),'partial totals retain the gap');
+  assert.ok(subtotal.includes(lang==='zh'?'API 等价估算':'API equivalent estimate'),'reference value is labeled as an estimate');
+  await shot(`timeline-partial-reference-subtotal-${lang}-755`);
+  results.push({id:`timeline.known-reference-subtotal-with-unknown-requests.${lang}`,status:'passed'});
+ }
  await open('lang=en&view=timeline&stale-timeline=1');
  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
  await waitFor(client,`document.querySelectorAll('.routing-turn').length===3`);

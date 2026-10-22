@@ -68,6 +68,15 @@ const homeSuggestions = [
 const timelineRequests = (params.has('polish') ? Array.from({length:Number(params.get('turns')??2)},(_,i)=>i+1) : params.has('stale-timeline') ? [1,2,3] : [1,2]).map(i => ({request_id:`request-${i}`,started_at_ms:Date.now()-10000+i*1000,duration_ms:1500,native_model:i===1?'primary-model':'trial-model',input_tokens:1000,output_tokens:200,cache_read_tokens:990,cache_read_share:0.99,costs:[{model_configuration_id:i===1?'Primary':'Trial',currency:'USD',valuation_kind:'usage_estimate',known_micros:1250,unknown_contributions:i===1?0:1}],outcome:params.get('request-outcome')??'accepted'}));
 let timelinePolls=0; let busyReturned=false;
 const timelineTurn = (i:number,updated=false): TimelineTurn => { const turn: TimelineTurn = {turn_id:`request-${i}`,agent_turn_id:`turn-${i}`,segment_id:`stage-${i}`,started_at_ms:timelineRequests[i-1].started_at_ms,finished_at_ms:timelineRequests[i-1].started_at_ms+1500,boundary:i===1?'new_user_message':params.get('boundary')==='rebuilt'?'context_rebuilt':'unknown',plan_id:dailyPlan.agent_plan_id,plan_revision:8,branch_id:'smart_saving',model_configuration_id:i===1?'Primary model with a long readable name':'Trial model',reasoning_profile_id:'high',group:i===1?'primary':'regular',selection:{simple_probability:i===1?0.62:0.94,simple_threshold_millis:900,selection_reason:i===1?'complex_task':'simple_task',competence_trigger:null},tool_continuations:1,relays:[],assessment_state:updated?'scored':'pending',assessment:updated?{score:0.4,partial:false,target_from_ordinal:1,target_through_ordinal:1}:null,competence_floor_millis:500,protected_turn_ids:[],status:'completed',requests:[timelineRequests[i-1]],cost_by_model:timelineRequests[i-1].costs,evidence_partial:false,content_digest:`digest-${i}-${updated}`};
+  if(params.has('absorbed-turn')) {
+    turn.agent_turn_id=null;turn.status='running';turn.group='regular';turn.model_configuration_id='Trial model';
+    turn.requests=[{...turn.requests[0],native_model:'trial-model'}];
+  }
+  if(params.has('partial-cost')) {
+    turn.model_configuration_id='Trial model'; turn.group='regular';
+    turn.requests=[{...turn.requests[0],native_model:'trial-model',costs:[{model_configuration_id:'Trial model',currency:'USD',valuation_kind:'api_equivalent',known_micros:i===1?null:1250,unknown_contributions:i===1?1:0}]}];
+    turn.cost_by_model=turn.requests[0].costs;
+  }
   if(params.has('protection')) {
     const outcome = (['applied','suppressed','retained_unavailable','not_needed','not_considered',null] as const)[(i-1)%6];
     const protectedTurn = outcome==='applied' || outcome==='retained_unavailable';
@@ -128,6 +137,16 @@ mockIPC(async (command, payload: any) => {
       if(params.has('timeline-error') && (window as any).timelineFail!==false) throw {code:'OBSERVATION_UNAVAILABLE'};
       if(params.has('timeline-empty')) return {turns:[],watermark:'empty',complete:true};
       timelinePolls++;
+      if(params.has('absorbed-turn')) {
+        if(timelinePolls===1)return {turns:[timelineTurn(1),timelineTurn(2)],watermark:'watermark-1',complete:true};
+        if(timelinePolls===2) {
+          const turn=timelineTurn(1,true);turn.agent_turn_id='closed-turn';turn.status='completed';
+          turn.requests=[...timelineTurn(1).requests,...timelineTurn(2).requests];
+          turn.cost_by_model=turn.requests.flatMap(request=>request.costs);turn.content_digest='closed-with-two-requests';
+          return {turns:[turn],watermark:'watermark-2',complete:true};
+        }
+        return {turns:[],watermark:`watermark-${timelinePolls}`,complete:true};
+      }
       if(params.has('polish')) {
         const indices=query.after_watermark==null?timelineRequests.map((_,i)=>i+1):pendingTimelineTurns;
         const turns=indices.map(i=>timelineTurn(i));pendingTimelineTurns=[];
