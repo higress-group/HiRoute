@@ -445,89 +445,115 @@ const FAILED_STREAM: &[u8] = b"event: response.failed\ndata: {\"type\":\"respons
 #[test]
 fn streaming_failure_after_delivered_body_stays_failed_and_retains_usage() {
     use std::io::Read;
-    let early = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"failed-stream\",\"model\":\"runtime-native\"}}\n\n";
-    let first = NativeProvider::start(vec![ProviderReply::StreamDrip {
-        status: 200,
-        chunks: vec![early.to_vec(), FAILED_STREAM.to_vec()],
-        interval: Duration::from_secs(1),
-    }]);
-    let fallback = NativeProvider::start(vec![ProviderReply::StreamComplete {
-        status: 200,
-        body: RESPONSES_STREAM_OK,
-    }]);
-    let fixture = RuntimeFixture::launch_classified_with_observation(
-        &[&first, &fallback],
-        2,
-        ObservationFaults::healthy(),
-    );
-    let mut stream = open_request(
-        fixture.address,
-        "POST",
-        "/v1/responses",
-        &[("X-HiRoute-Token", "runtime-token")],
-        br#"{"model":"runtime-model","input":"hello","stream":true}"#,
-    );
-    stream
-        .set_read_timeout(Some(Duration::from_millis(800)))
-        .unwrap();
-    let mut received = Vec::new();
-    let mut chunk = [0u8; 4096];
-    // Native model identifiers are rewritten to the served alias. Match the
-    // delivered event, not the provider's pre-projection JSON bytes.
-    let first_body_marker = b"event: response.created\n";
-    while !received
-        .windows(first_body_marker.len())
-        .any(|part| part == first_body_marker)
-    {
-        let count = stream
-            .read(&mut chunk)
-            .expect("first body must be delivered before failure");
-        assert!(count > 0);
-        received.extend_from_slice(&chunk[..count]);
-    }
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    stream.read_to_end(&mut received).unwrap();
-    assert!(String::from_utf8_lossy(&received).contains("response.failed"));
-    assert_eq!(first.calls(), 1);
-    assert_eq!(
-        fallback.calls(),
-        0,
-        "body delivery closes transparent relay"
-    );
-    let facts = wait_execution_facts(&fixture, 1);
-    assert!(
-        facts
-            .iter()
-            .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
-                == Some("agent_turn_finished")
-                && row.pointer("/fact/status").and_then(|v| v.as_str()) == Some("failed")),
-        "a delivered model failure must not complete the Agent turn: {facts:?}"
-    );
-    for (kind, outcome) in [
-        ("request_finished", "failed"),
-        ("attempt_finished", "rejected"),
+    const INCOMPLETE: &[u8] = br#"event: response.incomplete
+data: {"type":"response.incomplete","response":{"id":"failed-stream","model":"runtime-native","status":"incomplete","output":[],"incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":7,"output_tokens":2}}}
+
+"#;
+    for (event, terminal) in [
+        ("response.failed", FAILED_STREAM),
+        ("response.incomplete", INCOMPLETE),
     ] {
+        let early = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"failed-stream\",\"model\":\"runtime-native\"}}\n\n";
+        let first = NativeProvider::start(vec![ProviderReply::StreamDrip {
+            status: 200,
+            chunks: vec![early.to_vec(), terminal.to_vec()],
+            interval: Duration::from_secs(1),
+        }]);
+        let fallback = NativeProvider::start(vec![ProviderReply::StreamComplete {
+            status: 200,
+            body: RESPONSES_STREAM_OK,
+        }]);
+        let fixture = RuntimeFixture::launch_classified_with_observation(
+            &[&first, &fallback],
+            2,
+            ObservationFaults::healthy(),
+        );
+        let mut stream = open_request(
+            fixture.address,
+            "POST",
+            "/v1/responses",
+            &[("X-HiRoute-Token", "runtime-token")],
+            br#"{"model":"runtime-model","input":"hello","stream":true}"#,
+        );
+        stream
+            .set_read_timeout(Some(Duration::from_millis(800)))
+            .unwrap();
+        let mut received = Vec::new();
+        let mut chunk = [0u8; 4096];
+        // Native model identifiers are rewritten to the served alias. Match the
+        // delivered event, not the provider's pre-projection JSON bytes.
+        let first_body_marker = b"event: response.created\n";
+        while !received
+            .windows(first_body_marker.len())
+            .any(|part| part == first_body_marker)
+        {
+            let count = stream
+                .read(&mut chunk)
+                .expect("first body must be delivered before failure");
+            assert!(count > 0);
+            received.extend_from_slice(&chunk[..count]);
+        }
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        stream.read_to_end(&mut received).unwrap();
+        assert!(String::from_utf8_lossy(&received).contains(event));
+        assert_eq!(first.calls(), 1);
+        assert_eq!(
+            fallback.calls(),
+            0,
+            "body delivery closes transparent relay"
+        );
+        let facts = wait_execution_facts(&fixture, 1);
         assert!(
             facts
                 .iter()
-                .any(
-                    |row| row.pointer("/fact/kind").and_then(|v| v.as_str()) == Some(kind)
-                        && row.pointer("/fact/outcome").and_then(|v| v.as_str()) == Some(outcome)
-                ),
-            "transport completion must retain model failure: {facts:?}"
+                .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                    == Some("agent_turn_finished")
+                    && row.pointer("/fact/status").and_then(|v| v.as_str()) == Some("failed")),
+            "a delivered model failure must not complete the Agent turn: {facts:?}"
         );
-    }
-    assert!(
-        facts
+        for (kind, outcome) in [
+            ("request_finished", "failed"),
+            ("attempt_finished", "accepted"),
+        ] {
+            assert!(
+                facts
+                    .iter()
+                    .any(
+                        |row| row.pointer("/fact/kind").and_then(|v| v.as_str()) == Some(kind)
+                            && row.pointer("/fact/outcome").and_then(|v| v.as_str())
+                                == Some(outcome)
+                    ),
+                "transport completion must retain model failure: {facts:?}"
+            );
+        }
+        assert!(
+            facts
+                .iter()
+                .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                    == Some("usage_and_cache")
+                    && row.pointer("/fact/input_tokens").and_then(|v| v.as_u64()) == Some(7)
+                    && row.pointer("/fact/output_tokens").and_then(|v| v.as_u64()) == Some(2)),
+            "failed stream must retain reported usage: {facts:?}"
+        );
+        let attempt = facts
             .iter()
-            .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
-                == Some("usage_and_cache")
-                && row.pointer("/fact/input_tokens").and_then(|v| v.as_u64()) == Some(7)
-                && row.pointer("/fact/output_tokens").and_then(|v| v.as_u64()) == Some(2)),
-        "failed stream must retain reported usage: {facts:?}"
-    );
+            .find(|row| row["fact"]["kind"] == "attempt_finished")
+            .unwrap();
+        assert_eq!(attempt["fact"]["error_class"], "provider_rejected");
+        assert_eq!(attempt["fact"]["retryable"], false);
+        assert_eq!(attempt["fact"]["disposition"], "accept");
+        assert_eq!(
+            attempt["fact"]["provider_model_event"],
+            event.replace('.', "_")
+        );
+        let request = facts
+            .iter()
+            .find(|row| row["fact"]["kind"] == "request_finished")
+            .unwrap();
+        assert_eq!(request["fact"]["accepted_attempt_ordinal"], 1);
+    }
 }
 
 #[test]
