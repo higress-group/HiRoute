@@ -38,6 +38,7 @@ pub(super) struct HistoryInput<'a> {
     pub(super) request: &'a model_ir::ModelRequestIRV1,
     pub(super) replay: &'a ReplayStore,
     pub(super) current_input: Option<&'a [model_ir::ContentPart]>,
+    pub(super) current_input_index: Option<usize>,
 }
 
 impl ProductionGatewayRuntime {
@@ -60,6 +61,7 @@ impl ProductionGatewayRuntime {
                 request,
                 replay,
                 current_input: None,
+                current_input_index: None,
             },
         )
     }
@@ -76,6 +78,7 @@ impl ProductionGatewayRuntime {
             request,
             replay,
             current_input,
+            current_input_index,
         } = input;
         let Some(capture) = capture else {
             return Ok(DecisionHistory::detached());
@@ -100,7 +103,7 @@ impl ProductionGatewayRuntime {
                 if capture.unavailable_input {
                     analyzed.mark_current_input_unavailable();
                 } else if let Some(parts) = current_input {
-                    analyzed.select_current_input(parts, replay)?;
+                    analyzed.select_current_input(parts, current_input_index, request, replay)?;
                 }
                 if user_origin_unverified {
                     analyzed.mark_user_origin_unverified();

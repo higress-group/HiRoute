@@ -40,6 +40,9 @@ pub(super) struct RoutingFacts {
     pub(super) track: bool,
     pub(super) native: NativeCheckpoint,
     pub(super) root: Option<String>,
+    /// Coherent native identity claims disagree. Missing or malformed optional
+    /// enrichment alone does not invalidate an independently usable identity.
+    pub(super) identity_conflict: bool,
 }
 
 impl Default for RoutingFacts {
@@ -48,6 +51,7 @@ impl Default for RoutingFacts {
             track: true,
             native: NativeCheckpoint::default(),
             root: None,
+            identity_conflict: false,
         }
     }
 }

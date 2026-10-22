@@ -30,6 +30,22 @@ enum Identity {
 }
 
 impl ContextIdentityFacts {
+    fn apply_routing(&mut self, mut routing: super::routing::RoutingFacts) {
+        if routing.identity_conflict {
+            self.identity = Identity::RequestScoped;
+            routing.root = None;
+            routing.native = super::routing::NativeCheckpoint {
+                user_origin: if routing.track {
+                    super::routing::NativeUserOrigin::Observed
+                } else {
+                    super::routing::NativeUserOrigin::ExistingTurn
+                },
+                ..Default::default()
+            };
+        }
+        self.routing = routing;
+    }
+
     pub(crate) fn requires_captured_input(&self) -> bool {
         self.routing.native.user_origin == super::routing::NativeUserOrigin::ExistingTurn
     }
@@ -135,7 +151,7 @@ pub(crate) fn identity_facts(
         hold_key,
         observation_key,
     );
-    result.routing = super::routing::facts(
+    let routing = super::routing::facts(
         &result,
         headers,
         document,
@@ -144,6 +160,7 @@ pub(crate) fn identity_facts(
             .map(|run| run.harness_id.as_str()),
         authorized.is_hermes_consumer(),
     );
+    result.apply_routing(routing);
     result
 }
 

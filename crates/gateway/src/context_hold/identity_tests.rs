@@ -6,6 +6,50 @@ use crate::server::core_runtime::model_ir::{
 };
 
 #[test]
+fn conflicting_native_identity_loses_association_without_disabling_later_requests() {
+    let mut identity = reliable(
+        "codex_thread_session",
+        vec!["child".into(), "session".into()],
+        false,
+    );
+    identity.apply_routing(super::super::routing::RoutingFacts {
+        identity_conflict: true,
+        root: Some("untrusted-root".into()),
+        native: super::super::routing::NativeCheckpoint {
+            turn: Some([1; 32]),
+            branch_leaf: Some([2; 32]),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    assert_eq!(identity.session_scope(), "request_scoped");
+    assert!(identity.hold_identity().is_none());
+    assert!(identity.observation_identity().is_none());
+    assert!(identity.observed_routing_lane());
+    assert!(!identity.requires_captured_input());
+    assert!(identity.routing.track);
+    assert!(identity.native_checkpoint().turn.is_none());
+    assert!(identity.native_checkpoint().branch_leaf.is_none());
+
+    // Missing optional proof must not invalidate the next independent request.
+    let mut recovered = reliable(
+        "codex_thread_session",
+        vec!["child".into(), "session".into()],
+        false,
+    );
+    recovered.apply_routing(super::super::routing::RoutingFacts {
+        native: super::super::routing::NativeCheckpoint {
+            user_origin: NativeUserOrigin::Observed,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    assert_eq!(recovered.session_scope(), "conversation");
+    assert!(recovered.hold_identity().is_some());
+    assert!(recovered.observed_routing_lane());
+}
+
+#[test]
 fn worker_continue_keeps_conversation_identity_without_joining_other_tasks() {
     let context = |task: &str, run: &str, native: Option<&str>| {
         crate::server::request_plan::VerifiedRunObservationContext {

@@ -37,8 +37,32 @@ impl AnalyzedRequest {
     pub(crate) fn select_current_input(
         &mut self,
         parts: &[ContentPart],
+        index: Option<usize>,
+        request: &ModelRequestIRV1,
         replay: &ReplayStore,
     ) -> Result<(), AgentTurnHistoryError> {
+        if let Some(index) = index {
+            // A native codec may locate a non-User input event. The projection
+            // describes that actual position, never an inserted portable User.
+            if index >= self.message_count
+                || self
+                    .turns
+                    .last()
+                    .is_some_and(|turn| turn.user_index > index)
+            {
+                return Err(AgentTurnHistoryError::Resource);
+            }
+            if self.turns.last().is_none_or(|turn| turn.user_index < index) {
+                if let Some(previous) = self.turns.last_mut() {
+                    previous.user.clear();
+                }
+                self.turns.push(AnalyzedTurn {
+                    user_index: index,
+                    user: Vec::new(),
+                });
+            }
+            self.output_after_latest_user = output_after(request, index);
+        }
         let turn = self
             .turns
             .last_mut()
@@ -89,26 +113,9 @@ pub(super) fn analyze_request(
         };
         turns.push(AnalyzedTurn { user_index, user });
     }
-    let output_after_latest_user = user_indices.last().is_some_and(|latest| {
-        request
-            .messages
-            .iter()
-            .enumerate()
-            .skip(latest + 1)
-            .any(|(index, message)| {
-                (message.role == MessageRole::Assistant && !message.content.is_empty())
-                    || message.content.iter().any(|part| {
-                        matches!(
-                            part,
-                            ContentPart::ToolCall { .. }
-                                | ContentPart::ToolResult { .. }
-                                | ContentPart::ProviderState { .. }
-                        )
-                    })
-                    || request.responses_search_history.contains_key(&index)
-                    || request.responses_reasoning_history.contains_key(&index)
-            })
-    });
+    let output_after_latest_user = user_indices
+        .last()
+        .is_some_and(|latest| output_after(request, *latest));
     Ok(AnalyzedRequest {
         measured: false,
         branch_cursor: (None, None),
@@ -121,6 +128,27 @@ pub(super) fn analyze_request(
         turns,
         tool_results: project_tool_results(request),
     })
+}
+
+fn output_after(request: &ModelRequestIRV1, position: usize) -> bool {
+    request
+        .messages
+        .iter()
+        .enumerate()
+        .skip(position + 1)
+        .any(|(index, message)| {
+            (message.role == MessageRole::Assistant && !message.content.is_empty())
+                || message.content.iter().any(|part| {
+                    matches!(
+                        part,
+                        ContentPart::ToolCall { .. }
+                            | ContentPart::ToolResult { .. }
+                            | ContentPart::ProviderState { .. }
+                    )
+                })
+                || request.responses_search_history.contains_key(&index)
+                || request.responses_reasoning_history.contains_key(&index)
+        })
 }
 
 fn is_real_user(message: &CanonicalMessage) -> bool {

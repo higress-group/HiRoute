@@ -339,6 +339,7 @@ struct Encoder<'a> {
     replay: Option<&'a ReplayStore>,
     valid: bool,
     budget: FingerprintBudget,
+    native_item_offset: usize,
 }
 
 impl<'a> Encoder<'a> {
@@ -350,6 +351,7 @@ impl<'a> Encoder<'a> {
             replay,
             valid: true,
             budget: FingerprintBudget::default(),
+            native_item_offset: 0,
         })
     }
 
@@ -584,12 +586,25 @@ impl<'a> Encoder<'a> {
     ) -> Option<()> {
         self.items(0)?;
         self.tag(b"history-item");
-        if let Some(peer) = request
+        let native_items = request
             .native_body
             .as_ref()
             .and_then(|body| body.get("input"))
-            .and_then(Value::as_array)
-            .and_then(|items| items.get(message_index))
+            .and_then(Value::as_array);
+        // Ingress does not create a canonical position for additional_tools.
+        // Each encoder visits messages in order, so this bounded offset scans
+        // skipped native items once rather than rescanning each prefix.
+        while native_items
+            .and_then(|items| items.get(message_index + self.native_item_offset))
+            .is_some_and(|item| {
+                item.get("type").and_then(Value::as_str) == Some("additional_tools")
+            })
+        {
+            self.items(1)?;
+            self.native_item_offset += 1;
+        }
+        if let Some(peer) = native_items
+            .and_then(|items| items.get(message_index + self.native_item_offset))
             .filter(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
         {
             // The portable placeholder is deliberately empty. It cannot stand

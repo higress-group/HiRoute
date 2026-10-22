@@ -13,6 +13,8 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
 
+#[path = "current_event_tests.rs"]
+mod current_event_tests;
 #[path = "native_tests.rs"]
 mod native_tests;
 #[path = "observed_tests.rs"]
