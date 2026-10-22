@@ -93,27 +93,36 @@ input. Gateway retains observed classification, actual execution history and
 cross-turn evaluation with explicit uncertainty, including for older adapters'
 freshness flags. Source uncertainty does not permanently pin requests to Primary.
 
-When available, `pre_llm_call` records only a bounded expiring task/turn text digest.
-The Chat middleware can send `X-Hermes-Observed-Input` v1 with the exact UTF-8 SHA-256
-and reverse ordinal of its unique single-text user envelope. Gateway validates the
-actual request before selecting that observed input behind native reminders; it
-never asserts human origin or changes execution bytes. Duplicate text, missing
-hooks, unsupported shapes/transports, cache pressure or adapter errors omit the
-hint and keep ordinary routing. The independent optional header leaves the strict
-existing routing-context envelope compatible with old consumers.
+The current middleware emits optional routing-context v2 with the native session,
+whole-turn ID and per-call API request ID when available, plus `observed_batch` input
+semantics. It does not register an input callback or emit `X-Hermes-Observed-Input`.
+The public callback sees clean input before native memory, persistence, voice and
+reminder composition. A unique match can therefore identify an old `continue`
+instead of the decorated current event. Retained v1 text hints are diagnostic
+compatibility inputs only; they cannot select an earlier User or demote later Users.
+All transports retain the complete latest wire User envelope, including every
+content part, with explicit source uncertainty. A trailing reminder can reduce
+intent precision; the adapter does not reconstruct a clean original prompt.
 
-The cache is process-local. After a client restart, absent original callback data
-cannot recover an old task's intent; the next public input callback can repopulate
-it without requiring a new session. Gateway restart discards capture, so model/tool
-output preceding its join remains partial even when original intent is selected.
-A complete new A followed by B can restore full stage evaluation and protection on
-the same model. Async notifications still lack a reliable origin-turn relationship;
-continued routing is not evidence of accurate scoring or callback attribution.
+Optional lineage failure preserves the already prepared purpose/session/turn/request
+context and authorization. Older SDKs without `register_hook` still use ordinary
+request middleware. API request IDs correlate calls; they do not deduplicate
+execution or identify a logical task. Child sessions stay independent, and child
+output consumed by a parent is external context rather than parent execution.
+Gateway restart discards capture, so older missing model/tool output remains
+unavailable. Complete new A followed by B can recover stage evaluation and
+protection in the same conversation. Async notifications still lack a reliable
+origin-turn relationship; successful routing does not establish accurate scoring.
 
 Optional compression ancestry comes from the selected profile's read-only native
-SessionDB interfaces. Missing or unsupported evidence leaves a continuation gap;
-it never blocks the model call. Observation owns the verified relation and scoped
-analysis, preserving each physical session and its receipts.
+SessionDB interfaces. At most 32 ancestor rows are read; the adapter validates
+compression closure and the unique live child, rejecting cycles and ordinary forks.
+Hermes 0.20's unbounded lineage enumerator is never invoked. Four profile workers,
+64 pending sessions per worker, 128 cached proofs per worker and the bounded request
+wait limit the optional work. Missing, locked, replaced or unsupported evidence
+leaves a continuation gap; it never blocks the model call. Valid lineage supplies
+only candidate continuity: actual-history inheritance still requires the Gateway's
+captured exact boundary. Observation preserves each physical session and receipt.
 
 Source import is separate from model connection. The shared V2 scan/prepare flow
 groups equal native scope/provider/address/protocol/authentication branches, then

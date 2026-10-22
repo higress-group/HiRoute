@@ -46,7 +46,7 @@ class HermesAdapterTests(unittest.TestCase):
                 self.assertEqual(result["request"]["extra_headers"], {
                     "X-Preserve": "yes", "X-Hermes-Session-Id": "native-session",
                     "X-HiRoute-Token": "synthetic-local-token", "X-HiRoute-Agent": "hermes",
-                    "X-HiRoute-Routing-Context": json.dumps({"version":1,"agent":"hermes","session_id":"native-session","purpose":"main","continuation_requires_existing_turn":True}, separators=(",", ":"))})
+                    "X-HiRoute-Routing-Context": json.dumps({"version":2,"agent":"hermes","session_id":"native-session","purpose":"main","input":{"kind":"observed_batch"}}, separators=(",", ":"))})
                 self.assertEqual(request["extra_headers"]["x-hermes-session-id"], "old")
                 self.assertEqual(result["source"], "hiroute")
 

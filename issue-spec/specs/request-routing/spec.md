@@ -459,11 +459,15 @@ continuation constraint do not prove human origin. Such requests are observed,
 including on supported Hermes 0.20, rather than globally unavailable. Compression
 lineage remains separate evidence. No adaptation may fabricate human provenance
 or claim accurate task association merely because output and routing succeed.
-An optional Hermes observed-input selector MAY bind exact single-text content to
-its actual request position using a versioned reverse-user ordinal and UTF-8
-SHA-256. It SHALL remain observed input. Ambiguous, missing, expired, malformed or
-unsupported selectors SHALL retain ordinary routing. Selecting earlier input on a
-cold join SHALL keep uncaptured subsequent model/tool execution partial.
+Current Hermes adapters SHALL preserve observed-batch semantics and SHALL NOT emit
+clean-text input selectors. Retained observed-input v1 digests and reverse ordinals
+are non-authoritative compatibility hints: a unique old match cannot identify a
+decorated current input, select an earlier User or demote later Users. Without a
+validated final native message-instance descriptor, routing SHALL retain the
+complete latest wire User envelope, including multipart content and reminders,
+with explicit source uncertainty. Missing optional hooks or lineage SHALL preserve
+normal authorization, classification, actual capture and cross-turn evaluation;
+uncaptured old execution remains unavailable.
 
 Sustained availability and scoring accuracy SHALL be recorded as separate acceptance
 results. A-to-B acceptance requires valid decisions on both, captured A and B,

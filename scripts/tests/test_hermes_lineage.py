@@ -1,10 +1,14 @@
 """Bounded adapter component checks; real rotating Hermes acceptance is separate."""
 import json
 import pathlib
+import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
+from collections import OrderedDict
+from unittest.mock import patch
 from test_hermes_plugin import plugin
 
 
@@ -204,6 +208,67 @@ class LineageTests(unittest.TestCase):
         with manager.lock:
             self.assertEqual(manager.cache["b"]["ids"], ["b"])
             self.assertEqual(manager.cache["b"]["invalid"], [["a", "b"]])
+
+    def test_cyclic_or_replaced_state_cannot_reuse_a_cached_compression_root(self):
+        for fault in ("cycle", "replacement"):
+            with self.subTest(fault=fault):
+                rows = {"a": {"ended_at": 1, "end_reason": "compression"},
+                        "b": {"parent_session_id": "a"}}
+                manager = self.manager(NativeReader(rows, ["a", "b"], "b"))
+                self.warm(manager, "b")
+                if fault == "cycle":
+                    rows["a"]["parent_session_id"] = "b"
+                    # A cycle cannot produce a new cache proof. Expiry of the
+                    # old dated proof is unchanged; it is not a fresh success.
+                    with manager.lock:
+                        manager.cache.clear()
+                else:
+                    replacement = manager.path.with_name("replacement.db")
+                    replacement.touch()
+                    replacement.replace(manager.path)
+                manager._read("b", None)
+                with manager.lock:
+                    self.assertNotIn("b", manager.cache)
+
+    def test_pending_and_cache_capacity_recover_without_unbounded_wait_or_spawn(self):
+        rows = {"s" + str(i): {} for i in range(200)}
+        manager = self.manager(NativeReader(rows, list(rows)))
+        with patch.object(manager.wake, "set"):
+            for session in rows:
+                manager.schedule(session)
+        with manager.lock:
+            self.assertEqual(len(manager.pending), 64)
+            manager.pending.clear()
+        for session in rows:
+            manager._read(session, None)
+        with manager.lock:
+            self.assertEqual(len(manager.cache), 128)
+            self.assertNotIn("s0", manager.cache)
+        manager._read("s0", None)
+        with manager.lock:
+            self.assertIn("s0", manager.cache)
+            self.assertEqual(len(manager.cache), 128)
+
+    def test_four_busy_profile_workers_refuse_extra_work_then_recover_after_idle_retirement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "state.db"
+            path.touch()
+            module = types.ModuleType("hermes_constants")
+            module.get_hermes_home = lambda: directory
+            state = types.ModuleType("hermes_state")
+            state.SessionDB = object
+            busy = [types.SimpleNamespace(retire_idle=lambda: False) for _ in range(4)]
+            managers = OrderedDict((index, value) for index, value in enumerate(busy))
+            replacement = types.SimpleNamespace(header=lambda session: "bounded-proof:" + session)
+            with patch.dict(sys.modules, {"hermes_constants": module, "hermes_state": state}), \
+                    patch.object(plugin, "_MANAGERS", managers), \
+                    patch.object(plugin, "_LineageReader", return_value=replacement) as spawn:
+                self.assertIsNone(plugin._lineage_header("current"))
+                spawn.assert_not_called()
+                busy[0].retire_idle = lambda: True
+                self.assertEqual(plugin._lineage_header("current"), "bounded-proof:current")
+                self.assertEqual(len(managers), 4)
+                spawn.assert_called_once()
 
 
 if __name__ == "__main__":

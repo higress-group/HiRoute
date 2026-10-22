@@ -41,13 +41,15 @@ def registered(native=None):
 class TurnInputTests(unittest.TestCase):
     def test_public_hook_availability_never_bootstraps_a_real_or_synthetic_user(self):
         native = registered()
+        self.assertEqual(native.hooks, {})
         for content in ("actual real user", "[ASYNC DELEGATION BATCH COMPLETE] native child results",
                         "an unmarked generated message", [{"type": "text", "text": "actual user"}]):
             with self.subTest(content=content):
                 payload = {"messages": [{"role": "user", "content": content}]}
                 result = native.middleware["llm_request"](payload, **context())
                 metadata = json.loads(result["request"]["extra_headers"]["X-HiRoute-Routing-Context"])
-                self.assertIs(metadata["continuation_requires_existing_turn"], True)
+                self.assertEqual(metadata["input"], {"kind": "observed_batch", "event_id": "turn"})
+                self.assertEqual(metadata["version"], 2)
                 self.assertEqual(metadata["turn_id"], "turn")
                 self.assertIs(result["request"]["messages"], payload["messages"])
 
@@ -79,7 +81,7 @@ class TurnInputTests(unittest.TestCase):
                 self.assertEqual(headers["X-Hermes-Compression-Lineage"], "existing-native-lineage")
                 self.assertNotIn("private original input", json.dumps(headers))
                 metadata = json.loads(headers["X-HiRoute-Routing-Context"])
-                self.assertIs(metadata["continuation_requires_existing_turn"], True)
+                self.assertEqual(metadata["input"]["kind"], "observed_batch")
 
     def test_concurrent_native_branches_preserve_identity_without_new_user_claims(self):
         adapter = registered().middleware["llm_request"]
@@ -94,7 +96,7 @@ class TurnInputTests(unittest.TestCase):
         with patch.object(plugin, "_lineage_header", return_value=None), ThreadPoolExecutor(max_workers=4) as pool:
             results = list(pool.map(invoke, range(8)))
         self.assertEqual(len({session for session, _ in results}), 8)
-        self.assertTrue(all(metadata["continuation_requires_existing_turn"] for _, metadata in results))
+        self.assertTrue(all(metadata["input"]["kind"] == "observed_batch" for _, metadata in results))
 
 
 if __name__ == "__main__":

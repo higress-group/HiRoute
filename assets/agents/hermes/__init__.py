@@ -1,7 +1,6 @@
 """HiRoute's native Hermes request adapter. No tools or outbound clients."""
 from collections.abc import Mapping
 from collections import OrderedDict
-from hashlib import sha256
 from pathlib import Path
 import json
 import threading
@@ -281,98 +280,7 @@ def _token(value):
     )
 
 
-def _single_text(content):
-    if isinstance(content, str):
-        return content
-    if (isinstance(content, list) and len(content) == 1
-            and isinstance(content[0], dict)
-            and content[0].get("type") in ("text", "input_text")
-            and isinstance(content[0].get("text"), str)):
-        return content[0]["text"]
-    return None
-
-
-def _input_digest(content):
-    text = _single_text(content)
-    if not text or len(text) > 256 * 1024:
-        return None
-    try:
-        raw = text.encode("utf-8")
-    except UnicodeError:
-        return None
-    if len(raw) > 256 * 1024:
-        return None
-    return sha256(raw).hexdigest(), len(raw)
-
-
-class _ObservedInputs:
-    """Bound original observed turn content; this never establishes human origin.
-
-    Public pre_llm_call runs before native compression/reminder insertion on
-    Hermes 0.20. Missing hooks or duplicate text simply omit this optional hint.
-    Keep only digests, not prompts, and never wait for another request's lock.
-    """
-    def __init__(self, clock=time.monotonic):
-        self.clock, self.rows, self.lock = clock, OrderedDict(), threading.Lock()
-
-    def remember(self, *, task_id=None, turn_id=None, user_message=None, **_):
-        digest = _input_digest(user_message)
-        if not _identity(task_id) or not _identity(turn_id) or digest is None:
-            return
-        if not self.lock.acquire(blocking=False):
-            return
-        try:
-            key, now = (task_id, turn_id), self.clock()
-            previous = self.rows.get(key)
-            if previous and now - previous[0] > 3600:
-                previous = None
-            value = digest[0] if previous is None or previous[1] == digest[0] else None
-            self.rows[key] = (now, value)
-            self.rows.move_to_end(key)
-            while len(self.rows) > 128:
-                self.rows.popitem(last=False)
-        finally:
-            self.lock.release()
-
-    def hint(self, request, *, task_id=None, turn_id=None, api_mode=None, **_):
-        if (api_mode != "chat_completions" or not _identity(task_id)
-                or not _identity(turn_id) or not self.lock.acquire(blocking=False)):
-            return None
-        try:
-            key = (task_id, turn_id)
-            value = self.rows.get(key)
-            if value is None or self.clock() - value[0] > 3600:
-                self.rows.pop(key, None)
-                return None
-            digest = value[1]
-        finally:
-            self.lock.release()
-        messages = request.get("messages")
-        if not digest or not isinstance(messages, list) or len(messages) > 2048:
-            return None
-        users, matches, scanned = 0, [], 0
-        for message in messages:
-            if not isinstance(message, dict):
-                return None
-            if message.get("role") != "user":
-                continue
-            current = _input_digest(message.get("content"))
-            if current is None:
-                return None
-            scanned += current[1]
-            if scanned > 1024 * 1024 or users >= 128:
-                return None
-            if current[0] == digest:
-                matches.append(users)
-            users += 1
-        if len(matches) != 1:
-            return None
-        return json.dumps({"version": 1, "kind": "observed_turn_input",
-                           "reverse_user_index": users - 1 - matches[0],
-                           "text_sha256": digest}, separators=(",", ":"))
-
-
-def _adapter(config, observed_inputs=None):
+def _adapter(config):
     """Read only the host's effective, already selected native configuration."""
     try:
         entry = config["plugins"]["entries"]["hiroute"]
@@ -413,24 +321,23 @@ def _adapter(config, observed_inputs=None):
         if _identity(session):
             headers["X-Hermes-Session-Id"] = session
             turn = context.get("turn_id")
-            # Hermes 0.20 routes async delegation notifications through the same
-            # public whole-turn hooks as real users. Matching user_message proves
-            # content continuity, not input origin; it cannot bootstrap history.
+            request_id = context.get("api_request_id")
+            # Whole-turn callbacks precede native memory/reminder composition
+            # and also receive async notifications. Only the final observed
+            # batch is available; equal clean text cannot identify its instance.
             headers["X-HiRoute-Routing-Context"] = json.dumps({
-                "version": 1, "agent": "hermes", "session_id": session, "purpose": "main",
+                "version": 2, "agent": "hermes", "session_id": session, "purpose": "main",
                 **({"turn_id": turn} if _identity(turn) else {}),
-                "continuation_requires_existing_turn": True,
+                **({"request_id": request_id} if _identity(request_id) else {}),
+                "input": {"kind": "observed_batch",
+                          **({"event_id": turn} if _identity(turn) else {})},
             }, separators=(",", ":"))
-            lineage = _lineage_header(session)
-            if lineage:
-                headers["X-Hermes-Compression-Lineage"] = lineage
-            if observed_inputs is not None and _identity(turn):
-                try:
-                    hint = observed_inputs.hint(request, **context)
-                    if hint:
-                        headers["X-Hermes-Observed-Input"] = hint
-                except Exception:
-                    pass  # Optional intent matching must not undo route/auth headers.
+            try:
+                lineage = _lineage_header(session)
+                if lineage:
+                    headers["X-Hermes-Compression-Lineage"] = lineage
+            except Exception:
+                pass  # Optional lineage never removes minimal context or auth.
         return {"request": {**request, "extra_headers": headers}, "source": "hiroute"}
 
     return llm_request
@@ -439,13 +346,6 @@ def _adapter(config, observed_inputs=None):
 def register(ctx):
     from hermes_cli.config import load_config_readonly
 
-    observed_inputs = _ObservedInputs()
-    adapter = _adapter(load_config_readonly() or {}, observed_inputs)
+    adapter = _adapter(load_config_readonly() or {})
     if adapter is not None:
         ctx.register_middleware("llm_request", adapter)
-        register_hook = getattr(ctx, "register_hook", None)
-        if callable(register_hook):
-            try:
-                register_hook("pre_llm_call", observed_inputs.remember)
-            except Exception:
-                pass  # Older SDKs keep the complete route without the hint.

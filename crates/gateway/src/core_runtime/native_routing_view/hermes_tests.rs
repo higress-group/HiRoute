@@ -143,3 +143,66 @@ fn legacy_hint_does_not_scan_replay_or_reserve_projection_memory() {
     assert!(view.origin_unverified());
     assert_eq!(tiny.snapshot().unwrap().live, 0);
 }
+
+#[test]
+fn repeated_continue_with_decorated_current_input_and_reminder_keeps_every_user() {
+    let fixture = Fixture::new();
+    for protocol in [
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::Responses,
+        IngressProtocol::Messages,
+    ] {
+        for reminder in [false, true] {
+            let mut messages = vec![
+                json!({"role":"user","content":"continue"}),
+                json!({"role":"assistant","content":"accepted earlier output"}),
+                json!({"role":"user","content":[
+                    {"type":"text","text":"native memory and persistence override"},
+                    {"type":"text","text":"continue"}
+                ]}),
+            ];
+            if reminder {
+                messages.push(json!({"role":"user","content":"native trailing reminder"}));
+            }
+            let body = match protocol {
+                IngressProtocol::Responses => json!({"model":"route","input":messages}),
+                _ => json!({"model":"route","messages":messages,"max_tokens":1024}),
+            };
+            let input = adapters::decode_ingress_request(protocol, &body).unwrap();
+            let original = serde_json::to_value(&input).unwrap();
+            let legacy = headers("continue", if reminder { 2 } else { 1 });
+            let mut current = legacy.clone();
+            current.insert(
+                "x-hiroute-routing-context",
+                json!({"version":2,"agent":"hermes",
+                "session_id":"session","purpose":"main","turn_id":"turn",
+                "input":{"kind":"observed_batch","event_id":"turn"}})
+                .to_string()
+                .parse()
+                .unwrap(),
+            );
+            for headers in [&legacy, &current] {
+                let view =
+                    NativeRoutingView::prepare(headers, &input, &fixture.replay, &fixture.budget);
+                assert!(view.current_input().is_none());
+                assert!(view.current_input_index().is_none());
+                assert!(!view.current_input_unavailable());
+                assert!(view.origin_unverified());
+                assert!(std::ptr::eq(view.request(&input), &input));
+                assert_eq!(
+                    serde_json::to_value(view.request(&input)).unwrap(),
+                    original
+                );
+                assert_eq!(
+                    input
+                        .messages
+                        .iter()
+                        .filter(|m| m.role == MessageRole::User)
+                        .count(),
+                    if reminder { 3 } else { 2 }
+                );
+                assert_eq!(input.messages[2].content.len(), 2);
+            }
+        }
+    }
+}

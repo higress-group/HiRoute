@@ -99,6 +99,13 @@ struct NativeContext {
     continuation_requires_existing_turn: Option<bool>,
 }
 
+fn native_context(value: &str) -> Option<NativeContext> {
+    if !value.trim_start().starts_with('{') {
+        return None;
+    }
+    serde_json::from_str(value).ok()
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NativeUserTurn {
@@ -159,7 +166,7 @@ pub(crate) fn dsh_user_turns(headers: &HeaderMap) -> Option<Result<Vec<NativeUse
         return None;
     }
     let parsed = match single_header(headers, "x-hiroute-routing-context", 4096) {
-        Field::Value(value) => serde_json::from_str::<NativeContext>(&value).ok(),
+        Field::Value(value) => native_context(&value),
         _ => None,
     };
     Some(
@@ -293,10 +300,14 @@ pub(super) fn facts(
         }
     }
     if let Some(result) = v2::routing_facts(headers, agent, native_identity, worker.is_some()) {
-        return result;
+        return if agent == "hermes" && result.track {
+            hermes_root(headers, native_identity, result)
+        } else {
+            result
+        };
     }
     let context = match single_header(headers, "x-hiroute-routing-context", 4096) {
-        Field::Value(value) => serde_json::from_str::<NativeContext>(&value).ok(),
+        Field::Value(value) => native_context(&value),
         Field::Absent if agent == "hermes" && hermes => {
             // Older managed Hermes hooks only enter the selected conversation
             // call site. Its independent auxiliary clients lack this identity.
@@ -411,3 +422,7 @@ fn hermes_root(
     }
     result
 }
+
+#[cfg(test)]
+#[path = "routing/hermes_tests.rs"]
+mod hermes_tests;

@@ -1,5 +1,5 @@
-//! Content binding for observed intent, never proof of human origin or authority.
-use super::{Field, NativeContext, id, single_header};
+//! Bounded legacy hint recognition, never selection of an input instance.
+use super::{Field, id, native_context, single_header};
 use http::HeaderMap;
 use serde::Deserialize;
 
@@ -8,8 +8,8 @@ use serde::Deserialize;
 pub(crate) struct ObservedUserInput {
     version: u8,
     kind: String,
-    pub(crate) reverse_user_index: usize,
-    pub(crate) text_sha256: String,
+    reverse_user_index: usize,
+    text_sha256: String,
 }
 
 pub(crate) fn hermes_observed_input(headers: &HeaderMap) -> Option<ObservedUserInput> {
@@ -21,7 +21,7 @@ pub(crate) fn hermes_observed_input(headers: &HeaderMap) -> Option<ObservedUserI
         _ => return None,
     };
     let context = match single_header(headers, "x-hiroute-routing-context", 4096) {
-        Field::Value(v) => serde_json::from_str::<NativeContext>(&v).ok()?,
+        Field::Value(v) => native_context(&v)?,
         _ => return None,
     };
     if context.version != 1
@@ -33,7 +33,9 @@ pub(crate) fn hermes_observed_input(headers: &HeaderMap) -> Option<ObservedUserI
         return None;
     }
     let hint = match single_header(headers, "x-hermes-observed-input", 512) {
-        Field::Value(v) => serde_json::from_str::<ObservedUserInput>(&v).ok()?,
+        Field::Value(v) if v.trim_start().starts_with('{') => {
+            serde_json::from_str::<ObservedUserInput>(&v).ok()?
+        }
         _ => return None,
     };
     (hint.version == 1

@@ -64,8 +64,11 @@ its native host resolves the caller's existing default profile and its details c
 select another through the same target-read flow before settings become available.
 The common [discovery preference](../../apps/desktop/src/features/agents/discovery.ts)
 remembers explicit targets as hints, with backend revalidation and per-profile failure isolation.
-Its bundled native middleware carries the real
-session into trusted Gateway correlation. The managed provider also uses the same
+Its [native request middleware](../../assets/agents/hermes/__init__.py) carries the real
+session into trusted Gateway correlation and emits observed batch context
+independently from optional bounded read-only compression evidence;
+clean callback text and retained legacy hints cannot select an input instance.
+The managed provider also uses the same
 scoped model grant as its native API key for auxiliary Chat requests; global model
 headers are not a credential carrier. All six supported Agents have independent management and collaboration Skills;
 [shared Skill facts](../../crates/daemon/src/control/runtime/settings_facts/skills.rs)
