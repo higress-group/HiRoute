@@ -22,7 +22,30 @@ const timelineReads=()=>evaluate(client,timelineReadsExpr);
 const setVisibility=state=>evaluate(client,`(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>${JSON.stringify(state)}});document.dispatchEvent(new Event('visibilitychange'));return true;})()`);
 const typeInto=(selector,value)=>evaluate(client,`(()=>{const input=document.querySelector(${JSON.stringify(selector)});if(!input)throw Error('Missing input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
 async function geometry(){return evaluate(client,`(()=>{const nodes=[...document.querySelectorAll('.model-feed-panel,.trust-control,.plan-quality,.trust-suggestion,.modal,.trial-wizard')].filter(e=>e.getClientRects().length);return nodes.map(e=>({class:e.className,width:e.clientWidth,scroll:e.scrollWidth,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right}));})()`);}
+async function timelinePricingChecks() {
+ await open('lang=en&view=timeline&absorbed-turn=1');
+ await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
+ await click('.routing-turn','Turn 2');
+ await waitFor(client,`document.querySelectorAll('.routing-turn').length===1`);
+ assert.equal(await evaluate(client,`document.querySelector('.routing-turn-detail').textContent.includes('Requests (2)')`),true,'selection follows the completed opening turn');
+ assert.equal(await evaluate(client,`document.querySelector('.routing-tile:last-child strong').textContent`),'1','the absorbed row is not counted as another Agent turn');
+ assert.equal(await evaluate(client,`${timelineReadsExpr}>1 && trialTrace.filter(x=>x.command==='observation_read'&&x.payload.request.intent.view==='routing_timeline').every((x,i)=>i===0||x.payload.request.intent.query.after_watermark!==null)`),true,'normal completion needs no failed read or full reload');
+ await shot('timeline-completion-removes-provisional-row-en-755');
+ results.push({id:'timeline.completion-removes-provisional-row-and-preserves-selection',status:'passed'});
+ for(const lang of ['en','zh']) {
+  await open(`lang=${lang}&view=timeline&partial-cost=1`);
+  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
+  const subtotal=await evaluate(client,`document.querySelector('.routing-tile').textContent`);
+  assert.ok(subtotal.includes('0.0013'),'known request amounts survive another request with unknown amount');
+  assert.ok(subtotal.includes(lang==='zh'?'另有未知部分':'Plus an unknown portion'),'partial totals retain the gap');
+  assert.ok(subtotal.includes(lang==='zh'?'API 等价估算':'API equivalent estimate'),'reference value is labeled as an estimate');
+  await shot(`timeline-partial-reference-subtotal-${lang}-755`);
+  results.push({id:`timeline.known-reference-subtotal-with-unknown-requests.${lang}`,status:'passed'});
+ }
+}
 try {
+ if(process.argv.includes('--timeline-pricing')) { await timelinePricingChecks(); }
+ else {
  for(const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',755,600],['en','dark',1200,813],['zh','light',1200,813]]) {
   await open(`lang=${lang}&theme=${theme}&view=feed-home`,width,height);
   await waitFor(client,`!!document.querySelector('.new-model-card')`);
@@ -233,25 +256,7 @@ try {
  assert.equal(await evaluate(client,`document.querySelectorAll('.routing-ticks .failed').length`),2,'actual request failures retain failed ticks');
  assert.ok(await evaluate(client,`document.querySelectorAll('.routing-request.failed').length>0`),'actual request failures retain failed detail rows');
  results.push({id:'timeline.actual-request-outcomes',status:'passed'});
- await open('lang=en&view=timeline&absorbed-turn=1');
- await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
- await click('.routing-turn','Turn 2');
- await waitFor(client,`document.querySelectorAll('.routing-turn').length===1`);
- assert.equal(await evaluate(client,`document.querySelector('.routing-turn-detail').textContent.includes('Requests (2)')`),true,'selection follows the completed opening turn');
- assert.equal(await evaluate(client,`document.querySelector('.routing-tile:last-child strong').textContent`),'1','the absorbed row is not counted as another Agent turn');
- assert.equal(await evaluate(client,`${timelineReadsExpr}>1 && trialTrace.filter(x=>x.command==='observation_read'&&x.payload.request.intent.view==='routing_timeline').every((x,i)=>i===0||x.payload.request.intent.query.after_watermark!==null)`),true,'normal completion needs no failed read or full reload');
- await shot('timeline-completion-removes-provisional-row-en-755');
- results.push({id:'timeline.completion-removes-provisional-row-and-preserves-selection',status:'passed'});
- for(const lang of ['en','zh']) {
-  await open(`lang=${lang}&view=timeline&partial-cost=1`);
-  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
-  const subtotal=await evaluate(client,`document.querySelector('.routing-tile').textContent`);
-  assert.ok(subtotal.includes('0.0013'),'known request amounts survive another request with unknown amount');
-  assert.ok(subtotal.includes(lang==='zh'?'另有未知部分':'Plus an unknown portion'),'partial totals retain the gap');
-  assert.ok(subtotal.includes(lang==='zh'?'API 等价估算':'API equivalent estimate'),'reference value is labeled as an estimate');
-  await shot(`timeline-partial-reference-subtotal-${lang}-755`);
-  results.push({id:`timeline.known-reference-subtotal-with-unknown-requests.${lang}`,status:'passed'});
- }
+ await timelinePricingChecks();
  await open('lang=en&view=timeline&stale-timeline=1');
  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
  await waitFor(client,`document.querySelectorAll('.routing-turn').length===3`);
@@ -394,6 +399,7 @@ try {
   await waitFor(client,`!!document.querySelector('.discard-dialog[open]')`); await click('.discard-dialog button',discard);
   await waitFor(client,`!document.querySelector('.trial-page') && !!document.querySelector('.new-models')`);
   results.push({id:`quickstart.${lang}.inline-connection-guard.model-change-and-back`,status:'passed'});
+ }
  }
  await writeFile(path.join(output,'report.json'),JSON.stringify({proof:'production components with synthetic IPC; no native or provider claim',results},null,2));console.log(JSON.stringify({passed:results.length,output}));
 } catch(error) {

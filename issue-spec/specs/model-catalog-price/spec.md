@@ -92,6 +92,14 @@ Gateway uses nonblocking read-only price snapshots; Observation settles
 asynchronously. SQLite or valuation failure cannot block the model response.
 Known failure-attempt usage still counts. Missing usage or pricing remains unknown,
 not zero. Subscription API-equivalent value is labeled an estimate, never payment.
+The captured generation MUST include the verified mapping from a source's stable
+management model identity to its compiled execution identity. Equal names are not
+mapping evidence; conflicting mappings leave execution pricing unknown.
+When an ordinary billing quote lacks known input/output rates, an explicitly
+configured source-specific API-equivalent quote with those rates MAY supply the
+recorded estimate instead. Its valuation kind MUST remain API-equivalent. A usable
+verified billing quote takes precedence. Missing cache rates or usage still produce
+an explicit partial/unknown amount; reference pricing cannot fabricate usage.
 A frozen publication cannot revive invalid run tokens, expired deadlines, cancelled
 runs, or revoked source/Key access; current Plan delegation policy governs new
 Start/Continue without automatically cancelling accepted work.
@@ -102,6 +110,20 @@ Start/Continue without automatically cancelling accepted work.
   pricing time boundary
 - **THEN** they MUST share the admitted price generation but freeze their own
   applicable time rules; neither uses a newly published generation.
+
+#### Scenario: A custom model has distinct management and execution identities
+
+- **WHEN** a user configures prices for a custom model through its stable source binding
+- **THEN** new requests use the exact generation-bound execution mapping, while
+  different suppliers, changed identities, currencies and valuation kinds cannot
+  inherit the quote. The frozen evidence retains the executed model identity.
+
+#### Scenario: A subscription has a reference price but no billing quote
+
+- **WHEN** an exact source has configured API-equivalent input/output rates and
+  ordinary billing rates are unavailable
+- **THEN** new recorded amounts use the frozen API-equivalent estimate with that
+  label and actual coverage; edits affect future requests without repricing old records.
 
 ### Requirement: Management reports safe current source and price facts
 

@@ -484,7 +484,7 @@ Explicit causes override legacy hints. UserMessage displays New message. History
 
 The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools and timing SHALL NOT establish native provenance. Issue #185 separately tracks shared-history background/subagent isolation and active-turn conflicts; this repair does not infer subdialog identity or claim isolation is fixed. The legend states that a turn keeps its model to preserve cache and new messages or rebuilt context trigger fresh judgment.
 
-The opening request supplies stable display identity before completion. Late assessments and valuations update that turn. Incremental cursors MUST be authenticated and bound to reader, session, page size and retained visibility; pagination freezes fact, valuation and link positions until its changed page is consumed. Reconnect deduplicates equal content digests. Cleared or expired scope invalidates the cursor. Unknown usage/cost remains unknown; per-model currency and valuation basis are preserved.
+The opening request supplies stable display identity before completion. Late assessments and valuations update that turn. When late authoritative request membership absorbs provisional rows into a completed turn, Desktop SHALL remove the absorbed rows by their exact opening-request identities, transfer their selection/focus to the owning turn, and reconcile overview, request and turn counts. Names, timing or model similarity SHALL NOT infer membership. Incremental cursors MUST be authenticated and bound to reader, session, page size and retained visibility; pagination freezes fact, valuation and link positions until its changed page is consumed. Reconnect deduplicates equal content digests. Cleared or expired scope invalidates the cursor. Unknown usage/cost remains unknown; per-model currency and valuation basis are preserved. A per-model sum SHALL retain available known amounts when another contribution is unknown, disclose that it is a known subtotal and retain the missing contribution. No known contribution means amount unknown, not zero. Frozen API-equivalent amounts SHALL be labeled estimates in summary and request detail.
 
 Reads retain shared authorization, a 500 ms storage deadline, and explicit retryable scope errors beyond 10,000 requests, 50,000 facts or a 1 MiB response. Cache locks cover only take/return, never database reads, projection or serialization. Visible Desktop timelines refresh every two seconds; hidden views stop polling and catch up when shown. A storage timeout stops automatic retries until explicit Retry. Busy readers quietly honor the bounded retry hint while retaining content. CLI --follow emits NDJSON through the same query, preserves terminal errors, remains interruptible while busy and retries at most three consecutive transient unavailable failures. Live and retained readers use recorded endpoint/start-time membership and the same retained transition classifier; unrelated timestamp ties stay unassigned.
 
@@ -493,6 +493,19 @@ Reads retain shared authorization, a 500 ms storage deadline, and explicit retry
 - **WHEN** an earlier turn receives a score after the first page was delivered
 - **THEN** the remaining frozen page is delivered first, followed by the updated
   earlier turn once; reconnect cannot duplicate its unchanged projection.
+
+#### Scenario: Completion absorbs a provisional request row
+
+- **WHEN** a later completed turn retains its opening-request identity and includes
+  a request previously displayed as a provisional row
+- **THEN** the live view removes that provisional row, preserves selection on the
+  completed turn, and shows each request and Agent turn once without a failed read.
+
+#### Scenario: Some model amounts are known
+
+- **WHEN** a model has known recorded amounts and another request has unknown value
+- **THEN** the card shows the known subtotal with an unknown-part disclosure,
+  preserving currency and valuation kind; an entirely unknown model stays unknown.
 
 #### Scenario: Fresh decision on continuing history
 

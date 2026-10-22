@@ -79,6 +79,18 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         if (controller.signal.aborted) return;
         let changed = false;
         const fresh = watermark.current !== null && probed.current ? page.turns.filter(turn => !stored.current.has(turn.turn_id)).map(turn => turn.turn_id) : [];
+        const owners = new Map(page.turns.flatMap(turn => turn.requests.map(request => [request.request_id, turn.turn_id] as const)));
+        const absorbed = new Map<string, string>();
+        for (const id of stored.current.keys()) {
+          const owner = owners.get(id);
+          if (owner && owner !== id) { stored.current.delete(id); absorbed.set(id, owner); changed = true; }
+        }
+        if (absorbed.size) {
+          setSelected(current => current ? absorbed.get(current) ?? current : null);
+          setOverviewFocus(current => current ? absorbed.get(current) ?? current : null);
+          setArrivals(current => new Set([...current].filter(id => !absorbed.has(id))));
+          setUnseen(current => current.filter(id => !absorbed.has(id)));
+        }
         for (const turn of page.turns) { if (stored.current.get(turn.turn_id)?.content_digest !== turn.content_digest) { stored.current.set(turn.turn_id, turn); changed = true; } }
         if (fresh.length) { setArrivals(previous => new Set([...previous, ...fresh])); setUnseen(previous => [...new Set([...previous, ...fresh])]); }
         if (changed) setTurns([...stored.current.values()].sort((a, b) => a.started_at_ms - b.started_at_ms || a.turn_id.localeCompare(b.turn_id)));
@@ -156,6 +168,8 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   const score = (turn: TimelineTurn) => turn.assessment ? `${turn.assessment.partial ? text('部分评分', 'Partial') : text('评分', 'Score')} ${turn.assessment.score.toFixed(2)}`
     : turn.status === 'running' ? text('进行中…', 'Running…') : turn.assessment_state === 'pending' ? text('等待评分', 'Awaiting score') : text('未评分', 'Unscored');
   const amount = (micros: number | null, currency: string | null) => micros === null || !currency ? text('金额未知', 'Amount unknown') : formatMoney(currency, (micros / 1_000_000).toFixed(micros >= 10_000 ? 3 : 4));
+  const costBasis = (cost: Cost) => cost.valuation_kind === 'api_equivalent' ? text('API 等价估算', 'API equivalent estimate') : text('估算', 'estimate');
+  const costAmount = (cost: Cost) => `${cost.valuation_kind === 'api_equivalent' ? `${costBasis(cost)} ` : ''}${amount(cost.known_micros, cost.currency)}${cost.unknown_contributions ? text(' + 未知部分', ' + unknown') : ''}`;
   const percent = (share: number | null) => share === null ? text('未知', 'unknown') : `${Math.round(share * 100)}%`;
   const tokens = (count: number | null) => count === null ? '—' : formatTokenCount(count, language);
 
@@ -169,7 +183,12 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
     const key = `${cost.model_configuration_id}\u0000${cost.currency}\u0000${cost.valuation_kind}`;
     const total = totals.get(key);
     if (!total) totals.set(key, { cost: { ...cost }, lane: laneOf(turn) });
-    else total.cost = { ...total.cost, known_micros: total.cost.known_micros === null || cost.known_micros === null ? null : total.cost.known_micros + cost.known_micros, unknown_contributions: total.cost.unknown_contributions + cost.unknown_contributions };
+    else {
+      const sum = (total.cost.known_micros ?? 0) + (cost.known_micros ?? 0);
+      const known = total.cost.known_micros !== null || cost.known_micros !== null;
+      const overflow = known && !Number.isSafeInteger(sum);
+      total.cost = { ...total.cost, known_micros: known && !overflow ? sum : null, unknown_contributions: total.cost.unknown_contributions + cost.unknown_contributions + Number(overflow) };
+    }
   }
   const last = turns[turns.length - 1];
   const running = last?.status === 'running';
@@ -274,11 +293,11 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         <span className="routing-detail-label">{text(`请求（${selectedTurn.requests.length}）`, `Requests (${selectedTurn.requests.length})`)}</span>
         <div className="routing-turn-requests">{requests.map((request, i) => <button className={`routing-request${request.request_id === requestId ? ' selected' : ''}${failed(request) ? ' failed' : ''}`} type="button" key={request.request_id} onClick={() => onSelectRequest(request)}>
           <span className="routing-request-index">#{i + 1}</span>
-          <span className="routing-request-main"><span>{text('输入', 'In')} {tokens(request.input_tokens)} · {text('输出', 'Out')} {tokens(request.output_tokens)}</span><small>{[request.native_model ?? text('模型未记录', 'Model unknown'), request.duration_ms === null ? '' : `${(request.duration_ms / 1000).toFixed(1)} s`, request.costs.map(cost => amount(cost.known_micros, cost.currency) + (cost.unknown_contributions ? text(' + 未知部分', ' + unknown') : '')).join(' · '), failed(request) ? text('失败', 'Failed') : ''].filter(Boolean).join(' · ')}</small></span>
+          <span className="routing-request-main"><span>{text('输入', 'In')} {tokens(request.input_tokens)} · {text('输出', 'Out')} {tokens(request.output_tokens)}</span><small>{[request.native_model ?? text('模型未记录', 'Model unknown'), request.duration_ms === null ? '' : `${(request.duration_ms / 1000).toFixed(1)} s`, request.costs.map(costAmount).join(' · '), failed(request) ? text('失败', 'Failed') : ''].filter(Boolean).join(' · ')}</small></span>
           <span className={`badge no-dot ${request.cache_read_share !== null && request.cache_read_share >= 0.5 ? 'good' : ''}`}>{text('缓存', 'Cache')} {percent(request.cache_read_share)}</span>
         </button>)}</div>
         {!allRequests && selectedTurn.requests.length > REQUESTS && <button type="button" className="btn btn-quiet" onClick={() => setAllRequests(true)}>{text(`显示全部 ${selectedTurn.requests.length} 个请求`, `Show all ${selectedTurn.requests.length} requests`)}</button>}
-        {selectedTurn.cost_by_model.length > 0 && <p className="routing-detail-facts">{text('这一轮按模型估算：', 'This turn by model: ')}{selectedTurn.cost_by_model.map(cost => `${names.get(cost.model_configuration_id ?? '') ?? cost.model_configuration_id ?? text('模型未知', 'unknown model')} ${amount(cost.known_micros, cost.currency)}${cost.unknown_contributions ? text(' + 未知部分', ' + unknown') : ''}`).join(' · ')}</p>}
+        {selectedTurn.cost_by_model.length > 0 && <p className="routing-detail-facts">{text('这一轮按模型估算：', 'This turn by model: ')}{selectedTurn.cost_by_model.map(cost => `${names.get(cost.model_configuration_id ?? '') ?? cost.model_configuration_id ?? text('模型未知', 'unknown model')} ${costAmount(cost)}`).join(' · ')}</p>}
       </div>
     </div>;
   })();
@@ -289,7 +308,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
     {!loaded && !error && <p className="muted" role="status">{text('正在读取轮次…', 'Reading turns…')}</p>}
     {loaded && !turns.length && <p className="muted">{text('还没有可显示的轮次。', 'No recorded turns yet.')}</p>}
     {turns.length > 0 && <div className="routing-tiles">
-      {[...totals.values()].map(({ cost, lane }) => <div className="routing-tile" key={`${cost.model_configuration_id}/${cost.currency}/${cost.valuation_kind}`}><span>{names.get(cost.model_configuration_id ?? '') ?? cost.model_configuration_id ?? text('模型未知', 'Unknown model')} · {cost.valuation_kind === 'api_equivalent' ? text('API 等价', 'API equivalent') : text('估算', 'estimate')}</span><strong className={tone(lane)}>{amount(cost.known_micros, cost.currency)}</strong>{cost.unknown_contributions > 0 && <small>{text('另有未知部分', 'Plus an unknown portion')}</small>}</div>)}
+      {[...totals.values()].map(({ cost, lane }) => <div className="routing-tile" key={`${cost.model_configuration_id}/${cost.currency}/${cost.valuation_kind}`}><span>{names.get(cost.model_configuration_id ?? '') ?? cost.model_configuration_id ?? text('模型未知', 'Unknown model')} · {costBasis(cost)}</span><strong className={tone(lane)}>{amount(cost.known_micros, cost.currency)}</strong>{cost.unknown_contributions > 0 && <small>{cost.known_micros === null ? text('记录不足，暂不能估算', 'Not enough evidence to estimate') : text('已知小计 · 另有未知部分', 'Known subtotal · Plus an unknown portion')}</small>}</div>)}
       <div className="routing-tile"><span>{text('Agent 轮次', 'Agent turns')}</span><strong>{turns.length}</strong><small>{text(`${turns.reduce((n, turn) => n + turn.requests.length, 0)} 个请求`, `${turns.reduce((n, turn) => n + turn.requests.length, 0)} requests`)}</small></div>
     </div>}
     {turns.length > 0 && <div className="routing-lanes-card">

@@ -311,3 +311,36 @@ fn configured_api_equivalent_price_is_frozen_when_billing_price_is_unavailable()
     );
     evidence.validate().unwrap();
 }
+
+#[test]
+fn configured_reference_does_not_replace_a_verified_billing_price() {
+    let actual = entry("source-a", "model-a", "offer-a", 100);
+    let mut reference = actual.clone();
+    reference.target.valuation_kind = PriceValuationKindV1::ApiEquivalent;
+    reference.catalog_rules.clear();
+    reference.source_override = Some(SourcePriceOverrideV1 {
+        target: reference.target.clone(),
+        revision: 1,
+        setting: SourcePriceSettingV1::Set {
+            rates: TokenRatesV1::from_legacy(900, 900),
+        },
+    });
+    let slot = Arc::new(PriceSnapshotSlot::default());
+    slot.install(
+        PriceSnapshot::build(1, vec![], vec![actual, reference]).unwrap(),
+        None,
+    )
+    .unwrap();
+    let evidence = source(slot)
+        .capture_request(
+            WorkspaceId::DEFAULT,
+            &[binding(
+                "binding", "source-a", "model-a", "profile", "offer-a",
+            )],
+            1000,
+        )
+        .freeze_attempt("binding", "model-a", "profile", 2000);
+    let quote = evidence.quote.unwrap();
+    assert_eq!(quote.valuation_kind, PriceValuationKindV1::UsageEstimate);
+    assert_eq!(quote.rates.input_uncached, TokenRateV1::known(100));
+}
