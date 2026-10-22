@@ -264,7 +264,10 @@ fn optional_hold_preparation_miss_discloses_origin_without_disabling_classificat
             );
             let unverified =
                 view.origin_unverified() || identity.input_origin_unverified(prepared.as_ref());
-            assert_eq!(unverified, busy || generation > 0);
+            assert!(
+                unverified,
+                "native activation metadata never proves human input, even with an empty cache"
+            );
             let encoded =
                 classifier_request_template(&request, &history(false), &authority(), unverified)
                     .expect("ordinary input remains classifiable");

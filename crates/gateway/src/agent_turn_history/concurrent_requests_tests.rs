@@ -209,6 +209,48 @@ fn equal_user_text_does_not_replay_a_completed_routing_decision() {
 }
 
 #[test]
+fn a_shorter_context_records_its_boundary_without_inventing_compaction_or_inheritance() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::default();
+    let scope = store.scope_key("workspace", "shortened-context").unwrap();
+    let first = request(vec![
+        text(MessageRole::User, "uncaptured past task"),
+        text(MessageRole::Assistant, "uncaptured past output"),
+        text(MessageRole::User, "actual A"),
+    ]);
+    let (a, _) = new_turn(scoped(&store, &scope, &first, &replay).unwrap());
+    close_turn(
+        &store,
+        &a,
+        "regular",
+        "model",
+        "profile",
+        "a",
+        Instant::now(),
+    );
+    let shortened = request(vec![text(MessageRole::User, "actual B")]);
+    let (b, history) = new_turn(scoped(&store, &scope, &shortened, &replay).unwrap());
+    assert_ne!(a.key, b.key);
+    assert_eq!(
+        history.assessment_target.as_ref().unwrap().through_turn_id,
+        a.agent_turn_id
+    );
+    let completed = close_turn(
+        &store,
+        &b,
+        "primary",
+        "model-b",
+        "profile-b",
+        "b",
+        Instant::now(),
+    );
+    assert_eq!(
+        completed.opening_cause,
+        hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened
+    );
+}
+
+#[test]
 fn exact_ingress_retry_retains_cancelled_branch_gap_without_reusing_its_decision() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));

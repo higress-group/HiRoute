@@ -175,6 +175,8 @@ impl AgentTurnHistoryStore {
                 } else {
                     HistoryContinuity::Continuing
                 }
+            } else if analyzed.message_count < entry.checkpoint.message_count {
+                HistoryContinuity::Shortened
             } else {
                 HistoryContinuity::Rewritten
             };
