@@ -7,6 +7,7 @@ use crate::agent_turn_history::{
 use crate::server::core_runtime::model_ir::{
     CanonicalMessage, MODEL_REQUEST_IR_SCHEMA, RequestedReasoningControl, ToolChoice,
 };
+use crate::server::core_runtime::model_ir::{MessageRole, ModelRequestIRV1};
 use crate::server::request_plan::IngressProtocol;
 
 pub(crate) fn request(text: &str) -> ModelRequestIRV1 {
