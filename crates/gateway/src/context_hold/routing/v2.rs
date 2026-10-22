@@ -37,6 +37,7 @@ pub(crate) enum NativeInput {
 pub(crate) struct NativeMessageWindow {
     pub(crate) event_id: String,
     pub(crate) coverage: String,
+    #[serde(deserialize_with = "message_objects")]
     pub(crate) messages: Vec<NativeUserMessage>,
     pub(crate) scope_digest: String,
 }
@@ -57,15 +58,53 @@ struct Continuation {
     to_checkpoint: Option<String>,
 }
 
+fn object_json<T: serde::de::DeserializeOwned>(value: &str) -> Option<T> {
+    // Derived structs also accept positional arrays. The wire contract requires
+    // objects; decode their original bytes so duplicate fields still fail.
+    if !value.trim_start().starts_with('{') {
+        return None;
+    }
+    serde_json::from_str(value).ok()
+}
+
+fn message_objects<'de, D>(deserializer: D) -> Result<Vec<NativeUserMessage>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct MessageObject(NativeUserMessage);
+    impl<'de> Deserialize<'de> for MessageObject {
+        fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            struct ObjectVisitor;
+            impl<'de> serde::de::Visitor<'de> for ObjectVisitor {
+                type Value = NativeUserMessage;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    formatter.write_str("a native message object")
+                }
+
+                fn visit_map<M: serde::de::MapAccess<'de>>(
+                    self,
+                    map: M,
+                ) -> Result<Self::Value, M::Error> {
+                    NativeUserMessage::deserialize(serde::de::value::MapAccessDeserializer::new(
+                        map,
+                    ))
+                }
+            }
+            deserializer.deserialize_map(ObjectVisitor).map(Self)
+        }
+    }
+    Vec::<MessageObject>::deserialize(deserializer)
+        .map(|values| values.into_iter().map(|value| value.0).collect())
+}
+
 fn parsed(headers: &HeaderMap) -> Option<Envelope> {
     let Field::Value(value) = single_header(headers, "x-hiroute-routing-context", 4096) else {
         return None;
     };
     // A typed top-level deserializer rejects duplicate fields. Do not first
     // deserialize through Value, which would silently retain the last duplicate.
-    serde_json::from_str::<Envelope>(&value)
-        .ok()
-        .filter(|e| e.version == 2)
+    object_json::<Envelope>(&value).filter(|e| e.version == 2)
 }
 
 fn optional_id(value: &Option<Box<RawValue>>) -> Option<[u8; 32]> {
@@ -95,7 +134,7 @@ pub(super) fn auxiliary_purpose(headers: &HeaderMap, agent: &str) -> bool {
     let Field::Value(value) = single_header(headers, "x-hiroute-routing-context", 4096) else {
         return false;
     };
-    serde_json::from_str::<Purpose>(&value).is_ok_and(|p| {
+    object_json::<Purpose>(&value).is_some_and(|p| {
         matches!(p.version, 1 | 2)
             && p.agent == agent
             && native_session_header(agent).is_some()
@@ -157,11 +196,11 @@ pub(super) fn routing_facts(
     }
     let branch = context
         .branch
-        .and_then(|v| serde_json::from_str::<Branch>(v.get()).ok())
+        .and_then(|v| object_json::<Branch>(v.get()))
         .filter(|b| id(&b.leaf_id) && sha256(&b.path_digest));
     let continuation = context
         .continuation
-        .and_then(|v| serde_json::from_str::<Continuation>(v.get()).ok())
+        .and_then(|v| object_json::<Continuation>(v.get()))
         .filter(|c| {
             matches!(c.kind.as_str(), "same_turn" | "compression")
                 && [&c.from_turn_id, &c.from_checkpoint, &c.to_checkpoint]
@@ -279,6 +318,73 @@ mod tests {
         assert!(parsed(&h).is_none());
         let h = headers(json!({"version":3,"agent":"pi","purpose":"summary"}));
         assert!(parsed(&h).is_none());
+    }
+
+    #[test]
+    fn positional_arrays_cannot_supply_envelope_or_minimal_auxiliary_purpose() {
+        for value in [
+            json!([2, "pi", "summary"]),
+            json!([1, "pi", "summary"]),
+            json!([
+                2, "pi", "main", "session", "turn", null, null, null, null, null
+            ]),
+            Value::Null,
+            json!("summary"),
+        ] {
+            let h = headers(value);
+            assert!(parsed(&h).is_none());
+            assert!(!auxiliary_purpose(&h, "pi"));
+            assert!(native_input(&h).is_none());
+        }
+    }
+
+    #[test]
+    fn positional_nested_evidence_is_discarded_without_losing_valid_turn() {
+        let h = headers(json!({"version":2,"agent":"pi","purpose":"main",
+            "session_id":"session","turn_id":"turn",
+            "branch":["leaf","a".repeat(64)],
+            "continuation":["compression",null,null,null]}));
+        let facts =
+            routing_facts(&h, "pi", Some(("pi_session", &["session".into()])), false).unwrap();
+        assert!(facts.track);
+        assert_eq!(facts.native.turn, Some(digest("turn")));
+        assert!(facts.native.branch_leaf.is_none());
+        assert!(!facts.native.compacted);
+    }
+
+    #[test]
+    fn window_positions_require_objects_and_preserve_duplicate_field_rejection() {
+        let mut valid = headers(json!({"version":2,"agent":"pi","purpose":"main",
+            "session_id":"session","turn_id":"turn",
+            "input":{"kind":"native_messages","event_id":"event","coverage":"window",
+                     "messages":[{"index":0,"sha256":"a".repeat(64)}],
+                     "scope_digest":"b".repeat(64)}}));
+        valid.insert("x-session-affinity", "session".parse().unwrap());
+        assert!(matches!(
+            native_input(&valid),
+            Some(Ok(NativeInput::NativeMessages(_)))
+        ));
+        for message in [
+            format!(r#"[0,"{}"]"#, "a".repeat(64)),
+            format!(r#"{{"index":0,"index":0,"sha256":"{}"}}"#, "a".repeat(64)),
+        ] {
+            let value = format!(
+                r#"{{"version":2,"agent":"pi","purpose":"main","session_id":"session","turn_id":"turn","input":{{"kind":"native_messages","event_id":"event","coverage":"window","messages":[{message}],"scope_digest":"{}"}}}}"#,
+                "b".repeat(64)
+            );
+            let mut h = HeaderMap::new();
+            h.insert("x-hiroute-agent", "pi".parse().unwrap());
+            h.insert("x-session-affinity", "session".parse().unwrap());
+            h.insert("x-hiroute-routing-context", value.parse().unwrap());
+            assert!(matches!(native_input(&h), Some(Err(()))));
+            assert_eq!(
+                routing_facts(&h, "pi", Some(("pi_session", &["session".into()])), false)
+                    .unwrap()
+                    .native
+                    .turn,
+                Some(digest("turn"))
+            );
+        }
     }
 
     #[test]
