@@ -128,6 +128,82 @@ class LineageTests(unittest.TestCase):
             self.assertEqual(header["current_state"].get("started_at_ms"), expected)
             self.assertEqual(header["ids"], ["root"])
 
+    def test_first_lookup_waits_for_fast_ancestor_proof_within_existing_deadline(self):
+        entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+        tickets, ready_at_ancestor = [], []
+
+        class BarrierReader(NativeReader):
+            def get_session(self, session):
+                if session == "root":
+                    ready_at_ancestor.append(tickets[0]["ready"].is_set())
+                    entered.set()
+                    release.wait(1)
+                return super().get_session(session)
+
+        rows = {"root": {"ended_at": 1, "end_reason": "compression"},
+                "child": {"parent_session_id": "root"}}
+        manager = self.manager(BarrierReader(rows, ["root", "child"], "child"))
+        original = manager.schedule
+
+        def schedule(session, ticket=None):
+            if ticket:
+                tickets.append(ticket)
+            original(session, ticket)
+
+        manager.schedule = schedule
+        result = {}
+
+        def header():
+            result["header"] = manager.header("child")
+            returned.set()
+
+        caller = threading.Thread(target=header)
+        caller.start()
+        try:
+            self.assertTrue(entered.wait(1))
+            # Inspect the event at the exact ancestor boundary; this does not
+            # depend on which thread happens to run after the own-row sample.
+            self.assertEqual(ready_at_ancestor, [False])
+            self.assertFalse(returned.wait(.005))
+        finally:
+            release.set()
+            caller.join(1)
+        self.assertFalse(caller.is_alive())
+        proof = json.loads(result["header"])
+        self.assertEqual(proof["ids"], ["root", "child"])
+        self.assertTrue(proof["complete"])
+        self.assertEqual(proof["current_state"]["value"], "open")
+
+    def test_blocked_ancestor_keeps_fifty_ms_wait_and_recovers_after_release(self):
+        entered, release = threading.Event(), threading.Event()
+
+        class BarrierReader(NativeReader):
+            def get_session(self, session):
+                if session == "root":
+                    entered.set()
+                    release.wait(2)
+                return super().get_session(session)
+
+        rows = {"root": {"ended_at": 1, "end_reason": "compression"},
+                "child": {"parent_session_id": "root"}}
+        manager = self.manager(BarrierReader(rows, ["root", "child"], "child"))
+        began = time.monotonic()
+        try:
+            proof = json.loads(manager.header("child"))
+            elapsed = time.monotonic() - began
+            self.assertTrue(entered.is_set())
+            self.assertGreaterEqual(elapsed, .035)
+            self.assertLess(elapsed, .15)
+            self.assertEqual(proof["ids"], ["child"])
+            self.assertFalse(proof["complete"])
+            self.assertEqual(proof["current_state"]["value"], "open")
+        finally:
+            release.set()
+        self.warm(manager, "child")
+        recovered = json.loads(manager.header("child"))
+        self.assertEqual(recovered["ids"], ["root", "child"])
+        self.assertTrue(recovered["complete"])
+
     def test_warm_ancestor_proof_survives_normal_generation_interval(self):
         rows = {"parent": {"parent_session_id": None, "ended_at": 1, "end_reason": "compression"},
                 "child": {"parent_session_id": "parent", "ended_at": None, "id": "child"}}

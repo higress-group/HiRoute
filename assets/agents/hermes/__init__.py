@@ -159,7 +159,6 @@ class _LineageReader:
                               and not isinstance(started, bool)
                               and 0 <= started <= observed["observed_at_ms"] / 1000 else None)
                 ticket["sample"] = (_state(row), observed, started_ms)
-                ticket["ready"].set()
             candidates, rows = [current], {current: row}
             complete = False
             for _ in range(31):  # the own-row probe is the first of <=32 reads
