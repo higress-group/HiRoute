@@ -236,6 +236,125 @@ fn real_listener_history_bypass_capacity_exhaustion_keeps_valid_responses_and_au
 }
 
 #[test]
+fn real_listener_overlapping_branches_capture_and_assess_disjoint_actual_executions() {
+    let background_output = br#"{"id":"background","model":"runtime-native-model-2","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"BACKGROUND_ACTUAL"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
+    let complex_assessment = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
+    let barrier = ProviderBodyBarrier::default();
+    let simple = NativeProvider::start(vec![
+        ProviderReply::BodyReadBarrier {
+            barrier: barrier.clone(),
+            status: 200,
+            error_kind: None,
+            body: RESPONSES_TOOL_CALL,
+        },
+        complete(RESPONSES_OK),
+        complete(RESPONSES_OK),
+    ]);
+    let complex = NativeProvider::start(vec![complete(background_output), complete(RESPONSES_OK)]);
+    let classifier = NativeProvider::start(vec![
+        complete(CLASSIFIER_SIMPLE),
+        complete(CLASSIFIER_COMPLEX),
+        complete(CLASSIFIER_SIMPLE_WITH_ASSESSMENT),
+        complete(complex_assessment),
+    ]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+        &[&simple, &complex, &classifier],
+        1,
+        ObservationFaults::healthy(),
+    );
+    let headers = [
+        ("X-HiRoute-Token", TOKEN),
+        ("session-id", "shared-concurrent-scope"),
+    ];
+    let main_user = json!({"role":"user","content":"MAIN_ACTUAL_TASK"});
+    let background_user = json!({"role":"user","content":"BACKGROUND_ACTUAL_TASK"});
+    let first = std::thread::scope(|scope| {
+        let _release = ReleaseOnDrop(barrier.clone());
+        let address = fixture.address;
+        let user = main_user.clone();
+        let main = scope.spawn(move || send(address, &headers, json!([user])));
+        barrier.wait_for_arrivals(1, Duration::from_secs(5));
+        assert_ok(&send(address, &headers, json!([background_user])));
+        // A is still pending when B takes its snapshot. A's later completion
+        // cannot retroactively create an assessment target in B's decision.
+        let pending_snapshot = classifier_body(&classifier, 1);
+        assert_eq!(pending_snapshot["visible_conversation"], json!([]));
+        assert!(pending_snapshot["assessment_target"].is_null());
+        barrier.release();
+        main.join().unwrap()
+    });
+    assert_ok(&first);
+    let first: Value = serde_json::from_slice(&first.body).unwrap();
+    let mut main = vec![main_user];
+    main.extend(first["output"].as_array().unwrap().iter().cloned());
+    main.push(json!({"type":"function_call_output","call_id":first["output"][0]["call_id"],"output":"MAIN_TOOL_RECEIPT"}));
+    assert_ok(&send(fixture.address, &headers, json!(main)));
+    assert_eq!(
+        classifier.calls(),
+        2,
+        "main tool continuation must keep its decision"
+    );
+    main.extend([
+        json!({"role":"assistant","content":"ok"}),
+        json!({"role":"user","content":"MAIN_FOLLOWUP"}),
+    ]);
+    assert_ok(&send(fixture.address, &headers, json!(main)));
+    assert_ok(&send(
+        fixture.address,
+        &headers,
+        json!([
+            background_user, {"role":"assistant","content":"BACKGROUND_ACTUAL"},
+            {"role":"user","content":"BACKGROUND_FOLLOWUP"},
+        ]),
+    ));
+    assert_eq!(
+        (simple.calls(), complex.calls(), classifier.calls()),
+        (3, 2, 4)
+    );
+    for (index, included, excluded) in [
+        (2, "MAIN_ACTUAL_TASK", "BACKGROUND_ACTUAL"),
+        (3, "BACKGROUND_ACTUAL", "MAIN_ACTUAL_TASK"),
+    ] {
+        let payload = classifier_body(&classifier, index);
+        let start = payload["assessment_target"]["from"]
+            .as_u64()
+            .expect("actual prior target") as usize;
+        let target =
+            serde_json::to_string(&payload["visible_conversation"].as_array().unwrap()[start..])
+                .unwrap();
+        assert!(target.contains(included), "{payload}");
+        assert!(!target.contains(excluded), "{payload}");
+    }
+    let facts = wait_execution_facts(&fixture, 5);
+    let targets = facts
+        .iter()
+        .filter(|f| f["fact"]["kind"] == "branch_assessment_recorded")
+        .map(|f| &f["fact"]["history_membership"])
+        .collect::<Vec<_>>();
+    assert_eq!(targets.len(), 2);
+    let members = targets
+        .iter()
+        .map(|m| {
+            m["request_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|id| id.as_str().unwrap())
+                .collect::<std::collections::BTreeSet<_>>()
+        })
+        .collect::<Vec<_>>();
+    let mut sizes = members.iter().map(|m| m.len()).collect::<Vec<_>>();
+    sizes.sort();
+    assert_eq!(
+        sizes,
+        vec![1, 2],
+        "one background execution and two actual main requests"
+    );
+    assert!(members[0].is_disjoint(&members[1]));
+    assert_ne!(targets[0]["branch_id"], targets[1]["branch_id"]);
+}
+
+#[test]
 fn real_listener_history_bypass_request_without_user_turn_still_executes() {
     let simple = NativeProvider::start(Vec::new());
     let complex = NativeProvider::start(vec![complete(RESPONSES_OK)]);
