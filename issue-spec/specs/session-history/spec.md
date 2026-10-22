@@ -501,6 +501,14 @@ Reads retain shared authorization, a 500 ms storage deadline, and explicit retry
 - **THEN** the live view removes that provisional row, preserves selection on the
   completed turn, and shows each request and Agent turn once without a failed read.
 
+#### Scenario: Focus survives a provisional turn's completion
+
+- **WHEN** the focused overview mark or lane button belongs to a provisional turn
+  absorbed into a completed turn
+- **THEN** actual keyboard focus moves to the completed turn's corresponding control,
+  with selection and visible keyboard focus retained.
+- **AND** completion leaves focus unchanged when it is outside the absorbed controls.
+
 #### Scenario: Some model amounts are known
 
 - **WHEN** a model has known recorded amounts and another request has unknown value

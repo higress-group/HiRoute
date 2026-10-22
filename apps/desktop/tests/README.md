@@ -65,11 +65,17 @@ proves native authorization, persistence, process cleanup or real model calls.
 The focused timeline pricing checks run with
 `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --timeline-pricing`.
 They also run in the default trial suite. Production components must remove a
-provisional row absorbed by exact completed-request membership, retain selection
-and correct counts, and show known API-equivalent subtotals alongside unknown
+provisional row absorbed by exact completed-request membership, retain selection,
+actual keyboard focus and correct counts, and show known API-equivalent subtotals alongside unknown
 contributions in Chinese and English. Mock IPC proves presentation, while the
 native model-save publication journey covers installed price edits, real Gateway
 valuation, frozen history and restart.
+
+Completion focus scenarios exercise overview and lane controls with real keyboard
+and mouse events, including visible keyboard focus. They retain focus on an
+unrelated search field, a surviving turn or the page body instead of moving it
+because selection changed. English/light at 755×600 and Chinese/dark at 1200×813
+use production components and styles; native WebView acceptance remains separate.
 
 The [historical protection and overview scenarios](v3/visual/new-model-trial-protection-active.mjs)
 run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --protection`.

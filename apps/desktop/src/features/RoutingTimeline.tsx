@@ -60,6 +60,8 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   const lastRead = useRef(-Infinity);
   const stored = useRef(new Map<string, TimelineTurn>());
   const scroller = useRef<HTMLDivElement>(null);
+  const timeline = useRef<HTMLElement>(null);
+  const pendingFocus = useRef<{ from: Element; owner: string; attribute: 'data-overview-turn' | 'data-turn-id' } | null>(null);
   useEffect(() => { blockedScope.current = false; setError(''); }, [session]);
   useEffect(() => { watermark.current = null; probed.current = false; lastRead.current = -Infinity; stored.current.clear(); setTurns([]); setSelected(null); setOverviewFocus(null); setLoaded(false); setArrivals(new Set()); setUnseen([]); }, [session, refreshVersion]);
   useEffect(() => {
@@ -86,6 +88,14 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           if (owner && owner !== id) { stored.current.delete(id); absorbed.set(id, owner); changed = true; }
         }
         if (absorbed.size) {
+          const focused = document.activeElement;
+          if (focused && timeline.current?.contains(focused)) {
+            const overview = focused.closest('[data-overview-turn]');
+            const control = overview ?? focused.closest('.routing-turn[data-turn-id]');
+            const attribute = overview ? 'data-overview-turn' : 'data-turn-id';
+            const owner = absorbed.get(control?.getAttribute(attribute) ?? '');
+            if (owner) pendingFocus.current = { from: focused, owner, attribute };
+          }
           setSelected(current => current ? absorbed.get(current) ?? current : null);
           setOverviewFocus(current => current ? absorbed.get(current) ?? current : null);
           setArrivals(current => new Set([...current].filter(id => !absorbed.has(id))));
@@ -118,6 +128,15 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
     if (displayed && probed.current && since < 2000) schedule(2000 - since); else void load();
     return () => { controller.abort(); window.clearTimeout(timer); document.removeEventListener('visibilitychange', visible); window.removeEventListener('hiroute-content-invalidated', invalidate); };
   }, [session, active, displayed, refreshVersion, retry]);
+  useLayoutEffect(() => {
+    const focus = pendingFocus.current;
+    pendingFocus.current = null;
+    if (!focus || !displayed || !timeline.current) return;
+    // A removed control loses focus to the body. Never take it from another control.
+    if (document.activeElement !== document.body && document.activeElement !== focus.from) return;
+    [...timeline.current.querySelectorAll<HTMLElement | SVGGElement>(`[${focus.attribute}]`)]
+      .find(element => element.getAttribute(focus.attribute) === focus.owner)?.focus();
+  }, [turns, displayed]);
   useEffect(() => { const turn = turns.find(t => t.requests.some(r => r.request_id === requestId)); if (turn) setSelected(turn.turn_id); }, [requestId, turns]);
   const blocked = error.toLowerCase().includes('scope_too_large');
   const availability: TimelineAvailability = turns.length ? 'turns' : blocked ? 'blocked' : error ? 'unavailable' : loaded ? 'empty' : 'loading';
@@ -302,7 +321,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
     </div>;
   })();
 
-  return <section className="routing-timeline" aria-label={text('路由时间线', 'Routing timeline')}>
+  return <section className="routing-timeline" ref={timeline} aria-label={text('路由时间线', 'Routing timeline')}>
     <div className="routing-live" role="status"><span className={`routing-live-dot${running ? ' running' : ''}`} />{running ? text(`实时 · 第 ${turns.length} 轮正在执行`, `Live · agent turn ${turns.length} is running`) : text('实时', 'Live')}<span className="muted">{text('可见时每 2 秒更新', 'Updates every 2 s while visible')}</span></div>
     {error && <div className="callout warn" role="alert" data-error-code={error}><span>{blocked ? text('这条会话超出完整读取范围，暂时无法显示时间线。', 'This session exceeds the complete-read limit; its timeline is unavailable.') : text('更新暂时不可用，已读取内容保留。', 'Updates are temporarily unavailable. Loaded records are retained.')}</span><button className="btn" onClick={() => { blockedScope.current = false; lastRead.current = -Infinity; setRetry(n => n + 1); }}>{text('重试', 'Retry')}</button></div>}
     {!loaded && !error && <p className="muted" role="status">{text('正在读取轮次…', 'Reading turns…')}</p>}

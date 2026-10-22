@@ -22,7 +22,34 @@ const timelineReads=()=>evaluate(client,timelineReadsExpr);
 const setVisibility=state=>evaluate(client,`(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>${JSON.stringify(state)}});document.dispatchEvent(new Event('visibilitychange'));return true;})()`);
 const typeInto=(selector,value)=>evaluate(client,`(()=>{const input=document.querySelector(${JSON.stringify(selector)});if(!input)throw Error('Missing input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
 async function geometry(){return evaluate(client,`(()=>{const nodes=[...document.querySelectorAll('.model-feed-panel,.trust-control,.plan-quality,.trust-suggestion,.modal,.trial-wizard')].filter(e=>e.getClientRects().length);return nodes.map(e=>({class:e.className,width:e.clientWidth,scroll:e.scrollWidth,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right}));})()`);}
+async function timelineFocusChecks() {
+ const enter=async()=>{for(const type of ['keyDown','keyUp'])await client.send('Input.dispatchKeyEvent',{type,key:'Enter',code:'Enter',windowsVirtualKeyCode:13});};
+ for(const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',1200,813]]) {
+  for(const kind of ['overview-keyboard','lane-keyboard','lane-mouse','outside-control','retained-turn','body']) {
+   await open(`lang=${lang}&theme=${theme}&view=timeline&absorbed-turn=1`,width,height);
+   await waitFor(client,`document.querySelectorAll('.routing-turn').length===2 && [...document.querySelectorAll('.routing-turn')].every(node=>node.getClientRects().length>0)`);
+   const overview=kind==='overview-keyboard';
+   const selector=overview?'[data-overview-turn="request-2"]':`.routing-turn[data-turn-id="${kind==='retained-turn'?'request-1':'request-2'}"]`;
+   if(kind==='lane-mouse') {
+    const point=await evaluate(client,`(()=>{const node=document.querySelector(${JSON.stringify(selector)});node.scrollIntoView({block:'center',inline:'center'});const r=node.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    for(const type of ['mousePressed','mouseReleased'])await client.send('Input.dispatchMouseEvent',{type,...point,button:'left',clickCount:1});
+   } else if(kind==='body') await evaluate(client,`document.querySelector(${JSON.stringify(selector)}).click()`);
+   else {await evaluate(client,`document.querySelector(${JSON.stringify(selector)}).focus()`);await enter();}
+   if(kind==='outside-control')await evaluate(client,`document.querySelector('.search-box input').focus()`);
+   const before=kind==='outside-control'?'.search-box input':selector;
+   assert.equal(await evaluate(client,kind==='body'?`document.activeElement===document.body`:`document.activeElement.matches(${JSON.stringify(before)})`),true,`${kind}.${lang}: establishes the real focused control before completion`);
+   await waitFor(client,`document.querySelectorAll('.routing-turn').length===1`);
+   await shot(`timeline-focus-${kind}-${lang}-${width}`);
+   const expected=kind==='outside-control'?'.search-box input':overview?'[data-overview-turn="request-1"]':'.routing-turn[data-turn-id="request-1"]';
+   assert.equal(await evaluate(client,kind==='body'?`document.activeElement===document.body`:`document.activeElement.matches(${JSON.stringify(expected)})`),true,`${kind}: completion transfers only an absorbed control's DOM focus`);
+   assert.equal(await evaluate(client,`document.querySelector('.routing-turn-detail').textContent.includes(${JSON.stringify(lang==='zh'?'请求（2）':'Requests (2)')})`),true,'the selected owner retains both requests');
+   if(kind.endsWith('keyboard'))assert.equal(await evaluate(client,`document.activeElement.matches(':focus-visible')`),true,'keyboard focus remains visible');
+   results.push({id:`timeline.completion-focus.${kind}.${lang}.${width}`,status:'passed'});
+  }
+ }
+}
 async function timelinePricingChecks() {
+ await timelineFocusChecks();
  await open('lang=en&view=timeline&absorbed-turn=1');
  await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
  await click('.routing-turn','Turn 2');
