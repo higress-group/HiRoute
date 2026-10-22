@@ -25,7 +25,7 @@ struct Metadata {
 pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
     let header = match single_header(headers, "x-codex-turn-metadata", 8192) {
         Field::Absent => None,
-        Field::Value(value) => serde_json::from_str::<Metadata>(&value).ok(),
+        Field::Value(value) => decode(&value),
         Field::Invalid => return RoutingFacts::uncertain(),
     };
     if headers.contains_key("x-codex-turn-metadata") && header.is_none() {
@@ -37,7 +37,7 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
     let body_value = body
         .and_then(Value::as_str)
         .filter(|v| v.len() <= 8192)
-        .and_then(|v| serde_json::from_str::<Metadata>(v).ok());
+        .and_then(decode);
     if body.is_some() && body_value.is_none() {
         return RoutingFacts::uncertain();
     }
@@ -157,6 +157,16 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
         },
         ..RoutingFacts::default()
     }
+}
+
+fn decode(value: &str) -> Option<Metadata> {
+    // Serde's derived struct visitor also accepts positional JSON arrays. Native
+    // metadata is an object; ["memory"] must not become a trusted purpose.
+    value
+        .trim_start()
+        .starts_with('{')
+        .then(|| serde_json::from_str::<Metadata>(value).ok())
+        .flatten()
 }
 
 fn coherent_dimension(
