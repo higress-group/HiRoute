@@ -390,3 +390,92 @@ fn colliding_gap_stripes_disclose_loss_and_allow_new_complete_pairs() {
     );
     store.abort(&b);
 }
+
+#[test]
+fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
+    use crate::server::core_runtime::model_ir::{
+        CanonicalInstruction, InstructionRole, ModelEvent, ModelStreamEventV1, ResponseItemStatus,
+    };
+    for changed in ["none", "arguments", "instructions"] {
+        let (_directory, replay) = replay();
+        let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+        let scope = store.scope_key("workspace", changed).unwrap();
+        let input = request(vec![text(MessageRole::User, "A")]);
+        let (a, _) = new_turn(scoped(&store, &scope, &input, &replay).unwrap());
+        store.commit_decision(&a, decision("regular")).unwrap();
+        accepted_output::tool(&store, &a, "call", "lookup");
+        store.accept_output(
+            &a,
+            &[ModelStreamEventV1::new(
+                1,
+                ModelEvent::ToolCallFinished {
+                    index: 1,
+                    logical_id: "call".into(),
+                    tool_kind: ToolKindV1::Function,
+                    namespace: Some("functions".into()),
+                    name: "lookup".into(),
+                    arguments: json!({"id": 7}),
+                    status: ResponseItemStatus::Completed,
+                },
+            )],
+        );
+        store
+            .finish_request(
+                &a,
+                "a".into(),
+                AgentTurnStatus::Completed,
+                vec![execution("model", "profile", "regular", "a")],
+                false,
+                Instant::now(),
+            )
+            .unwrap();
+        let mut continued = request(vec![
+            text(MessageRole::User, "A"),
+            CanonicalMessage {
+                role: MessageRole::Assistant,
+                name: None,
+                content: vec![ContentPart::ToolCall {
+                    logical_id: "call".into(),
+                    tool_kind: ToolKindV1::Function,
+                    namespace: Some("functions".into()),
+                    name: "lookup".into(),
+                    arguments: json!({"id": if changed == "arguments" { 8 } else { 7 }}),
+                    raw_arguments: None,
+                }],
+            },
+            tool_result("call", false),
+        ]);
+        if changed == "instructions" {
+            continued.instructions.push(CanonicalInstruction {
+                role: InstructionRole::System,
+                content: vec![ContentPart::Text {
+                    text: "new task constraints".into(),
+                }],
+            });
+        }
+        let begin = scoped(&store, &scope, &continued, &replay).unwrap();
+        match begin {
+            AgentTurnBegin::Continuation { ticket, decision } => {
+                assert_eq!(changed, "none");
+                assert_eq!(ticket.key, a.key);
+                assert_eq!(decision.branch_id, "regular");
+                store.abort(&ticket);
+            }
+            AgentTurnBegin::NewTurn {
+                ticket, history, ..
+            } => {
+                assert_ne!(
+                    changed, "none",
+                    "a captured exact tool receipt should inherit"
+                );
+                assert_ne!(ticket.key, a.key);
+                assert!(history.previous_decision.is_none());
+                assert!(
+                    history.assessment_target.is_some(),
+                    "changed setup still permits disclosed contextual evaluation"
+                );
+                store.abort(&ticket);
+            }
+        }
+    }
+}

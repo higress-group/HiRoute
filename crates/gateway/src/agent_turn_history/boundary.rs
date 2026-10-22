@@ -22,7 +22,7 @@ pub(super) struct BoundaryCapture {
 enum Block {
     Text(Sha256),
     Tool {
-        native_id: String,
+        logical_id: String,
         digest: Option<[u8; 32]>,
     },
 }
@@ -33,7 +33,7 @@ impl BoundaryCapture {
             .values()
             .map(|b| {
                 512 + match b {
-                    Block::Tool { native_id, .. } => native_id.capacity(),
+                    Block::Tool { logical_id, .. } => logical_id.capacity(),
                     _ => 0,
                 }
             })
@@ -75,16 +75,16 @@ impl BoundaryCapture {
                 );
             }
             ModelEvent::ToolCallStarted {
-                index, native_id, ..
+                index, logical_id, ..
             } => {
-                if native_id.len() > 256 {
+                if logical_id.len() > 256 {
                     self.invalidate();
                     return;
                 }
                 self.blocks.insert(
                     *index,
                     Block::Tool {
-                        native_id: native_id.clone(),
+                        logical_id: logical_id.clone(),
                         digest: None,
                     },
                 );
@@ -97,9 +97,9 @@ impl BoundaryCapture {
                 arguments,
                 ..
             } => {
-                if let Some(Block::Tool { native_id, digest }) = self.blocks.get_mut(index) {
+                if let Some(Block::Tool { logical_id, digest }) = self.blocks.get_mut(index) {
                     *digest = tool_digest(
-                        native_id,
+                        logical_id,
                         *tool_kind,
                         namespace.as_deref(),
                         name,

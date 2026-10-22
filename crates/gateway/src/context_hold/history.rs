@@ -40,6 +40,7 @@ impl<'a> HistoryEvidence<'a> {
     /// transcript-sized index, and never use text similarity as parentage.
     pub(crate) fn branch_anchors(&self, positions: &[usize]) -> Option<super::HistoryAnchors> {
         let mut encoder = Encoder::new(self.key, b"history-branch/v2", self.replay)?;
+        encoder.bytes(&self.instruction_digest);
         let mut prefixes = Vec::with_capacity(positions.len().min(32));
         if positions.len() > 32 {
             return None;

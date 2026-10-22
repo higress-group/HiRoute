@@ -80,7 +80,13 @@ pub(super) fn analyze_request(
         .collect::<Vec<_>>();
     let mut turns = Vec::with_capacity(user_indices.len());
     for user_index in user_indices.iter().copied() {
-        let user = project_user(&request.messages[user_index], replay)?;
+        // Earlier User positions detect missing intervals; their payloads are
+        // never imported as captured executions. Only materialize current input.
+        let user = if Some(&user_index) == user_indices.last() {
+            project_user(&request.messages[user_index], replay)?
+        } else {
+            Vec::new()
+        };
         turns.push(AnalyzedTurn { user_index, user });
     }
     let output_after_latest_user = user_indices.last().is_some_and(|latest| {
