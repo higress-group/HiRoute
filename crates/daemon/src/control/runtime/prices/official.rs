@@ -193,6 +193,7 @@ mod tests {
         };
         let entry = PriceIndexEntryV1 {
             target: target.clone(),
+            execution_binding_id: None,
             actual_offer_ref: Some("offer".into()),
             reference_model_offer_ref: None,
             catalog_rules: rules(&[&p], "USD", 3).unwrap(),
