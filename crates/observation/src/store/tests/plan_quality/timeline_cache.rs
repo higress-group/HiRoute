@@ -3,6 +3,63 @@ use crate::query_v2::ObservationV2Error;
 use hiroute_domain::{RoutingTimelineQueryV1, WorkspaceId};
 
 #[test]
+fn timeline_late_turn_completion_invalidates_removed_provisional_rows() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let first = Fixture::new("provisional-opening");
+    let mut continuation = Fixture::new("provisional-continuation");
+    continuation.session = first.session.clone();
+    continuation.fact_stream = first.fact_stream.clone();
+    let channel = fact_channel(&first, 256 * 1024);
+    let writer = writer(&store);
+    for (sequence, fixture, at) in [(1, &first, 1000), (2, &continuation, 1005)] {
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                fixture.fact(sequence, super::super::support::route_decision(PLAN), at)
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    let mut query = RoutingTimelineQueryV1 {
+        session_id: first.session.to_string(),
+        after_watermark: None,
+        limit: 50,
+    };
+    let provisional = store
+        .observed_routing_timeline(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(provisional.turns.len(), 2);
+    let mut closed = finished(&first, "stage", "closed-turn", 1, "smart_saving", 1000);
+    if let ExecutionFactV1::AgentTurnFinished {
+        last_request_id, ..
+    } = &mut closed
+    {
+        *last_request_id = Some(continuation.request.clone());
+    }
+    assert!(matches!(
+        offer_fact(&writer, &channel, first.fact(3, closed, 1010)),
+        WriterCycleOutcome::Ack(_)
+    ));
+    query.after_watermark = Some(provisional.watermark);
+    assert_eq!(
+        store
+            .observed_routing_timeline(&reader(), &query, 5000)
+            .unwrap_err(),
+        ObservationV2Error::Stale,
+        "an upsert-only client must not retain a provisional row absorbed into a completed turn"
+    );
+    query.after_watermark = None;
+    let completed = store
+        .observed_routing_timeline(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(completed.turns.len(), 1);
+    assert_eq!(completed.turns[0].turn_id, provisional.turns[0].turn_id);
+    assert_eq!(completed.turns[0].requests.len(), 2);
+}
+
+#[test]
 fn timeline_evicted_frozen_page_restarts_without_skipping_retained_turns() {
     let directory = tempfile::tempdir().unwrap();
     let store = open_store(directory.path());

@@ -270,3 +270,43 @@ fn workspace_identity_is_part_of_the_price_target() {
         TokenRateV1::unknown(PriceUnknownReasonV1::TargetNotInSnapshot)
     );
 }
+
+#[test]
+fn configured_api_equivalent_price_is_frozen_when_billing_price_is_unavailable() {
+    let mut actual = entry("source-a", "model-a", "offer-a", 100);
+    actual.catalog_rules.clear();
+    actual.actual_offer_ref = None;
+    let mut reference = actual.clone();
+    reference.target.valuation_kind = PriceValuationKindV1::ApiEquivalent;
+    reference.source_override = Some(SourcePriceOverrideV1 {
+        target: reference.target.clone(),
+        revision: 1,
+        setting: SourcePriceSettingV1::Set {
+            rates: TokenRatesV1::from_legacy(300_000, 1_200_000),
+        },
+    });
+    let slot = Arc::new(PriceSnapshotSlot::default());
+    slot.install(
+        PriceSnapshot::build(1, vec![], vec![actual, reference]).unwrap(),
+        None,
+    )
+    .unwrap();
+    let evidence = source(slot)
+        .capture_request(
+            WorkspaceId::DEFAULT,
+            &[binding(
+                "binding", "source-a", "model-a", "profile", "offer-a",
+            )],
+            1000,
+        )
+        .freeze_attempt("binding", "model-a", "profile", 2000);
+    let quote = evidence.quote.as_ref().unwrap();
+    assert_eq!(quote.valuation_kind, PriceValuationKindV1::ApiEquivalent);
+    assert_eq!(quote.origin, PriceOriginV1::Manual);
+    assert_eq!(quote.rates.input_uncached, TokenRateV1::known(300_000));
+    assert_eq!(
+        quote.rates.cache_read,
+        TokenRateV1::unknown(PriceUnknownReasonV1::CacheRateNotCollected)
+    );
+    evidence.validate().unwrap();
+}
