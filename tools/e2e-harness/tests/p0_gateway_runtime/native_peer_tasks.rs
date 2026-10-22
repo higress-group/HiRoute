@@ -79,7 +79,7 @@ fn real_listener_native_peer_tasks_retain_observed_routing_and_original_wire() {
                         decision["reason_codes"]
                             .as_array()
                             .unwrap()
-                            .contains(&json!("task_context_unresolved"))
+                            .contains(&json!("TASK_CONTEXT_UNRESOLVED"))
                     );
                 }
             } else if external {
@@ -113,10 +113,9 @@ fn real_listener_opaque_peer_is_not_ancestor_input_and_same_session_a_b_recovers
         super::native_history::reply(CLASSIFIER_SIMPLE_WITH_ASSESSMENT),
         super::native_history::reply(br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#),
     ]);
-    let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
         &[&economy, &primary, &classifier],
         1,
-        ObservationFaults::healthy(),
     );
     // The generic fixture intentionally reuses one capability configuration ID.
     // Publish two distinct actual configurations for this attribution assertion.
