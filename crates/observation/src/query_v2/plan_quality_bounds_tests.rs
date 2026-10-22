@@ -1,4 +1,7 @@
-use super::{plan_quality::summary_sql, routing_observations::SUMMARY_SQL};
+use super::{
+    plan_quality::{SAMPLE_SELECT, SCOPE, summary_sql},
+    routing_observations::SUMMARY_SQL,
+};
 use crate::WriterCycleOutcome;
 use crate::store::tests::support::{
     Fixture, fact_channel, finished, offer_fact, open_store, request_facts, writer,
@@ -258,6 +261,67 @@ fn quality_reasoning_filters_known_unrelated_payloads_before_opening_them() {
         deleted[0][7],
         Value::Null,
         "deleted reasoning must stay unavailable"
+    );
+}
+
+#[test]
+fn quality_selection_bounds_payload_reads_and_preserves_legacy_gaps() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    let sql = format!("WITH quality AS ({SCOPE}) {SAMPLE_SELECT}");
+    let plan = db
+        .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+        .unwrap()
+        .raw_query()
+        .mapped(|row| row.get::<_, String>(3))
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert!(
+        plan.iter().any(|step| {
+            step.starts_with("SEARCH chosen USING COVERING INDEX")
+                && step.contains("workspace_id=? AND request_id=?")
+        }),
+        "selection identity must not fetch event rows: {plan:?}"
+    );
+    let reads = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&reads);
+    db.create_scalar_function(
+        "quality_selection_probe",
+        1,
+        FunctionFlags::SQLITE_UTF8,
+        move |ctx| {
+            count.fetch_add(1, Ordering::Relaxed);
+            ctx.get::<String>(0)
+        },
+    )
+    .unwrap();
+    let sql = sql.replace("pick.body_json", "quality_selection_probe(pick.body_json)");
+    let (rows, _) = measured(&db, &sql);
+    assert_eq!(rows.len(), 128);
+    assert!(matches!(rows[0].last(), Some(Value::Text(_))));
+    let bounded = reads.swap(0, Ordering::Relaxed);
+    let unfiltered = sql.replace(
+        "AND (chosen_safe.body_json IS NULL OR json_extract(chosen_safe.body_json,'$.event_kind')='route_decision')",
+        "",
+    );
+    let (previous_rows, _) = measured(&db, &unfiltered);
+    let previous = reads.swap(0, Ordering::Relaxed);
+    assert_eq!(rows, previous_rows);
+    assert!(
+        bounded > 0 && bounded * 2 < previous,
+        "selection opened {bounded} payload expressions; unfiltered read opened {previous}"
+    );
+    db.execute("DELETE FROM observation_safe_facts_v2", [])
+        .unwrap();
+    assert_eq!(measured(&db, &sql).0, rows);
+    db.execute("DELETE FROM observation_sensitive_payloads_v2", [])
+        .unwrap();
+    assert!(
+        measured(&db, &sql)
+            .0
+            .iter()
+            .all(|row| row.last() == Some(&Value::Null)),
+        "deleted selection payloads must remain unavailable"
     );
 }
 
