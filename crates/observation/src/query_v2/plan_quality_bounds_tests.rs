@@ -194,10 +194,25 @@ fn limited_routing_summary(db: &Connection) -> hiroute_domain::RoutingObservatio
     super::routing_observations::summarize(&transaction, &reader, &query, 0, 5000, &None).unwrap()
 }
 
+fn routing_scale_connection() -> Connection {
+    let (_root, store) = seed();
+    let mut db = Connection::open_in_memory().unwrap();
+    // These regressions measure SQLite work, not fsync latency. Clone the real
+    // schema/seed without making bulk fixture writes compete with capacity tests.
+    let source = store.connection.lock();
+    assert!(matches!(
+        rusqlite::backup::Backup::new(&source, &mut db)
+            .unwrap()
+            .step(-1)
+            .unwrap(),
+        rusqlite::backup::StepResult::Done
+    ));
+    db
+}
+
 #[test]
 fn routing_summary_stops_work_at_matching_decision_limit() {
-    let (_root, store) = seed();
-    let db = store.connection.lock();
+    let db = routing_scale_connection();
     extend_routing_history(&db, 1, 19_999);
     let reads = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&reads);
@@ -253,8 +268,7 @@ fn routing_summary_stops_work_at_matching_decision_limit() {
 
 #[test]
 fn routing_summary_can_stop_at_safe_byte_limit_before_row_limit() {
-    let (_root, store) = seed();
-    let db = store.connection.lock();
+    let db = routing_scale_connection();
     extend_routing_history(&db, 1, 19_999);
     // Oversized retained safe fields must not make SQLite sort the unread tail
     // before the production reader can enforce its existing byte ceiling.
