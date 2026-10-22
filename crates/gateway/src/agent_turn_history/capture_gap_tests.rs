@@ -36,6 +36,7 @@ fn known_main_capture_gaps_are_scoped_and_never_wait_for_the_store_lock() {
         } else {
             store.note_capture_gap(&keys[0]);
         }
+        let same_stripe = keys[0].0[0] == keys[1].0[0];
         for (index, key) in keys.into_iter().enumerate() {
             let mut messages = vec![
                 text(MessageRole::User, "first"),
@@ -48,7 +49,7 @@ fn known_main_capture_gaps_are_scoped_and_never_wait_for_the_store_lock() {
             messages.push(text(MessageRole::User, "fresh user"));
             let next = request(messages);
             let (_, history) = new_turn(store.begin(key, plan(1), &next, &replay, now).unwrap());
-            let gap = contended || index == 0;
+            let gap = contended && same_stripe || index == 0;
             assert_eq!(history.history_partial, gap);
             assert_eq!(history.assessment_target.is_none(), gap);
             assert_eq!(history.visible_conversation.len(), 1);

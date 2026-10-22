@@ -104,6 +104,7 @@ impl ProductionGatewayRuntime {
                 }]],
             })],
             assessment_target: Some(AssessmentTarget {
+                history_membership: None,
                 branch_execution: Some(hiroute_domain::BranchExecutionV1 {
                     policy: protocol.execution_policy(id, &judgment, name),
                     group: hiroute_domain::ExecutionGroupV1::Regular,

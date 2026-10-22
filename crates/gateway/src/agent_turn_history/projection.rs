@@ -18,6 +18,19 @@ pub(crate) struct AnalyzedRequest {
 }
 
 impl AnalyzedRequest {
+    pub(crate) fn select_current_input(
+        &mut self,
+        parts: &[ContentPart],
+        replay: &ReplayStore,
+    ) -> Result<(), AgentTurnHistoryError> {
+        let turn = self
+            .turns
+            .last_mut()
+            .ok_or(AgentTurnHistoryError::NoUserTurn)?;
+        turn.user = project_user_parts(parts, replay)?;
+        Ok(())
+    }
+
     pub(crate) fn mark_prior_history_missing(&mut self) {
         self.prior_history_missing = true;
     }
@@ -97,8 +110,14 @@ pub(super) fn project_user(
     message: &CanonicalMessage,
     replay: &ReplayStore,
 ) -> Result<Vec<VisibleContentPart>, AgentTurnHistoryError> {
-    message
-        .content
+    project_user_parts(&message.content, replay)
+}
+
+fn project_user_parts(
+    parts: &[ContentPart],
+    replay: &ReplayStore,
+) -> Result<Vec<VisibleContentPart>, AgentTurnHistoryError> {
+    parts
         .iter()
         .filter_map(|part| match part {
             ContentPart::Text { text } => {
@@ -114,9 +133,15 @@ pub(super) fn project_user(
             } => Some(Ok(VisibleContentPart::Unavailable {
                 source_kind: "image_base64".into(),
             })),
-            ContentPart::ToolCall { .. }
-            | ContentPart::ToolResult { .. }
-            | ContentPart::ProviderState { .. } => None,
+            ContentPart::ToolCall { .. } => Some(Ok(VisibleContentPart::Unavailable {
+                source_kind: "user_tool_call".into(),
+            })),
+            ContentPart::ToolResult { .. } => Some(Ok(VisibleContentPart::Unavailable {
+                source_kind: "user_tool_result".into(),
+            })),
+            ContentPart::ProviderState { .. } => Some(Ok(VisibleContentPart::Unavailable {
+                source_kind: "user_provider_state".into(),
+            })),
         })
         .collect()
 }

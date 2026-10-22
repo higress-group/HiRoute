@@ -97,8 +97,8 @@ pub(super) fn assessment_definition_result(
     })
 }
 
-pub(super) fn classifier_request_template(
-    request: &ModelRequestIRV1,
+pub(super) fn classifier_request_template<'a>(
+    request: impl Into<super::DecisionInput<'a>>,
     history: &AgentTurnHistorySnapshot,
     authority: &RestBranchClassifierAuthorityV1,
     current_input_origin_unverified: bool,
@@ -121,28 +121,15 @@ pub(super) fn classifier_request_template(
         routing_observation: None,
     })
 }
-pub(super) fn latest_user_wire_value(
-    request: &ModelRequestIRV1,
+pub(super) fn latest_user_wire_value<'a>(
+    request: impl Into<super::DecisionInput<'a>>,
     refs: &mut Vec<RequestedReplacement>,
     current_input_origin_unverified: bool,
 ) -> Result<Value, ProtocolAdapterError> {
-    let message = request
-        .messages
-        .iter()
-        .rev()
-        .find(|message| {
-            message.role == MessageRole::User
-                && message.content.iter().any(|part| {
-                    matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. })
-                })
-        })
-        .ok_or_else(|| {
-            ProtocolAdapterError::Serialization(
-                "classification requires a current user message".into(),
-            )
-        })?;
-    let mut values = message
-        .content
+    let parts = request.into().parts().ok_or_else(|| {
+        ProtocolAdapterError::Serialization("classification requires a current user message".into())
+    })?;
+    let mut values = parts
         .iter()
         .filter_map(|part| match part {
             ContentPart::Text { text } => Some(project_text(text, refs)),
@@ -152,9 +139,15 @@ pub(super) fn latest_user_wire_value(
             ContentPart::Image {
                 source: ImageSource::Base64 { .. },
             } => Some(json!({"kind":"unavailable","source_kind":"image_base64"})),
-            ContentPart::ToolCall { .. }
-            | ContentPart::ToolResult { .. }
-            | ContentPart::ProviderState { .. } => None,
+            ContentPart::ToolCall { .. } => {
+                Some(json!({"kind":"unavailable", "source_kind":"user_tool_call"}))
+            }
+            ContentPart::ToolResult { .. } => {
+                Some(json!({"kind":"unavailable", "source_kind":"user_tool_result"}))
+            }
+            ContentPart::ProviderState { .. } => {
+                Some(json!({"kind":"unavailable", "source_kind":"user_provider_state"}))
+            }
         })
         .collect::<Vec<_>>();
     if values.is_empty() {

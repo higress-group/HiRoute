@@ -42,6 +42,7 @@ fn history(with_target: bool) -> AgentTurnHistorySnapshot {
         })],
         assessment_from: with_target.then_some(0),
         assessment_target: with_target.then(|| AssessmentTarget {
+            history_membership: None,
             branch_execution: Some(BranchExecutionV1 {
                 policy: judgment.execution_policy("Smart saving"),
                 group: ExecutionGroupV1::Regular,

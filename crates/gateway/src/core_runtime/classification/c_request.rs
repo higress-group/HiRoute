@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 pub(super) const MAX_REQUEST_BYTES: usize = 256 * 1024;
 
-pub(super) fn request_template(
+pub(super) fn request_template<'a>(
     authority: &RestBranchClassifierAuthorityV1,
-    request: &ModelRequestIRV1,
+    request: impl Into<super::DecisionInput<'a>>,
     history: &AgentTurnHistorySnapshot,
     current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, CallFailure> {

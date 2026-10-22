@@ -13,6 +13,17 @@ pub(super) enum HistoryRelation {
     Contextual,
 }
 
+impl From<HistoryRelation> for hiroute_domain::HistoryRelationV1 {
+    fn from(value: HistoryRelation) -> Self {
+        match value {
+            HistoryRelation::Root => Self::Root,
+            HistoryRelation::ExactPrefix => Self::ExactPrefix,
+            HistoryRelation::AmbiguousPrefix => Self::AmbiguousPrefix,
+            HistoryRelation::Contextual => Self::Contextual,
+        }
+    }
+}
+
 pub(super) struct BranchAdmission {
     pub(super) key: AgentTurnHistoryKey,
     pub(super) scope: AgentTurnHistoryKey,
@@ -22,6 +33,7 @@ pub(super) struct BranchAdmission {
     segment: Option<SegmentState>,
     partial: bool,
     forked: bool,
+    completed: Option<Box<CompletedAgentTurn>>,
 }
 
 impl AgentTurnHistoryStore {
@@ -135,6 +147,26 @@ impl AgentTurnHistoryStore {
         } else {
             HistoryRelation::Root
         };
+        let mut completed = None;
+        let sealed_key = selected.filter(|_| !reusable).map(|c| c.0.clone());
+        if let Some(key) = &sealed_key {
+            let seal = inner.entries.get(key).is_some_and(|e| {
+                e.pending_request.is_none()
+                    && !e.active.finalized
+                    && !active_is_empty(&e.active)
+                    && e.active.decision.is_some()
+            });
+            if seal {
+                let segment = self.allocate_id(inner, "segment")?;
+                let entry = inner.entries.get_mut(key).expect("selected entry");
+                completed = Some(Box::new(close_active(entry, segment, unix_ms())?));
+                let old = entry.accounted_bytes;
+                entry.accounted_bytes = entry_bytes(key, entry);
+                let new = entry.accounted_bytes;
+                inner.replace_accounting(old, new);
+            }
+        }
+        let selected_entry = selected.and_then(|c| inner.entries.get(&c.0));
         let mut seed = VecDeque::new();
         let mut segment = None;
         let mut partial = false;
@@ -165,7 +197,7 @@ impl AgentTurnHistoryStore {
             mac.update(&token.to_be_bytes());
             AgentTurnHistoryKey(mac.finalize().into_bytes().into())
         };
-        if !reusable {
+        if !reusable && inputs.history_continuity.semantic_continuity() {
             inputs.history_continuity = HistoryContinuity::NoCheckpoint;
         }
         Ok(BranchAdmission {
@@ -177,6 +209,7 @@ impl AgentTurnHistoryStore {
             segment,
             partial,
             forked: !reusable,
+            completed,
         })
     }
 
@@ -217,7 +250,7 @@ impl AgentTurnHistoryStore {
             return Ok(());
         }
         entry.closed = selection.seed;
-        entry.history_partial |= selection.partial;
+        entry.history_partial = selection.partial;
         entry.next_turn_ordinal = entry
             .closed
             .back()
@@ -254,18 +287,28 @@ impl AgentTurnHistoryStore {
         });
         let mut frozen = snapshot(entry, pin, selection.segment.as_ref());
         frozen.previous_decision = None;
-        if selection.relation != HistoryRelation::ExactPrefix {
-            for turn in &mut frozen.visible_conversation {
-                // Clone only the immutable projection; never alter stored facts.
-                Arc::make_mut(turn)
-                    .user
-                    .push(VisibleContentPart::Unavailable {
-                        source_kind: "uncertain_history_association".into(),
-                    });
-            }
+        if let Some(membership) = frozen
+            .assessment_target
+            .as_mut()
+            .and_then(|t| t.history_membership.as_mut())
+        {
+            membership.relation = selection.relation.into();
+            membership.association_unverified = selection.relation != HistoryRelation::ExactPrefix;
         }
-        if let AgentTurnBegin::NewTurn { history, .. } = begin {
+        if frozen
+            .assessment_target
+            .as_ref()
+            .is_some_and(|target| target.plan != entry.active.plan)
+        {
+            frozen.assessment_target = None;
+            frozen.assessment_from = None;
+        }
+        if let AgentTurnBegin::NewTurn {
+            history, completed, ..
+        } = begin
+        {
             *history = Box::new(frozen);
+            *completed = selection.completed;
         }
         inner.note_peak();
         Ok(())

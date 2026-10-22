@@ -132,8 +132,17 @@ fn branch_context_reset_starts_a_new_competence_segment_on_the_same_model() {
             )
             .unwrap(),
     );
-    assert!(history.assessment_target.is_none());
-    assert!(history.assessment_from.is_none());
+    assert!(
+        history
+            .assessment_target
+            .as_ref()
+            .unwrap()
+            .history_membership
+            .as_ref()
+            .unwrap()
+            .association_unverified
+    );
+    assert_eq!(history.assessment_from, Some(0));
     assert!(history.previous_decision.is_none());
     drop(history);
     let current = close_branch_turn(&store, &ticket, now);

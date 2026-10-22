@@ -113,6 +113,7 @@ pub(super) enum ClassificationError {
 
 pub(super) struct ClassificationRequest<'a> {
     pub(super) request: &'a ModelRequestIRV1,
+    pub(super) current_input: Option<&'a [ContentPart]>,
     /// A recognized auxiliary call or continuation has no independent current input.
     pub(super) native_user_unavailable: bool,
     /// Missing source evidence is disclosed to judgment; usable input stays enabled.
@@ -125,6 +126,41 @@ pub(super) struct ClassificationRequest<'a> {
     pub(super) overall_deadline: Instant,
     pub(super) cancellation: CancellationToken,
     pub(super) started_at: Instant,
+}
+
+/// Current input is an independent descriptor; selecting it never rewrites the
+/// original transcript or demotes other User envelopes to instructions.
+#[derive(Clone, Copy)]
+pub(super) struct DecisionInput<'a> {
+    request: &'a ModelRequestIRV1,
+    current: Option<&'a [ContentPart]>,
+}
+
+impl<'a> From<&'a ModelRequestIRV1> for DecisionInput<'a> {
+    fn from(request: &'a ModelRequestIRV1) -> Self {
+        Self {
+            request,
+            current: None,
+        }
+    }
+}
+
+impl<'a> DecisionInput<'a> {
+    fn parts(self) -> Option<&'a [ContentPart]> {
+        self.current.or_else(|| {
+            self.request
+                .messages
+                .iter()
+                .rev()
+                .find(|message| {
+                    message.role == MessageRole::User
+                        && message.content.iter().any(|part| {
+                            matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. })
+                        })
+                })
+                .map(|message| message.content.as_slice())
+        })
+    }
 }
 
 struct PreparedDecisionRequest {
@@ -269,6 +305,7 @@ impl ProductionGatewayRuntime {
                 &strategy,
                 ClassificationRequest {
                     request: &request,
+                    current_input: None,
                     native_user_unavailable: false,
                     current_input_origin_unverified: false,
                     replay: &replay,
@@ -334,7 +371,13 @@ impl ProductionGatewayRuntime {
         let (latest_user, local_input_unavailable) = if request.native_user_unavailable {
             (None, true)
         } else {
-            match resolve_latest_user(request.request, request.replay) {
+            match resolve_latest_user(
+                DecisionInput {
+                    request: request.request,
+                    current: request.current_input,
+                },
+                request.replay,
+            ) {
                 Ok(user) => (user, false),
                 Err(ClassificationError::Resource) => (None, true),
                 Err(error) => return Err(error),
@@ -371,13 +414,19 @@ impl ProductionGatewayRuntime {
                     let prepared = if classifier.system_one_model.is_some() {
                         system_one::request_template(
                             classifier,
-                            request.request,
+                            DecisionInput {
+                                request: request.request,
+                                current: request.current_input,
+                            },
                             request.history,
                             request.current_input_origin_unverified,
                         )
                     } else {
                         classifier_request_template(
-                            request.request,
+                            DecisionInput {
+                                request: request.request,
+                                current: request.current_input,
+                            },
                             request.history,
                             classifier,
                             request.current_input_origin_unverified,
@@ -960,11 +1009,11 @@ fn ensure_call_active(
     }
 }
 
-fn resolve_latest_user(
-    request: &ModelRequestIRV1,
+fn resolve_latest_user<'a>(
+    request: impl Into<DecisionInput<'a>>,
     replay: &ReplayStore,
 ) -> Result<Option<ResolvedLatestUser>, ClassificationError> {
-    let Some(parts) = latest_user_parts(request) else {
+    let Some(parts) = latest_user_parts(request.into()) else {
         return Ok(None);
     };
     let byte_len = joined_text_len(&parts).map_err(|_| ClassificationError::Integrity)?;
@@ -1000,16 +1049,9 @@ fn resolve_latest_user(
     }))
 }
 
-fn latest_user_parts(request: &ModelRequestIRV1) -> Option<Vec<&str>> {
-    let message = request.messages.iter().rev().find(|message| {
-        message.role == MessageRole::User
-            && message
-                .content
-                .iter()
-                .any(|part| matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. }))
-    })?;
-    let parts = message
-        .content
+fn latest_user_parts(request: DecisionInput<'_>) -> Option<Vec<&str>> {
+    let parts = request
+        .parts()?
         .iter()
         .filter_map(|part| match part {
             ContentPart::Text { text } => Some(text.as_str()),

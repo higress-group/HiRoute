@@ -19,6 +19,7 @@ const MAX_USER_MESSAGES: usize = 128;
 
 pub(super) struct NativeRoutingView {
     projected: Option<Box<ModelRequestIRV1>>,
+    current_input: Option<Vec<ContentPart>>,
     origin_unverified: bool,
     _reservation: Option<Reservation>,
 }
@@ -30,6 +31,28 @@ impl NativeRoutingView {
         replay: &ReplayStore,
         budget: &StreamBudget,
     ) -> Self {
+        if let Some(input) = crate::context_hold::native_input(headers) {
+            let selected = match input {
+                Ok(crate::context_hold::NativeInput::NativeMessages(window)) => {
+                    window_input(request, replay, budget, &window)
+                }
+                _ => None,
+            };
+            return match selected {
+                Some((parts, reservation)) => Self {
+                    projected: None,
+                    current_input: Some(parts),
+                    origin_unverified: true,
+                    _reservation: Some(reservation),
+                },
+                None => Self {
+                    projected: None,
+                    current_input: None,
+                    origin_unverified: true,
+                    _reservation: None,
+                },
+            };
+        }
         // A copied ancestor User is not proof of the current peer task. Keep
         // routing usable on observed input and disclose the missing provenance.
         let peer_task = request.native_only
@@ -48,6 +71,7 @@ impl NativeRoutingView {
         if peer_task {
             return Self {
                 projected: None,
+                current_input: None,
                 origin_unverified: true,
                 _reservation: None,
             };
@@ -57,11 +81,13 @@ impl NativeRoutingView {
             return match projected {
                 Some((request, reservation)) => Self {
                     projected: Some(request),
+                    current_input: None,
                     origin_unverified: true,
                     _reservation: Some(reservation),
                 },
                 None => Self {
                     projected: None,
+                    current_input: None,
                     origin_unverified: true,
                     _reservation: None,
                 },
@@ -70,6 +96,7 @@ impl NativeRoutingView {
         let Some(proof) = dsh_user_turns(headers) else {
             return Self {
                 projected: None,
+                current_input: None,
                 origin_unverified: request.native_only,
                 _reservation: None,
             };
@@ -80,15 +107,21 @@ impl NativeRoutingView {
         match projected {
             Some((request, reservation)) => Self {
                 projected: Some(request),
+                current_input: None,
                 origin_unverified: false,
                 _reservation: Some(reservation),
             },
             None => Self {
                 projected: None,
+                current_input: None,
                 origin_unverified: true,
                 _reservation: None,
             },
         }
+    }
+
+    pub(super) fn current_input(&self) -> Option<&[ContentPart]> {
+        self.current_input.as_deref()
     }
 
     pub(super) fn request<'a>(&'a self, original: &'a ModelRequestIRV1) -> &'a ModelRequestIRV1 {
@@ -98,6 +131,63 @@ impl NativeRoutingView {
     pub(super) fn origin_unverified(&self) -> bool {
         self.origin_unverified
     }
+}
+
+fn window_input(
+    request: &ModelRequestIRV1,
+    replay: &ReplayStore,
+    budget: &StreamBudget,
+    window: &crate::context_hold::NativeMessageWindow,
+) -> Option<(Vec<ContentPart>, Reservation)> {
+    let users = request
+        .messages
+        .iter()
+        .filter(|message| {
+            message.role == MessageRole::User
+                && message.content.iter().any(|part| {
+                    matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. })
+                })
+        })
+        .take(MAX_USER_MESSAGES + 1)
+        .collect::<Vec<_>>();
+    if users.len() > MAX_USER_MESSAGES {
+        return None;
+    }
+    let bytes = users.iter().try_fold(0usize, |total, message| {
+        message.content.iter().try_fold(total, |total, part| {
+            let ContentPart::Text { text } = part else {
+                return None;
+            };
+            let length = text
+                .content_ref()
+                .map_or(Some(text.len()), |r| usize::try_from(r.byte_len()).ok())?;
+            total
+                .checked_add(length)
+                .filter(|n| *n <= MAX_USER_TEXT_BYTES)
+        })
+    })?;
+    let reservation = budget
+        .reserve(
+            MemoryRole::ModelIrBacking,
+            bytes.checked_mul(4)?.checked_add(32 * 1024)?,
+        )
+        .ok()?;
+    let digests = users
+        .iter()
+        .map(|message| text_digest(&message.content, replay))
+        .collect::<Option<Vec<_>>>()?;
+    let encoded = serde_json::to_vec(&digests).ok()?;
+    if format!("{:x}", Sha256::digest(&encoded)) != window.scope_digest {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for message in &window.messages {
+        if digests.get(message.index)? != &message.sha256 {
+            return None;
+        }
+        parts.extend(users[message.index].content.clone());
+    }
+    Some((parts, reservation))
 }
 
 fn project(

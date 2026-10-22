@@ -62,6 +62,7 @@ async fn optional_projection_capacity_falls_back_without_changing_input_or_sourc
                 &strategy,
                 ClassificationRequest {
                     request: &request,
+                    current_input: None,
                     native_user_unavailable: false,
                     current_input_origin_unverified: false,
                     replay: &replay,

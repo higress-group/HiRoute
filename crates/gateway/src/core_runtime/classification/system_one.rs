@@ -26,12 +26,13 @@ pub(super) struct Bindings {
     pub(super) applicability: Option<String>,
 }
 
-pub(super) fn request_template(
+pub(super) fn request_template<'a>(
     authority: &RestBranchClassifierAuthorityV1,
-    request: &ModelRequestIRV1,
+    request: impl Into<super::DecisionInput<'a>>,
     history: &AgentTurnHistorySnapshot,
     current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, CallFailure> {
+    let request = request.into();
     if authority.native_protocol.is_some() {
         return super::c_request::request_template(
             authority,

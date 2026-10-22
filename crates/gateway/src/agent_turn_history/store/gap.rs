@@ -10,7 +10,7 @@ impl AgentTurnHistoryStore {
 
     pub(crate) fn note_capture_gap(&self, key: &AgentTurnHistoryKey) {
         if let Some(mut inner) = self.inner.try_lock() {
-            inner.note_capture_gap(key);
+            inner.note_scope_gap(key);
             return;
         }
         // A collision discloses uncertainty conservatively. It cannot assert a
@@ -28,15 +28,35 @@ impl AgentTurnHistoryStore {
         key: &AgentTurnHistoryKey,
         epoch: u64,
     ) {
-        if inner
+        let affected = inner
             .entries
-            .get(key)
-            .is_some_and(|entry| epoch == u64::MAX || entry.capture_gap_epoch < epoch)
-        {
-            inner.note_capture_gap(key);
-            if let Some(entry) = inner.entries.get_mut(key) {
-                entry.capture_gap_epoch = epoch;
-            }
+            .iter()
+            .filter(|(_, entry)| {
+                &entry.scope == key && (epoch == u64::MAX || entry.capture_gap_epoch < epoch)
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for branch in affected {
+            inner.note_capture_gap(&branch);
+            inner
+                .entries
+                .get_mut(&branch)
+                .expect("retained branch")
+                .capture_gap_epoch = epoch;
+        }
+    }
+}
+
+impl StoreInner {
+    pub(super) fn note_scope_gap(&mut self, scope: &AgentTurnHistoryKey) {
+        let keys = self
+            .entries
+            .iter()
+            .filter(|(_, e)| &e.scope == scope)
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for key in keys {
+            self.note_capture_gap(&key);
         }
     }
 }

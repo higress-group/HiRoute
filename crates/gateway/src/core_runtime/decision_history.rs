@@ -88,7 +88,15 @@ impl ProductionGatewayRuntime {
         prepared_hold: Option<PreparedHold>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
         let capture = prepared_hold.as_ref().map(CaptureScope::from_prepared);
-        self.begin_history(observation, plan, request, replay, capture, prepared_hold)
+        self.begin_history(
+            observation,
+            plan,
+            request,
+            replay,
+            capture,
+            prepared_hold,
+            None,
+        )
     }
 
     pub(super) fn begin_authorized_decision_history(
@@ -99,8 +107,17 @@ impl ProductionGatewayRuntime {
         replay: &ReplayStore,
         capture: Option<CaptureScope>,
         prepared_hold: Option<PreparedHold>,
+        current_input: Option<&[model_ir::ContentPart]>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
-        self.begin_history(observation, plan, request, replay, capture, prepared_hold)
+        self.begin_history(
+            observation,
+            plan,
+            request,
+            replay,
+            capture,
+            prepared_hold,
+            current_input,
+        )
     }
 
     fn begin_history(
@@ -111,6 +128,7 @@ impl ProductionGatewayRuntime {
         replay: &ReplayStore,
         capture: Option<CaptureScope>,
         prepared_hold: Option<PreparedHold>,
+        current_input: Option<&[model_ir::ContentPart]>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
         let Some(capture) = capture else {
             return Ok(DecisionHistory::detached());
@@ -134,6 +152,9 @@ impl ProductionGatewayRuntime {
             .agent_turn_history
             .prepare_scoped_request(&key, request, replay)
             .and_then(|mut analyzed| {
+                if let Some(parts) = current_input {
+                    analyzed.select_current_input(parts, replay)?;
+                }
                 if user_origin_unverified {
                     analyzed.mark_user_origin_unverified();
                 }

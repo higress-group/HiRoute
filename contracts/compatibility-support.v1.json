@@ -1317,7 +1317,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -1930,6 +1930,18 @@
         "crates/gateway/src/context_hold/routing/codex_tests.rs",
         "crates/gateway/src/context_hold/continuity.rs",
         "crates/gateway/src/context_hold/continuity_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-membership digest 806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069 without history_membership",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained exact bytes without inventing branch membership. New facts carry bounded request membership; older facts retain conservative range inference and cannot authenticate the added field.",
+      "removal_condition": "Retire only when supported stores and backups no longer retain pre-membership facts or an authenticated conversion preserves the original evidence.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
       ]
     }
   ]

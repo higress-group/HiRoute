@@ -91,6 +91,7 @@ pub(crate) struct AgentTurnHistorySnapshot {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssessmentTarget {
+    pub(crate) history_membership: Option<hiroute_domain::HistoryMembershipV1>,
     pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) segment_id: String,
     pub(crate) first_turn_id: String,
@@ -174,6 +175,7 @@ pub(crate) struct AcceptedExecution {
 
 #[derive(Clone, Debug)]
 pub(crate) struct CompletedAgentTurn {
+    pub(crate) history_membership: Option<hiroute_domain::HistoryMembershipV1>,
     pub(crate) opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) agent_turn_id: String,

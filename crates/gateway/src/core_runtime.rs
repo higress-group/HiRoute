@@ -722,6 +722,7 @@ impl ProductionGatewayRuntime {
                     &replay,
                     capture_scope,
                     prepared_hold,
+                    routing_view.current_input(),
                 ) {
                     Ok(tracking) => tracking,
                     Err(_) => {
@@ -742,6 +743,7 @@ impl ProductionGatewayRuntime {
                     &strategy,
                     classification::ClassificationRequest {
                         request: routing_request,
+                        current_input: routing_view.current_input(),
                         native_user_unavailable,
                         current_input_origin_unverified,
                         replay: &replay,

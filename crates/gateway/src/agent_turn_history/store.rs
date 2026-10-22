@@ -55,6 +55,7 @@ pub(super) struct StoreInner {
 
 struct SessionEntry {
     scope: AgentTurnHistoryKey,
+    branch_id: String,
     admission_sequence: u64,
     branch_relation: branches::HistoryRelation,
     entry_token: u64,
@@ -113,6 +114,9 @@ struct CaptureAdmission {
 }
 
 struct ActiveTurn {
+    request_ids: Vec<String>,
+    request_ids_clipped: bool,
+    source_unverified: bool,
     opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     agent_turn_id: String,
     native_turn: Option<[u8; 32]>,
@@ -292,6 +296,7 @@ impl AgentTurnHistoryStore {
             .try_lock()
             .ok_or(AgentTurnHistoryError::Resource)?;
         inner.purge_expired(now, self.idle_ttl);
+        self.observe_capture_gap_epoch(&mut inner, &key, gap_epoch);
         // Projection ran before either cache lock. Validate and reserve the
         // checkpoint before changing active turns, tool outcomes or snapshots.
         // The callback must not wait: both stores use try_lock admission.
@@ -362,6 +367,9 @@ impl AgentTurnHistoryStore {
             let request_token = inner.allocate_request_token()?;
             let turn_id = self.allocate_id(inner, "turn")?;
             let active = ActiveTurn {
+                request_ids: Vec::new(),
+                request_ids_clipped: false,
+                source_unverified: analyzed.user_origin_unverified,
                 opening_cause: match decision_inputs.history_continuity {
                     crate::context_hold::HistoryContinuity::Shortened => {
                         hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened
@@ -394,6 +402,7 @@ impl AgentTurnHistoryStore {
             };
             let mut entry = SessionEntry {
                 scope: key.clone(),
+                branch_id: hex(&key.0),
                 admission_sequence: request_token,
                 branch_relation: branches::HistoryRelation::Root,
                 entry_token,
@@ -688,6 +697,9 @@ impl AgentTurnHistoryStore {
                 entry.current_segment = None;
             }
             entry.active = ActiveTurn {
+                request_ids: Vec::new(),
+                request_ids_clipped: false,
+                source_unverified: analyzed.user_origin_unverified,
                 opening_cause,
                 agent_turn_id: turn_id.clone(),
                 native_turn: decision_inputs.native_turn,
@@ -856,6 +868,11 @@ impl AgentTurnHistoryStore {
             entry.last_access = now;
             if entry.active.first_request_id.is_none() {
                 entry.active.first_request_id = Some(request_id.clone());
+            }
+            if entry.active.request_ids.len() < 128 {
+                entry.active.request_ids.push(request_id.clone());
+            } else {
+                entry.active.request_ids_clipped = true;
             }
             entry.active.last_request_id = Some(request_id);
             entry.active.last_request_status = if terminal {

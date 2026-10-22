@@ -1,7 +1,9 @@
 //! Optional native routing evidence. It never grants execution authority.
 mod codex;
 mod observed_input;
+mod v2;
 pub(crate) use observed_input::{ObservedUserInput, hermes_observed_input};
+pub(crate) use v2::{NativeInput, NativeMessageWindow, native_input};
 
 use super::identity::{ContextIdentityFacts, Field, header_value, single_header};
 use http::HeaderMap;
@@ -29,6 +31,8 @@ pub(crate) struct NativeCheckpoint {
     pub(crate) compacted: bool,
     pub(crate) requires_checkpoint: bool,
     pub(crate) user_origin: NativeUserOrigin,
+    pub(crate) branch_leaf: Option<[u8; 32]>,
+    pub(crate) branch_path: Option<[u8; 32]>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -294,6 +298,7 @@ pub(super) fn facts(
                 generation: None,
                 requires_checkpoint: false,
                 user_origin: NativeUserOrigin::Observed,
+                ..Default::default()
             },
             ..RoutingFacts::default()
         };
@@ -307,6 +312,9 @@ pub(super) fn facts(
             Field::Invalid => return RoutingFacts::uncertain(),
             Field::Absent => {}
         }
+    }
+    if let Some(result) = v2::routing_facts(headers, agent, native_identity, worker.is_some()) {
+        return result;
     }
     let context = match single_header(headers, "x-hiroute-routing-context", 4096) {
         Field::Value(value) => serde_json::from_str::<NativeContext>(&value).ok(),
@@ -323,6 +331,9 @@ pub(super) fn facts(
     let Some(context) = context else {
         return RoutingFacts::uncertain();
     };
+    if context.version != 1 || context.agent != agent {
+        return RoutingFacts::uncertain();
+    }
     if context.purpose != "main" {
         return RoutingFacts::detached();
     }
@@ -384,6 +395,8 @@ pub(super) fn facts(
             } else {
                 NativeUserOrigin::Observed
             },
+            branch_leaf: None,
+            branch_path: None,
         },
         ..RoutingFacts::default()
     };

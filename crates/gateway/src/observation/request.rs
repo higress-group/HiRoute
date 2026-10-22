@@ -898,6 +898,7 @@ impl RequestObservation {
             };
         self.emit_execution(
             ExecutionFactV1::AgentTurnFinished {
+                history_membership: turn.history_membership.clone(),
                 opening_cause: Some(turn.opening_cause),
                 branch_execution: turn.branch_execution.clone(),
                 agent_turn_id: turn.agent_turn_id.clone(),
@@ -938,6 +939,7 @@ impl RequestObservation {
         };
         self.emit_execution(
             ExecutionFactV1::BranchAssessmentRecorded {
+                history_membership: assessment.target.history_membership.clone(),
                 segment_id: assessment.target.segment_id.clone(),
                 plan_id: assessment.target.plan.plan_id.clone(),
                 plan_revision: assessment.target.plan.plan_revision,

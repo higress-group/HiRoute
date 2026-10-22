@@ -148,6 +148,20 @@ pub(super) fn close_active(
         steps: std::mem::take(&mut entry.active.steps),
     });
     let completed = CompletedAgentTurn {
+        history_membership: Some(hiroute_domain::HistoryMembershipV1 {
+            version: 1,
+            branch_id: entry.branch_id.clone(),
+            revision: entry.revision,
+            request_ids: entry.active.request_ids.clone(),
+            clipped: entry.active.request_ids_clipped,
+            relation: entry.branch_relation.into(),
+            source_unverified: entry.active.source_unverified,
+            association_unverified: matches!(
+                entry.branch_relation,
+                branches::HistoryRelation::Contextual | branches::HistoryRelation::AmbiguousPrefix
+            ),
+            capture_partial: entry.active.capture_partial || segment_partial,
+        }),
         opening_cause: entry.active.opening_cause,
         branch_execution: if matches!(attribution, ExecutionAttribution::Single { .. }) {
             entry
@@ -232,6 +246,7 @@ pub(super) fn snapshot(
             .find(|turn| turn.completed.segment_id == segment.segment_id)?;
         match &last.completed.attribution {
             ExecutionAttribution::Single { .. } => Some(AssessmentTarget {
+                history_membership: stage_membership(entry, segment),
                 branch_execution: last.completed.branch_execution.clone(),
                 segment_id: segment.segment_id.clone(),
                 first_turn_id: segment.first_turn_id.clone(),
@@ -347,7 +362,15 @@ impl StoreInner {
 pub(super) fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> usize {
     size_of::<SessionEntry>()
         + size_of_val(key)
+        + entry.branch_id.capacity()
         + entry.active.decision.as_ref().map_or(0, decision_bytes)
+        + entry.active.request_ids.capacity() * size_of::<String>()
+        + entry
+            .active
+            .request_ids
+            .iter()
+            .map(String::capacity)
+            .sum::<usize>()
         + entry.active.agent_turn_id.capacity()
         + entry
             .active
@@ -436,6 +459,10 @@ pub(super) fn decision_bytes(value: &BranchDecisionV1) -> usize {
 pub(super) fn completed_bytes(value: &CompletedAgentTurn) -> usize {
     size_of::<CompletedAgentTurn>()
         + value
+            .history_membership
+            .as_ref()
+            .map_or(0, membership_bytes)
+        + value
             .branch_execution
             .as_ref()
             .map_or(0, |e| e.policy.name.capacity() + 80)
@@ -514,4 +541,54 @@ pub(super) fn unix_ms() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+fn membership_bytes(value: &hiroute_domain::HistoryMembershipV1) -> usize {
+    size_of_val(value)
+        + value.branch_id.capacity()
+        + value.request_ids.capacity() * size_of::<String>()
+        + value
+            .request_ids
+            .iter()
+            .map(String::capacity)
+            .sum::<usize>()
+}
+
+fn stage_membership(
+    entry: &SessionEntry,
+    segment: &SegmentState,
+) -> Option<hiroute_domain::HistoryMembershipV1> {
+    let mut result = entry
+        .closed
+        .iter()
+        .rev()
+        .find(|t| t.completed.segment_id == segment.segment_id)?
+        .completed
+        .history_membership
+        .clone()?;
+    result.request_ids.clear();
+    for turn in entry
+        .closed
+        .iter()
+        .filter(|t| t.completed.segment_id == segment.segment_id)
+    {
+        let Some(membership) = &turn.completed.history_membership else {
+            result.clipped = true;
+            continue;
+        };
+        result.source_unverified |= membership.source_unverified;
+        result.capture_partial |= membership.capture_partial;
+        result.clipped |= membership.clipped;
+        for id in &membership.request_ids {
+            if result.request_ids.contains(id) {
+                continue;
+            }
+            if result.request_ids.len() < 128 {
+                result.request_ids.push(id.clone());
+            } else {
+                result.clipped = true;
+            }
+        }
+    }
+    Some(result)
 }

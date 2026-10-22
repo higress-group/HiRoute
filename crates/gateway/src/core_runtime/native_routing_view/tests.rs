@@ -82,6 +82,43 @@ fn metadata() -> Value {
 }
 
 #[test]
+fn current_window_preserves_unlisted_users_and_binds_the_final_wire_scope() {
+    let fixture = Fixture::new();
+    let original = request(
+        IngressProtocol::Responses,
+        json!([
+            {"role":"user", "content":"older actual input"},
+            {"role":"assistant", "content":"actual output"},
+            {"role":"user", "content":"current native event"},
+            {"role":"user", "content":"later ambiguous notification"}
+        ]),
+    );
+    let hashes = [
+        digest("older actual input"),
+        digest("current native event"),
+        digest("later ambiguous notification"),
+    ];
+    let mut envelope = json!({"version":2,"agent":"dsh","session_id":"session","purpose":"main","turn_id":"turn",
+        "input":{"kind":"native_messages","event_id":"event","coverage":"window",
+            "messages":[{"index":1,"sha256":hashes[1]}],"scope_digest":format!("{:x}", Sha256::digest(serde_json::to_vec(&hashes).unwrap()))}});
+    let view = fixture.view(&original, envelope.clone());
+    assert!(std::ptr::eq(view.request(&original), &original));
+    assert_eq!(
+        view.current_input().unwrap(),
+        &[ContentPart::Text {
+            text: "current native event".into()
+        }]
+    );
+    assert_eq!(original.messages[0].role, MessageRole::User);
+    assert_eq!(original.messages[3].role, MessageRole::User);
+    envelope["input"]["scope_digest"] = "0".repeat(64).into();
+    let rejected = fixture.view(&original, envelope);
+    assert!(rejected.current_input().is_none());
+    assert!(std::ptr::eq(rejected.request(&original), &original));
+    assert!(rejected.origin_unverified());
+}
+
+#[test]
 fn opaque_native_fields_retain_the_request_and_disclose_origin_uncertainty() {
     let fixture = Fixture::new();
     for peer in [false, true] {

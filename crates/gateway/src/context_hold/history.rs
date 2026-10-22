@@ -535,6 +535,19 @@ impl<'a> Encoder<'a> {
         semantic: bool,
     ) -> Option<()> {
         self.tag(b"history-item");
+        if let Some(peer) = request
+            .native_body
+            .as_ref()
+            .and_then(|body| body.get("input"))
+            .and_then(Value::as_array)
+            .and_then(|items| items.get(message_index))
+            .filter(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
+        {
+            // The portable placeholder is deliberately empty. It cannot stand
+            // in for author, recipient, typed content or ciphertext evidence.
+            self.tag(b"native-peer-message");
+            self.json(peer)?;
+        }
         if let Some(search) = request.responses_search_history.get(&message_index) {
             self.web_search_call(search);
         } else {

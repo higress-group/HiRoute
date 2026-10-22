@@ -74,6 +74,7 @@ fn finished_for_model_with_status(
     status: AgentTurnStatusV1,
 ) -> ExecutionFactV1 {
     ExecutionFactV1::AgentTurnFinished {
+        history_membership: None,
         opening_cause: None,
         branch_execution: None,
         agent_turn_id: turn.into(),
@@ -114,6 +115,7 @@ fn assessment_for_model(
     model: &str,
 ) -> ExecutionFactV1 {
     ExecutionFactV1::BranchAssessmentRecorded {
+        history_membership: None,
         segment_id: segment.into(),
         plan_id: AgentPlanId::parse(PLAN).unwrap(),
         plan_revision: 17,
