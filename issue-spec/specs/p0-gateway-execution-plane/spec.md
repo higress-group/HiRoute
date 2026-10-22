@@ -113,14 +113,18 @@ or persistent watermark.
 
 ### Requirement: Decision history has one bounded process-local owner
 
-One ContextHold scan returns message continuity and stronger candidate preference.
-Before pure Planner, smart-saving/custom judgment inherits or starts exactly one
-routing turn using that result; history store cannot independently hash prefixes,
-compare latest text, or identify compaction. New user input always rejudges; tool
-continuation with valid continuous decision does not. Instruction/tool/state changes
-may invalidate preference without changing that turn's category/group. Unrelated
-publication does not invalidate exact route/authority continuity; every request
-still uses current authorization.
+The history owner resolves bounded predecessor evidence and admits independent
+request captures under the current authorized native scope, following the
+[concurrent execution contract](../decision-services/spec.md#requirement-concurrent-executions-own-independent-history-and-assessment-snapshots).
+ContextHold is a subordinate branch-scoped cache for stronger candidate preference;
+successful hold admission is not required for capture or evaluation. Before pure
+Planner, smart-saving/custom judgment inherits a valid decision only with sufficient
+continuity, or starts a fresh routing decision. New usable input rejudges; a tool
+continuation with a valid continuous decision can inherit it. Instruction/tool/state
+changes may invalidate preference without changing that decision's category/group.
+Unrelated publication does not invalidate exact route/authority continuity; every
+request still uses current authorization. Equal input or native request IDs alone
+cannot establish predecessor identity or deduplicate executions.
 
 Routing continuity keeps a separate streaming digest that masks only text within
 same-position System/Developer messages. Roles, names, content-part counts,
@@ -136,15 +140,22 @@ supply the semantic digest at identical message positions; its normalized batche
 cannot authorize provider affinity or reasoning-cleanup reuse.
 
 The history store defaults to 500,000,000 bytes and one-hour idle TTL, retaining
-simplified sealed turns, one active decision, and actual contiguous execution stages.
-It does not read Observation disk/SQLite or add another branch/cache state machine.
-Concurrent same-session/late CAS rejects unsafe updates. LRU/TTL/restart yields
-explicit partial history without blocking independent requests.
+bounded independent captures, branch heads and immutable assessment membership.
+It does not read Observation disk/SQLite to reconstruct routing history. Concurrent
+requests in one session receive independent guards; completion can update only the
+owned execution and eligible branch. A late completion cannot change an assessment
+snapshot already sent for judgment. LRU/TTL/restart yields explicit missing history
+without blocking subsequent independent classification, capture and evaluation.
 
 History is optional routing context, not model-request admission. A same-scope
-request already in flight, unavailable continuation, exhausted/busy history store,
-or request without a real user turn SHALL execute independently with empty visible
-history, `history_partial=true`, and no inherited decision or prior-stage assessment.
+request already in flight SHALL NOT serialize or displace another request. Without
+a unique strong predecessor, an admitted request may evaluate a retained completed
+stage as explicitly uncertain context; that target is not a proven parent. Known
+missing execution remains partial, while source or association uncertainty alone
+does not make a complete target partial. An exhausted/busy history store loses only
+unavailable history/assessment and decision inheritance; a usable current input
+still classifies independently. Only unavailable classification, including a request
+without usable current input, uses the existing temporary decision fallback.
 ContextHold scans SHALL NOT advance shared checkpoints before history admission;
 rejected side-path admission cannot invalidate the live request's completion or
 tool continuation. A stale/failed optional decision write relinquishes its history
@@ -156,20 +167,18 @@ request/Replay integrity, source cancellation/deadline, and execution eligibilit
 remain mandatory. Observation/capture failure cannot replace, truncate, retry, or
 delay delivery of the accepted model response; any lost history remains partial.
 
-Native envelope roles alone do not prove a user turn. DSH appends runtime context
-using the user role, so its installed adapter identifies native `source.kind=user`
-events and turn IDs, then binds them to serialized request user positions with
-SHA-256 over each ordered text-block array. Gateway verifies that optional proof
-before building a routing-only semantic view. Synthetic context cannot open a turn;
-same-turn user batches merge at their final original position without moving model
-or tool exchanges. Provider execution and Observation retain the original request.
-The adapter reads at most 512 events; proof is bounded to 4 KiB, 16 turns and 32
-real user messages among 128 user envelopes. Gateway limits the compact projection
-to 256 KiB and user text to 2 MiB, reserving its encoded, decoded and temporary
-storage before allocation. Missing/invalid proof, unknown/image content, compaction
-without a surviving true user, or insufficient projection capacity SHALL disable
-shared history and classify as unavailable using the published fallback. It SHALL
-NOT classify a trailing runtime instruction as a user task or fail model execution.
+Native envelope roles alone do not prove human input. DSH may append runtime context
+using the user role. Its bounded native event mapping can describe the current
+event using the [optional input-window contract](../agent-connections/spec.md#requirement-optional-native-routing-evidence-separates-purpose-input-and-history).
+Gateway validates final wire positions and their complete bounded digest scope
+before selecting that event. The proof does not require complete old history,
+demote unlisted Users to System, identify a logical task, or authorize execution
+ancestry. Provider execution and Observation retain the original request. Missing,
+invalid or unsupported proof, or insufficient optional projection capacity, keeps
+the complete observed current User batch and explicit uncertainty; it SHALL NOT
+globally disable classification, capture or evaluation. Known auxiliary purpose
+survives an optional mapping failure. A known continuation without usable current
+input may temporarily fall back, but later same-session usable input SHALL recover.
 
 A later proven native request may reveal user turns that bypassed optional capture.
 It may retain already accepted visible history, but SHALL mark the gap partial and

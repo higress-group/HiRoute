@@ -382,9 +382,13 @@ record the actual request and accepted output with an explicit
 SHALL NOT make complete accepted execution ineligible for cross-turn evaluation.
 Current classifier input SHALL disclose the same uncertainty without removing its
 readable content, assessment target or applicability question.
-Unknown-origin requests use a distinct optimization lane from verified adapter
-input, so a broken adapter cannot replace that lane's original task/checkpoint.
-Potentially missed verified captures retain the existing gap fence.
+Observed and verified source evidence share the same authorized execution scope;
+source uncertainty is retained on each record, not used to select separate stores.
+An uncertain request cannot overwrite or advance a stronger branch head. Without
+a validated predecessor it starts an independent branch, while a retained completed
+stage may remain an explicitly uncertain contextual evaluation target. Exact
+predecessors rank before contextual candidates, and potentially missed captures
+retain the existing gap fence. Native identity alone cannot grant ContextHold reuse.
 
 An unverified native prefix rewrite SHALL start a separate execution segment and
 fresh classification without permanently disabling evaluation of the preceding
@@ -501,8 +505,9 @@ evidence; Gateway in-memory history is not reconstructed from equal summaries.
 For Pi, DSH and OpenCode adapters, an unchanged copied turn marker cannot establish continuity
 for an otherwise rewritten transcript without a new native compaction checkpoint.
 Such uncertain requests SHALL neither replace that verified checkpoint nor append
-their execution to its routing history. A separate observed lane MAY retain their
-actual execution and evaluation with explicit source uncertainty.
+their execution to its proven branch. Independent observed branches in the same
+authorized scope retain actual execution and contextual evaluation with explicit
+source and association uncertainty.
 
 #### Scenario: A native summary overlaps its parent
 
