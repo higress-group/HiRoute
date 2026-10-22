@@ -29,6 +29,10 @@ use the same protected artifact journal as model settings. The
 [request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
 main/child history and detaches known auxiliary calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
 cover interleaving and semantic compaction independently of provider affinity.
+Pi's [provider adapter](../../assets/agents/pi/hiroute-routing.mjs) binds native
+compaction/tree-summary signals at the public provider seam and retains branch
+cursors as observed evidence. Its [native guide](../../tools/product-e2e/tests/PI_INTEGRATION.md#ordinary-routing-metadata)
+separates installed SDK fixtures, actual CLI acceptance and Restore inference.
 Claude's native [identity leaf](../../crates/gateway/src/context_hold/identity/claude.rs)
 keeps session/agent scope separate from its [request-class and prompt leaf](../../crates/gateway/src/context_hold/routing/claude.rs);
 known auxiliary classes survive optional enrichment failure, while unknown classes

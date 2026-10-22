@@ -489,8 +489,9 @@ registration together with its owned adapter file, while retaining a genuinely
 pre-existing registration and borrowed file. A registration created by an earlier
 HiRoute configuration MUST NOT become user-owned merely by reconfiguration.
 
-Pi uses its extension hooks and disables managed-provider cache warming, whose
-purpose is otherwise indistinguishable. DSH attaches one public Cordis middleware
+Pi delegates managed physical Responses and Messages providers through the public
+provider registry and registration seam. It disables managed-provider cache warming,
+whose purpose is otherwise indistinguishable. DSH attaches one public Cordis middleware
 insert and preserves unrelated patch rows. OpenCode uses its native per-call hook
 with a bounded optional session read. OpenCode Workers retain pure mode and split
 main and auxiliary provider declarations within the same authorized frozen Plan;
@@ -512,10 +513,30 @@ NOT block compatible authorization or model execution; absent native identity
 retains request scope. Compression lineage does not authenticate input origin.
 Accuracy of callback/task association remains a separate limitation, not a reason
 to disable smart routing. Known auxiliary clients remain outside the main history.
-Pi uses native projected-entry provenance: known compacted continuations require
-saved input, supported current user entries can open input, and custom/unknown
-projection remains observed. A transient optional hook failure SHALL NOT latch the
-adapter off. DSH relay/settlement envelopes after the latest actual input SHALL
+Pi compaction and requested nonempty tree summaries SHALL bind purpose to the
+actual native operation's AbortSignal. Serial calls and retries on that signal
+remain auxiliary without a session phase, timeout or terminal callback. A failed,
+cancelled, extension-supplied or omitted summary SHALL NOT mark subsequent ordinary
+requests. Known summary purpose survives unavailable optional cursor evidence.
+Ordinary calls SHALL attach the extension session's cursor only when the provider
+call's sessionId matches that live native session; a summary requires its own
+matched operation signal. An unmatched call keeps its original provider options.
+Missing signal remains unknown. Session, purpose and branch facts SHALL be frozen
+before asynchronous provider execution. Native projection tri-state supplies
+observed event/compression cursor evidence, never final wire input positions or
+human provenance. Branch evidence includes the leaf and ordered native path; a
+shared user entry alone cannot distinguish branches.
+Pi SHALL write request metadata through options.headers at the provider seam and
+retain the original stream implementation exactly once, including auth, payload,
+retry and cancellation semantics. Reload, session/model replacement and provider
+refresh SHALL NOT stack wrappers or revive a superseded delegate. Missing public
+registration-identity capability or optional metadata failure SHALL preserve native
+provider availability. The exact-metadata scope is one managed CLI runtime per
+process; arbitrary SDK hosts that share and independently unload a mutable
+provider registry, third-party virtual routes and signal-replacing summaries
+require separate evidence. A transient optional failure SHALL NOT latch routing
+off, and summary content SHALL NOT reconstruct prior accepted task execution.
+DSH relay/settlement envelopes after the latest actual input SHALL
 NOT acquire that input's proof merely by arriving in its active native turn.
 OpenCode binds new prompt IDs through `chat.message`; unobserved overflow copies
 and unbound synthetic child results remain observed. Known compaction followups
