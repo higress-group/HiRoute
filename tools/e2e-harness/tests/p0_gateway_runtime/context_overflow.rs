@@ -24,7 +24,14 @@ fn overflow_request(fixture: &RuntimeFixture, protocol: &str) -> WireResponse {
         fixture.address,
         "POST",
         path,
-        &[("X-HiRoute-Token", TOKEN)],
+        &[(
+            "X-HiRoute-Token",
+            match protocol {
+                "chat_completions" => CHAT_TOKEN,
+                "messages" => MESSAGES_TOKEN,
+                _ => TOKEN,
+            },
+        )],
         &serde_json::to_vec(&body).unwrap(),
     )
 }
@@ -82,7 +89,13 @@ fn native_context_overflow_survives_sanitization_and_attempt_limit_without_skipp
                 Some(&candidates[..candidate_count]),
             );
             let response = overflow_request(&fixture, protocol);
-            assert_eq!(first.calls(), 1);
+            assert_eq!(
+                first.calls(),
+                1,
+                "{protocol}, {candidate_count}, {max_attempts}: {} {}",
+                response.status,
+                String::from_utf8_lossy(&response.body)
+            );
             assert_eq!(second.calls(), usize::from(max_attempts == 2));
             if max_attempts == 2 {
                 assert_eq!(

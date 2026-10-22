@@ -277,6 +277,14 @@ counts never pass through. A later transport, preparation or response failure
 supersedes this cause. The cause neither quarantines a binding nor rotates a key;
 it does not reset budgets, bypass cancellation or perform Gateway compaction.
 
+When native `response_failed` or `response_incomplete` arrives after output has
+been delivered and downstream transport completes, the Attempt retains its
+`accepted` transport identity and accepted ordinal. Its provider failure class
+and terminal model event remain recorded, while the Request and history stage
+are `failed`. Receipt validation must accept this combination without inventing
+successful task completion or discarding the actual execution. A rejected
+pre-delivery attempt still cannot become an accepted ordinal.
+
 #### Scenario: Native context recovery survives exhausted relay
 
 - **WHEN** a native client's input receives a recognized context-overflow 400

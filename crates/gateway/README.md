@@ -47,6 +47,9 @@ reports transport writes only after they succeed, including an empty end-stream 
 zero byte count and frame identity; the [bounded receiver](../observation/src/writer/lifecycle.rs)
 ACKs it in sequence before RequestFinished. These transport events describe delivery;
 semantic output, usage and the business receipt retain their own facts.
+An accepted Attempt means its output was delivered. A later native model failure
+or truncation retains that identity and its failed model event; the Request and
+history stage remain failed, allowing the receipt to preserve actual execution.
 
 Messages thinking computation is projected in
 [request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`

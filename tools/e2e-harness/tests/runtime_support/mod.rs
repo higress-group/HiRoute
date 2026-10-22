@@ -517,6 +517,7 @@ struct RuntimeLaunchOptions {
     test_control: bool,
     classified_route: bool,
     rest_classifier: bool,
+    all_ingress_protocols: bool,
     decision_branch_preset: Option<bool>,
     fixed_route: bool,
     reasoning_choices: bool,
@@ -567,6 +568,7 @@ impl Default for RuntimeLaunchOptions {
             test_control: false,
             classified_route: false,
             rest_classifier: false,
+            all_ingress_protocols: false,
             decision_branch_preset: None,
             fixed_route: false,
             reasoning_choices: false,
@@ -1126,6 +1128,7 @@ impl RuntimeFixture {
             None,
             RuntimeLaunchOptions {
                 observation: Some(faults),
+                all_ingress_protocols: true,
                 ..RuntimeLaunchOptions::default()
             },
         )
@@ -1225,6 +1228,9 @@ impl RuntimeFixture {
             ((reserve_address(), nonce), path)
         });
         let route_mode = match (options.classified_route, options.rest_classifier) {
+            (false, false) if options.all_ingress_protocols => {
+                PublicationRouteMode::OrderedAllProtocols
+            }
             (false, false) => PublicationRouteMode::Ordered,
             (true, false) => PublicationRouteMode::ClassifiedLocal,
             (true, true) => PublicationRouteMode::ClassifiedRest {
