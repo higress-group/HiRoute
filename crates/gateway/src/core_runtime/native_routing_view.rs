@@ -32,6 +32,12 @@ impl NativeRoutingView {
         replay: &ReplayStore,
         budget: &StreamBudget,
     ) -> Self {
+        // A typed native peer is stronger event-kind evidence than optional
+        // adapter enrichment. An unrelated/invalid window cannot select its
+        // ancestor User or make opaque peer intent readable.
+        if let Some(peer) = codex::prepare(request, replay, budget) {
+            return peer;
+        }
         if let Some(input) = crate::context_hold::native_input(headers) {
             let selected = match input {
                 Ok(crate::context_hold::NativeInput::NativeMessages(window)) => {
@@ -55,9 +61,6 @@ impl NativeRoutingView {
                     _reservation: None,
                 },
             };
-        }
-        if let Some(peer) = codex::prepare(request, replay, budget) {
-            return peer;
         }
         if crate::context_hold::hermes_observed_input(headers).is_some() {
             // v1 clean-text hints are correlation only. A text hash cannot prove

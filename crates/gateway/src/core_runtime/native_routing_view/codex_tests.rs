@@ -243,3 +243,64 @@ fn over_bound_native_scan_never_asserts_an_ancestor_as_current_peer_input() {
     assert!(selected.current_input_index().is_none());
     assert!(std::ptr::eq(selected.request(&original), &original));
 }
+
+#[test]
+fn optional_adapter_window_cannot_override_a_typed_plaintext_or_opaque_peer_event() {
+    let fixture = Fixture::new();
+    for opaque in [false, true] {
+        let mut native_peer = peer("child", "current peer trigger");
+        if opaque {
+            native_peer["content"].as_array_mut().unwrap().push(json!({
+                "type":"encrypted_content", "encrypted_content":"opaque task"
+            }));
+        }
+        let mut input = json!([
+            {"role":"user","content":"ancestor task"}, native_peer
+        ]);
+        for envelope in [
+            json!({"version":2,"agent":"dsh","session_id":"session","purpose":"main","input":{"kind":"unsupported"}}),
+            json!({"version":2,"agent":"dsh","session_id":"session","purpose":"main","input":{
+                "kind":"native_messages","event_id":"event","coverage":"window",
+                "messages":[{"index":0,"sha256":digest("ancestor task")}],
+                "scope_digest":format!("{:x}",Sha256::digest(serde_json::to_vec(&vec![digest("ancestor task")]).unwrap()))
+            }}),
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert("x-hiroute-agent", "dsh".parse().unwrap());
+            headers.insert(
+                "x-hiroute-routing-context",
+                envelope.to_string().parse().unwrap(),
+            );
+            let original = request(IngressProtocol::Responses, input.clone());
+            let selected =
+                NativeRoutingView::prepare(&headers, &original, &fixture.replay, &fixture.budget);
+            assert_eq!(selected.current_input_index(), Some(1));
+            assert_eq!(selected.current_input_unavailable(), opaque);
+            if !opaque {
+                assert_eq!(
+                    selected.current_input().unwrap(),
+                    &[ContentPart::Text {
+                        text: "current peer trigger".into()
+                    }]
+                );
+            } else {
+                assert!(selected.current_input().is_none());
+            }
+        }
+        input
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"role":"user","content":"fresh recovery input"}));
+        let recovered = request(IngressProtocol::Responses, input);
+        let selected = view(&fixture, &recovered);
+        assert!(!selected.current_input_unavailable());
+        assert!(selected.current_input_index().is_none());
+        assert!(selected.current_input().is_none());
+        assert_eq!(
+            recovered.messages.last().unwrap().content,
+            vec![ContentPart::Text {
+                text: "fresh recovery input".into()
+            }]
+        );
+    }
+}
