@@ -26,6 +26,11 @@ fn metadata_accepts_only_a_bounded_json_session_and_ignores_device_dimensions() 
     ));
     for value in [
         json!({"metadata":{"user_id":"not-json"}}),
+        json!({"metadata":{"user_id":"[\"native\"]"}}),
+        json!({"metadata":{"user_id":"null"}}),
+        json!({"metadata":{"user_id":"true"}}),
+        json!({"metadata":{"user_id":"1"}}),
+        json!({"metadata":{"user_id":"\"native\""}}),
         json!({"metadata":{"user_id":1}}),
         json!({"metadata":{"user_id":"{\"session_id\":\"\"}"}}),
         json!({"metadata":{"user_id":"{\"session_id\":\"one\",\"session_id\":\"two\"}"}}),

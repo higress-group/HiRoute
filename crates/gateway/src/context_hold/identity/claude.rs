@@ -43,7 +43,9 @@ fn metadata_identity(document: &Value) -> Field<String> {
     let Some(user_id) = user_id.as_str() else {
         return Field::Invalid;
     };
-    if user_id.len() > 2_048 {
+    // Derived structs also accept positional arrays; only the native JSON object
+    // is an identity channel. The typed decode below rejects duplicate fields.
+    if user_id.len() > 2_048 || !user_id.trim_start().starts_with('{') {
         return Field::Invalid;
     }
     #[derive(Deserialize)]
