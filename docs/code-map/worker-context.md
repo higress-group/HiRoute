@@ -29,6 +29,10 @@ use the same protected artifact journal as model settings. The
 [request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
 main/child history and detaches known auxiliary calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
 cover interleaving and semantic compaction independently of provider affinity.
+Claude's native [identity leaf](../../crates/gateway/src/context_hold/identity/claude.rs)
+keeps session/agent scope separate from its [request-class and prompt leaf](../../crates/gateway/src/context_hold/routing/claude.rs);
+known auxiliary classes survive optional enrichment failure, while unknown classes
+retain complete observed input and normal routing.
 The [native continuity owner](../../crates/gateway/src/context_hold/continuity.rs)
 separates known continuations from usable observed input. Missing origin proof
 retains classification, actual capture and evaluation in an uncertain lane without

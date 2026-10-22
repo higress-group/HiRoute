@@ -1,4 +1,5 @@
 //! Optional native routing evidence. It never grants execution authority.
+mod claude;
 mod codex;
 mod observed_input;
 mod v2;
@@ -261,49 +262,14 @@ pub(super) fn facts(
         return codex::facts(headers, document);
     }
     if agent == "claude" {
-        if worker.is_none()
-            && !matches!(
-                native_kind,
-                Some("claude_metadata_session" | "claude_native_agent")
-            )
-        {
-            return RoutingFacts::uncertain();
-        }
-        let purpose = header_value(headers, "x-claude-code-request-class");
-        if matches!(&purpose, Field::Value(value) if matches!(value.as_str(), "auxiliary" | "compaction"))
-        {
-            return RoutingFacts::detached();
-        }
-        if matches!(&purpose, Field::Value(value) if value == "subagent")
-            && !matches!(
-                header_value(headers, "x-claude-code-agent-id"),
-                Field::Value(_)
-            )
-        {
-            return RoutingFacts::uncertain();
-        }
-        let turn = match header_value(headers, "x-claude-code-prompt-id") {
-            Field::Value(value) => Some(digest(&value)),
-            Field::Absent => None,
-            Field::Invalid => return RoutingFacts::uncertain(),
-        };
-        let compacted = match header_value(headers, "x-claude-code-context-compacted") {
-            Field::Absent => false,
-            Field::Value(value) if matches!(value.as_str(), "manual" | "auto") => true,
-            _ => return RoutingFacts::uncertain(),
-        };
-        return RoutingFacts {
-            native: NativeCheckpoint {
-                turn,
-                compacted,
-                checkpoint: None,
-                generation: None,
-                requires_checkpoint: false,
-                user_origin: NativeUserOrigin::Observed,
-                ..Default::default()
-            },
-            ..RoutingFacts::default()
-        };
+        return claude::facts(
+            headers,
+            worker.is_some()
+                || matches!(
+                    native_kind,
+                    Some("claude_metadata_session" | "claude_native_agent")
+                ),
+        );
     }
     if v2::auxiliary_purpose(headers, agent) {
         return RoutingFacts::detached();

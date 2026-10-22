@@ -300,20 +300,6 @@ fn inferred_anchor_uses_complete_user_and_rejects_public_wrappers() {
     }
 }
 
-#[test]
-fn claude_metadata_extracts_only_bounded_json_session() {
-    assert!(matches!(
-        claude_metadata_identity(&serde_json::json!({
-            "metadata":{"user_id":"{\"session_id\":\"claude-session\",\"device_id\":\"ignored\"}"}
-        })),
-        Field::Value(value) if value == "claude-session"
-    ));
-    assert!(matches!(
-        claude_metadata_identity(&serde_json::json!({"metadata":{"user_id":"not-json"}})),
-        Field::Invalid
-    ));
-}
-
 fn native(
     headers: &[(&'static str, &str)],
     ingress: IngressProtocol,
@@ -342,38 +328,6 @@ fn assert_native(field: Field<NativeIdentity>, kind: &str, expected: &[&str]) {
         }
         Field::Absent | Field::Invalid => panic!("native identity was not accepted"),
     }
-}
-
-#[test]
-fn claude_header_and_metadata_share_the_released_namespace_and_require_agreement() {
-    let metadata = serde_json::json!({"metadata":{"user_id":"{\"session_id\":\"native\"}"}});
-    for document in [serde_json::json!({}), metadata.clone()] {
-        assert_native(
-            native(
-                &[("X-Claude-Code-Session-Id", "native")],
-                IngressProtocol::Messages,
-                document,
-            ),
-            "claude_metadata_session",
-            &["native"],
-        );
-    }
-    assert!(matches!(
-        native(
-            &[("x-claude-code-session-id", "other")],
-            IngressProtocol::Messages,
-            metadata
-        ),
-        Field::Invalid
-    ));
-    assert!(matches!(
-        native(
-            &[("x-claude-code-session-id", "native")],
-            IngressProtocol::Messages,
-            serde_json::json!({"metadata":{"user_id":"not-json"}})
-        ),
-        Field::Invalid
-    ));
 }
 
 #[test]

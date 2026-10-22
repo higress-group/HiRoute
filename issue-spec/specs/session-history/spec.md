@@ -19,7 +19,7 @@ Ordinary native correlation uses these current inputs:
 
 | Client | Recognized identity |
 | --- | --- |
-| Claude Code | `X-Claude-Code-Session-Id`; Messages JSON session inside `metadata.user_id` |
+| Claude Code | Coherent `X-Claude-Code-Session-Id` / Messages JSON session inside `metadata.user_id`, plus the optional actual `X-Claude-Code-Agent-Id` |
 | Codex | `thread-id` / `session-id` and coherent Responses `client_metadata` dimensions |
 | Qoder | `session-id` in its existing namespace |
 | Pi / branded pi-ai | Native Responses `x-client-request-id` / optional `session_id`, or configured `x-session-id` / Messages `x-session-affinity` |
@@ -41,6 +41,13 @@ Absent native fields use conservative complete-first-real-user inference when le
 empty/unreliable/incomplete/generic wrapper input remains request-scoped. Raw native
 IDs are not persisted. Equal content cannot merge distinct native IDs; rewriting
 content does not change an established native session.
+
+Claude session header and Messages metadata use the same released session
+namespace and SHALL agree when both are present. Duplicate session claims inside
+the metadata JSON are invalid, even when equal. An actual native agent ID adds a
+separate scope dimension for children or teammates. Missing agent identity keeps
+the supplied session with source/association uncertainty; prompt IDs, request
+classes and notification text SHALL NOT invent that missing dimension.
 
 Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connection/authorization. Equal raw native IDs under distinct connections cannot merge conversations. For a trusted registered Hermes consumer, absent or invalid native identity remains request-scoped without first-user content inference. A caller-supplied header or user-agent does not establish managed-consumer authority; session identity itself grants no model or management access. Native cache/root affinity is not Hermes conversation proof.
 

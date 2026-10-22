@@ -392,6 +392,18 @@ scoring-accuracy limitation; it SHALL retain classification, historical executio
 and evaluation. Its reserved model base path retains the existing bearer contract
 and does not itself disable routing. No body-prefix heuristic proves human origin.
 
+Claude's native `auxiliary` and `compaction` request classes SHALL be recognized
+before optional session, prompt or compression enrichment. A missing or invalid
+optional identity SHALL NOT turn a positively recognized auxiliary into ordinary
+history. An unknown, missing or malformed class remains observed and routable.
+Claude prompt IDs identify routing activations, including notifications; they do
+not prove fresh human input or completion of the previous logical task. The whole
+latest native User envelope remains the current observed batch, including repeated
+text and supplemental parts. Child/workflow requests are separated only by actual
+native agent IDs; absent IDs SHALL NOT be replaced with an invented main/child ID.
+Actual child results in a parent notification remain external context and SHALL
+NOT acquire credit as the parent model's accepted output.
+
 Native same-turn evidence takes precedence over appended synthetic User envelopes
 when the history owner still has the matching task, captured input and a valid
 current-Plan decision. An explicitly identified continuation without that captured

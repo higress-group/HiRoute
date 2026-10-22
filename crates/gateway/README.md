@@ -56,7 +56,7 @@ Verified Worker tasks take precedence. Ordinary clients supply these native fiel
 
 | Client | Accepted native identity |
 | --- | --- |
-| Claude Code | `X-Claude-Code-Session-Id`; Messages also retains the JSON session inside `metadata.user_id` |
+| Claude Code | Coherent `X-Claude-Code-Session-Id` / Messages JSON session inside `metadata.user_id`; optional actual `X-Claude-Code-Agent-Id` separates native agents |
 | Codex | `thread-id` / `session-id`, with matching Responses `client_metadata` dimensions |
 | Qoder | `session-id`, retaining its existing generic session namespace |
 | Pi | pi-ai session headers scoped by `pi (...)` User-Agent |
@@ -88,6 +88,10 @@ stay request-scoped. Coherent generic Codex dimensions retain their historical
 namespace, including Pi's Codex transport. Claude header and metadata share the
 existing Claude namespace. Session storage uses the producer's scoped HMAC;
 raw IDs are not persisted and existing observations are not rewritten.
+[Claude identity](src/context_hold/identity/claude.rs) retains the released session
+namespace, requires header/metadata agreement and rejects duplicate metadata
+session claims. Its actual agent ID is a separate scope dimension; missing agent
+identity is never replaced with an invented main or child.
 [p0_gateway_native_sessions.rs](../../tools/e2e-harness/tests/p0_gateway_native_sessions.rs)
 covers the real listener and observation boundary across Responses and Messages,
 plus OpenCode's native identity across Chat Completions and shared cache affinity.
@@ -128,6 +132,11 @@ known memory/prewarm/compaction calls. Unknown kinds remain observed. Positive
 session/thread contradictions discard association; malformed optional enrichment
 alone does not erase independently valid identity. Parent/fork references remain
 separate from the current thread's scope.
+[Claude native routing](src/context_hold/routing/claude.rs) recognizes only its
+supported `auxiliary` and `compaction` request classes before optional identity and
+prompt enrichment. Unknown classes stay observed and routable. A prompt ID enables
+a routing activation without proving human origin, a clean input instance or prior
+task completion; the complete native User batch remains visible with uncertainty.
 [Native routing admission](src/context_hold/routing.rs) separates usable input from
 source proof. Known auxiliary purposes remain detached. Missing or unsupported
 metadata instead uses an observed-input lane, with

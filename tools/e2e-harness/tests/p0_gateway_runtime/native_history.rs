@@ -2,6 +2,9 @@
 use super::*;
 use serde_json::{Value, json};
 
+#[path = "claude_history.rs"]
+mod claude;
+
 pub(super) fn reply(body: &'static [u8]) -> ProviderReply {
     ProviderReply::Complete {
         status: 200,

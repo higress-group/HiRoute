@@ -1,3 +1,5 @@
+mod claude;
+
 use hmac::{Hmac, Mac};
 use http::HeaderMap;
 use serde_json::Value;
@@ -270,28 +272,7 @@ fn native_identity(
     document: &Value,
     request: &ModelRequestIRV1,
 ) -> Field<NativeIdentity> {
-    let claude_metadata = if ingress == IngressProtocol::Messages {
-        claude_metadata_identity(document)
-    } else {
-        Field::Absent
-    };
-    // Keep the metadata namespace so adding the native header does not split an
-    // existing Claude conversation. Conflicting/invalid claims never infer from text.
-    let claude = session_identity(
-        "claude_metadata_session",
-        merge_dimension(
-            header_value(headers, "x-claude-code-session-id"),
-            claude_metadata,
-        ),
-    );
-    let claude = match (claude, header_value(headers, "x-claude-code-agent-id")) {
-        (Field::Value((_, mut parts)), Field::Value(agent)) => {
-            parts.push(agent);
-            Field::Value(("claude_native_agent", parts))
-        }
-        (Field::Absent | Field::Invalid, Field::Value(_)) | (_, Field::Invalid) => Field::Invalid,
-        (value, Field::Absent) => value,
-    };
+    let claude = claude::identity(ingress, headers, document);
     let dsh = session_identity(
         "deepseek_harness_session",
         header_value(headers, "x-deepseek-harness-session-id"),
@@ -467,29 +448,6 @@ fn merge_dimension(header: Field<String>, body: Field<String>) -> Field<String> 
         (Field::Value(header), Field::Value(body)) if header == body => Field::Value(header),
         (Field::Value(_), Field::Value(_)) => Field::Invalid,
     }
-}
-
-fn claude_metadata_identity(document: &Value) -> Field<String> {
-    let Some(metadata) = document.get("metadata") else {
-        return Field::Absent;
-    };
-    let Some(user_id) = metadata.get("user_id") else {
-        return Field::Absent;
-    };
-    let Some(user_id) = user_id.as_str() else {
-        return Field::Invalid;
-    };
-    if user_id.len() > 2_048 {
-        return Field::Invalid;
-    }
-    let Ok(value) = serde_json::from_str::<Value>(user_id) else {
-        return Field::Invalid;
-    };
-    value
-        .get("session_id")
-        .and_then(Value::as_str)
-        .and_then(valid_identity)
-        .map_or(Field::Invalid, Field::Value)
 }
 
 fn valid_identity(value: &str) -> Option<String> {
