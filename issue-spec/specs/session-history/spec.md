@@ -610,3 +610,33 @@ Source SPEC comments:
   [receipt scenarios](../../../crates/observation/src/store/tests/store_flow.rs).
 - [Quality aggregation scenarios](../../../crates/observation/src/store/tests/plan_quality/summary.rs)
   and [Desktop quality identity](../../../apps/desktop/src/features/plan-quality-state.ts).
+
+### Requirement: New routing stages retain exact execution membership
+
+Current AgentTurnFinished and BranchAssessmentRecorded facts SHALL carry optional
+versioned `history_membership`: version 1, opaque execution branch ID, immutable
+revision, up to 128 exact Gateway request IDs, an explicit clipped flag, relation
+kind and separate source/association/capture uncertainty. Relation kinds are root,
+exact_prefix, ambiguous_prefix and contextual. Producer/native request IDs cannot
+replace Gateway IDs. Current writes use the single current envelope descriptor;
+a registered previous descriptor remains read-only and cannot authenticate the new
+field. Old authenticated bytes/digests remain unchanged.
+
+For facts with membership, analysis, timeline, quality and cost consumers SHALL use
+those members, never an inclusive ordinal or first/last-time interval across
+concurrent branches. Missing/clipped membership is explicit incomplete evidence.
+Later stage extensions cannot broaden an earlier assessment's frozen membership.
+Facts without membership retain their supported historical reader semantics.
+Rebuildable projections MAY be refreshed through a versioned migration; original
+facts, sensitive carriers and their digests SHALL NOT be reset or rewritten.
+Matched ordinary reopen SHALL not repeatedly rebuild current projections.
+
+#### Scenario: Interleaved branches and a late stage extension
+
+- **WHEN** A1, B1 and A2 interleave in one session and an assessment was frozen before A2
+- **THEN** A contains only A1/A2, B only B1, and the earlier assessment does not claim to assess A2, including after the observation store reopens.
+
+#### Scenario: Previous producer envelope is retained
+
+- **WHEN** a supported pre-membership envelope is read after upgrading
+- **THEN** its original digest and bytes still authenticate, historical projections remain readable, and adding new membership to that old descriptor is rejected.

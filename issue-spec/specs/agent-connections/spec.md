@@ -526,14 +526,43 @@ Lookup failure omits the optional envelope. These adapter facts
 do not authenticate arbitrary third-party transformations of the final provider
 payload. Such unsupported composition MUST NOT be claimed as verified recovery.
 
-The optional Hermes `X-Hermes-Observed-Input` v1 header SHALL be separate from the
-strict existing routing-context envelope, so older Gateways can ignore it. Its
-single-text UTF-8 digest and reverse-user ordinal bind observed input only. The
-producer SHALL retain no plaintext prompt cache, use bounded expiring task/turn
-entries and omit hints on conflicting callbacks, duplicate request text, missing
-hooks, unsupported transports or capacity failures. Existing adapters without the
-header remain usable. Gateway validation SHALL preserve original execution bytes,
-authorization and explicit origin uncertainty.
+Retained Hermes `X-Hermes-Observed-Input` v1 headers are non-authoritative
+compatibility hints. A clean-text digest or reverse ordinal SHALL NOT select a
+current event, remove later Users or reconstruct original task input. Current
+Hermes adapters SHALL use observed-batch semantics and retain actual execution
+and cross-turn evaluation with explicit source and association uncertainty.
+
+### Requirement: Optional native routing evidence separates purpose, input and history
+
+The `X-HiRoute-Routing-Context` v2 object SHALL carry `version:2`, the matching
+`agent` family and `purpose`. Known auxiliary purposes (`compaction`, `summary`,
+`title`, `session-title`, `prewarm`) are resolved before optional enrichment.
+Ordinary purposes are `main` and `unknown`. One header of at most 4096 bytes is
+accepted. Duplicate fields/headers and contradictory identity channels reject the
+affected evidence; malformed JSON is never mined for a trusted purpose substring.
+Missing/invalid enrichment cannot disable compatible model execution.
+
+Optional `session_id`, `turn_id`, `request_id` and `checkpoint` use the existing
+printable native-ID limit of 128 UTF-8 bytes. `session_id` must match an independently
+admitted native identity. `request_id` is advisory and never deduplicates Gateway
+executions. `branch:{leaf_id,path_digest}` supplies a bounded native cursor;
+`continuation:{kind,from_turn_id?,from_checkpoint?,to_checkpoint?}` supplies an
+optional `same_turn` or `compression` claim. Neither grants history authority.
+Only the existing authenticated consumer/workspace/grant/route/protocol scope may
+own captures. Unknown versions retain independently usable native identity and
+ordinary observed routing.
+
+`input` is either `observed_batch` with optional `event_id`, or `native_messages`
+with `event_id`, `coverage:"window"`, `messages:[{index,sha256}]` and `scope_digest`.
+The latter admits at most 32 strictly ordered unique positions among at most 128
+final User envelopes and 2 MiB supported text. Each message digest hashes the UTF-8
+compact JSON array of its text parts; scope_digest hashes the compact ordered array
+of lowercase per-User digest strings. Tool-only envelopes do not take User ordinals.
+Unsupported media/tool/provider-state parts invalidate the proof instead of being
+dropped. Valid proof selects only current input and never reclassifies unlisted
+Users as System or proves human authorship. Failure falls back to the full latest
+wire User envelope. Legacy v1 inputs remain readable through one ingress normalization;
+they cannot acquire stronger current-version semantics by adding unknown fields.
 
 ### Requirement: Reversible Hermes profile connection and activation guidance
 

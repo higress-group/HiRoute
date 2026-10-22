@@ -177,7 +177,6 @@ pub(crate) enum AgentTurnBegin {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AgentTurnHistoryError {
     TurnContextUnavailable,
-    SessionTurnConflict,
     NoUserTurn,
     Resource,
     Integrity,

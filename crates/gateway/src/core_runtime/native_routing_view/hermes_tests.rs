@@ -40,7 +40,7 @@ fn input(text: &str) -> ModelRequestIRV1 {
 }
 
 #[test]
-fn bound_observed_input_keeps_actual_output_and_never_rewrites_the_execution_request() {
+fn legacy_clean_text_hint_is_non_authoritative_even_when_its_hash_matches() {
     let fixture = Fixture::new();
     let mut input = input("原任务\nexact text");
     let original = serde_json::to_value(&input).unwrap();
@@ -50,11 +50,11 @@ fn bound_observed_input_keeps_actual_output_and_never_rewrites_the_execution_req
         &fixture.replay,
         &fixture.budget,
     );
-    assert!(view.projected.is_some());
+    assert!(view.current_input().is_none());
     assert!(view.origin_unverified());
     let projected = view.request(&input);
     assert_eq!(projected.messages[0].role, MessageRole::User);
-    assert_eq!(projected.messages.last().unwrap().role, MessageRole::System);
+    assert_eq!(projected.messages.last().unwrap().role, MessageRole::User);
     assert_eq!(projected.messages[1].role, MessageRole::Assistant);
     assert_eq!(projected.messages[3].content, input.messages[3].content);
     assert_eq!(serde_json::to_value(&input).unwrap(), original);
@@ -108,7 +108,7 @@ fn observed_hint_misses_keep_the_ordinary_request_without_claiming_fresh_user_pr
             _ => unreachable!(),
         }
         let view = NativeRoutingView::prepare(&headers, &input, &fixture.replay, &fixture.budget);
-        assert!(view.projected.is_none(), "variant {variant}");
+        assert!(view.current_input().is_none(), "variant {variant}");
         assert!(std::ptr::eq(view.request(&input), &input));
     }
     let repeated = request(
@@ -121,25 +121,25 @@ fn observed_hint_misses_keep_the_ordinary_request_without_claiming_fresh_user_pr
     );
     let view = NativeRoutingView::prepare(&valid, &repeated, &fixture.replay, &fixture.budget);
     assert!(
-        view.projected.is_none(),
+        view.current_input().is_none(),
         "identical text is not an input-position proof"
     );
     assert!(view.origin_unverified());
 }
 
 #[test]
-fn observed_hint_hashes_replay_bytes_and_capacity_failure_is_optional() {
+fn legacy_hint_does_not_scan_replay_or_reserve_projection_memory() {
     let fixture = Fixture::new();
     let text = "界\n".repeat(10_000);
     let mut input = input(&text);
     crate::content_ref::externalize_model_request(&mut input, &fixture.replay, 4096).unwrap();
     let headers = headers(&text, 1);
     let view = NativeRoutingView::prepare(&headers, &input, &fixture.replay, &fixture.budget);
-    assert!(view.projected.is_some());
+    assert!(view.current_input().is_none());
     drop(view);
     let tiny = BudgetTree::new(4096, 4096).unwrap().stream(4096).unwrap();
     let view = NativeRoutingView::prepare(&headers, &input, &fixture.replay, &tiny);
-    assert!(view.projected.is_none());
+    assert!(view.current_input().is_none());
     assert!(view.origin_unverified());
     assert_eq!(tiny.snapshot().unwrap().live, 0);
 }

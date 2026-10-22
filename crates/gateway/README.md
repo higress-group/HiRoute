@@ -92,15 +92,24 @@ raw IDs are not persisted and existing observations are not rewritten.
 covers the real listener and observation boundary across Responses and Messages,
 plus OpenCode's native identity across Chat Completions and shared cache affinity.
 
-[decision_history.rs](src/core_runtime/decision_history.rs) admits optional routing
-history before the prepared ContextHold checkpoint can advance. A shared identity
-can still contain native main, auxiliary or child requests. If its lease is busy,
-history capacity is exhausted, or the checkpoint becomes stale, the request runs
-with empty partial history and no inherited decision or assessment target. It
-cannot overwrite the live request's hold. Optional write/observation failures do
-not reject or replace the model response; authorization, Replay integrity and
-source cancellation/deadlines still apply. This is best-effort context degradation,
-not a substitute for native purpose evidence.
+[decision_history.rs](src/core_runtime/decision_history.rs) derives optional capture
+scope from authorization independently of ContextHold. One native session can have
+multiple concurrent executions. [Branch resolution](src/agent_turn_history/store/branches.rs)
+combines the typed request prefix with captured accepted response boundaries;
+identical text, native request IDs and completion order do not establish parentage.
+Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
+commits are branch-scoped; optional cache misses cannot discard execution capture.
+Same-scope actual completed stages remain contextual candidates with disclosed
+association uncertainty when no unique predecessor is established. Unknown association
+never grants provider-prefix affinity. Unsupported response shapes may lose an exact
+edge while retaining capture and evaluation.
+
+The store retains a 500 MB total budget and a one-hour idle lifetime, with 32 live
+requests/heads and 128 retained terminal records per scope. Snapshot pins and indexes
+are charged. A full budget or optional capture fault records a recoverable gap and
+cannot replace delivered model output. Scope-hash gap stripes are fixed at 256;
+collisions disclose extra uncertainty rather than false complete capture. Authorization,
+Replay integrity, provider failures and source cancellation retain their own behavior.
 Native Codex peer `agent_message` items use the
 [Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
 forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion
@@ -125,14 +134,18 @@ new A and B must restore classification, capture and evaluation in the same sess
 Gateway restart never imports claimed prior client execution as captured history.
 Partial old stages remain partial; a fully captured independent new input can start
 a complete stage even on the same model. Retries cannot repair missing execution.
-The optional [Hermes selector](src/core_runtime/native_routing_view/hermes.rs) binds
-exact observed text behind trailing reminders, keeps source uncertainty and marks
-uncaptured cold execution partial. Invalid, absent, ambiguous or resource-limited
-hints keep ordinary routing. Pi unknown extension input, DSH late native notices
-and unbound OpenCode overflow/background input use observed routing rather than
-acquiring a newer main task's proof. Known OpenCode compaction follows its typed
-marker and summary-parent link. These mechanisms keep availability separate from
-semantic scoring accuracy.
+The [current input view](src/core_runtime/native_routing_view.rs) uses a validated
+final-wire v2 event window, or the complete latest observed User envelope. It keeps
+all original message roles and content. Legacy DSH v1 proofs can select their last
+validated input batch without demoting other Users; Hermes clean-text v1 hints are
+non-authoritative and cannot reposition input. Source, association and capture
+uncertainty are disclosed separately using existing decision content markers.
+Known summary input is never recorded as an executed original user task. Its actual
+accepted output can still be captured with unavailable-input evidence. New real A/B
+must restore ordinary classification, history and evaluation after compaction,
+optional faults or Gateway restart. Logical task completion is separate from
+response delivery. These boundaries preserve availability without claiming scoring
+accuracy for ambiguous callbacks or Qoder's shared main/child identity.
 [Native listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
 cover these boundaries; the managed producer hooks live in `assets/agents/`.
 [history_bypass.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)

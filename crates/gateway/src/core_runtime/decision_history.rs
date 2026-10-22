@@ -35,49 +35,6 @@ impl DecisionHistory {
 }
 
 impl ProductionGatewayRuntime {
-    pub(super) fn note_decision_history_gap(
-        &self,
-        authorized: &crate::server::request_plan::AuthorizedRequestPlan,
-        protocol: crate::server::request_plan::IngressProtocol,
-        identity: &crate::context_hold::ContextIdentityFacts,
-    ) {
-        self.note_history_gap(authorized, protocol, identity, false);
-    }
-
-    pub(super) fn note_verified_decision_history_gap(
-        &self,
-        authorized: &crate::server::request_plan::AuthorizedRequestPlan,
-        protocol: crate::server::request_plan::IngressProtocol,
-        identity: &crate::context_hold::ContextIdentityFacts,
-    ) {
-        self.note_history_gap(authorized, protocol, identity, true);
-    }
-
-    fn note_history_gap(
-        &self,
-        authorized: &crate::server::request_plan::AuthorizedRequestPlan,
-        protocol: crate::server::request_plan::IngressProtocol,
-        identity: &crate::context_hold::ContextIdentityFacts,
-        verified_lane: bool,
-    ) {
-        let Some(scope) = self.context_holds.digest_key().and_then(|digest_key| {
-            let scope = if verified_lane {
-                crate::context_hold::ContextHoldKey::verified_capture_gap_scope
-            } else {
-                crate::context_hold::ContextHoldKey::capture_gap_scope
-            };
-            scope(authorized, protocol, identity, &digest_key)
-        }) else {
-            return;
-        };
-        if let Ok(key) = self
-            .agent_turn_history
-            .scope_key("authorized-context", &scope)
-        {
-            self.agent_turn_history.note_capture_gap(&key);
-        }
-    }
-
     #[cfg(test)]
     pub(super) fn begin_decision_history(
         &self,
@@ -186,8 +143,7 @@ impl ProductionGatewayRuntime {
                 return Err(AgentTurnHistoryError::Integrity);
             }
             Err(
-                AgentTurnHistoryError::SessionTurnConflict
-                | AgentTurnHistoryError::TurnContextUnavailable
+                AgentTurnHistoryError::TurnContextUnavailable
                 | AgentTurnHistoryError::Resource
                 | AgentTurnHistoryError::NoUserTurn,
             ) => {

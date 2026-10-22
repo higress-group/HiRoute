@@ -23,12 +23,12 @@ pub(crate) struct HistoryAnchors {
     pub(crate) prefixes: Vec<(usize, [u8; 32])>,
 }
 pub(crate) use identity::{ContextIdentityFacts, identity_facts};
+pub(crate) use routing::hermes_observed_input;
 #[cfg(test)]
 pub(crate) use routing::{NativeCheckpoint, NativeUserOrigin};
 pub(crate) use routing::{
     NativeInput, NativeMessageWindow, NativeUserTurn, dsh_user_turns, native_input,
 };
-pub(crate) use routing::{ObservedUserInput, hermes_observed_input};
 pub(crate) use store::{
     ContextHoldKey, ContextHoldStore, HistoryContinuity, HoldCompletion, HoldTicket, PreparedHold,
 };

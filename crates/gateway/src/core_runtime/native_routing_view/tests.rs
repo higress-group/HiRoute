@@ -157,12 +157,16 @@ fn semantic_user_projection_preserves_execution_and_runtime_context() {
         original.native_body = Some(json!({"opaque":"x".repeat(MAX_COMPACT_IR_BYTES * 2)}));
         let saved = original.clone();
         let view = fixture.view(&original, metadata());
-        assert!(!view.origin_unverified());
+        assert!(view.origin_unverified());
         let projected = view.request(&original);
         assert_eq!(projected.messages[0].role, MessageRole::User);
-        assert_eq!(projected.messages[1].role, MessageRole::System);
+        assert_eq!(projected.messages[1].role, MessageRole::User);
         assert_eq!(projected.messages[1].content, original.messages[1].content);
-        assert!(projected.native_body.is_none());
+        assert_eq!(projected.native_body, original.native_body);
+        assert_eq!(
+            view.current_input().unwrap(),
+            original.messages[0].content.as_slice()
+        );
         assert_eq!(
             original, saved,
             "routing view changed the execution or observed request"
@@ -188,7 +192,7 @@ fn native_user_batch_combines_all_inputs_and_keeps_tool_results_after_it() {
         .unwrap()
         .push(json!({"index":1,"sha256":digest("second input")}));
     let view = fixture.view(&original, proof);
-    assert!(!view.origin_unverified());
+    assert!(view.origin_unverified());
     let projected = view.request(&original);
     let real = projected
         .messages
@@ -200,8 +204,8 @@ fn native_user_batch_combines_all_inputs_and_keeps_tool_results_after_it() {
                     .any(|p| matches!(p, ContentPart::Text { .. }))
         })
         .collect::<Vec<_>>();
-    assert_eq!(real.len(), 1);
-    assert_eq!(real[0].content.len(), 2);
+    assert_eq!(real.len(), 3);
+    assert_eq!(view.current_input().unwrap().len(), 2);
     assert!(projected.messages.iter().any(|m| {
         m.content
             .iter()
@@ -298,9 +302,10 @@ fn equivalent_native_user_batches_do_not_erase_strict_wire_message_boundaries() 
     };
     let first_view = fixture.view(&first, proof([&["A"], &["B", "C"]]));
     let second_view = fixture.view(&second, proof([&["A", "B"], &["C"]]));
-    assert!(!first_view.origin_unverified());
-    assert!(!second_view.origin_unverified());
-    assert_eq!(first_view.request(&first), second_view.request(&second));
+    assert!(first_view.origin_unverified());
+    assert!(second_view.origin_unverified());
+    assert_eq!(first_view.current_input(), second_view.current_input());
+    assert_ne!(first_view.request(&first), second_view.request(&second));
     let first_measured = crate::context_hold::visible_history(&first, &[37; 32])
         .unwrap()
         .with_semantic_request(Some(first_view.request(&first)))
@@ -317,7 +322,7 @@ fn equivalent_native_user_batches_do_not_erase_strict_wire_message_boundaries() 
         first_measured.complete_digest,
         second_measured.complete_digest
     );
-    assert_eq!(
+    assert_ne!(
         first_measured.semantic_complete_digest,
         second_measured.semantic_complete_digest
     );

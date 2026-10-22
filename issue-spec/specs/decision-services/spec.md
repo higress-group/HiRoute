@@ -342,3 +342,65 @@ Source SPEC comments:
   [policy scenarios](../../../crates/gateway/src/core_runtime/classification/group_policy_tests.rs).
 - [Current API/OpenAPI](../../../decision-extensions/api/README.md) and
   [Desktop connection owner](../../../apps/desktop/src/features/decision-services/DecisionServicesPage.tsx).
+
+### Requirement: Concurrent executions own independent history and assessment snapshots
+
+An authorized native session is a scope, not a single in-flight slot. Overlapping
+requests SHALL receive distinct Gateway execution identities and independent
+capture tickets. Native request IDs, equal input, shared transcript prefixes and
+response completion order SHALL NOT deduplicate executions or identify a unique
+logical task. Routing resolution SHALL inspect at most 32 retained heads in the
+same authenticated workspace/consumer/authority epoch/grant generation/served
+alias/protocol/Plan namespace. Evidence from another scope is ineligible.
+
+A strong edge requires a comparable typed request prefix and the captured actual
+response boundary, with native cursor/turn agreement where available. Unavailable
+or ambiguous evidence starts an independent branch. A completed actual same-scope
+stage MAY remain a contextual assessment candidate with association uncertainty
+explicitly disclosed. It SHALL NOT become a claimed unique predecessor or grant
+provider-prefix affinity. Uncertain executions cannot overwrite a verified head.
+Every classifier invocation freezes at most one target, its exact request members,
+revision, actual model/profile and rubric before calling the decision service.
+Late output, retry, fallback or another branch's completion cannot change that
+snapshot, assessment object or already selected route.
+
+Capture admission SHALL be independent of optional ContextHold preparation/commit.
+Branch-scoped affinity uses stronger validity checks; missing/stale/busy affinity
+loses only the preference. Capacity/conflict/observation faults SHALL NOT block
+otherwise valid model output. Known auxiliary calls consume no main history heads,
+capture slots or gap epochs. Invalid or absent purpose evidence retains observed
+routing; it SHALL NOT globally disable classification, capture or cross-turn quality
+evaluation or permanently select Primary.
+
+Source uncertainty, association uncertainty and incomplete captured execution SHALL
+be separate evidence dimensions. Missing preceding context does not make a newly
+captured independent execution incomplete. Summary/peer/client transcript content
+SHALL NOT be imported as accepted model output. A routing activation or completed
+HTTP delivery does not prove logical task completion. A known continuation with no
+usable input may temporarily fall back, but later genuine A and B in the same
+session SHALL classify and capture, and B SHALL assess A's actual execution where
+retained. Retry IDs cannot heal a missing old execution. No additional model call,
+sidecar, disk history or session lock held across network execution is introduced.
+
+The store SHALL bound total history to its configured budget (default 500,000,000
+bytes), including branch indexes and pinned snapshots, with default one-hour idle
+expiry, 32 live captures/heads and 128 terminal records per scope. Pinned payloads
+cannot be silently uncharged. Optional overflow retains explicit incomplete evidence
+where possible and otherwise uses bounded scope-hash gap bookkeeping. Collisions
+are conservative and recoverable; new complete A/B must recover after pressure or
+faults clear. ContextHold retains its independent 50,000,000-byte budget.
+
+#### Scenario: Concurrent responses have the same input prefix
+
+- **WHEN** two requests start from one prefix, select different models and finish out of order
+- **THEN** both accepted outputs remain attributable to their actual executions; a later request carrying one captured output selects that eligible branch, while an unproved/ambiguous relation stays explicit.
+
+#### Scenario: Optional affinity fails while the main model succeeds
+
+- **WHEN** ContextHold is contended, stale or full
+- **THEN** the request can still classify, capture accepted output and supply a later assessment target; optional failure cannot cause a 409 or replace the model result.
+
+#### Scenario: Compressed session survives Gateway restart
+
+- **WHEN** the Gateway loses its memory while the native client retains a compressed session
+- **THEN** summaries do not recreate old execution; genuine new A/B recover classification, capture, selectable groups and assessment without requiring a new native session.

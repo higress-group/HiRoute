@@ -2,7 +2,7 @@
 mod codex;
 mod observed_input;
 mod v2;
-pub(crate) use observed_input::{ObservedUserInput, hermes_observed_input};
+pub(crate) use observed_input::hermes_observed_input;
 pub(crate) use v2::{NativeInput, NativeMessageWindow, native_input};
 
 use super::identity::{ContextIdentityFacts, Field, header_value, single_header};

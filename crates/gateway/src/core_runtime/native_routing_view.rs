@@ -10,15 +10,11 @@ use crate::content_ref::ContentValueExt;
 use crate::context_hold::{NativeUserTurn, dsh_user_turns};
 use crate::replay::ReplayStore;
 
-#[path = "native_routing_view/hermes.rs"]
-mod hermes;
-
 const MAX_COMPACT_IR_BYTES: usize = 256 * 1024;
 const MAX_USER_TEXT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_USER_MESSAGES: usize = 128;
 
 pub(super) struct NativeRoutingView {
-    projected: Option<Box<ModelRequestIRV1>>,
     current_input: Option<Vec<ContentPart>>,
     origin_unverified: bool,
     _reservation: Option<Reservation>,
@@ -40,13 +36,11 @@ impl NativeRoutingView {
             };
             return match selected {
                 Some((parts, reservation)) => Self {
-                    projected: None,
                     current_input: Some(parts),
                     origin_unverified: true,
                     _reservation: Some(reservation),
                 },
                 None => Self {
-                    projected: None,
                     current_input: None,
                     origin_unverified: true,
                     _reservation: None,
@@ -70,32 +64,22 @@ impl NativeRoutingView {
                 });
         if peer_task {
             return Self {
-                projected: None,
                 current_input: None,
                 origin_unverified: true,
                 _reservation: None,
             };
         }
-        if let Some(hint) = crate::context_hold::hermes_observed_input(headers) {
-            let projected = hermes::project(request, replay, budget, &hint);
-            return match projected {
-                Some((request, reservation)) => Self {
-                    projected: Some(request),
-                    current_input: None,
-                    origin_unverified: true,
-                    _reservation: Some(reservation),
-                },
-                None => Self {
-                    projected: None,
-                    current_input: None,
-                    origin_unverified: true,
-                    _reservation: None,
-                },
+        if crate::context_hold::hermes_observed_input(headers).is_some() {
+            // v1 clean-text hints are correlation only. A text hash cannot prove
+            // which repeated/decorated callback input is the current wire event.
+            return Self {
+                current_input: None,
+                origin_unverified: true,
+                _reservation: None,
             };
         }
         let Some(proof) = dsh_user_turns(headers) else {
             return Self {
-                projected: None,
                 current_input: None,
                 origin_unverified: request.native_only,
                 _reservation: None,
@@ -105,14 +89,12 @@ impl NativeRoutingView {
             .ok()
             .and_then(|turns| project(request, replay, budget, &turns));
         match projected {
-            Some((request, reservation)) => Self {
-                projected: Some(request),
-                current_input: None,
-                origin_unverified: false,
+            Some((parts, reservation)) => Self {
+                current_input: Some(parts),
+                origin_unverified: true,
                 _reservation: Some(reservation),
             },
             None => Self {
-                projected: None,
                 current_input: None,
                 origin_unverified: true,
                 _reservation: None,
@@ -125,7 +107,7 @@ impl NativeRoutingView {
     }
 
     pub(super) fn request<'a>(&'a self, original: &'a ModelRequestIRV1) -> &'a ModelRequestIRV1 {
-        self.projected.as_deref().unwrap_or(original)
+        original
     }
 
     pub(super) fn origin_unverified(&self) -> bool {
@@ -195,7 +177,7 @@ fn project(
     replay: &ReplayStore,
     budget: &StreamBudget,
     turns: &[NativeUserTurn],
-) -> Option<(Box<ModelRequestIRV1>, Reservation)> {
+) -> Option<(Vec<ContentPart>, Reservation)> {
     let mut counter = BoundedCounter(0);
     // native_body is deliberately serde-skipped. A normal Clone would duplicate
     // that potentially large opaque execution document outside this bound.
@@ -263,26 +245,16 @@ fn project(
             return None;
         }
     }
-    let encoded = serde_json::to_vec(request).ok()?;
-    let mut view: Box<ModelRequestIRV1> = Box::new(serde_json::from_slice(&encoded).ok()?);
-    view.native_only = request.native_only;
-    // Retain positions and synthetic context for strict ContextHold fingerprints,
-    // but only native semantic users may open routing turns. This view is never
-    // serialized to a provider or captured as the observed model request.
-    for &index in &users {
-        view.messages[index].role = MessageRole::System;
+    let mut parts = Vec::new();
+    for message in &turns.last()?.messages {
+        parts.extend(
+            request.messages[*users.get(message.index)?]
+                .content
+                .iter()
+                .cloned(),
+        );
     }
-    for turn in turns {
-        let last = *users.get(turn.messages.last()?.index)?;
-        let mut content = Vec::new();
-        for message in &turn.messages {
-            let index = *users.get(message.index)?;
-            content.extend(std::mem::take(&mut view.messages[index].content));
-        }
-        view.messages[last].content = content;
-        view.messages[last].role = MessageRole::User;
-    }
-    Some((view, reservation))
+    Some((parts, reservation))
 }
 
 fn text_digest(parts: &[ContentPart], replay: &ReplayStore) -> Option<String> {

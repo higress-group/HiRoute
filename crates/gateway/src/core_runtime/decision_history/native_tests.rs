@@ -33,8 +33,8 @@ fn assert_recoverable_pair(fixture: &Fixture, prefix: Value) {
     );
     assert!(first.guard.as_ref().unwrap().ticket().new_turn);
     assert!(first.correlated.is_none());
-    fixture.finish(&mut first, &[text_event("actual A output")], true);
     let a_id = first.guard.as_ref().unwrap().ticket().agent_turn_id.clone();
+    fixture.finish(&mut first, &[text_event("actual A output")], true);
     drop(first);
     items.push(json!({"role":"assistant","content":"actual A output"}));
     items.push(json!({"role":"user","content":"fresh actual B"}));

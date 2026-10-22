@@ -418,8 +418,7 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
-                // Uncaptured transcript context is not a gap in this new delivery.
-                capture_partial: false,
+                capture_partial: missing_current_output,
                 finalized: false,
             };
             let checkpoint = TranscriptCheckpoint {

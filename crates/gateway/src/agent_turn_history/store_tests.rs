@@ -809,7 +809,10 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
         }]]
     );
     assert_eq!(history.assessment_from, Some(0));
-    assert!(!history.history_partial);
+    assert!(
+        history.history_partial,
+        "rewritten input has unproved surrounding context"
+    );
     drop(history);
     let cancelled_turn_id = ticket.agent_turn_id.clone();
     store.abort(&ticket);
