@@ -146,6 +146,111 @@ fn routing_summary_bounds_unrelated_safe_projection_work() {
     );
 }
 
+// Copy the writer's real route projection and matching event, rather than
+// unrelated events: every added row must qualify for the routing summary.
+fn extend_routing_history(db: &Connection, first: u32, last: u32) {
+    let transaction = db.unchecked_transaction().unwrap();
+    transaction.execute(
+        "WITH RECURSIVE n(i) AS (VALUES(?1) UNION ALL SELECT i+1 FROM n WHERE i<?2)
+         INSERT INTO execution_fact_events
+         SELECT workspace_id,session_id,turn_id,request_id,producer_id,producer_epoch,
+           'routing-tail',i,'routing-event-'||i,envelope_json,'routing-digest-'||printf('%06d',i)
+         FROM (SELECT e.* FROM execution_fact_events e JOIN observation_safe_facts_v2 f
+           ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest
+           WHERE json_extract(f.body_json,'$.event_kind')='route_decision' LIMIT 1),n",
+        [first, last],
+    ).unwrap();
+    transaction.execute(
+        "WITH RECURSIVE n(i) AS (VALUES(?1) UNION ALL SELECT i+1 FROM n WHERE i<?2)
+         INSERT INTO observation_safe_facts_v2
+         SELECT workspace_id,request_id,'routing-digest-'||printf('%06d',i),
+           json_set(body_json,'$.event_id','routing-event-'||i,'$.sequence',i,
+             '$.original_digest','routing-digest-'||printf('%06d',i))
+         FROM (SELECT * FROM observation_safe_facts_v2
+           WHERE json_extract(body_json,'$.event_kind')='route_decision' LIMIT 1),n",
+        [first, last],
+    ).unwrap();
+    transaction.commit().unwrap();
+}
+
+fn limited_routing_summary(db: &Connection) -> hiroute_domain::RoutingObservationsSummaryV1 {
+    let reader = hiroute_domain::ObservationReaderContext::local_user(
+        hiroute_domain::WorkspaceId::default(), "user".into(), 1, 20_000, false, false,
+    ).unwrap();
+    let query = serde_json::from_value(serde_json::json!({
+        "plan_id":PLAN,"plan_revision":17,"include_routing_observations":true,"limit":50
+    })).unwrap();
+    let transaction = db.unchecked_transaction().unwrap();
+    super::routing_observations::summarize(&transaction, &reader, &query, 0, 5000, &None).unwrap()
+}
+
+#[test]
+fn routing_summary_stops_work_at_matching_decision_limit() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    extend_routing_history(&db, 1, 19_999);
+    let reads = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&reads);
+    db.create_scalar_function("routing_time_probe", 1, FunctionFlags::SQLITE_UTF8, move |ctx| {
+        count.fetch_add(1, Ordering::Relaxed);
+        ctx.get::<i64>(0)
+    }).unwrap();
+    let sql = SUMMARY_SQL.replacen(
+        "COALESCE(json_extract(f.body_json,'$.occurred_at_ms'),r.started_at_ms)>=:from",
+        "routing_time_probe(COALESCE(json_extract(f.body_json,'$.occurred_at_ms'),r.started_at_ms))>=:from", 1,
+    );
+    let (before, bounded) = measured(&db, &sql);
+    assert_eq!(before.len(), 10_001);
+    assert_eq!(reads.swap(0, Ordering::Relaxed), 10_001,
+        "LIMIT must stop filtering, not just truncate a fully sorted result");
+    extend_routing_history(&db, 20_000, 99_999);
+    let (after, retained) = measured(&db, &sql);
+    assert_eq!(after, before, "an unread tail must not change the selected prefix");
+    assert_eq!(reads.swap(0, Ordering::Relaxed), 10_001);
+    assert!(retained <= bounded + 1000, "routing work grew from {bounded} to {retained} VM steps");
+    let (_, previous) = measured(&db, &sql.replace(
+        "ORDER BY f.request_id,f.original_digest", "ORDER BY f.rowid",
+    ));
+    assert_eq!(reads.load(Ordering::Relaxed), 100_000);
+    assert!(previous > retained * 4, "the former full sort must expose the regression");
+    let summary = limited_routing_summary(&db);
+    assert_eq!(summary.retained_decisions, 10_000);
+    assert!(summary.scan_limited);
+    assert_eq!(summary.coverage, "partial");
+}
+
+#[test]
+fn routing_summary_can_stop_at_safe_byte_limit_before_row_limit() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    extend_routing_history(&db, 1, 19_999);
+    // Oversized retained safe fields must not make SQLite sort the unread tail
+    // before the production reader can enforce its existing byte ceiling.
+    db.execute("UPDATE observation_safe_facts_v2 SET body_json=json_set(body_json,'$.native_model',?1)
+        WHERE original_digest BETWEEN 'routing-digest-000001' AND 'routing-digest-000300'",
+        ["m".repeat(128 * 1024)]).unwrap();
+    let mut statement = db.prepare(SUMMARY_SQL).unwrap();
+    let mut rows = statement.query(named_params! {
+        ":workspace":"personal/default", ":plan":PLAN, ":session":Option::<String>::None,
+        ":revision":17, ":from":0, ":to":5000, ":runs":Option::<String>::None,
+    }).unwrap();
+    let (mut bytes, mut scanned) = (0, 0);
+    while let Some(row) = rows.next().unwrap() {
+        bytes += row.get::<_, String>(0).unwrap().len();
+        scanned += 1;
+        if bytes > 32 * 1024 * 1024 { break; }
+    }
+    drop(rows);
+    assert!(scanned < 300 && bytes > 32 * 1024 * 1024);
+    assert_eq!(statement.get_status(StatementStatus::Sort), 0,
+        "the byte ceiling must be able to stop a streaming query");
+    assert!(statement.get_status(StatementStatus::VmStep) < 100_000);
+    let summary = limited_routing_summary(&db);
+    assert_eq!(summary.retained_decisions, scanned - 1);
+    assert!(summary.scan_limited);
+    assert_eq!(summary.coverage, "partial");
+}
+
 #[test]
 fn routing_index_reopen_preserves_malformed_safe_bytes_and_failed_read() {
     let (root, store) = seed();
