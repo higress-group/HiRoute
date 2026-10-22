@@ -14,8 +14,12 @@ const MAX_COMPACT_IR_BYTES: usize = 256 * 1024;
 const MAX_USER_TEXT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_USER_MESSAGES: usize = 128;
 
+#[path = "native_routing_view/codex.rs"]
+mod codex;
+
 pub(super) struct NativeRoutingView {
     current_input: Option<Vec<ContentPart>>,
+    current_input_index: Option<usize>,
     origin_unverified: bool,
     _reservation: Option<Reservation>,
 }
@@ -37,43 +41,27 @@ impl NativeRoutingView {
             return match selected {
                 Some((parts, reservation)) => Self {
                     current_input: Some(parts),
+                    current_input_index: None,
                     origin_unverified: true,
                     _reservation: Some(reservation),
                 },
                 None => Self {
                     current_input: None,
+                    current_input_index: None,
                     origin_unverified: true,
                     _reservation: None,
                 },
             };
         }
-        // A copied ancestor User is not proof of the current peer task. Keep
-        // routing usable on observed input and disclose the missing provenance.
-        let peer_task = request.native_only
-            && request.ingress_protocol == crate::server::request_plan::IngressProtocol::Responses
-            && request
-                .native_body
-                .as_ref()
-                .and_then(|body| body.get("input"))
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|items| {
-                    items.iter().any(|item| {
-                        item.get("type").and_then(serde_json::Value::as_str)
-                            == Some("agent_message")
-                    })
-                });
-        if peer_task {
-            return Self {
-                current_input: None,
-                origin_unverified: true,
-                _reservation: None,
-            };
+        if let Some(peer) = codex::prepare(request, replay, budget) {
+            return peer;
         }
         if crate::context_hold::hermes_observed_input(headers).is_some() {
             // v1 clean-text hints are correlation only. A text hash cannot prove
             // which repeated/decorated callback input is the current wire event.
             return Self {
                 current_input: None,
+                current_input_index: None,
                 origin_unverified: true,
                 _reservation: None,
             };
@@ -81,6 +69,7 @@ impl NativeRoutingView {
         let Some(proof) = dsh_user_turns(headers) else {
             return Self {
                 current_input: None,
+                current_input_index: None,
                 origin_unverified: request.native_only,
                 _reservation: None,
             };
@@ -91,11 +80,13 @@ impl NativeRoutingView {
         match projected {
             Some((parts, reservation)) => Self {
                 current_input: Some(parts),
+                current_input_index: None,
                 origin_unverified: true,
                 _reservation: Some(reservation),
             },
             None => Self {
                 current_input: None,
+                current_input_index: None,
                 origin_unverified: true,
                 _reservation: None,
             },
@@ -104,6 +95,10 @@ impl NativeRoutingView {
 
     pub(super) fn current_input(&self) -> Option<&[ContentPart]> {
         self.current_input.as_deref()
+    }
+
+    pub(super) fn current_input_index(&self) -> Option<usize> {
+        self.current_input_index
     }
 
     pub(super) fn request<'a>(&'a self, original: &'a ModelRequestIRV1) -> &'a ModelRequestIRV1 {

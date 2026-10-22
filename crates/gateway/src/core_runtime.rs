@@ -724,7 +724,7 @@ impl ProductionGatewayRuntime {
                         request: &canonical_request,
                         replay: &replay,
                         current_input: routing_view.current_input(),
-                        current_input_index: None,
+                        current_input_index: routing_view.current_input_index(),
                     },
                 ) {
                     Ok(tracking) => tracking,

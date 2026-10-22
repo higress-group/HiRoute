@@ -113,11 +113,21 @@ Replay integrity, provider failures and source cancellation retain their own beh
 Native Codex peer `agent_message` items use the
 [Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
 forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion
-and provider-prefix affinity remain unavailable. The readable request can still be
-classified and captured with explicit source uncertainty; encrypted peer task text
-cannot be reconstructed from an ancestor user. The
+and provider-prefix affinity remain unavailable. The
+[Codex current-input codec](src/core_runtime/native_routing_view/codex.rs) selects
+the latest plaintext peer batch at its canonical event position, including when no
+wire User exists, without changing original roles or history. A later User event
+supersedes old peer context. Classification and capture disclose source uncertainty;
+mixed plaintext/ciphertext stays opaque and cannot recover encrypted intent from
+a wrapper or ancestor User. The
 [native protocol regressions](src/adapters/tests/native_responses.rs) cover forwarding
 without fabricating a user role for peer content.
+[Codex metadata admission](src/context_hold/routing/codex.rs) checks coherent native
+channels before purpose, accepts memory without thread/turn IDs, and detaches only
+known memory/prewarm/compaction calls. Unknown kinds remain observed. Positive
+session/thread contradictions discard association; malformed optional enrichment
+alone does not erase independently valid identity. Parent/fork references remain
+separate from the current thread's scope.
 [Native routing admission](src/context_hold/routing.rs) separates usable input from
 source proof. Known auxiliary purposes remain detached. Missing or unsupported
 metadata instead uses an observed-input lane, with

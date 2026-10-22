@@ -1,10 +1,31 @@
 //! Codex native task and persistent compaction-window evidence.
 use super::*;
 
+/// Core's canonical body and its bounded compatibility header omit only the
+/// Code Mode map. Decode relevant fields directly so duplicate keys cannot be
+/// silently overwritten by a Value intermediary. Optional malformed enrichment
+/// must not hide a positively identified auxiliary request.
+#[derive(Default, Deserialize, PartialEq)]
+#[serde(default)]
+struct Metadata {
+    request_kind: Value,
+    installation_id: Value,
+    session_id: Value,
+    thread_id: Value,
+    turn_id: Value,
+    window_id: Value,
+    parent_thread_id: Value,
+    parent_turn_id: Value,
+    forked_from_thread_id: Value,
+    subagent_kind: Value,
+    thread_source: Value,
+    compaction: Value,
+}
+
 pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
     let header = match single_header(headers, "x-codex-turn-metadata", 8192) {
         Field::Absent => None,
-        Field::Value(value) => serde_json::from_str::<Value>(&value).ok(),
+        Field::Value(value) => serde_json::from_str::<Metadata>(&value).ok(),
         Field::Invalid => return RoutingFacts::uncertain(),
     };
     if headers.contains_key("x-codex-turn-metadata") && header.is_none() {
@@ -16,94 +37,107 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
     let body_value = body
         .and_then(Value::as_str)
         .filter(|v| v.len() <= 8192)
-        .and_then(|v| serde_json::from_str::<Value>(v).ok());
+        .and_then(|v| serde_json::from_str::<Metadata>(v).ok());
     if body.is_some() && body_value.is_none() {
         return RoutingFacts::uncertain();
     }
     let Some(metadata) = header.as_ref().or(body_value.as_ref()) else {
         return RoutingFacts::uncertain();
     };
-    for field in [
-        "session_id",
-        "thread_id",
-        "turn_id",
-        "request_kind",
-        "window_id",
+    let identity_conflict = header.iter().chain(body_value.iter()).any(|metadata| {
+        [
+            (&metadata.session_id, "session-id", "session_id"),
+            (&metadata.thread_id, "thread-id", "thread_id"),
+        ]
+        .into_iter()
+        .any(|(canonical, name, flat)| {
+            conflicting_identity(canonical, headers, document, name, flat)
+        })
+    }) || header
+        .as_ref()
+        .zip(body_value.as_ref())
+        .is_some_and(|(h, b)| {
+            [(&h.session_id, &b.session_id), (&h.thread_id, &b.thread_id)]
+                .into_iter()
+                .any(|(h, b)| valid_id(h).zip(valid_id(b)).is_some_and(|(h, b)| h != b))
+        });
+    if identity_conflict {
+        return RoutingFacts {
+            identity_conflict: true,
+            ..RoutingFacts::uncertain()
+        };
+    }
+    if header
+        .as_ref()
+        .zip(body_value.as_ref())
+        .is_some_and(|(h, b)| h != b)
+    {
+        return RoutingFacts::uncertain();
+    }
+    for (canonical, header_name, body_name) in [
+        (&metadata.session_id, "session-id", "session_id"),
+        (&metadata.thread_id, "thread-id", "thread_id"),
+        (
+            &metadata.window_id,
+            "x-codex-window-id",
+            "x-codex-window-id",
+        ),
+        (
+            &metadata.installation_id,
+            "x-codex-installation-id",
+            "x-codex-installation-id",
+        ),
+        (
+            &metadata.parent_thread_id,
+            "x-codex-parent-thread-id",
+            "x-codex-parent-thread-id",
+        ),
     ] {
-        if header
-            .as_ref()
-            .zip(body_value.as_ref())
-            .is_some_and(|(h, b)| h.get(field) != b.get(field))
-        {
+        if !coherent_dimension(canonical, headers, document, header_name, body_name) {
             return RoutingFacts::uncertain();
         }
     }
-    for (field, name) in [("session_id", "session-id"), ("thread_id", "thread-id")] {
-        let Some(value) = metadata
-            .get(field)
-            .and_then(Value::as_str)
-            .filter(|v| id(v))
-        else {
-            return RoutingFacts::uncertain();
-        };
-        match header_value(headers, name) {
-            Field::Value(other) if other != value => return RoutingFacts::uncertain(),
-            Field::Invalid => return RoutingFacts::uncertain(),
-            _ => {}
-        }
+    for (canonical, name) in [
+        (&metadata.turn_id, "turn_id"),
+        (&metadata.parent_turn_id, "parent_turn_id"),
+        (&metadata.request_kind, "request_kind"),
+    ] {
         if document
             .get("client_metadata")
-            .and_then(|m| m.get(field))
-            .is_some_and(|v| v.as_str() != Some(value))
+            .and_then(|m| m.get(name))
+            .is_some_and(|value| !canonical.is_null() && value != canonical)
         {
             return RoutingFacts::uncertain();
         }
     }
-    let turn = metadata
-        .get("turn_id")
-        .and_then(Value::as_str)
-        .filter(|v| id(v));
-    if metadata
-        .get("request_kind")
-        .and_then(Value::as_str)
-        .is_some_and(|kind| kind != "turn")
-    {
-        return RoutingFacts::detached();
+    // rust-v0.147.0 emits exactly these kinds. An unfamiliar future kind is
+    // observed traffic, not permission to discard an ordinary execution.
+    match metadata.request_kind.as_str() {
+        Some("memory" | "prewarm" | "compaction") => return RoutingFacts::detached(),
+        Some("turn") => {}
+        _ => return RoutingFacts::uncertain(),
     }
-    if turn.is_none() {
+    let session = metadata.session_id.as_str().filter(|value| id(value));
+    let thread = metadata.thread_id.as_str().filter(|value| id(value));
+    let turn = metadata.turn_id.as_str().filter(|value| id(value));
+    if session.is_none() || thread.is_none() || turn.is_none() {
         return RoutingFacts::uncertain();
     }
-    let window = metadata.get("window_id").and_then(Value::as_str);
-    match single_header(headers, "x-codex-window-id", 160) {
-        Field::Value(value) if Some(value.as_str()) != window => return RoutingFacts::uncertain(),
-        Field::Invalid => return RoutingFacts::uncertain(),
-        _ => {}
-    }
-    if document
-        .get("client_metadata")
-        .and_then(|m| m.get("x-codex-window-id"))
-        .is_some_and(|value| value.as_str() != window)
-    {
-        return RoutingFacts::uncertain();
-    }
+    let window = metadata.window_id.as_str();
     // rust-v0.147.0 emits thread_id:window_number. Every native compaction
     // increments that persisted number; it survives resume. It is negative
     // evidence only: zero still needs a clean bootstrap or captured task.
-    let generation = metadata
-        .get("thread_id")
-        .and_then(Value::as_str)
-        .zip(window)
-        .and_then(|(thread, window)| {
-            let suffix = window.strip_prefix(thread)?.strip_prefix(':')?;
-            if suffix.is_empty()
-                || suffix.len() > 20
-                || !suffix.bytes().all(|b| b.is_ascii_digit())
-                || suffix.len() > 1 && suffix.starts_with('0')
-            {
-                return None;
-            }
-            suffix.parse::<u64>().ok()
-        });
+    let generation = thread.zip(window).and_then(|(thread, window)| {
+        let suffix = window.strip_prefix(thread)?.strip_prefix(':')?;
+        if suffix.is_empty()
+            || suffix.len() > 20
+            || !suffix.bytes().all(|b| b.is_ascii_digit())
+            || suffix.len() > 1 && suffix.starts_with('0')
+        {
+            return None;
+        }
+        suffix.parse::<u64>().ok()
+    });
     let known_producer = matches!(
         single_header(headers, "user-agent", 1024),
         Field::Value(value) if matches!(value.split_whitespace().next(),
@@ -123,6 +157,56 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
         },
         ..RoutingFacts::default()
     }
+}
+
+fn coherent_dimension(
+    canonical: &Value,
+    headers: &HeaderMap,
+    document: &Value,
+    header_name: &'static str,
+    body_name: &str,
+) -> bool {
+    let flat = document
+        .get("client_metadata")
+        .and_then(|value| value.get(body_name));
+    if flat.is_some_and(|value| !canonical.is_null() && value != canonical) {
+        return false;
+    }
+    match single_header(headers, header_name, 160) {
+        Field::Invalid => false,
+        Field::Absent => true,
+        Field::Value(value) => {
+            (canonical.is_null() || canonical.as_str() == Some(value.as_str()))
+                && flat.is_none_or(|flat| flat.as_str() == Some(value.as_str()))
+        }
+    }
+}
+
+fn valid_id(value: &Value) -> Option<&str> {
+    value.as_str().filter(|value| id(value))
+}
+
+fn conflicting_identity(
+    canonical: &Value,
+    headers: &HeaderMap,
+    document: &Value,
+    header_name: &'static str,
+    body_name: &str,
+) -> bool {
+    let header = match header_value(headers, header_name) {
+        Field::Value(value) => Some(value),
+        _ => None,
+    };
+    let flat = document
+        .get("client_metadata")
+        .and_then(|metadata| metadata.get(body_name))
+        .and_then(valid_id);
+    let mut claims = [valid_id(canonical), header.as_deref(), flat]
+        .into_iter()
+        .flatten();
+    claims
+        .next()
+        .is_some_and(|first| claims.any(|other| first != other))
 }
 
 #[cfg(test)]

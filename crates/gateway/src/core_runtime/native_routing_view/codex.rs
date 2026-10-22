@@ -1,0 +1,170 @@
+//! Codex's typed peer trigger is separate from the original execution document.
+use super::*;
+use serde_json::Value;
+
+const MAX_NATIVE_ITEMS: usize = 65_536;
+const MAX_PEER_MESSAGES: usize = 32;
+const MAX_PEER_PARTS: usize = 128;
+
+pub(super) fn prepare(
+    request: &ModelRequestIRV1,
+    replay: &ReplayStore,
+    budget: &StreamBudget,
+) -> Option<NativeRoutingView> {
+    if !request.native_only
+        || request.ingress_protocol != crate::server::request_plan::IngressProtocol::Responses
+    {
+        return None;
+    }
+    let items = request.native_body.as_ref()?.get("input")?.as_array()?;
+    // The wire document already exists. Bound the optional scan before looking
+    // for a peer; exceeding it must not obstruct forwarding or observed routing.
+    if items.len() <= MAX_NATIVE_ITEMS && !items.iter().any(is_peer) {
+        return None;
+    }
+    let projected = peer_input(request, items, replay, budget);
+    Some(match projected {
+        Some((parts, index, reservation)) => NativeRoutingView {
+            current_input: Some(parts),
+            current_input_index: Some(index),
+            origin_unverified: true,
+            _reservation: Some(reservation),
+        },
+        None => NativeRoutingView {
+            current_input: None,
+            current_input_index: None,
+            origin_unverified: true,
+            _reservation: None,
+        },
+    })
+}
+
+fn is_peer(item: &Value) -> bool {
+    item.get("type").and_then(Value::as_str) == Some("agent_message")
+}
+
+fn peer_input(
+    request: &ModelRequestIRV1,
+    items: &[Value],
+    replay: &ReplayStore,
+    budget: &StreamBudget,
+) -> Option<(Vec<ContentPart>, usize, Reservation)> {
+    if items.len() > MAX_NATIVE_ITEMS {
+        return None;
+    }
+    let last = items.iter().rposition(|item| {
+        is_peer(item)
+            || (item.get("role").and_then(Value::as_str) == Some("user")
+                && item
+                    .get("type")
+                    .is_none_or(|kind| kind.as_str() == Some("message")))
+    })?;
+    if !is_peer(&items[last]) {
+        // A later real User event supersedes an old notification. Its complete
+        // observed envelope remains the shared fallback, without role changes.
+        return None;
+    }
+    // Responses ingress skips additional_tools, emits one Assistant placeholder
+    // for web search, and one canonical message for every other accepted item.
+    // Validate that mapping before using a native ordinal as an event boundary.
+    let is_message =
+        |item: &&Value| item.get("type").and_then(Value::as_str) != Some("additional_tools");
+    if items.iter().filter(is_message).count() != request.messages.len() {
+        return None;
+    }
+    let index = items[..=last]
+        .iter()
+        .filter(is_message)
+        .count()
+        .checked_sub(1)?;
+    let placeholder = request.messages.get(index)?;
+    if placeholder.role != MessageRole::Assistant
+        || !placeholder.content.is_empty()
+        || placeholder.name.is_some()
+    {
+        return None;
+    }
+    let first = items[..=last]
+        .iter()
+        .rposition(|item| !is_peer(item))
+        .map_or(0, |index| index + 1);
+    if last - first + 1 > MAX_PEER_MESSAGES {
+        return None;
+    }
+    let mut text = Vec::new();
+    let mut bytes = 0usize;
+    for item in &items[first..=last] {
+        let object = item.as_object()?;
+        if object.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "type"
+                    | "id"
+                    | "author"
+                    | "recipient"
+                    | "content"
+                    | "internal_chat_message_metadata_passthrough"
+            )
+        }) {
+            return None;
+        }
+        for field in ["author", "recipient"] {
+            let value = item.get(field)?.as_str()?;
+            if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
+                return None;
+            }
+        }
+        for part in item.get("content")?.as_array()? {
+            let part = part.as_object()?;
+            // Mixed plaintext/ciphertext is opaque in the native producer too.
+            // A readable wrapper cannot stand in for the encrypted task.
+            if part.get("type")?.as_str()? != "input_text"
+                || part
+                    .keys()
+                    .any(|key| !matches!(key.as_str(), "type" | "text"))
+            {
+                return None;
+            }
+            let value = part.get("text")?.as_str()?;
+            let length = value.content_ref().map_or(Some(value.len()), |reference| {
+                usize::try_from(reference.byte_len()).ok()
+            })?;
+            bytes = bytes
+                .checked_add(length)
+                .filter(|bytes| *bytes <= MAX_USER_TEXT_BYTES)?;
+            if text.len() >= MAX_PEER_PARTS {
+                return None;
+            }
+            text.push(value);
+        }
+    }
+    let reservation = budget
+        .reserve(
+            MemoryRole::ModelIrBacking,
+            bytes.checked_mul(4)?.checked_add(32 * 1024)?,
+        )
+        .ok()?;
+    let mut parts = Vec::with_capacity(text.len());
+    let mut usable = false;
+    for text in text {
+        let value = if let Some(reference) = text.content_ref() {
+            let mut reader = replay.reader(&reference).ok()?;
+            let mut value = String::new();
+            reader
+                .by_ref()
+                .take(MAX_USER_TEXT_BYTES as u64 + 1)
+                .read_to_string(&mut value)
+                .ok()?;
+            if value.len() > MAX_USER_TEXT_BYTES {
+                return None;
+            }
+            reader.verify_terminal().ok()?;
+            value
+        } else {
+            text.to_owned()
+        };
+        usable |= !value.trim().is_empty();
+        parts.push(ContentPart::Text { text: value });
+    }
+    usable.then_some((parts, index, reservation))
+}

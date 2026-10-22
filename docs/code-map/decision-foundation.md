@@ -115,7 +115,13 @@ consume main history slots. The [v2 codec](../../crates/gateway/src/context_hold
 validates the optional native cursor and final-wire input window. The
 [current input view](../../crates/gateway/src/core_runtime/native_routing_view.rs)
 selects current content without changing any original message role. Legacy Hermes
-clean-text hints cannot choose a current input instance. Source uncertainty,
+clean-text hints cannot choose a current input instance.
+Codex [native metadata](../../crates/gateway/src/context_hold/routing/codex.rs)
+recognizes known auxiliary purpose before requiring turn identity; its
+[peer codec](../../crates/gateway/src/core_runtime/native_routing_view/codex.rs)
+projects a readable native trigger at its actual canonical position while keeping
+typed original peer bytes for evidence. [Codex regressions](../../crates/gateway/src/core_runtime/native_routing_view/codex_tests.rs)
+cover peer-only, multiple-peer, opaque and shifted native positions. Source uncertainty,
 association uncertainty and missing capture remain distinct; the existing classifier
 content vocabulary discloses them without disabling evaluation or changing the
 custom v1 schema. Unavailable known continuation input permits temporary fallback;

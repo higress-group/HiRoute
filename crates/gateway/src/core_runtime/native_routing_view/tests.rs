@@ -9,6 +9,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[path = "hermes_tests.rs"]
 mod hermes;
 
+#[path = "codex_tests.rs"]
+mod codex;
+
 struct Fixture {
     root: std::path::PathBuf,
     _manager: ReplayManager,

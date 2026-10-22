@@ -410,6 +410,26 @@ captured, and B SHALL be able to evaluate A's newly accepted execution. Uncaptur
 older context remains partial. Counter rollback and unsupported producers disclose
 uncertainty rather than permanently disabling smart routing.
 
+Codex native metadata SHALL recognize only the supported explicit auxiliary kinds
+`memory`, `prewarm` and `compaction`. A coherent canonical memory request remains
+auxiliary when it omits thread/session/turn identities; compatibility projections
+may still carry those identities. Unknown kinds remain observed and routable.
+Duplicate or conflicting metadata SHALL NOT splice purpose or identity across
+channels. Confirmed competing session/thread claims lose session association;
+missing or malformed optional enrichment alone does not discard independently
+valid native identity. Parent and fork references never join a child's execution
+to the parent's stage.
+
+The latest supported plaintext Codex peer batch MAY supply current classifier and
+capture input at its actual native event position, with source uncertainty. The
+original typed peer items, including author, recipient, content variants and order,
+SHALL remain unchanged in execution and fingerprint evidence. A later ordinary
+User event supersedes earlier peer context. Mixed plaintext/encrypted peer content
+remains opaque: its readable wrapper cannot reconstruct encrypted intent or prior
+accepted output. Native turn/window metadata proves neither task completion nor
+execution deduplication. Optional projection failure retains observed routing and
+cannot reject otherwise successful provider output.
+
 Hermes public whole-turn hooks also receive native async completion notifications.
 Matching text, a turn change, an initiated-turn flag and older producers' false
 continuation constraint do not prove human origin. Such requests are observed,
