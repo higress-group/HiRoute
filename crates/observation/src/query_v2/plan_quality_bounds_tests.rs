@@ -109,13 +109,14 @@ fn routing_summary_bounds_unrelated_execution_history_work() {
         1,
         "the one real route decision must remain included"
     );
-    // Reproduce the former query without either optimization. The new partial
-    // filter also helps a reorderable join, so retaining it is no longer a
-    // negative control for the workspace execution scan.
+    // Reproduce the former join, filter and ordering choices. Leaving the new
+    // key order can itself make SQLite choose a safe-fact-first plan, so that
+    // would no longer be a negative control for the workspace execution scan.
     let previous_sql = SUMMARY_SQL
         .replace(" INDEXED BY observation_safe_route_payloads", "")
         .replace(" INDEXED BY execution_facts_request_identity", "")
         .replace("CROSS JOIN execution_fact_events", "JOIN execution_fact_events")
+        .replace("ORDER BY f.request_id,f.original_digest", "ORDER BY f.rowid")
         .replace("          AND CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') ELSE 'route_decision' END='route_decision'\n", "");
     let (previous_rows, previous) = measured(&db, &previous_sql);
     assert_eq!(rows, previous_rows);
