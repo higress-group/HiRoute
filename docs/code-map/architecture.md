@@ -274,4 +274,8 @@ and exact current endpoint/product facts; [price projection](../../crates/daemon
 uses the same scope with the existing valuation engine. [Source preference persistence](../../crates/local-storage/src/control/compute/management/defaults.rs)
 shares source revisions, effect activation and compensation. The [metadata query owner](../../crates/daemon/src/control/runtime/model_feed/metadata.rs)
 and [removal preview](../../crates/daemon/src/control/runtime/model_feed/removal.rs) provide bounded
-complete reads. Hosts use product-session; published execution remains in its existing owner.
+complete reads. The [Desktop directory](../../apps/desktop/src/features/model-feed/ModelMetadataDirectory.tsx)
+keeps field inference visible and loads source/rule details against that same captured
+snapshot. The [feed producer](../../tools/release-facts/src/feed.rs) checks embedded
+semantic identity against HEAD and the supplied baseline before release gating.
+Hosts use product-session; published execution remains in its existing owner.

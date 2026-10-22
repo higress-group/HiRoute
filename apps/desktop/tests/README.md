@@ -105,7 +105,10 @@ The full model-information views run with `node tests/v3/visual/new-model-trial.
 metadata directory and removal dialogs with synthetic IPC. The scenarios cover
 Chinese/English, light/dark, 755×600 and 1200×813, retained edits after read failures,
 stale-cursor restart, four price components and confirmation only after all impact
-pages are reviewed. Installed CLI/daemon tests separately own persistence and
+pages are reviewed. Actual generated inferred and observed records cover visible
+field markers, linked source/rule reads bound to the selected snapshot, and retry
+after source-read failure. [Fact presentation tests](metadata-facts.test.mjs) preserve
+unknown, conditional, conflicting and not-applicable meanings. Installed CLI/daemon tests separately own persistence and
 actual feed/default/price effects.
 
 ## Session quality presentation

@@ -28,3 +28,9 @@
 .model-metadata-records > li { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--divider); overflow-wrap: anywhere; }
 .model-metadata-records dl { display: grid; grid-template-columns: minmax(120px,1fr) minmax(0,2fr); gap: 4px 8px; }
 .model-metadata-records dd { margin: 0; }
+.model-metadata-fact { display: inline; }
+.model-metadata-inferred { display: inline-block; margin-inline-start: 5px; color: var(--text-soft); font-size: 0.85em; }
+.model-metadata-evidence { margin-top: 10px; overflow-wrap: anywhere; }
+.model-metadata-evidence summary { cursor: pointer; color: var(--accent); }
+.model-metadata-evidence section { margin-top: 10px; padding-inline-start: 10px; border-inline-start: 2px solid var(--border); min-width: 0; }
+.model-metadata-evidence p { margin: 5px 0; }

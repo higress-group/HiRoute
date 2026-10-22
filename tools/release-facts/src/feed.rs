@@ -1,5 +1,5 @@
 //! Deterministic feed projection from current ReleaseFacts and recorded supported releases.
-use hiroute_domain::CanonicalDigest;
+use hiroute_domain::{CanonicalDigest, OfficialModelSnapshotV1};
 use hiroute_integrations::{TrustedReleaseCatalog, model_feed::*};
 use serde::Deserialize;
 use std::{path::Path, process::Command};
@@ -79,6 +79,7 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
     let candidate_bytes =
         super::canonical_sorted_json_line(&candidate).map_err(|e| e.to_string())?;
     parse_feed(&candidate_bytes).map_err(|e| e.to_string())?;
+    validate_embedded_history(root, &current.official_snapshot(), base)?;
     let mut clients = Vec::new();
     for release in index.releases {
         if release.channel != "stable" {
@@ -262,12 +263,12 @@ fn validate_transition(previous: &FeedPayload, next: &FeedPayload) -> Result<(),
     {
         return Err("changed publication requires a higher sequence".into());
     }
-    if next.data_revision < previous.data_revision
-        || (next.data_revision == previous.data_revision
-            && next.data_digest != previous.data_digest)
-    {
-        return Err("changed semantic data requires a greater data revision".into());
-    }
+    validate_data_identity(
+        previous.data_revision,
+        &previous.data_digest,
+        next.data_revision,
+        &next.data_digest,
+    )?;
     for entry in &next.featured {
         if previous
             .featured
@@ -277,6 +278,61 @@ fn validate_transition(previous: &FeedPayload, next: &FeedPayload) -> Result<(),
         {
             return Err("first inclusion date changed".into());
         }
+    }
+    Ok(())
+}
+
+fn validate_data_identity(
+    previous_revision: u64,
+    previous_digest: &CanonicalDigest,
+    revision: u64,
+    digest: &CanonicalDigest,
+) -> Result<(), String> {
+    if revision < previous_revision || (revision == previous_revision && digest != previous_digest)
+    {
+        return Err("changed semantic data requires a greater data revision".into());
+    }
+    Ok(())
+}
+
+fn validate_embedded_history(
+    root: &Path,
+    current: &OfficialModelSnapshotV1,
+    base: Option<&str>,
+) -> Result<(), String> {
+    const FILE: &str = "assets/release-facts/current/bundle/official-model-data.json";
+    let mut references = vec!["HEAD".to_owned()];
+    if let Some(base) = base {
+        references.push(
+            git(
+                root,
+                &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
+            )?
+            .trim()
+            .into(),
+        );
+    }
+    // Installed readers retain an embedded data floor even before the first website
+    // publication. Check both local regeneration and committed PR/push changes.
+    for reference in references {
+        if git(root, &["ls-tree", "--name-only", &reference, "--", FILE])?
+            .trim()
+            .is_empty()
+        {
+            continue;
+        }
+        let bytes = git_bytes(root, &["show", &format!("{reference}:{FILE}")])?;
+        let previous: OfficialModelSnapshotV1 =
+            serde_json::from_slice(&bytes).map_err(|_| "invalid previous embedded snapshot")?;
+        previous
+            .validate()
+            .map_err(|_| "invalid previous embedded snapshot")?;
+        validate_data_identity(
+            previous.data_revision,
+            &previous.data_digest,
+            current.data_revision,
+            &current.data_digest,
+        )?;
     }
     Ok(())
 }

@@ -28,8 +28,18 @@ cargo run -p hiroute-release-facts -- feed build --check
 node apps/website/scripts/model-feed.mjs check
 ```
 
-The Rust producer validates the complete candidate even during bootstrap. It checks
-recorded supported source readers before enabling publication. Unsupported execution
+For a semantic change, increase the data revision before regeneration and commit
+the reviewed inputs and generated bundle before building the feed. Then update the
+publication sequence/time when exact publication bytes change, build/check the feed,
+and commit its generated payload. This preserves the bundle-tree provenance through
+a squash merge. Supply the PR/push comparison revision with `feed build --check
+--base BASE`; HEAD also protects uncommitted regeneration.
+
+The Rust producer validates the complete candidate even during bootstrap. Before
+release gating it rejects an embedded revision rollback or different semantic content
+at the same revision against HEAD and the supplied baseline, including when
+`payload.json` remains `null`. It checks recorded supported source readers before
+enabling publication. Unsupported execution
 requirements remain descriptive; they do not remove otherwise valid metadata. The
 publication's `source_revision` names the committed release-bundle tree, which is
 stable through a squash merge. Keep that tree reachable in main history.

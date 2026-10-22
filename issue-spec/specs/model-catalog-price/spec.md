@@ -384,6 +384,11 @@ Source generation and publication SHALL remain reproducible from the recorded re
 - **WHEN** a changed publication increases its sequence but reuses a data revision for different semantic content or supplies an older data revision
 - **THEN** publication validation rejects it; an intentional correction must use a new data revision.
 
+#### Scenario: Guard embedded semantic identity before publication activation
+
+- **WHEN** reviewed embedded data changes before any compatible supported release has enabled website publication
+- **THEN** validation still rejects a lower data revision or different semantic content at the same revision against HEAD and the supplied PR/push baseline, for uncommitted and committed changes; a greater data revision with valid content passes while the publication remains skipped.
+
 #### Scenario: Validate a pull request
 
 - **WHEN** a pull-request workflow checks metadata and generated publication artifacts
@@ -428,6 +433,11 @@ Featured entries SHALL remain optional plain localized new-model or model-update
 
 - **WHEN** a record has marked inferred tool support, an entitlement-dependent limit and a display-only cost hint
 - **THEN** queries retain those distinctions and provenance; they do not present provider-verified capability, an invented numeric limit or an executable price.
+
+#### Scenario: Show inference and its sources in the directory
+
+- **WHEN** the directory shows inferred capability or token-limit fields alongside an observed model record
+- **THEN** inferred fields carry visible localized markers; expandable source and rule details read the same captured snapshot, observed fields do not acquire inference markers, and stale detail reads require reloading the directory rather than mixing snapshots.
 
 #### Scenario: Reject executable authority in metadata
 

@@ -7,7 +7,7 @@ const modelRecords = [
   catalog.model_records.find(record => record.model_record_key === 'hermes-agent/openai-codex/gpt-5.3-codex-spark')!,
 ];
 const snapshot = {generation:1,data_revision:officialData.data_revision,data_digest:officialData.data_digest};
-const state = { fail: false, stale: false, evidenceFail: false };
+const state = { fail: false, stale: false, evidenceFail: false, evidenceStale: false };
 Object.assign(window,{metadataFixture:state});
 export function metadataFixtureInvoke(command: string, payload: any, params: URLSearchParams): unknown {
   if (command === 'compute_defaults') {
@@ -24,11 +24,12 @@ export function metadataFixtureInvoke(command: string, payload: any, params: URL
     if (state.fail) throw Error('DAEMON_UNAVAILABLE');
     if(payload.input.cursor && state.stale) {state.stale=false;throw {message_key:'application.error.change_preview_stale'};}
     const kind=payload.input.kind;
-    const value=kind==='price'?{upstream_model_id:'Example model',product_key:'Example API',currency:'USD',schedules:[{schedule_key:'standard',condition:{kind:'unconditional'},application:'whole-request',rates:{input:'0',output:'1.5','cache-read':'0.025','cache-write':'0.125'}}]}:kind==='evidence_source'?{title:'Provider model documentation',locator:'https://example.test/models',collected_on:'2026-10-21'}:modelRecords[payload.input.cursor?1:0];
+    const value:Record<string,unknown>=kind==='price'?{upstream_model_id:'Example model',product_key:'Example API',currency:'USD',schedules:[{schedule_key:'standard',condition:{kind:'unconditional'},application:'whole-request',rates:{input:'0',output:'1.5','cache-read':'0.025','cache-write':'0.125'}}]}:kind==='evidence_source'?{title:'Provider model documentation',locator:'https://example.test/models',collected_on:'2026-10-21'}:modelRecords[payload.input.cursor?1:0];
     return {snapshot,records:[{kind,key:kind==='model_metadata'?value.model_record_key:payload.input.cursor?'second':'first',origin:'website_cache',qualification:'descriptive_only',value}],total:2,next_cursor:payload.input.cursor?null:'next',complete:!!payload.input.cursor};
   }
   if (command === 'get_model_metadata') {
     if(state.evidenceFail) throw Error('DAEMON_UNAVAILABLE');
+    if(state.evidenceStale) {state.evidenceStale=false;throw {message_key:'application.error.change_preview_stale'};}
     const {kind,key}=payload.input;
     const records:Record<string,unknown[]>= {inference_rule:catalog.inference_rules,client_run:catalog.client_runs,evidence_source:catalog.evidence_sources};
     const field=kind==='inference_rule'?'rule_key':'source_key';

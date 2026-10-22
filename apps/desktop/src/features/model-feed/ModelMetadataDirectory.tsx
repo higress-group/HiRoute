@@ -3,14 +3,14 @@ import { invoke } from '../../host/index.ts';
 import { Dialog } from '../../ui';
 import { safeDiagnosticCode } from '../../error-code';
 import { readCurrentCatalog } from './catalog-read';
+import { MetadataFact, ModelMetadataEvidence, type MetadataSnapshot } from './ModelMetadataEvidence';
+import { capabilityText, tokenLimitText } from './metadata-facts';
 
 type Entry = {kind:string;key:string;origin:string;qualification:string;value:Record<string,unknown>};
-type Page = {records:Entry[];total:number;next_cursor:string|null;complete:boolean};
+type Page = {snapshot:MetadataSnapshot;records:Entry[];total:number;next_cursor:string|null;complete:boolean};
 function text(value:unknown):string {return typeof value === 'string' ? value : '';}
-function limit(value:unknown):string {if (typeof value === 'number') return value.toLocaleString(); if (value && typeof value === 'object' && 'value' in value) return limit(value.value); return '—';}
 export function ModelMetadataDirectory({ language }: {language:'zh'|'en'}) {
   const zh = language === 'zh';
-  const support = (value: unknown) => value === true || value === 'supported' ? (zh?'支持':'Supported') : value === false || value === 'unsupported' ? (zh?'不支持':'Not supported') : (zh?'未知':'Unknown');
   const component = (key: string) => ({input:zh?'输入':'Input', 'input-cache-miss':zh?'未缓存输入':'Uncached input', output:zh?'输出':'Output', 'cache-read':zh?'缓存读取':'Cache read', 'input-cache-hit':zh?'缓存命中':'Cached input', 'cache-write':zh?'缓存写入':'Cache write'} as Record<string,string>)[key] ?? key;
   const condition = (value: unknown) => {
     const v = (value && typeof value === 'object' ? value : {}) as Record<string,unknown>;
@@ -56,7 +56,7 @@ export function ModelMetadataDirectory({ language }: {language:'zh'|'en'}) {
         const v = row.value; const capabilities = (v.capability_hints ?? v.capabilities ?? {}) as Record<string,unknown>;
         const schedules = Array.isArray(v.schedules) ? v.schedules as Record<string,unknown>[] : [];
         return <li key={`${row.kind}/${row.key}`}><strong>{text(v.display_name) || text(v.product) || text(v.provider) || text(v.title) || text(v.upstream_model_id) || row.key}</strong><span className="field-help">{text(v.provider_id) || text(v.provider)} · {row.origin === 'website_cache' ? (zh?'官网 / 本机缓存':'Website / local cache') : (zh?'内置资料':'Embedded information')}</span>
-          {kind === 'model_metadata' && <dl><dt>{zh?'上下文 / 输出上限':'Context / output limit'}</dt><dd>{limit(v.context_tokens)} / {limit(v.max_output_tokens)}</dd><dt>{zh?'工具 / 图片输入':'Tools / vision'}</dt><dd>{support(capabilities.tool ?? capabilities.tool_call)} / {support(capabilities.vision)}</dd></dl>}
+          {kind === 'model_metadata' && <><dl><dt>{zh?'上下文 / 输出上限':'Context / output limit'}</dt><dd><MetadataFact value={v} field="context_tokens" zh={zh}>{tokenLimitText(v.context_tokens,zh)}</MetadataFact> / <MetadataFact value={v} field="max_output_tokens" zh={zh}>{tokenLimitText(v.max_output_tokens,zh)}</MetadataFact></dd><dt>{zh?'工具 / 图片输入':'Tools / vision'}</dt><dd><MetadataFact value={v} field="capability_hints.tool" zh={zh}>{capabilityText(capabilities.tool ?? capabilities.tool_call,zh)}</MetadataFact> / <MetadataFact value={v} field="capability_hints.vision" zh={zh}>{capabilityText(capabilities.vision,zh)}</MetadataFact></dd></dl>{page && <ModelMetadataEvidence key={`${page.snapshot.generation}/${page.snapshot.data_digest}`} value={v} snapshot={page.snapshot} zh={zh} onReload={() => void load()}/>}</>}
           {kind === 'access_product' && <p>{text(v.region_scope)} · {text(v.billing)} · {text(v.restriction)}</p>}
           {kind === 'price' && <><p>{text(v.product_key)} · {text(v.currency)} / {zh?'百万 Token':'million tokens'}</p>{schedules.map(s => <div key={text(s.schedule_key)}><strong>{text(s.schedule_key)}</strong><p>{Object.entries((s.rates ?? {}) as Record<string,string>).map(([name,value]) => `${component(name)}: ${value}`).join(' · ')}</p><p className="field-help">{condition(s.condition)}{s.application !== 'whole-request' ? (zh?' · 适用方式需供应商确认':' · Confirm applicability with the provider') : ''}</p></div>)}</>}
           {kind === 'evidence_source' && <p>{text(v.locator)} · {text(v.collected_on)}</p>}
