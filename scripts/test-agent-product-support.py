@@ -2,6 +2,7 @@
 """Shared native product-fixture mechanics; no native Agent or product acceptance claim."""
 import os
 import json
+from copy import deepcopy
 import shutil
 from pathlib import Path
 import subprocess
@@ -20,7 +21,10 @@ from agent_product_support import apply_settings, run_native_command, expose_nat
 import standalone_headless_product as headless
 from dsh_native_context import DshModelSettings, read_patch, encode_patch
 from decision_services_product import DecisionEndpoint
-from additional_native_history_product import assert_assessed_execution
+from additional_native_history_product import (
+    assert_assessed_execution, assert_assessed_stage, freeze_completed_stage,
+    native_decision_receipt,
+)
 
 
 class DecisionEndpointContractTests(unittest.TestCase):
@@ -90,6 +94,148 @@ class NativeHistoryOracleTests(unittest.TestCase):
             mutate(body)
             with self.assertRaises(AssertionError):
                 assert_assessed_execution([body], 'ACTUAL_A', 'ACCEPTED_A_OUTPUT', 'ACTUAL_B')
+
+
+class NativeStageOracleTests(unittest.TestCase):
+    def finished(self, requests, ordinal, revision):
+        return {
+            'kind': 'agent_turn_finished', 'agent_turn_id': f'turn-{ordinal}',
+            'segment_id': 'same-stage', 'ordinal': ordinal, 'plan_id': 'plan', 'plan_revision': 1,
+            'selected_branch_id': 'native', 'executed_branch_id': 'native',
+            'model_configuration_id': 'actual-model', 'profile_digest': 'actual-profile',
+            'branch_execution': {'policy': {'criteria_digest': 'rubric'}, 'group': 'regular'},
+            'attribution': 'single', 'status': 'completed', 'history_partial': False,
+            'opening_cause': 'no_comparable_history' if ordinal == 1 else 'user_message',
+            'history_membership': {
+                'version': 1, 'branch_id': 'history-branch', 'revision': revision,
+                'request_ids': requests, 'source_unverified': True, 'association_unverified': False,
+                'relation': 'root' if ordinal == 1 else 'exact_prefix',
+                'capture_partial': False, 'clipped': False,
+            },
+        }
+
+    def receipt(self, request, finished=None):
+        facts = [{'kind': 'attempt_started', 'model_configuration_id': 'actual-model',
+                  'profile_digest': 'actual-profile'}]
+        if finished is not None:
+            facts.append(finished)
+        return {'request_id': request, 'outcome': 'accepted', 'trust': {'agent_plan_id': 'plan'},
+                'ordered_facts': [{'fact': fact, 'occurred_at_unix_nanos': 1} for fact in facts]}
+
+    def setUp(self):
+        self.receipts = {'A': self.receipt('A', self.finished(['A'], 2, 3)),
+                         'tool-call': self.receipt('tool-call'),
+                         'tool-result': self.receipt('tool-result', self.finished(['tool-call', 'tool-result'], 1, 2))}
+        self.grade = {
+            'kind': 'branch_assessment_recorded', 'segment_id': 'same-stage', 'plan_id': 'plan',
+            'plan_revision': 1, 'model_configuration_id': 'actual-model', 'profile_digest': 'actual-profile',
+            'trigger_request_id': 'B', 'target_from_turn_id': 'turn-1', 'target_through_turn_id': 'turn-2',
+            'target_from_ordinal': 1, 'target_through_ordinal': 2, 'score': .75, 'partial': False,
+            'history_membership': {**self.finished([], 2, 3)['history_membership'],
+                                   'request_ids': ['tool-call', 'tool-result', 'A']},
+        }
+
+    def test_complete_stage_spans_tool_requests_and_new_input(self):
+        frozen = freeze_completed_stage(self.receipts, 'A')
+        self.assertEqual(set(frozen['request_ids']), {'tool-call', 'tool-result', 'A'})
+        assert_assessed_stage(frozen, self.grade, 'B')
+        # Freeze is detached from later collection and does not invent human origin.
+        self.receipts['A']['ordered_facts'][-1]['fact']['branch_execution']['group'] = 'later'
+        self.assertEqual(frozen['identity']['branch_execution']['group'], 'regular')
+        self.assertTrue(frozen['source_unverified'])
+
+    def test_initial_root_and_singleton_stage_are_valid(self):
+        first = self.receipt('A', self.finished(['A'], 1, 1))
+        frozen = freeze_completed_stage({'A': first}, 'A')
+        self.assertEqual(frozen['request_ids'], ['A'])
+        self.assertEqual(first['ordered_facts'][-1]['fact']['opening_cause'], 'no_comparable_history')
+
+    def test_categorical_route_without_optional_quality_policy_is_valid(self):
+        first = self.receipt('A', self.finished(['A'], 1, 1))
+        del first['ordered_facts'][-1]['fact']['branch_execution']
+        frozen = freeze_completed_stage({'A': first}, 'A')
+        self.assertIsNone(frozen['identity']['branch_execution'])
+
+    def test_other_branch_segment_and_future_capture_do_not_enter_frozen_stage(self):
+        for key, value in [('segment_id', 'foreign-stage'), ('revision', 4), ('branch_id', 'other-branch')]:
+            with self.subTest(key=key):
+                receipts = deepcopy(self.receipts)
+                foreign = self.finished(['foreign'], 3, 3)
+                if key == 'segment_id':
+                    foreign[key] = value
+                else:
+                    foreign['history_membership'][key] = value
+                receipts['foreign'] = self.receipt('foreign', foreign)
+                self.assertEqual(freeze_completed_stage(receipts, 'A')['request_ids'],
+                                 ['A', 'tool-call', 'tool-result'])
+
+    def test_missing_partial_and_foreign_completed_execution_are_rejected(self):
+        mutations = [
+            lambda r: r.pop('tool-call'),
+            lambda r: r['tool-call'].update(outcome='failed'),
+            lambda r: r['tool-call']['ordered_facts'][0]['fact'].update(profile_digest='foreign'),
+        ]
+        for key, value in [('status', 'failed'), ('history_partial', True),
+                           ('model_configuration_id', 'foreign'), ('plan_revision', 2),
+                           ('branch_execution', {'policy': {'criteria_digest': 'foreign'}})]:
+            mutations.append(lambda r, k=key, v=value: r['tool-result']['ordered_facts'][-1]['fact'].update({k: v}))
+        for key, value in [('capture_partial', True), ('clipped', True), ('request_ids', ['tool-call', 'tool-call'])]:
+            mutations.append(lambda r, k=key, v=value: r['tool-result']['ordered_facts'][-1]['fact']['history_membership'].update({k: v}))
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index):
+                receipts = deepcopy(self.receipts)
+                mutate(receipts)
+                with self.assertRaises(AssertionError):
+                    freeze_completed_stage(receipts, 'A')
+
+    def test_wrong_extra_missing_duplicate_current_members_and_uncertainty_are_rejected(self):
+        frozen = freeze_completed_stage(self.receipts, 'A')
+        mutations = [lambda g: g.update(trigger_request_id='different'),
+                     lambda g: g.update(partial=True), lambda g: g.update(score=None)]
+        for value in [['A'], ['tool-call', 'tool-result'], ['tool-call', 'tool-result', 'A', 'B'],
+                      ['tool-call', 'tool-result', 'A', 'foreign'], ['tool-call', 'tool-result', 'A', 'A']]:
+            mutations.append(lambda g, v=value: g['history_membership'].update(request_ids=v))
+        for key, value in [('branch_id', 'foreign'), ('revision', 4), ('clipped', True),
+                           ('capture_partial', True), ('source_unverified', False)]:
+            mutations.append(lambda g, k=key, v=value: g['history_membership'].update({k: v}))
+        for key, value in [('model_configuration_id', 'foreign'), ('profile_digest', 'foreign'),
+                           ('plan_revision', 2), ('segment_id', 'foreign'),
+                           ('target_from_turn_id', 'turn-2'), ('target_through_ordinal', 3)]:
+            mutations.append(lambda g, k=key, v=value: g.update({k: v}))
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index):
+                grade = deepcopy(self.grade)
+                mutate(grade)
+                with self.assertRaises(AssertionError):
+                    assert_assessed_stage(frozen, grade, 'B')
+
+    def test_public_receipt_collector_checks_the_previously_frozen_stage(self):
+        expected = freeze_completed_stage(self.receipts, 'A')
+        current = self.receipt('B', self.finished(['B'], 3, 4))
+        current['ordered_facts'] += [
+            {'occurred_at_unix_nanos': 2, 'fact': self.grade},
+            {'occurred_at_unix_nanos': 2, 'fact': {'kind': 'route_decision', 'complexity': {
+                'decision_source': 'external_classifier', 'fallback_used': False, 'branch_id': 'native'}}},
+        ]
+        self.receipts['B'] = current
+
+        def public_cli(command):
+            if command.startswith('sessions list'):
+                data = {'sessions': [{'session_id': 'session'}]}
+            elif command.startswith('sessions show'):
+                data = {'turns': [{'receipt_ids': list(self.receipts)}]}
+            else:
+                data = self.receipts[command.removeprefix('sessions receipt ')]
+            return None, {'data': data}
+
+        product = SimpleNamespace(plan_id='plan', public_cli=public_cli)
+        result = native_decision_receipt(product, 2, expected)
+        self.assertEqual(result['request_id'], 'B')
+        self.assertEqual(set(result['completed_stage']['request_ids']), {'tool-call', 'tool-result', 'A', 'B'})
+        self.assertNotIn('B', expected['request_ids'])
+        current['ordered_facts'][-2]['fact']['history_membership']['request_ids'] = ['A']
+        with self.assertRaisesRegex(AssertionError, 'stage members'):
+            native_decision_receipt(product, 2, expected)
 
 
 class DshRestorationEvidenceTests(unittest.TestCase):
