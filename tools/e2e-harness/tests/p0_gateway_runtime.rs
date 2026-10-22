@@ -18,6 +18,8 @@ mod history_bypass;
 mod instruction_history;
 #[path = "p0_gateway_runtime/native_history.rs"]
 mod native_history;
+#[path = "p0_gateway_runtime/native_input_window.rs"]
+mod native_input_window;
 #[path = "p0_gateway_runtime/native_peer_tasks.rs"]
 mod native_peer_tasks;
 #[path = "p0_gateway_runtime/native_routing_availability.rs"]

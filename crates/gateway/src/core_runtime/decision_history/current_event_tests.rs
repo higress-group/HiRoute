@@ -20,7 +20,7 @@ fn begin(
     )
 }
 
-fn begin_input(
+pub(super) fn begin_input(
     fixture: &Fixture,
     request: &model_ir::ModelRequestIRV1,
     current: Option<&[model_ir::ContentPart]>,
