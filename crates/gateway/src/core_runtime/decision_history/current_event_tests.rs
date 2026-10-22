@@ -15,7 +15,7 @@ fn begin(
         fixture,
         request,
         current.map(|(parts, _)| parts),
-        current.map(|(_, index)| index),
+        current.map(|(_, index)| CurrentInputPosition::Event(index)),
         false,
     )
 }
@@ -24,7 +24,7 @@ pub(super) fn begin_input(
     fixture: &Fixture,
     request: &model_ir::ModelRequestIRV1,
     current: Option<&[model_ir::ContentPart]>,
-    index: Option<usize>,
+    index: Option<CurrentInputPosition>,
     unavailable: bool,
 ) -> DecisionHistory {
     fixture
@@ -49,7 +49,7 @@ pub(super) fn begin_input(
                 request,
                 replay: &fixture.replay,
                 current_input: current,
-                current_input_index: index,
+                current_input_position: index,
                 current_input_unavailable: unavailable,
             },
         )
@@ -65,7 +65,13 @@ fn opaque_native_event_captures_output_without_copying_ancestor_intent_and_recov
          "content":[{"type":"encrypted_content", "encrypted_content":"opaque ciphertext"}]}
     ]);
     let request = Fixture::request(input);
-    let mut opaque = begin_input(&fixture, &request, None, Some(1), true);
+    let mut opaque = begin_input(
+        &fixture,
+        &request,
+        None,
+        Some(CurrentInputPosition::Event(1)),
+        true,
+    );
     assert!(opaque.guard.is_some());
     fixture.finish(
         &mut opaque,

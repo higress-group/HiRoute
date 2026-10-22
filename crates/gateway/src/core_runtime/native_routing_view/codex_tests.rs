@@ -37,7 +37,10 @@ fn plaintext_peer_batch_is_current_input_without_changing_native_history() {
         ]
     );
     assert!(selected.origin_unverified());
-    assert_eq!(selected.current_input_index(), Some(3));
+    assert_eq!(
+        selected.current_input_position(),
+        Some(CurrentInputPosition::Event(3))
+    );
     assert!(!selected.current_input_unavailable());
     assert!(std::ptr::eq(selected.request(&original), &original));
     assert_eq!(original, saved);
@@ -61,7 +64,10 @@ fn peer_only_native_input_needs_no_invented_human_user() {
         }]
     );
     assert!(selected.origin_unverified());
-    assert_eq!(selected.current_input_index(), Some(0));
+    assert_eq!(
+        selected.current_input_position(),
+        Some(CurrentInputPosition::Event(0))
+    );
     assert!(
         original
             .messages
@@ -115,7 +121,10 @@ fn mixed_ciphertext_empty_and_unknown_peer_content_remain_opaque() {
         assert!(view(&fixture, &original).current_input().is_none());
         assert!(view(&fixture, &original).origin_unverified());
         assert!(view(&fixture, &original).current_input_unavailable());
-        assert_eq!(view(&fixture, &original).current_input_index(), Some(1));
+        assert_eq!(
+            view(&fixture, &original).current_input_position(),
+            Some(CurrentInputPosition::Event(1))
+        );
     }
     let mut original = request(IngressProtocol::Responses, json!([peer("child", "text")]));
     original.native_body.as_mut().unwrap()["input"][0]["content"][0]["type"] =
@@ -142,7 +151,10 @@ fn peer_text_replay_and_projection_capacity_failures_are_optional() {
     let selected = NativeRoutingView::prepare(&HeaderMap::new(), &original, &fixture.replay, &tiny);
     assert!(selected.current_input().is_none());
     assert!(selected.current_input_unavailable());
-    assert_eq!(selected.current_input_index(), Some(0));
+    assert_eq!(
+        selected.current_input_position(),
+        Some(CurrentInputPosition::Event(0))
+    );
     assert!(std::ptr::eq(selected.request(&original), &original));
     let oversized = request(
         IngressProtocol::Responses,
@@ -207,7 +219,10 @@ fn additional_tools_and_web_search_keep_the_peer_event_at_its_canonical_position
     ]);
     let mut original = request(IngressProtocol::Responses, input.clone());
     let selected = view(&fixture, &original);
-    assert_eq!(selected.current_input_index(), Some(2));
+    assert_eq!(
+        selected.current_input_position(),
+        Some(CurrentInputPosition::Event(2))
+    );
     assert_eq!(original.messages.len(), 3);
     let digest = |request: &ModelRequestIRV1| {
         crate::context_hold::observed_history_with_replay(request, &[7; 32], Some(&fixture.replay))
@@ -240,7 +255,7 @@ fn over_bound_native_scan_never_asserts_an_ancestor_as_current_peer_input() {
     let selected = view(&fixture, &original);
     assert!(selected.current_input().is_none());
     assert!(selected.current_input_unavailable());
-    assert!(selected.current_input_index().is_none());
+    assert!(selected.current_input_position().is_none());
     assert!(std::ptr::eq(selected.request(&original), &original));
 }
 
@@ -274,7 +289,10 @@ fn optional_adapter_window_cannot_override_a_typed_plaintext_or_opaque_peer_even
             let original = request(IngressProtocol::Responses, input.clone());
             let selected =
                 NativeRoutingView::prepare(&headers, &original, &fixture.replay, &fixture.budget);
-            assert_eq!(selected.current_input_index(), Some(1));
+            assert_eq!(
+                selected.current_input_position(),
+                Some(CurrentInputPosition::Event(1))
+            );
             assert_eq!(selected.current_input_unavailable(), opaque);
             if !opaque {
                 assert_eq!(
@@ -294,7 +312,7 @@ fn optional_adapter_window_cannot_override_a_typed_plaintext_or_opaque_peer_even
         let recovered = request(IngressProtocol::Responses, input);
         let selected = view(&fixture, &recovered);
         assert!(!selected.current_input_unavailable());
-        assert!(selected.current_input_index().is_none());
+        assert!(selected.current_input_position().is_none());
         assert!(selected.current_input().is_none());
         assert_eq!(
             recovered.messages.last().unwrap().content,

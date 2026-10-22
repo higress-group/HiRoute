@@ -6,6 +6,7 @@ use http::HeaderMap;
 use sha2::{Digest, Sha256};
 
 use super::model_ir::{ContentPart, MessageRole, ModelRequestIRV1};
+use crate::agent_turn_history::CurrentInputPosition;
 use crate::content_ref::ContentValueExt;
 use crate::context_hold::{NativeUserTurn, dsh_user_turns};
 use crate::replay::ReplayStore;
@@ -19,7 +20,7 @@ mod codex;
 
 pub(super) struct NativeRoutingView {
     current_input: Option<Vec<ContentPart>>,
-    current_input_index: Option<usize>,
+    current_input_position: Option<CurrentInputPosition>,
     current_input_unavailable: bool,
     origin_unverified: bool,
     _reservation: Option<Reservation>,
@@ -46,16 +47,16 @@ impl NativeRoutingView {
                 _ => None,
             };
             return match selected {
-                Some((parts, reservation)) => Self {
+                Some((parts, position, reservation)) => Self {
                     current_input: Some(parts),
-                    current_input_index: None,
+                    current_input_position: Some(position),
                     current_input_unavailable: false,
                     origin_unverified: true,
                     _reservation: Some(reservation),
                 },
                 None => Self {
                     current_input: None,
-                    current_input_index: None,
+                    current_input_position: None,
                     current_input_unavailable: false,
                     origin_unverified: true,
                     _reservation: None,
@@ -67,7 +68,7 @@ impl NativeRoutingView {
             // which repeated/decorated callback input is the current wire event.
             return Self {
                 current_input: None,
-                current_input_index: None,
+                current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: true,
                 _reservation: None,
@@ -76,7 +77,7 @@ impl NativeRoutingView {
         let Some(proof) = dsh_user_turns(headers) else {
             return Self {
                 current_input: None,
-                current_input_index: None,
+                current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: request.native_only,
                 _reservation: None,
@@ -86,16 +87,16 @@ impl NativeRoutingView {
             .ok()
             .and_then(|turns| project(request, replay, budget, &turns));
         match projected {
-            Some((parts, reservation)) => Self {
+            Some((parts, position, reservation)) => Self {
                 current_input: Some(parts),
-                current_input_index: None,
+                current_input_position: Some(position),
                 current_input_unavailable: false,
                 origin_unverified: true,
                 _reservation: Some(reservation),
             },
             None => Self {
                 current_input: None,
-                current_input_index: None,
+                current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: true,
                 _reservation: None,
@@ -107,8 +108,8 @@ impl NativeRoutingView {
         self.current_input.as_deref()
     }
 
-    pub(super) fn current_input_index(&self) -> Option<usize> {
-        self.current_input_index
+    pub(super) fn current_input_position(&self) -> Option<CurrentInputPosition> {
+        self.current_input_position
     }
 
     pub(super) fn current_input_unavailable(&self) -> bool {
@@ -129,11 +130,12 @@ fn window_input(
     replay: &ReplayStore,
     budget: &StreamBudget,
     window: &crate::context_hold::NativeMessageWindow,
-) -> Option<(Vec<ContentPart>, Reservation)> {
+) -> Option<(Vec<ContentPart>, CurrentInputPosition, Reservation)> {
     let users = request
         .messages
         .iter()
-        .filter(|message| {
+        .enumerate()
+        .filter(|(_, message)| {
             message.role == MessageRole::User
                 && message.content.iter().any(|part| {
                     matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. })
@@ -144,7 +146,7 @@ fn window_input(
     if users.len() > MAX_USER_MESSAGES {
         return None;
     }
-    let bytes = users.iter().try_fold(0usize, |total, message| {
+    let bytes = users.iter().try_fold(0usize, |total, (_, message)| {
         message.content.iter().try_fold(total, |total, part| {
             let ContentPart::Text { text } = part else {
                 return None;
@@ -165,7 +167,7 @@ fn window_input(
         .ok()?;
     let digests = users
         .iter()
-        .map(|message| text_digest(&message.content, replay))
+        .map(|(_, message)| text_digest(&message.content, replay))
         .collect::<Option<Vec<_>>>()?;
     let encoded = serde_json::to_vec(&digests).ok()?;
     if format!("{:x}", Sha256::digest(&encoded)) != window.scope_digest {
@@ -176,9 +178,47 @@ fn window_input(
         if digests.get(message.index)? != &message.sha256 {
             return None;
         }
-        parts.extend(users[message.index].content.clone());
+        parts.extend(users[message.index].1.content.clone());
     }
-    Some((parts, reservation))
+    let first = users.get(window.messages.first()?.index)?.0;
+    let last = users.get(window.messages.last()?.index)?.0;
+    Some((
+        parts,
+        input_window_position(request, first, last)?,
+        reservation,
+    ))
+}
+
+fn input_window_position(
+    request: &ModelRequestIRV1,
+    first: usize,
+    last: usize,
+) -> Option<CurrentInputPosition> {
+    // A batch cannot bridge model/tool execution and erase its capture boundary.
+    if request.messages[first..=last]
+        .iter()
+        .enumerate()
+        .any(|(offset, message)| {
+            message.role == MessageRole::Assistant
+                || message.content.iter().any(|part| {
+                    matches!(
+                        part,
+                        ContentPart::ToolCall { .. }
+                            | ContentPart::ToolResult { .. }
+                            | ContentPart::ProviderState { .. }
+                    )
+                })
+                || request
+                    .responses_search_history
+                    .contains_key(&(first + offset))
+                || request
+                    .responses_reasoning_history
+                    .contains_key(&(first + offset))
+        })
+    {
+        return None;
+    }
+    Some(CurrentInputPosition::Window { first, last })
 }
 
 fn project(
@@ -186,7 +226,7 @@ fn project(
     replay: &ReplayStore,
     budget: &StreamBudget,
     turns: &[NativeUserTurn],
-) -> Option<(Vec<ContentPart>, Reservation)> {
+) -> Option<(Vec<ContentPart>, CurrentInputPosition, Reservation)> {
     let mut counter = BoundedCounter(0);
     // native_body is deliberately serde-skipped. A normal Clone would duplicate
     // that potentially large opaque execution document outside this bound.
@@ -263,7 +303,13 @@ fn project(
                 .cloned(),
         );
     }
-    Some((parts, reservation))
+    let first = *users.get(turns.last()?.messages.first()?.index)?;
+    let last = *users.get(turns.last()?.messages.last()?.index)?;
+    Some((
+        parts,
+        input_window_position(request, first, last)?,
+        reservation,
+    ))
 }
 
 fn text_digest(parts: &[ContentPart], replay: &ReplayStore) -> Option<String> {

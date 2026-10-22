@@ -1,6 +1,6 @@
 use std::io::Read;
 
-use super::{AgentTurnHistoryError, ToolStatus, VisibleContentPart};
+use super::{AgentTurnHistoryError, CurrentInputPosition, ToolStatus, VisibleContentPart};
 use crate::content_ref::ContentValueExt;
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
@@ -37,12 +37,29 @@ impl AnalyzedRequest {
     pub(crate) fn select_current_input(
         &mut self,
         parts: &[ContentPart],
-        index: Option<usize>,
+        position: Option<CurrentInputPosition>,
         request: &ModelRequestIRV1,
         replay: &ReplayStore,
     ) -> Result<(), AgentTurnHistoryError> {
-        if let Some(index) = index {
-            self.select_event(index, request)?;
+        match position {
+            Some(CurrentInputPosition::Event(index)) => self.select_event(index, request)?,
+            Some(CurrentInputPosition::Window { first, last }) => {
+                if first > last || last >= self.message_count {
+                    return Err(AgentTurnHistoryError::Resource);
+                }
+                // The validated current activation can contain several input
+                // envelopes and be followed by native context. Keep earlier
+                // User positions for real gap detection, but do not mistake
+                // this batch or its trailing context for missed executions.
+                self.prior_history_missing |= self.turns.iter().any(|turn| turn.user_index > last);
+                self.turns.retain(|turn| turn.user_index < first);
+                self.turns.push(AnalyzedTurn {
+                    user_index: last,
+                    user: Vec::new(),
+                });
+                self.output_after_latest_user = output_after(request, last);
+            }
+            None => {}
         }
         let turn = self
             .turns

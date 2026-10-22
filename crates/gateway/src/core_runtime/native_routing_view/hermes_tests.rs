@@ -190,7 +190,7 @@ fn repeated_continue_with_decorated_current_input_and_reminder_keeps_every_user(
                 let view =
                     NativeRoutingView::prepare(headers, &input, &fixture.replay, &fixture.budget);
                 assert!(view.current_input().is_none());
-                assert!(view.current_input_index().is_none());
+                assert!(view.current_input_position().is_none());
                 assert!(!view.current_input_unavailable());
                 assert!(view.origin_unverified());
                 assert!(std::ptr::eq(view.request(&input), &input));

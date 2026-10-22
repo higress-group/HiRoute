@@ -19,6 +19,7 @@ fn begin_window(fixture: &Fixture, items: Value, selected: &[usize]) -> Decision
         .collect::<Vec<_>>();
     let mut headers = http::HeaderMap::new();
     headers.insert("x-hiroute-agent", "dsh".parse().unwrap());
+    headers.insert("x-deepseek-harness-session-id", "session".parse().unwrap());
     headers.insert("x-hiroute-routing-context", json!({
         "version":2, "agent":"dsh", "session_id":"session", "purpose":"main",
         "input":{"kind":"native_messages", "event_id":"event", "coverage":"window",
@@ -37,7 +38,7 @@ fn begin_window(fixture: &Fixture, items: Value, selected: &[usize]) -> Decision
         fixture,
         &request,
         view.current_input(),
-        view.current_input_index(),
+        view.current_input_position(),
         false,
     );
     assert_eq!(serde_json::to_value(&request).unwrap(), original);
@@ -113,4 +114,29 @@ fn current_window_retains_completed_a_for_b_but_fences_a_real_intervening_gap() 
             assert!(!visible.contains("trailing runtime context"));
         }
     }
+}
+
+#[test]
+fn current_window_does_not_erase_uncaptured_output_after_its_input() {
+    let fixture = Fixture::new();
+    let mut a = begin_window(
+        &fixture,
+        json!([
+            {"role":"user","content":"actual A"},
+            {"role":"assistant","content":"uncaptured A execution"},
+            {"role":"user","content":"trailing runtime context"}
+        ]),
+        &[0],
+    );
+    fixture.finish(&mut a, &[text_event("accepted later A suffix")], true);
+    drop(a);
+    let b = begin_window(
+        &fixture,
+        json!([{"role":"user","content":"actual B"}]),
+        &[0],
+    );
+    assert!(b.history.assessment_target.as_ref().unwrap().target_partial);
+    let visible = serde_json::to_string(&b.history.visible_conversation).unwrap();
+    assert!(visible.contains("accepted later A suffix"));
+    assert!(!visible.contains("uncaptured A execution"));
 }

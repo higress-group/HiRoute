@@ -585,6 +585,19 @@ Users as System or proves human authorship. Failure falls back to the full lates
 wire User envelope. Legacy v1 inputs remain readable through one ingress normalization;
 they cannot acquire stronger current-version semantics by adding unknown fields.
 
+Validated current-input windows SHALL preserve their canonical first/last positions
+through capture admission. Multiple input envelopes in that window and trailing
+native context SHALL NOT create a false uncaptured execution between completed A
+and new B. A window cannot span model/tool execution. Earlier uncaptured turns
+still fence the preceding assessment, and uncaptured output after the selected
+window still makes its captured suffix partial. Original roles, bytes, response
+boundaries and source uncertainty remain unchanged.
+
+#### Scenario: New input follows compaction and carries trailing context
+
+- **WHEN** A completes after shortened history and B has a valid input window followed by a native User-role context envelope
+- **THEN** B classifies its selected input and can assess A's actual completed stage, without capturing the summary or trailing context as A's execution or treating B as a missing earlier turn.
+
 ### Requirement: Reversible Hermes profile connection and activation guidance
 
 Desktop SHALL show Hermes alongside other supported Agents before a profile is

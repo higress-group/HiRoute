@@ -3,6 +3,13 @@ use std::sync::Arc;
 
 use crate::server::core_runtime::profiles::BranchDecisionV1;
 
+/// Positions in the unchanged canonical request, not native User ordinals.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CurrentInputPosition {
+    Event(usize),
+    Window { first: usize, last: usize },
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum VisibleContentPart {
