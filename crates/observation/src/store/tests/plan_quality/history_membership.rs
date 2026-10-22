@@ -30,6 +30,7 @@ fn interleaved_branches_use_exact_membership_and_late_execution_cannot_extend_a_
         after_watermark: None,
         limit: 50,
     };
+    let preserved_digests;
     {
         let store = open_store(directory.path());
         let channel = fact_channel(&first, 256 * 1024);
@@ -113,9 +114,20 @@ fn interleaved_branches_use_exact_membership_and_late_execution_cannot_extend_a_
                 "adding a same-branch member is not a range conflict"
             );
         }
+        let db = store.connection.lock();
+        preserved_digests = fact_digests(&db);
+        // Simulate the previous disposable projection. Current facts must
+        // rebuild exact memberships instead of trusting old ordinal ranges.
+        db.execute("UPDATE observation_analysis_turns_v1 SET agent_turn_id='old-range-join',membership_conflict=1", []).unwrap();
+        db.execute(
+            "DELETE FROM observation_analysis_meta_v1 WHERE key='turn_membership_version'",
+            [],
+        )
+        .unwrap();
     }
     // Reopening must preserve source facts and the frozen target boundary.
     let store = open_store(directory.path());
+    assert_eq!(fact_digests(&store.connection.lock()), preserved_digests);
     let page = store
         .observed_routing_timeline(&reader(), &query, 5000)
         .unwrap();
@@ -142,6 +154,61 @@ fn interleaved_branches_use_exact_membership_and_late_execution_cannot_extend_a_
         .unwrap();
     assert_eq!(b.requests.len(), 1);
     assert_eq!(b.requests[0].request_id, other.request.as_str());
+    let samples = store
+        .observed_plan_quality_samples(&reader(), &super::query(Some(17)), 5000)
+        .unwrap();
+    assert_eq!(
+        samples.summary.scored_stage_count, 0,
+        "the old score does not cover the enlarged stage"
+    );
+    let scored = samples
+        .samples
+        .iter()
+        .find(|s| s.segment_id == "stage-a")
+        .unwrap();
+    assert!(scored.assessment.as_ref().unwrap().partial);
+    let db = store.connection.lock();
+    let earlier = crate::query_v2::routing_reason(
+        &db,
+        first.workspace.as_str(),
+        first.session.as_str(),
+        first.request.as_str(),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        earlier.assessment.unwrap().score,
+        0.4,
+        "the earlier score remains available"
+    );
+    let late = crate::query_v2::routing_reason(
+        &db,
+        first.workspace.as_str(),
+        first.session.as_str(),
+        later.request.as_str(),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(
+        late.assessment.is_none(),
+        "a later same-turn request never borrows an earlier score"
+    );
+    let unchanged: (String, i64) = db.query_row("SELECT assessment_membership_json,assessment_partial FROM plan_quality_segments WHERE segment_id='stage-a'", [], |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(
+        unchanged.1, 0,
+        "computed coverage must not rewrite the original assessment"
+    );
+    assert!(!unchanged.0.contains(later.request.as_str()));
+    assert_eq!(fact_digests(&db), preserved_digests);
+}
+
+fn fact_digests(db: &rusqlite::Connection) -> Vec<String> {
+    db.prepare("SELECT envelope_digest FROM execution_fact_events ORDER BY envelope_digest")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
 }
 
 #[test]

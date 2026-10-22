@@ -19,7 +19,8 @@ pub(super) const SCOPE: &str = "
       json_extract(q.branch_execution_json,'$.candidate_index') AS candidate_index,
       json_extract(q.branch_execution_json,'$.policy') AS branch_policy,
       json_extract(q.branch_execution_json,'$.policy.floor_millis') AS floor_millis,
-      CASE WHEN q.assessment_partial=0 THEN q.score END AS reliable_score,
+      CASE WHEN q.assessment_partial=0 AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) THEN q.score END AS reliable_score,
+      (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) AS assessment_covers_stage,
       COALESCE(
         (SELECT a.model_id FROM observation_attempt_models_v2 a
          JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
@@ -83,7 +84,8 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                         CASE WHEN COALESCE(l.conflicted,0)=0 THEN l.run_id END,
                         q.assessment_event_id,q.assessment_trigger_request_id,q.assessed_at_ms,
                         q.target_from_turn_id,q.target_through_turn_id,q.target_from_ordinal,
-                        q.target_through_ordinal,q.score,q.assessment_partial,
+                        q.target_through_ordinal,q.score,
+                        (q.assessment_partial OR NOT q.assessment_covers_stage),
                         CASE WHEN q.reason_present=1
                           THEN json_extract(p.body_json,'$.fact.reason') END,
                         q.assessment_event_id IS NOT NULL AND EXISTS(
@@ -393,7 +395,7 @@ pub(crate) fn routing_reason(
     request: &str,
 ) -> Result<Option<PlanQualitySample>, ObservationV2Error> {
     use rusqlite::OptionalExtension;
-    Ok(db
+    let mut result = db
         .query_row(
             &format!(
                 "WITH quality AS ({SCOPE}) {SAMPLE_SELECT}
@@ -411,7 +413,16 @@ pub(crate) fn routing_reason(
             ":runs":Option::<String>::None,":request":request},
             sample,
         )
-        .optional()?)
+        .optional()?;
+    if let Some(value) = result.as_mut() {
+        let covered: bool = db.query_row(
+            "SELECT assessment_membership_json IS NULL OR EXISTS(SELECT 1 FROM json_each(assessment_membership_json,'$.request_ids') member WHERE member.value=?3) FROM plan_quality_segments WHERE workspace_id=?1 AND segment_id=?2",
+            rusqlite::params![workspace, value.segment_id, request], |row| row.get(0))?;
+        if !covered {
+            value.assessment = None;
+        }
+    }
+    Ok(result)
 }
 
 pub(super) fn sample(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanQualitySample> {

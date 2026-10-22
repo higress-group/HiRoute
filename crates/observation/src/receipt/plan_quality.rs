@@ -391,6 +391,7 @@ fn apply_membership(
                 return Ok(());
             }
             current.source_unverified |= old.source_unverified;
+            current.association_unverified |= old.association_unverified;
             current.capture_partial |= old.capture_partial;
             current.clipped |= old.clipped;
             for id in old.request_ids {
