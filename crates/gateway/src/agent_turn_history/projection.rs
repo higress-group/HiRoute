@@ -42,32 +42,56 @@ impl AnalyzedRequest {
         replay: &ReplayStore,
     ) -> Result<(), AgentTurnHistoryError> {
         if let Some(index) = index {
-            // A native codec may locate a non-User input event. The projection
-            // describes that actual position, never an inserted portable User.
-            if index >= self.message_count
-                || self
-                    .turns
-                    .last()
-                    .is_some_and(|turn| turn.user_index > index)
-            {
-                return Err(AgentTurnHistoryError::Resource);
-            }
-            if self.turns.last().is_none_or(|turn| turn.user_index < index) {
-                if let Some(previous) = self.turns.last_mut() {
-                    previous.user.clear();
-                }
-                self.turns.push(AnalyzedTurn {
-                    user_index: index,
-                    user: Vec::new(),
-                });
-            }
-            self.output_after_latest_user = output_after(request, index);
+            self.select_event(index, request)?;
         }
         let turn = self
             .turns
             .last_mut()
             .ok_or(AgentTurnHistoryError::NoUserTurn)?;
         turn.user = project_user_parts(parts, replay)?;
+        Ok(())
+    }
+
+    pub(crate) fn select_unavailable_event(
+        &mut self,
+        index: usize,
+        request: &ModelRequestIRV1,
+    ) -> Result<(), AgentTurnHistoryError> {
+        self.select_event(index, request)?;
+        self.turns
+            .last_mut()
+            .ok_or(AgentTurnHistoryError::NoUserTurn)?
+            .user = vec![VisibleContentPart::Unavailable {
+            source_kind: "native_event_input".into(),
+        }];
+        Ok(())
+    }
+
+    fn select_event(
+        &mut self,
+        index: usize,
+        request: &ModelRequestIRV1,
+    ) -> Result<(), AgentTurnHistoryError> {
+        // A native codec may locate a non-User input event. The projection
+        // describes that actual position, never an inserted portable User.
+        if index >= self.message_count
+            || self
+                .turns
+                .last()
+                .is_some_and(|turn| turn.user_index > index)
+        {
+            return Err(AgentTurnHistoryError::Resource);
+        }
+        if self.turns.last().is_none_or(|turn| turn.user_index < index) {
+            if let Some(previous) = self.turns.last_mut() {
+                previous.user.clear();
+            }
+            self.turns.push(AnalyzedTurn {
+                user_index: index,
+                user: Vec::new(),
+            });
+        }
+        self.output_after_latest_user = output_after(request, index);
         Ok(())
     }
 

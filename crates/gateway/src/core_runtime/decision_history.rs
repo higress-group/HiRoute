@@ -39,6 +39,7 @@ pub(super) struct HistoryInput<'a> {
     pub(super) replay: &'a ReplayStore,
     pub(super) current_input: Option<&'a [model_ir::ContentPart]>,
     pub(super) current_input_index: Option<usize>,
+    pub(super) current_input_unavailable: bool,
 }
 
 impl ProductionGatewayRuntime {
@@ -62,6 +63,7 @@ impl ProductionGatewayRuntime {
                 replay,
                 current_input: None,
                 current_input_index: None,
+                current_input_unavailable: false,
             },
         )
     }
@@ -79,6 +81,7 @@ impl ProductionGatewayRuntime {
             replay,
             current_input,
             current_input_index,
+            current_input_unavailable,
         } = input;
         let Some(capture) = capture else {
             return Ok(DecisionHistory::detached());
@@ -100,7 +103,12 @@ impl ProductionGatewayRuntime {
             .prepare_scoped_request(&key, request, replay)
             .and_then(|mut analyzed| {
                 analyzed.set_branch_cursor(capture.branch_cursor.0, capture.branch_cursor.1);
-                if capture.unavailable_input {
+                if current_input_unavailable {
+                    analyzed.select_unavailable_event(
+                        current_input_index.ok_or(AgentTurnHistoryError::NoUserTurn)?,
+                        request,
+                    )?;
+                } else if capture.unavailable_input {
                     analyzed.mark_current_input_unavailable();
                 } else if let Some(parts) = current_input {
                     analyzed.select_current_input(parts, current_input_index, request, replay)?;
@@ -186,7 +194,9 @@ impl ProductionGatewayRuntime {
         // Affinity is subordinate to execution capture. A stale or busy cache
         // can only lose its hint, never the admitted request or its snapshot.
         let hold_ticket = prepared_hold
-            .filter(|_| !capture.unavailable_input || correlated.is_some())
+            .filter(|_| {
+                !(capture.unavailable_input || current_input_unavailable) || correlated.is_some()
+            })
             .and_then(|prepared| {
                 self.context_holds.commit_on_branch(
                     prepared,

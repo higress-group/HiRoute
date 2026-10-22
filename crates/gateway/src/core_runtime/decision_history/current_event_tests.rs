@@ -11,6 +11,22 @@ fn begin(
     request: &model_ir::ModelRequestIRV1,
     current: Option<(&[model_ir::ContentPart], usize)>,
 ) -> DecisionHistory {
+    begin_input(
+        fixture,
+        request,
+        current.map(|(parts, _)| parts),
+        current.map(|(_, index)| index),
+        false,
+    )
+}
+
+fn begin_input(
+    fixture: &Fixture,
+    request: &model_ir::ModelRequestIRV1,
+    current: Option<&[model_ir::ContentPart]>,
+    index: Option<usize>,
+    unavailable: bool,
+) -> DecisionHistory {
     fixture
         .runtime
         .begin_authorized_decision_history(
@@ -32,11 +48,55 @@ fn begin(
             HistoryInput {
                 request,
                 replay: &fixture.replay,
-                current_input: current.map(|(parts, _)| parts),
-                current_input_index: current.map(|(_, index)| index),
+                current_input: current,
+                current_input_index: index,
+                current_input_unavailable: unavailable,
             },
         )
         .unwrap()
+}
+
+#[test]
+fn opaque_native_event_captures_output_without_copying_ancestor_intent_and_recovers() {
+    let fixture = Fixture::new();
+    let input = json!([
+        {"role":"user", "content":"ancestor is not current intent"},
+        {"type":"agent_message", "author":"child", "recipient":"parent",
+         "content":[{"type":"encrypted_content", "encrypted_content":"opaque ciphertext"}]}
+    ]);
+    let request = Fixture::request(input);
+    let mut opaque = begin_input(&fixture, &request, None, Some(1), true);
+    assert!(opaque.guard.is_some());
+    fixture.finish(
+        &mut opaque,
+        &[text_event("actual opaque-stage output")],
+        true,
+    );
+    drop(opaque);
+    let b_request = Fixture::request(json!([{"role":"user", "content":"actual fresh B"}]));
+    let mut b = begin(&fixture, &b_request, None);
+    let visible = serde_json::to_string(&b.history.visible_conversation).unwrap();
+    assert!(visible.contains("native_event_input"));
+    assert!(visible.contains("actual opaque-stage output"));
+    assert!(!visible.contains("ancestor is not current intent"));
+    assert!(!visible.contains("opaque ciphertext"));
+    fixture.finish(&mut b, &[text_event("actual fresh B output")], true);
+    drop(b);
+    let c_request = Fixture::request(json!([{"role":"user", "content":"actual fresh C"}]));
+    let c = begin(&fixture, &c_request, None);
+    let target = c.history.assessment_target.as_ref().unwrap();
+    assert!(!target.target_partial);
+    let visible = serde_json::to_string(&c.history.visible_conversation).unwrap();
+    assert!(visible.contains("actual fresh B"));
+    assert!(visible.contains("actual fresh B output"));
+
+    let unknown = Fixture::new();
+    let missed = begin_input(&unknown, &request, None, None, true);
+    assert!(
+        missed.guard.is_none(),
+        "unknown event position cannot select an ancestor"
+    );
+    assert!(begin(&unknown, &b_request, None).guard.is_some());
 }
 
 #[test]
