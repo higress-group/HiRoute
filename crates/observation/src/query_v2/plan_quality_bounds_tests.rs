@@ -113,6 +113,8 @@ fn routing_summary_bounds_unrelated_execution_history_work() {
     // filter also helps a reorderable join, so retaining it is no longer a
     // negative control for the workspace execution scan.
     let previous_sql = SUMMARY_SQL
+        .replace(" INDEXED BY observation_safe_route_payloads", "")
+        .replace(" INDEXED BY execution_facts_request_identity", "")
         .replace("CROSS JOIN execution_fact_events", "JOIN execution_fact_events")
         .replace("          AND CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') ELSE 'route_decision' END='route_decision'\n", "");
     let (previous_rows, previous) = measured(&db, &previous_sql);
@@ -160,6 +162,8 @@ fn routing_index_reopen_preserves_malformed_safe_bytes_and_failed_read() {
         let db = store.connection.lock();
         db.execute_batch(
             "DROP INDEX IF EXISTS observation_safe_route_decisions;
+            DROP INDEX IF EXISTS observation_safe_route_payloads;
+            DROP INDEX IF EXISTS observation_safe_kind_fields;
             UPDATE observation_safe_facts_v2 SET body_json='{' WHERE rowid=(
               SELECT rowid FROM observation_safe_facts_v2
               WHERE json_extract(body_json,'$.event_kind')='route_decision' LIMIT 1);",
@@ -237,9 +241,9 @@ fn quality_reasoning_filters_known_unrelated_payloads_before_opening_them() {
     let (rows, _) = measured(&db, &sql);
     let bounded = reads.swap(0, Ordering::Relaxed);
     let unfiltered = sql.replace(
-        "LEFT JOIN observation_safe_facts_v2 f ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest", ""
+        "LEFT JOIN observation_safe_facts_v2 f INDEXED BY observation_safe_kind_fields ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest", ""
     ).replace(
-        "AND (f.body_json IS NULL OR json_extract(f.body_json,'$.event_kind')='candidate_decision')", ""
+        "AND (f.original_digest IS NULL OR (CASE WHEN json_valid(f.body_json) THEN CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') END ELSE json_extract(f.body_json,'$.event_kind') END)='candidate_decision')", ""
     );
     let (previous_rows, _) = measured(&db, &unfiltered);
     let previous = reads.swap(0, Ordering::Relaxed);
@@ -301,7 +305,7 @@ fn quality_selection_bounds_payload_reads_and_preserves_legacy_gaps() {
     assert!(matches!(rows[0].last(), Some(Value::Text(_))));
     let bounded = reads.swap(0, Ordering::Relaxed);
     let unfiltered = sql.replace(
-        "AND (chosen_safe.body_json IS NULL OR json_extract(chosen_safe.body_json,'$.event_kind')='route_decision')",
+        "AND (chosen_safe.original_digest IS NULL OR (CASE WHEN json_valid(chosen_safe.body_json) THEN CASE WHEN json_valid(chosen_safe.body_json) THEN json_extract(chosen_safe.body_json,'$.event_kind') END ELSE json_extract(chosen_safe.body_json,'$.event_kind') END)='route_decision')",
         "",
     );
     let (previous_rows, _) = measured(&db, &unfiltered);
@@ -349,7 +353,7 @@ fn quality_identity_reads_use_covering_request_and_exact_payload_lookup() {
     assert!(
         routing
             .iter()
-            .any(|step| step.starts_with("SEARCH e USING INDEX")
+            .any(|step| step.starts_with("SEARCH e USING COVERING INDEX")
                 && step.contains("workspace_id=? AND request_id=? AND envelope_digest=?")),
         "routing identity lookup must locate the exact retained event: {routing:?}"
     );
@@ -384,7 +388,7 @@ fn quality_request_index_rebuild_preserves_existing_event_bytes_on_reopen() {
         // An existing released store has the request and session indexes but
         // no covering payload index. Reopening must add it without rewriting
         // immutable event identities or their original content carriers.
-        db.execute_batch("DROP INDEX IF EXISTS execution_facts_request_payload")
+        db.execute_batch("DROP INDEX IF EXISTS execution_facts_request_payload; DROP INDEX IF EXISTS execution_facts_request_identity")
             .unwrap();
         rows
     };
@@ -405,7 +409,7 @@ fn quality_request_index_rebuild_preserves_existing_event_bytes_on_reopen() {
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(after, before);
-        assert!(db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='execution_facts_request_payload')", [], |row| row.get::<_, bool>(0)).unwrap());
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN('execution_facts_request_payload','execution_facts_request_identity')", [], |row| row.get::<_, u64>(0)).unwrap(), 2);
         assert_eq!(
             db.query_row(
                 "SELECT value FROM observation_meta WHERE key='schema_version'",
@@ -415,5 +419,100 @@ fn quality_request_index_rebuild_preserves_existing_event_bytes_on_reopen() {
             .unwrap(),
             schema_version_before
         );
+    }
+}
+
+#[test]
+fn quality_payload_indexes_preserve_missing_fields_and_corruption_on_reopen() {
+    for (kind, field, sql, column) in [
+        (
+            "candidate_decision",
+            "reasoning_profile_id",
+            summary_sql(),
+            7,
+        ),
+        (
+            "route_decision",
+            "complexity",
+            format!("WITH quality AS ({SCOPE}) {SAMPLE_SELECT}"),
+            36,
+        ),
+    ] {
+        let (root, store) = seed();
+        let (id, retained, version) = {
+            let db = store.connection.lock();
+            let (rows, _) = measured(&db, &sql);
+            assert!(matches!(&rows[0][column], Value::Text(_)));
+            let id: String = db.query_row(
+                "SELECT id FROM observation_sensitive_payloads_v2 WHERE json_extract(body_json,'$.fact.kind')=?1 LIMIT 1",
+                [kind], |row| row.get(0),
+            ).unwrap();
+            db.execute("UPDATE observation_sensitive_payloads_v2 SET body_json=json_remove(body_json,?1) WHERE id=?2", rusqlite::params![format!("$.fact.{field}"), id]).unwrap();
+            assert_eq!(measured(&db, &sql).0[0][column], Value::Null);
+            // A malformed carrier must not become an absent indexed value.
+            db.execute(
+                "UPDATE observation_sensitive_payloads_v2 SET body_json='{' WHERE id=?1",
+                [&id],
+            )
+            .unwrap();
+            db.execute_batch(
+                "DROP INDEX observation_payload_query_fields;
+                DROP INDEX observation_safe_kind_fields;
+                DROP INDEX observation_safe_route_payloads;
+                DROP INDEX execution_facts_request_identity;",
+            )
+            .unwrap();
+            let mut statement = db
+                .prepare("SELECT id,body_json FROM observation_sensitive_payloads_v2 ORDER BY id")
+                .unwrap();
+            let retained = statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            let version: String = db
+                .query_row(
+                    "SELECT value FROM observation_meta WHERE key='schema_version'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            (id, retained, version)
+        };
+        assert!(retained.iter().any(|row| row.0 == id && row.1 == "{"));
+        drop(store);
+        for _ in 0..2 {
+            let reopened = open_store(root.path());
+            let db = reopened.connection.lock();
+            let mut statement = db
+                .prepare("SELECT id,body_json FROM observation_sensitive_payloads_v2 ORDER BY id")
+                .unwrap();
+            let after = statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            assert_eq!(after, retained);
+            assert_eq!(db.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN('observation_payload_query_fields','observation_safe_kind_fields','observation_safe_route_payloads','execution_facts_request_identity')", [], |row| row.get::<_, u64>(0)).unwrap(), 4);
+            assert_eq!(
+                db.query_row(
+                    "SELECT value FROM observation_meta WHERE key='schema_version'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+                version
+            );
+            assert!(
+                measured_result(&db, &sql)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("malformed JSON")
+            );
+        }
     }
 }

@@ -286,6 +286,11 @@ retains the released strict failure shape.
 - **WHEN** a Plan-quality read includes routing observations and the workspace retains many unrelated safe facts
 - **THEN** routing-decision selection does not scan every unrelated safe body. Its result, completeness rules and existing read deadline stay unchanged. Reopening an existing store may add a rebuildable index without changing retained bytes or the schema marker; malformed retained JSON remains preserved and the affected read fails rather than claiming complete evidence.
 
+#### Scenario: Read stage selection beside unrelated event payloads
+
+- **WHEN** a Plan-quality stage page resolves its recorded route selection beside other event kinds in the same request
+- **THEN** the reader uses the retained event's covered identity and excludes known unrelated safe projections before opening sensitive payloads. A missing safe projection retains the original payload lookup, while deleted payloads remain unavailable. Small decision fields use rebuildable query indexes so cold reads do not repeatedly open unrelated content pages. Index creation preserves retained bytes and the schema marker; malformed payloads still fail the affected read. Selection, ordering, pagination and full-scope summaries retain their meaning within the existing read deadline and reader admission limits.
+
 ### Requirement: Expose Hermes connection state and recorded execution models
 
 HiRoute SHALL expose the managed Hermes profile's saved connection scope/Plan/protocol and preparation/operation state through existing CLI status queries and Desktop views. Routed Hermes requests SHALL be readable through the existing public execution queries with their recorded Plan, branch and actual execution model. Saved configuration, configuration-operation state and recorded execution SHALL remain distinguishable; the current Plan or an installed adapter SHALL NOT substitute for historical execution or unobserved live conversation selection. Existing session-history attribution and query-access contracts remain authoritative.

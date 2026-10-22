@@ -13,6 +13,9 @@ use crate::LocalObservationStore;
 /// enter this CTE, so pagination and drill-down cannot change the full-scope mean.
 /// The small safe-event catalog excludes known unrelated payloads before opening
 /// content carriers; absent projections retain the original reasoning lookup.
+/// Guarded CASE expressions match the small JSON expression indexes. The inner
+/// CASE is the indexed value; the outer invalid-JSON branch preserves the original
+/// read failure instead of treating corrupt content as a missing field.
 pub(super) const SCOPE: &str = "
     SELECT q.*,
       json_extract(q.branch_execution_json,'$.group') AS execution_group,
@@ -34,17 +37,17 @@ pub(super) const SCOPE: &str = "
          WHERE a.workspace_id=q.workspace_id AND a.request_id=q.first_request_id
            AND r.session_id=q.session_id LIMIT 1)
       ) AS native_model,
-      (SELECT json_extract(p.body_json,'$.fact.reasoning_profile_id')
+      (SELECT (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reasoning_profile_id') END ELSE json_extract(p.body_json,'$.fact.reasoning_profile_id') END)
        FROM execution_fact_events e
-       LEFT JOIN observation_safe_facts_v2 f ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest
-       CROSS JOIN observation_sensitive_payloads_v2 p ON p.id='fact:'||e.envelope_digest
+       LEFT JOIN observation_safe_facts_v2 f INDEXED BY observation_safe_kind_fields ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest
+       CROSS JOIN observation_sensitive_payloads_v2 p INDEXED BY observation_payload_query_fields ON p.id='fact:'||e.envelope_digest
        JOIN logical_requests r ON r.workspace_id=e.workspace_id AND r.request_id=e.request_id
        WHERE e.workspace_id=q.workspace_id AND r.session_id=q.session_id
          AND e.request_id IN(q.last_request_id,q.first_request_id)
-         AND (f.body_json IS NULL OR json_extract(f.body_json,'$.event_kind')='candidate_decision')
-         AND json_extract(p.body_json,'$.fact.kind')='candidate_decision'
-         AND json_extract(p.body_json,'$.fact.model_configuration_id')=q.model_configuration_id
-         AND json_extract(p.body_json,'$.fact.profile_digest')=q.profile_digest
+         AND (f.original_digest IS NULL OR (CASE WHEN json_valid(f.body_json) THEN CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') END ELSE json_extract(f.body_json,'$.event_kind') END)='candidate_decision')
+         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.kind') END ELSE json_extract(p.body_json,'$.fact.kind') END)='candidate_decision'
+         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.model_configuration_id') END ELSE json_extract(p.body_json,'$.fact.model_configuration_id') END)=q.model_configuration_id
+         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.profile_digest') END ELSE json_extract(p.body_json,'$.fact.profile_digest') END)=q.profile_digest
        ORDER BY e.sequence DESC LIMIT 1
       ) AS reasoning_profile_id
     FROM plan_quality_segments q
@@ -65,7 +68,9 @@ pub(super) const SCOPE: &str = "
 ";
 
 // Event IDs belong to producer streams; the trigger request also binds the
-// assessment lookup and lets it use the existing request index.
+// assessment lookup and lets it use the existing request index. Selection uses
+// the covering identity index and safe kind before opening its content carrier;
+// an ordered non-covering event scan otherwise reads unrelated payload pages.
 pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_id,q.plan_revision,
                         q.selected_branch_id,q.executed_branch_id,q.model_configuration_id,
                         q.profile_digest,q.attribution,q.first_turn_id,q.first_turn_ordinal,
@@ -85,18 +90,20 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                         q.target_from_turn_id,q.target_through_turn_id,q.target_from_ordinal,
                         q.target_through_ordinal,q.score,q.assessment_partial,
                         CASE WHEN q.reason_present=1
-                          THEN json_extract(p.body_json,'$.fact.reason') END,
+                          THEN (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reason') END ELSE json_extract(p.body_json,'$.fact.reason') END) END,
                         q.assessment_event_id IS NOT NULL AND EXISTS(
                           SELECT 1 FROM logical_requests trigger_req
                           WHERE trigger_req.workspace_id=q.workspace_id
                             AND trigger_req.session_id=q.session_id
                             AND trigger_req.request_id=q.assessment_trigger_request_id),
                         q.native_model,q.reasoning_profile_id,q.branch_execution_json,q.upgrade_json,
-                        (SELECT json_extract(pick.body_json,'$.fact.complexity')
-                         FROM execution_fact_events chosen
-                         JOIN observation_sensitive_payloads_v2 pick ON pick.id='fact:'||chosen.envelope_digest
+                        (SELECT (CASE WHEN json_valid(pick.body_json) THEN CASE WHEN json_valid(pick.body_json) THEN json_extract(pick.body_json,'$.fact.complexity') END ELSE json_extract(pick.body_json,'$.fact.complexity') END)
+                         FROM execution_fact_events chosen INDEXED BY execution_facts_request_payload
+                         LEFT JOIN observation_safe_facts_v2 chosen_safe INDEXED BY observation_safe_kind_fields ON chosen_safe.workspace_id=chosen.workspace_id AND chosen_safe.request_id=chosen.request_id AND chosen_safe.original_digest=chosen.envelope_digest
+                         CROSS JOIN observation_sensitive_payloads_v2 pick INDEXED BY observation_payload_query_fields ON pick.id='fact:'||chosen.envelope_digest
                          WHERE chosen.workspace_id=q.workspace_id AND chosen.request_id=q.first_request_id
-                           AND json_extract(pick.body_json,'$.fact.kind')='route_decision'
+                           AND (chosen_safe.original_digest IS NULL OR (CASE WHEN json_valid(chosen_safe.body_json) THEN CASE WHEN json_valid(chosen_safe.body_json) THEN json_extract(chosen_safe.body_json,'$.event_kind') END ELSE json_extract(chosen_safe.body_json,'$.event_kind') END)='route_decision')
+                           AND (CASE WHEN json_valid(pick.body_json) THEN CASE WHEN json_valid(pick.body_json) THEN json_extract(pick.body_json,'$.fact.kind') END ELSE json_extract(pick.body_json,'$.fact.kind') END)='route_decision'
                          ORDER BY chosen.sequence DESC LIMIT 1)
                  FROM quality q
                  LEFT JOIN observation_run_links l ON l.workspace_id=q.workspace_id
@@ -104,7 +111,7 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                  LEFT JOIN execution_fact_events e ON e.workspace_id=q.workspace_id
                     AND e.request_id=q.assessment_trigger_request_id
                     AND e.event_id=q.assessment_event_id
-                 LEFT JOIN observation_sensitive_payloads_v2 p
+                 LEFT JOIN observation_sensitive_payloads_v2 p INDEXED BY observation_payload_query_fields
                     ON p.id='fact:'||e.envelope_digest";
 
 #[derive(Serialize, Deserialize)]
