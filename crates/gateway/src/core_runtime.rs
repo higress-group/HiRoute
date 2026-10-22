@@ -725,7 +725,7 @@ impl ProductionGatewayRuntime {
                         replay: &replay,
                         current_input: routing_view.current_input(),
                         current_input_index: routing_view.current_input_index(),
-                        current_input_unavailable: false,
+                        current_input_unavailable: routing_view.current_input_unavailable(),
                     },
                 ) {
                     Ok(tracking) => tracking,
@@ -748,7 +748,8 @@ impl ProductionGatewayRuntime {
                     classification::ClassificationRequest {
                         request: routing_request,
                         current_input: routing_view.current_input(),
-                        native_user_unavailable,
+                        native_user_unavailable: native_user_unavailable
+                            || routing_view.current_input_unavailable(),
                         current_input_origin_unverified,
                         replay: &replay,
                         classifier: authorized.classifier(),

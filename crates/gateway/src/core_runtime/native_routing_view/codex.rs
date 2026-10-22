@@ -22,17 +22,36 @@ pub(super) fn prepare(
     if items.len() <= MAX_NATIVE_ITEMS && !items.iter().any(is_peer) {
         return None;
     }
-    let projected = peer_input(request, items, replay, budget);
+    let latest = (items.len() <= MAX_NATIVE_ITEMS)
+        .then(|| {
+            items.iter().rposition(|item| {
+                is_peer(item)
+                    || (item.get("role").and_then(Value::as_str) == Some("user")
+                        && item
+                            .get("type")
+                            .is_none_or(|kind| kind.as_str() == Some("message")))
+            })
+        })
+        .flatten();
+    let peer = latest.filter(|last| is_peer(&items[*last]));
+    let index = peer.and_then(|last| canonical_index(request, items, last));
+    let projected = peer.zip(index).and_then(|(last, index)| {
+        peer_input(items, last, replay, budget).map(|parts| (parts, index))
+    });
     Some(match projected {
-        Some((parts, index, reservation)) => NativeRoutingView {
+        Some(((parts, reservation), index)) => NativeRoutingView {
             current_input: Some(parts),
             current_input_index: Some(index),
+            current_input_unavailable: false,
             origin_unverified: true,
             _reservation: Some(reservation),
         },
         None => NativeRoutingView {
             current_input: None,
-            current_input_index: None,
+            current_input_index: index,
+            // An opaque current peer must never select an ancestor User as its
+            // task. A later User event still uses the normal complete fallback.
+            current_input_unavailable: peer.is_some() || latest.is_none(),
             origin_unverified: true,
             _reservation: None,
         },
@@ -43,27 +62,7 @@ fn is_peer(item: &Value) -> bool {
     item.get("type").and_then(Value::as_str) == Some("agent_message")
 }
 
-fn peer_input(
-    request: &ModelRequestIRV1,
-    items: &[Value],
-    replay: &ReplayStore,
-    budget: &StreamBudget,
-) -> Option<(Vec<ContentPart>, usize, Reservation)> {
-    if items.len() > MAX_NATIVE_ITEMS {
-        return None;
-    }
-    let last = items.iter().rposition(|item| {
-        is_peer(item)
-            || (item.get("role").and_then(Value::as_str) == Some("user")
-                && item
-                    .get("type")
-                    .is_none_or(|kind| kind.as_str() == Some("message")))
-    })?;
-    if !is_peer(&items[last]) {
-        // A later real User event supersedes an old notification. Its complete
-        // observed envelope remains the shared fallback, without role changes.
-        return None;
-    }
+fn canonical_index(request: &ModelRequestIRV1, items: &[Value], last: usize) -> Option<usize> {
     // Responses ingress skips additional_tools, emits one Assistant placeholder
     // for web search, and one canonical message for every other accepted item.
     // Validate that mapping before using a native ordinal as an event boundary.
@@ -84,6 +83,15 @@ fn peer_input(
     {
         return None;
     }
+    Some(index)
+}
+
+fn peer_input(
+    items: &[Value],
+    last: usize,
+    replay: &ReplayStore,
+    budget: &StreamBudget,
+) -> Option<(Vec<ContentPart>, Reservation)> {
     let first = items[..=last]
         .iter()
         .rposition(|item| !is_peer(item))
@@ -166,5 +174,5 @@ fn peer_input(
         usable |= !value.trim().is_empty();
         parts.push(ContentPart::Text { text: value });
     }
-    usable.then_some((parts, index, reservation))
+    usable.then_some((parts, reservation))
 }

@@ -426,7 +426,8 @@ original typed peer items, including author, recipient, content variants and ord
 SHALL remain unchanged in execution and fingerprint evidence. A later ordinary
 User event supersedes earlier peer context. Mixed plaintext/encrypted peer content
 remains opaque: its readable wrapper cannot reconstruct encrypted intent or prior
-accepted output. Native turn/window metadata proves neither task completion nor
+accepted output, and its current event SHALL NOT fall back to an ancestor User as
+the task input. Native turn/window metadata proves neither task completion nor
 execution deduplication. Optional projection failure retains observed routing and
 cannot reject otherwise successful provider output.
 

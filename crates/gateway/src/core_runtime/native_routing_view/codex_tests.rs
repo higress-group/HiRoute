@@ -38,6 +38,7 @@ fn plaintext_peer_batch_is_current_input_without_changing_native_history() {
     );
     assert!(selected.origin_unverified());
     assert_eq!(selected.current_input_index(), Some(3));
+    assert!(!selected.current_input_unavailable());
     assert!(std::ptr::eq(selected.request(&original), &original));
     assert_eq!(original, saved);
     assert_eq!(original.messages[0].role, MessageRole::User);
@@ -80,6 +81,7 @@ fn old_peer_context_cannot_supersede_a_later_user_event_or_peer_batch() {
     ]);
     let original = request(IngressProtocol::Responses, input.clone());
     assert!(view(&fixture, &original).current_input().is_none());
+    assert!(!view(&fixture, &original).current_input_unavailable());
     input
         .as_array_mut()
         .unwrap()
@@ -112,11 +114,14 @@ fn mixed_ciphertext_empty_and_unknown_peer_content_remain_opaque() {
         );
         assert!(view(&fixture, &original).current_input().is_none());
         assert!(view(&fixture, &original).origin_unverified());
+        assert!(view(&fixture, &original).current_input_unavailable());
+        assert_eq!(view(&fixture, &original).current_input_index(), Some(1));
     }
     let mut original = request(IngressProtocol::Responses, json!([peer("child", "text")]));
     original.native_body.as_mut().unwrap()["input"][0]["content"][0]["type"] =
         json!("future-content");
     assert!(view(&fixture, &original).current_input().is_none());
+    assert!(view(&fixture, &original).current_input_unavailable());
 }
 
 #[test]
@@ -136,6 +141,8 @@ fn peer_text_replay_and_projection_capacity_failures_are_optional() {
     let tiny = BudgetTree::new(4096, 4096).unwrap().stream(4096).unwrap();
     let selected = NativeRoutingView::prepare(&HeaderMap::new(), &original, &fixture.replay, &tiny);
     assert!(selected.current_input().is_none());
+    assert!(selected.current_input_unavailable());
+    assert_eq!(selected.current_input_index(), Some(0));
     assert!(std::ptr::eq(selected.request(&original), &original));
     let oversized = request(
         IngressProtocol::Responses,
@@ -217,4 +224,22 @@ fn additional_tools_and_web_search_keep_the_peer_event_at_its_canonical_position
     );
     original.messages.remove(0);
     assert!(view(&fixture, &original).current_input().is_none());
+}
+
+#[test]
+fn over_bound_native_scan_never_asserts_an_ancestor_as_current_peer_input() {
+    let fixture = Fixture::new();
+    let mut original = request(
+        IngressProtocol::Responses,
+        json!([
+            {"role":"user","content":"ancestor task"},
+            peer("child", "current peer")
+        ]),
+    );
+    original.native_body.as_mut().unwrap()["input"] = json!(vec![Value::Null; 65_537]);
+    let selected = view(&fixture, &original);
+    assert!(selected.current_input().is_none());
+    assert!(selected.current_input_unavailable());
+    assert!(selected.current_input_index().is_none());
+    assert!(std::ptr::eq(selected.request(&original), &original));
 }

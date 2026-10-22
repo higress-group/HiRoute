@@ -20,6 +20,7 @@ mod codex;
 pub(super) struct NativeRoutingView {
     current_input: Option<Vec<ContentPart>>,
     current_input_index: Option<usize>,
+    current_input_unavailable: bool,
     origin_unverified: bool,
     _reservation: Option<Reservation>,
 }
@@ -42,12 +43,14 @@ impl NativeRoutingView {
                 Some((parts, reservation)) => Self {
                     current_input: Some(parts),
                     current_input_index: None,
+                    current_input_unavailable: false,
                     origin_unverified: true,
                     _reservation: Some(reservation),
                 },
                 None => Self {
                     current_input: None,
                     current_input_index: None,
+                    current_input_unavailable: false,
                     origin_unverified: true,
                     _reservation: None,
                 },
@@ -62,6 +65,7 @@ impl NativeRoutingView {
             return Self {
                 current_input: None,
                 current_input_index: None,
+                current_input_unavailable: false,
                 origin_unverified: true,
                 _reservation: None,
             };
@@ -70,6 +74,7 @@ impl NativeRoutingView {
             return Self {
                 current_input: None,
                 current_input_index: None,
+                current_input_unavailable: false,
                 origin_unverified: request.native_only,
                 _reservation: None,
             };
@@ -81,12 +86,14 @@ impl NativeRoutingView {
             Some((parts, reservation)) => Self {
                 current_input: Some(parts),
                 current_input_index: None,
+                current_input_unavailable: false,
                 origin_unverified: true,
                 _reservation: Some(reservation),
             },
             None => Self {
                 current_input: None,
                 current_input_index: None,
+                current_input_unavailable: false,
                 origin_unverified: true,
                 _reservation: None,
             },
@@ -99,6 +106,10 @@ impl NativeRoutingView {
 
     pub(super) fn current_input_index(&self) -> Option<usize> {
         self.current_input_index
+    }
+
+    pub(super) fn current_input_unavailable(&self) -> bool {
+        self.current_input_unavailable
     }
 
     pub(super) fn request<'a>(&'a self, original: &'a ModelRequestIRV1) -> &'a ModelRequestIRV1 {
