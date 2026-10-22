@@ -35,6 +35,7 @@ fn native_messages_api_key_preserves_grant_scope_precedence_rotation_and_outboun
     grant.protocol = IngressProtocol::Messages;
     grant.bearer_token_sha256 = token_sha256(MESSAGES_TOKEN);
     publication.grants.push(grant);
+    publication.publication_revision += 1;
     fixture.publish(&mut publication);
     let body = br#"{"model":"runtime-model","max_tokens":16,"messages":[{"role":"user","content":"Approve the bounded native tool request."}]}"#;
     let bearer = format!("Bearer {MESSAGES_TOKEN}");
