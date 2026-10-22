@@ -480,7 +480,17 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
     use crate::server::core_runtime::model_ir::{
         CanonicalInstruction, InstructionRole, ModelEvent, ModelStreamEventV1, ResponseItemStatus,
     };
-    for changed in ["none", "replay-arguments", "arguments", "instructions"] {
+    for changed in [
+        "none",
+        "replay-arguments",
+        "empty-placeholder",
+        "replay-empty-placeholder",
+        "accepted-empty-placeholder",
+        "whitespace",
+        "arguments",
+        "instructions",
+    ] {
+        let inherits = !matches!(changed, "whitespace" | "arguments" | "instructions");
         let (_directory, replay) = replay();
         let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
         let scope = store.scope_key("workspace", changed).unwrap();
@@ -503,6 +513,20 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
                 },
             )],
         );
+        if changed == "accepted-empty-placeholder" {
+            store.accept_output(
+                &a,
+                &[ModelStreamEventV1::new(
+                    2,
+                    ModelEvent::TextFinished {
+                        index: 0,
+                        text: String::new(),
+                        annotations: Vec::new(),
+                        status: ResponseItemStatus::Completed,
+                    },
+                )],
+            );
+        }
         store
             .finish_request(
                 &a,
@@ -537,6 +561,24 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
                 *arguments = reference.json_marker();
             }
         }
+        if matches!(
+            changed,
+            "empty-placeholder" | "replay-empty-placeholder" | "whitespace"
+        ) {
+            let text = if changed == "replay-empty-placeholder" {
+                let mut pool = replay.begin_content_pool().unwrap();
+                let reference = pool.append(b"").unwrap();
+                pool.seal().unwrap();
+                reference.wire_marker()
+            } else if changed == "whitespace" {
+                " ".into()
+            } else {
+                String::new()
+            };
+            continued.messages[1]
+                .content
+                .insert(0, ContentPart::Text { text });
+        }
         if changed == "instructions" {
             continued.instructions.push(CanonicalInstruction {
                 role: InstructionRole::System,
@@ -548,7 +590,7 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
         let begin = scoped(&store, &scope, &continued, &replay).unwrap();
         match begin {
             AgentTurnBegin::Continuation { ticket, decision } => {
-                assert!(matches!(changed, "none" | "replay-arguments"));
+                assert!(inherits, "changed content must not inherit: {changed}");
                 assert_eq!(ticket.key, a.key);
                 assert_eq!(decision.branch_id, "regular");
                 store.abort(&ticket);
@@ -557,7 +599,7 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
                 ticket, history, ..
             } => {
                 assert!(
-                    !matches!(changed, "none" | "replay-arguments"),
+                    !inherits,
                     "a captured exact tool receipt should inherit: {changed}"
                 );
                 assert_ne!(ticket.key, a.key);

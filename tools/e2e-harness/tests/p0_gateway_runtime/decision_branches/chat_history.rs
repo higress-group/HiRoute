@@ -4,7 +4,9 @@ use super::*;
 fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
     use hiroute_gateway::server::request_plan::IngressProtocol;
 
-    for reasoning_bytes in [0, 32, 32 * 1024] {
+    for (reasoning_bytes, empty_placeholder) in
+        [(0, false), (0, true), (32, true), (32 * 1024, true)]
+    {
         let plain = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#;
         let chat_tool = br#"{"id":"chat-tool","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"native-call","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
         let chat_ok = br#"{"id":"chat-ok","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":"42"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
@@ -84,6 +86,12 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
         let mut history = vec![json!({"role":"user","content":"Read the value with lookup."})];
         let mut assistant = send(&history, "hermes-main", "lookup-user-1");
         assert_eq!(assistant["tool_calls"][0]["function"]["name"], "lookup");
+        if empty_placeholder {
+            // Hermes replays a tool-only Chat response's null content as an
+            // empty string and reserializes JSON arguments before continuation.
+            assistant["content"] = json!("");
+            assistant["tool_calls"][0]["function"]["arguments"] = json!(" { } ");
+        }
         if reasoning_bytes > 0 {
             assistant["reasoning_content"] = json!(thinking);
             assistant["reasoning"] = json!(thinking);
@@ -131,6 +139,35 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
                 .iter()
                 .any(|fact| fact["fact"]["kind"] == "branch_assessment_recorded")
         );
+        if reasoning_bytes == 0 {
+            let tool_requests = json!([decisions[0]["request_id"], decisions[1]["request_id"]]);
+            let complete = facts
+                .iter()
+                .find(|event| {
+                    let fact = &event["fact"];
+                    fact["kind"] == "agent_turn_finished"
+                        && fact["history_membership"]["request_ids"] == tool_requests
+                })
+                .expect("both tool-loop requests must belong to one completed capture");
+            assert_eq!(complete["fact"]["status"], "completed");
+            assert_eq!(complete["fact"]["history_partial"], false);
+            assert_eq!(
+                complete["fact"]["history_membership"]["capture_partial"],
+                false
+            );
+            let assessment = facts
+                .iter()
+                .find(|event| {
+                    event["fact"]["kind"] == "branch_assessment_recorded"
+                        && event["request_id"] == decisions[2]["request_id"]
+                })
+                .expect("next real question must assess the complete tool execution");
+            assert_eq!(
+                assessment["fact"]["history_membership"]["request_ids"],
+                tool_requests
+            );
+            assert_eq!(assessment["fact"]["partial"], false);
+        }
     }
 }
 

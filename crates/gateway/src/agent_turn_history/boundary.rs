@@ -289,6 +289,23 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn empty_text_alone_cannot_establish_an_accepted_response_edge() {
+        let mut capture = BoundaryCapture::default();
+        capture.accept(&ModelEvent::TextDelta {
+            index: 0,
+            text: String::new(),
+        });
+        assert!(capture.digest().is_none());
+        capture.accept(&ModelEvent::TextFinished {
+            index: 0,
+            text: String::new(),
+            annotations: Vec::new(),
+            status: crate::server::core_runtime::model_ir::ResponseItemStatus::Completed,
+        });
+        assert!(capture.digest().is_none());
+    }
+
+    #[test]
     fn comparisons_share_one_budget_and_large_output_cannot_establish_an_edge() {
         let mut budget = FingerprintBudget::default();
         budget.bytes(MAX_BYTES - 3).unwrap();
