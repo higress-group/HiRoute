@@ -365,7 +365,13 @@ uncertainty, and later bounded requests can regain strong continuity in the same
 scope. No truncated fingerprint may establish an edge.
 
 A strong edge requires a comparable typed request prefix and the captured actual
-response boundary, with native cursor/turn agreement where available. Unavailable
+response boundary, with native cursor/turn agreement where available. Only this
+response-boundary comparison ignores zero-byte text placeholders that clients may
+add when replaying a tool-only response. Replay references still require complete
+integrity verification; nonempty whitespace/text, tool identity and typed arguments,
+roles and supported metadata retain their existing comparisons and bounds. Empty
+text alone cannot establish an edge or erase a previously accepted nonempty delta.
+Original forwarding, capture and strict request fingerprints remain unchanged. Unavailable
 or ambiguous evidence starts an independent branch. A completed actual same-scope
 stage MAY remain a contextual assessment candidate with association uncertainty
 explicitly disclosed. It SHALL NOT become a claimed unique predecessor or grant

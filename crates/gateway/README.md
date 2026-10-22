@@ -101,6 +101,9 @@ scope from authorization independently of ContextHold. One native session can ha
 multiple concurrent executions. [Branch resolution](src/agent_turn_history/store/branches.rs)
 combines the typed request prefix with captured accepted response boundaries;
 identical text, native request IDs and completion order do not establish parentage.
+The response comparison ignores zero-byte text placeholders added to a tool-only
+response by a native client, after checking any Replay reference. Whitespace and
+other actual content remain significant; original requests and capture are preserved.
 Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
 commits are branch-scoped; optional cache misses cannot discard execution capture.
 Same-scope actual completed stages remain contextual candidates with disclosed

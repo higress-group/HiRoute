@@ -22,7 +22,10 @@ pub(super) struct BoundaryCapture {
 }
 
 enum Block {
-    Text(Sha256),
+    Text {
+        hash: Sha256,
+        nonempty: bool,
+    },
     Tool {
         logical_id: String,
         digest: Option<[u8; 32]>,
@@ -57,12 +60,14 @@ impl BoundaryCapture {
                     self.invalidate();
                     return;
                 }
-                match self
-                    .blocks
-                    .entry(*index)
-                    .or_insert_with(|| Block::Text(Sha256::new()))
-                {
-                    Block::Text(hash) => hash.update(text.as_bytes()),
+                match self.blocks.entry(*index).or_insert_with(|| Block::Text {
+                    hash: Sha256::new(),
+                    nonempty: false,
+                }) {
+                    Block::Text { hash, nonempty } => {
+                        hash.update(text.as_bytes());
+                        *nonempty |= !text.is_empty();
+                    }
                     _ => self.unavailable = true,
                 }
             }
@@ -79,9 +84,22 @@ impl BoundaryCapture {
                 if !annotations.is_empty() {
                     self.unavailable = true;
                 }
+                if text.is_empty()
+                    && matches!(
+                        self.blocks.get(index),
+                        Some(Block::Text { nonempty: true, .. })
+                    )
+                {
+                    // An empty terminal cannot erase a previously accepted
+                    // nonempty delta and establish a tool-only boundary.
+                    self.unavailable = true;
+                }
                 self.blocks.insert(
                     *index,
-                    Block::Text(Sha256::new_with_prefix(text.as_bytes())),
+                    Block::Text {
+                        hash: Sha256::new_with_prefix(text.as_bytes()),
+                        nonempty: !text.is_empty(),
+                    },
                 );
             }
             ModelEvent::ToolCallStarted {
@@ -145,9 +163,13 @@ impl BoundaryCapture {
             return None;
         }
         let mut hash = Sha256::new_with_prefix(b"accepted-response-boundary/v2");
+        let mut content = false;
         for block in self.blocks.values() {
             match block {
-                Block::Text(text) => {
+                Block::Text {
+                    nonempty: false, ..
+                } => continue,
+                Block::Text { hash: text, .. } => {
                     hash.update(b"text");
                     hash.update(text.clone().finalize());
                 }
@@ -156,8 +178,9 @@ impl BoundaryCapture {
                     hash.update(digest.as_ref()?);
                 }
             }
+            content = true;
         }
-        Some(hash.finalize().into())
+        content.then(|| hash.finalize().into())
     }
 }
 
@@ -169,6 +192,7 @@ pub(super) fn incoming_boundary(
 ) -> Option<[u8; 32]> {
     let mut hash = Sha256::new_with_prefix(b"accepted-response-boundary/v2");
     let mut count = 0;
+    let mut content = false;
     for (index, message) in request.messages.iter().enumerate().skip(start) {
         if message.role != MessageRole::Assistant {
             break;
@@ -189,8 +213,15 @@ pub(super) fn incoming_boundary(
             }
             match part {
                 ContentPart::Text { text } => {
+                    let digest = text_digest(text, Some(replay), budget)?;
+                    // Native clients can replay null tool-response content as
+                    // an empty Text placeholder. Compare its semantic absence
+                    // without changing the forwarded or captured message.
+                    if text.is_empty() || text.content_ref().is_some_and(|r| r.byte_len() == 0) {
+                        continue;
+                    }
                     hash.update(b"text");
-                    hash.update(text_digest(text, Some(replay), budget)?);
+                    hash.update(digest);
                 }
                 ContentPart::ToolCall {
                     logical_id,
@@ -213,9 +244,10 @@ pub(super) fn incoming_boundary(
                 }
                 _ => return None,
             }
+            content = true;
         }
     }
-    (count > 0).then(|| hash.finalize().into())
+    content.then(|| hash.finalize().into())
 }
 
 fn text_digest(
@@ -303,6 +335,26 @@ mod tests {
             status: crate::server::core_runtime::model_ir::ResponseItemStatus::Completed,
         });
         assert!(capture.digest().is_none());
+    }
+
+    #[test]
+    fn empty_terminal_cannot_erase_an_accepted_delta() {
+        let mut capture = BoundaryCapture::default();
+        capture.accept(&ModelEvent::TextDelta {
+            index: 0,
+            text: "accepted".into(),
+        });
+        assert!(capture.digest().is_some());
+        capture.accept(&ModelEvent::TextFinished {
+            index: 0,
+            text: String::new(),
+            annotations: Vec::new(),
+            status: crate::server::core_runtime::model_ir::ResponseItemStatus::Completed,
+        });
+        assert!(
+            capture.digest().is_none(),
+            "empty terminal cannot erase an accepted delta"
+        );
     }
 
     #[test]
