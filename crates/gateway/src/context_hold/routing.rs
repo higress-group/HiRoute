@@ -303,12 +303,23 @@ pub(super) fn facts(
             ..RoutingFacts::default()
         };
     }
+    if v2::auxiliary_purpose(headers, agent) {
+        return RoutingFacts::detached();
+    }
     if worker == Some("opencode") {
         match header_value(headers, "x-hiroute-request-purpose") {
             Field::Value(value) if value == "main" => {
                 return RoutingFacts::uncertain();
             }
-            Field::Value(_) => return RoutingFacts::detached(),
+            Field::Value(value)
+                if matches!(
+                    value.as_str(),
+                    "title" | "summary" | "compaction" | "session-title" | "prewarm"
+                ) =>
+            {
+                return RoutingFacts::detached();
+            }
+            Field::Value(_) => return RoutingFacts::uncertain(),
             Field::Invalid => return RoutingFacts::uncertain(),
             Field::Absent => {}
         }
@@ -335,7 +346,7 @@ pub(super) fn facts(
         return RoutingFacts::uncertain();
     }
     if context.purpose != "main" {
-        return RoutingFacts::detached();
+        return RoutingFacts::uncertain();
     }
     if context.version != 1
         || context.agent != agent

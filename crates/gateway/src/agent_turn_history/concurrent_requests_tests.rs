@@ -207,3 +207,186 @@ fn equal_user_text_does_not_replay_a_completed_routing_decision() {
     );
     store.abort(&b);
 }
+
+#[test]
+fn exact_ingress_retry_retains_cancelled_branch_gap_without_reusing_its_decision() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let scope = store.scope_key("workspace", "cancel-retry").unwrap();
+    let input = request(vec![text(MessageRole::User, "A")]);
+    let (a, _) = new_turn(scoped(&store, &scope, &input, &replay).unwrap());
+    close_turn(&store, &a, "regular", "a", "profile", "a", Instant::now());
+    let changed = request(vec![
+        text(MessageRole::Developer, "Changed instructions"),
+        text(MessageRole::User, "A"),
+        text(MessageRole::Assistant, "uncaptured output"),
+    ]);
+    let (cancelled, history) = new_turn(scoped(&store, &scope, &changed, &replay).unwrap());
+    drop(history);
+    store.abort(&cancelled);
+    let (retry, history) = new_turn(scoped(&store, &scope, &changed, &replay).unwrap());
+    assert_ne!(retry.key, cancelled.key);
+    assert!(history.history_partial);
+    assert!(history.previous_decision.is_none());
+    assert!(
+        history.assessment_target.is_none(),
+        "a retry cannot heal a known gap"
+    );
+    store.abort(&retry);
+}
+
+#[test]
+fn long_tool_phase_counts_terminal_requests_and_recovers_after_retirement() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let scope = store.scope_key("workspace", "long-tool-phase").unwrap();
+    let input = request(vec![text(MessageRole::User, "Continue the task")]);
+    let mut phases = 0;
+    for n in 0..160 {
+        let begin = store
+            .begin(scope.clone(), plan(1), &input, &replay, Instant::now())
+            .unwrap();
+        let ticket = match begin {
+            AgentTurnBegin::NewTurn {
+                ticket, history, ..
+            } => {
+                drop(history);
+                phases += 1;
+                store.commit_decision(&ticket, decision("regular")).unwrap();
+                ticket
+            }
+            AgentTurnBegin::Continuation { ticket, .. } => ticket,
+        };
+        let id = format!("tool-request-{n}");
+        store.bind_request(&ticket, &id);
+        store
+            .finish_request(
+                &ticket,
+                id.clone(),
+                AgentTurnStatus::Completed,
+                vec![execution("model", "profile", "regular", &id)],
+                false,
+                Instant::now(),
+            )
+            .unwrap();
+        assert!(store.inner.lock().retained_records(&scope) <= 128);
+    }
+    assert!(phases >= 2, "an unbounded active stage must be retired");
+    let a = request(vec![text(MessageRole::User, "new A")]);
+    let (a, history) = new_turn(scoped(&store, &scope, &a, &replay).unwrap());
+    drop(history);
+    close_turn(
+        &store,
+        &a,
+        "regular",
+        "model",
+        "profile",
+        "new-a",
+        Instant::now(),
+    );
+    let b = request(vec![text(MessageRole::User, "new B")]);
+    let (b, history) = new_turn(scoped(&store, &scope, &b, &replay).unwrap());
+    assert_eq!(
+        history.assessment_target.unwrap().through_turn_id,
+        a.agent_turn_id
+    );
+    store.abort(&b);
+}
+
+#[test]
+fn cached_decision_respects_budget_before_mutation() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(128 * 1024, Duration::from_secs(60));
+    let scope = store.scope_key("workspace", "decision-budget").unwrap();
+    let (ticket, history) = new_turn(
+        scoped(
+            &store,
+            &scope,
+            &request(vec![text(MessageRole::User, "A")]),
+            &replay,
+        )
+        .unwrap(),
+    );
+    drop(history);
+    let before = store.inner.lock().accounted_bytes;
+    let mut oversized = decision("regular");
+    oversized.strategy_id = "x".repeat(256 * 1024);
+    assert!(matches!(
+        store.commit_decision(&ticket, oversized),
+        Err(AgentTurnHistoryError::Resource)
+    ));
+    assert_eq!(store.inner.lock().accounted_bytes, before);
+    store.commit_decision(&ticket, decision("regular")).unwrap();
+    let inner = store.inner.lock();
+    assert!(inner.accounted_bytes > before);
+    assert!(inner.accounted_bytes <= store.max_memory_bytes);
+    drop(inner);
+    store.abort(&ticket);
+}
+
+#[test]
+fn colliding_gap_stripes_disclose_loss_and_allow_new_complete_pairs() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let scope = store.scope_key("workspace", "stripe-owner").unwrap();
+    let collision = (0..100_000)
+        .map(|n| store.scope_key("workspace", &format!("other-{n}")).unwrap())
+        .find(|other| other.0[0] == scope.0[0] && *other != scope)
+        .unwrap();
+    let (old, _) = new_turn(
+        scoped(
+            &store,
+            &collision,
+            &request(vec![text(MessageRole::User, "old")]),
+            &replay,
+        )
+        .unwrap(),
+    );
+    close_turn(
+        &store,
+        &old,
+        "regular",
+        "old",
+        "profile",
+        "old",
+        Instant::now(),
+    );
+    store.with_lock_for_runtime_test(|| store.note_capture_gap(&scope));
+    let (a, history) = new_turn(
+        scoped(
+            &store,
+            &collision,
+            &request(vec![text(MessageRole::User, "new A")]),
+            &replay,
+        )
+        .unwrap(),
+    );
+    assert!(history.history_partial);
+    assert!(history.assessment_target.is_none());
+    drop(history);
+    close_turn(
+        &store,
+        &a,
+        "regular",
+        "model",
+        "profile",
+        "new-a",
+        Instant::now(),
+    );
+    let (b, history) = new_turn(
+        scoped(
+            &store,
+            &collision,
+            &request(vec![text(MessageRole::User, "new B")]),
+            &replay,
+        )
+        .unwrap(),
+    );
+    let target = history.assessment_target.as_ref().unwrap();
+    assert_eq!(target.through_turn_id, a.agent_turn_id);
+    assert!(
+        !target.target_partial,
+        "old stripe uncertainty must not permanently disable evaluation"
+    );
+    store.abort(&b);
+}

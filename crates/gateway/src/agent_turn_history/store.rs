@@ -121,6 +121,7 @@ struct CaptureAdmission {
 }
 
 struct ActiveTurn {
+    completed_requests: usize,
     request_ids: Vec<String>,
     request_ids_clipped: bool,
     source_unverified: bool,
@@ -319,6 +320,9 @@ impl AgentTurnHistoryStore {
             inner.note_capture_gap(&key);
             return Ok(None);
         };
+        if !inner.reserve_scope_record(&key) {
+            return Err(AgentTurnHistoryError::Resource);
+        }
         let selection = self.select_branch(&mut inner, &key, &analyzed, decision_inputs)?;
         let branch_key = selection.key.clone();
         match self.begin_locked(
@@ -392,6 +396,7 @@ impl AgentTurnHistoryStore {
             let request_token = inner.allocate_request_token()?;
             let turn_id = self.allocate_id(inner, "turn")?;
             let active = ActiveTurn {
+                completed_requests: 0,
                 request_ids: Vec::new(),
                 request_ids_clipped: false,
                 source_unverified: analyzed.user_origin_unverified,
@@ -733,6 +738,7 @@ impl AgentTurnHistoryStore {
             entry.branch_cursor = analyzed.branch_cursor;
             entry.response_boundary = None;
             entry.active = ActiveTurn {
+                completed_requests: 0,
                 request_ids: Vec::new(),
                 request_ids_clipped: false,
                 source_unverified: analyzed.user_origin_unverified,
@@ -866,7 +872,21 @@ impl AgentTurnHistoryStore {
         if !ticket.new_turn || entry.active.decision.is_some() {
             return Err(AgentTurnHistoryError::Integrity);
         }
+        let charge = decision_bytes(&decision);
+        inner.evict_to_budget(
+            self.max_memory_bytes.saturating_sub(charge),
+            Some(&ticket.key),
+        );
+        if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
+            return Err(AgentTurnHistoryError::Resource);
+        }
+        let entry = matching_entry_mut(&mut inner, ticket)?;
+        let old = entry.accounted_bytes;
         entry.active.decision = Some(decision);
+        entry.accounted_bytes = entry_bytes(&ticket.key, entry);
+        let new = entry.accounted_bytes;
+        inner.replace_accounting(old, new);
+        inner.note_peak();
         Ok(())
     }
 
@@ -956,6 +976,7 @@ impl AgentTurnHistoryStore {
             } else {
                 AgentTurnStatus::Unknown
             };
+            entry.active.completed_requests += 1;
             entry.active.executions.extend(executions);
             entry.response_boundary = (!entry.active.capture_partial)
                 .then(|| entry.active.boundary.digest())

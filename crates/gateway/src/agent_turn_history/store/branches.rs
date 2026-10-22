@@ -113,17 +113,37 @@ impl AgentTurnHistoryStore {
                 )
             })
             .collect::<Vec<_>>();
+        // An exact retry of an ingress with a capture gap must retain that gap.
+        // This is only a ranking hint: it never establishes response continuity.
+        let retry_matches = |key: &AgentTurnHistoryKey| {
+            let entry = &inner.entries[key];
+            analyzed.anchors.as_ref().is_some_and(|anchors| {
+                entry.checkpoint.digest == Some(anchors.complete)
+                    && entry.checkpoint.message_count == analyzed.message_count
+            })
+        };
         // Admission order breaks equally plausible ties, not response completion.
         candidates.sort_by(|a, b| {
-            (b.1, b.1.then_some(b.2), b.3, b.4, b.5, b.6, &b.0).cmp(&(
-                a.1,
-                a.1.then_some(a.2),
-                a.3,
-                a.4,
-                a.5,
-                a.6,
-                &a.0,
-            ))
+            (
+                b.1,
+                b.1.then_some(b.2),
+                retry_matches(&b.0),
+                b.3,
+                b.4,
+                analyzed.measured && b.5,
+                b.6,
+                &b.0,
+            )
+                .cmp(&(
+                    a.1,
+                    a.1.then_some(a.2),
+                    retry_matches(&a.0),
+                    a.3,
+                    a.4,
+                    analyzed.measured && a.5,
+                    a.6,
+                    &a.0,
+                ))
         });
         let selected = candidates.first();
         let exact = selected.is_some_and(|c| c.1);

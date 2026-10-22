@@ -83,6 +83,26 @@ fn known_auxiliary(purpose: &str) -> bool {
     )
 }
 
+/// Decode just the minimum purpose. Optional fields may be malformed, but a
+/// duplicate version/family/purpose still fails typed JSON deserialization.
+pub(super) fn auxiliary_purpose(headers: &HeaderMap, agent: &str) -> bool {
+    #[derive(Deserialize)]
+    struct Purpose {
+        version: u8,
+        agent: String,
+        purpose: String,
+    }
+    let Field::Value(value) = single_header(headers, "x-hiroute-routing-context", 4096) else {
+        return false;
+    };
+    serde_json::from_str::<Purpose>(&value).is_ok_and(|p| {
+        matches!(p.version, 1 | 2)
+            && p.agent == agent
+            && native_session_header(agent).is_some()
+            && known_auxiliary(&p.purpose)
+    })
+}
+
 fn native_session_header(agent: &str) -> Option<&'static str> {
     match agent {
         "pi" => Some("x-session-affinity"),
@@ -272,5 +292,40 @@ mod tests {
         assert!(facts.track);
         assert_eq!(facts.native.turn, Some(digest("turn")));
         assert!(matches!(native_input(&h), Some(Err(()))));
+    }
+
+    #[test]
+    fn purpose_is_independent_of_v1_and_v2_enrichment_and_never_mined_from_invalid_json() {
+        for version in [1, 2] {
+            let h = headers(json!({"version":version,"agent":"pi","purpose":"summary",
+                "session_id":[],"user_turns":false,"input":{"messages":42}}));
+            assert!(auxiliary_purpose(&h, "pi"));
+            assert!(!auxiliary_purpose(&h, "dsh"));
+        }
+        for value in [
+            r#"{"version":2,"agent":"pi","purpose":"summary","purpose":"main"}"#,
+            r#"{"version":2,"agent":"pi","purpose":"summary",}"#,
+            r#"{"version":3,"agent":"pi","purpose":"summary"}"#,
+        ] {
+            let mut h = HeaderMap::new();
+            h.insert("x-hiroute-routing-context", value.parse().unwrap());
+            assert!(!auxiliary_purpose(&h, "pi"));
+        }
+    }
+
+    #[test]
+    fn duplicate_nested_input_fields_reject_projection_without_losing_purpose_or_turn() {
+        let mut h = HeaderMap::new();
+        h.insert("x-hiroute-agent", "pi".parse().unwrap());
+        h.insert("x-session-affinity", "session".parse().unwrap());
+        h.insert("x-hiroute-routing-context", r#"{"version":2,"agent":"pi","purpose":"main","session_id":"session","turn_id":"turn","input":{"kind":"observed_batch","event_id":"one","event_id":"two"}}"#.parse().unwrap());
+        assert!(matches!(native_input(&h), Some(Err(()))));
+        assert_eq!(
+            routing_facts(&h, "pi", Some(("pi_session", &["session".into()])), false)
+                .unwrap()
+                .native
+                .turn,
+            Some(digest("turn"))
+        );
     }
 }

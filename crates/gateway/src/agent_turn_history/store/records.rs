@@ -292,13 +292,45 @@ impl StoreInner {
             .filter_map(|key| self.entries.get_key_value(key))
     }
 
+    pub(super) fn retained_records(&self, scope: &AgentTurnHistoryKey) -> usize {
+        self.scope_entries(scope)
+            .map(|(_, e)| {
+                let closed = e
+                    .closed
+                    .iter()
+                    .map(|t| {
+                        t.completed
+                            .history_membership
+                            .as_ref()
+                            .map_or(1, |m| m.request_ids.len().max(1))
+                    })
+                    .sum::<usize>();
+                let active_is_closed = e.active.finalized
+                    && e.closed
+                        .iter()
+                        .any(|t| t.completed.agent_turn_id == e.active.agent_turn_id);
+                let active = if active_is_closed {
+                    0
+                } else {
+                    e.active.completed_requests
+                };
+                // Reserve space for each live completion as well. Conservative
+                // duplicate references count toward the bound, not just stages.
+                closed + active + usize::from(e.pending_request.is_some())
+            })
+            .sum()
+    }
+
+    pub(super) fn reserve_scope_record(&mut self, scope: &AgentTurnHistoryKey) -> bool {
+        self.trim_scope_records(scope, 127)
+    }
+
     pub(super) fn limit_terminal_records(&mut self, scope: &AgentTurnHistoryKey) {
-        while self
-            .scope_entries(scope)
-            .map(|(_, e)| e.closed.len())
-            .sum::<usize>()
-            > 128
-        {
+        self.trim_scope_records(scope, 128);
+    }
+
+    fn trim_scope_records(&mut self, scope: &AgentTurnHistoryKey, limit: usize) -> bool {
+        while self.retained_records(scope) > limit {
             let victim = self
                 .scope_entries(scope)
                 .filter(|(_, e)| !e.closed.is_empty())
@@ -310,15 +342,27 @@ impl StoreInner {
                     )
                 })
                 .map(|(key, _)| key.clone());
-            let Some(key) = victim else {
-                break;
-            };
             // Frozen snapshots own their Arc payload and retain a separate charge.
             // Trimming a live index never frees their bytes or changes membership.
-            if !trim_oldest_closed_turn(self, &key).unwrap_or(false) {
-                break;
+            if let Some(key) = victim
+                && trim_oldest_closed_turn(self, &key).unwrap_or(false)
+            {
+                continue;
             }
+            // A long tool phase can retain many terminal HTTP records without
+            // closing its stage. Retire its whole idle branch rather than drop
+            // individual attempts and invent a different model attribution.
+            let idle = self
+                .scope_entries(scope)
+                .filter(|(_, e)| e.pending_request.is_none() && e.snapshot_pins == 0)
+                .min_by_key(|(_, e)| e.admission_sequence)
+                .map(|(key, _)| key.clone());
+            let Some(key) = idle else {
+                return false;
+            };
+            self.remove(&key);
         }
+        true
     }
 
     pub(super) fn note_capture_gap(&mut self, key: &AgentTurnHistoryKey) {
