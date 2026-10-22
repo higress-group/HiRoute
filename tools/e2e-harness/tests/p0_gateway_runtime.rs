@@ -4,6 +4,8 @@ mod runtime_support;
 mod auxiliary_failure_isolation;
 #[path = "p0_gateway_runtime/bearer_auth.rs"]
 mod bearer_auth;
+#[path = "p0_gateway_runtime/context_overflow.rs"]
+mod context_overflow;
 #[path = "p0_gateway_runtime/decision_branches.rs"]
 mod decision_branches;
 #[path = "p0_gateway_runtime/dsh_native_routing.rs"]
