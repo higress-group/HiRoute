@@ -152,13 +152,18 @@ fn repeated_continue_with_decorated_current_input_and_reminder_keeps_every_user(
         IngressProtocol::Responses,
         IngressProtocol::Messages,
     ] {
+        let text_type = if protocol == IngressProtocol::Responses {
+            "input_text"
+        } else {
+            "text"
+        };
         for reminder in [false, true] {
             let mut messages = vec![
                 json!({"role":"user","content":"continue"}),
                 json!({"role":"assistant","content":"accepted earlier output"}),
                 json!({"role":"user","content":[
-                    {"type":"text","text":"native memory and persistence override"},
-                    {"type":"text","text":"continue"}
+                    {"type":text_type,"text":"native memory and persistence override"},
+                    {"type":text_type,"text":"continue"}
                 ]}),
             ];
             if reminder {
