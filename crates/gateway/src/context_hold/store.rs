@@ -98,7 +98,7 @@ impl ContextHoldKey {
         .map(|key| key.scope_id())
     }
 
-    fn scope_id(&self) -> String {
+    pub(crate) fn scope_id(&self) -> String {
         self.0.iter().map(|b| format!("{b:02x}")).collect()
     }
 
@@ -172,7 +172,7 @@ impl ContextHoldKey {
             ingress_label(ingress_protocol),
         );
         frame(&mut mac, b"identity_kind", identity_kind.as_bytes());
-        if identity.observed_routing_lane() && !verified_lane {
+        if !history && identity.observed_routing_lane() && !verified_lane {
             // A failed native adapter cannot overwrite the verified lane.
             // Unknown-origin requests still have their own reusable history.
             frame(&mut mac, b"input_origin", b"observed-unverified/v1");

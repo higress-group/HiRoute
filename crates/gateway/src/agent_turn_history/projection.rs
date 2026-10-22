@@ -8,6 +8,7 @@ use crate::server::core_runtime::model_ir::{
 };
 
 pub(crate) struct AnalyzedRequest {
+    pub(super) anchors: Option<crate::context_hold::HistoryAnchors>,
     pub(super) message_count: usize,
     pub(super) user_origin_unverified: bool,
     pub(super) prior_history_missing: bool,
@@ -74,6 +75,7 @@ pub(super) fn analyze_request(
             })
     });
     Ok(AnalyzedRequest {
+        anchors: None,
         message_count: request.messages.len(),
         user_origin_unverified: false,
         prior_history_missing: false,

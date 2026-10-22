@@ -78,6 +78,7 @@ impl ProductionGatewayRuntime {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn begin_decision_history(
         &self,
         observation: &RequestObservation,
@@ -86,47 +87,73 @@ impl ProductionGatewayRuntime {
         replay: &ReplayStore,
         prepared_hold: Option<PreparedHold>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
-        let Some(prepared) = prepared_hold else {
+        let capture = prepared_hold.as_ref().map(CaptureScope::from_prepared);
+        self.begin_history(observation, plan, request, replay, capture, prepared_hold)
+    }
+
+    pub(super) fn begin_authorized_decision_history(
+        &self,
+        observation: &RequestObservation,
+        plan: PlanSnapshot,
+        request: &model_ir::ModelRequestIRV1,
+        replay: &ReplayStore,
+        capture: Option<CaptureScope>,
+        prepared_hold: Option<PreparedHold>,
+    ) -> Result<DecisionHistory, AgentTurnHistoryError> {
+        self.begin_history(observation, plan, request, replay, capture, prepared_hold)
+    }
+
+    fn begin_history(
+        &self,
+        observation: &RequestObservation,
+        plan: PlanSnapshot,
+        request: &model_ir::ModelRequestIRV1,
+        replay: &ReplayStore,
+        capture: Option<CaptureScope>,
+        prepared_hold: Option<PreparedHold>,
+    ) -> Result<DecisionHistory, AgentTurnHistoryError> {
+        let Some(capture) = capture else {
             return Ok(DecisionHistory::detached());
         };
         let Ok(key) = self
             .agent_turn_history
-            .scope_key("authorized-context", &prepared.scope_id())
+            .scope_key("authorized-context", &capture.scope_id)
         else {
             return Ok(DecisionHistory::detached());
         };
         let gap_key = key.clone();
-        if !prepared.history_can_capture() {
+        if !capture.can_capture {
             self.agent_turn_history.note_capture_gap(&gap_key);
             return Ok(DecisionHistory::detached());
         }
-        let history_continuity = prepared.history_continuity();
-        let native_turn = prepared.native_turn();
-        let user_origin_unverified = prepared.user_origin_unverified();
-        let uncaptured_native_prefix = prepared.uncaptured_native_prefix();
-        let begin =
-            crate::agent_turn_history::AgentTurnHistoryStore::prepare_request(request, replay)
-                .and_then(|mut analyzed| {
-                    if user_origin_unverified {
-                        analyzed.mark_user_origin_unverified();
-                    }
-                    if uncaptured_native_prefix {
-                        analyzed.mark_prior_history_missing();
-                    }
-                    self.agent_turn_history.begin_with_admission(
-                        key,
-                        plan,
-                        analyzed,
-                        TurnDecisionInputs {
-                            history_continuity,
-                            native_turn,
-                            reselect_on_user_message: true,
-                        },
-                        Instant::now(),
-                        || self.context_holds.reserve_commit(prepared, Instant::now()),
-                    )
-                });
-        let (begin, hold_commit) = match begin {
+        let history_continuity = capture.continuity;
+        let native_turn = capture.native_turn;
+        let user_origin_unverified = capture.origin_unverified;
+        let uncaptured_native_prefix = capture.missing_prefix;
+        let begin = self
+            .agent_turn_history
+            .prepare_scoped_request(&key, request, replay)
+            .and_then(|mut analyzed| {
+                if user_origin_unverified {
+                    analyzed.mark_user_origin_unverified();
+                }
+                if uncaptured_native_prefix {
+                    analyzed.mark_prior_history_missing();
+                }
+                self.agent_turn_history.begin_with_admission(
+                    key,
+                    plan,
+                    analyzed,
+                    TurnDecisionInputs {
+                        history_continuity,
+                        native_turn,
+                        reselect_on_user_message: true,
+                    },
+                    Instant::now(),
+                    || Some(()),
+                )
+            });
+        let (begin, ()) = match begin {
             Ok(Some(admitted)) => admitted,
             Ok(None) => return Ok(DecisionHistory::detached()),
             Err(AgentTurnHistoryError::Integrity) => {
@@ -183,10 +210,10 @@ impl ProductionGatewayRuntime {
             }
         };
         let guard = AgentTurnRequestGuard::new(self.agent_turn_history.clone(), ticket);
-        // Both stores admitted the request under nonblocking locks. Publishing
-        // the reserved checkpoint cannot fail after history has been changed.
-        let hold_ticket = hold_commit.commit();
-        debug_assert_eq!(hold_ticket.history_continuity, history_continuity);
+        // Affinity is subordinate to execution capture. A stale or busy cache
+        // can only lose its hint, never the admitted request or its snapshot.
+        let hold_ticket =
+            prepared_hold.and_then(|prepared| self.context_holds.commit(prepared, Instant::now()));
         if let Some(completed) = completed {
             observation.agent_turn_finished(&completed);
         }
@@ -194,7 +221,58 @@ impl ProductionGatewayRuntime {
             guard: Some(guard),
             history,
             correlated,
-            hold_ticket: Some(Box::new(hold_ticket)),
+            hold_ticket: hold_ticket.map(Box::new),
+        })
+    }
+}
+
+/// Authorization-owned capture scope. It is available even when the optional
+/// affinity cache cannot prepare or commit a checkpoint.
+pub(super) struct CaptureScope {
+    scope_id: String,
+    native_turn: Option<[u8; 32]>,
+    origin_unverified: bool,
+    missing_prefix: bool,
+    can_capture: bool,
+    continuity: crate::context_hold::HistoryContinuity,
+}
+
+impl CaptureScope {
+    #[cfg(test)]
+    fn from_prepared(prepared: &PreparedHold) -> Self {
+        Self {
+            scope_id: prepared.scope_id(),
+            native_turn: prepared.native_turn(),
+            origin_unverified: prepared.user_origin_unverified(),
+            missing_prefix: prepared.uncaptured_native_prefix(),
+            can_capture: prepared.history_can_capture(),
+            continuity: prepared.history_continuity(),
+        }
+    }
+
+    pub(super) fn authorized(
+        authorized: &crate::server::request_plan::AuthorizedRequestPlan,
+        protocol: crate::server::request_plan::IngressProtocol,
+        identity: &crate::context_hold::ContextIdentityFacts,
+        digest_key: &[u8; 32],
+        prepared: Option<&PreparedHold>,
+    ) -> Option<Self> {
+        let key = crate::context_hold::ContextHoldKey::routing_history(
+            authorized, protocol, identity, digest_key,
+        )?;
+        let native = identity.native_checkpoint();
+        Some(Self {
+            scope_id: key.scope_id(),
+            native_turn: native.turn,
+            origin_unverified: identity.input_origin_unverified(prepared),
+            missing_prefix: prepared
+                .map_or(native.compacted, PreparedHold::uncaptured_native_prefix),
+            can_capture: !identity.requires_captured_input()
+                || prepared.is_some_and(PreparedHold::history_can_capture),
+            continuity: prepared.map_or(
+                crate::context_hold::HistoryContinuity::NoCheckpoint,
+                PreparedHold::history_continuity,
+            ),
         })
     }
 }

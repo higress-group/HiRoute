@@ -27,6 +27,9 @@ mod accepted_output;
 #[path = "capture_gap_tests.rs"]
 mod capture_gap;
 
+#[path = "concurrent_requests_tests.rs"]
+mod concurrent_requests;
+
 struct TestRoot(PathBuf);
 
 impl TestRoot {
@@ -1068,7 +1071,7 @@ fn busy_history_admission_and_decision_write_return_without_waiting() {
 }
 
 #[test]
-fn pending_request_conflicts_and_stale_ticket_cannot_commit() {
+fn pending_requests_have_independent_leases_and_stale_ticket_cannot_commit() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(64 * 1024, Duration::from_secs(60));
     let key = store.scope_key("workspace", "conflict").unwrap();
@@ -1080,10 +1083,15 @@ fn pending_request_conflicts_and_stale_ticket_cannot_commit() {
             .unwrap(),
     );
     drop(history);
-    assert!(matches!(
-        store.begin(key.clone(), plan(1), &request, &replay, now),
-        Err(AgentTurnHistoryError::SessionTurnConflict)
-    ));
+    let (parallel, parallel_history) = new_turn(
+        store
+            .begin(key.clone(), plan(1), &request, &replay, now)
+            .unwrap(),
+    );
+    assert_ne!(first.request_token, parallel.request_token);
+    assert_ne!(first.key, parallel.key);
+    drop(parallel_history);
+    store.abort(&parallel);
     store.abort(&first);
     let (replacement, history) =
         new_turn(store.begin(key, plan(1), &request, &replay, now).unwrap());

@@ -12,9 +12,16 @@ use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
+pub(crate) use history::observed_history_with_replay;
 #[cfg(test)]
 pub(crate) use history::visible_history;
 pub(crate) use history::{HistoryEvidence, visible_history_with_replay};
+
+#[derive(Clone, Debug)]
+pub(crate) struct HistoryAnchors {
+    pub(crate) complete: [u8; 32],
+    pub(crate) prefixes: Vec<(usize, [u8; 32])>,
+}
 pub(crate) use identity::{ContextIdentityFacts, identity_facts};
 #[cfg(test)]
 pub(crate) use routing::{NativeCheckpoint, NativeUserOrigin};

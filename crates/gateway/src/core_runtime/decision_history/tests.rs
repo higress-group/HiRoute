@@ -151,20 +151,19 @@ fn text_event(text: &str) -> ModelStreamEventV1 {
 }
 
 #[test]
-fn p2_failed_hold_admission_preserves_accepted_turns_and_reports_the_capture_gap() {
+fn p2_failed_hold_admission_keeps_capture_and_cross_turn_assessment_available() {
     for failure in ["busy", "stale"] {
         let fixture = Fixture::new();
         let first = Fixture::request(json!([{"role":"user","content":"first"}]));
         let mut admitted = fixture.begin(&first, fixture.prepare(&first));
         fixture.finish(&mut admitted, &[text_event("first answer")], true);
         drop(admitted);
-
         let second = Fixture::request(json!([
             {"role":"user","content":"first"}, {"role":"assistant","content":"first answer"},
             {"role":"user","content":"second"}
         ]));
         let prepared = fixture.prepare(&second);
-        let rejected = if failure == "busy" {
+        let mut captured = if failure == "busy" {
             let _lock = fixture.runtime.context_holds.lock_for_runtime_test();
             fixture.begin(&second, prepared)
         } else {
@@ -175,12 +174,14 @@ fn p2_failed_hold_admission_preserves_accepted_turns_and_reports_the_capture_gap
                 .unwrap();
             fixture.begin(&second, prepared)
         };
-        assert!(rejected.guard.is_none());
-        assert!(rejected.hold_ticket.is_none());
-        drop(rejected);
-
-        // The detached second request still executes normally. Its accepted output
-        // can be present in the next native transcript but was not captured here.
+        assert!(
+            captured.guard.is_some(),
+            "{failure}: affinity failure must not discard capture"
+        );
+        assert!(captured.hold_ticket.is_none());
+        assert!(captured.history.assessment_target.is_some());
+        fixture.finish(&mut captured, &[text_event("second answer")], true);
+        drop(captured);
         let third = Fixture::request(json!([
             {"role":"user","content":"first"}, {"role":"assistant","content":"first answer"},
             {"role":"user","content":"second"}, {"role":"assistant","content":"second answer"},
@@ -188,24 +189,18 @@ fn p2_failed_hold_admission_preserves_accepted_turns_and_reports_the_capture_gap
         ]));
         let next = fixture.begin(&third, fixture.prepare(&third));
         assert!(
-            next.history.history_partial,
-            "{failure}: an uncaptured request is a history gap"
+            !next
+                .history
+                .assessment_target
+                .as_ref()
+                .unwrap()
+                .target_partial
         );
-        assert!(
-            next.history.assessment_target.is_none(),
-            "{failure}: do not assess a stale segment across the gap"
-        );
-        assert_eq!(next.history.visible_conversation.len(), 1);
+        assert_eq!(next.history.visible_conversation.len(), 2);
         assert_eq!(
-            next.history.visible_conversation[0].user,
-            vec![VisibleContentPart::Text {
-                text: "first".into()
-            }]
-        );
-        assert_eq!(
-            next.history.visible_conversation[0].steps,
+            next.history.visible_conversation[1].steps,
             vec![vec![VisibleContentPart::Text {
-                text: "first answer".into()
+                text: "second answer".into()
             }]]
         );
     }

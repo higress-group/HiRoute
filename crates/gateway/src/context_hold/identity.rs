@@ -30,6 +30,10 @@ enum Identity {
 }
 
 impl ContextIdentityFacts {
+    pub(crate) fn requires_captured_input(&self) -> bool {
+        self.routing.native.user_origin == super::routing::NativeUserOrigin::ExistingTurn
+    }
+
     pub(crate) fn mark_routing_origin_unverified(&mut self) {
         if self.routing.track {
             self.routing.native.user_origin = super::routing::NativeUserOrigin::Observed;

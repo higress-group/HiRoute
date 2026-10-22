@@ -2,19 +2,24 @@
 use super::*;
 
 impl AgentTurnHistoryStore {
+    pub(super) fn capture_gap_epoch(&self, key: &AgentTurnHistoryKey) -> &AtomicU64 {
+        // Scope keys are HMAC outputs. Fixed stripes bound contention bookkeeping
+        // without a global gap that makes every unrelated session partial.
+        &self.capture_gap_epochs[usize::from(key.0[0])]
+    }
+
     pub(crate) fn note_capture_gap(&self, key: &AgentTurnHistoryKey) {
         if let Some(mut inner) = self.inner.try_lock() {
             inner.note_capture_gap(key);
             return;
         }
-        // Never make model output wait for optional history. Contention prevents
-        // a scoped write, so a fixed-size epoch conservatively invalidates other
-        // retained assessment segments at their next admission as well.
-        let _ = self
-            .capture_gap_epoch
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |epoch| {
-                epoch.checked_add(1)
-            });
+        // A collision discloses uncertainty conservatively. It cannot assert a
+        // missing execution was captured, and stabilizes for later complete stages.
+        let _ = self.capture_gap_epoch(key).fetch_update(
+            Ordering::AcqRel,
+            Ordering::Acquire,
+            |epoch| epoch.checked_add(1),
+        );
     }
 
     pub(super) fn observe_capture_gap_epoch(

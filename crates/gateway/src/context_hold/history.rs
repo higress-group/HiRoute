@@ -36,6 +36,26 @@ pub(crate) struct HistoryDigests {
 }
 
 impl<'a> HistoryEvidence<'a> {
+    /// Scan once for the bounded set of captured branch boundaries. Keep no
+    /// transcript-sized index, and never use text similarity as parentage.
+    pub(crate) fn branch_anchors(&self, positions: &[usize]) -> Option<super::HistoryAnchors> {
+        let mut encoder = Encoder::new(self.key, b"history-branch/v2", self.replay)?;
+        let mut prefixes = Vec::with_capacity(positions.len().min(32));
+        if positions.len() > 32 {
+            return None;
+        }
+        for (index, message) in self.request.messages.iter().enumerate() {
+            encoder.history_item(self.request, index, message, false)?;
+            if positions.contains(&(index + 1)) {
+                prefixes.push((index + 1, encoder.snapshot()?));
+            }
+        }
+        Some(super::HistoryAnchors {
+            complete: encoder.finish()?,
+            prefixes,
+        })
+    }
+
     /// Borrow a verified routing-only view without changing strict execution evidence.
     pub(crate) fn with_semantic_request(
         mut self,
@@ -162,7 +182,7 @@ pub(crate) fn visible_history_with_replay<'a>(
 
 /// Actual known messages can support uncertain task capture without claiming
 /// that the complete native payload has a comparable provider-cache prefix.
-pub(super) fn observed_history_with_replay<'a>(
+pub(crate) fn observed_history_with_replay<'a>(
     request: &'a ModelRequestIRV1,
     key: &'a [u8; 32],
     replay: Option<&'a ReplayStore>,

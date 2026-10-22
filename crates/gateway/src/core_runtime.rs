@@ -703,13 +703,16 @@ impl ProductionGatewayRuntime {
                     )
                     .await;
                 };
-                if prepared_hold.is_none() {
-                    self.note_decision_history_gap(&authorized, protocol, &identity);
-                }
-                if identity.observed_routing_lane() {
-                    self.note_verified_decision_history_gap(&authorized, protocol, &identity);
-                }
-                let tracking = match self.begin_decision_history(
+                let capture_scope = self.context_holds.digest_key().and_then(|key| {
+                    decision_history::CaptureScope::authorized(
+                        &authorized,
+                        protocol,
+                        &identity,
+                        &key,
+                        prepared_hold.as_ref(),
+                    )
+                });
+                let tracking = match self.begin_authorized_decision_history(
                     &request_observation,
                     PlanSnapshot {
                         plan_id: plan_id.clone(),
@@ -717,6 +720,7 @@ impl ProductionGatewayRuntime {
                     },
                     routing_request,
                     &replay,
+                    capture_scope,
                     prepared_hold,
                 ) {
                     Ok(tracking) => tracking,
