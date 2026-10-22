@@ -93,7 +93,9 @@ asynchronously. SQLite or valuation failure cannot block the model response.
 Known failure-attempt usage still counts. Missing usage or pricing remains unknown,
 not zero. Subscription API-equivalent value is labeled an estimate, never payment.
 The captured generation MUST include the verified mapping from a source's stable
-management model identity to its compiled execution identity. Equal names are not
+management model identity through the verified source/model binding. A pinned
+publication's execution ID may predate credential or availability revisions;
+those revisions MUST NOT detach an unchanged source/model from its current price. Equal names are not
 mapping evidence; conflicting mappings leave execution pricing unknown.
 When an ordinary billing quote lacks known input/output rates, an explicitly
 configured source-specific API-equivalent quote with those rates MAY supply the
@@ -115,7 +117,7 @@ Start/Continue without automatically cancelling accepted work.
 
 - **WHEN** a user configures prices for a custom model through its stable source binding
 - **THEN** new requests use the exact generation-bound execution mapping, while
-  different suppliers, changed identities, currencies and valuation kinds cannot
+  different suppliers, changed source/model bindings, currencies and valuation kinds cannot
   inherit the quote. The frozen evidence retains the executed model identity.
 
 #### Scenario: A subscription has a reference price but no billing quote

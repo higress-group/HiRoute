@@ -17,7 +17,7 @@ pub struct CatalogPriceRuleV2 {
 pub struct PriceIndexEntryV1 {
     pub target: PriceTargetV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub execution_model_configuration_id: Option<String>,
+    pub execution_binding_id: Option<String>,
     pub actual_offer_ref: Option<String>,
     pub reference_model_offer_ref: Option<PriceReferenceOfferV1>,
     pub catalog_rules: Vec<CatalogPriceRuleV2>,
@@ -25,12 +25,34 @@ pub struct PriceIndexEntryV1 {
     pub source_override: Option<SourcePriceOverrideV1>,
 }
 
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct ExecutionPriceKey {
+    workspace_id: WorkspaceId,
+    source_id: String,
+    source_identity_digest: CanonicalDigest,
+    binding_id: String,
+    currency: String,
+    valuation_kind: PriceValuationKindV1,
+}
+impl ExecutionPriceKey {
+    fn new(target: &PriceTargetV1, binding: &str) -> Self {
+        Self {
+            workspace_id: target.workspace_id.clone(),
+            source_id: target.source_id.clone(),
+            source_identity_digest: target.source_identity_digest.clone(),
+            binding_id: binding.into(),
+            currency: target.currency.clone(),
+            valuation_kind: target.valuation_kind,
+        }
+    }
+}
+
 /// Immutable and indexed, constructed by the control writer from verified catalog/mapping facts.
 #[derive(Debug)]
 pub struct PriceSnapshot {
     pub(super) generation: PriceGenerationRefV1,
     pub(super) entries: BTreeMap<PriceTargetV1, PriceIndexEntryV1>,
-    execution_targets: BTreeMap<PriceTargetV1, Option<PriceTargetV1>>,
+    execution_targets: BTreeMap<ExecutionPriceKey, Option<PriceTargetV1>>,
 }
 impl PriceSnapshot {
     pub fn build(
@@ -50,13 +72,18 @@ impl PriceSnapshot {
         }
         catalog_refs.sort_by(|a, b| (&a.id, a.revision).cmp(&(&b.id, b.revision)));
         let mut index = BTreeMap::new();
-        let mut execution_targets: BTreeMap<PriceTargetV1, Option<PriceTargetV1>> = BTreeMap::new();
+        let mut execution_targets: BTreeMap<ExecutionPriceKey, Option<PriceTargetV1>> =
+            BTreeMap::new();
         for entry in entries {
             super::select::validate_entry(&entry)?;
-            if let Some(model) = &entry.execution_model_configuration_id {
-                let mut execution = entry.target.clone();
-                execution.model_identity = PriceModelIdentityV1::CatalogModel(model.clone());
-                execution.validate()?;
+            if let Some(binding) = &entry.execution_binding_id {
+                if binding.is_empty()
+                    || binding.len() > 256
+                    || binding.chars().any(char::is_control)
+                {
+                    return Err(ComputeContractError::InvalidPrice);
+                }
+                let execution = ExecutionPriceKey::new(&entry.target, binding);
                 execution_targets
                     .entry(execution)
                     .and_modify(|target| {
@@ -106,17 +133,21 @@ impl PriceSnapshotHandle {
             Self::Unavailable(_) => None,
         }
     }
-    /// The compiled execution ID can differ from the stable authoring model ref.
-    /// Resolve only the exact source/digest/model/currency/basis captured in this
-    /// generation, then retain the executed identity in the frozen evidence.
+    /// The caller supplies the verified binding from its pinned publication. Its
+    /// compiled execution ID can predate a credential/source revision, while the
+    /// stable source/model binding still owns the current price. Never infer this
+    /// association from model names; retain the executed identity in the quote.
     pub fn freeze_execution_price(
         &self,
         target: &PriceTargetV1,
+        binding: &str,
         at: i64,
         billing: PriceBillingContextV1,
     ) -> Result<FrozenPriceQuoteV1, ComputeContractError> {
         if let Self::Available(snapshot) = self
-            && let Some(mapped) = snapshot.execution_targets.get(target)
+            && let Some(mapped) = snapshot
+                .execution_targets
+                .get(&ExecutionPriceKey::new(target, binding))
         {
             let Some(mapped) = mapped else {
                 let mut quote = Self::Unavailable(PriceUnknownReasonV1::UnverifiedOfferMapping)

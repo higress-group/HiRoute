@@ -133,6 +133,7 @@ impl RequestPriceSnapshot for CapturedPrice {
         // The snapshot API uses Unix seconds; execution evidence preserves ms.
         match self.snapshot.freeze_execution_price(
             &target.target,
+            binding,
             at_ms / 1000,
             target.billing_context.clone(),
         ) {
@@ -176,6 +177,7 @@ impl RequestPriceSnapshot for CapturedPrice {
             reference.valuation_kind = PriceValuationKindV1::ApiEquivalent;
             if let Ok(quote) = self.snapshot.freeze_execution_price(
                 &reference,
+                binding,
                 at_ms / 1000,
                 target.billing_context.clone(),
             ) && usable(&quote)

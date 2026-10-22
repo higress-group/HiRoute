@@ -3,7 +3,7 @@ use hiroute_domain::*;
 
 fn entry(source: &str) -> PriceIndexEntryV1 {
     PriceIndexEntryV1 {
-        execution_model_configuration_id: None,
+        execution_binding_id: None,
         target: PriceTargetV1 {
             workspace_id: WorkspaceId::default(),
             source_id: source.into(),
@@ -37,7 +37,7 @@ fn freeze(handle: &PriceSnapshotHandle, target: &PriceTargetV1, at: i64) -> Froz
 fn compiled_custom_identity_uses_only_its_generation_bound_source_override() {
     let mut custom = entry("custom-source");
     custom.target.model_identity = PriceModelIdentityV1::LocalModel("model/authoring-ref".into());
-    custom.execution_model_configuration_id = Some("model/source-local/executed".into());
+    custom.execution_binding_id = Some("binding-local".into());
     custom.catalog_rules.clear();
     custom.actual_offer_ref = None;
     custom.source_override = Some(SourcePriceOverrideV1 {
@@ -59,7 +59,12 @@ fn compiled_custom_identity_uses_only_its_generation_bound_source_override() {
         PriceModelIdentityV1::CatalogModel("model/source-local/executed".into());
     let read = |target: &PriceTargetV1| {
         handle
-            .freeze_execution_price(target, 100, PriceBillingContextV1::StandardTokens)
+            .freeze_execution_price(
+                target,
+                "binding-local",
+                100,
+                PriceBillingContextV1::StandardTokens,
+            )
             .unwrap()
     };
     let quote = read(&executed);
@@ -70,19 +75,35 @@ fn compiled_custom_identity_uses_only_its_generation_bound_source_override() {
         custom.target.digest().unwrap().to_string()
     );
     quote.verify_digest().unwrap();
-    for changed in ["source", "digest", "model", "currency", "basis"] {
+    for changed in ["source", "digest", "currency", "basis"] {
         let mut wrong = executed.clone();
         match changed {
             "source" => wrong.source_id = "another-source".into(),
             "digest" => wrong.source_identity_digest = CanonicalDigest::of_bytes(b"replaced"),
-            "model" => {
-                wrong.model_identity = PriceModelIdentityV1::CatalogModel("another-model".into())
-            }
             "currency" => wrong.currency = "EUR".into(),
             _ => wrong.valuation_kind = PriceValuationKindV1::ApiEquivalent,
         }
         assert_eq!(read(&wrong).origin, PriceOriginV1::Unknown, "{changed}");
     }
+    let mut newer_execution = executed.clone();
+    newer_execution.model_identity =
+        PriceModelIdentityV1::CatalogModel("model/source-local/new-revision".into());
+    assert_eq!(
+        read(&newer_execution).rates.input_uncached,
+        TokenRateV1::known(300_000)
+    );
+    assert_eq!(
+        handle
+            .freeze_execution_price(
+                &executed,
+                "other-binding",
+                100,
+                PriceBillingContextV1::StandardTokens
+            )
+            .unwrap()
+            .origin,
+        PriceOriginV1::Unknown
+    );
     let mut duplicate = custom.clone();
     duplicate.target.model_identity =
         PriceModelIdentityV1::LocalModel("model/other-authoring-ref".into());
@@ -94,7 +115,12 @@ fn compiled_custom_identity_uses_only_its_generation_bound_source_override() {
     .unwrap();
     let ambiguous = slot
         .capture_current_price_snapshot()
-        .freeze_execution_price(&executed, 100, PriceBillingContextV1::StandardTokens)
+        .freeze_execution_price(
+            &executed,
+            "binding-local",
+            100,
+            PriceBillingContextV1::StandardTokens,
+        )
         .unwrap();
     assert_eq!(ambiguous.origin, PriceOriginV1::Unknown);
     assert_eq!(
