@@ -137,6 +137,13 @@ supported `auxiliary` and `compaction` request classes before optional identity 
 prompt enrichment. Unknown classes stay observed and routable. A prompt ID enables
 a routing activation without proving human origin, a clean input instance or prior
 task completion; the complete native User batch remains visible with uncertainty.
+The observed Claude Code 2.1.287 runtime sends messages queued during an active
+tool call as native System context with the same prompt ID. Those bytes still
+reach the upstream, but the observed-User classifier and assessment context can
+miss their intent. This is a current producer capability limit: no English
+wrapper is extracted or promoted into a new User. A later actual User activation
+in that same live session restores classification, capture and exact-target
+evaluation. Other Claude versions need their own producer evidence.
 [Native routing admission](src/context_hold/routing.rs) separates usable input from
 source proof. Known auxiliary purposes remain detached. Missing or unsupported
 metadata instead uses an observed-input lane, with

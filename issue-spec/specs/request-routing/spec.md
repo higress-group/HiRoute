@@ -404,6 +404,16 @@ native agent IDs; absent IDs SHALL NOT be replaced with an invented main/child I
 Actual child results in a parent notification remain external context and SHALL
 NOT acquire credit as the parent model's accepted output.
 
+When a Claude producer supplies active-turn steering only as native System or
+instruction context, without current-event evidence, that content SHALL remain
+available to upstream execution without being relabelled as a new User through
+text-template matching. The observed-User classifier and assessment context may
+then lack that steering intent; this is an explicit capability limit, not a
+source-verification or task-completion claim. Subsequent usable User activations
+in the same native session SHALL recover classification, actual capture and
+cross-turn evaluation without treating the System text as reconstructed User
+execution. This condition depends on the actual producer, not all Claude versions.
+
 Native same-turn evidence takes precedence over appended synthetic User envelopes
 when the history owner still has the matching task, captured input and a valid
 current-Plan decision. An explicitly identified continuation without that captured
