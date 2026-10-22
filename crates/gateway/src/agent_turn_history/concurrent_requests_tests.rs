@@ -23,6 +23,47 @@ fn scoped(
 }
 
 #[test]
+fn fingerprint_overflow_preserves_current_capture_and_later_same_scope_assessment() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let key = store.scope_key("workspace", "fingerprint-limit").unwrap();
+    let input = request(vec![
+        text(
+            MessageRole::Assistant,
+            &"x".repeat(crate::context_hold::fingerprint::MAX_BYTES + 1),
+        ),
+        text(MessageRole::User, "actual A"),
+    ]);
+    let (a, a_snapshot) = new_turn(scoped(&store, &key, &input, &replay).unwrap());
+    assert!(a_snapshot.visible_conversation.is_empty());
+    assert!(a_snapshot.history_partial);
+    accepted_output::text_output(&store, &a, "actual accepted A");
+    close_turn(
+        &store,
+        &a,
+        "regular",
+        "model-a",
+        "profile-a",
+        "request-a",
+        Instant::now(),
+    );
+    let next = request(vec![text(MessageRole::User, "actual B")]);
+    let (_b, b_snapshot) = new_turn(scoped(&store, &key, &next, &replay).unwrap());
+    assert_eq!(
+        b_snapshot
+            .assessment_target
+            .as_ref()
+            .unwrap()
+            .through_turn_id,
+        a.agent_turn_id
+    );
+    let serialized = serde_json::to_string(&b_snapshot.visible_conversation).unwrap();
+    assert!(serialized.contains("actual A"));
+    assert!(serialized.contains("actual accepted A"));
+    assert!(serialized.len() < 4096);
+}
+
+#[test]
 fn overlapping_same_scope_requests_capture_distinct_models_and_immutable_targets() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));

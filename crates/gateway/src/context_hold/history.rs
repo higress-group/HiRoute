@@ -13,6 +13,8 @@ use crate::server::core_runtime::model_ir::{
     WebSearchAction, WebSearchCallV1, WebSearchSourceKind, WebSearchStatus,
 };
 
+use super::fingerprint::FingerprintBudget;
+
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
@@ -41,6 +43,7 @@ impl<'a> HistoryEvidence<'a> {
     pub(crate) fn branch_anchors(&self, positions: &[usize]) -> Option<super::HistoryAnchors> {
         let mut encoder = Encoder::new(self.key, b"history-branch/v2", self.replay)?;
         encoder.bytes(&self.instruction_digest);
+        encoder.items(self.request.messages.len())?;
         let mut prefixes = Vec::with_capacity(positions.len().min(32));
         if positions.len() > 32 {
             return None;
@@ -92,6 +95,8 @@ impl<'a> HistoryEvidence<'a> {
             self.replay,
         )?;
         let mut semantic = Encoder::new(self.key, b"visible-history/v1/conversation", self.replay)?;
+        history.items(self.request.messages.len())?;
+        semantic.items(semantic_request.messages.len())?;
         let mut prefix_digest = match prefix_count {
             Some(0) => Some(history.snapshot()?),
             _ => None,
@@ -163,6 +168,10 @@ impl<'a> HistoryEvidence<'a> {
 mod semantic_tests;
 
 #[cfg(test)]
+#[path = "history_budget_tests.rs"]
+mod budget_tests;
+
+#[cfg(test)]
 pub(crate) fn visible_history<'a>(
     request: &'a ModelRequestIRV1,
     key: &'a [u8; 32],
@@ -189,6 +198,7 @@ pub(crate) fn observed_history_with_replay<'a>(
     replay: Option<&'a ReplayStore>,
 ) -> Option<HistoryEvidence<'a>> {
     let mut instructions = Encoder::new(key, b"visible-history/v1/instructions", replay)?;
+    instructions.items(request.instructions.len())?;
     instructions.usize(request.instructions.len());
     for instruction in &request.instructions {
         instructions.tag(match instruction.role {
@@ -200,6 +210,7 @@ pub(crate) fn observed_history_with_replay<'a>(
     // Tool declarations and stable provider state are part of the effective
     // model setup. Treating their change as a rebuild is conservative for KV
     // affinity and avoids claiming equivalence across transport rewrites.
+    instructions.items(request.tools.len())?;
     instructions.usize(request.tools.len());
     for tool in &request.tools {
         instructions.tag(match tool.kind {
@@ -224,10 +235,12 @@ pub(crate) fn observed_history_with_replay<'a>(
             None => instructions.tag(b"no-custom-format"),
         }
     }
+    instructions.items(request.tool_namespaces.len())?;
     instructions.usize(request.tool_namespaces.len());
     for namespace in &request.tool_namespaces {
         instructions.string(&namespace.name);
         instructions.optional_string(namespace.description.as_deref());
+        instructions.items(namespace.tools.len())?;
         instructions.usize(namespace.tools.len());
         for tool in &namespace.tools {
             instructions.tag(match tool.kind {
@@ -253,6 +266,7 @@ pub(crate) fn observed_history_with_replay<'a>(
             }
         }
     }
+    instructions.items(request.responses_tool_order.len())?;
     instructions.usize(request.responses_tool_order.len());
     for entry in &request.responses_tool_order {
         match entry {
@@ -298,6 +312,7 @@ pub(crate) fn observed_history_with_replay<'a>(
         instructions.tag(b"messages-output-format");
         instructions.json(format)?;
     }
+    instructions.items(request.provider_state.len())?;
     instructions.usize(request.provider_state.len());
     for state in &request.provider_state {
         instructions.provider_state(state)?;
@@ -323,6 +338,7 @@ struct Encoder<'a> {
     mac: HmacSha256,
     replay: Option<&'a ReplayStore>,
     valid: bool,
+    budget: FingerprintBudget,
 }
 
 impl<'a> Encoder<'a> {
@@ -333,6 +349,7 @@ impl<'a> Encoder<'a> {
             mac,
             replay,
             valid: true,
+            budget: FingerprintBudget::default(),
         })
     }
 
@@ -345,12 +362,29 @@ impl<'a> Encoder<'a> {
             .then(|| self.mac.clone().finalize().into_bytes().into())
     }
 
+    fn items(&mut self, count: usize) -> Option<()> {
+        if !self.valid {
+            return None;
+        }
+        self.valid = self.budget.items(count).is_some();
+        self.valid.then_some(())
+    }
+
+    fn charge(&mut self, count: usize) -> bool {
+        self.valid = self.valid && self.budget.bytes(count).is_some();
+        self.valid
+    }
+
     fn tag(&mut self, value: &[u8]) {
-        frame(&mut self.mac, b"tag", value);
+        if self.charge(value.len().saturating_add(32)) {
+            frame(&mut self.mac, b"tag", value);
+        }
     }
 
     fn bytes(&mut self, value: &[u8]) {
-        frame(&mut self.mac, b"bytes", value);
+        if self.charge(value.len().saturating_add(32)) {
+            frame(&mut self.mac, b"bytes", value);
+        }
     }
 
     fn string(&mut self, value: &str) {
@@ -391,22 +425,26 @@ impl<'a> Encoder<'a> {
     }
 
     fn u64(&mut self, value: u64) {
-        frame(&mut self.mac, b"u64", &value.to_be_bytes());
+        if self.charge(32) {
+            frame(&mut self.mac, b"u64", &value.to_be_bytes());
+        }
     }
 
     fn json(&mut self, value: &Value) -> Option<()> {
         self.tag(b"json");
+        self.items(0)?;
         if let Some(reference) = value.content_ref() {
             return self.hash_reference(&reference);
         }
+        let referenced = self.budget.json(value)?;
         let mut counter = ByteCounter(0);
-        if contains_content_ref(value) {
+        if referenced {
             write_canonical_json_with_replay(&mut counter, value, self.replay?)?;
         } else {
             write_canonical_json(&mut counter, value).ok()?;
         }
         frame_header(&mut self.mac, b"bytes", counter.0);
-        if contains_content_ref(value) {
+        if referenced {
             write_canonical_json_with_replay(&mut MacWriter(&mut self.mac), value, self.replay?)?;
         } else {
             write_canonical_json(&mut MacWriter(&mut self.mac), value).ok()?;
@@ -415,6 +453,13 @@ impl<'a> Encoder<'a> {
     }
 
     fn hash_reference(&mut self, reference: &ContentRef) -> Option<()> {
+        if !self.charge(
+            usize::try_from(reference.byte_len())
+                .ok()?
+                .checked_add(32)?,
+        ) {
+            return None;
+        }
         let mut reader = self.replay?.reader(reference).ok()?;
         frame_header(&mut self.mac, b"bytes", reference.byte_len());
         let mut buffer = [0_u8; 16 * 1024];
@@ -429,8 +474,10 @@ impl<'a> Encoder<'a> {
     }
 
     fn parts(&mut self, parts: &[ContentPart], omit_instruction_text: bool) -> Option<()> {
+        self.items(parts.len())?;
         self.usize(parts.len());
         for part in parts {
+            self.items(0)?;
             match part {
                 ContentPart::Text { text } => {
                     self.tag(b"text");
@@ -535,6 +582,7 @@ impl<'a> Encoder<'a> {
         message: &CanonicalMessage,
         semantic: bool,
     ) -> Option<()> {
+        self.items(0)?;
         self.tag(b"history-item");
         if let Some(peer) = request
             .native_body
@@ -557,8 +605,10 @@ impl<'a> Encoder<'a> {
         match request.responses_annotations.get(&message_index) {
             Some(parts) => {
                 self.tag(b"responses-annotations");
+                self.items(parts.len())?;
                 self.usize(parts.len());
                 for (part_index, annotations) in parts {
+                    self.items(annotations.len())?;
                     self.usize(*part_index);
                     self.usize(annotations.len());
                     for annotation in annotations {
@@ -574,6 +624,7 @@ impl<'a> Encoder<'a> {
                 // Native fields may each be Replay-backed (notably a long
                 // Responses summary). Hash the sorted fields individually so
                 // the request-local JSON markers never stand in for content.
+                self.items(history.native_fields.len())?;
                 self.usize(history.native_fields.len());
                 let mut keys = history.native_fields.keys().collect::<Vec<_>>();
                 keys.sort_unstable();
@@ -614,6 +665,9 @@ impl<'a> Encoder<'a> {
                 match sources {
                     Some(sources) => {
                         self.tag(b"some-sources");
+                        if self.items(sources.len()).is_none() {
+                            return;
+                        }
                         self.usize(sources.len());
                         for source in sources {
                             self.tag(match &source.kind {
@@ -642,6 +696,9 @@ impl<'a> Encoder<'a> {
         match values {
             Some(values) => {
                 self.tag(b"some-strings");
+                if self.items(values.len()).is_none() {
+                    return;
+                }
                 self.usize(values.len());
                 for value in values {
                     self.string(value);
@@ -683,18 +740,6 @@ fn frame_header(mac: &mut HmacSha256, kind: &[u8], length: u64) {
     mac.update(&(kind.len() as u64).to_be_bytes());
     mac.update(kind);
     mac.update(&length.to_be_bytes());
-}
-
-fn contains_content_ref(value: &Value) -> bool {
-    if value.content_ref().is_some() {
-        return true;
-    }
-    match value {
-        Value::String(value) => value.content_ref().is_some(),
-        Value::Array(values) => values.iter().any(contains_content_ref),
-        Value::Object(values) => values.values().any(contains_content_ref),
-        _ => false,
-    }
 }
 
 pub(crate) fn write_canonical_json_with_replay(

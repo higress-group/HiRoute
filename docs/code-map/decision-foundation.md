@@ -96,6 +96,8 @@ invalidate that route, and each request still reauthorizes.
 derives execution scope from request authority independently of ContextHold.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+Optional content comparisons use the shared [fingerprint budget](../../crates/gateway/src/context_hold/fingerprint.rs)
+before Replay reads and JSON key sorting; exhausting it loses evidence, not routing.
 Matching input text alone never deduplicates requests or proves a predecessor.
 Concurrent requests receive separate tickets; frozen snapshots retain their own
 accounted payload and exact target membership. A busy or stale affinity cache loses

@@ -1,3 +1,4 @@
+pub(crate) mod fingerprint;
 mod history;
 mod identity;
 mod routing;

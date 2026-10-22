@@ -353,6 +353,17 @@ logical task. Routing resolution SHALL inspect at most 32 retained heads in the
 same authenticated workspace/consumer/authority epoch/grant generation/served
 alias/protocol/Plan namespace. Evidence from another scope is ineligible.
 
+Optional fingerprint work SHALL have independent content and structural budgets.
+Each instruction/history digest admits at most 16 MiB of content and framing,
+65,536 structural items and JSON depth 64. Inline JSON strings are charged at
+their worst-case escaped length; Replay references are checked before reading.
+Response-boundary comparisons share one such budget across the candidate heads.
+Captured response-boundary hashing also stops at its budget. Exceeding these
+limits loses comparable evidence, never forwarding, current-input classification
+or actual-output capture. Contextual evaluation remains available with association
+uncertainty, and later bounded requests can regain strong continuity in the same
+scope. No truncated fingerprint may establish an edge.
+
 A strong edge requires a comparable typed request prefix and the captured actual
 response boundary, with native cursor/turn agreement where available. Unavailable
 or ambiguous evidence starts an independent branch. A completed actual same-scope

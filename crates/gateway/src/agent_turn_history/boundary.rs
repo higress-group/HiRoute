@@ -5,7 +5,8 @@ use std::io::{Read, Write};
 
 use sha2::{Digest, Sha256};
 
-use crate::content_ref::{ContentValueExt, JsonValueExt};
+use crate::content_ref::ContentValueExt;
+use crate::context_hold::fingerprint::FingerprintBudget;
 use crate::replay::{ReplayStore, write_canonical_json};
 use crate::server::core_runtime::model_ir::{
     ContentPart, MessageRole, ModelEvent, ModelRequestIRV1, ToolKindV1,
@@ -17,6 +18,7 @@ const MAX_BLOCKS: usize = 128;
 pub(super) struct BoundaryCapture {
     blocks: BTreeMap<u32, Block>,
     unavailable: bool,
+    budget: FingerprintBudget,
 }
 
 enum Block {
@@ -51,6 +53,10 @@ impl BoundaryCapture {
         }
         match event {
             ModelEvent::TextDelta { index, text } => {
+                if self.budget.bytes(text.len()).is_none() {
+                    self.invalidate();
+                    return;
+                }
                 match self
                     .blocks
                     .entry(*index)
@@ -66,6 +72,10 @@ impl BoundaryCapture {
                 annotations,
                 ..
             } => {
+                if self.budget.bytes(text.len()).is_none() {
+                    self.invalidate();
+                    return;
+                }
                 if !annotations.is_empty() {
                     self.unavailable = true;
                 }
@@ -105,7 +115,9 @@ impl BoundaryCapture {
                         name,
                         arguments,
                         None,
+                        &mut self.budget,
                     );
+                    self.unavailable = digest.is_none();
                 } else {
                     self.unavailable = true;
                 }
@@ -153,6 +165,7 @@ pub(super) fn incoming_boundary(
     request: &ModelRequestIRV1,
     start: usize,
     replay: &ReplayStore,
+    budget: &mut FingerprintBudget,
 ) -> Option<[u8; 32]> {
     let mut hash = Sha256::new_with_prefix(b"accepted-response-boundary/v2");
     let mut count = 0;
@@ -170,13 +183,14 @@ pub(super) fn incoming_boundary(
         }
         for part in &message.content {
             count += 1;
+            budget.items(1)?;
             if count > MAX_BLOCKS {
                 return None;
             }
             match part {
                 ContentPart::Text { text } => {
                     hash.update(b"text");
-                    hash.update(text_digest(text, Some(replay))?);
+                    hash.update(text_digest(text, Some(replay), budget)?);
                 }
                 ContentPart::ToolCall {
                     logical_id,
@@ -194,6 +208,7 @@ pub(super) fn incoming_boundary(
                         name,
                         arguments,
                         Some(replay),
+                        budget,
                     )?);
                 }
                 _ => return None,
@@ -203,9 +218,14 @@ pub(super) fn incoming_boundary(
     (count > 0).then(|| hash.finalize().into())
 }
 
-fn text_digest(text: &str, replay: Option<&ReplayStore>) -> Option<[u8; 32]> {
+fn text_digest(
+    text: &str,
+    replay: Option<&ReplayStore>,
+    budget: &mut FingerprintBudget,
+) -> Option<[u8; 32]> {
     let mut hash = Sha256::new();
     if let Some(reference) = text.content_ref() {
+        budget.bytes(usize::try_from(reference.byte_len()).ok()?)?;
         let mut reader = replay?.reader(&reference).ok()?;
         let mut buffer = [0u8; 8192];
         loop {
@@ -217,6 +237,7 @@ fn text_digest(text: &str, replay: Option<&ReplayStore>) -> Option<[u8; 32]> {
         }
         reader.verify_terminal().ok()?;
     } else {
+        budget.bytes(text.len())?;
         hash.update(text.as_bytes());
     }
     Some(hash.finalize().into())
@@ -229,18 +250,19 @@ fn tool_digest(
     name: &str,
     args: &serde_json::Value,
     replay: Option<&ReplayStore>,
+    budget: &mut FingerprintBudget,
 ) -> Option<[u8; 32]> {
     let mut hash = Sha256::new_with_prefix(b"tool-boundary/v2");
-    hash.update(text_digest(id, None)?);
+    hash.update(text_digest(id, None, budget)?);
     hash.update(match kind {
         ToolKindV1::Function => b"function".as_slice(),
         ToolKindV1::Custom => b"custom".as_slice(),
     });
     hash.update([u8::from(namespace.is_some())]);
     if let Some(namespace) = namespace {
-        hash.update(text_digest(namespace, replay)?);
+        hash.update(text_digest(namespace, replay, budget)?);
     }
-    hash.update(text_digest(name, replay)?);
+    hash.update(text_digest(name, replay, budget)?);
     // Canonical JSON includes arguments and their types, never only the tool name.
     struct Sink<'a>(&'a mut Sha256);
     impl Write for Sink<'_> {
@@ -252,7 +274,7 @@ fn tool_digest(
             Ok(())
         }
     }
-    if contains_reference(args) {
+    if budget.json(args)? {
         crate::context_hold::write_canonical_json_with_replay(&mut Sink(&mut hash), args, replay?)?;
     } else {
         write_canonical_json(&mut Sink(&mut hash), args).ok()?;
@@ -260,14 +282,58 @@ fn tool_digest(
     Some(hash.finalize().into())
 }
 
-fn contains_reference(value: &serde_json::Value) -> bool {
-    if value.content_ref().is_some() {
-        return true;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context_hold::fingerprint::MAX_BYTES;
+    use serde_json::json;
+
+    #[test]
+    fn comparisons_share_one_budget_and_large_output_cannot_establish_an_edge() {
+        let mut budget = FingerprintBudget::default();
+        budget.bytes(MAX_BYTES - 3).unwrap();
+        assert!(text_digest("abc", None, &mut budget).is_some());
+        assert!(text_digest("abc", None, &mut budget).is_none());
+        let mut captured = BoundaryCapture::default();
+        captured.accept(&ModelEvent::TextDelta {
+            index: 0,
+            text: "x".repeat(MAX_BYTES + 1),
+        });
+        captured.accept(&ModelEvent::TextFinished {
+            index: 0,
+            text: "small suffix".into(),
+            annotations: Vec::new(),
+            status: crate::server::core_runtime::model_ir::ResponseItemStatus::Completed,
+        });
+        assert!(captured.digest().is_none());
     }
-    match value {
-        serde_json::Value::String(s) => s.content_ref().is_some(),
-        serde_json::Value::Array(a) => a.iter().any(contains_reference),
-        serde_json::Value::Object(o) => o.values().any(contains_reference),
-        _ => false,
+
+    #[test]
+    fn tool_json_limit_does_not_admit_a_truncated_digest() {
+        let args = json!({"text":"x".repeat(MAX_BYTES / 6 + 1)});
+        assert!(
+            tool_digest(
+                "call",
+                ToolKindV1::Function,
+                None,
+                "tool",
+                &args,
+                None,
+                &mut FingerprintBudget::default()
+            )
+            .is_none()
+        );
+        assert!(
+            tool_digest(
+                "call",
+                ToolKindV1::Function,
+                None,
+                "tool",
+                &json!({"text":"small"}),
+                None,
+                &mut FingerprintBudget::default()
+            )
+            .is_some()
+        );
     }
 }

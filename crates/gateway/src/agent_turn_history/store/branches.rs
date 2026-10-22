@@ -59,11 +59,17 @@ impl AgentTurnHistoryStore {
         positions.dedup();
         let mut analyzed = analyze_request(request, replay)?;
         analyzed.measured = true;
+        let mut boundary_budget = crate::context_hold::fingerprint::FingerprintBudget::default();
         analyzed.boundaries = positions
             .iter()
             .filter_map(|position| {
-                super::super::boundary::incoming_boundary(request, *position, replay)
-                    .map(|digest| (*position, digest))
+                super::super::boundary::incoming_boundary(
+                    request,
+                    *position,
+                    replay,
+                    &mut boundary_budget,
+                )
+                .map(|digest| (*position, digest))
             })
             .collect();
         analyzed.anchors = crate::context_hold::observed_history_with_replay(
