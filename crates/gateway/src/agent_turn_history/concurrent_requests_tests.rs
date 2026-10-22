@@ -28,6 +28,7 @@ fn fingerprint_overflow_preserves_current_capture_and_later_same_scope_assessmen
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
     let key = store.scope_key("workspace", "fingerprint-limit").unwrap();
     let input = request(vec![
+        text(MessageRole::User, "prior uncaptured task"),
         text(
             MessageRole::Assistant,
             &"x".repeat(crate::context_hold::fingerprint::MAX_BYTES + 1),
