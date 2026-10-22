@@ -300,7 +300,7 @@ fn tool_continuation(status: ToolResultStatusV1) -> model_ir::ModelRequestIRV1 {
 }
 
 #[test]
-fn p2_failed_hold_admission_cannot_apply_an_unadmitted_tool_result() {
+fn p2_failed_history_admission_cannot_apply_an_unadmitted_tool_result() {
     let fixture = Fixture::new();
     let first = Fixture::request(json!([{"role":"user","content":"first"}]));
     let mut admitted = fixture.begin(&first, fixture.prepare(&first));
@@ -309,15 +309,20 @@ fn p2_failed_hold_admission_cannot_apply_an_unadmitted_tool_result() {
 
     let rejected = tool_continuation(ToolResultStatusV1::Failed);
     let prepared = fixture.prepare(&rejected);
-    let _lock = fixture.runtime.context_holds.lock_for_runtime_test();
-    let bypassed = fixture.begin(&rejected, prepared);
+    let bypassed = fixture
+        .runtime
+        .agent_turn_history
+        .with_lock_for_runtime_test(|| fixture.begin(&rejected, prepared));
     assert!(bypassed.guard.is_none());
-    drop(_lock);
     drop(bypassed);
 
     let continued = tool_continuation(ToolResultStatusV1::Completed);
     let mut admitted = fixture.begin(&continued, fixture.prepare(&continued));
-    assert!(admitted.correlated.is_some());
+    assert!(admitted.guard.is_some());
+    assert!(
+        admitted.correlated.is_none(),
+        "a missing execution cannot grant inheritance"
+    );
     fixture.finish(&mut admitted, &[text_event("completed")], true);
     drop(admitted);
     let next = Fixture::request(json!([
@@ -335,7 +340,7 @@ fn p2_failed_hold_admission_cannot_apply_an_unadmitted_tool_result() {
     assert!(parts.iter().any(|part| matches!(
         part,
         VisibleContentPart::ToolActivity {
-            status: ToolStatus::Completed,
+            status: ToolStatus::Unknown,
             ..
         }
     )));

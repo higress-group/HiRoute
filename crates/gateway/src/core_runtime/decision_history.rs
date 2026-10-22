@@ -153,6 +153,7 @@ impl ProductionGatewayRuntime {
             .agent_turn_history
             .prepare_scoped_request(&key, request, replay)
             .and_then(|mut analyzed| {
+                analyzed.set_branch_cursor(capture.branch_cursor.0, capture.branch_cursor.1);
                 if capture.unavailable_input {
                     analyzed.mark_current_input_unavailable();
                 } else if let Some(parts) = current_input {
@@ -239,15 +240,17 @@ impl ProductionGatewayRuntime {
         let guard = AgentTurnRequestGuard::new(self.agent_turn_history.clone(), ticket);
         // Affinity is subordinate to execution capture. A stale or busy cache
         // can only lose its hint, never the admitted request or its snapshot.
-        let hold_ticket = prepared_hold.and_then(|prepared| {
-            self.context_holds.commit_on_branch(
-                prepared,
-                &branch_digest,
-                original_request,
-                replay,
-                Instant::now(),
-            )
-        });
+        let hold_ticket = prepared_hold
+            .filter(|_| !capture.unavailable_input || correlated.is_some())
+            .and_then(|prepared| {
+                self.context_holds.commit_on_branch(
+                    prepared,
+                    &branch_digest,
+                    original_request,
+                    replay,
+                    Instant::now(),
+                )
+            });
         if let Some(completed) = completed {
             observation.agent_turn_finished(&completed);
         }
@@ -265,6 +268,7 @@ impl ProductionGatewayRuntime {
 pub(super) struct CaptureScope {
     scope_id: String,
     native_turn: Option<[u8; 32]>,
+    branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     origin_unverified: bool,
     missing_prefix: bool,
     unavailable_input: bool,
@@ -277,6 +281,7 @@ impl CaptureScope {
         Self {
             scope_id: prepared.scope_id(),
             native_turn: prepared.native_turn(),
+            branch_cursor: (None, None),
             origin_unverified: prepared.user_origin_unverified(),
             missing_prefix: prepared.uncaptured_native_prefix(),
             unavailable_input: prepared.native_user_unavailable(),
@@ -298,6 +303,7 @@ impl CaptureScope {
         Some(Self {
             scope_id: key.scope_id(),
             native_turn: native.turn,
+            branch_cursor: (native.branch_leaf, native.branch_path),
             origin_unverified: identity.input_origin_unverified(prepared),
             missing_prefix: prepared
                 .map_or(native.compacted, PreparedHold::uncaptured_native_prefix),

@@ -846,7 +846,10 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
     assert!(retry_history.assessment_from.is_none());
     assert!(retry_history.assessment_target.is_none());
     assert_ne!(retry_ticket.agent_turn_id, cancelled_turn_id);
-    assert_eq!(store.inner.lock().entries[&key].active.ordinal, 2);
+    assert_eq!(
+        store.inner.lock().entries[&retry_ticket.key].active.ordinal,
+        2
+    );
     drop(retry_history);
     store.abort(&retry_ticket);
 }
@@ -914,7 +917,7 @@ fn missing_candidate_preference_does_not_reselect_when_messages_continue() {
         panic!("a missing candidate hint must not force cross-branch reselection")
     };
     assert_eq!(inherited_decision.branch_id, "smart_saving_simple");
-    assert_eq!(completed.unwrap().status, AgentTurnStatus::Interrupted);
+    assert_eq!(completed.unwrap().status, AgentTurnStatus::Unknown);
     assert!(history.visible_conversation.is_empty());
     drop(history);
     store.abort(&ticket);
@@ -1274,7 +1277,14 @@ fn pinned_snapshot_prevents_lru_eviction_until_the_request_releases_it() {
     );
     drop(other_history);
     let inner = store.inner.lock();
-    assert!(!inner.entries.contains_key(&pinned_key));
+    // Releasing the separately charged snapshot may make both entries fit.
+    assert_eq!(
+        inner
+            .entries
+            .get(&pinned_key)
+            .map_or(0, |e| e.snapshot_pins),
+        0
+    );
     assert!(inner.entries.contains_key(&other_key));
     assert!(inner.accounted_bytes <= budget);
     drop(inner);

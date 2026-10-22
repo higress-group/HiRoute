@@ -9,6 +9,7 @@ use crate::server::core_runtime::model_ir::{
 
 pub(crate) struct AnalyzedRequest {
     pub(super) measured: bool,
+    pub(super) branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     pub(super) boundaries: Vec<(usize, [u8; 32])>,
     pub(super) anchors: Option<crate::context_hold::HistoryAnchors>,
     pub(super) message_count: usize,
@@ -20,6 +21,10 @@ pub(crate) struct AnalyzedRequest {
 }
 
 impl AnalyzedRequest {
+    pub(crate) fn set_branch_cursor(&mut self, leaf: Option<[u8; 32]>, path: Option<[u8; 32]>) {
+        self.branch_cursor = (leaf, path);
+    }
+
     pub(crate) fn mark_current_input_unavailable(&mut self) {
         if let Some(turn) = self.turns.last_mut() {
             turn.user = vec![VisibleContentPart::Unavailable {
@@ -100,6 +105,7 @@ pub(super) fn analyze_request(
     });
     Ok(AnalyzedRequest {
         measured: false,
+        branch_cursor: (None, None),
         boundaries: Vec::new(),
         anchors: None,
         message_count: request.messages.len(),

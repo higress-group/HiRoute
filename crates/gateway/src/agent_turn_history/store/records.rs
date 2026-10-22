@@ -27,6 +27,12 @@ pub(super) fn trim_oldest_closed_turn(
             {
                 segment.partial = true;
             }
+            if let Some(removed) = entry.closed.front()
+                && let Some(segment) = entry.referenced_segment.as_mut()
+                && removed.completed.segment_id == segment.segment_id
+            {
+                segment.partial = true;
+            }
             entry.closed.pop_front();
             let old = entry.accounted_bytes;
             entry.accounted_bytes = entry_bytes(key, entry);
@@ -231,7 +237,8 @@ pub(super) fn snapshot(
     let target_segment = entry
         .current_segment
         .as_ref()
-        .or(observed_assessment_segment);
+        .or(observed_assessment_segment)
+        .or(entry.referenced_segment.as_ref());
     let assessment_from = target_segment.and_then(|segment| {
         entry
             .closed
@@ -320,6 +327,8 @@ impl StoreInner {
         };
         entry.history_partial = true;
         entry.current_segment = None;
+        entry.referenced_segment = None;
+        entry.response_boundary = None;
         if !active_is_empty(&entry.active) {
             entry.active.capture_partial = true;
         }
@@ -477,6 +486,7 @@ pub(super) fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> us
             })
             .sum::<usize>()
         + entry.current_segment.as_ref().map_or(0, segment_bytes)
+        + entry.referenced_segment.as_ref().map_or(0, segment_bytes)
 }
 
 pub(super) fn decision_bytes(value: &BranchDecisionV1) -> usize {

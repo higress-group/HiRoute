@@ -45,11 +45,11 @@ pub(crate) fn project(db: &Connection, e: &ExecutionFactEnvelopeV1) -> rusqlite:
         db.execute(
             "INSERT INTO observation_analysis_turns_v1(workspace_id,request_id,agent_turn_id,ordinal,producer_epoch,partial,segment_id,first_request_id,last_request_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
           ON CONFLICT(workspace_id,request_id) DO UPDATE SET
-            partial=MAX(partial,excluded.partial,agent_turn_id!=excluded.agent_turn_id OR ordinal!=excluded.ordinal OR producer_epoch!=excluded.producer_epoch OR (segment_id IS NOT NULL AND segment_id!=excluded.segment_id) OR (first_request_id IS NOT NULL AND first_request_id!=excluded.first_request_id) OR (last_request_id IS NOT NULL AND last_request_id!=excluded.last_request_id)),
-            membership_conflict=MAX(membership_conflict,agent_turn_id!=excluded.agent_turn_id OR ordinal!=excluded.ordinal OR producer_epoch!=excluded.producer_epoch OR (segment_id IS NOT NULL AND segment_id!=excluded.segment_id) OR (first_request_id IS NOT NULL AND first_request_id!=excluded.first_request_id) OR (last_request_id IS NOT NULL AND last_request_id!=excluded.last_request_id)),
+            partial=MAX(partial,excluded.partial,agent_turn_id!=excluded.agent_turn_id OR ordinal!=excluded.ordinal OR producer_epoch!=excluded.producer_epoch OR (segment_id IS NOT NULL AND segment_id!=excluded.segment_id) OR (?10=0 AND ((first_request_id IS NOT NULL AND first_request_id!=excluded.first_request_id) OR (last_request_id IS NOT NULL AND last_request_id!=excluded.last_request_id)))),
+            membership_conflict=MAX(membership_conflict,agent_turn_id!=excluded.agent_turn_id OR ordinal!=excluded.ordinal OR producer_epoch!=excluded.producer_epoch OR (segment_id IS NOT NULL AND segment_id!=excluded.segment_id) OR (?10=0 AND ((first_request_id IS NOT NULL AND first_request_id!=excluded.first_request_id) OR (last_request_id IS NOT NULL AND last_request_id!=excluded.last_request_id)))),
             segment_id=COALESCE(segment_id,excluded.segment_id),
-            first_request_id=COALESCE(first_request_id,excluded.first_request_id),
-            last_request_id=COALESCE(last_request_id,excluded.last_request_id)",
+            first_request_id=CASE WHEN ?10=1 THEN excluded.first_request_id ELSE COALESCE(first_request_id,excluded.first_request_id) END,
+            last_request_id=CASE WHEN ?10=1 THEN excluded.last_request_id ELSE COALESCE(last_request_id,excluded.last_request_id) END",
             params![
                 w,
                 request,
@@ -59,7 +59,8 @@ pub(crate) fn project(db: &Connection, e: &ExecutionFactEnvelopeV1) -> rusqlite:
                 partial,
                 segment_id,
                 first.as_str(),
-                last.as_str()
+                last.as_str(),
+                history_membership.is_some()
             ],
         )?;
     }

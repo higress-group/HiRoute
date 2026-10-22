@@ -43,7 +43,7 @@ impl AgentTurnHistoryStore {
         request: &ModelRequestIRV1,
         replay: &ReplayStore,
     ) -> Result<super::super::projection::AnalyzedRequest, AgentTurnHistoryError> {
-        let positions = {
+        let mut positions = {
             let inner = self
                 .inner
                 .try_lock()
@@ -55,6 +55,8 @@ impl AgentTurnHistoryStore {
                 .map(|e| e.checkpoint.message_count)
                 .collect::<Vec<_>>()
         };
+        positions.sort_unstable();
+        positions.dedup();
         let mut analyzed = analyze_request(request, replay)?;
         analyzed.measured = true;
         analyzed.boundaries = positions
@@ -96,22 +98,30 @@ impl AgentTurnHistoryStore {
                 });
                 let turn =
                     inputs.native_turn.is_some() && inputs.native_turn == entry.active.native_turn;
+                let cursor = analyzed.branch_cursor != (None, None)
+                    && analyzed.branch_cursor == entry.branch_cursor;
                 (
                     key.clone(),
                     prefix,
                     entry.checkpoint.message_count,
                     turn,
+                    cursor,
+                    entry.current_segment.is_some()
+                        || entry.referenced_segment.is_some()
+                        || (!entry.active.finalized && !entry.active.executions.is_empty()),
                     entry.admission_sequence,
                 )
             })
             .collect::<Vec<_>>();
         // Admission order breaks equally plausible ties, not response completion.
         candidates.sort_by(|a, b| {
-            (b.1, b.1.then_some(b.2), b.3, b.4, &b.0).cmp(&(
+            (b.1, b.1.then_some(b.2), b.3, b.4, b.5, b.6, &b.0).cmp(&(
                 a.1,
                 a.1.then_some(a.2),
                 a.3,
                 a.4,
+                a.5,
+                a.6,
                 &a.0,
             ))
         });
@@ -122,7 +132,7 @@ impl AgentTurnHistoryStore {
                 && candidates
                     .iter()
                     .skip(1)
-                    .any(|c| c.1 && c.2 == first.2 && c.3 == first.3)
+                    .any(|c| c.1 && c.2 == first.2 && c.3 == first.3 && c.4 == first.4)
         });
         let selected_entry = selected.and_then(|c| inner.entries.get(&c.0));
         // Old internal callers without measured anchors retain their explicit
@@ -183,7 +193,10 @@ impl AgentTurnHistoryStore {
         let mut partial = false;
         if !reusable && let Some(entry) = selected_entry {
             seed = entry.closed.clone();
-            segment = entry.current_segment.clone();
+            segment = entry
+                .current_segment
+                .clone()
+                .or_else(|| entry.referenced_segment.clone());
             partial = entry.history_partial;
             // A still-running request is never a frozen assessment target.
             if segment.as_ref().is_some_and(|s| {
@@ -258,7 +271,9 @@ impl AgentTurnHistoryStore {
             return Ok(());
         }
         entry.closed = selection.seed;
-        entry.history_partial = selection.partial;
+        entry.referenced_segment = selection.segment.clone();
+        entry.history_partial = selection.partial
+            || (selection.relation != HistoryRelation::ExactPrefix && entry.history_partial);
         entry.next_turn_ordinal = entry
             .closed
             .back()

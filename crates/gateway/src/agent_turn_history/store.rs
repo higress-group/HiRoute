@@ -66,9 +66,11 @@ struct SessionEntry {
     capture_gap_epoch: u64,
     checkpoint: TranscriptCheckpoint,
     response_boundary: Option<[u8; 32]>,
+    branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
     current_segment: Option<SegmentState>,
+    referenced_segment: Option<SegmentState>,
     next_turn_ordinal: u64,
     pending_request: Option<u64>,
     snapshot_pins: u32,
@@ -187,6 +189,12 @@ impl Default for AgentTurnHistoryStore {
 }
 
 impl AgentTurnHistoryStore {
+    #[cfg(test)]
+    pub(crate) fn with_lock_for_runtime_test<T>(&self, action: impl FnOnce() -> T) -> T {
+        let _guard = self.inner.lock();
+        action()
+    }
+
     #[cfg(test)]
     pub(crate) fn clear_decision_for_runtime_test(&self, ticket: &AgentTurnTicket) {
         let mut inner = self.inner.lock();
@@ -410,7 +418,8 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
-                capture_partial: missing_current_output,
+                // Uncaptured transcript context is not a gap in this new delivery.
+                capture_partial: false,
                 finalized: false,
             };
             let checkpoint = TranscriptCheckpoint {
@@ -430,9 +439,11 @@ impl AgentTurnHistoryStore {
                 capture_gap_epoch: gap_epoch,
                 checkpoint,
                 response_boundary: None,
+                branch_cursor: analyzed.branch_cursor,
                 active,
                 closed: VecDeque::new(),
                 current_segment: None,
+                referenced_segment: None,
                 next_turn_ordinal: 2,
                 pending_request: Some(request_token),
                 snapshot_pins: 0,
@@ -524,9 +535,11 @@ impl AgentTurnHistoryStore {
             .ok_or(AgentTurnHistoryError::Integrity)?;
         let appended_user = decision_inputs.history_continuity
             == crate::context_hold::HistoryContinuity::NativeNewTurn
-            || decision_inputs.history_continuity
-                == crate::context_hold::HistoryContinuity::Continuing
-                && latest.user_index > entry.checkpoint.active_user_index;
+            || matches!(
+                decision_inputs.history_continuity,
+                crate::context_hold::HistoryContinuity::Continuing
+                    | crate::context_hold::HistoryContinuity::NativeSameTurn
+            ) && latest.user_index > entry.checkpoint.active_user_index;
         let inheritable_decision = entry.active.decision.is_some() && entry.active.plan == plan;
         let needs_decision = !inheritable_decision
             || !decision_inputs.history_continuity.semantic_continuity()
@@ -592,6 +605,7 @@ impl AgentTurnHistoryStore {
                         entry.checkpoint.message_count,
                     );
                 }
+                entry.branch_cursor = analyzed.branch_cursor;
                 entry.active.output.next_step();
                 entry.active.boundary = Default::default();
                 entry.response_boundary = None;
@@ -717,6 +731,8 @@ impl AgentTurnHistoryStore {
                 // task's competence segment, even when it starts on the same model.
                 entry.current_segment = None;
             }
+            entry.branch_cursor = analyzed.branch_cursor;
+            entry.response_boundary = None;
             entry.active = ActiveTurn {
                 request_ids: Vec::new(),
                 request_ids_clipped: false,

@@ -38,7 +38,7 @@ fn opaque_observed_capture_does_not_establish_strict_provider_prefix_affinity() 
         .unwrap();
     assert!(observed.prefix_digest.is_none());
     assert_ne!(observed.complete_digest, complete.complete_digest);
-    assert_eq!(
+    assert_ne!(
         observed.semantic_complete_digest,
         complete.semantic_complete_digest
     );

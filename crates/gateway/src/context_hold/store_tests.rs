@@ -8,7 +8,7 @@ use crate::server::request_plan::IngressProtocol;
 const HISTORY_KEY: [u8; 32] = [23; 32];
 
 #[test]
-fn observed_capture_misses_fence_their_own_history_and_the_verified_lane_separately() {
+fn source_uncertainty_keeps_one_authorized_scope_with_separate_branch_evidence() {
     let authorized = crate::server::publication::authorized_native_consumer_fixture(None);
     let request = history_request(1, &[1]);
     let mut headers = http::HeaderMap::new();
@@ -37,7 +37,7 @@ fn observed_capture_misses_fence_their_own_history_and_the_verified_lane_separat
         &HISTORY_KEY,
     )
     .unwrap();
-    assert_ne!(observed, verified);
+    assert_eq!(observed, verified);
     assert_eq!(
         ContextHoldKey::capture_gap_scope(
             &authorized,
@@ -56,7 +56,7 @@ fn observed_capture_misses_fence_their_own_history_and_the_verified_lane_separat
             &HISTORY_KEY
         ),
         Some(verified.scope_id()),
-        "observed capture must separately disclose a missed verified-lane continuation",
+        "source evidence cannot silently create a disjoint execution store",
     );
 }
 
