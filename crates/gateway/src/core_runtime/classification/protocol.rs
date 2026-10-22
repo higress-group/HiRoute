@@ -8,7 +8,7 @@ use serde_json::{Value, json, value::RawValue};
 use super::super::adapters::{
     ProtocolAdapterError, ReplacementEncoding, RequestedReplacement, prepare_replay_json_template,
 };
-use super::super::model_ir::{ContentPart, ImageSource, MessageRole, ModelRequestIRV1};
+use super::super::model_ir::{ContentPart, ImageSource};
 use super::{CallFailure, PreparedDecisionRequest};
 use crate::agent_turn_history::{AgentTurnHistorySnapshot, ExecutionAttribution};
 use crate::content_ref::ContentValueExt;
@@ -160,22 +160,22 @@ pub(super) fn latest_user_wire_value<'a>(
     })?;
     let mut values = parts
         .iter()
-        .filter_map(|part| match part {
-            ContentPart::Text { text } => Some(project_text(text, refs)),
+        .map(|part| match part {
+            ContentPart::Text { text } => project_text(text, refs),
             ContentPart::Image {
                 source: ImageSource::Url { .. },
-            } => Some(json!({"kind":"unavailable","source_kind":"image_url"})),
+            } => json!({"kind":"unavailable","source_kind":"image_url"}),
             ContentPart::Image {
                 source: ImageSource::Base64 { .. },
-            } => Some(json!({"kind":"unavailable","source_kind":"image_base64"})),
+            } => json!({"kind":"unavailable","source_kind":"image_base64"}),
             ContentPart::ToolCall { .. } => {
-                Some(json!({"kind":"unavailable", "source_kind":"user_tool_call"}))
+                json!({"kind":"unavailable", "source_kind":"user_tool_call"})
             }
             ContentPart::ToolResult { .. } => {
-                Some(json!({"kind":"unavailable", "source_kind":"user_tool_result"}))
+                json!({"kind":"unavailable", "source_kind":"user_tool_result"})
             }
             ContentPart::ProviderState { .. } => {
-                Some(json!({"kind":"unavailable", "source_kind":"user_provider_state"}))
+                json!({"kind":"unavailable", "source_kind":"user_provider_state"})
             }
         })
         .collect::<Vec<_>>();

@@ -40,15 +40,7 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
     ) -> Option<Self> {
-        Self::scoped_key(
-            authorized,
-            ingress_protocol,
-            identity,
-            digest_key,
-            false,
-            false,
-            false,
-        )
+        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, false)
     }
 
     pub(crate) fn routing_history(
@@ -57,51 +49,7 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
     ) -> Option<Self> {
-        Self::scoped_key(
-            authorized,
-            ingress_protocol,
-            identity,
-            digest_key,
-            true,
-            false,
-            false,
-        )
-    }
-
-    pub(crate) fn capture_gap_scope(
-        authorized: &AuthorizedRequestPlan,
-        ingress_protocol: IngressProtocol,
-        identity: &ContextIdentityFacts,
-        digest_key: &[u8; 32],
-    ) -> Option<String> {
-        Self::scoped_key(
-            authorized,
-            ingress_protocol,
-            identity,
-            digest_key,
-            true,
-            true,
-            false,
-        )
-        .map(|key| key.scope_id())
-    }
-
-    pub(crate) fn verified_capture_gap_scope(
-        authorized: &AuthorizedRequestPlan,
-        ingress_protocol: IngressProtocol,
-        identity: &ContextIdentityFacts,
-        digest_key: &[u8; 32],
-    ) -> Option<String> {
-        Self::scoped_key(
-            authorized,
-            ingress_protocol,
-            identity,
-            digest_key,
-            true,
-            true,
-            true,
-        )
-        .map(|key| key.scope_id())
+        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, true)
     }
 
     pub(crate) fn scope_id(&self) -> String {
@@ -114,14 +62,8 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
         history: bool,
-        capture_gap: bool,
-        verified_lane: bool,
     ) -> Option<Self> {
-        let (identity_kind, identity_parts) = if capture_gap {
-            identity.capture_gap_identity()
-        } else {
-            identity.hold_identity()
-        }?;
+        let (identity_kind, identity_parts) = identity.hold_identity()?;
         let receipt = authorized.receipt();
         let mut mac = HmacSha256::new_from_slice(digest_key).ok()?;
         frame(
@@ -178,7 +120,7 @@ impl ContextHoldKey {
             ingress_label(ingress_protocol),
         );
         frame(&mut mac, b"identity_kind", identity_kind.as_bytes());
-        if !history && identity.observed_routing_lane() && !verified_lane {
+        if !history && identity.observed_routing_lane() {
             // A failed native adapter cannot overwrite the verified lane.
             // Unknown-origin requests still have their own reusable history.
             frame(&mut mac, b"input_origin", b"observed-unverified/v1");

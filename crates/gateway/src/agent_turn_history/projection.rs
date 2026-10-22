@@ -144,29 +144,29 @@ fn project_user_parts(
 ) -> Result<Vec<VisibleContentPart>, AgentTurnHistoryError> {
     parts
         .iter()
-        .filter_map(|part| match part {
+        .map(|part| match part {
             ContentPart::Text { text } => {
-                Some(resolve_text(text, replay).map(|text| VisibleContentPart::Text { text }))
+                resolve_text(text, replay).map(|text| VisibleContentPart::Text { text })
             }
             ContentPart::Image {
                 source: ImageSource::Url { .. },
-            } => Some(Ok(VisibleContentPart::Unavailable {
+            } => Ok(VisibleContentPart::Unavailable {
                 source_kind: "image_url".into(),
-            })),
+            }),
             ContentPart::Image {
                 source: ImageSource::Base64 { .. },
-            } => Some(Ok(VisibleContentPart::Unavailable {
+            } => Ok(VisibleContentPart::Unavailable {
                 source_kind: "image_base64".into(),
-            })),
-            ContentPart::ToolCall { .. } => Some(Ok(VisibleContentPart::Unavailable {
+            }),
+            ContentPart::ToolCall { .. } => Ok(VisibleContentPart::Unavailable {
                 source_kind: "user_tool_call".into(),
-            })),
-            ContentPart::ToolResult { .. } => Some(Ok(VisibleContentPart::Unavailable {
+            }),
+            ContentPart::ToolResult { .. } => Ok(VisibleContentPart::Unavailable {
                 source_kind: "user_tool_result".into(),
-            })),
-            ContentPart::ProviderState { .. } => Some(Ok(VisibleContentPart::Unavailable {
+            }),
+            ContentPart::ProviderState { .. } => Ok(VisibleContentPart::Unavailable {
                 source_kind: "user_provider_state".into(),
-            })),
+            }),
         })
         .collect()
 }

@@ -38,26 +38,6 @@ fn source_uncertainty_keeps_one_authorized_scope_with_separate_branch_evidence()
     )
     .unwrap();
     assert_eq!(observed, verified);
-    assert_eq!(
-        ContextHoldKey::capture_gap_scope(
-            &authorized,
-            IngressProtocol::Responses,
-            &identity,
-            &HISTORY_KEY
-        ),
-        Some(observed.scope_id()),
-        "a failed optional scan must fence the history that actually missed output",
-    );
-    assert_eq!(
-        ContextHoldKey::verified_capture_gap_scope(
-            &authorized,
-            IngressProtocol::Responses,
-            &identity,
-            &HISTORY_KEY
-        ),
-        Some(verified.scope_id()),
-        "source evidence cannot silently create a disjoint execution store",
-    );
 }
 
 fn key(id: usize) -> ContextHoldKey {

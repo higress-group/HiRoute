@@ -38,7 +38,6 @@ pub(crate) struct NativeCheckpoint {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct RoutingFacts {
     pub(super) track: bool,
-    pub(super) capture_gap: bool,
     pub(super) native: NativeCheckpoint,
     pub(super) root: Option<String>,
 }
@@ -47,7 +46,6 @@ impl Default for RoutingFacts {
     fn default() -> Self {
         Self {
             track: true,
-            capture_gap: false,
             native: NativeCheckpoint::default(),
             root: None,
         }

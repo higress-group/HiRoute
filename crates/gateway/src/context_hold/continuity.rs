@@ -77,6 +77,7 @@ impl PreparedHold {
                 || self.native.requires_checkpoint && self.native.checkpoint.is_some())
     }
 
+    #[cfg(test)]
     pub(crate) fn native_turn(&self) -> Option<[u8; 32]> {
         self.native.turn
     }
@@ -89,6 +90,7 @@ impl PreparedHold {
         self.history_key = Some(key);
     }
 
+    #[cfg(test)]
     pub(crate) fn scope_id(&self) -> String {
         self.history_key.as_ref().unwrap_or(&self.key).scope_id()
     }

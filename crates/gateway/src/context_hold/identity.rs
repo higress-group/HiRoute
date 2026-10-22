@@ -61,13 +61,6 @@ impl ContextIdentityFacts {
         self.routing_identity()
     }
 
-    pub(crate) fn capture_gap_identity(&self) -> Option<(&'static str, &[String])> {
-        if !self.routing.track && !self.routing.capture_gap {
-            return None;
-        }
-        self.routing_identity()
-    }
-
     fn routing_identity(&self) -> Option<(&'static str, &[String])> {
         if let Some(root) = &self.routing.root {
             return Some(("hermes_session", std::slice::from_ref(root)));

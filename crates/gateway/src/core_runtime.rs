@@ -718,12 +718,13 @@ impl ProductionGatewayRuntime {
                         plan_id: plan_id.clone(),
                         plan_revision: *revision,
                     },
-                    routing_request,
-                    &replay,
                     capture_scope,
                     prepared_hold,
-                    routing_view.current_input(),
-                    &canonical_request,
+                    decision_history::HistoryInput {
+                        request: &canonical_request,
+                        replay: &replay,
+                        current_input: routing_view.current_input(),
+                    },
                 ) {
                     Ok(tracking) => tracking,
                     Err(_) => {

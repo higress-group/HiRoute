@@ -34,6 +34,12 @@ impl DecisionHistory {
     }
 }
 
+pub(super) struct HistoryInput<'a> {
+    pub(super) request: &'a model_ir::ModelRequestIRV1,
+    pub(super) replay: &'a ReplayStore,
+    pub(super) current_input: Option<&'a [model_ir::ContentPart]>,
+}
+
 impl ProductionGatewayRuntime {
     #[cfg(test)]
     pub(super) fn begin_decision_history(
@@ -45,15 +51,16 @@ impl ProductionGatewayRuntime {
         prepared_hold: Option<PreparedHold>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
         let capture = prepared_hold.as_ref().map(CaptureScope::from_prepared);
-        self.begin_history(
+        self.begin_authorized_decision_history(
             observation,
             plan,
-            request,
-            replay,
             capture,
             prepared_hold,
-            None,
-            request,
+            HistoryInput {
+                request,
+                replay,
+                current_input: None,
+            },
         )
     }
 
@@ -61,36 +68,15 @@ impl ProductionGatewayRuntime {
         &self,
         observation: &RequestObservation,
         plan: PlanSnapshot,
-        request: &model_ir::ModelRequestIRV1,
-        replay: &ReplayStore,
         capture: Option<CaptureScope>,
         prepared_hold: Option<PreparedHold>,
-        current_input: Option<&[model_ir::ContentPart]>,
-        original_request: &model_ir::ModelRequestIRV1,
+        input: HistoryInput<'_>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
-        self.begin_history(
-            observation,
-            plan,
+        let HistoryInput {
             request,
             replay,
-            capture,
-            prepared_hold,
             current_input,
-            original_request,
-        )
-    }
-
-    fn begin_history(
-        &self,
-        observation: &RequestObservation,
-        plan: PlanSnapshot,
-        request: &model_ir::ModelRequestIRV1,
-        replay: &ReplayStore,
-        capture: Option<CaptureScope>,
-        prepared_hold: Option<PreparedHold>,
-        current_input: Option<&[model_ir::ContentPart]>,
-        original_request: &model_ir::ModelRequestIRV1,
-    ) -> Result<DecisionHistory, AgentTurnHistoryError> {
+        } = input;
         let Some(capture) = capture else {
             return Ok(DecisionHistory::detached());
         };
@@ -202,7 +188,7 @@ impl ProductionGatewayRuntime {
                 self.context_holds.commit_on_branch(
                     prepared,
                     &branch_digest,
-                    original_request,
+                    request,
                     replay,
                     Instant::now(),
                 )

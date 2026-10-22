@@ -352,7 +352,7 @@ impl AgentTurnHistoryStore {
             history, completed, ..
         } = begin
         {
-            *history = Box::new(frozen);
+            **history = frozen;
             *completed = selection.completed;
         }
         inner.note_peak();

@@ -287,6 +287,7 @@ impl AgentTurnHistoryStore {
         .map(|result| result.expect("unconditional test admission").0)
     }
 
+    #[cfg(test)]
     pub(crate) fn prepare_request(
         request: &ModelRequestIRV1,
         replay: &ReplayStore,
