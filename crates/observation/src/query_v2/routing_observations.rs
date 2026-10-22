@@ -12,6 +12,9 @@ const MAX_SAFE_BYTES: usize = 32 * 1024 * 1024;
 // so the read still fails closed, while index creation can preserve those bytes.
 // Covered safe bodies and producer identities avoid scattered table reads on a
 // cold store. The fixed join order bounds retained producer-identity lookups.
+// Stream in the covering index's unique request/digest order: ordering by rowid
+// would sort every match before LIMIT or the reader's byte ceiling can stop it.
+// This is an internal scan order; stage pages keep their existing time order.
 pub(super) const SUMMARY_SQL: &str = "SELECT f.body_json,e.producer_id,e.producer_epoch,e.stream_id,e.event_id
         FROM observation_safe_facts_v2 f INDEXED BY observation_safe_route_payloads
         CROSS JOIN execution_fact_events e INDEXED BY execution_facts_request_identity ON e.workspace_id=f.workspace_id AND e.request_id=f.request_id AND e.envelope_digest=f.original_digest
@@ -29,7 +32,7 @@ pub(super) const SUMMARY_SQL: &str = "SELECT f.body_json,e.producer_id,e.produce
                OR COALESCE(json_extract(f.body_json,'$.routing_observation.plan_revision'),json_extract(f.body_json,'$.routing_context.plan_revision')) IS NULL)
           AND (:runs IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(:runs))))
           AND (s.tombstone_reason IS NULL OR EXISTS(SELECT 1 FROM observation_tombstones t WHERE t.workspace_id=r.workspace_id AND t.session_id=r.session_id AND t.delete_scope='content_only'))
-        ORDER BY f.rowid LIMIT 10001";
+        ORDER BY f.request_id,f.original_digest LIMIT 10001";
 
 pub(super) fn summarize(
     transaction: &Transaction<'_>,

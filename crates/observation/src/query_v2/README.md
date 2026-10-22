@@ -24,6 +24,12 @@ routing evidence by its exact digest. Opening an existing store creates the inde
 without changing its schema marker, immutable events or serialized contracts.
 The shared query deadline and retention/deletion filters still apply.
 
+Routing summaries stream through the covering safe-route index in unique
+request/digest order, so both the decision limit and the reader's safe-byte
+limit can stop work before scanning the remaining matching routes. A truncated
+summary reports partial coverage and withholds population rates. This internal
+scan order does not change historical stage or timeline pagination.
+
 `session_search` is the Desktop conversation-search intent on the existing protected
 observation operation. It uses the existing search filters and returns one
 `ObservationTextAnchorV2` per matching session, newest matching request first,

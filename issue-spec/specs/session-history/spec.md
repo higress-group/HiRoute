@@ -286,6 +286,11 @@ retains the released strict failure shape.
 - **WHEN** a Plan-quality read includes routing observations and the workspace retains many unrelated safe facts
 - **THEN** routing-decision selection does not scan every unrelated safe body. Its result, completeness rules and existing read deadline stay unchanged. Reopening an existing store may add a rebuildable index without changing retained bytes or the schema marker; malformed retained JSON remains preserved and the affected read fails rather than claiming complete evidence.
 
+#### Scenario: Stop routing statistics at the retained-read limits
+
+- **WHEN** matching retained routing decisions exceed the existing decision or safe-byte read limit
+- **THEN** routing statistics stop consuming matching rows at that limit without first filtering, joining or sorting the entire matching population. The result marks its counts as partial and withholds exact-population rates. Historical stage and timeline ordering and pagination remain unchanged; the internal scan order of a truncated statistic does not define conversation chronology.
+
 #### Scenario: Read stage selection beside unrelated event payloads
 
 - **WHEN** a Plan-quality stage page resolves its recorded route selection beside other event kinds in the same request
