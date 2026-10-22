@@ -74,12 +74,14 @@ exposing channel IDs; unobserved live session selection remains unknown. Auxilia
 model slots stay under native control.
 
 The managed provider's API key contains the same scoped local model grant as its
-`X-HiRoute-Token` header. Hermes auxiliary Chat calls bypass request middleware;
-the existing Chat bearer channel lets them authenticate without changing Gateway
-admission. Keep this credential in that provider, never global model headers that
-can reach another auxiliary provider. Existing Responses/Messages header rules
-remain unchanged. Protected restore records retain their exact prior provider
-values, including older placeholder keys.
+`X-HiRoute-Token` header. Hermes auxiliary calls bypass request middleware: Chat
+uses the standard bearer channel, and Messages can use one `x-api-key` containing
+the same issued grant when both higher-priority headers are absent. Gateway still
+verifies the current grant, protocol, alias and revocation without inferring input
+origin; see the [request-routing contract](../../../../../issue-spec/specs/request-routing/spec.md).
+Keep this credential in that provider, never global model headers that can reach
+another auxiliary provider. Protected restore records retain their exact prior
+provider values, including older placeholder keys.
 
 The plugin matches the exact saved provider definition, alias, native address and
 transport; it carries the token and the actual native session ID through existing
