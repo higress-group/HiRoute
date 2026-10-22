@@ -49,14 +49,21 @@ impl AgentTurnHistoryStore {
                 .try_lock()
                 .ok_or(AgentTurnHistoryError::Resource)?;
             inner
-                .entries
-                .values()
-                .filter(|e| &e.scope == scope)
+                .scope_entries(scope)
+                .map(|(_, e)| e)
                 .take(MAX_HEADS)
                 .map(|e| e.checkpoint.message_count)
                 .collect::<Vec<_>>()
         };
         let mut analyzed = analyze_request(request, replay)?;
+        analyzed.measured = true;
+        analyzed.boundaries = positions
+            .iter()
+            .filter_map(|position| {
+                super::super::boundary::incoming_boundary(request, *position, replay)
+                    .map(|digest| (*position, digest))
+            })
+            .collect();
         analyzed.anchors = crate::context_hold::observed_history_with_replay(
             request,
             &self.instance_nonce,
@@ -74,9 +81,7 @@ impl AgentTurnHistoryStore {
         mut inputs: TurnDecisionInputs,
     ) -> Result<BranchAdmission, AgentTurnHistoryError> {
         let mut candidates = inner
-            .entries
-            .iter()
-            .filter(|(_, e)| &e.scope == scope)
+            .scope_entries(scope)
             .map(|(key, entry)| {
                 let prefix = analyzed.anchors.as_ref().is_some_and(|anchors| {
                     entry.checkpoint.digest.is_some_and(|digest| {
@@ -84,6 +89,10 @@ impl AgentTurnHistoryStore {
                             .prefixes
                             .contains(&(entry.checkpoint.message_count, digest))
                     })
+                }) && entry.response_boundary.is_some_and(|digest| {
+                    analyzed
+                        .boundaries
+                        .contains(&(entry.checkpoint.message_count, digest))
                 });
                 let turn =
                     inputs.native_turn.is_some() && inputs.native_turn == entry.active.native_turn;
@@ -118,13 +127,15 @@ impl AgentTurnHistoryStore {
         let selected_entry = selected.and_then(|c| inner.entries.get(&c.0));
         // Old internal callers without measured anchors retain their explicit
         // continuity contract. Production always supplies measured evidence.
-        let legacy_exact = analyzed.anchors.is_none()
+        let legacy_exact = !analyzed.measured
             && selected_entry.is_some()
             && inputs.history_continuity.semantic_continuity();
-        let reusable = selected_entry.is_some_and(|entry| entry.pending_request.is_none())
-            && (exact && !ambiguous || legacy_exact);
+        let reusable = selected_entry.is_some_and(|entry| {
+            entry.pending_request.is_none()
+                && (entry.active.source_unverified || !analyzed.user_origin_unverified)
+        }) && (exact && !ambiguous || legacy_exact);
         if let Some(entry) = selected_entry
-            && analyzed.anchors.is_some()
+            && analyzed.measured
         {
             inputs.history_continuity = if exact && !ambiguous {
                 if inputs.native_turn.is_some() && inputs.native_turn == entry.active.native_turn {
@@ -218,15 +229,12 @@ impl AgentTurnHistoryStore {
         inner: &mut StoreInner,
         scope: &AgentTurnHistoryKey,
     ) -> Result<(), AgentTurnHistoryError> {
-        if inner.entries.values().filter(|e| &e.scope == scope).count() < MAX_HEADS {
+        if inner.scope_entries(scope).count() < MAX_HEADS {
             return Ok(());
         }
         let victim = inner
-            .entries
-            .iter()
-            .filter(|(_, e)| {
-                &e.scope == scope && e.pending_request.is_none() && e.snapshot_pins == 0
-            })
+            .scope_entries(scope)
+            .filter(|(_, e)| e.pending_request.is_none() && e.snapshot_pins == 0)
             .min_by_key(|(_, e)| e.admission_sequence)
             .map(|(k, _)| k.clone())
             .ok_or(AgentTurnHistoryError::Resource)?;
@@ -244,7 +252,7 @@ impl AgentTurnHistoryStore {
             .entries
             .get_mut(&selection.key)
             .ok_or(AgentTurnHistoryError::Resource)?;
-        entry.scope = selection.scope;
+        entry.scope = selection.scope.clone();
         entry.branch_relation = selection.relation;
         if !selection.forked || selection.seed.is_empty() {
             return Ok(());
@@ -266,6 +274,7 @@ impl AgentTurnHistoryStore {
         entry.accounted_bytes = entry_bytes(&selection.key, entry);
         let new = entry.accounted_bytes;
         inner.replace_accounting(old, new);
+        inner.limit_terminal_records(&selection.scope);
         inner.evict_to_budget(self.max_memory_bytes, Some(&selection.key));
         while inner.accounted_bytes > self.max_memory_bytes {
             if !trim_oldest_closed_turn(inner, &selection.key)? {

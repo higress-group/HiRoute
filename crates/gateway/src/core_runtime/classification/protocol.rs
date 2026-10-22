@@ -104,7 +104,9 @@ pub(super) fn classifier_request_template<'a>(
     current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, ProtocolAdapterError> {
     let mut refs = Vec::new();
-    let latest_user = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)?;
+    let mut latest_user =
+        latest_user_wire_value(request, &mut refs, current_input_origin_unverified)?;
+    disclose_history_evidence(&mut latest_user, history);
     let target = assessment_definition(history, authority);
     let body = json!({
         "decision": authority.decision,
@@ -121,6 +123,33 @@ pub(super) fn classifier_request_template<'a>(
         routing_observation: None,
     })
 }
+/// Evidence annotations use the existing v1 content vocabulary. They never
+/// change captured user facts, target eligibility or the number of model calls.
+pub(super) fn disclose_history_evidence(value: &mut Value, history: &AgentTurnHistorySnapshot) {
+    let Some(parts) = value.as_array_mut() else {
+        return;
+    };
+    let mut add = |source: &str| parts.push(json!({"kind":"unavailable", "source_kind":source}));
+    if history.history_partial {
+        add("prior_execution_history_missing");
+    }
+    if let Some(m) = history
+        .assessment_target
+        .as_ref()
+        .and_then(|t| t.history_membership.as_ref())
+    {
+        if m.association_unverified {
+            add("assessment_target_association_unverified");
+        }
+        if m.source_unverified {
+            add("assessment_target_input_origin_unverified");
+        }
+        if m.capture_partial || m.clipped {
+            add("assessment_target_capture_gap");
+        }
+    }
+}
+
 pub(super) fn latest_user_wire_value<'a>(
     request: impl Into<super::DecisionInput<'a>>,
     refs: &mut Vec<RequestedReplacement>,

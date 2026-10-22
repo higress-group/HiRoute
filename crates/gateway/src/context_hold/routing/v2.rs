@@ -1,6 +1,7 @@
 //! Current optional adapter envelope. Parse the minimal purpose independently
 //! from enrichment; no malformed proof can change authentication or model output.
 use super::*;
+use serde_json::value::RawValue;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -9,19 +10,19 @@ struct Envelope {
     agent: String,
     purpose: String,
     #[serde(default)]
-    session_id: Option<Value>,
+    session_id: Option<Box<RawValue>>,
     #[serde(default)]
-    turn_id: Option<Value>,
+    turn_id: Option<Box<RawValue>>,
     #[serde(default)]
-    request_id: Option<Value>,
+    request_id: Option<Box<RawValue>>,
     #[serde(default)]
-    checkpoint: Option<Value>,
+    checkpoint: Option<Box<RawValue>>,
     #[serde(default)]
-    branch: Option<Value>,
+    branch: Option<Box<RawValue>>,
     #[serde(default)]
-    input: Option<Value>,
+    input: Option<Box<RawValue>>,
     #[serde(default)]
-    continuation: Option<Value>,
+    continuation: Option<Box<RawValue>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -67,12 +68,12 @@ fn parsed(headers: &HeaderMap) -> Option<Envelope> {
         .filter(|e| e.version == 2)
 }
 
-fn optional_id(value: &Option<Value>) -> Option<[u8; 32]> {
+fn optional_id(value: &Option<Box<RawValue>>) -> Option<[u8; 32]> {
     value
-        .as_ref()?
-        .as_str()
+        .as_ref()
+        .and_then(|v| serde_json::from_str::<String>(v.get()).ok())
         .filter(|value| id(value))
-        .map(digest)
+        .map(|value| digest(&value))
 }
 
 fn known_auxiliary(purpose: &str) -> bool {
@@ -112,7 +113,7 @@ pub(super) fn routing_facts(
     let session = context
         .session_id
         .as_ref()
-        .and_then(Value::as_str)
+        .and_then(|v| serde_json::from_str::<String>(v.get()).ok())
         .filter(|s| id(s));
     let Some(session) = session else {
         return Some(RoutingFacts::uncertain());
@@ -128,7 +129,7 @@ pub(super) fn routing_facts(
             _ => unreachable!(),
         };
         native.is_some_and(|(kind, parts)| {
-            kind == expected && parts.first().is_some_and(|s| s == session)
+            kind == expected && parts.first().is_some_and(|s| s == &session)
         })
     };
     if !consistent {
@@ -136,11 +137,11 @@ pub(super) fn routing_facts(
     }
     let branch = context
         .branch
-        .and_then(|v| serde_json::from_value::<Branch>(v).ok())
+        .and_then(|v| serde_json::from_str::<Branch>(v.get()).ok())
         .filter(|b| id(&b.leaf_id) && sha256(&b.path_digest));
     let continuation = context
         .continuation
-        .and_then(|v| serde_json::from_value::<Continuation>(v).ok())
+        .and_then(|v| serde_json::from_str::<Continuation>(v.get()).ok())
         .filter(|c| {
             matches!(c.kind.as_str(), "same_turn" | "compression")
                 && [&c.from_turn_id, &c.from_checkpoint, &c.to_checkpoint]
@@ -185,9 +186,19 @@ pub(crate) fn native_input(headers: &HeaderMap) -> Option<Result<NativeInput, ()
     {
         return Some(Err(()));
     }
+    let session = context
+        .session_id
+        .as_ref()
+        .and_then(|v| serde_json::from_str::<String>(v.get()).ok())
+        .filter(|s| id(s));
+    if !matches!((session, header_value(headers, native_session_header(&brand)?)),
+        (Some(session), Field::Value(native)) if session == native)
+    {
+        return Some(Err(()));
+    }
     let input: NativeInput = match context
         .input
-        .and_then(|value| serde_json::from_value(value).ok())
+        .and_then(|value| serde_json::from_str(value.get()).ok())
     {
         Some(input) => input,
         None => return Some(Err(())),

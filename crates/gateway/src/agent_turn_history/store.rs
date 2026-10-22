@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
@@ -46,6 +46,7 @@ pub(crate) struct AgentTurnHistoryStore {
 
 pub(super) struct StoreInner {
     entries: BTreeMap<AgentTurnHistoryKey, SessionEntry>,
+    scopes: BTreeMap<AgentTurnHistoryKey, BTreeSet<AgentTurnHistoryKey>>,
     next_token: u64,
     next_request_token: u64,
     next_id: u64,
@@ -64,6 +65,7 @@ struct SessionEntry {
     history_partial: bool,
     capture_gap_epoch: u64,
     checkpoint: TranscriptCheckpoint,
+    response_boundary: Option<[u8; 32]>,
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
     current_segment: Option<SegmentState>,
@@ -111,6 +113,7 @@ struct TranscriptCheckpoint {
 }
 
 struct CaptureAdmission {
+    scope: AgentTurnHistoryKey,
     now: Instant,
     gap_epoch: u64,
 }
@@ -126,6 +129,7 @@ struct ActiveTurn {
     user: Vec<VisibleContentPart>,
     steps: Vec<Vec<VisibleContentPart>>,
     output: output::AcceptedOutput,
+    boundary: super::boundary::BoundaryCapture,
     plan: PlanSnapshot,
     decision: Option<BranchDecisionV1>,
     executions: Vec<AcceptedExecution>,
@@ -205,6 +209,7 @@ impl AgentTurnHistoryStore {
             capture_gap_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
             inner: Arc::new(Mutex::new(StoreInner {
                 entries: BTreeMap::new(),
+                scopes: BTreeMap::new(),
                 next_token: 1,
                 next_request_token: 1,
                 next_id: 1,
@@ -314,7 +319,11 @@ impl AgentTurnHistoryStore {
             plan,
             analyzed,
             selection.inputs,
-            CaptureAdmission { now, gap_epoch },
+            CaptureAdmission {
+                scope: selection.scope.clone(),
+                now,
+                gap_epoch,
+            },
         ) {
             Ok(mut begin) => {
                 if let Err(error) = self.finish_branch_admission(&mut inner, selection, &mut begin)
@@ -327,6 +336,8 @@ impl AgentTurnHistoryStore {
                     };
                     self.abort_locked(&mut inner, ticket);
                     inner.note_capture_gap(&key);
+                    drop(inner);
+                    drop(begin);
                     return Err(error);
                 }
                 Ok(Some((begin, admission)))
@@ -347,7 +358,11 @@ impl AgentTurnHistoryStore {
         decision_inputs: TurnDecisionInputs,
         admission: CaptureAdmission,
     ) -> Result<AgentTurnBegin, AgentTurnHistoryError> {
-        let CaptureAdmission { now, gap_epoch } = admission;
+        let CaptureAdmission {
+            scope,
+            now,
+            gap_epoch,
+        } = admission;
         self.observe_capture_gap_epoch(inner, &key, gap_epoch);
         let latest = analyzed
             .turns
@@ -387,6 +402,7 @@ impl AgentTurnHistoryStore {
                 user: latest.user.clone(),
                 steps: Vec::new(),
                 output: Default::default(),
+                boundary: Default::default(),
                 plan,
                 decision: None,
                 executions: Vec::new(),
@@ -403,7 +419,7 @@ impl AgentTurnHistoryStore {
                 digest: analyzed.anchors.as_ref().map(|a| a.complete),
             };
             let mut entry = SessionEntry {
-                scope: key.clone(),
+                scope: scope.clone(),
                 branch_id: hex(&key.0),
                 admission_sequence: request_token,
                 branch_relation: branches::HistoryRelation::Root,
@@ -413,6 +429,7 @@ impl AgentTurnHistoryStore {
                 history_partial: missing_history,
                 capture_gap_epoch: gap_epoch,
                 checkpoint,
+                response_boundary: None,
                 active,
                 closed: VecDeque::new(),
                 current_segment: None,
@@ -434,6 +451,7 @@ impl AgentTurnHistoryStore {
                 return Err(AgentTurnHistoryError::Resource);
             }
             inner.accounted_bytes = inner.accounted_bytes.saturating_add(entry.accounted_bytes);
+            inner.scopes.entry(scope).or_default().insert(key.clone());
             inner.entries.insert(key.clone(), entry);
             inner.evict_to_budget(self.max_memory_bytes, Some(&key));
             if inner.accounted_bytes > self.max_memory_bytes {
@@ -575,6 +593,8 @@ impl AgentTurnHistoryStore {
                     );
                 }
                 entry.active.output.next_step();
+                entry.active.boundary = Default::default();
+                entry.response_boundary = None;
                 entry.active.last_request_status = AgentTurnStatus::Unknown;
                 entry.checkpoint = TranscriptCheckpoint {
                     active_user_index: latest.user_index,
@@ -645,9 +665,8 @@ impl AgentTurnHistoryStore {
                 );
             }
             if let Some(next_segment_id) = next_segment_id {
-                if appended_user && entry.active.last_request_status == AgentTurnStatus::Unknown {
-                    entry.active.last_request_status = AgentTurnStatus::Interrupted;
-                }
+                // A new activation closes this routing stage, not the logical task.
+                // Only a witnessed interruption may claim Interrupted.
                 Some(close_active(entry, next_segment_id, unix_ms())?)
             } else {
                 None
@@ -709,6 +728,7 @@ impl AgentTurnHistoryStore {
                 user: latest.user.clone(),
                 steps: Vec::new(),
                 output: Default::default(),
+                boundary: Default::default(),
                 plan,
                 decision: None,
                 executions: Vec::new(),
@@ -922,6 +942,9 @@ impl AgentTurnHistoryStore {
                 AgentTurnStatus::Unknown
             };
             entry.active.executions.extend(executions);
+            entry.response_boundary = (!entry.active.capture_partial)
+                .then(|| entry.active.boundary.digest())
+                .flatten();
             let completed = if let Some(next_segment_id) = next_segment_id {
                 Some(close_active(entry, next_segment_id, unix_ms())?)
             } else {
@@ -932,6 +955,8 @@ impl AgentTurnHistoryStore {
             (old, entry.accounted_bytes, completed)
         };
         inner.replace_accounting(old, new);
+        let scope = inner.entries.get(&ticket.key).unwrap().scope.clone();
+        inner.limit_terminal_records(&scope);
         inner.evict_to_budget(self.max_memory_bytes, Some(&ticket.key));
         inner.note_peak();
         Ok(completed)

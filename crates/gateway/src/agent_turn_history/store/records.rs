@@ -274,6 +274,46 @@ pub(super) fn snapshot(
 }
 
 impl StoreInner {
+    pub(super) fn scope_entries<'a>(
+        &'a self,
+        scope: &AgentTurnHistoryKey,
+    ) -> impl Iterator<Item = (&'a AgentTurnHistoryKey, &'a SessionEntry)> {
+        self.scopes
+            .get(scope)
+            .into_iter()
+            .flat_map(|keys| keys.iter())
+            .filter_map(|key| self.entries.get_key_value(key))
+    }
+
+    pub(super) fn limit_terminal_records(&mut self, scope: &AgentTurnHistoryKey) {
+        while self
+            .scope_entries(scope)
+            .map(|(_, e)| e.closed.len())
+            .sum::<usize>()
+            > 128
+        {
+            let victim = self
+                .scope_entries(scope)
+                .filter(|(_, e)| !e.closed.is_empty())
+                .min_by_key(|(_, e)| {
+                    (
+                        e.snapshot_pins != 0,
+                        e.closed.front().unwrap().completed.started_at_ms,
+                        e.admission_sequence,
+                    )
+                })
+                .map(|(key, _)| key.clone());
+            let Some(key) = victim else {
+                break;
+            };
+            // Frozen snapshots own their Arc payload and retain a separate charge.
+            // Trimming a live index never frees their bytes or changes membership.
+            if !trim_oldest_closed_turn(self, &key).unwrap_or(false) {
+                break;
+            }
+        }
+    }
+
     pub(super) fn note_capture_gap(&mut self, key: &AgentTurnHistoryKey) {
         let Some(entry) = self.entries.get_mut(key) else {
             return;
@@ -346,6 +386,12 @@ impl StoreInner {
 
     pub(super) fn remove(&mut self, key: &AgentTurnHistoryKey) {
         if let Some(entry) = self.entries.remove(key) {
+            if let Some(keys) = self.scopes.get_mut(&entry.scope) {
+                keys.remove(key);
+                if keys.is_empty() {
+                    self.scopes.remove(&entry.scope);
+                }
+            }
             self.accounted_bytes = self.accounted_bytes.saturating_sub(entry.accounted_bytes);
         }
     }
@@ -361,7 +407,7 @@ impl StoreInner {
 
 pub(super) fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> usize {
     size_of::<SessionEntry>()
-        + size_of_val(key)
+        + size_of_val(key) + 768 // charged scope and branch index nodes
         + entry.branch_id.capacity()
         + entry.active.decision.as_ref().map_or(0, decision_bytes)
         + entry.active.request_ids.capacity() * size_of::<String>()
@@ -391,6 +437,7 @@ pub(super) fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> us
             .sum::<usize>()
         + entry.active.steps.capacity() * size_of::<Vec<VisibleContentPart>>()
         + entry.active.output.retained_bytes()
+        + entry.active.boundary.bytes()
         + entry
             .active
             .steps

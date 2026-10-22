@@ -8,6 +8,8 @@ use crate::server::core_runtime::model_ir::{
 };
 
 pub(crate) struct AnalyzedRequest {
+    pub(super) measured: bool,
+    pub(super) boundaries: Vec<(usize, [u8; 32])>,
     pub(super) anchors: Option<crate::context_hold::HistoryAnchors>,
     pub(super) message_count: usize,
     pub(super) user_origin_unverified: bool,
@@ -18,6 +20,15 @@ pub(crate) struct AnalyzedRequest {
 }
 
 impl AnalyzedRequest {
+    pub(crate) fn mark_current_input_unavailable(&mut self) {
+        if let Some(turn) = self.turns.last_mut() {
+            turn.user = vec![VisibleContentPart::Unavailable {
+                source_kind: "native_continuation_input".into(),
+            }];
+        }
+        self.prior_history_missing = true;
+    }
+
     pub(crate) fn select_current_input(
         &mut self,
         parts: &[ContentPart],
@@ -88,6 +99,8 @@ pub(super) fn analyze_request(
             })
     });
     Ok(AnalyzedRequest {
+        measured: false,
+        boundaries: Vec::new(),
         anchors: None,
         message_count: request.messages.len(),
         user_origin_unverified: false,

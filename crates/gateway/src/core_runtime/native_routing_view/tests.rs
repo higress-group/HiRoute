@@ -47,6 +47,7 @@ impl Fixture {
     fn view(&self, request: &ModelRequestIRV1, metadata: Value) -> NativeRoutingView {
         let mut headers = HeaderMap::new();
         headers.insert("x-hiroute-agent", "dsh".parse().unwrap());
+        headers.insert("x-deepseek-harness-session-id", "session".parse().unwrap());
         headers.insert(
             "x-hiroute-routing-context",
             metadata.to_string().parse().unwrap(),

@@ -26,8 +26,9 @@ pub(super) fn request_template<'a>(
         .as_ref()
         .ok_or(CallFailure::RejectedInput)?;
     let mut refs = Vec::new();
-    let latest = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)
+    let mut latest = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)
         .map_err(|_| CallFailure::RejectedInput)?;
+    super::protocol::disclose_history_evidence(&mut latest, history);
     let target_result = assessment_definition_result(history, authority);
     let omitted_eligibility = target_result.as_ref().err().copied().unwrap_or(E::Unrated);
     let target = target_result.ok();

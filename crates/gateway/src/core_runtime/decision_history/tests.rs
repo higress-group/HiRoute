@@ -178,7 +178,10 @@ fn p2_failed_hold_admission_keeps_capture_and_cross_turn_assessment_available() 
             captured.guard.is_some(),
             "{failure}: affinity failure must not discard capture"
         );
-        assert!(captured.hold_ticket.is_none());
+        if failure == "busy" {
+            assert!(captured.hold_ticket.is_none());
+        }
+        // A stale unrelated base entry cannot prevent a fresh branch-local hold.
         assert!(captured.history.assessment_target.is_some());
         fixture.finish(&mut captured, &[text_event("second answer")], true);
         drop(captured);

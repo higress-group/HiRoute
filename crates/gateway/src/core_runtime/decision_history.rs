@@ -144,10 +144,7 @@ impl ProductionGatewayRuntime {
             return Ok(DecisionHistory::detached());
         };
         let gap_key = key.clone();
-        if !capture.can_capture {
-            self.agent_turn_history.note_capture_gap(&gap_key);
-            return Ok(DecisionHistory::detached());
-        }
+
         let history_continuity = capture.continuity;
         let native_turn = capture.native_turn;
         let user_origin_unverified = capture.origin_unverified;
@@ -156,7 +153,9 @@ impl ProductionGatewayRuntime {
             .agent_turn_history
             .prepare_scoped_request(&key, request, replay)
             .and_then(|mut analyzed| {
-                if let Some(parts) = current_input {
+                if capture.unavailable_input {
+                    analyzed.mark_current_input_unavailable();
+                } else if let Some(parts) = current_input {
                     analyzed.select_current_input(parts, replay)?;
                 }
                 if user_origin_unverified {
@@ -268,7 +267,7 @@ pub(super) struct CaptureScope {
     native_turn: Option<[u8; 32]>,
     origin_unverified: bool,
     missing_prefix: bool,
-    can_capture: bool,
+    unavailable_input: bool,
     continuity: crate::context_hold::HistoryContinuity,
 }
 
@@ -280,7 +279,7 @@ impl CaptureScope {
             native_turn: prepared.native_turn(),
             origin_unverified: prepared.user_origin_unverified(),
             missing_prefix: prepared.uncaptured_native_prefix(),
-            can_capture: prepared.history_can_capture(),
+            unavailable_input: prepared.native_user_unavailable(),
             continuity: prepared.history_continuity(),
         }
     }
@@ -302,8 +301,7 @@ impl CaptureScope {
             origin_unverified: identity.input_origin_unverified(prepared),
             missing_prefix: prepared
                 .map_or(native.compacted, PreparedHold::uncaptured_native_prefix),
-            can_capture: !identity.requires_captured_input()
-                || prepared.is_some_and(PreparedHold::history_can_capture),
+            unavailable_input: identity.requires_captured_input(),
             continuity: prepared.map_or(
                 crate::context_hold::HistoryContinuity::NoCheckpoint,
                 PreparedHold::history_continuity,

@@ -35,7 +35,7 @@ impl ContextIdentityFacts {
     }
 
     pub(crate) fn mark_routing_origin_unverified(&mut self) {
-        if self.routing.track {
+        if self.routing.track && !self.requires_captured_input() {
             self.routing.native.user_origin = super::routing::NativeUserOrigin::Observed;
         }
     }

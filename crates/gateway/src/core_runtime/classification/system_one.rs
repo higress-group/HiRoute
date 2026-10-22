@@ -41,15 +41,16 @@ pub(super) fn request_template<'a>(
         );
     }
     let mut refs = Vec::new();
-    let latest = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)
+    let mut latest = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)
         .map_err(|_| CallFailure::RejectedInput)?;
+    super::protocol::disclose_history_evidence(&mut latest, history);
     let mut target = assessment_definition(history, authority);
     let (mut questions, mut bindings) = base_questions(authority);
     if let Some(target) = &target {
         let id = question_id(&questions);
         questions.insert(id.clone(), json!({
             "type":"score",
-            "instructions":format!("Evaluate only the completed stage from state.visible_conversation[state.assessment_from] through the end. state.latest_user may supply explicit feedback, but is not yet executed. {}", target.instructions),
+            "instructions":format!("Evaluate only the captured execution stage from state.visible_conversation[state.assessment_from] through the end. A completed response does not prove the logical task is complete; assess observed progress without treating absent final results alone as failure. state.latest_user may supply feedback but is not yet executed. {}", target.instructions),
             "criteria":target.criteria.iter().map(|c| &c.criterion).collect::<Vec<_>>(),
         }));
         bindings.assessment = Some(id);

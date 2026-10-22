@@ -232,6 +232,7 @@ pub(super) fn apply(
             score,
             partial,
             reason,
+            ..
         } => {
             let revision = sql_u64(*plan_revision)?;
             type ExistingSegmentIdentity = (String, String, i64, Option<String>, Option<String>);

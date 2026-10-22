@@ -29,11 +29,8 @@ impl AgentTurnHistoryStore {
         epoch: u64,
     ) {
         let affected = inner
-            .entries
-            .iter()
-            .filter(|(_, entry)| {
-                &entry.scope == key && (epoch == u64::MAX || entry.capture_gap_epoch < epoch)
-            })
+            .scope_entries(key)
+            .filter(|(_, entry)| epoch == u64::MAX || entry.capture_gap_epoch < epoch)
             .map(|(key, _)| key.clone())
             .collect::<Vec<_>>();
         for branch in affected {
@@ -50,9 +47,7 @@ impl AgentTurnHistoryStore {
 impl StoreInner {
     pub(super) fn note_scope_gap(&mut self, scope: &AgentTurnHistoryKey) {
         let keys = self
-            .entries
-            .iter()
-            .filter(|(_, e)| &e.scope == scope)
+            .scope_entries(scope)
             .map(|(key, _)| key.clone())
             .collect::<Vec<_>>();
         for key in keys {
