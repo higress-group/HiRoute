@@ -3,7 +3,7 @@ use crate::query_v2::ObservationV2Error;
 use hiroute_domain::{RoutingTimelineQueryV1, WorkspaceId};
 
 #[test]
-fn timeline_late_turn_completion_invalidates_removed_provisional_rows() {
+fn timeline_late_turn_completion_reemits_the_opening_and_absorbed_request_membership() {
     let directory = tempfile::tempdir().unwrap();
     let store = open_store(directory.path());
     let first = Fixture::new("provisional-opening");
@@ -43,12 +43,18 @@ fn timeline_late_turn_completion_invalidates_removed_provisional_rows() {
         WriterCycleOutcome::Ack(_)
     ));
     query.after_watermark = Some(provisional.watermark);
-    assert_eq!(
-        store
-            .observed_routing_timeline(&reader(), &query, 5000)
-            .unwrap_err(),
-        ObservationV2Error::Stale,
-        "an upsert-only client must not retain a provisional row absorbed into a completed turn"
+    let changed = store
+        .observed_routing_timeline(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(changed.turns.len(), 1);
+    assert_eq!(changed.turns[0].turn_id, provisional.turns[0].turn_id);
+    assert_eq!(changed.turns[0].requests.len(), 2);
+    assert!(
+        changed.turns[0]
+            .requests
+            .iter()
+            .any(|request| request.request_id == provisional.turns[1].turn_id),
+        "clients can remove the absorbed provisional row by exact request membership"
     );
     query.after_watermark = None;
     let completed = store

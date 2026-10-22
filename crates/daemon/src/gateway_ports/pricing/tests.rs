@@ -9,6 +9,7 @@ fn identity(seed: &str) -> CanonicalDigest {
 
 fn entry(source: &str, model: &str, offer: &str, rate: u64) -> PriceIndexEntryV1 {
     PriceIndexEntryV1 {
+        execution_model_configuration_id: None,
         target: PriceTargetV1 {
             workspace_id: WorkspaceId::default(),
             source_id: source.into(),

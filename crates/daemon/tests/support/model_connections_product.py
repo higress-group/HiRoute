@@ -15,6 +15,7 @@ from pathlib import Path
 
 from publication_process import configure_model_settings_v2
 from publication_product import Product, encoded
+from source_pricing_product import configure_reference_price, timeline_amounts
 
 
 MODEL = 'gpt-5.4'
@@ -697,15 +698,25 @@ def run(repository, expected_sha=None):
         # source/account route instead of weakening the provider-switch coverage check.
         product.install_codex_fixture(
             MODEL, 'medium', upstream.base_url, replacement_token)
+        configure_reference_price(product, saved['binding_id'], 1_000_000)
         publish_plan_and_agent(product, saved['binding_id'])
         gateway_request(product)
         session_id, observed_model = assert_session_record(product, started_ms)
+        frozen_amounts = timeline_amounts(product, session_id, 1)
+        configure_reference_price(product, saved['binding_id'], 2_000_000)
+        assert timeline_amounts(product, session_id, 1) == frozen_amounts
         assert_live_credential_switches(product, upstream, saved)
         product.stop()
         product.start()
         recheck_saved_native_source(product, saved, 3, 'after-restart')
         recheck_saved_native_source(product, unknown, 3, 'unknown-after', unknown=True)
         assert_session_record(product, started_ms, saved['binding_id'])
+        reopened_amounts = timeline_amounts(product, session_id, 3)
+        for request, costs in frozen_amounts.items():
+            assert reopened_amounts[request] == costs, 'price edits rewrote historical valuation'
+        first_amount = sum(cost['known_micros'] for costs in frozen_amounts.values() for cost in costs)
+        assert all(sum(cost['known_micros'] for cost in costs) == 2 * first_amount
+                   for request, costs in reopened_amounts.items() if request not in frozen_amounts)
         with upstream.lock:
             requests = list(upstream.requests)
         expected_host = 'localhost:%d' % upstream.server.server_address[1]

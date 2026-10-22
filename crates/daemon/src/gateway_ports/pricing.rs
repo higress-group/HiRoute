@@ -3,7 +3,7 @@
 use hiroute_application::prices::{PriceSnapshotHandle, PriceSnapshotSlot};
 use hiroute_domain::{
     EXECUTION_PRICING_SCHEMA_V1, ExecutionPricingEvidenceV1, PriceModelIdentityV1, PriceOriginV1,
-    PriceTargetV1, PriceUnknownReasonV1, PriceValuationKindV1, WorkspaceId,
+    PriceTargetV1, PriceUnknownReasonV1, PriceValuationKindV1, TokenRateV1, WorkspaceId,
 };
 use hiroute_gateway::server::core_runtime::observation::{
     RequestPriceSnapshot, RequestPriceSource,
@@ -131,7 +131,7 @@ impl RequestPriceSnapshot for CapturedPrice {
         };
         result.usage_semantics = target.usage_semantics;
         // The snapshot API uses Unix seconds; execution evidence preserves ms.
-        match self.snapshot.freeze_price(
+        match self.snapshot.freeze_execution_price(
             &target.target,
             at_ms / 1000,
             target.billing_context.clone(),
@@ -165,6 +165,25 @@ impl RequestPriceSnapshot for CapturedPrice {
             }
             Err(_) => {
                 result.unknown_reason = Some(PriceUnknownReasonV1::UnverifiedOfferMapping);
+            }
+        }
+        let usable = |quote: &hiroute_domain::FrozenPriceQuoteV1| {
+            matches!(quote.rates.input_uncached, TokenRateV1::Known { .. })
+                && matches!(quote.rates.output, TokenRateV1::Known { .. })
+        };
+        if result.quote.as_ref().is_none_or(|quote| !usable(quote)) {
+            let mut reference = target.target.clone();
+            reference.valuation_kind = PriceValuationKindV1::ApiEquivalent;
+            if let Ok(quote) = self.snapshot.freeze_execution_price(
+                &reference,
+                at_ms / 1000,
+                target.billing_context.clone(),
+            ) && usable(&quote)
+            {
+                // This is an explicitly configured reference estimate, never a
+                // substitute subscription bill or a repricing of old receipts.
+                result.unknown_reason = quote.unknown_reasons.first().copied();
+                result.quote = Some(quote);
             }
         }
         result

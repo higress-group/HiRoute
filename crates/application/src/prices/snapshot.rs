@@ -16,6 +16,8 @@ pub struct CatalogPriceRuleV2 {
 #[serde(deny_unknown_fields)]
 pub struct PriceIndexEntryV1 {
     pub target: PriceTargetV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_model_configuration_id: Option<String>,
     pub actual_offer_ref: Option<String>,
     pub reference_model_offer_ref: Option<PriceReferenceOfferV1>,
     pub catalog_rules: Vec<CatalogPriceRuleV2>,
@@ -28,6 +30,7 @@ pub struct PriceIndexEntryV1 {
 pub struct PriceSnapshot {
     pub(super) generation: PriceGenerationRefV1,
     pub(super) entries: BTreeMap<PriceTargetV1, PriceIndexEntryV1>,
+    execution_targets: BTreeMap<PriceTargetV1, Option<PriceTargetV1>>,
 }
 impl PriceSnapshot {
     pub fn build(
@@ -47,8 +50,22 @@ impl PriceSnapshot {
         }
         catalog_refs.sort_by(|a, b| (&a.id, a.revision).cmp(&(&b.id, b.revision)));
         let mut index = BTreeMap::new();
+        let mut execution_targets: BTreeMap<PriceTargetV1, Option<PriceTargetV1>> = BTreeMap::new();
         for entry in entries {
             super::select::validate_entry(&entry)?;
+            if let Some(model) = &entry.execution_model_configuration_id {
+                let mut execution = entry.target.clone();
+                execution.model_identity = PriceModelIdentityV1::CatalogModel(model.clone());
+                execution.validate()?;
+                execution_targets
+                    .entry(execution)
+                    .and_modify(|target| {
+                        if target.as_ref() != Some(&entry.target) {
+                            *target = None;
+                        }
+                    })
+                    .or_insert_with(|| Some(entry.target.clone()));
+            }
             if index.insert(entry.target.clone(), entry).is_some() {
                 return Err(ComputeContractError::DuplicateIdentity);
             }
@@ -69,6 +86,7 @@ impl PriceSnapshot {
         Ok(Self {
             generation,
             entries: index,
+            execution_targets,
         })
     }
     pub fn generation_ref(&self) -> &PriceGenerationRefV1 {
@@ -87,6 +105,32 @@ impl PriceSnapshotHandle {
             Self::Available(s) => Some(&s.generation),
             Self::Unavailable(_) => None,
         }
+    }
+    /// The compiled execution ID can differ from the stable authoring model ref.
+    /// Resolve only the exact source/digest/model/currency/basis captured in this
+    /// generation, then retain the executed identity in the frozen evidence.
+    pub fn freeze_execution_price(
+        &self,
+        target: &PriceTargetV1,
+        at: i64,
+        billing: PriceBillingContextV1,
+    ) -> Result<FrozenPriceQuoteV1, ComputeContractError> {
+        if let Self::Available(snapshot) = self
+            && let Some(mapped) = snapshot.execution_targets.get(target)
+        {
+            let Some(mapped) = mapped else {
+                let mut quote = Self::Unavailable(PriceUnknownReasonV1::UnverifiedOfferMapping)
+                    .freeze_price(target, at, billing)?;
+                quote.generation_ref = Some(snapshot.generation.clone());
+                quote.quote_digest = quote.computed_digest()?;
+                return Ok(quote);
+            };
+            let mut quote = self.freeze_price(mapped, at, billing)?;
+            quote.exact_target = target.clone();
+            quote.quote_digest = quote.computed_digest()?;
+            return Ok(quote);
+        }
+        self.freeze_price(target, at, billing)
     }
     /// Only bounded in-memory lookup, schedule evaluation and quote serialization.
     /// Retain this handle for the whole LogicalRequest, including every retry/relay Attempt.
