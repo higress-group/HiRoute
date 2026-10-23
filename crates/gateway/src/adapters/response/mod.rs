@@ -14,6 +14,8 @@ mod search;
 mod wire;
 
 #[cfg(test)]
+mod chat_filtered_tests;
+#[cfg(test)]
 #[path = "native_passthrough_tests.rs"]
 mod native_passthrough_tests;
 #[cfg(test)]
