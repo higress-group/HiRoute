@@ -116,6 +116,11 @@ impl ProviderRuntimePort for ObservedProductionProvider {
         if let (Some(observation), Some(credential_ref)) = (&observation, no_credential_ref) {
             observation.no_credential_materialized(&stable_binding_id, &credential_ref);
         }
+        // Both credential paths now have the exact staged attempt. Report only
+        // facts returned by successful authoritative request materialization.
+        if let Some(observation) = &observation {
+            inner.report_request_reasoning_projection(observation);
+        }
         // The unauthenticated profile has no credential-read staging hook.
         // Bind only after authoritative materialization and its None staging.
         #[cfg(all(unix, debug_assertions))]
