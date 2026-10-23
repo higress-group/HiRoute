@@ -210,6 +210,10 @@ cases even when happy paths overlap. For a broken gate, demonstrate that a reali
 bad case fails. For managed native overrides, retain a positive control showing
 that the conflicting native setting would otherwise be consumed.
 
+[Codex subscription replay](../../crates/gateway/src/adapters/tests/codex_replay.rs)
+checks endpoint-specific output-status normalization while preserving the original
+history and public API fields. [Response lifecycle tests](../../crates/gateway/src/adapters/response/client_stream_tests.rs)
+check response-scoped synthetic IDs across incremental, buffered and terminal output.
 Protocol changes reuse saved-route and native-context journeys across Responses
 and Messages. Assert actual request paths, trusted receipt identity, rotation and
 independent restore. A removed-route witness uses its previously working protocol

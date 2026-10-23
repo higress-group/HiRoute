@@ -51,6 +51,16 @@ An accepted Attempt means its output was delivered. A later native model failure
 or truncation retains that identity and its failed model event; the Request and
 history stage remain failed, allowing the receipt to preserve actual execution.
 
+The registered Codex subscription request dialect omits the redundant completed
+reasoning-item status that its input parser rejects; public Responses paths keep
+that field. [Native request projection](src/adapters/request/native.rs) applies
+this normalization per candidate without changing the original request, reasoning
+payload or other item metadata. Cross-protocol Responses output uses one shared,
+response-scoped synthetic item identity across incremental and buffered renderers;
+provider-native item IDs stay exact. The [request regression](src/adapters/tests/codex_replay.rs)
+and [response lifecycle scenarios](src/adapters/response/client_stream_tests.rs)
+cover endpoint isolation, replay and identity consistency.
+
 Messages thinking computation is projected in
 [request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
 is resolved by [ingress.rs](src/adapters/ingress.rs) before Replay externalization.

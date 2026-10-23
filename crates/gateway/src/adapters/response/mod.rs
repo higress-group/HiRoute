@@ -1406,3 +1406,16 @@ fn invalid_block(index: u32, operation: &str) -> ProtocolAdapterError {
     .into()
 }
 pub use client_stream::IncrementalClientSseRenderer;
+
+/// Provider-native IDs stay exact. Portable protocols lack item IDs, so derive
+/// them from the response identity and block index, rather than reusing msg_0
+/// (etc.) in every response. All projections share this bounded, deterministic ID.
+fn synthetic_responses_item_id(response_id: &str, prefix: &str, index: u32) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(response_id.as_bytes());
+    let scope: String = digest[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("{prefix}_{scope}_{index}")
+}

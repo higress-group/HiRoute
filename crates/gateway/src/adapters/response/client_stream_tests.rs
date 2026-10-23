@@ -8,7 +8,10 @@ use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reas
 #[test]
 fn synthetic_responses_item_ids_are_scoped_to_the_response_and_stable_across_renderers() {
     let candidate = CandidateProtocolProfile::exact_portable_path(
-        IngressProtocol::Responses, IngressProtocol::ChatCompletions, "physical", fixed_reasoning("fixed"),
+        IngressProtocol::Responses,
+        IngressProtocol::ChatCompletions,
+        "physical",
+        fixed_reasoning("fixed"),
     );
     let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
     let mut all_ids = std::collections::BTreeSet::new();
@@ -18,28 +21,68 @@ fn synthetic_responses_item_ids_are_scoped_to_the_response_and_stable_across_ren
             "content":"answer","tool_calls":[{"id":"call-one","type":"function",
             "function":{"name":"read","arguments":"{}"}}]},"finish_reason":"tool_calls"}]});
         let mut decoder = NativeResponseDecoder::new(&candidate, 200, false).unwrap();
-        decoder.feed(&serde_json::to_vec(&document).unwrap(), true).unwrap();
+        decoder
+            .feed(&serde_json::to_vec(&document).unwrap(), true)
+            .unwrap();
         let mut renderer = IncrementalClientSseRenderer::new(profile.clone(), "route").unwrap();
-        let events: Vec<_> = decoder.take_events().iter()
-            .flat_map(|event| renderer.push(event).unwrap()).collect();
+        let events: Vec<_> = decoder
+            .take_events()
+            .iter()
+            .flat_map(|event| renderer.push(event).unwrap())
+            .collect();
         let decoded = decoder.finish().unwrap();
-        let RenderedClientResponse::Json { body, .. } = ClientResponseRenderer::render_nonstream_with_profile(
-            &profile, "route", &decoded.response).unwrap() else { panic!("JSON response") };
-        let RenderedClientResponse::Sse { events: buffered, .. } = ClientResponseRenderer::render_stream_with_profile(
-            &profile, "route", &decoded.response).unwrap() else { panic!("SSE response") };
-        let expected: Vec<_> = body["output"].as_array().unwrap().iter()
-            .map(|item| item["id"].as_str().unwrap().to_owned()).collect();
+        let RenderedClientResponse::Json { body, .. } =
+            ClientResponseRenderer::render_nonstream_with_profile(
+                &profile,
+                "route",
+                &decoded.response,
+            )
+            .unwrap()
+        else {
+            panic!("JSON response")
+        };
+        let RenderedClientResponse::Sse {
+            events: buffered, ..
+        } = ClientResponseRenderer::render_stream_with_profile(
+            &profile,
+            "route",
+            &decoded.response,
+        )
+        .unwrap()
+        else {
+            panic!("SSE response")
+        };
+        let expected: Vec<_> = body["output"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap().to_owned())
+            .collect();
         assert_eq!(expected.len(), 3);
         for stream in [&events, &buffered] {
-            let added: Vec<_> = stream.iter().filter(|event| event.event.as_deref() == Some("response.output_item.added"))
-                .map(|event| event.data["item"]["id"].as_str().unwrap().to_owned()).collect();
-            let completed = stream.iter().find(|event| event.event.as_deref() == Some("response.completed")).unwrap();
+            let added: Vec<_> = stream
+                .iter()
+                .filter(|event| event.event.as_deref() == Some("response.output_item.added"))
+                .map(|event| event.data["item"]["id"].as_str().unwrap().to_owned())
+                .collect();
+            let completed = stream
+                .iter()
+                .find(|event| event.event.as_deref() == Some("response.completed"))
+                .unwrap();
             assert_eq!(added, expected);
             assert_eq!(completed.data["response"]["output"], body["output"]);
         }
         for id in expected {
-            assert!(id.len() <= 64 && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
-            assert!(all_ids.insert(id), "different responses must not reuse synthetic item identities");
+            assert!(
+                id.len() <= 64
+                    && id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            );
+            assert!(
+                all_ids.insert(id),
+                "different responses must not reuse synthetic item identities"
+            );
         }
     }
 }
@@ -142,7 +185,7 @@ fn every_native_upstream_renders_correlated_messages_for_responses_clients() {
         let expected_item_id = if upstream == IngressProtocol::Responses {
             "native-message"
         } else {
-            "msg_0"
+            "msg_454349e422f05297191ead13e21d3db5_0"
         };
         let candidate = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
@@ -290,12 +333,12 @@ fn every_native_upstream_emits_complete_responses_reasoning_lifecycle() {
         (
             IngressProtocol::ChatCompletions,
             json!({"id":"r","model":"physical","choices":[{"index":0,"message":{"role":"assistant","content":null,"reasoning_content":"fixture thought"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}),
-            "rs_0",
+            "rs_454349e422f05297191ead13e21d3db5_0",
         ),
         (
             IngressProtocol::Messages,
             json!({"id":"r","type":"message","role":"assistant","model":"physical","content":[{"type":"thinking","thinking":"fixture thought","signature":""}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":2}}),
-            "rs_0",
+            "rs_454349e422f05297191ead13e21d3db5_0",
         ),
     ] {
         let events = render_incrementally(upstream, document);
@@ -331,13 +374,13 @@ fn every_native_upstream_emits_complete_responses_refusal_lifecycle() {
         (
             IngressProtocol::ChatCompletions,
             json!({"id":"r","model":"physical","choices":[{"index":0,"message":{"role":"assistant","content":null,"refusal":"cannot comply"},"finish_reason":"content_filter"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}),
-            "msg_0",
+            "msg_454349e422f05297191ead13e21d3db5_0",
             "response.incomplete",
         ),
         (
             IngressProtocol::Messages,
             json!({"id":"r","type":"message","role":"assistant","model":"physical","content":[{"type":"text","text":"cannot comply"}],"stop_reason":"refusal","stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":2}}),
-            "msg_0",
+            "msg_454349e422f05297191ead13e21d3db5_0",
             "response.incomplete",
         ),
     ] {

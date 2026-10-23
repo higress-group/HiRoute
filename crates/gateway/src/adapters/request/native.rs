@@ -44,9 +44,12 @@ pub(super) fn project(
             profile.capability.upstream_protocol,
             &mut canonical,
         );
+        normalize_codex_replay(&mut canonical, profile);
         return Ok(canonical);
     }
     let Some(original) = &request.native_body else {
+        let mut canonical = canonical;
+        normalize_codex_replay(&mut canonical, profile);
         return Ok(canonical);
     };
     let mut body = original.clone();
@@ -151,7 +154,31 @@ pub(super) fn project(
         }
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
+    normalize_codex_replay(&mut body, profile);
     Ok(body)
+}
+
+/// Codex subscription input does not accept the output-only completed status on
+/// reasoning items. Keep the original request and every other native field; this
+/// is an endpoint dialect normalization, not a public Responses history rewrite.
+fn normalize_codex_replay(body: &mut Value, profile: &CandidateProtocolProfile) {
+    if profile.capability.upstream_protocol != IngressProtocol::Responses
+        || profile.connector.connector_id != "connector.cpa.codex"
+    {
+        return;
+    }
+    let Some(input) = body.get_mut("input").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for item in input {
+        if item.get("type").and_then(Value::as_str) == Some("reasoning")
+            && item.get("status").and_then(Value::as_str) == Some("completed")
+        {
+            item.as_object_mut()
+                .expect("typed item is an object")
+                .remove("status");
+        }
+    }
 }
 
 fn normalize_messages_thinking(
