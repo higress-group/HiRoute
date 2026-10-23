@@ -45,7 +45,7 @@ fn selection(id: &str) -> CandidateSelectionV1 {
 }
 
 #[test]
-fn branches_publish_distinct_reasoning_and_freeze_whole_judgment_overrides() {
+fn extension_branches_publish_distinct_reasoning_without_parked_judgment() {
     let mut desired = desired();
     let low = selection("primary-a");
     let mut high = low.clone();
@@ -219,23 +219,9 @@ fn branches_publish_distinct_reasoning_and_freeze_whole_judgment_overrides() {
     let RequestOwnedRouteV1::Branches { branches, .. } = &routing.request_owned else {
         panic!("branches")
     };
-    assert_eq!(
-        branches[0]
-            .judgment
-            .as_ref()
-            .unwrap()
-            .competence
-            .floor_millis,
-        700
-    );
-    assert_eq!(
-        branches[1]
-            .judgment
-            .as_ref()
-            .unwrap()
-            .competence
-            .floor_millis,
-        500
+    assert!(
+        branches.iter().all(|branch| branch.judgment.is_none()),
+        "extension execution projections must omit parked judgment"
     );
 }
 

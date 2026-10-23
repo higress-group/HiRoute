@@ -552,3 +552,66 @@ fn ordinary_preview_resolves_defaults_and_seals_concrete_contents_without_review
     );
     assert_eq!(serde_json::to_vec(&legacy.plan_version).unwrap(), old_bytes);
 }
+
+#[test]
+fn retained_custom_operation_keeps_old_default_normalization_and_authenticated_bytes() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/pre-extension-custom-operation.json")).unwrap();
+    assert_eq!(
+        fixture["source_revision"],
+        "36e8d1731217012d33b8d9c766e07083b17c383d"
+    );
+    let spec: ChangeSpecV1 = serde_json::from_value(fixture["spec"].clone()).unwrap();
+    let external: Vec<ExternalEffectIntentV1> =
+        serde_json::from_value(fixture["external"].clone()).unwrap();
+    assert_eq!(
+        CanonicalDigest::of(&spec).unwrap().as_str(),
+        fixture["spec_digest"]
+    );
+    assert_eq!(
+        CanonicalDigest::of(&fixture["control"]).unwrap().as_str(),
+        fixture["control_digest"]
+    );
+    let decoded = TransactionPlanV1::from_registered_typed_planner(
+        spec.clone(),
+        fixture["control"].clone(),
+        None,
+        vec![],
+        vec![],
+        external.clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(decoded.spec()).unwrap(),
+        fixture["spec"]
+    );
+    assert_eq!(decoded.control(), &fixture["control"]);
+    assert_eq!(
+        serde_json::to_value(decoded.external()).unwrap(),
+        fixture["external"]
+    );
+    let editor: PlanEditorStateV2 =
+        serde_json::from_value(spec.desired_state["editor"].clone()).unwrap();
+    let content = decoded.plan_content_control().unwrap().unwrap();
+    assert_ne!(
+        editor.effective().unwrap(),
+        content.plan_version.configuration,
+        "new publication preserves parked source instead of replaying old normalization"
+    );
+    let mut tampered = spec;
+    tampered.desired_state["editor"]["purpose"] = serde_json::json!("changed sealed source");
+    let mut control = fixture["control"].clone();
+    control["change_spec_digest"] =
+        serde_json::to_value(CanonicalDigest::of(&tampered).unwrap()).unwrap();
+    assert!(
+        TransactionPlanV1::from_registered_typed_planner(
+            tampered,
+            control,
+            None,
+            vec![],
+            vec![],
+            external
+        )
+        .is_err()
+    );
+}

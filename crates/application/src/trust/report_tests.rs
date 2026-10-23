@@ -151,10 +151,15 @@ pub(crate) fn trial_context(threshold: u16) -> TrustContextV1 {
                         id: "decision/test".into(),
                         revision: 1,
                         name: "Test".into(),
-                        connection: DecisionConnectionV1::Custom {
+                        connection: DecisionConnectionV1::SystemOne {
+                            provider: "compatible".into(),
+                            model: "synthetic".into(),
                             endpoint: "https://decision.example/choose".into(),
                             timeout_ms: 3000,
-                            auth_header: None,
+                            auth_header: ClassifierAuthHeaderV1 {
+                                name: "Authorization".into(),
+                                value_secret_ref: "synthetic".into(),
+                            },
                         },
                     }),
                 },

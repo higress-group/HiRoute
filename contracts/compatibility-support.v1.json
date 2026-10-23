@@ -1371,7 +1371,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -1969,6 +1969,19 @@
       "allowed_paths": [
         "crates/domain/src/observation/execution_validation.rs",
         "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.plan-content-change/v2",
+      "field": "Retained custom-extension Operation default assessment normalization",
+      "mode": "recovery_read_only",
+      "owner": "routing-content",
+      "reason": "The pre-extension producer normalized explicit default assessment text when sealing a custom Plan while retaining the original editor in the Operation. Frozen validation may rebuild that exact old projection only when comparing to sealed configuration. New publications preserve parked bytes. The fixture was emitted by unmodified production source at 36e8d1731217012d33b8d9c766e07083b17c383d.",
+      "removal_condition": "Retire only when supported retained Operations and backups no longer require this source projection.",
+      "allowed_paths": [
+        "crates/domain/src/routing/authoring.rs",
+        "crates/application/src/routing/authoring/tests.rs",
+        "crates/application/src/routing/authoring/fixtures/pre-extension-custom-operation.json"
       ]
     }
   ]

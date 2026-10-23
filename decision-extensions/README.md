@@ -35,7 +35,7 @@ is a deployable reference implementation.
 | Difficulty routing | Whether the current task is simple or complex | Economy and primary groups |
 | Custom branches | The current task category, then its required degree when it has two groups | Regular models and optional primary models per category |
 
-Category, degree and competence answer different questions:
+For built-in decision models, category, degree and competence answer different questions:
 
 | Question | Example | Effect |
 | --- | --- | --- |
@@ -73,7 +73,7 @@ Primary exhaustion fails the request. Starting in primary keeps relay within tha
 group; a single-group category fails when its candidates are exhausted. A candidate
 failure does not create a competence score.
 
-If the category is valid but its degree result is unavailable, HiRoute uses that
+For built-in models, if the category is valid but its degree result is unavailable, HiRoute uses that
 category's primary group. If the whole decision fails, difficulty routing uses its
 heuristic rules; custom branches use the default category and its primary group
 when configured.
@@ -85,7 +85,7 @@ criteria, thresholds, assessment instructions and the **0 / 0.5 / 1** competence
 anchors. Category conditions describe task intent, degree conditions describe work
 within a category, and competence standards assess work that has already happened.
 
-Custom categories follow the plan's judgment settings by default. Independent
+With built-in models, custom categories follow the plan's judgment settings by default. Independent
 editing copies the complete settings; resetting resumes following the plan.
 Difficulty routing also offers explicit heuristic rules, which do not produce model
 competence scores.

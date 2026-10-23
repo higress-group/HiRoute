@@ -3,8 +3,7 @@
 ## Purpose
 
 Saved decision connections supply task judgments and optional assessment of prior
-execution. HiRoute owns category/group policy, candidate execution, and attribution.
-Built-in System One connections and custom extensions share one current contract.
+execution. Built-in connections supply judgments for HiRoute group policy; custom extensions directly choose category/group. HiRoute owns candidate execution and attribution for both.
 
 ## Requirements
 
@@ -50,7 +49,7 @@ or request body. A generic rejection cannot be declared a bad Key.
 
 Custom branches MUST contain 2–16 unordered categories, each with stable ID, name,
 natural-language task condition, regular candidates, and optional primary candidates.
-Primary presence enables the product's simple/complex degree question; a single-group
+For built-in decisions, primary presence enables the product's simple/complex degree question; a single-group
 category needs none. `smart_saving` is reserved for the built-in task scope and is
 rejected in custom authoring/materialization.
 
@@ -61,13 +60,23 @@ controls. Overlapping conditions select the current principal intent. No match
 selects the explicit default category as a valid decision with its degree result;
 this is different from decision-call failure.
 
-Category/degree/rubric text must be legal nonempty text for publication without an
+Category text, and effective built-in degree/rubric text, must be legal nonempty text for publication without an
 independent 4096-character field cap. Drafts can retain incomplete text. Whole-request
 resource/transport/provider limits remain enforced without silent prompt truncation.
 
+Custom extensions receive published category IDs, conditions and available groups; they receive no degree/rubric text. A single-group extension category always executes regular regardless of a returned group.
+
+#### Scenario: Single-group extension category
+
+- **WHEN** a custom extension selects a published category with regular candidates only
+- **THEN** HiRoute MUST execute regular without requiring a degree question or accepting another category.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246369555
+
 ### Requirement: Group policy consumes only applicable current assessment
 
-For a dual-group category under the legacy native or custom-extension v1 protocol,
+For a dual-group category under the legacy native protocol,
 regular requires current simple probability at least its threshold and no applicable
 complete current assessment strictly below the competence floor.
 Defaults are 0.8 and 0.5; finite 0..1 values and equality behavior follow
@@ -101,28 +110,8 @@ and applicability cannot rescue invalid/missing assessment or select a category.
 Same-turn inheritance, ContextHold, candidate ordering and availability relay
 retain their existing rules. C is inapplicable to custom-extension v1 and heuristics.
 
-#### Scenario: A new user turn keeps the selected group
-
-- **WHEN** a custom-branch follow-up selects the same group and its held candidate remains valid
-- **THEN** the Gateway MUST prefer that candidate while retaining the fresh category/degree decision.
-
-#### Scenario: Unresolved problem remains relevant
-
-- **WHEN** P(simple) meets T, a complete eligible score is below F and applicability equals 0.5
-- **THEN** Primary protection MUST apply; equality does not suppress it.
-
-#### Scenario: Problem no longer governs current work
-
-- **WHEN** all historical protection guards hold and applicability is below 0.5
-- **THEN** The historical trigger MUST be suppressed and the regular group selected without altering the raw score.
-
-#### Scenario: Applicability is unavailable
-
-- **WHEN** a low-score protection opportunity has no valid applicability result
-- **THEN** Protection MUST be retained conservatively, with the unavailability reason recorded.
-
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235110154
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370180
 
 ### Requirement: System One compiles independent typed questions in one call
 
@@ -196,55 +185,63 @@ historical evidence preserve their existing compatibility treatment.
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
 
-### Requirement: Custom extensions have one constrained v1 request/response
-
-The current `/v1/decisions` contract MUST use `decision`, `latest_user`,
-`visible_conversation`, `history_partial`, and `assessment_target`. The last field
-is null or `{from, instructions, criteria}` selecting the retained suffix of one
-actual stage. HiRoute binds internal execution identity without sending internal
-model/stage IDs. Responses contain `decision` and optional `assessment`, constrained
-to the published allowed choices. The extension implements its provider integration,
-assessment, and context handling, never selects arbitrary models, branches, or tools.
-
-The typed producer, parser, official extension, examples, and OpenAPI MUST remain
-one current v1 shape with no old-format negotiation/dual path. Earlier development
-structures are not supported migration inputs. Supported released data still uses
-[registered compatibility](../../../contracts/compatibility-support.v1.json) rather
-than treating a historical fresh-data exercise as permission to discard user data.
-The API guide/OpenAPI supply complete wire schemas; the durable policy is here.
-
 ### Requirement: Conservative fallback preserves a valid selected category
 
-A valid category with invalid degree uses that category's primary group with an
-explicit degree-unavailable reason, not probability 1 or another default category.
-A wholly failed call uses heuristic policy for smart saving, or the explicit default
-category's primary group when present, otherwise regular. Valid decision plus
-invalid assessment keeps the decision and discards only assessment. Cancellation,
-source deadline, and replay integrity failures terminate instead of fallback.
-One decision call uses the shared total deadline without a new retry/state machine.
+A valid category with invalid degree MUST use that category's primary group with an explicit degree-unavailable reason, not
+probability 1 or another default category. For a custom extension, a valid category with a missing or invalid group uses
+that category's primary group with an explicit decision-unavailable reason; HiRoute does not switch category or invent a
+group. A wholly failed call uses heuristic policy for smart saving, or the explicit default category's primary group when
+present, otherwise regular. Valid decision plus invalid assessment keeps the decision and discards only assessment.
+Cancellation, source deadline, and replay integrity failures terminate instead of fallback. One decision call uses the
+shared total deadline without a new retry/state machine.
 
 #### Scenario: Review selected but degree is missing
 
 - **WHEN** the response selects review, while writing is the plan default
-- **THEN** HiRoute MUST select review's primary group and report degree failure;
-  it cannot switch to writing or manufacture a probability.
+- **THEN** HiRoute MUST select review's primary group and report degree failure; it cannot switch to writing or manufacture a probability.
+
+#### Scenario: Category valid but group missing
+
+- **WHEN** a custom extension selects a published dual-group category but omits or corrupts the group
+- **THEN** HiRoute MUST execute that category's primary group with an explicit decision-unavailable reason; it cannot switch category or invent a group.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370180
 
 ### Requirement: Overrides, route editing, and protocol help preserve user intent
 
-New connection flow from a route MUST preserve its draft, return to the exact saved
-version, and never publish implicitly. Custom-category overrides copy the entire
-current effective judgment settings, including thresholds, degree, rubric, anchors,
-and supplemental assessment requirements. They become independent until restore-
-plan-default clears the whole override without changing category/name/models.
-Single-group categories hide inapplicable degree controls. Hidden invalid fields
-expand on publication failure, and switching judgment mode preserves parked edits.
+New connection flow from a route MUST preserve its draft, return to the exact saved version, and never publish implicitly.
+Custom-category overrides copy the entire current effective judgment settings, including thresholds, degree, rubric,
+anchors, and supplemental assessment requirements. They become independent until restore-plan-default clears the whole
+override without changing category/name/models. Single-group categories hide inapplicable degree controls. Hidden invalid
+fields expand on publication failure, and switching judgment mode preserves parked edits.
 
-Extension help MUST show first-decision and prior-stage-assessment examples, request
-copy, and the current OpenAPI download, without future tool-selection entries or
-another Secret-management surface. The first response need not contain assessment;
-later scoring remains attributed to the old stage. Plan/session presentation freezes
-probability, thresholds, selection/protection/relay reasons, and actual positions,
-using the same [quality queries](../session-history/spec.md).
+A route whose selected connection is a custom extension MUST NOT show or publish simple thresholds, competence floors,
+degree text, assessment rubrics or category judgment overrides; categories, conditions and candidates remain editable.
+Its draft judgment settings stay parked and return when a built-in connection is selected again. Users never choose an
+extension protocol version.
+
+Extension help MUST show first-decision and preceding-stage examples, request copy, and the current OpenAPI download,
+without future tool-selection entries or another Secret-management surface. A response need not contain assessment.
+Plan/session presentation of a built-in decision freezes probability, thresholds, selection/protection/relay reasons,
+and actual positions. An extension decision is presented as selected by the decision extension with its optional reason
+and actual positions, without HiRoute threshold or protection explanations. Both use the same
+[quality queries](../session-history/spec.md).
+
+Parked unfinished prompt text MUST NOT block custom-extension publication. New derived execution payloads omit judgment settings; source drafts retain their bytes, including complete branch overrides. Released publications and unfinished or completed Operation envelopes retain original present judgment fields and canonical digests when read or revalidated.
+
+#### Scenario: Extension route hides decision settings
+
+- **WHEN** a user selects a saved custom extension for smart saving or custom branches
+- **THEN** the editor MUST show categories, conditions and candidates only, publish no thresholds or rubric, and restore the parked judgment settings when a built-in connection is selected again.
+
+#### Scenario: Extension decision presentation
+
+- **WHEN** a user inspects a request routed by a custom extension
+- **THEN** plan, session and request views MUST show that the decision extension selected the group, its optional reason and actual positions, without HiRoute threshold or protection explanations.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
 ### Requirement: C context allocation protects the complete assessed stage
 
@@ -333,12 +330,62 @@ Two-group protection explanations follow the copied judgment settings. With Syst
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235189421
 
+### Requirement: Custom extensions return the routing decision
+
+The current custom extension contract MUST return the routing decision. HiRoute sends the current safe user content,
+retained safe visible history with `{user,status,steps}` turns, `history_partial`, the published route shape and, only
+when it executed under the same Plan revision and connection revision, the preceding actual stage identified by
+its starting index, executed group and record completeness. The route shape is the smart-saving scope or the custom
+categories with stable IDs, conditions, available groups and the default category. HiRoute binds internal execution
+identity locally without sending model or stage IDs, and sends no degree text, assessment rubric or threshold.
+
+The response contains the category for custom branches and the regular or primary group for a dual-group scope, plus an
+optional bounded reason and an optional `{score, partial}` assessment of the preceding stage that is used only for
+quality reporting. Unknown members and unpublished IDs are rejected. The extension implements provider integration,
+context handling and its own decision policy; it never selects models, candidates, unpublished categories or tools.
+
+The typed producer, parser, official extension, examples and OpenAPI MUST describe one current shape. It replaced
+the earlier v1 judgment shape in place, without a legacy reader, negotiation or user-visible protocol version.
+Released Plans and connections stay readable; their stored judgment settings remain parked for built-in connections.
+An extension that has not been upgraded fails like any invalid decision call and uses the existing fallback. The API
+guide/OpenAPI supply complete wire schemas; the durable policy is here.
+
+The request carries the preceding actual category before the new category is known. HiRoute MUST verify exact Plan and saved connection revision, unique actual execution attribution and membership in the published route locally. A response choosing another category MUST discard its optional assessment while preserving its category/group decision. This does not identify human authorship or a client subdialog, and adds no history beyond the existing safe view.
+
+#### Scenario: Extension keeps primary after a failed stage
+
+- **WHEN** the preceding actual stage ran on the regular group in the same category and Plan revision, and the extension returns primary for the new user turn
+- **THEN** HiRoute MUST execute that category's primary group and record the decision extension as the selection source with its optional reason.
+
+#### Scenario: Unrelated simple task returns to regular
+
+- **WHEN** after a primary stage, the extension returns regular for a new user turn in a dual-group scope
+- **THEN** HiRoute MUST execute the regular group without applying any simple threshold, competence floor or historical-protection rule.
+
+#### Scenario: Preceding stage from another revision
+
+- **WHEN** the preceding actual stage executed under an earlier Plan revision or another connection revision
+- **THEN** The request MUST carry no preceding stage; HiRoute MUST NOT send degree text, rubrics or thresholds in any case.
+
+#### Scenario: Extension not yet upgraded
+
+- **WHEN** a published route calls an extension that still implements only the replaced v1 shape
+- **THEN** the call MUST fail validation and use the existing decision-failure fallback; the published Plan stays readable and save-and-test reports that the extension does not implement the current contract.
+
+#### Scenario: The extension chooses a different category
+
+- **WHEN** the request includes an eligible actual writing stage and the extension selects review
+- **THEN** HiRoute MUST preserve the review decision and discard the returned assessment; no writing score may affect review.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246369555
+
 ## Implementation references
 
 - [Decision domain](../../../crates/domain/src/routing/decision.rs) and
   [definition types](../../../crates/domain/src/routing/decision_definition.rs).
 - [System One codec](../../../crates/gateway/src/core_runtime/classification/system_one.rs),
-  [custom codec](../../../crates/gateway/src/core_runtime/classification/protocol.rs), and
+  [custom codec](../../../crates/gateway/src/core_runtime/classification/extension.rs), and
   [policy scenarios](../../../crates/gateway/src/core_runtime/classification/group_policy_tests.rs).
 - [Current API/OpenAPI](../../../decision-extensions/api/README.md) and
   [Desktop connection owner](../../../apps/desktop/src/features/decision-services/DecisionServicesPage.tsx).
