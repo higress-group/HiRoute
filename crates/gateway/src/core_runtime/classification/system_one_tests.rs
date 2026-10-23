@@ -150,7 +150,7 @@ fn oversized_current_input_is_rejected_and_history_removal_marks_only_affected_t
     }];
     h.visible_conversation.insert(0, Arc::new(oversized));
     let prepared = request_template(&a, &diagnostic_request(), &h).unwrap();
-    assert!(prepared.has_target && prepared.target_partial);
+    assert!(prepared.bindings.as_ref().unwrap().assessment.is_some() && prepared.target_partial);
     let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
     assert_eq!(
         body["state"]["visible_conversation"]

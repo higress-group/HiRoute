@@ -159,7 +159,6 @@ pub(super) fn request_template(
     Ok(PreparedDecisionRequest {
         target_category: None,
         template,
-        has_target: admitted_stage > 0,
         target_partial,
         bindings: Some(bindings),
         routing_observation: Some(observation),

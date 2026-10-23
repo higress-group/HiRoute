@@ -122,7 +122,6 @@ pub(super) struct ClassificationRequest<'a> {
 struct PreparedDecisionRequest {
     routing_observation: Option<hiroute_domain::RoutingObservationV1>,
     template: PreparedReplayTemplate,
-    has_target: bool,
     target_partial: bool,
     target_category: Option<String>,
     bindings: Option<system_one::Bindings>,

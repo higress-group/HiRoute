@@ -30,7 +30,6 @@ pub(super) fn request_template(
         }
     };
     let target = preceding_stage(history, authority);
-    let has_target = target.is_some();
     let target_category = target
         .as_ref()
         .and_then(|value| value["category"].as_str())
@@ -39,7 +38,6 @@ pub(super) fn request_template(
         "history_partial":history.history_partial,"preceding_stage":target});
     Ok(PreparedDecisionRequest {
         template: prepare_replay_json_template(&body, refs)?,
-        has_target,
         target_partial: false,
         target_category,
         bindings: None,

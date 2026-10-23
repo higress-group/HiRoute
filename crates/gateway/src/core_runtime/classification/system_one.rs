@@ -83,7 +83,6 @@ pub(super) fn request_template(
     Ok(PreparedDecisionRequest {
         target_category: None,
         template,
-        has_target: target.is_some(),
         target_partial,
         bindings: Some(bindings),
         routing_observation: None,
