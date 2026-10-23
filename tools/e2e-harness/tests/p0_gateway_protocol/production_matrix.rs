@@ -511,7 +511,7 @@ fn expected_client_body(ingress: IngressProtocol, upstream: IngressProtocol, ali
             "object": "response",
             "output": [{
                 "content": [{"annotations": [], "text": "ok", "type": "output_text"}],
-                "id": "msg_0",
+                "id": "msg_28506deed1de17471f681d6b3986d2ea_0",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
