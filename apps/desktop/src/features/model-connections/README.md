@@ -27,4 +27,10 @@ discovered, removed, or unavailable models are never automatically selected.
 
 The composition owner must provide the real Tauri/Client Core adapter, open/return navigation, current revision set, protected-input lifecycle, and save recovery callbacks. The feature intentionally does not implement storage, transaction recovery, routing compilation, or the “My models” page.
 
-The connection-options response also carries the client-bundled current metadata snapshot. The directory uses executable native API options; model candidates and capability prefill come from the selected option and its matching metadata. Custom API prefill offers those same native options and keeps the configuration editable. Unknown capabilities use the form's editable defaults. Credentials are never inferred, lifecycle data is warning-only, and nested cost hints are explicitly presented as “not a price.” A connection check remains mandatory before selected metadata can be saved.
+The connection-options response also carries the daemon-selected complete metadata snapshot. The directory uses executable native API options; model candidates and capability prefill come from the selected option and its matching metadata. Custom API prefill offers those same native options and keeps the configuration editable. Unknown capabilities use the form's editable defaults. Credentials are never inferred, lifecycle data is warning-only, and nested cost hints are explicitly presented as “not a price.” A connection check remains mandatory before selected metadata can be saved.
+
+Exact registered prefill/check and new publication use the shared scoped-default resolver.
+User/ambiguous declarations retain saved intent; connector-verified authority is preserved.
+New UI saves use a V3 source/default transaction while released V2 requests and journal bytes
+retain their original proof reader. The model detail default editor shows saved versus current
+values and records official-follow/preserve choices through normal Preview/Apply.

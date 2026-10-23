@@ -107,19 +107,20 @@ fn save_handoff_binding(
     // The legacy pre-Gateway projection flow intentionally shares the command identifier but
     // has a different durable payload. Only the versioned management schema participates in a
     // subscription-validation handoff; other authorized compute writes must pass through.
-    if operation
-        .plan
-        .spec()
-        .desired_state
-        .get("schema")
-        .and_then(serde_json::Value::as_str)
-        != Some("hiroute.compute-management-change/v2")
-    {
-        return Ok(None);
-    }
-    let change: HandoffChangeV2 =
-        serde_json::from_value(operation.plan.spec().desired_state.clone())
-            .map_err(|_| error(PortErrorCode::Corrupt, "subscription.handoff.change"))?;
+    let desired = &operation.plan.spec().desired_state;
+    let change = match desired.get("schema").and_then(serde_json::Value::as_str) {
+        Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3) => desired
+            .get("change")
+            .filter(|value| {
+                value.get("schema").and_then(serde_json::Value::as_str)
+                    == Some("hiroute.compute-management-change/v2")
+            })
+            .ok_or_else(|| error(PortErrorCode::Corrupt, "subscription.handoff.change"))?,
+        Some("hiroute.compute-management-change/v2") => desired,
+        _ => return Ok(None),
+    };
+    let change: HandoffChangeV2 = serde_json::from_value(change.clone())
+        .map_err(|_| error(PortErrorCode::Corrupt, "subscription.handoff.change"))?;
     let Some(validation) = change.validation else {
         return Ok(None);
     };

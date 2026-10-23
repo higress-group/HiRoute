@@ -17,6 +17,13 @@ pub(crate) fn load_production_release_catalog() -> Result<TrustedReleaseCatalog,
         BUNDLED_MODEL_DATA,
     )
     .map_err(|error| format!("ReleaseFacts verification failed: {error}"))?;
+    let snapshot = serde_json::from_slice(include_bytes!(
+        "../../../assets/release-facts/current/bundle/official-model-data.json"
+    ))
+    .map_err(|_| "invalid compiled official model snapshot")?;
+    let catalog = catalog
+        .with_embedded_official_data(snapshot)
+        .map_err(|error| error.to_string())?;
     #[cfg(feature = "integration-test-hooks")]
     let catalog = crate::model_feed::product_fixture::catalog(catalog)?;
     Ok(catalog)

@@ -319,6 +319,53 @@ impl TryFrom<WebComputeManagementChangeV2> for ComputeManagementChangeV2 {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct WebComputeManagementChangeV3 {
+    schema: String,
+    change: WebComputeManagementChangeV2,
+    default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+}
+
+fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
+    {
+        let change: ComputeManagementChangeV3 =
+            serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
+        serde_json::to_value(WebComputeManagementChangeV3 {
+            schema: change.schema,
+            change: change.change.into(),
+            default_preferences: change.default_preferences,
+        })
+        .map_err(|_| "RESPONSE_DATA_INVALID")
+    } else {
+        let change: ComputeManagementChangeV2 =
+            serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
+        serde_json::to_value(WebComputeManagementChangeV2::from(change))
+            .map_err(|_| "RESPONSE_DATA_INVALID")
+    }
+}
+fn change_for_native(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
+    {
+        let change: WebComputeManagementChangeV3 =
+            serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
+        serde_json::to_value(ComputeManagementChangeV3 {
+            schema: change.schema,
+            change: change.change.try_into()?,
+            default_preferences: change.default_preferences,
+        })
+        .map_err(|_| "REQUEST_INVALID")
+    } else {
+        let change: WebComputeManagementChangeV2 =
+            serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
+        serde_json::to_value(ComputeManagementChangeV2::try_from(change)?)
+            .map_err(|_| "REQUEST_INVALID")
+    }
+}
+
 #[derive(Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WebComputeSavePreviewV2 {
@@ -339,10 +386,7 @@ impl TryFrom<ComputeSavePreviewV2> for WebComputeSavePreviewV2 {
 
     fn try_from(value: ComputeSavePreviewV2) -> Result<Self, Self::Error> {
         let mut spec = value.spec;
-        let change = serde_json::from_value::<ComputeManagementChangeV2>(spec.desired_state)
-            .map_err(|_| "RESPONSE_DATA_INVALID")?;
-        spec.desired_state = serde_json::to_value(WebComputeManagementChangeV2::from(change))
-            .map_err(|_| "RESPONSE_DATA_INVALID")?;
+        spec.desired_state = change_for_web(spec.desired_state)?;
         Ok(Self {
             candidate: value.candidate,
             validation: value.validation.map(Into::into),
@@ -369,10 +413,7 @@ impl TryFrom<WebComputeConnectionApplyRequestV1> for ComputeConnectionApplyReque
 
     fn try_from(value: WebComputeConnectionApplyRequestV1) -> Result<Self, Self::Error> {
         let mut spec = value.spec;
-        let change = serde_json::from_value::<WebComputeManagementChangeV2>(spec.desired_state)
-            .map_err(|_| "REQUEST_INVALID")?;
-        spec.desired_state = serde_json::to_value(ComputeManagementChangeV2::try_from(change)?)
-            .map_err(|_| "REQUEST_INVALID")?;
+        spec.desired_state = change_for_native(spec.desired_state)?;
         Ok(Self {
             spec,
             accept_digest: value.accept_digest,
@@ -582,6 +623,15 @@ mod tests {
 
     #[test]
     fn preview_and_apply_restore_the_exact_native_change() {
+        round_trip_native_change(false);
+    }
+
+    #[test]
+    fn model_defaults_v3_preview_and_apply_restore_the_exact_native_change() {
+        round_trip_native_change(true);
+    }
+
+    fn round_trip_native_change(with_defaults: bool) {
         let revisions = RevisionSetV1 {
             target: 3,
             dependencies: BTreeMap::new(),
@@ -601,6 +651,15 @@ mod tests {
             key_edits: Vec::new(),
             validation: Some(validation()),
         };
+        let desired = if with_defaults {
+            serde_json::json!({
+                "schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3,
+                "change": change,
+                "default_preferences":{"binding/example":{"vision":{"intent":"preserve_saved"}}}
+            })
+        } else {
+            serde_json::to_value(&change).unwrap()
+        };
         let preview = ComputeSavePreviewV2 {
             candidate: None,
             validation: Some(validation()),
@@ -608,7 +667,7 @@ mod tests {
                 schema_version: SchemaVersion::new(1, 0),
                 command_id: "compute.connection.apply".into(),
                 resource_id: Some("cpa/example".into()),
-                desired_state: serde_json::to_value(&change).unwrap(),
+                desired_state: desired.clone(),
             },
             accept_digest: CanonicalDigest::of_bytes(b"preview"),
             expected_revisions: revisions.clone(),
@@ -619,7 +678,11 @@ mod tests {
         let web =
             serde_json::to_value(WebComputeSavePreviewV2::try_from(preview).unwrap()).unwrap();
         assert_eq!(
-            web["spec"]["desired_state"]["validation"]["validation_revision"],
+            if with_defaults {
+                web["spec"]["desired_state"]["change"]["validation"]["validation_revision"].clone()
+            } else {
+                web["spec"]["desired_state"]["validation"]["validation_revision"].clone()
+            },
             LARGE_REVISION.to_string()
         );
         let request: WebComputeConnectionApplyRequestV1 =
@@ -631,8 +694,9 @@ mod tests {
             }))
             .unwrap();
         let native = ComputeConnectionApplyRequestV1::try_from(request).unwrap();
-        let restored: ComputeManagementChangeV2 =
-            serde_json::from_value(native.spec.desired_state).unwrap();
+        assert_eq!(native.spec.desired_state, desired);
+        let restored =
+            hiroute_application_api::saved_compute_change(native.spec.desired_state).unwrap();
         assert_eq!(restored, change);
     }
 }

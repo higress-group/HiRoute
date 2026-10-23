@@ -134,7 +134,7 @@ preview or unlisted candidate and never starts the service automatically.
 The website build validates the generated model feed with the shared Rust admission
 code and Node structural checks. The validated payload travels in its own artifact,
 outside `dist`. Only the production deploy checks the current HTTPS publication and
-stages the exact payload at `/model-feed/v1.json` before upload. PR builds publish
+stages the exact payload at `/model-feed/v2.json` before upload. PR builds publish
 nothing. An unchanged payload writes no feed file, so the served object stays intact.
 Before the first feed-capable release, the JSON null payload skips publication and
 ordinary website deployment continues. No feed signing key or client public key is

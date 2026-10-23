@@ -359,7 +359,7 @@ impl LocalControlAdapter {
             || {
                 let catalog = self
                     .current_catalog()
-                    .ok_or(ControlReadError::Unavailable)?;
+                    .ok_or(ControlReadError::SnapshotChanged)?;
                 let provenance = catalog
                     .compute_catalog_provenance()
                     .map_err(|_| ControlReadError::Corrupt)?;
@@ -684,8 +684,15 @@ impl LocalControlAdapter {
                             continue;
                         }
                     }
-                    let compilation = diagnostics.compile_models(&source);
-                    for fact in &compilation {
+                    let preferences = control
+                        .source_default_preferences(&source.source_id)
+                        .map_err(super::map_port)?;
+                    let mut compilation = diagnostics.compile_models(&source);
+                    for fact in &mut compilation {
+                        fact.default_preferences = preferences
+                            .get(&fact.binding_id)
+                            .cloned()
+                            .unwrap_or_default();
                         let candidate = match &fact.provenance {
                     hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
                         connector_id,
@@ -801,9 +808,6 @@ impl LocalControlAdapter {
                 expected_revisions
                     .dependencies
                     .insert("feed.model_data".into(), catalog.generation);
-                expected_revisions
-                    .dependencies
-                    .insert("feed.sequence".into(), catalog.accepted_sequence);
                 expected_revisions
                     .dependencies
                     .insert("release.registry".into(), provenance.release_sequence);

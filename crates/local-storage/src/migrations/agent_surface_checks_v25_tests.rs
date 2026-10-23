@@ -17,6 +17,8 @@ fn schema24_surface_upgrade_preserves_raw_results_and_existing_key() {
     for path in live_database_paths(&root.join("live")) {
         let connection = Connection::open(&path).unwrap();
         if path.file_name().unwrap() == "control.db" {
+            // Reconstruct the historical layout before entering the real upgrade path.
+            connection.execute_batch("DROP TABLE compute_source_defaults; ALTER TABLE compute_management_effects DROP COLUMN preferences_before; ALTER TABLE compute_management_effects DROP COLUMN preferences_after;").unwrap();
             connection
                 .execute_batch("DROP TABLE decision_service_operations; DROP TABLE decision_services; DROP TABLE agent_surface_checks")
                 .unwrap();

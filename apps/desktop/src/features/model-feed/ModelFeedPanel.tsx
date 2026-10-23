@@ -1,3 +1,5 @@
+import { readCurrentCatalog } from './catalog-read';
+import { ModelMetadataDirectory } from './ModelMetadataDirectory';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import { Dialog, UiIcon } from '../../ui';
@@ -7,15 +9,41 @@ import './model-feed.css';
 
 export function ModelFeedPanel({ language, mutable = true, onChanged }: { language: 'zh' | 'en'; mutable?: boolean; onChanged?: () => void }) {
   const zh = language === 'zh';
+  const fieldLabel = (name: string) => {
+    if (name.startsWith('prices:')) return `${zh?'价格':'Price'} · ${name.split(':')[1]} · ${name.endsWith('api_equivalent') ? (zh?'API 参考':'API reference') : (zh?'使用估算':'Usage estimate')}`;
+    return ({tool:zh?'工具调用':'Tools',vision:zh?'图片输入':'Vision',streaming:zh?'流式输出':'Streaming',context_tokens:zh?'上下文上限':'Context limit',max_output_tokens:zh?'输出上限':'Output limit',native_reasoning:zh?'思考设置':'Reasoning',availability:zh?'可用性':'Availability'} as Record<string,string>)[name] ?? (zh?'默认值':'Default');
+  };
+  const valueLabel = (value: unknown): string => {
+    if (value === null || value === undefined) return zh?'未知':'Unknown';
+    if (typeof value === 'boolean') return value ? (zh?'支持':'Supported') : (zh?'不支持':'Not supported');
+    if (typeof value === 'number') return value.toLocaleString();
+    if (typeof value === 'string') return value;
+    const v=value as Record<string,unknown>;
+    if (Array.isArray(v.rules)) return v.rules.map(rule=>{
+      const [rates,schedule]=rule as [Record<string,{state:string;micros_per_million_tokens?:number}>,unknown];
+      return Object.entries(rates).map(([key,rate])=>`${({input_uncached:zh?'输入':'Input',output:zh?'输出':'Output',cache_read:zh?'缓存读取':'Cache read',cache_write:zh?'缓存写入':'Cache write'} as Record<string,string>)[key] ?? key}: ${rate.state === 'known' ? (rate.micros_per_million_tokens! / 1_000_000).toLocaleString(language,{maximumFractionDigits:6}) : (zh?'未知':'Unknown')}`).join(' · ')+(schedule ? (zh?'（时段规则）':' (time window)') : '');
+    }).join('; ') || (zh?'未知':'Unknown');
+    if (v.kind === 'fixed') return v.profile === 'non-thinking' ? (zh?'不使用思考':'No reasoning') : (zh?'固定思考配置':'Fixed reasoning profile');
+    if (v.kind === 'toggle') return zh?'可切换思考':'Switchable reasoning';
+    return zh?'可选思考配置':'Reasoning choices';
+  };
   const [status, setStatus] = useState<ModelFeedStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<FeedRemovalPreview | null>(null);
+  const [impactBusy, setImpactBusy] = useState(false);
+  async function moreImpact() {
+    if (!preview?.next_cursor || impactBusy) return;
+    setImpactBusy(true);
+    try {const page = await invoke<FeedRemovalPreview>('model_feed_remove_preview', {input:{cursor:preview.next_cursor}}); if (page.digest !== preview.digest) throw new Error('stale'); setPreview({...page, impact:[...preview.impact,...page.impact], sources:[...preview.sources,...page.sources]});}
+    catch {setPreview(null);setError(zh ? '影响范围已变化，请重新查看。' : 'Impact changed. Review it again.');}
+    finally {setImpactBusy(false);}
+  }
   const [disable, setDisable] = useState(true);
   const active = useRef(false);
   const live = useRef(true);
   const load = useCallback(async () => {
-    try { const result = await invoke<ModelFeedStatus>('model_feed_status'); if (live.current) { setStatus(result); setError(''); } }
+    try { const result = await readCurrentCatalog(() => invoke<ModelFeedStatus>('model_feed_status')); if (live.current) { setStatus(result); setError(''); } }
     catch { if (live.current) setError(zh ? '暂时无法读取官网模型目录的状态。' : 'Model directory status is unavailable.'); }
   }, [zh]);
   useEffect(() => { live.current = true; void load(); return () => { live.current = false; }; }, [load]);
@@ -69,15 +97,16 @@ export function ModelFeedPanel({ language, mutable = true, onChanged }: { langua
     {refusalText && <p className="callout warn" role="status">{refusalText}{status?.recovery_available ? (zh ? '可确认重置缓存，损坏的文件会保留。' : 'You can confirm a cache reset; the damaged file is preserved.') : ''}</p>}
     {error && <p role="alert" className="field-error">{error} <button className="btn btn-quiet" disabled={busy} onClick={() => void load()}>{zh ? '重新读取' : 'Reload'}</button></p>}
     {status && (open || status.recovery_available) && <div className="model-feed-details">
-      <p>{zh ? '官网目录只补充模型信息：能力、思考设置和推荐说明。接入地址、认证方式和请求格式只来自 HiRoute 内置的服务目录，官网目录改不了；目录更新也不会改变已保存的接入和已发布的路由。' : 'The directory only adds model information: capabilities, reasoning settings and recommendations. Endpoints, authentication and request formats come only from the service catalog built into HiRoute, and directory updates never change saved connections or published routes.'}</p>
-      {status.held && <p className="field-help">{zh ? `已采用 ${status.counts.applied} 个模型 · ${status.counts.ignored_embedded} 个内置目录已包含 · ${status.counts.newer_client} 个需要更新 HiRoute · ${status.counts.unresolved} 个未能匹配` : `${status.counts.applied} models added · ${status.counts.ignored_embedded} already built in · ${status.counts.newer_client} need a newer HiRoute · ${status.counts.unresolved} unresolved`}</p>}
+      <p>{zh ? '官网资料提供模型能力、思考设置、价格和证据来源。用户保留的配置优先；内置资料用于离线兜底。更新会用于之后的检查和发布，已有路由和会话保留执行配置。' : 'The directory supplies capabilities, reasoning, prices and sources. Preserved user settings take priority; embedded information provides an offline fallback. Updates apply to later checks and publications; existing routes and sessions retain their execution settings.'}</p>
+      <p className="field-help">{zh ? `${status.counts.descriptive_records} 条资料 · ${status.counts.qualified_models} 个模型通过本机执行资格检查 · ${status.counts.restricted_models} 个模型仅展示资料` : `${status.counts.descriptive_records} records · ${status.counts.qualified_models} models qualified by this client · ${status.counts.restricted_models} descriptive-only models`}</p>
       {status.last_attempt && <p className="field-help">{zh ? '上次检查' : 'Last checked'} {day(status.last_attempt.at)} · {resultLabel[status.last_attempt.result] ?? (zh ? '检查未完成' : 'Check incomplete')}</p>}
+      <ModelMetadataDirectory language={language} />
       <button className="btn btn-quiet" disabled={busy || !mutable || (!status.held && !status.recovery_available)} onClick={() => void removePreview()}>{status.recovery_available ? (zh ? '重置损坏缓存…' : 'Reset damaged cache…') : (zh ? '移除本机缓存…' : 'Remove local copy…')}</button>
     </div>}
-    <Dialog open={Boolean(preview)} title={status?.recovery_available ? (zh ? '重置损坏缓存' : 'Reset damaged cache') : (zh ? '移除本机缓存的模型目录' : 'Remove the local model directory')} closeLabel={zh ? '取消' : 'Cancel'} closeDisabled={busy} onClose={() => setPreview(null)} footer={<><button className="btn" disabled={busy} onClick={() => setPreview(null)}>{zh ? '取消' : 'Cancel'}</button><button className="btn btn-primary" disabled={busy || !preview} onClick={() => preview && void change('model_feed_remove_apply', { accepted_digest: preview.digest, also_disable_retrieval: disable })}>{status?.recovery_available ? (zh ? '确认重置' : 'Confirm reset') : (zh ? '移除' : 'Remove')}</button></>}>
+    <Dialog open={Boolean(preview)} title={status?.recovery_available ? (zh ? '重置损坏缓存' : 'Reset damaged cache') : (zh ? '移除本机缓存的模型目录' : 'Remove the local model directory')} closeLabel={zh ? '取消' : 'Cancel'} closeDisabled={busy} onClose={() => setPreview(null)} footer={<><button className="btn" disabled={busy} onClick={() => setPreview(null)}>{zh ? '取消' : 'Cancel'}</button><button className="btn btn-primary" disabled={busy || impactBusy || !preview?.complete} onClick={() => preview && void change('model_feed_remove_apply', { accepted_digest: preview.digest, also_disable_retrieval: disable })}>{status?.recovery_available ? (zh ? '确认重置' : 'Confirm reset') : (zh ? '移除' : 'Remove')}</button></>}>
       {status?.recovery_available && <p>{zh ? '将保留损坏的状态文件并新建缓存状态。' : 'The damaged state file will be preserved and cache state recreated.'}</p>}
-      <p>{zh ? '这些接入中由官网目录补充的模型将不能再用于检查、保存或发布新的路由。已发布路由及其会话和 Worker 继续运行。' : 'Directory models in these connections will no longer be available for checks, saves or publishing new routes. Published routes, sessions and Workers keep running.'}</p>
-      {preview && <>{preview.sources.length ? <ul>{preview.sources.map(source => <li key={source.source_id}><strong>{source.display_name}</strong><span> · {source.model_configuration_ids.length} {zh ? '个模型' : 'models'}</span></li>)}</ul> : <p>{zh ? '没有保存的接入依赖这份目录。' : 'No saved connection depends on this directory.'}</p>}<p>{zh ? `${preview.published_revisions.length} 个已发布路由保持可用。HiRoute 会记住已接受的最新目录，不会退回更旧的目录。` : `${preview.published_revisions.length} published routes remain usable. HiRoute remembers the newest accepted directory and will not fall back to an older one.`}</p></>}
+      <p>{zh ? '移除后，新检查与发布将使用内置资料。下面列出能力、思考设置或价格默认值会变化的模型。用户保留的值与已发布路由不变。' : 'After removal, new checks and publications use embedded information. Models with changed capability, reasoning or price defaults are listed below. Preserved user values and published routes retain their settings.'}</p>
+      {preview && <><p>{zh ? `${preview.impact.length} / ${preview.total} 项影响` : `${preview.impact.length} / ${preview.total} changed defaults`}</p><ul>{preview.impact.map(record => <li key={`${record.source_id}/${record.binding_id}/${Object.keys(record.changes).join()}`}><strong>{record.source_name}</strong><p>{record.model_display_name}</p><dl>{Object.entries(record.changes).map(([field,change])=><div key={field}><dt>{fieldLabel(field)}</dt><dd>{zh?'当前':'Current'}: {valueLabel(change.current)} → {zh?'内置':'Embedded'}: {valueLabel(change.fallback)}</dd></div>)}</dl></li>)}</ul>{preview.next_cursor && <button className="btn" disabled={impactBusy} onClick={() => void moreImpact()}>{zh ? '继续查看影响' : 'Review more impacts'}</button>}<p>{zh ? `${preview.published_revision_count} 个已发布版本保持可用。` : `${preview.published_revision_count} published revisions remain usable.`}</p></>}
       <label className="model-feed-checkbox"><input type="checkbox" checked={disable} disabled={busy} onChange={event => setDisable(event.target.checked)} /><span>{zh ? '同时关闭自动获取' : 'Also turn off automatic retrieval'}</span></label>
     </Dialog>
   </section>;

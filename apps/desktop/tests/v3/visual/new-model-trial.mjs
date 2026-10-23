@@ -69,7 +69,7 @@ try {
   chrome = spawn(chromeExecutable, ['--headless=new', '--disable-gpu', `--remote-debugging-port=${cdpPort}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1280,900', 'about:blank'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   await new Promise((resolve, reject) => { chrome.once('spawn', resolve); chrome.once('error', reject); });
   await waitFor(`http://127.0.0.1:${cdpPort}/json/version`);
-  const runner = spawn(process.execPath, [path.join(here, process.argv.includes('--protection') ? 'new-model-trial-protection-active.mjs' : process.argv.includes('--polish') ? 'new-model-trial-polish-active.mjs' : 'new-model-trial-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...(process.argv.includes('--timeline-pricing') ? ['--timeline-pricing'] : [])], { cwd: desktopRoot, stdio: 'inherit' });
+  const runner = spawn(process.execPath, [path.join(here, process.argv.includes('--metadata') ? 'model-metadata-active.mjs' : process.argv.includes('--protection') ? 'new-model-trial-protection-active.mjs' : process.argv.includes('--polish') ? 'new-model-trial-polish-active.mjs' : 'new-model-trial-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...(process.argv.includes('--timeline-pricing') ? ['--timeline-pricing'] : [])], { cwd: desktopRoot, stdio: 'inherit' });
   const outcome = await waitForExit(runner);
   if (outcome.code !== 0) process.exitCode = outcome.code ?? 1;
 } finally {

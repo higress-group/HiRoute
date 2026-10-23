@@ -72,12 +72,16 @@ pub(crate) fn command_payload(
         )),
         "decision.services.apply" => Some(preview_or_apply(options)),
         "decision.services.test" => Some(classifier_request(options)),
-        "models.feed.status"
-        | "models.feed.refresh"
-        | "models.feed.remove.preview"
-        | "models.availability" => Some(empty::<hiroute_application_api::ClientEmptyRequestV1>(
-            options,
-        )),
+        "models.feed.status" | "models.feed.refresh" | "models.availability" => {
+            Some(empty::<hiroute_application_api::ClientEmptyRequestV1>(
+                options,
+            ))
+        }
+        "models.feed.remove.preview" => Some(if options.is_empty() {
+            empty::<hiroute_application_api::ModelFeedRemovalQueryV2>(options)
+        } else {
+            request::<hiroute_application_api::ModelFeedRemovalQueryV2>(options)
+        }),
         "models.feed.settings.apply" => Some(feed_settings(options)),
         "models.feed.remove.apply" => {
             Some(request::<hiroute_application_api::ModelFeedRemoveRequestV1>(options))
@@ -85,6 +89,20 @@ pub(crate) fn command_payload(
         "agents.previous-routing.preview" => Some(request::<
             hiroute_application_api::AgentPreviousRoutingQueryV1,
         >(options)),
+        "compute.defaults.get" => Some(request::<hiroute_application_api::ComputeDefaultsQueryV1>(
+            options,
+        )),
+        "compute.defaults.preview" => Some(request::<
+            hiroute_application_api::ComputeSavePreviewRequestV3,
+        >(options)),
+        "models.metadata.list" => Some(if options.is_empty() {
+            empty::<hiroute_application_api::ListModelMetadataV1>(options)
+        } else {
+            request::<hiroute_application_api::ListModelMetadataV1>(options)
+        }),
+        "models.metadata.get" => Some(request::<hiroute_application_api::GetModelMetadataV1>(
+            options,
+        )),
         "models.show" => Some(request::<hiroute_application_api::ModelCatalogQueryV1>(
             options,
         )),

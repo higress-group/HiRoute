@@ -4,6 +4,7 @@
 pub(crate) mod product_fixture;
 mod recovery;
 mod store;
+mod transition;
 pub(crate) use store::*;
 
 use arc_swap::ArcSwap;
@@ -42,6 +43,8 @@ pub(crate) struct ModelFeedStatus {
     pub recovery_available: bool,
     pub held: Option<HeldPublication>,
     pub highest_accepted_sequence: Option<u64>,
+    pub highest_accepted_data_revision: Option<u64>,
+    pub last_success_at_ms: Option<u64>,
     pub last_attempt: Option<FeedAttempt>,
     pub verification: String,
     pub counts: FeedCounts,
@@ -83,6 +86,17 @@ impl ModelFeedService {
         let (mut state, refused, recovery_available) =
             recovery::restore_state(&store, minimum_generation, minimum_sequence)?;
         let client_version = env!("CARGO_PKG_VERSION").to_owned();
+        let installed = embedded.official_snapshot();
+        if refused.is_none() {
+            let floor = DataFloor {
+                revision: installed.data_revision,
+                digest: installed.data_digest.clone(),
+            };
+            match &mut state.data_floor {
+                Some(current) => current.advance(&floor)?,
+                None => state.data_floor = Some(floor),
+            }
+        }
         let mut effective = embedded.clone();
         let mut counts = FeedCounts::default();
         if let Some(held) = &state.held {
@@ -94,6 +108,22 @@ impl ModelFeedService {
                         || validated.payload_digest != held.payload_digest
                     {
                         return Err("feed_cache_identity_mismatch".into());
+                    }
+                    if state.data_floor.as_ref().is_some_and(|f| {
+                        validated.payload.data_revision == f.revision
+                            && validated.payload.data_digest != f.digest
+                    }) {
+                        return Err("same_data_revision_conflicting_digest".into());
+                    }
+                    if validated.payload.data_revision < installed.data_revision {
+                        return Ok((embedded.clone(), FeedCounts::default()));
+                    }
+                    if state
+                        .data_floor
+                        .as_ref()
+                        .is_some_and(|f| validated.payload.data_revision < f.revision)
+                    {
+                        return Err("older_data_revision".into());
                     }
                     let admission = admit(&embedded, &validated.payload, &client_version)
                         .map_err(|e| e.to_string())?;
@@ -127,6 +157,30 @@ impl ModelFeedService {
                 }
             }
         }
+        let selected = effective.official_snapshot();
+        let selected = DataFloor {
+            revision: selected.data_revision,
+            digest: selected.data_digest,
+        };
+        let qualification =
+            CanonicalDigest::of(embedded.registry()).map_err(|_| "feed_qualification_digest")?;
+        if state
+            .selected_data
+            .as_ref()
+            .is_some_and(|old| old != &selected)
+            || state.selected_data.is_some()
+                && state.qualification_digest.as_ref() != Some(&qualification)
+        {
+            state.generation = state
+                .generation
+                .checked_add(1)
+                .ok_or("feed_generation_overflow")?;
+        }
+        state.qualification_digest = Some(qualification);
+        state.selected_data = Some(selected);
+        if refused.is_none() {
+            store.commit(&state)?;
+        }
         let generation = state.generation;
         let next_attempt = state
             .retrieval_enabled
@@ -155,14 +209,20 @@ impl ModelFeedService {
             client_version,
         })
     }
-    pub(crate) fn is_embedded_model(&self, id: &str) -> bool {
-        self.embedded.model_data().model(id).is_some()
+    pub fn embedded_catalog(&self) -> &Arc<TrustedReleaseCatalog> {
+        &self.embedded
     }
     pub fn current(&self) -> Arc<ReleaseCatalogSnapshot> {
         self.current.load_full()
     }
     pub fn available_catalog(&self) -> Option<Arc<ReleaseCatalogSnapshot>> {
-        self.active.load(Ordering::Acquire).then(|| self.current())
+        for _ in 0..3 {
+            if self.active.load(Ordering::Acquire) {
+                return Some(self.current());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        None
     }
     pub fn automatic_attempt_due(&self) -> bool {
         self.mutable.lock().is_ok_and(|guard| {
@@ -180,6 +240,8 @@ impl ModelFeedService {
             recovery_available: guard.recovery_available,
             held: state.held.clone(),
             highest_accepted_sequence: Some(accepted_sequence(state)).filter(|s| *s > 0),
+            highest_accepted_data_revision: state.data_floor.as_ref().map(|f| f.revision),
+            last_success_at_ms: state.last_success_at_ms,
             last_attempt: state.last_attempt.clone(),
             verification: guard.refused.clone().unwrap_or_else(|| {
                 if state.held.is_some() {
@@ -221,12 +283,44 @@ impl ModelFeedService {
         let guard = self.mutable.lock().map_err(|_| "feed_lock")?;
         removal_digest(&guard)
     }
+    #[cfg(test)]
     pub fn remove(
         &self,
         expected: &CanonicalDigest,
         disable: bool,
         install: impl FnOnce(u64, u64) -> Result<(), String>,
     ) -> Result<(), String> {
+        self.remove_prepared(
+            expected,
+            disable,
+            |_| Ok(()),
+            |catalog, (), commit| {
+                commit()?;
+                install(catalog.generation, catalog.accepted_sequence)
+            },
+        )
+    }
+    pub fn remove_prepared<P>(
+        &self,
+        expected: &CanonicalDigest,
+        disable: bool,
+        prepare: impl FnOnce(&ReleaseCatalogSnapshot) -> Result<P, String>,
+        install: impl FnOnce(
+            &ReleaseCatalogSnapshot,
+            P,
+            &mut dyn FnMut() -> Result<(), String>,
+        ) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let mut candidate = ReleaseCatalogSnapshot {
+            catalog: (*self.embedded).clone(),
+            generation: self
+                .current()
+                .generation
+                .checked_add(1)
+                .ok_or("feed_generation_overflow")?,
+            accepted_sequence: self.current().accepted_sequence,
+        };
+        let prepared = prepare(&candidate)?;
         let mut guard = self.mutable.lock().map_err(|_| "feed_lock")?;
         if !guard.recovery_available {
             check_mutable(&guard)?;
@@ -237,6 +331,11 @@ impl ModelFeedService {
         let mut next = guard.state.clone();
         next.held = None;
         next.etag = None;
+        let embedded = self.embedded.official_snapshot();
+        next.selected_data = Some(DataFloor {
+            revision: embedded.data_revision,
+            digest: embedded.data_digest,
+        });
         next.generation = next
             .generation
             .checked_add(1)
@@ -244,188 +343,49 @@ impl ModelFeedService {
         if disable {
             next.retrieval_enabled = false;
         }
-        if guard.recovery_available {
-            self.store.quarantine_state()?;
+        if candidate.generation != next.generation {
+            return Err("feed_retrieval_superseded".into());
         }
-        self.store.commit(&next)?;
+        candidate.accepted_sequence = accepted_sequence(&next);
+        let mut committed = false;
+        self.active.store(false, Ordering::Release);
+        let mut commit = || {
+            if committed {
+                return Err("feed_duplicate_commit".into());
+            }
+            if guard.recovery_available {
+                self.store.quarantine_state()?;
+            }
+            self.store.commit(&next)?;
+            committed = true;
+            Ok(())
+        };
+        let result = install(&candidate, prepared, &mut commit);
+        if let Err(error) = result {
+            if committed {
+                guard.state = next;
+                guard.refused = Some("feed_activation_requires_restart".into());
+                guard.recovery_available = false;
+            }
+            self.active.store(true, Ordering::Release);
+            return Err(error);
+        }
+        if !committed {
+            self.active.store(true, Ordering::Release);
+            return Err("feed_missing_commit".into());
+        }
         guard.state = next;
         guard.counts = FeedCounts::default();
         guard.next_attempt = guard
             .state
             .retrieval_enabled
             .then(|| now_ms() + startup_delay_ms());
-        self.active.store(false, Ordering::Release);
-        if let Err(error) = install(guard.state.generation, accepted_sequence(&guard.state)) {
-            guard.refused = Some("feed_activation_requires_restart".into());
-            guard.recovery_available = false;
-            // The control transaction failed atomically; its previous snapshot is still valid.
-            self.active.store(true, Ordering::Release);
-            return Err(error);
-        }
-        self.current.store(Arc::new(ReleaseCatalogSnapshot {
-            catalog: (*self.embedded).clone(),
-            generation: guard.state.generation,
-            accepted_sequence: accepted_sequence(&guard.state),
-        }));
+        self.current.store(Arc::new(candidate));
         self.active.store(true, Ordering::Release);
         guard.refused = None;
         guard.recovery_available = false;
         self.store.retire_unreferenced(None);
         Ok(())
-    }
-    pub fn refresh(
-        &self,
-        install: impl FnOnce(u64, u64) -> Result<(), String>,
-    ) -> Result<(), String> {
-        #[cfg(feature = "integration-test-hooks")]
-        if let Some(root) = product_fixture::root() {
-            return self.refresh_using(|_| product_fixture::download(&root), install);
-        }
-        self.refresh_using(|etag| retrieve_feed(&self.client_version, etag), install)
-    }
-    fn refresh_using(
-        &self,
-        mut retrieve: impl FnMut(
-            Option<&str>,
-        )
-            -> Result<FeedDownload, hiroute_integrations::model_feed::FeedError>,
-        install: impl FnOnce(u64, u64) -> Result<(), String>,
-    ) -> Result<(), String> {
-        let (generation, epoch, etag) = {
-            let mut guard = self.mutable.lock().map_err(|_| "feed_lock")?;
-            check_mutable(&guard)?;
-            if guard.refreshing {
-                while guard.refreshing {
-                    guard = self.refresh_finished.wait(guard).map_err(|_| "feed_lock")?;
-                }
-                return guard.last_refresh_result.clone().unwrap_or(Ok(()));
-            }
-            guard.refreshing = true;
-            (
-                guard.state.generation,
-                guard.retrieval_epoch,
-                guard.state.held.as_ref().and(guard.state.etag.clone()),
-            )
-        };
-        let fetched = retrieve(etag.as_deref()).and_then(|value| {
-            if matches!(value, FeedDownload::NotModified) && etag.is_none() {
-                retrieve(None)
-            } else {
-                Ok(value)
-            }
-        });
-        let mut guard = self.mutable.lock().map_err(|_| "feed_lock")?;
-        guard.refreshing = false;
-        if generation != guard.state.generation || epoch != guard.retrieval_epoch {
-            guard.last_refresh_result = Some(Err("feed_retrieval_superseded".into()));
-            self.refresh_finished.notify_all();
-            return Err("feed_retrieval_superseded".into());
-        }
-        let result = match fetched {
-            Ok(FeedDownload::Content { bytes, etag }) => parse_feed(&bytes)
-                .map_err(|e| failure_code(e.kind).into())
-                .and_then(|validated| self.apply(&mut guard, validated, &bytes, etag, install)),
-            Ok(FeedDownload::NotModified) if guard.state.held.is_some() => Ok("not_modified"),
-            Ok(FeedDownload::NotPublished) => Ok("not_published"),
-            Ok(FeedDownload::NotModified) => Err("cacheless_not_modified".into()),
-            Err(error) => Err(failure_code(error.kind).into()),
-        };
-        let (code, reason) = match &result {
-            Ok(code) => ((*code).to_owned(), None),
-            Err(reason) => (attempt_failure_code(reason).into(), Some(reason.clone())),
-        };
-        guard.state.last_attempt = Some(FeedAttempt {
-            at_ms: now_ms(),
-            result: code,
-            reason,
-        });
-        if result.is_ok() {
-            guard.failures = 0;
-        } else {
-            guard.failures = guard.failures.saturating_add(1);
-        }
-        let delay = if guard.failures == 0 {
-            330 * 60 * 1000 + jitter_ms(60 * 60 * 1000)
-        } else {
-            (15 * 60 * 1000_u64).saturating_mul(1 << guard.failures.min(4).saturating_sub(1))
-        };
-        guard.next_attempt = guard.state.retrieval_enabled.then(|| now_ms() + delay);
-        let result = self.store.commit(&guard.state).and(result.map(|_| ()));
-        guard.last_refresh_result = Some(result.clone());
-        self.refresh_finished.notify_all();
-        result
-    }
-    fn apply(
-        &self,
-        guard: &mut MutableFeed,
-        validated: ValidatedFeed,
-        bytes: &[u8],
-        etag: Option<String>,
-        install: impl FnOnce(u64, u64) -> Result<(), String>,
-    ) -> Result<&'static str, String> {
-        if validated.payload.sequence <= guard.state.sequence_floor
-            && !guard.state.highest_accepted.as_ref().is_some_and(|h| {
-                h.sequence >= guard.state.sequence_floor && h.sequence == validated.payload.sequence
-            })
-        {
-            return Err("older_sequence".into());
-        }
-        if let Some(high) = &guard.state.highest_accepted {
-            if validated.payload.sequence < high.sequence {
-                return Err("older_sequence".into());
-            }
-            if validated.payload.sequence == high.sequence {
-                if validated.payload_digest != high.payload_digest {
-                    return Err("same_sequence_conflicting_digest".into());
-                }
-                if guard.state.held.is_some() {
-                    return Ok("already_current");
-                }
-            }
-        }
-        let admission = admit(&self.embedded, &validated.payload, &self.client_version)
-            .map_err(|e| e.to_string())?;
-        let catalog = self
-            .embedded
-            .with_feed(&admission)
-            .map_err(|e| e.to_string())?;
-        let mut next = guard.state.clone();
-        next.generation = next
-            .generation
-            .checked_add(1)
-            .ok_or("feed_generation_overflow")?;
-        next.highest_accepted = Some(HighestAccepted {
-            sequence: validated.payload.sequence,
-            payload_digest: validated.payload_digest.clone(),
-        });
-        next.held = Some(HeldPublication {
-            sequence: validated.payload.sequence,
-            payload_digest: validated.payload_digest.clone(),
-            retrieved_at_ms: now_ms(),
-            issued_at: validated.payload.issued_at,
-        });
-        next.etag = etag;
-        next.last_success_at_ms = Some(now_ms());
-        self.store.persist_blob(bytes, &validated.payload_digest)?;
-        self.store.commit(&next)?;
-        guard.state = next;
-        guard.counts = admission.counts;
-        self.active.store(false, Ordering::Release);
-        if let Err(error) = install(guard.state.generation, accepted_sequence(&guard.state)) {
-            guard.refused = Some("feed_activation_requires_restart".into());
-            guard.recovery_available = false;
-            // The control transaction failed atomically; its previous snapshot is still valid.
-            self.active.store(true, Ordering::Release);
-            return Err(error);
-        }
-        self.current.store(Arc::new(ReleaseCatalogSnapshot {
-            catalog,
-            generation: guard.state.generation,
-            accepted_sequence: accepted_sequence(&guard.state),
-        }));
-        self.active.store(true, Ordering::Release);
-        self.store.retire_unreferenced(guard.state.held.as_ref());
-        Ok("ok")
     }
 }
 

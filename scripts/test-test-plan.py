@@ -369,6 +369,13 @@ class SelectionTests(unittest.TestCase):
                 self.assertIn('--workspace', result['commands'][2])
                 self.assertIn('hosted backend execution contract: ' + path, result['reasons'])
                 self.assertIn(['python3', 'scripts/test-ci-shards.py'], result['commands'])
+                self.assertIn(['python3', 'scripts/test-ci-setup.py'], result['commands'])
+
+    def test_hosted_prerequisite_test_alone_keeps_tooling_scope(self):
+        result = plan.select(['scripts/test-ci-setup.py'])
+        self.assertFalse(result['rust'])
+        self.assertFalse(result['frontend'])
+        self.assertIn(['python3', 'scripts/test-ci-setup.py'], result['commands'])
 
     def test_docs_do_not_build_rust(self):
         result = plan.select(["docs/testing.md", "README.md", "README.zh-CN.md", "AGENTS.md"])

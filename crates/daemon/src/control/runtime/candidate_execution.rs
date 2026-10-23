@@ -602,7 +602,7 @@ pub(super) fn materialize_connector_management_candidate(
     let resolved = catalog
         .resolve_connection_option(&desired.source.connection_option_id)
         .ok()?;
-    let model = catalog
+    let mut model = catalog
         .model_data()
         .model(model_configuration_id)
         .cloned()?;
@@ -633,24 +633,29 @@ pub(super) fn materialize_connector_management_candidate(
         || fact.target.protocol_profile_id != resolved.endpoint_profile.endpoint_profile_id
         || fact.target.protocol_profile_revision != resolved.endpoint_profile.revision
         || fact.upstream_model_id != capability.upstream_model_id
-        || fact.capabilities.tool.value != Some(model.capabilities.tool)
-        || fact.capabilities.vision.value != Some(model.capabilities.vision)
-        || fact.capabilities.streaming.value != Some(model.capabilities.streaming)
-        || fact.capabilities.context_tokens.value != Some(model.capabilities.context_tokens)
-        || fact.capabilities.max_output_tokens.value != Some(model.capabilities.max_output_tokens)
     {
         return None;
     }
-    let reasoning = catalog
+    let mut reasoning = catalog
         .native_reasoning()
         .iter()
         .find(|value| value.model_configuration_id == model_configuration_id)
         .cloned()?;
-    if fact.native_reasoning != reasoning.capability
-        || fact.capabilities.native_reasoning.value.as_ref() != Some(&reasoning.capability)
-    {
-        return None;
-    }
+    let effective = hiroute_integrations::compute::resolve_managed_defaults(
+        catalog,
+        &fact.capabilities,
+        &fact.default_preferences,
+        &capability,
+        &model,
+        &reasoning,
+    )
+    .ok()?;
+    model.capabilities.tool = effective.tool.value?;
+    model.capabilities.vision = effective.vision.value?;
+    model.capabilities.streaming = effective.streaming.value?;
+    model.capabilities.context_tokens = effective.context_tokens.value?;
+    model.capabilities.max_output_tokens = effective.max_output_tokens.value?;
+    reasoning.capability = effective.native_reasoning.value?;
     let pool = catalog
         .transient_cpa_credential_pool(registered, &desired.source, &desired.binding)
         .ok()?;

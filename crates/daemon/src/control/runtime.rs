@@ -371,7 +371,7 @@ impl ProductionControlRuntime {
             .map_err(|error| error.to_string())?
             .dependencies;
         let feed_generation = feed_revisions.get("feed.model_data").copied().unwrap_or(0);
-        let feed_sequence = feed_revisions.get("feed.sequence").copied().unwrap_or(0);
+        let feed_sequence = feed_revisions.get("feed.v2_sequence").copied().unwrap_or(0);
         let model_feed = Arc::new(crate::model_feed::ModelFeedService::open(
             storage_root,
             release_catalog.clone(),

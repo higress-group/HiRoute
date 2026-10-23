@@ -10,7 +10,7 @@ use hiroute_application_api::{
 };
 use hiroute_cpa_bridge::{CpaAccountKind, CpaLifecycleError, CpaLoginSession, CpaLoginState};
 use hiroute_domain::{
-    ComputeManagementMutationV2, ComputeManagementProvenanceV2, ComputeManagementRepositoryPort,
+    ComputeManagementMutation, ComputeManagementProvenanceV2, ComputeManagementRepositoryPort,
     ControlRepositoryPort, MaterializationState, OperationState, OperationV1, PortError,
     PortErrorCode, PortResult, WorkspaceId,
 };
@@ -53,13 +53,18 @@ impl LocalControlAdapter {
         &self,
         operation: &OperationV1,
     ) -> PortResult<()> {
-        let declares_management = operation
-            .plan
-            .spec()
-            .desired_state
-            .get("schema")
-            .and_then(serde_json::Value::as_str)
-            == Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2);
+        let declares_management = matches!(
+            operation
+                .plan
+                .spec()
+                .desired_state
+                .get("schema")
+                .and_then(serde_json::Value::as_str),
+            Some(
+                COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+            )
+        );
         if operation
             .plan
             .control()
@@ -84,7 +89,7 @@ impl LocalControlAdapter {
         #[derive(serde::Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Envelope {
-            compute_management_mutation: ComputeManagementMutationV2,
+            compute_management_mutation: ComputeManagementMutation,
         }
         let envelope: Envelope =
             serde_json::from_value(operation.plan.control().clone()).map_err(|_| {
@@ -93,36 +98,39 @@ impl LocalControlAdapter {
                     "subscription.admission.invalid_plan",
                 )
             })?;
-        envelope
-            .compute_management_mutation
-            .validate_shape(operation.plan.spec())
-            .map_err(|_| {
-                PortError::new(
-                    PortErrorCode::InvalidData,
-                    "subscription.admission.invalid_plan",
-                )
-            })?;
+        match &envelope.compute_management_mutation {
+            ComputeManagementMutation::V2(value) => value.validate_shape(operation.plan.spec()),
+            ComputeManagementMutation::V3(value) => value.validate(operation.plan.spec()),
+        }
+        .map_err(|_| {
+            PortError::new(
+                PortErrorCode::InvalidData,
+                "subscription.admission.invalid_plan",
+            )
+        })?;
         let Some(source) = envelope.compute_management_mutation.desired() else {
             // Forgetting a saved connection does not require or revoke a connector login.
             return Ok(());
         };
-        if operation
-            .plan
-            .spec()
-            .desired_state
-            .pointer("/subject/kind")
-            .and_then(serde_json::Value::as_str)
-            == Some("saved_source")
-            && matches!(
-                operation
-                    .plan
-                    .spec()
-                    .desired_state
-                    .pointer("/edit/action")
-                    .and_then(serde_json::Value::as_str),
-                Some("rename" | "remove_models")
+        let change = hiroute_application_api::saved_compute_change(
+            operation.plan.spec().desired_state.clone(),
+        )
+        .map_err(|_| {
+            PortError::new(
+                PortErrorCode::InvalidData,
+                "subscription.admission.invalid_plan",
             )
-        {
+        })?;
+        if matches!(
+            change.subject,
+            ComputeManagementSubjectV2::SavedSource { .. }
+        ) && matches!(
+            change.edit,
+            Some(
+                hiroute_application_api::ComputeManagementEditV1::Rename { .. }
+                    | hiroute_application_api::ComputeManagementEditV1::RemoveModels
+            )
+        ) {
             return Ok(());
         }
         if source.state != MaterializationState::Ready {

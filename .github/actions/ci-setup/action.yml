@@ -8,7 +8,7 @@ runs:
       run: printf '%s\n' 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
     - name: Native build prerequisites
       shell: bash
-      run: sudo apt-get update && sudo apt-get install --yes cmake clang pkg-config libssl-dev
+      run: sudo python3 scripts/ci-prerequisites.py
     - name: Repository Rust toolchain
       shell: bash
       run: rustup show active-toolchain

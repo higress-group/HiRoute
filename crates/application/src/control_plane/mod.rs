@@ -206,12 +206,17 @@ pub(crate) fn dispatch_apply_compute(
         if payload.spec.command_id == hiroute_domain::COMPUTE_SUBSCRIPTION_CHECK_COMMAND_ID_V2 {
             Some(APPLY_SUBSCRIPTION_CHECK_OPERATION_V2)
         } else if payload.spec.command_id == "compute.connection.apply"
-            && payload
-                .spec
-                .desired_state
-                .get("schema")
-                .and_then(Value::as_str)
-                == Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2)
+            && matches!(
+                payload
+                    .spec
+                    .desired_state
+                    .get("schema")
+                    .and_then(Value::as_str),
+                Some(
+                    COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
+                        | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                )
+            )
         {
             Some(APPLY_COMPUTE_SAVE_OPERATION_V2)
         } else {

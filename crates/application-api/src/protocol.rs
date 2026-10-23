@@ -967,9 +967,9 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "models.feed.status"
         | "models.feed.refresh"
         | "models.feed.settings.apply"
-        | "models.feed.remove.apply" => "hiroute.model-feed-status/v1",
-        "models.feed.remove.preview" => "hiroute.model-feed-removal-preview/v1",
-        "models.availability" => "hiroute.model-availability/v1",
+        | "models.feed.remove.apply" => "hiroute.model-feed-status/v2",
+        "models.feed.remove.preview" => "hiroute.model-feed-removal-preview/v2",
+        "models.availability" => "hiroute.model-availability/v2",
         "models.show" => "hiroute.model-catalog-view/v1",
         "sessions.list" => "hiroute.session-list/v1",
         "sessions.show" => "hiroute.session-detail/v1",

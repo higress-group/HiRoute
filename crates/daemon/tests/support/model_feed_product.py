@@ -4,6 +4,7 @@ Only the integration-test-hooks binary accepts the private feed transport fixtur
 state is changed exclusively through released commands. TLS dialing uses the existing E2E map.
 """
 import copy
+import hashlib
 import http.server
 import json
 import os
@@ -99,35 +100,49 @@ class FeedUpstream:
         self.thread.join(timeout=5)
 
 
+def digest(value):
+    body = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+    return 'sha256:' + hashlib.sha256(body).hexdigest()
+
+
 def publication(product, sequence, present=True):
-    bundle = json.loads((product.repo / 'assets/release-facts/current/bundle/model-data.json').read_text())
-    original = 'model.bailian.qwen3-max-2026-01-23'
-    definition = copy.deepcopy(next(x for x in bundle['data']['models'] if x['model_configuration_id'] == original))
-    definition.update(model_configuration_id=MODEL, display_name='Feed regression model')
-    canonical = copy.deepcopy(next(x for x in bundle['metadata_catalog']['canonical_models']
-                                  if 'qwen3-max-2026-01-23' in x['upstream_ids']))
-    canonical.update(model_key=UPSTREAM, upstream_ids=[UPSTREAM], display_name='Feed regression model')
-    record = {'definition': definition, 'canonical': canonical, 'native_reasoning': {
-        'model_configuration_id': MODEL, 'capability': {'kind': 'toggle', 'parameter': 'enable_thinking'}}}
-    records = [{'kind': 'model', 'record': record}]
-    for capability in bundle['data']['model_endpoint_capabilities']:
-        if capability['model_configuration_id'] != original:
-            continue
-        capability = copy.deepcopy(capability)
-        capability.update(model_configuration_id=MODEL, upstream_model_id=UPSTREAM,
-                          capability_id='capability.feed.' + str(len(records)))
-        records.append({'kind': 'model_endpoint_capability', 'record': capability})
-    offer = copy.deepcopy(next(x for x in bundle['data']['offers'] if x['offer_id'] == 'offer.bailian.payg.cn'))
-    offer['model_configuration_ids'].append(MODEL)
-    records.append({'kind': 'offer', 'record': offer})
-    records.append({'kind': 'price_rate', 'record': {
-        'price_rate_id': 'price.feed.regression.usd', 'revision': 1, 'offer_ref': offer['offer_id'],
-        'model_configuration_id': MODEL, 'currency': 'USD',
-        'input_micros_per_million': 1234567, 'output_micros_per_million': 2345678}})
-    for record in records:
-        record.update(min_client_version='0.1.0', included_on='2026-10-18')
-    return {'schema': 'hiroute.model-feed/v1', 'sequence': sequence, 'issued_at': '2026-10-18T00:00:00Z',
-            'source_revision': product.sha, 'records': records if present else [], 'featured': []}
+    snapshot = json.loads((product.repo / 'assets/release-facts/current/bundle/official-model-data.json').read_text())
+    data = snapshot['data']
+    if present:
+        original = 'model.bailian.qwen3-max-2026-01-23'
+        definition = copy.deepcopy(next(x for x in data['models'] if x['model_configuration_id'] == original))
+        definition.update(model_configuration_id=MODEL, display_name='Feed regression model')
+        data['models'].append(definition)
+        canonical = copy.deepcopy(next(x for x in data['metadata_catalog']['canonical_models'] if 'qwen3-max-2026-01-23' in x['upstream_ids']))
+        canonical.update(model_key=UPSTREAM, upstream_ids=[UPSTREAM], display_name='Feed regression model')
+        data['metadata_catalog']['canonical_models'].append(canonical)
+        data['rating_snapshot']['models'].append({'model_configuration_id': MODEL, 'capability': {'kind': 'toggle', 'parameter': 'enable_thinking'}})
+        capabilities = []
+        for cap in data['model_endpoint_capabilities']:
+            if cap['model_configuration_id'] != original:
+                continue
+            cap = copy.deepcopy(cap)
+            cap.update(model_configuration_id=MODEL, upstream_model_id=UPSTREAM, capability_id='capability.feed.' + str(len(capabilities)))
+            capabilities.append(cap)
+        data['model_endpoint_capabilities'].extend(capabilities)
+        offer = next(x for x in data['offers'] if x['offer_id'] == 'offer.bailian.payg.cn')
+        offer['model_configuration_ids'].append(MODEL)
+        offer['model_configuration_ids'].sort()
+        data['price_rates'].append({'price_rate_id': 'price.feed.regression.usd', 'revision': 1, 'offer_ref': offer['offer_id'], 'model_configuration_id': MODEL, 'currency': 'USD', 'input_micros_per_million': 1234567, 'output_micros_per_million': 2345678})
+        binding = copy.deepcopy(next(x for x in data['metadata_catalog']['endpoint_bindings'] if x['product_key'] == 'bailian-payg-cn'))
+        binding.update(binding_key='bailian-payg-cn/' + UPSTREAM, model_key=UPSTREAM, upstream_model_id=UPSTREAM, interface_candidates=['bailian-payg-cn/openai-chat'])
+        data['metadata_catalog']['endpoint_bindings'].append(binding)
+        data['pricing_facts'].append({'pricing_key': 'bailian-payg-cn/' + UPSTREAM, 'product_key': 'bailian-payg-cn', 'model_key': UPSTREAM, 'upstream_model_id': UPSTREAM, 'currency': 'USD', 'unit': 'per-1m-tokens', 'price_state': 'exact', 'evidence_refs': canonical['evidence_refs'], 'schedules': [{'schedule_key': 'standard', 'condition': {'kind': 'unconditional'}, 'application': 'whole-request', 'rates': {'input': '1.234567', 'output': '2.345678', 'cache-read': '0', 'cache-write': '0.125'}}]})
+    for key, identity in [('models', 'model_configuration_id'), ('model_endpoint_capabilities', 'capability_id'), ('offers', 'offer_id'), ('price_rates', 'price_rate_id'), ('pricing_facts', 'pricing_key')]:
+        data[key].sort(key=lambda row: row[identity])
+    for key, identity in [('canonical_models', 'model_key'), ('endpoint_bindings', 'binding_key')]:
+        data['metadata_catalog'][key].sort(key=lambda row: row[identity])
+    rating = data['rating_snapshot']
+    rating['models'].sort(key=lambda row: row['model_configuration_id'])
+    rating['model_catalog_digest'] = digest(data['models'])
+    rating['digest'] = digest([rating[key] for key in ['schema', 'version', 'scale_version', 'model_catalog_digest', 'models', 'records']])
+    snapshot.update(data_revision=sequence, data_digest=digest(data))
+    return {'schema': 'hiroute.model-feed/v2', 'sequence': sequence, 'issued_at': '2026-10-18T00:00:00Z', 'source_revision': product.sha, **snapshot, 'featured': []}
 
 
 def restart(product):
@@ -198,6 +213,101 @@ def preserve_failure_diagnostics(product, stage, upstream):
     print(json.dumps(report), flush=True)
 
 
+def effective_price(product, binding, kind='usage_estimate'):
+    result = product.cli('prices', 'effective', '--request-stdin', payload={'targets': [{
+        'query_id': 'price', 'target_locator': {'kind': 'binding', 'binding_id': binding},
+        'currency': 'USD', 'valuation_kind': kind}]})['data']
+    assert not result['pending_activation'], result
+    return result['items'][0]
+
+
+def preserve_vision(product, source, binding):
+    defaults = product.cli('compute', 'defaults', 'get', '--request-stdin',
+        payload={'source_id': source['source_id']})['data']
+    preview = product.cli('compute', 'defaults', 'preview', '--request-stdin', payload={'change': {
+        'schema': 'hiroute.compute-management-change/v3',
+        'change': {'schema': 'hiroute.compute-management-change/v2',
+            'subject': {'kind': 'saved_source', 'source_id': source['source_id']},
+            'expected_revisions': defaults['revisions'], 'selected_model_refs': [],
+            'intent': 'save_ready', 'key_edits': [],
+            'edit': {'action': 'rename', 'display_name': source['display_name']}},
+        'default_preferences': {binding: {'vision': {'intent': 'preserve_saved'}}}}})['data']
+    applied = product.cli('compute', 'connection', 'apply', '--request-stdin', payload={
+        'spec': preview['spec'], 'accept_digest': preview['accept_digest'],
+        'expected_revisions': preview['expected_revisions'], 'idempotency_key': 'feed-preserve-vision'})
+    assert applied['operation']['state'] == 'succeeded', applied
+    return next(m for m in defaults['models'] if m['binding_id'] == binding)['fields']
+
+
+def complete_metadata_pages(product):
+    cursor, count, seen = None, 0, set()
+    while True:
+        page = product.cli('models', 'metadata', 'list', '--request-stdin',
+            payload={'page_size': 100, 'cursor': cursor})['data']
+        count += len(page['records'])
+        for row in page['records']:
+            assert (row['kind'], row['key']) not in seen, row
+            seen.add((row['kind'], row['key']))
+        if page['complete']:
+            assert count == page['total'] and page['next_cursor'] is None, page
+            return count
+        assert page['next_cursor'], page
+        cursor = page['next_cursor']
+
+
+def correct_saved_model(product, fixture, source, binding, included):
+    before = preserve_vision(product, source, binding)
+    corrected = copy.deepcopy(included)
+    corrected.update(sequence=18, data_revision=18)
+    data = corrected['data']
+    model = next(m for m in data['models'] if m['model_configuration_id'] == MODEL)
+    model['capabilities']['context_tokens'] += 4096
+    model['capabilities']['vision'] = not before['vision']['saved_value']
+    context = model['capabilities']['context_tokens']
+    for endpoint in data['metadata_catalog']['endpoint_bindings']:
+        if endpoint['upstream_model_id'] == UPSTREAM:
+            endpoint['capability_overrides'].update(context_tokens=context, vision=model['capabilities']['vision'])
+    next(p for p in data['price_rates'] if p['model_configuration_id'] == MODEL)['input_micros_per_million'] = 2345678
+    next(p for p in data['pricing_facts'] if p['upstream_model_id'] == UPSTREAM)['schedules'][0]['rates']['input'] = '2.345678'
+    rating = data['rating_snapshot']
+    rating['model_catalog_digest'] = digest(data['models'])
+    rating['digest'] = digest([rating[key] for key in ['schema', 'version', 'scale_version', 'model_catalog_digest', 'models', 'records']])
+    corrected['data_digest'] = digest(data)
+    (fixture / 'publication.json').write_bytes(wire(corrected))
+    status = product.cli('models', 'feed', 'refresh')['data']
+    assert status['selected']['data_revision'] == 18, status
+    defaults = product.cli('compute', 'defaults', 'get', '--request-stdin', payload={'source_id': source['source_id']})['data']
+    fields = next(m for m in defaults['models'] if m['binding_id'] == binding)['fields']
+    assert fields['context_tokens']['effective_value'] == context, fields
+    assert fields['vision']['effective_value'] == before['vision']['saved_value'] and fields['vision']['intent'] == 'preserve_saved', fields
+    assert effective_price(product, binding)['quote']['rates']['input_uncached'] == {'state': 'known', 'micros_per_million_tokens': 2345678}
+    # Removal includes changes to default values, even when no model disappears from the source.
+    cursor, impact, removal = None, [], None
+    while True:
+        removal = product.cli('models', 'feed', 'remove', 'preview', '--request-stdin',
+            payload={'page_size': 1, 'cursor': cursor})['data']
+        assert len(wire(removal)) <= 1024 * 1024
+        impact.extend(removal['impact'])
+        if removal['complete']:
+            assert len(impact) == removal['total']
+            break
+        cursor = removal['next_cursor']
+    assert any('context_tokens' in row['changes'] for row in impact), impact
+    assert not any('vision' in row['changes'] for row in impact if row['binding_id'] == binding), impact
+    announcement = copy.deepcopy(corrected)
+    announcement['sequence'] = 19
+    announcement['featured'] = [{'id':'fixture-update','kind':'model_update','model_configuration_id':MODEL,
+        'headline':{'en':'Model update','zh':'模型更新'},'note':{'en':'Official information','zh':'官方资料'},
+        'links':['https://hiroute.ai/en/docs/'],'included_on':'2026-10-18'}]
+    (fixture / 'publication.json').write_bytes(wire(announcement))
+    after = product.cli('models', 'feed', 'refresh')['data']
+    assert after['selected'] == status['selected'] and after['held']['sequence'] == 19, after
+    count = complete_metadata_pages(product)
+    print(json.dumps({'scenario':'installed-complete-metadata-defaults-prices','state':'green',
+        'metadata_records':count,'removal_rows':len(impact),'preserved_vision':True,'announcement_generation_unchanged':True}),flush=True)
+    return removal['digest']
+
+
 def run(repository):
     product = InstalledProduct(repository)
     fixture = product.root / 'feed-fixture'
@@ -212,7 +322,7 @@ def run(repository):
         product.start()
         assert product.cli('models', 'feed', 'status')['data']['retrieval_enabled']
         status = product.cli('models', 'feed', 'refresh')['data']
-        assert status['held']['sequence'] == 17 and status['counts']['applied'] >= 3, status
+        assert status['held']['sequence'] == 17 and status['counts']['qualified_models'] >= 1, status
         stage = 'registered-check-save-publish'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
         candidate_ref = 'candidate/feed/product'
@@ -249,6 +359,8 @@ def run(repository):
         quote = by_kind['usage_estimate']['quote']
         assert quote['rates']['input_uncached'] == {'state': 'known', 'micros_per_million_tokens': 1234567}, quote
         assert quote['rates']['output'] == {'state': 'known', 'micros_per_million_tokens': 2345678}, quote
+        assert quote['rates']['cache_read'] == {'state': 'known', 'micros_per_million_tokens': 0}, quote
+        assert quote['rates']['cache_write'] == {'state': 'known', 'micros_per_million_tokens': 125000}, quote
         # API-equivalent references keep their existing separate, explicit pricing contract.
         reference = by_kind['api_equivalent']
         assert reference['quote']['unknown_reasons'] == ['price_not_collected'], reference
@@ -285,18 +397,33 @@ def run(repository):
         main_session(product)
         prior = worker(product, plan, 'feed-before')
         prior = worker(product, plan, 'feed-before-continue', prior)
+        reviewed_removal = correct_saved_model(product, fixture, source, binding, included)
+        # A manual four-component price remains addressable after whole-body withdrawal.
+        item = effective_price(product, binding)
+        manual_rates = {key: {'state':'known','micros_per_million_tokens':7654321}
+                        for key in ['input_uncached','output','cache_read','cache_write']}
+        price_preview = product.cli('prices','override','preview','--request-stdin',payload={
+            **item['edit_context'],'currency':'USD','valuation_kind':'usage_estimate',
+            'action':{'kind':'set','rates':manual_rates}})['data']
+        product.cli('prices','override','apply','--request-stdin',payload={
+            'spec':price_preview['spec'],'accept_digest':price_preview['change_digest'],
+            'expected_revisions':price_preview['expected_revisions'],'idempotency_key':'feed-manual-usage'})
         new_draft = {'change': plan_change('update', editor, plan, frozen['head']['head_revision'])}
         assert product.cli('routing', 'preview', '--request-stdin', payload=new_draft)['status'] == 'succeeded'
         stage = 'withdraw-remove-restart'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
-        withdrawn = publication(product, 18, False)
+        withdrawn = publication(product, 20, False)
         (fixture / 'publication.json').write_bytes(wire(withdrawn))
-        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 18
+        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 20
+        stale = raw(product, 'models', 'feed', 'remove', 'apply', payload={
+            'accepted_digest': reviewed_removal, 'also_disable_retrieval': False})
+        assert stale['status'] != 'succeeded', stale
+        assert effective_price(product, binding)['quote']['rates'] == manual_rates
         removal = product.cli('models', 'feed', 'remove', 'preview')['data']
         product.cli('models', 'feed', 'remove', 'apply', '--request-stdin', payload={
             'accepted_digest': removal['digest'], 'also_disable_retrieval': True})
         restart(product)
-        assert product.cli('models', 'feed', 'status')['data']['highest_accepted_sequence'] == 18
+        assert product.cli('models', 'feed', 'status')['data']['highest_accepted_sequence'] == 20
         stage = 'frozen-execution-after-withdrawal'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
         main_session(product)
@@ -319,8 +446,20 @@ def run(repository):
         change = {'schema': 'hiroute.compute-management-change/v2', 'subject': {'kind': 'saved_source', 'source_id': source['source_id']},
             'expected_revisions': snapshot['revisions'], 'selected_model_refs': [m['model_ref'] for m in saved['models']],
             'intent': 'save_ready', 'key_edits': []}
-        rejected = raw(product, 'compute', 'connection', 'preview', payload={'change': change})
-        assert rejected['status'] != 'succeeded' and rejected['error']['code'] != 'INVALID_ARGUMENTS', rejected
+        # Retaining identical authenticated members is management, not a new admission.
+        # Current authoring and an explicit recheck still require current official facts.
+        retained_preview = product.cli('compute', 'connection', 'preview', '--request-stdin', payload={'change': change})['data']
+        retained_save = product.cli('compute', 'connection', 'apply', '--request-stdin', payload={
+            'spec': retained_preview['spec'], 'accept_digest': retained_preview['accept_digest'],
+            'expected_revisions': retained_preview['expected_revisions'], 'idempotency_key': 'feed-retained-save'})['data']
+        assert retained_save['state'] == 'succeeded', retained_save
+        updated = product.cli('compute', 'list')['data']
+        saved = next(x for x in updated['sources'] if x['source_id'] == source['source_id'])
+        # Management presentation is freshly evaluated (including its timestamp and price
+        # edit revisions). Compare the retained model facts, not that live projection.
+        before_models = next(x for x in snapshot['sources'] if x['source_id'] == source['source_id'])['models']
+        facts = lambda models: [{key: value for key, value in model.items() if key != 'presentation'} for model in models]
+        assert facts(saved['models']) == facts(before_models), (saved['models'], before_models)
         recheck = copy.deepcopy(checked_request)
         recheck['request'].update(expected_catalog=product.cli('compute', 'connection', 'options')['data']['catalog'],
             existing_source_id=source['source_id'], expected_source_revision=saved['revision'], check_id='check/feed/withdrawn')
@@ -332,19 +471,19 @@ def run(repository):
         status = product.cli('models', 'feed', 'refresh')['data']
         assert status['last_attempt']['reason'] == 'older_sequence' and status['held'] is None, status
         (fixture / 'publication.json').write_bytes(wire(withdrawn))
-        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 18
-        conflicting = publication(product, 18)
+        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 20
+        conflicting = publication(product, 20)
         (fixture / 'publication.json').write_bytes(wire(conflicting))
         assert product.cli('models', 'feed', 'refresh')['data']['last_attempt']['reason'] == 'same_sequence_conflicting_digest'
         stage = 'embedded-absorption'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
-        restored = publication(product, 19)
+        restored = publication(product, 21)
         (fixture / 'publication.json').write_bytes(wire(restored))
-        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 19
+        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 21
         (fixture / 'absorbed.json').write_bytes(wire(restored))
         restart(product)
         absorbed = product.cli('models', 'feed', 'status')['data']
-        assert absorbed['counts']['ignored_embedded'] >= 3 and absorbed['counts']['applied'] == 0, absorbed
+        assert absorbed['counts']['qualified_models'] >= 1, absorbed
         main_session(product)
         admitted = product.cli('routing', 'preview', '--request-stdin', payload=new_draft)
         assert admitted['status'] == 'succeeded', 'absorption must admit a new draft without rechecking the saved source'

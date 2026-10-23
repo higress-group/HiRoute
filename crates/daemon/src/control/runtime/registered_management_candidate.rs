@@ -1,13 +1,9 @@
 use super::*;
 use hiroute_application::compiler::{FreeCandidateEvidenceV1, OrderingPriceFactV1};
 use hiroute_domain::{
-    ComputeCredentialSelectionV2, ComputeManagementFactBasisV2, ComputeManagementProvenanceV2,
-    ConnectionOrigin, MaterializationState,
+    ComputeCredentialSelectionV2, ComputeManagementProvenanceV2, ConnectionOrigin,
+    MaterializationState,
 };
-use hiroute_integrations::{
-    NativeCandidateFactBasisV1, NativeCandidateFactValueV1, NativeModelCapabilityDeclarationV1,
-};
-
 pub(in crate::control::runtime) fn materialize_registered_management_candidate(
     fact: &ComputeManagementCompilationFactV2,
     catalog: &TrustedReleaseCatalog,
@@ -35,7 +31,7 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
         return None;
     };
     let data = catalog.model_data();
-    let Some(model) = data.model(model_id).cloned() else {
+    let Some(mut model) = data.model(model_id).cloned() else {
         eprintln!("registered management routing candidate model is absent from current catalog");
         return None;
     };
@@ -88,47 +84,41 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
     {
         return None;
     }
-    let reasoning = catalog
+    let mut reasoning = catalog
         .native_reasoning()
         .iter()
         .find(|reasoning| reasoning.model_configuration_id == model_id)?
         .clone();
-    let declared_capabilities = NativeModelCapabilityDeclarationV1 {
-        tool: catalog_fact(model.capabilities.tool),
-        vision: catalog_fact(model.capabilities.vision),
-        streaming: catalog_fact(model.capabilities.streaming),
-        context_tokens: catalog_fact(model.capabilities.context_tokens),
-        max_output_tokens: catalog_fact(model.capabilities.max_output_tokens),
-        native_reasoning: catalog_fact(reasoning.capability.clone()),
-    };
-    let expected_capability_digest = CanonicalDigest::of(&(
-        "declared-model-capabilities/v1",
+    if hiroute_integrations::compute::saved_native_capability_digest(
         &fact.upstream_model_id,
-        &declared_capabilities,
-    ))
-    .ok()?;
-    if fact.capabilities.tool.value != Some(model.capabilities.tool)
-        || fact.capabilities.vision.value != Some(model.capabilities.vision)
-        || fact.capabilities.streaming.value != Some(model.capabilities.streaming)
-        || fact.capabilities.context_tokens.value != Some(model.capabilities.context_tokens)
-        || fact.capabilities.max_output_tokens.value != Some(model.capabilities.max_output_tokens)
-        || fact.capabilities.native_reasoning.value.as_ref() != Some(&reasoning.capability)
-        || fact.native_reasoning != reasoning.capability
-        || [
-            fact.capabilities.tool.basis,
-            fact.capabilities.vision.basis,
-            fact.capabilities.streaming.basis,
-            fact.capabilities.context_tokens.basis,
-            fact.capabilities.max_output_tokens.basis,
-            fact.capabilities.native_reasoning.basis,
-        ]
-        .iter()
-        .any(|basis| *basis != ComputeManagementFactBasisV2::RegisteredCatalog)
-        || expected_capability_digest != fact.capability_evidence_digest
+        &fact.capabilities,
+    )
+    .as_ref()
+        != Some(&fact.capability_evidence_digest)
+        || fact
+            .capabilities
+            .native_reasoning
+            .value
+            .as_ref()
+            .is_some_and(|r| r != &fact.native_reasoning)
     {
-        eprintln!("registered management routing candidate facts differ from current catalog");
         return None;
     }
+    let effective = hiroute_integrations::compute::resolve_managed_defaults(
+        catalog,
+        &fact.capabilities,
+        &fact.default_preferences,
+        &capability,
+        &model,
+        &reasoning,
+    )
+    .ok()?;
+    model.capabilities.tool = effective.tool.value?;
+    model.capabilities.vision = effective.vision.value?;
+    model.capabilities.streaming = effective.streaming.value?;
+    model.capabilities.context_tokens = effective.context_tokens.value?;
+    model.capabilities.max_output_tokens = effective.max_output_tokens.value?;
+    reasoning.capability = effective.native_reasoning.value?;
     let mut offers = data.offers.iter().filter(|offer| {
         offer.endpoint_profile_id == resolved.endpoint_profile.endpoint_profile_id
             && offer.endpoint_profile_revision == resolved.endpoint_profile.revision
@@ -367,11 +357,4 @@ fn registered_native_protocol_profiles(
         ConnectorRuntimeKind::BuiltinNative,
         &faces,
     )
-}
-
-fn catalog_fact<T>(value: T) -> NativeCandidateFactValueV1<T> {
-    NativeCandidateFactValueV1 {
-        value: Some(value),
-        basis: NativeCandidateFactBasisV1::RegisteredCatalog,
-    }
 }

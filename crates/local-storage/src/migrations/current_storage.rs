@@ -110,6 +110,33 @@ pub(crate) fn validate_current_storage(
         return Err(LocalStorageError::InvalidData);
     }
     visit_publications(&connection, |_| {})?;
+    // A retained earlier-target batch is validated before the next batch creates newer tables.
+    // Current schema still requires the table and all of its reference closure.
+    let control_version: u32 =
+        connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if control_version >= 31 {
+        let mut defaults = connection.prepare("SELECT d.source_id,d.preferences_json,s.source_json FROM compute_source_defaults d LEFT JOIN compute_management_sources s USING(workspace_id,source_id)")?;
+        for row in defaults.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+            ))
+        })? {
+            let (id, json, source) = row?;
+            let source: ComputeManagementSourceV2 =
+                serde_json::from_str(&source.ok_or(LocalStorageError::InvalidData)?)
+                    .map_err(|_| LocalStorageError::InvalidData)?;
+            let preferences: SourceDefaultPreferencesV1 =
+                serde_json::from_str(&json).map_err(|_| LocalStorageError::InvalidData)?;
+            if id != source.source_id {
+                return Err(LocalStorageError::InvalidData);
+            }
+            validate_source_default_preferences(Some(&source), &preferences)
+                .map_err(|_| LocalStorageError::InvalidData)?;
+        }
+        drop(defaults);
+    }
     // Cross-store grant/publication equality is checked only after Operation recovery.
     // Each store's format and integrity must already be valid before recovery writes.
     let secret_connection = secrets.connection.borrow();

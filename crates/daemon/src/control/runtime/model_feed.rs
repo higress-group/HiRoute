@@ -23,24 +23,14 @@ impl LocalControlAdapter {
         }
     }
 
-    fn activate_feed_generation(&self, generation: u64, sequence: u64) -> Result<(), String> {
-        let stores = self.stores_lock().map_err(|error| error.to_string())?;
-        stores
-            .control()
-            .activate_model_feed_generation(&WorkspaceId::default(), generation, sequence)
-            .map_err(|error| error.to_string())?;
-        self.price_snapshot.invalidate_current();
-        Ok(())
-    }
-
     fn refresh_model_feed(&self) -> Result<(), String> {
-        let feed = self.model_feed.as_ref().ok_or("feed_unavailable")?;
-        let result = feed
-            .refresh(|generation, sequence| self.activate_feed_generation(generation, sequence));
-        // Catalog activation and default price projection use the same captured generation.
-        // A failed projection does not authorize a stale price override or change frozen ledgers.
-        let _ = self.rebuild_price_snapshot();
-        result
+        self.model_feed
+            .as_ref()
+            .ok_or("feed_unavailable")?
+            .refresh_prepared(
+                |catalog| self.prepare_catalog_prices(catalog),
+                |catalog, prepared, commit| self.activate_catalog_prices(catalog, prepared, commit),
+            )
     }
 }
 
@@ -76,8 +66,23 @@ fn feed_error(reason: String) -> ErrorCode {
     }
 }
 
+mod metadata;
+mod removal;
 impl ModelFeedPort for LocalControlAdapter {
-    fn feed_status(&self) -> Result<ModelFeedStatusV1, ErrorCode> {
+    fn list_model_metadata(
+        &self,
+        request: ListModelMetadataV1,
+    ) -> Result<ModelMetadataPageV1, ErrorCode> {
+        metadata::list(self, request)
+    }
+    fn get_model_metadata(
+        &self,
+        request: GetModelMetadataV1,
+    ) -> Result<ModelMetadataDetailV1, ErrorCode> {
+        metadata::get(self, request)
+    }
+
+    fn feed_status(&self) -> Result<ModelFeedStatusV2, ErrorCode> {
         let status = self
             .model_feed
             .as_ref()
@@ -91,7 +96,61 @@ impl ModelFeedPort for LocalControlAdapter {
                 reason: reason.into(),
             },
         };
-        Ok(ModelFeedStatusV1 {
+        let catalog = self
+            .current_catalog()
+            .ok_or(ErrorCode::ChangePreviewStale)?;
+        let snapshot = catalog.official_snapshot();
+        let qualified = catalog
+            .model_data()
+            .models
+            .iter()
+            .filter(|m| {
+                catalog
+                    .model_data()
+                    .model_endpoint_capabilities
+                    .iter()
+                    .any(|cap| {
+                        cap.model_configuration_id == m.model_configuration_id
+                            && catalog.model_data().offers.iter().any(|o| {
+                                o.endpoint_profile_id == cap.endpoint_profile_id
+                                    && o.model_configuration_ids
+                                        .contains(&m.model_configuration_id)
+                            })
+                    })
+            })
+            .count() as u64;
+        let data = &snapshot.data;
+        let descriptive = data.models.len()
+            + data.model_endpoint_capabilities.len()
+            + data.offers.len()
+            + data.price_rates.len()
+            + data.pricing_facts.len()
+            + data.connection_hints.len()
+            + data.rating_snapshot.records.len()
+            + data.rating_snapshot.models.len()
+            + data.metadata_catalog.evidence_sources.len()
+            + data.metadata_catalog.client_runs.len()
+            + data.metadata_catalog.access_products.len()
+            + data.metadata_catalog.canonical_models.len()
+            + data.metadata_catalog.endpoint_bindings.len()
+            + data.metadata_catalog.dynamic_routes.len()
+            + data.metadata_catalog.inference_rules.len()
+            + data.metadata_catalog.provider_records.len()
+            + data.metadata_catalog.model_records.len();
+        Ok(ModelFeedStatusV2 {
+            selected: ModelMetadataSnapshotRefV1 {
+                generation: catalog.generation,
+                data_revision: snapshot.data_revision,
+                data_digest: snapshot.data_digest.clone(),
+            },
+            selected_origin: if catalog.official_data_from_feed() {
+                "website_cache"
+            } else {
+                "embedded"
+            }
+            .into(),
+            highest_accepted_data_revision: status.highest_accepted_data_revision,
+            last_success_at: status.last_success_at_ms,
             recovery_available: status.recovery_available,
             retrieval_enabled: status.retrieval_enabled,
             held: status.held.map(|held| ModelFeedHeldV1 {
@@ -106,18 +165,17 @@ impl ModelFeedPort for LocalControlAdapter {
                 reason: attempt.reason,
             }),
             verification,
-            counts: ModelFeedCountsV1 {
-                applied: status.counts.applied,
-                ignored_embedded: status.counts.ignored_embedded,
-                newer_client: status.counts.newer_client,
-                unresolved: status.counts.unresolved,
+            counts: ModelFeedCountsV2 {
+                descriptive_records: descriptive as u64,
+                qualified_models: qualified,
+                restricted_models: data.models.len() as u64 - qualified,
             },
             next_automatic_attempt_at: status.next_automatic_attempt_at,
             disclosure: MODEL_FEED_DISCLOSURE.into(),
             disclosure_acknowledged: status.disclosure_acknowledged,
         })
     }
-    fn feed_refresh(&self) -> Result<ModelFeedStatusV1, ErrorCode> {
+    fn feed_refresh(&self) -> Result<ModelFeedStatusV2, ErrorCode> {
         // Retrieval failures are represented by last_attempt; the last verified copy survives.
         let _ = self.refresh_model_feed();
         self.feed_status()
@@ -125,7 +183,7 @@ impl ModelFeedPort for LocalControlAdapter {
     fn feed_settings(
         &self,
         request: ModelFeedSettingsRequestV1,
-    ) -> Result<ModelFeedStatusV1, ErrorCode> {
+    ) -> Result<ModelFeedStatusV2, ErrorCode> {
         if request.retrieval_enabled.is_none() && request.acknowledge_disclosure.is_none() {
             return Err(ErrorCode::InvalidArguments);
         }
@@ -136,30 +194,34 @@ impl ModelFeedPort for LocalControlAdapter {
             .map_err(feed_error)?;
         self.feed_status()
     }
-    fn feed_remove_preview(&self) -> Result<ModelFeedRemovalPreviewV1, ErrorCode> {
-        self.feed_removal_context().map(|(preview, _)| preview)
+    fn feed_remove_preview(
+        &self,
+        query: ModelFeedRemovalQueryV2,
+    ) -> Result<ModelFeedRemovalPreviewV2, ErrorCode> {
+        self.feed_removal_context(query).map(|(preview, _)| preview)
     }
     fn feed_remove(
         &self,
         request: ModelFeedRemoveRequestV1,
-    ) -> Result<ModelFeedStatusV1, ErrorCode> {
-        let (preview, state_digest) = self.feed_removal_context()?;
+    ) -> Result<ModelFeedStatusV2, ErrorCode> {
+        let (preview, state_digest) =
+            self.feed_removal_context(ModelFeedRemovalQueryV2::default())?;
         if preview.digest != request.accepted_digest {
             return Err(ErrorCode::ChangePreviewStale);
         }
         self.model_feed
             .as_ref()
             .ok_or(ErrorCode::DaemonUnavailable)?
-            .remove(
+            .remove_prepared(
                 &state_digest,
                 request.also_disable_retrieval,
-                |generation, sequence| self.activate_feed_generation(generation, sequence),
+                |catalog| self.prepare_catalog_prices(catalog),
+                |catalog, prepared, commit| self.activate_catalog_prices(catalog, prepared, commit),
             )
             .map_err(feed_error)?;
-        let _ = self.rebuild_price_snapshot();
         self.feed_status()
     }
-    fn model_availability(&self) -> Result<ModelAvailabilityResultV1, ErrorCode> {
+    fn model_availability(&self) -> Result<ModelAvailabilityResultV2, ErrorCode> {
         availability(self)
     }
 }
@@ -167,84 +229,9 @@ impl ModelFeedPort for LocalControlAdapter {
 impl LocalControlAdapter {
     fn feed_removal_context(
         &self,
-    ) -> Result<(ModelFeedRemovalPreviewV1, CanonicalDigest), ErrorCode> {
-        let feed = self
-            .model_feed
-            .as_ref()
-            .ok_or(ErrorCode::DaemonUnavailable)?;
-        // Capture feed before the storage lock; feed activation takes locks in that order.
-        let before = feed.removal_digest().map_err(feed_error)?;
-        let status = feed.status().map_err(feed_error)?;
-        let catalog = self.current_catalog().ok_or(ErrorCode::DaemonUnavailable)?;
-        let stores = self
-            .stores_lock()
-            .map_err(|_| ErrorCode::DaemonUnavailable)?;
-        let management = stores
-            .control()
-            .compute_management_snapshot(&WorkspaceId::default())
-            .map_err(|_| ErrorCode::DaemonUnavailable)?;
-        let versions = stores
-            .control()
-            .published_plan_versions(&WorkspaceId::default())
-            .map_err(|_| ErrorCode::DaemonUnavailable)?;
-        let mut sources = Vec::new();
-        let mut published_revisions = Vec::new();
-        for source in &management.sources {
-            let models = source
-                .models
-                .iter()
-                .filter(|model| {
-                    model.catalog_configuration_id.as_ref().is_some_and(|id| {
-                        !feed.is_embedded_model(id) && catalog.model_data().model(id).is_some()
-                    })
-                })
-                .collect::<Vec<_>>();
-            if models.is_empty() {
-                continue;
-            }
-            let references = versions
-                .iter()
-                .filter(|version| {
-                    candidates(version).any(|candidate| {
-                        models
-                            .iter()
-                            .any(|model| model.binding_id == candidate.binding_id)
-                    })
-                })
-                .map(|version| version.reference.clone())
-                .collect::<Vec<_>>();
-            for reference in &references {
-                if !published_revisions.contains(reference) {
-                    published_revisions.push(reference.clone());
-                }
-            }
-            sources.push(ModelFeedAffectedSourceV1 {
-                source_id: source.source_id.clone(),
-                display_name: source.display_name.clone(),
-                model_configuration_ids: models
-                    .iter()
-                    .filter_map(|m| m.catalog_configuration_id.clone())
-                    .collect(),
-                published_revisions: references,
-            });
-        }
-        let revisions = management.revisions;
-        drop(stores);
-        if before != feed.removal_digest().map_err(feed_error)? {
-            return Err(ErrorCode::ChangePreviewStale);
-        }
-        let digest = CanonicalDigest::of(&(&before, &revisions, &sources, &published_revisions))
-            .map_err(|_| ErrorCode::Internal)?;
-        Ok((
-            ModelFeedRemovalPreviewV1 {
-                sources,
-                published_revisions,
-                retained_sequence: status.highest_accepted_sequence,
-                retrieval_enabled: status.retrieval_enabled,
-                digest,
-            },
-            before,
-        ))
+        query: ModelFeedRemovalQueryV2,
+    ) -> Result<(ModelFeedRemovalPreviewV2, CanonicalDigest), ErrorCode> {
+        removal::preview(self, query)
     }
 }
 
@@ -295,11 +282,11 @@ fn reasoning(
     }
 }
 
-fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResultV1, ErrorCode> {
+fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResultV2, ErrorCode> {
     use hiroute_integrations::model_feed::ModelFactOrigin;
     let catalog = adapter
         .current_catalog()
-        .ok_or(ErrorCode::DaemonUnavailable)?;
+        .ok_or(ErrorCode::ChangePreviewStale)?;
     let stores = adapter
         .stores_lock()
         .map_err(|_| ErrorCode::DaemonUnavailable)?;
@@ -322,6 +309,17 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
     {
         return Err(ErrorCode::ChangePreviewStale);
     }
+    let preferences = management
+        .sources
+        .iter()
+        .map(|source| {
+            stores
+                .control()
+                .source_default_preferences(&source.source_id)
+                .map(|preferences| (source.source_id.clone(), preferences))
+                .map_err(|_| ErrorCode::DaemonUnavailable)
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()?;
     drop(stores);
     let mut bindings: BTreeMap<String, Vec<String>> = BTreeMap::new();
     // Pure local admission: never probe a provider or refresh a subscription from this read.
@@ -336,7 +334,12 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
             else {
                 continue;
             };
-            for fact in facts {
+            for mut fact in facts {
+                fact.default_preferences = preferences
+                    .get(&source.source_id)
+                    .and_then(|preferences| preferences.get(&fact.binding_id))
+                    .cloned()
+                    .unwrap_or_default();
                 let candidate =
                     super::candidate_execution::materialize_registered_management_candidate(
                         &fact, &catalog,
@@ -358,24 +361,40 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
             Some(ModelFactOrigin::Feed {
                 sequence,
                 included_on,
-            }) => ModelFactOriginV1::Feed {
+            }) => ModelFactOriginV2::Feed {
                 sequence,
-                included_on,
+                as_of: included_on,
             },
-            _ => ModelFactOriginV1::Embedded {
+            _ => ModelFactOriginV2::Embedded {
                 client_version: env!("CARGO_PKG_VERSION").into(),
             },
         };
-        models.push(AvailableModelV1 {
+        models.push(AvailableModelV2 {
             model_configuration_id: id.clone(),
             display_name: model.display_name.clone(),
             origin,
             identity_stability: Some(catalog.model_identity_stability(id).into()),
-            availability: if executable.is_empty() {
-                ModelAvailabilityV1::NeedsConnection
+            availability: if !catalog
+                .model_data()
+                .model_endpoint_capabilities
+                .iter()
+                .any(|cap| {
+                    &cap.model_configuration_id == id
+                        && catalog.model_data().offers.iter().any(|offer| {
+                            offer.endpoint_profile_id == cap.endpoint_profile_id
+                                && offer.model_configuration_ids.contains(id)
+                        })
+                }) {
+                ModelAvailabilityV2::DescriptiveOnly
+            } else if executable.is_empty() {
+                ModelAvailabilityV2::NeedsConnection
             } else {
-                ModelAvailabilityV1::Executable
+                ModelAvailabilityV2::Executable
             },
+            published_plan_references: versions
+                .iter()
+                .filter(|v| candidates(v).any(|c| &c.model_configuration_id == id))
+                .count(),
             binding_ids: executable,
             facts: Some(model_facts(
                 &model.publisher_id,
@@ -385,17 +404,18 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
         });
     }
     for newer in catalog.newer_feed_models() {
-        models.push(AvailableModelV1 {
+        models.push(AvailableModelV2 {
             model_configuration_id: newer.model_configuration_id.clone(),
             display_name: newer.display_name.clone(),
-            origin: ModelFactOriginV1::Feed {
+            origin: ModelFactOriginV2::Feed {
                 sequence: newer.sequence,
-                included_on: newer.included_on.clone(),
+                as_of: newer.included_on.clone(),
             },
             identity_stability: Some(newer.identity_stability.clone()),
-            availability: ModelAvailabilityV1::NeedsNewerClient {
+            availability: ModelAvailabilityV2::NeedsNewerClient {
                 version: newer.minimum_client.clone(),
             },
+            published_plan_references: 0,
             binding_ids: vec![],
             facts: Some(model_facts(&newer.publisher_id, &newer.capabilities, None)),
         });
@@ -415,12 +435,13 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
         }
     }
     for (id, count) in historical {
-        models.push(AvailableModelV1 {
+        models.push(AvailableModelV2 {
             display_name: id.clone(),
             model_configuration_id: id,
-            origin: ModelFactOriginV1::Published,
+            origin: ModelFactOriginV2::Published,
             identity_stability: None,
-            availability: ModelAvailabilityV1::UsedByPublishedPlans { count },
+            availability: ModelAvailabilityV2::UsedByPublishedPlans { count },
+            published_plan_references: count,
             binding_ids: vec![],
             facts: None,
         });
@@ -454,7 +475,7 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
             included_on: entry.included_on.clone(),
         })
         .collect();
-    Ok(ModelAvailabilityResultV1 { models, featured })
+    Ok(ModelAvailabilityResultV2 { models, featured })
 }
 
 #[cfg(test)]

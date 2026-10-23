@@ -127,14 +127,7 @@ impl LocalControlAdapter {
                     display_name: model.display_name.clone(),
                     catalog_configuration_id: Some(model.model_configuration_id.clone()),
                     membership: ComputeModelMembershipV2::Catalog,
-                    capabilities: NativeModelCapabilityDeclarationV1 {
-                        tool: registered_fact(model.capabilities.tool),
-                        vision: registered_fact(model.capabilities.vision),
-                        streaming: registered_fact(model.capabilities.streaming),
-                        context_tokens: registered_fact(model.capabilities.context_tokens),
-                        max_output_tokens: registered_fact(model.capabilities.max_output_tokens),
-                        native_reasoning: registered_fact(reasoning.capability.clone()),
-                    },
+                    capabilities: capability_declaration(&catalog, capability, model, reasoning),
                 })
             })
             .collect::<Result<Vec<_>, ComputeManagementControlError>>()?;
@@ -367,10 +360,34 @@ fn select_registered_endpoint<'a>(
         .ok_or(ComputeManagementControlError::RegisteredOptionUnavailable)
 }
 
-fn registered_fact<T>(value: T) -> NativeCandidateFactValueV1<T> {
-    NativeCandidateFactValueV1 {
-        value: Some(value),
-        basis: NativeCandidateFactBasisV1::RegisteredCatalog,
+pub(in crate::control::runtime) fn capability_declaration(
+    catalog: &hiroute_integrations::TrustedReleaseCatalog,
+    capability: &hiroute_domain::ModelEndpointCapabilityV1,
+    model: &hiroute_domain::ModelDefinitionV1,
+    reasoning: &hiroute_domain::ModelNativeReasoningV1,
+) -> NativeModelCapabilityDeclarationV1 {
+    let defaults = hiroute_integrations::compute::official_capability_defaults(
+        catalog, capability, model, reasoning,
+    );
+    fn fact<T>(
+        value: hiroute_domain::ComputeManagementFactValueV2<T>,
+    ) -> NativeCandidateFactValueV1<T> {
+        NativeCandidateFactValueV1 {
+            value: value.value,
+            basis: if value.basis == hiroute_domain::ComputeManagementFactBasisV2::Unknown {
+                NativeCandidateFactBasisV1::Unknown
+            } else {
+                NativeCandidateFactBasisV1::RegisteredCatalog
+            },
+        }
+    }
+    NativeModelCapabilityDeclarationV1 {
+        tool: fact(defaults.tool),
+        vision: fact(defaults.vision),
+        streaming: fact(defaults.streaming),
+        context_tokens: fact(defaults.context_tokens),
+        max_output_tokens: fact(defaults.max_output_tokens),
+        native_reasoning: fact(defaults.native_reasoning),
     }
 }
 

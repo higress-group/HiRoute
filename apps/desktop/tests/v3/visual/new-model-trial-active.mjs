@@ -8,7 +8,7 @@ const keepAlive=setInterval(()=>{},1000);
 const results=[];
 await client.send('Page.addScriptToEvaluateOnNewDocument', { source: `
   window.fixtureBrowserErrors = [];
-  addEventListener('error', event => window.fixtureBrowserErrors.push({ message: event.message, file: event.filename, line: event.lineno }), true);
+  addEventListener('error', event => window.fixtureBrowserErrors.push({ type: event.type, message: event.message, file: event.filename, line: event.lineno, stack: event.error?.stack, target: event.target?.tagName, source: event.target?.src, href: event.target?.href }), true);
   addEventListener('unhandledrejection', event => window.fixtureBrowserErrors.push({ rejection: String(event.reason) }));
 ` });
 const click=async(selector,text)=>{ const deadline=Date.now()+5000; for(;;){ const result=await evaluate(client,`(()=>{const el=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length && !e.matches(':disabled') && e.textContent.includes(${JSON.stringify(text)}));if(!el)return JSON.stringify([...document.querySelectorAll(${JSON.stringify(selector)})].map(e=>[e.textContent.trim().slice(0,40),e.getClientRects().length,e.matches(':disabled')]));el.click();return true;})()`); if(result===true)return; if(Date.now()>deadline)throw Error(`Missing control ${selector} "${text}": ${result}`); await new Promise(resolve=>setTimeout(resolve,50)); } };
@@ -431,7 +431,7 @@ try {
  await writeFile(path.join(output,'report.json'),JSON.stringify({proof:'production components with synthetic IPC; no native or provider claim',results},null,2));console.log(JSON.stringify({passed:results.length,output}));
 } catch(error) {
  const failure={error:String(error.stack??error),results};
- try { failure.page=await evaluate(client,`({url:location.href,text:document.body?.innerText??'',trace:window.trialTrace??null,errors:window.fixtureBrowserErrors??[],resources:performance.getEntriesByType('resource').map(e=>({name:e.name,status:e.responseStatus,duration:e.duration}))})`); }
+ try { failure.page=await evaluate(client,`({url:location.href,text:document.body?.innerText??'',html:document.documentElement.outerHTML,ready:document.readyState,trace:window.trialTrace??null,errors:window.fixtureBrowserErrors??[],resources:performance.getEntriesByType('resource').map(e=>({name:e.name,status:e.responseStatus,duration:e.duration}))})`); }
  catch(captureError) {failure.pageCaptureError=String(captureError);}
  try {await shot('failure');} catch(captureError) {failure.screenshotError=String(captureError);}
  await writeFile(path.join(output,'failure.json'),JSON.stringify(failure,null,2));

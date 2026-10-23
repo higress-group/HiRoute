@@ -1,98 +1,113 @@
-# Model feed over HTTPS
+# Complete official model data over HTTPS
 
-The service retrieves `https://hiroute.ai/model-feed/v1.json`. This is a validated,
-versioned projection of the existing model metadata source, with editorial
-announcements. It does not introduce a second editable model catalog.
+The daemon retrieves `https://hiroute.ai/model-feed/v2.json`. One complete public
+body supplies the installed fallback and website publication. Maintain model facts
+in the existing [model-data inputs](../model-data/current/inputs), not a second
+website catalog. Public metadata includes records without an executable binding.
 
-## Maintained inputs and generation
+## Inputs and generation
 
-| File | Owner and meaning |
+| Input | Meaning |
 | --- | --- |
-| `featured.json` | Editorial array of `new_model` and `model_update` announcements; plain bilingual text and links restricted to `https://hiroute.ai/` |
-| `publication.json` | Publication `sequence` and UTC `issued_at`; increase the sequence whenever payload bytes change |
-| `policy.json` | `minimum_feed_client`, the first feed-capable release |
-| `payload.json` | Generated payload; never hand-edit model facts here |
+| `assets/model-data/current/inputs/official-data-revision.json` | Monotonic semantic data revision; changed semantic content requires a higher revision |
+| `assets/model-data/current/inputs/metadata-catalog.json` and existing runtime/rating inputs | Complete model, provider, product, binding, capability, documented price and provenance facts |
+| `assets/release-facts/current/bundle/official-model-data.json` | Generated shared data revision, semantic digest and complete body |
+| `featured.json` | Optional bilingual editorial announcements; links stay under `https://hiroute.ai/` |
+| `publication.json` | Monotonic publication sequence and UTC issue time; changed exact bytes require a higher sequence |
+| `policy.json` | Earliest intended reader; a version string does not prove a compatible reader shipped |
+| `payload.json` | Generated publication, or `null` while no compatible supported client is recorded |
 
-The Desktop client also bundles the maintained `featured.json` editorial input.
-When no feed announcements are available, Home and quick start use only these
-resolvable announcements, rather than labeling the first directory entries as new.
-Bundled announcements keep the model's built-in origin and never claim website retrieval. An update headline may name an announced release while its note
-distinguishes that announcement from the version served by a connection. The
-underlying model identity, connection checks, prices and published routing remain
-owned by the ordinary catalog and saved connection. An unresolved announcement
-is hidden in both sources.
-
-Change model facts in
-[`metadata-catalog.json`](../model-data/current/inputs/metadata-catalog.json), then
-follow the [metadata maintainer workflow](../../.agents/skills/model-metadata-maintainer/SKILL.md).
-Regenerate the current model data and release bundle before running:
+Follow the [metadata workflow](../../.agents/skills/model-metadata-maintainer/SKILL.md),
+regenerate model data and the release bundle, then run the producer and check twice:
 
 ```sh
+python3 assets/release-facts/current/prepare-bundle.py
+python3 assets/release-facts/current/prepare-bundle.py --check
 cargo run -p hiroute-release-facts -- feed build
 cargo run -p hiroute-release-facts -- feed build --check
 node apps/website/scripts/model-feed.mjs check
 ```
 
-The Rust producer uses the client's admission code and exact supported release
-bundles from repository history. It computes the minimum admitting client version,
-carries inclusion dates forward from the committed payload, and omits models waiting
-for a compatible release. A model's minimum version requires its executable capability
-and offer together. CI passes `--base <revision>` to reject changed publication bytes
-without a higher sequence and changed first-inclusion dates for retained records.
-The payload's `source_revision` is the Git tree ID of the committed
-`assets/release-facts/current/bundle` directory. It survives squash merges and
-reproduces a file with `git show <tree-id>:model-data.json`; it is provenance,
-not each website deployment's commit SHA.
-One sequence identifies one immutable payload digest and source revision. Keep the
-referenced bundle tree reachable from main history. Node structural checks complement, and never replace, Rust admission validation.
+For a semantic change, increase the data revision before regeneration and commit
+the reviewed inputs and generated bundle before building the feed. Then update the
+publication sequence/time when exact publication bytes change, build/check the feed,
+and commit its generated payload. This preserves the bundle-tree provenance through
+a squash merge. Supply the PR/push comparison revision with `feed build --check
+--base BASE`; HEAD also protects uncommitted regeneration.
 
-Before a feed-capable release is recorded, `payload.json` contains `null` followed
-by a newline. Both build checks report bootstrap; deployment skips network access
-and feed publication and still uploads the ordinary website. Bootstrap is not a
-production feed publication.
+The Rust producer validates the complete candidate even during bootstrap. Before
+release gating it rejects an embedded revision rollback or different semantic content
+at the same revision against HEAD and the supplied baseline, including when
+`payload.json` remains `null`. It checks recorded supported source readers before
+enabling publication. Unsupported execution
+requirements remain descriptive; they do not remove otherwise valid metadata. The
+publication's `source_revision` names the committed release-bundle tree, which is
+stable through a squash merge. Keep that tree reachable in main history.
 
-## Production publication and trust
+Semantic data identity and exact publication identity are separate. Reformatting or
+editing announcements does not change authoring/price dependencies. A corrected or
+withdrawn data fact requires a new data revision. Whole-snapshot selection never
+fills missing fields from an older snapshot. Evidence dates, editorial inclusion
+dates, retrieval times and publication times keep their distinct meanings.
 
-The fixed HTTPS origin and the production website pipeline are the content trust
-boundary. Clients validate TLS certificates, refuse redirects and production URL
-overrides, and validate the direct `hiroute.model-feed/v1` JSON payload. There is
-no signature envelope, compiled feed public key, signing secret or key rotation.
-A digest binds exact publication bytes for cache integrity and sequence identity;
-it is not independent publisher authentication. Feed records cannot introduce
-connection endpoints, authentication or executable adapters. Embedded facts and
-manual price overrides retain their existing precedence.
+## Contract and authority
 
-The [website workflow](../../.github/workflows/website.yml) runs the shared Rust
-check and Node check on the same source revision before uploading the validated
-payload as a separate artifact. PR jobs never publish. Only `main` production
-pushes or dispatches enter the production environment. The deploy job downloads
-that workflow revision's payload and runs:
+The direct `hiroute.model-feed/v2` JSON carries sequence, issue time, source tree,
+data revision/digest, complete data and optional featured entries. Limits are 16 MiB
+of decoded bytes, depth 64, UTF-8 strings of 16 KiB, keys of 256 bytes and records
+of 256 KiB, plus finite collection bounds. Duplicate keys, including escaped
+spellings, are rejected. Integer literals retain signed/unsigned 64-bit precision;
+decimal rates and descriptive decimal quantities use strings. Rust and Node share
+[canonical identity goldens](../../contracts/model-feed/canonical-data.v1.json).
 
-```sh
-node apps/website/scripts/model-feed.mjs publish --payload <validated-payload-path>
-```
+HTTPS certificate validation and the production website pipeline establish trust.
+There is no signing key or signature envelope. Production refuses redirects and
+caller-supplied URLs. Requests carry no account, credential, session or usage data.
 
-The publisher requests the fixed feed URL without redirects or cached-response
-reuse. Only a real 404 permits first publication. Existing publications must pass
-bounded JSON validation before their sequence or digest is used. Other HTTP
-responses, network errors or invalid content fail deployment before upload.
+The website cannot install registry entries, authentication, destinations, headers,
+adapters or free entitlement. Executable qualification uses the installed registry
+and actual source/account authority. Exact product/protocol associations govern
+capability overrides and documented prices. Ambiguity and unsupported conditions
+remain unknown. Prices preserve input, output, cache-read and cache-write separately;
+display-only cost hints are never rates.
 
-An identical payload digest is a no-op: no feed file is written, and the existing
-OSS object is preserved by the non-deleting upload. Different content requires a
-strictly greater sequence. The script enforces the 2 MiB limit and atomically
-stages the exact validated payload at `apps/website/dist/model-feed/v1.json`.
-It refuses a website artifact that already contains a feed. Retrieval or validation
-failure leaves the existing served website and feed intact. The job summary records
-status, sequence, payload SHA-256 and source revision.
+User-preserved values take priority. A saved field following an exact official
+locator resolves the selected compatible data; old ambiguous/manual evidence is
+preserved. Source-owned preference changes share source CAS, activation and recovery.
+Published Plans retain sealed execution facts, and settled costs retain frozen quotes.
+Each new logical request captures the current price handle.
 
-Keep the endpoint stable for supported clients. An incompatible future contract
-needs a new versioned endpoint and compatibility-register entry. The direct JSON
-contract is introduced before any supported feed-capable release; the abandoned
-signed-envelope development format is not a supported legacy format.
+## Cache and product reads
 
-Ensure infrastructure serves missing `/model-feed/*` objects as real 404s without
-an HTML fallback or redirect. The existing short-cache OSS upload remains in use.
-After the first feed-capable release, verify a real publication through both a
-standalone Linux service and macOS Desktop. Controlled fixtures do not establish
-live hiroute.ai retrieval. Keep sequence/checkpoint, private atomic cache, restart
-validation, fallback and frozen-published-route lifecycle regressions in place.
+The daemon selects the highest compatible semantic revision of its verified cache
+and embedded data. Independent v2 publication and semantic acceptance checkpoints
+survive cache removal/corruption. The bounded retained-v1 settings converter preserves
+original bytes and user choices without importing v1 delta payloads or sequence floors.
+
+Network retrieval, parsing and qualification do not hold the Control writer. Matching
+prices are prepared before activation. The final feed-to-Control writer barrier checks
+all captured dependencies before committing acceptance and installing the pair.
+Announcement-only updates do not rebuild prices or invalidate ordinary previews.
+
+CLI `models metadata list/get` and all UI hosts read the same selected snapshot.
+List pages default to 50, maximum 100, within a 1 MiB response budget. Cursors bind
+snapshot/filter/order; an obsolete cursor requires a fresh first page. Removing a
+cache requires a complete-impact digest and a bounded paginated preview of capability,
+reasoning, price and new-use changes, including already embedded models. Published
+revisions and user-preserved facts remain intact.
+
+## Production publication
+
+Only production website deployment may publish the exact artifact validated by Rust
+and Node on the same revision. PR builds publish nothing. Bootstrap `null` skips
+network access and feed staging while normal website deployment continues. Release a
+compatible v2 client and record its exact source before enabling the first publication.
+No supported recorded release currently establishes a served v1 compatibility endpoint.
+
+The publisher retrieves the fixed v2 URL without redirects. A genuine 404 permits
+bootstrap; retrieval failure, invalid served content, publication rollback, semantic
+rollback or equal-revision conflicting content stops replacement. Identical exact
+bytes are a no-op. Otherwise, stage only the validated artifact at
+`apps/website/dist/model-feed/v2.json`; non-deleting upload preserves the previous
+object on failure. Record publication sequence/digest/source and data revision/digest.
+Missing `/model-feed/*` objects must return actual 404s without an HTML fallback.

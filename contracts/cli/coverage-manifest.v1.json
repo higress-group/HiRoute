@@ -1149,6 +1149,62 @@
       }
     },
     {
+      "command_id": "compute.defaults.get",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.defaults.get.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.defaults.get.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.defaults.preview",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.defaults.preview.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.defaults.preview.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.metadata.list",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.models.metadata.list.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.models.metadata.list.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.metadata.get",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.models.metadata.get.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.models.metadata.get.positive",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "models.show",
       "lifecycle": "released",
       "negative": {
@@ -1471,7 +1527,7 @@
       }
     }
   ],
-  "descriptor_digest": "sha256:599207be26345edcb2ca69333ea50fb0580337aeff58ed0afe8f1fe5e0eca30e",
+  "descriptor_digest": "sha256:4c6ad98a122d461104603829802dcf3d90c09f469756cfb42eedac9a2615f507",
   "schema_version": {
     "major": 1,
     "minor": 0

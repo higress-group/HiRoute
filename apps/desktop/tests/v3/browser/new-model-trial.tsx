@@ -1,3 +1,4 @@
+import { metadataFixtureInvoke } from './model-metadata-fixture';
 import { ReadCostFixture, installReadCostClock, readCostResponse } from './trial-read-cost-fixture';
 import { TrialFixture, quickStartInvoke } from './trial-quickstart-fixture';
 import { NewModels } from '../../../src/features/trial/NewModels';
@@ -25,7 +26,7 @@ if (readCost) installReadCostClock();
 const language = params.get('lang') === 'zh' ? 'zh' : 'en';
 const trace: { command: string; payload: any; at: number }[] = [];
 Object.assign(window, { trialTrace: trace });
-const feed: ModelFeedStatus = { retrieval_enabled:true, held:{sequence:12, issued_at:'2026-10-18T00:00:00Z', retrieved_at:1792281600000}, highest_accepted_sequence:12, last_attempt:{at:1792281600000,result:'ok',reason:null}, verification:{kind:'validated'}, counts:{applied:4,ignored_embedded:2,newer_client:1,unresolved:0}, next_automatic_attempt_at:null, disclosure:'Model information is retrieved automatically from hiroute.ai without account or usage identifiers. You can turn off automatic retrieval.', disclosure_acknowledged:false };
+const feed: ModelFeedStatus = { retrieval_enabled:true, held:{sequence:12, issued_at:'2026-10-18T00:00:00Z', retrieved_at:1792281600000}, highest_accepted_sequence:12, last_attempt:{at:1792281600000,result:'ok',reason:null}, verification:{kind:'validated'}, counts:{descriptive_records:4,qualified_models:4,restricted_models:0}, next_automatic_attempt_at:null, disclosure:'Model information is retrieved automatically from hiroute.ai without account or usage identifiers. You can turn off automatic retrieval.', disclosure_acknowledged:false };
 if (params.has('recovery')) { feed.held=null; feed.verification={kind:'discarded',reason:'feed_state_invalid'}; feed.recovery_available=true; }
 const featuredCatalog = {
   featured:[
@@ -35,10 +36,10 @@ const featuredCatalog = {
     {id:'featured/luna',kind:'new_model',model_configuration_id:'model.openai.gpt-6-luna',headline:{en:'GPT-6 Luna',zh:'GPT-6 Luna'},note:{en:'Uses new interface features that need HiRoute 0.3.3.',zh:'用到新的接口特性，需要 HiRoute 0.3.3 的适配。'},links:[],included_on:'2026-10-14'},
   ],
   models:[
-    {model_configuration_id:'model.deepseek.v4-1-flash',display_name:'DeepSeek V4.1 Flash',origin:{kind:'feed',sequence:12,included_on:'2026-10-09'},identity_stability:'rolling-alias',availability:{kind:'executable'},binding_ids:['binding/bailian/qwen-coder'],facts:{publisher_id:'publisher.deepseek',context_tokens:1000000,tool:true,vision:false,reasoning:{kind:'profiles',profiles:['low','high','max']}}},
-    {model_configuration_id:'model.trial',display_name:'Kimi K3',origin:{kind:'feed',sequence:12,included_on:'2026-10-16'},identity_stability:'rolling-alias',availability:{kind:'needs_connection'},binding_ids:[],facts:{publisher_id:'publisher.moonshot',context_tokens:262144,tool:true,vision:false,reasoning:{kind:'toggle'}}},
+    {model_configuration_id:'model.deepseek.v4-1-flash',display_name:'DeepSeek V4.1 Flash',origin:{kind:'feed',sequence:12,as_of:'2026-10-09'},identity_stability:'rolling-alias',availability:{kind:'executable'},binding_ids:['binding/bailian/qwen-coder'],facts:{publisher_id:'publisher.deepseek',context_tokens:1000000,tool:true,vision:false,reasoning:{kind:'profiles',profiles:['low','high','max']}}},
+    {model_configuration_id:'model.trial',display_name:'Kimi K3',origin:{kind:'feed',sequence:12,as_of:'2026-10-16'},identity_stability:'rolling-alias',availability:{kind:'needs_connection'},binding_ids:[],facts:{publisher_id:'publisher.moonshot',context_tokens:262144,tool:true,vision:false,reasoning:{kind:'toggle'}}},
     {model_configuration_id:'model.zhipu.glm-5-3',display_name:'GLM-5.3',origin:{kind:'embedded',client_version:'0.3.1'},identity_stability:'pinned',availability:{kind:'executable'},binding_ids:['binding/zhipu/glm-5-3'],facts:{publisher_id:'publisher.zhipu',context_tokens:204800,tool:true,vision:false,reasoning:{kind:'toggle'}}},
-    {model_configuration_id:'model.openai.gpt-6-luna',display_name:'GPT-6 Luna',origin:{kind:'feed',sequence:12,included_on:'2026-10-14'},identity_stability:'pinned',availability:{kind:'needs_newer_client',version:'0.3.3'},binding_ids:[],facts:{publisher_id:'publisher.openai',context_tokens:400000,tool:true,vision:true,reasoning:null}},
+    {model_configuration_id:'model.openai.gpt-6-luna',display_name:'GPT-6 Luna',origin:{kind:'feed',sequence:12,as_of:'2026-10-14'},identity_stability:'pinned',availability:{kind:'needs_newer_client',version:'0.3.3'},binding_ids:[],facts:{publisher_id:'publisher.openai',context_tokens:400000,tool:true,vision:true,reasoning:null}},
   ],
 };
 const counts = { executed:58,complete:41,meets_floor:37,partial:4,awaiting_assessment:1,unscored:12,sessions:9 };
@@ -107,7 +108,7 @@ mockIPC(async (command, payload: any) => {
   if (command === 'model_feed_status') { if (params.has('error') && !failed) {failed=true;throw new Error('DAEMON_UNAVAILABLE');} return structuredClone(feed); }
   if (command === 'model_feed_refresh') { feed.last_attempt={at:Date.now(),result:'validation',reason:'invalid_payload'}; return structuredClone(feed); }
   if (command === 'model_feed_settings_apply') { if (payload.input.retrieval_enabled !== undefined) feed.retrieval_enabled=payload.input.retrieval_enabled; if (payload.input.acknowledge_disclosure) feed.disclosure_acknowledged=true; return structuredClone(feed); }
-  if (command === 'model_feed_remove_preview') return { sources:[{source_id:'source/feed',display_name:'Team experimental model connection with a deliberately long readable name',model_configuration_ids:['model.trial'],published_revisions:[]}],published_revisions:[{plan_id:'plan/frozen',content_revision:3}],retained_sequence:12,retrieval_enabled:feed.retrieval_enabled,digest:'sha256:preview' };
+  const metadata = metadataFixtureInvoke(command,payload,params); if (metadata !== undefined) return metadata;
   if (command === 'model_feed_remove_apply') { if (params.has('stale')) throw {message_key:'application.error.change_preview_stale'}; feed.held=null; feed.verification={kind:'none'}; feed.recovery_available=false; if (payload.input.also_disable_retrieval) feed.retrieval_enabled=false; return structuredClone(feed); }
   if (command === 'model_availability') return ['feed-home','home'].includes(params.get('view') ?? '') ? params.has('bundled') ? {featured:[],models:[{...featuredCatalog.models[2],model_configuration_id:'model.anthropic.old',display_name:'Older directory model'},{...featuredCatalog.models[0],origin:{kind:'embedded',client_version:'0.3.1'}}]} : featuredCatalog : {featured:[],models:[]};
   if (command === 'observation_read' && payload.request.intent.view === 'plan_trust_replay') {

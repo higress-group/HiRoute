@@ -22,6 +22,7 @@ use super::{
     ComputeCredentialBindingV2,
 };
 
+mod defaults;
 mod lifecycle;
 
 /// A public preview paired with its sealed, non-wire transaction plan.
@@ -266,10 +267,7 @@ where
         if request.idempotency_key.is_empty() {
             return Err(ComputeManagementPlanningErrorV2::InvalidChange);
         }
-        let change: ComputeManagementChangeV2 =
-            serde_json::from_value(request.spec.desired_state.clone())
-                .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
-        let reproduced = self.preview(change)?;
+        let reproduced = self.preview_saved_state(request.spec.desired_state.clone())?;
         if !reproduced.result.affected_plan_refs.is_empty()
             && reproduced
                 .result

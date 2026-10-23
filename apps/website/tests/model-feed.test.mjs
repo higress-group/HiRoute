@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -9,8 +11,9 @@ import { checkFeed, checkPayload, FEED_URL, MAX_FEED_BYTES, payloadDigest, publi
 const repository = path.resolve(import.meta.dirname, '../../..');
 const script = path.join(repository, 'apps/website/scripts/model-feed.mjs');
 const production = { GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main' };
-const payload = (sequence = 2, extra = {}) => ({ schema: 'hiroute.model-feed/v1', sequence,
-  issued_at: '2026-10-18T08:00:00Z', source_revision: 'a'.repeat(40), records: [], featured: [], ...extra });
+const snapshot = JSON.parse(readFileSync(path.join(repository, 'assets/release-facts/current/bundle/official-model-data.json')));
+const payload = (sequence = 2, extra = {}) => ({ schema: 'hiroute.model-feed/v2', sequence,
+  issued_at: '2026-10-18T08:00:00Z', source_revision: 'a'.repeat(40), ...structuredClone(snapshot), featured: [], ...extra });
 const json = value => Buffer.from(`${JSON.stringify(value)}\n`);
 const response = bytes => new Response(bytes, { status: 200 });
 const firstPublication = async () => new Response(null, { status: 404 });
@@ -28,7 +31,7 @@ async function fixture(t, value = payload()) {
     'policy.json': { minimum_feed_client: '0.3.2' },
     'publication.json': { sequence: value?.sequence ?? 1, issued_at: value?.issued_at ?? '2026-10-18T08:00:00Z' },
     'featured.json': value?.featured ?? [] })) await writeFile(path.join(sourceDirectory, name), json(content));
-  return { sourceDirectory, distDirectory, destination: path.join(distDirectory, 'model-feed/v1.json'),
+  return { sourceDirectory, distDirectory, destination: path.join(distDirectory, 'model-feed/v2.json'),
     summary: path.join(root, 'summary.md'), env: production };
 }
 
@@ -42,7 +45,7 @@ test('bootstrap works without network and leaves the ordinary website deployable
   const checked = await checkFeed(f);
   assert.equal(checked.payload, null);
   const result = await publishFeed({ ...f, env: production, fetchImpl: noRequest });
-  assert.deepEqual(result, { status: 'bootstrap', sequence: null, payload_digest: null, source_revision: null });
+  assert.deepEqual(result, { status: 'bootstrap', sequence: null, data_revision: null, data_digest: null, payload_digest: null, source_revision: null });
   await noOutput(f);
 });
 
@@ -81,7 +84,7 @@ test('first 404 publishes exact validated JSON bytes without keys and reports pr
   assert.equal(checkPayload(bytes).sequence, 2n);
   assert.equal(result.payload_digest, payloadDigest(json(payload())));
   assert.deepEqual(bytes, json(payload()));
-  assert.equal(JSON.parse(bytes).schema, 'hiroute.model-feed/v1');
+  assert.equal(JSON.parse(bytes).schema, 'hiroute.model-feed/v2');
   assert.equal(Object.hasOwn(JSON.parse(bytes), 'signatures'), false);
   const summary = await readFile(f.summary, 'utf8');
   assert.match(summary, /Sequence: 2/);
@@ -138,8 +141,8 @@ test('only initial 404 permits first publication; other HTTP, redirect, and netw
   }
 });
 
-test('payload and streaming response enforce the 2 MiB bound even without content length', async t => {
-  assert.throws(() => checkPayload(Buffer.alloc(MAX_FEED_BYTES + 1)), /exceeds 2 MiB/);
+test('payload and streaming response enforce the 16 MiB bound even without content length', async t => {
+  assert.throws(() => checkPayload(Buffer.alloc(MAX_FEED_BYTES + 1)), /exceeds 16 MiB/);
   for (const withHeader of [false, true]) {
     const f = await fixture(t);
     const result = new Response(new ReadableStream({ start(controller) {
@@ -147,7 +150,7 @@ test('payload and streaming response enforce the 2 MiB bound even without conten
       controller.enqueue(new Uint8Array(1));
       controller.close();
     } }), { headers: withHeader ? { 'Content-Length': String(MAX_FEED_BYTES + 1) } : {} });
-    await assert.rejects(publishFeed({ ...f, fetchImpl: async () => result }), /exceeds 2 MiB/);
+    await assert.rejects(publishFeed({ ...f, fetchImpl: async () => result }), /exceeds 16 MiB/);
     await noOutput(f);
   }
 });
@@ -176,9 +179,9 @@ test('payload structure rejects invalid dates, kinds, duplicate IDs, and unsafe 
     links: ['https://hiroute.ai/en/docs/'], included_on: '2026-10-18' };
   const record = { kind: 'price_rate', min_client_version: '0.3.2', included_on: '2026-10-18',
     record: { price_rate_id: 'price.test' } };
-  assert.equal(checkPayload(json(payload(2, { featured: [featured], records: [record] }))).sequence, 2n);
+  assert.equal(checkPayload(json(payload(2, { featured: [featured] }))).sequence, 2n);
   for (const extra of [{ schema: 'unknown' }, { source_revision: 'main' }, { issued_at: '2026-02-30T00:00:00Z' },
-    { records: [{ ...record, kind: 'connector' }] }, { records: [{ ...record, min_client_version: '0.03.2' }] },
+    { records: [{ ...record, kind: 'connector' }] }, { data_revision: 'latest' },
     { records: [record, record] }, { featured: [featured, featured] }, { unknown: true },
     ...['https://example.com/', 'https://hiroute.ai.evil/', 'https://hiroute.ai@evil/', 'http://hiroute.ai/',
       'https://hiroute.ai/\\evil', 'https://hiroute.ai/\n@evil/'].map(link => ({ featured: [{ ...featured, links: [link] }] }))]) {
@@ -193,7 +196,7 @@ test('source metadata mismatch and oversized payloads fail in the build check', 
   await writeFile(path.join(f.sourceDirectory, 'publication.json'), json({ sequence: 2, issued_at: payload().issued_at }));
   const bytes = Buffer.concat([json(payload()), Buffer.alloc(MAX_FEED_BYTES, ' ')]);
   await writeFile(path.join(f.sourceDirectory, 'payload.json'), bytes);
-  await assert.rejects(checkFeed(f), /exceeds 2 MiB/);
+  await assert.rejects(checkFeed(f), /exceeds 16 MiB/);
 });
 
 test('duplicate JSON fields are rejected, including escaped spellings', () => {
@@ -206,4 +209,24 @@ test('exact payload size is accepted; invalid UTF-8 and BOM bytes are refused', 
   assert.equal(checkPayload(Buffer.concat([bytes, Buffer.alloc(MAX_FEED_BYTES - bytes.length, ' ')])).sequence, 2n);
   assert.throws(() => checkPayload(Buffer.from([0xff])), /invalid UTF-8/);
   assert.throws(() => checkPayload(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), json(payload())])), /invalid JSON/);
+});
+
+test('canonical data identity matches the Rust goldens without integer or Unicode loss', async () => {
+  const {canonicalData,parseJson} = await import('../scripts/model-feed.mjs');
+  const fixtures = JSON.parse(readFileSync(new URL('../../../contracts/model-feed/canonical-data.v1.json',import.meta.url)));
+  for (const entry of fixtures.valid) {
+    const value = parseJson(Buffer.from(entry.wire),'golden');
+    assert.equal(canonicalData(value),entry.canonical);
+    assert.equal(`sha256:${createHash('sha256').update(canonicalData(value)).digest('hex')}`,entry.digest);
+  }
+  for (const wire of fixtures.invalid) assert.throws(() => parseJson(Buffer.from(wire),'golden'));
+});
+
+
+test('a scoped price cannot be duplicated under a different descriptive identity', async () => {
+  const {canonicalData} = await import('../scripts/model-feed.mjs');
+  const value = payload();
+  value.data.pricing_facts.push({...structuredClone(value.data.pricing_facts[0]),pricing_key:'duplicate-scope'});
+  value.data_digest = `sha256:${createHash('sha256').update(canonicalData(value.data)).digest('hex')}`;
+  assert.throws(() => checkPayload(json(value)),/duplicate documented price scope/);
 });

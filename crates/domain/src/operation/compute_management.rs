@@ -39,6 +39,49 @@ impl TransactionPlanV1 {
             external: Vec::new(),
         })
     }
+    pub fn with_source_defaults(
+        mut self,
+        preferences_before: crate::SourceDefaultPreferencesV1,
+        preferences_after: crate::SourceDefaultPreferencesV1,
+    ) -> Result<Self, OperationValidationError> {
+        validate_registered_plan(
+            &self.spec,
+            &self.control,
+            self.credential_pool.as_ref(),
+            &self.secrets,
+            &self.runtime,
+            &self.external,
+        )?;
+        let source_mutation: crate::ComputeManagementMutationV2 = serde_json::from_value(
+            self.control
+                .get("compute_management_mutation")
+                .cloned()
+                .ok_or(OperationValidationError::UnregisteredEffectPlan)?,
+        )
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+        self.spec.desired_state = json!({"schema": crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3, "change": self.spec.desired_state, "default_preferences": preferences_after});
+        let mutation = crate::ComputeManagementMutationV3 {
+            schema: crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V3.into(),
+            source_mutation,
+            preferences_before,
+            preferences_after,
+            change_spec_digest: CanonicalDigest::of(&self.spec)
+                .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?,
+        };
+        mutation
+            .validate(&self.spec)
+            .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+        self.control = json!({"compute_management_mutation": mutation});
+        validate_registered_plan(
+            &self.spec,
+            &self.control,
+            self.credential_pool.as_ref(),
+            &self.secrets,
+            &self.runtime,
+            &self.external,
+        )?;
+        Ok(self)
+    }
 }
 
 pub(super) fn validate_management_plan(
@@ -51,7 +94,7 @@ pub(super) fn validate_management_plan(
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Envelope {
-        compute_management_mutation: crate::ComputeManagementMutationV2,
+        compute_management_mutation: crate::ComputeManagementMutation,
     }
 
     if !runtime.is_empty() || !external.is_empty() {
@@ -60,9 +103,11 @@ pub(super) fn validate_management_plan(
     let envelope: Envelope = serde_json::from_value(control.clone())
         .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
     let mutation = envelope.compute_management_mutation;
-    mutation
-        .validate_shape(spec)
-        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+    match &mutation {
+        crate::ComputeManagementMutation::V2(value) => value.validate_shape(spec),
+        crate::ComputeManagementMutation::V3(value) => value.validate(spec),
+    }
+    .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
     if control != &json!({"compute_management_mutation": &mutation}) {
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }

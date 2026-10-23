@@ -960,11 +960,15 @@ fn public_headless_business(include_claude: bool) {
             .starts_with("sha256:")
     );
     let commands = manifest["commands"].as_array().unwrap();
-    assert_eq!(commands.len(), 59);
+    assert_eq!(commands.len(), 76);
     for command_id in [
         "prices.effective",
         "prices.override.preview",
         "prices.override.apply",
+        "compute.defaults.get",
+        "compute.defaults.preview",
+        "models.metadata.list",
+        "models.metadata.get",
     ] {
         assert!(
             commands

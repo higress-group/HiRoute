@@ -521,6 +521,20 @@ pub trait ComputeManagementControlPort: Send + Sync {
         change: hiroute_application_api::ComputeManagementChangeV2,
     ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError>;
 
+    fn compute_defaults(
+        &self,
+        _query: hiroute_application_api::ComputeDefaultsQueryV1,
+    ) -> Result<hiroute_application_api::ComputeDefaultsResultV1, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn preview_compute_save_v3(
+        &self,
+        _change: hiroute_application_api::ComputeManagementChangeV3,
+    ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError> {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+
     fn prepare_compute_save(
         &self,
         request: ComputeConnectionApplyRequestV1,

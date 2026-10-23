@@ -178,6 +178,16 @@ machine and records native x64 separately. This option does not provision a runn
 or supply an interactive login. Consumer results retain the producer revision and
 have their own runtime scenario evidence.
 
+The shared Linux setup installs build prerequisites through
+`scripts/ci-prerequisites.py`. Known Ubuntu direct sources and runner mirror-list
+references use the official Ubuntu HTTPS endpoints, retaining suites, components
+and signing keys. Package-index refresh fails on any source error and is limited
+to three minutes; installation is limited to five minutes. Both stages retain
+bounded network retries and fail the job on timeout or package failure, before
+Rust validation starts. `scripts/test-ci-setup.py` covers source formats,
+mirror indirection and failure propagation without privileged package operations.
+Setup changes require the complete hosted matrix.
+
 The toolchain comes from `rust-toolchain.toml`. Cargo sources are cached, not
 `target/`; Linux shards do not exchange compiled binaries. Windows replay retains
 the original producer build evidence and assesses the consumer separately.

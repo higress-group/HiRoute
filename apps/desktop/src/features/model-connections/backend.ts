@@ -13,7 +13,7 @@ export function modelConnectionBackend(language: 'zh' | 'en'): ModelConnectionBa
     cancelModelConnectionCheck: checkId => invoke('cancel_model_connection_check', { checkId }),
     previewComputeSave: async change => {
       const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
-      return invoke('preview_compute_save', { change: { ...change, expected_revisions: current.revisions } });
+      return invoke('preview_compute_save_v3', { change: { ...change, expected_revisions: current.revisions }, defaultPreferences: {} });
     },
     applyComputeSave: request => invoke('apply_compute_save', { request, language }),
     getComputeSaveResult: operation => invoke('get_compute_save_result', { operation }),
