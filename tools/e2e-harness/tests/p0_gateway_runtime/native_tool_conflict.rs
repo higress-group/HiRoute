@@ -57,17 +57,28 @@ fn parallel_tools(conflicting_delta: bool) -> (ProviderReply, Vec<u8>) {
     if conflicting_delta {
         delta["delta"] = json!(json!({"path":"fixture/path-a.txt"}).to_string());
     }
-    let wire = events
-        .iter()
-        .map(|e| format!("event: {}\ndata: {e}\n\n", e["type"].as_str().unwrap()))
-        .collect::<String>()
-        .into_bytes();
+    let encode = |events: &[Value]| {
+        events
+            .iter()
+            .map(|e| format!("event: {}\ndata: {e}\n\n", e["type"].as_str().unwrap()))
+            .collect::<String>()
+            .into_bytes()
+    };
+    let wire = encode(&events);
     let reply = ProviderReply::StreamDrip {
         status: 200,
         chunks: wire.chunks(113).map(<[u8]>::to_vec).collect(),
         interval: Duration::ZERO,
     };
-    (reply, wire)
+    // Native delivery deliberately exposes the requested public model alias.
+    // Every other byte, including contradictory arguments, must stay intact.
+    for event in &mut events {
+        if let Some(model) = event.pointer_mut("/response/model") {
+            assert_eq!(*model, "runtime-native");
+            *model = json!(MODEL);
+        }
+    }
+    (reply, encode(&events))
 }
 
 fn send(fixture: &RuntimeFixture, input: &[Value], turn: &str) -> (Vec<Value>, Vec<u8>) {
@@ -173,8 +184,9 @@ fn real_listener_conflicting_parallel_tool_final_stays_partial_and_next_stage_re
     let mut input = vec![json!({"role":"user","content":A_USER})];
     let (delivered, raw) = send(&fixture, &input, "a");
     assert_eq!(
-        raw, raw_conflicting,
-        "optional capture must not rewrite or truncate native delivery"
+        String::from_utf8_lossy(&raw),
+        String::from_utf8_lossy(&raw_conflicting),
+        "optional capture must not rewrite native delivery beyond the public model alias"
     );
     assert_eq!(
         delivered[2]["arguments"],
@@ -355,7 +367,10 @@ fn real_listener_consistent_parallel_tools_keep_known_completion_and_one_stage()
     );
     let mut input = vec![json!({"role":"user","content":A_USER})];
     let (delivered, raw) = send(&fixture, &input, "a");
-    assert_eq!(raw, raw_consistent);
+    assert_eq!(
+        String::from_utf8_lossy(&raw),
+        String::from_utf8_lossy(&raw_consistent)
+    );
     let before_final = wait_execution_facts(&fixture, 1);
     let first_attempt = before_final
         .iter()
