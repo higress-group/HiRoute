@@ -425,3 +425,142 @@ fn changed_native_id_without_new_input_keeps_exact_tool_stage_until_real_new_inp
     );
     store.abort(&b);
 }
+
+fn finish_tool_step(store: &AgentTurnHistoryStore, ticket: &AgentTurnTicket, id: &str) {
+    use crate::server::core_runtime::model_ir::{
+        ModelEvent, ModelStreamEventV1, ResponseItemStatus,
+    };
+    store.bind_request(ticket, id).unwrap();
+    if ticket.new_turn {
+        store.commit_decision(ticket, decision("regular")).unwrap();
+    }
+    accepted_output::tool(store, ticket, id, "lookup");
+    store.accept_output(
+        ticket,
+        &[ModelStreamEventV1::new(
+            1,
+            ModelEvent::ToolCallFinished {
+                index: 1,
+                logical_id: id.into(),
+                tool_kind: ToolKindV1::Function,
+                namespace: Some("functions".into()),
+                name: "lookup".into(),
+                arguments: json!({"must_not_be_projected":"secret detail"}),
+                status: ResponseItemStatus::Completed,
+            },
+        )],
+    );
+    assert!(
+        store
+            .finish_request(
+                ticket,
+                id.into(),
+                AgentTurnStatus::Completed,
+                vec![execution("model", "profile", "regular", id)],
+                false,
+                Instant::now()
+            )
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn changed_native_id_is_retained_for_later_same_activation_synthetic_input() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::default();
+    let scope = store.scope_key("workspace", "latest-native-id").unwrap();
+    let mut messages = vec![text(MessageRole::User, "actual original A input")];
+    let input = request(messages.clone());
+    let analyzed = store
+        .prepare_scoped_request(&scope, &input, &replay)
+        .unwrap();
+    let (a, history) = new_turn(admit(&store, &scope, analyzed, Some([1; 32])));
+    drop(history);
+    finish_tool_step(&store, &a, "a-1");
+
+    messages.extend([tool_call("a-1", "lookup"), tool_result("a-1", false)]);
+    let input = request(messages.clone());
+    let analyzed = store
+        .prepare_scoped_request(&scope, &input, &replay)
+        .unwrap();
+    let AgentTurnBegin::Continuation { ticket: a2, .. } =
+        admit(&store, &scope, analyzed, Some([2; 32]))
+    else {
+        panic!("ID1 to ID2 must retain the exact current tool stage")
+    };
+    assert_eq!(a2.agent_turn_id, a.agent_turn_id);
+    finish_tool_step(&store, &a2, "a-2");
+
+    // The native activation is still ID2. Its supplemental/synthetic User is
+    // actual wire context, but must not replace the task's captured original user.
+    let synthetic = "synthetic continuation notification, not a new task";
+    messages.extend([
+        tool_call("a-2", "lookup"),
+        tool_result("a-2", false),
+        text(MessageRole::User, synthetic),
+    ]);
+    let input = request(messages);
+    let mut analyzed = store
+        .prepare_scoped_request(&scope, &input, &replay)
+        .unwrap();
+    analyzed
+        .select_current_input(
+            &input.messages[5].content,
+            Some(CurrentInputPosition::Window { first: 5, last: 5 }),
+            &input,
+            &replay,
+        )
+        .unwrap();
+    let AgentTurnBegin::Continuation {
+        ticket: a3,
+        decision: inherited,
+    } = admit(&store, &scope, analyzed, Some([2; 32]))
+    else {
+        panic!("ID2 to ID2 cannot invent a fresh activation from synthetic User context")
+    };
+    assert!(!a3.new_turn);
+    assert_eq!(a3.key, a.key);
+    assert_eq!(a3.agent_turn_id, a.agent_turn_id);
+    assert_eq!(inherited.branch_id, "regular");
+    store.bind_request(&a3, "a-3").unwrap();
+    {
+        let inner = store.inner.lock();
+        let entry = &inner.entries[&a.key];
+        assert!(entry.closed.is_empty());
+        assert!(!entry.active.finalized);
+        assert_eq!(
+            entry.active.user,
+            vec![VisibleContentPart::Text {
+                text: "actual original A input".into(),
+            }]
+        );
+    }
+    accepted_output::text_output(&store, &a3, "actual final A output");
+    let completed = store
+        .finish_request(
+            &a3,
+            "a-3".into(),
+            AgentTurnStatus::Completed,
+            vec![execution("model", "profile", "regular", "a-3")],
+            true,
+            Instant::now(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(completed.agent_turn_id, a.agent_turn_id);
+    assert!(!completed.history_partial);
+    assert_eq!(
+        completed.history_membership.as_ref().unwrap().request_ids,
+        ["a-1", "a-2", "a-3"]
+    );
+    let inner = store.inner.lock();
+    let closed = &inner.entries[&a.key].closed;
+    assert_eq!(closed.len(), 1);
+    assert!(
+        !serde_json::to_string(&closed[0].wire.user)
+            .unwrap()
+            .contains(synthetic)
+    );
+    assert_eq!(closed[0].wire.steps.len(), 3);
+}

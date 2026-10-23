@@ -197,7 +197,10 @@ impl AgentTurnHistoryStore {
             inputs.history_continuity = if exact && !ambiguous {
                 if inputs.native_turn.is_some() && inputs.native_turn == entry.active.native_turn {
                     HistoryContinuity::NativeSameTurn
-                } else if inputs.native_turn.is_some() && entry.active.native_turn.is_some() {
+                } else if inputs.native_turn.is_some()
+                    && entry.active.native_turn.is_some()
+                    && super::opening::has_appended_input(&entry.checkpoint, analyzed)
+                {
                     HistoryContinuity::NativeNewTurn
                 } else {
                     HistoryContinuity::Continuing
@@ -236,10 +239,7 @@ impl AgentTurnHistoryStore {
                 // but cannot declare the still-running tool stage complete.
                 let new_activation = exact
                     && !ambiguous
-                    && (inputs.history_continuity == HistoryContinuity::NativeNewTurn
-                        || analyzed.turns.last().is_some_and(|turn| {
-                            turn.user_index > entry.checkpoint.active_user_index
-                        }));
+                    && super::opening::has_appended_input(&entry.checkpoint, analyzed);
                 let closure = if new_activation {
                     StageClosure::NewActivation
                 } else {

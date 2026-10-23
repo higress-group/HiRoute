@@ -12,6 +12,17 @@ pub(super) enum RequestPrefix {
     Unavailable,
 }
 
+/// Native activation IDs are association hints, not evidence of new input.
+/// A complete current window must start after the previously observed request.
+pub(super) fn has_appended_input(
+    checkpoint: &TranscriptCheckpoint,
+    analyzed: &AnalyzedRequest,
+) -> bool {
+    analyzed
+        .current_input_start
+        .is_some_and(|first| first >= checkpoint.message_count)
+}
+
 pub(super) fn request_prefix(
     checkpoint: &TranscriptCheckpoint,
     analyzed: &AnalyzedRequest,
@@ -51,9 +62,7 @@ pub(super) fn fork_opening_cause<'a>(
             RequestPrefix::Match
                 if !saved_input
                     && !(native_turn.is_some() && native_turn == entry.active.native_turn)
-                    && analyzed
-                        .current_input_start
-                        .is_some_and(|first| first >= entry.checkpoint.message_count) =>
+                    && has_appended_input(&entry.checkpoint, analyzed) =>
             {
                 Cause::UserMessage
             }
