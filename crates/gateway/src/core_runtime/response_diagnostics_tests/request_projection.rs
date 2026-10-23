@@ -65,20 +65,22 @@ pub(super) fn run_case(case: &str, root: &Path) {
                 .unwrap();
             requests.push(read_request(&mut stream));
             let rejected = relay && index == 0;
-            let body = if rejected {
-                json!({"error":{"type":"overloaded_error","message":"SENTINEL_UPSTREAM_ERROR"}})
+            let (content_type, body) = if rejected {
+                ("application/json", serde_json::to_vec(&json!({"error":{"type":"overloaded_error","message":"SENTINEL_UPSTREAM_ERROR"}})).unwrap())
             } else {
-                json!({"id":"SENTINEL_RESPONSE_BODY","model":"physical",
-                    "choices":[{"index":0,"message":{"role":"assistant","content":"SENTINEL_SUCCESS_BODY"},"finish_reason":"stop"}],
-                    "usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}})
+                let mut value = chat(json!({"content":"SENTINEL_SUCCESS_BODY"}), json!("stop"));
+                value["usage"] =
+                    json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
+                let mut body = frame(value);
+                body.extend_from_slice(b"data: [DONE]\n\n");
+                ("text/event-stream", body)
             };
-            let body = serde_json::to_vec(&body).unwrap();
             let status = if rejected {
                 "503 Service Unavailable"
             } else {
                 "200 OK"
             };
-            write!(stream, "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+            write!(stream, "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
             stream.write_all(&body).unwrap();
             let _ = stream.finish();
         }
@@ -157,7 +159,7 @@ pub(super) fn run_case(case: &str, root: &Path) {
         ]}));
     }
     let body = serde_json::to_vec(
-        &json!({"model":"stream-alias","max_tokens":64,"messages":messages,"stream":false}),
+        &json!({"model":"stream-alias","max_tokens":64,"messages":messages,"stream":true}),
     )
     .unwrap();
     let mut client = TcpStream::connect(address).unwrap();
