@@ -1,6 +1,8 @@
 use crate::agent_turn_history::boundary::{BoundaryCapture, incoming_boundary};
 use crate::context_hold::fingerprint::FingerprintBudget;
-use crate::server::core_runtime::adapters::decode_ingress_request;
+use crate::server::core_runtime::adapters::{
+    decode_ingress_request, decode_ingress_request_with_replay,
+};
 use crate::server::core_runtime::model_ir::{ModelEvent, ResponseItemStatus};
 use crate::server::request_plan::IngressProtocol;
 use serde_json::json;
@@ -27,7 +29,9 @@ fn production_request(
         workspace.generated_markers(),
     )
     .unwrap();
-    let mut request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
+    let mut request =
+        decode_ingress_request_with_replay(IngressProtocol::Responses, &document, Some(replay))
+            .unwrap();
     externalize_model_request(&mut request, replay, inline_limit).unwrap();
     request
 }
