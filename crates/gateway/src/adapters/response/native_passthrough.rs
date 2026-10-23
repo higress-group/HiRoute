@@ -944,6 +944,10 @@ impl ProjectionState {
             let native_id = call
                 .get("id")
                 .and_then(Value::as_str)
+                // Chat argument deltas can retain an explicit empty id. It
+                // supplies no replacement identity; only an already bound
+                // index can provide the original tool id in that case.
+                .filter(|id| !id.is_empty())
                 .map(str::to_owned)
                 .or_else(|| existing.as_ref().map(|tool| tool.native_id.clone()))
                 .ok_or_else(|| ModelIrError::MissingToolIdentity(format!("chat index {index}")))?;
