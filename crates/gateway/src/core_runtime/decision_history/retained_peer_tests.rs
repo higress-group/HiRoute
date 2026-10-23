@@ -96,10 +96,22 @@ fn retained_begin(
         history.guard.is_some(),
         "optional native evidence cannot stop capture"
     );
+    // A ticket can record a checkpoint without authorizing provider affinity.
+    // Only strict history can grant that preference or a reusable cleanup prefix.
     assert!(
-        history.hold_ticket.is_none(),
-        "opaque history must not authorize affinity"
+        visible_history_with_replay(&request, &key, Some(&fixture.replay)).is_none(),
+        "opaque history must not supply strict provider-prefix evidence"
     );
+    if let Some(ticket) = &history.hold_ticket {
+        assert!(
+            ticket.hint.is_none(),
+            "opaque history cannot prefer a provider"
+        );
+        assert!(
+            ticket.cleaned_prefix_len.is_none(),
+            "opaque history cannot authorize a reusable cleanup prefix"
+        );
+    }
     history
 }
 
