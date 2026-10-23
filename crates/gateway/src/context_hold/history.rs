@@ -49,6 +49,10 @@ pub(crate) fn branch_anchors(
         request.native_history_layout()?;
     }
     let mut encoder = Encoder::new(key, b"history-branch/v3", replay)?;
+    // A previous raw JSON argument can still bind its exact request prefix.
+    // It cannot prove equivalence with accepted canonical tool output or grant
+    // provider affinity. Keep that weaker evidence local to branch lookup.
+    encoder.allow_raw_json = true;
     // Request-local instructions and tool setup invalidate provider affinity,
     // not a witnessed predecessor in the actual conversation.
     encoder.items(request.messages.len())?;
@@ -62,9 +66,11 @@ pub(crate) fn branch_anchors(
             prefixes.push((index + 1, encoder.snapshot()?));
         }
     }
+    let contextual = encoder.used_raw_json;
     Some(super::HistoryAnchors {
         complete: encoder.finish()?,
         prefixes,
+        contextual,
     })
 }
 
@@ -357,6 +363,8 @@ struct Encoder<'a> {
     valid: bool,
     budget: FingerprintBudget,
     native_item_offset: usize,
+    allow_raw_json: bool,
+    used_raw_json: bool,
 }
 
 impl<'a> Encoder<'a> {
@@ -369,6 +377,8 @@ impl<'a> Encoder<'a> {
             valid: true,
             budget: FingerprintBudget::default(),
             native_item_offset: 0,
+            allow_raw_json: false,
+            used_raw_json: false,
         })
     }
 
@@ -450,11 +460,19 @@ impl<'a> Encoder<'a> {
     }
 
     fn json(&mut self, value: &Value) -> Option<()> {
-        self.tag(b"json");
         self.items(0)?;
         if let Some(reference) = value.content_ref() {
+            if self.replay?.is_canonical_json(&reference) {
+                self.tag(b"json");
+            } else if self.allow_raw_json {
+                self.tag(b"raw-json-prefix");
+                self.used_raw_json = true;
+            } else {
+                return None;
+            }
             return self.hash_reference(&reference);
         }
+        self.tag(b"json");
         let referenced = self.budget.json(value)?;
         let mut counter = ByteCounter(0);
         if referenced {
@@ -792,6 +810,9 @@ pub(crate) fn write_canonical_json_with_replay(
     replay: &ReplayStore,
 ) -> Option<()> {
     if let Some(reference) = value.content_ref() {
+        if !replay.is_canonical_json(&reference) {
+            return None;
+        }
         let mut reader = replay.reader(&reference).ok()?;
         std::io::copy(&mut reader, writer).ok()?;
         reader.verify_terminal().ok()?;
@@ -1138,7 +1159,7 @@ mod tests {
             });
             let mut pool = store.begin_content_pool().unwrap();
             let schema_ref = pool
-                .append_json(if appended { &reordered_schema } else { &schema }, true)
+                .append_canonical_json(if appended { &reordered_schema } else { &schema })
                 .unwrap();
             pool.seal().unwrap();
             request.tools.push(CanonicalTool {

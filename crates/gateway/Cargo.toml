@@ -12,6 +12,10 @@ e2e-test-control = [
     "dep:rcgen",
     "dep:rustls",
     "hiroute-gateway-core/e2e-test-control",
+    # Match the JSON map-order feature used by the shipped daemon through ACP.
+    # Listener fixtures build a separate Gateway process; outer Cargo flags
+    # alone do not qualify that process's dependency features.
+    "serde_json/preserve_order",
 ]
 
 [[bin]]

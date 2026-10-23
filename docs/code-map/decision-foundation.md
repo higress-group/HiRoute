@@ -113,6 +113,10 @@ affinity hint; [projection regressions](../../crates/gateway/src/agent_turn_hist
 cover competing branches, old-prefix changes and frozen membership.
 Optional content comparisons use the shared [fingerprint budget](../../crates/gateway/src/context_hold/fingerprint.rs)
 before Replay reads and JSON key sorting; exhausting it loses evidence, not routing.
+The [Replay range owner](../../crates/gateway/src/replay.rs) records canonical JSON
+provenance. [JSON boundary cases](../../crates/gateway/src/agent_turn_history/boundary/json_reference_budget_tests.rs)
+cover raw-byte prefix association after normalization refusal, without granting
+canonical output equivalence or preventing later tool-stage recovery.
 The [layout capacity regression](../../crates/gateway/src/core_runtime/decision_history/layout_budget_tests.rs)
 refuses actual optional allocation, preserves captured execution and verifies a
 complete later tool stage after capacity recovers.
