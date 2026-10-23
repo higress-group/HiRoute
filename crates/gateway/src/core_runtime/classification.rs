@@ -1123,8 +1123,8 @@ mod tests {
                     .map(String::as_str)
                     .collect::<std::collections::BTreeSet<_>>(),
                 [
-                    "assessment_target",
-                    "decision",
+                    "preceding_stage",
+                    "route",
                     "history_partial",
                     "latest_user",
                     "visible_conversation",
@@ -1132,7 +1132,7 @@ mod tests {
                 .into_iter()
                 .collect()
             );
-            let response = br#"{"decision":{"kind":"categorical","choice":"local","refinement":{"kind":"ordinal","probabilities":{"simple":0.95,"complex":0.05}}}}"#;
+            let response = br#"{"category":"local","group":"regular"}"#;
             write!(
                 stream,
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",

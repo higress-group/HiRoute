@@ -59,6 +59,18 @@ export function extensionDecisionScenarios({ fresh, routing, click, until, all, 
       await until(() => document.querySelector('.decision-judgment-fields'), 'restored native fields');
       const field = document.querySelector(`[data-decision-field="${branches ? 'branch-0' : 'smart'}-degree-instructions"]`);
       assert(field?.value === '   ', 'Switching sources discarded the parked prompt');
+      const floor = document.querySelector(`[data-decision-field="${branches ? 'branch-0' : 'smart'}-floor"]`);
+      const before = floor.value;
+      for (let parent = floor.parentElement; parent; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true;
+      floor.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(floor, '');
+      floor.dispatchEvent(new Event('input', { bubbles: true }));
+      await until(() => floor.getAttribute('aria-invalid') === 'true', 'visible temporary numeric error');
+      await click(t('自定义扩展', 'Custom extension'));
+      await until(() => !document.querySelector('.decision-judgment-fields'), 'parked empty numeric field');
+      await click(t('决策模型', 'Decision model'));
+      await until(() => document.querySelector('.decision-judgment-fields'), 'restored native numeric field');
+      assert(document.querySelector(`[data-decision-field="${branches ? 'branch-0' : 'smart'}-floor"]`).value === before, 'Temporary numeric input corrupted the parked integer');
       await click(t('自定义扩展', 'Custom extension'));
       await until(() => !document.querySelector('.decision-judgment-fields'), 'custom fields hidden again');
       assert(!calls('test_classifier_decision').length, 'Source switching implicitly probed the connection');

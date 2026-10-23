@@ -618,6 +618,23 @@ fn retained_custom_operation_keeps_old_default_normalization_and_authenticated_b
     let mut control = fixture["control"].clone();
     control["change_spec_digest"] =
         serde_json::to_value(CanonicalDigest::of(&tampered).unwrap()).unwrap();
+    // Keep both outer/effect copies consistent so this reaches the sealed authoring
+    // comparison, rather than failing an earlier envelope join.
+    let mut effect = fixture["external"][0].clone();
+    effect["desired"]["change_spec"] = serde_json::to_value(&tampered).unwrap();
+    effect["desired"]["control"] = control.clone();
+    assert!(
+        ExternalEffectIntentV1::from_registered_adapter(
+            effect["effect_id"].as_str().unwrap(),
+            serde_json::from_value(effect["kind"].clone()).unwrap(),
+            effect["target"].as_str().unwrap(),
+            serde_json::from_value(effect["before_fingerprint"].clone()).unwrap(),
+            effect["desired"].clone(),
+            effect["desired_mode"].as_u64().unwrap() as u32,
+            effect["sensitive"].as_bool().unwrap()
+        )
+        .is_err()
+    );
     assert!(
         TransactionPlanV1::from_registered_typed_planner(
             tampered,

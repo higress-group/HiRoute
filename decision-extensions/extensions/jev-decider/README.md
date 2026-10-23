@@ -87,7 +87,7 @@ The two HTTP boundaries have different payloads:
 
 | Caller → receiver | Endpoint | Payload |
 | --- | --- | --- |
-| HiRoute → this extension | `/v1/decisions` | The [custom extension request](../../api/README.md): definition, current input, visible history and assessment target |
+| HiRoute → this extension | `/v1/decisions` | The [custom extension request](../../api/README.md): published route, current input, visible history and preceding_stage |
 | This extension → decision provider | Configured `/alpha/decisions` or `/systemone` URL | System One `model`, `state` and typed Choice/Score questions |
 
 Do not use the provider URL as this extension's endpoint in HiRoute. To call a
