@@ -11,7 +11,7 @@ import '../../../src/occami/styles.css';
 
 type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; first_request_at_ms: number; last_request_at_ms: number; unknown_model_request_count: number; correlation_kind: string; content_completeness: string };
 type RoutingContext = { state: 'recorded'; display_name: string; name_state: 'recorded'; plan_id: string; plan_revision: string };
-type RequestRow = { content_completeness: string; request_id: string; session_id: string; started_at_ms: number; outcome: string | null; attempted_model_count: number; final_native_model: string | null; within_request_fallback: boolean | null; between_turn_model_change: boolean | null; routing_context: RoutingContext | null };
+type RequestRow = { content_completeness: string; request_id: string; session_id: string; started_at_ms: number; outcome: string | null; attempted_model_count: number; final_native_model: string | null; within_request_fallback: boolean | null; between_turn_model_change: boolean | null; routing_context: RoutingContext | null; native_auxiliary?: boolean | null };
 type Hit = { session_id: string; request_id: string; content_id: string; original_text_offset: number };
 type Handler = (payload: Record<string, any>) => unknown;
 
