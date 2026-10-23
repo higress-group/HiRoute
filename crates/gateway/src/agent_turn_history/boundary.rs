@@ -13,6 +13,8 @@ use crate::server::core_runtime::model_ir::{
     ToolKindV1,
 };
 
+mod json_text;
+
 const MAX_BLOCKS: usize = 128;
 
 #[derive(Default)]
@@ -157,12 +159,16 @@ impl BoundaryCapture {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn digest(&self) -> Option<[u8; 32]> {
+        self.evidence().map(|e| e.full)
+    }
+
+    pub(super) fn evidence(&self) -> Option<BoundaryEvidence> {
         if self.unavailable || self.blocks.is_empty() {
             return None;
         }
-        let mut hash = Sha256::new_with_prefix(b"accepted-response-boundary/v2");
-        let mut content = false;
+        let mut hash = BoundaryHasher::default();
         for block in self.blocks.values() {
             match block {
                 Block::Text {
@@ -173,33 +179,36 @@ impl BoundaryCapture {
                     reasoning,
                     ..
                 } => {
-                    hash.update(if *reasoning {
-                        b"reasoning".as_slice()
-                    } else {
-                        b"text"
-                    });
-                    hash.update(text.clone().finalize());
+                    hash.part(
+                        if *reasoning { b"reasoning" } else { b"text" },
+                        text.clone().finalize().into(),
+                    );
                 }
-                Block::Tool { digest, .. } => {
-                    hash.update(b"tool");
-                    hash.update(digest.as_ref()?);
-                }
+                Block::Tool { digest, .. } => hash.part(b"tool", (*digest)?),
             }
-            content = true;
         }
-        content.then(|| hash.finalize().into())
+        hash.finish()
     }
 }
 
+#[cfg(test)]
 pub(super) fn incoming_boundary(
     request: &ModelRequestIRV1,
     start: usize,
     replay: &ReplayStore,
     budget: &mut FingerprintBudget,
 ) -> Option<[u8; 32]> {
-    let mut hash = Sha256::new_with_prefix(b"accepted-response-boundary/v2");
+    incoming_evidence(request, start, replay, budget).map(|e| e.full)
+}
+
+pub(super) fn incoming_evidence(
+    request: &ModelRequestIRV1,
+    start: usize,
+    replay: &ReplayStore,
+    budget: &mut FingerprintBudget,
+) -> Option<BoundaryEvidence> {
+    let mut hash = BoundaryHasher::default();
     let mut count = 0;
-    let mut content = false;
     for (index, message) in request.messages.iter().enumerate().skip(start) {
         if message.role != MessageRole::Assistant {
             break;
@@ -225,6 +234,7 @@ pub(super) fn incoming_boundary(
             {
                 return None;
             }
+            hash.reasoning = true;
             let summary = history.native_fields.get("summary")?.as_array()?;
             budget.items(summary.len())?;
             if summary.len() > 1 {
@@ -238,9 +248,7 @@ pub(super) fn incoming_boundary(
                 let text = part.get("text")?.as_str()?;
                 let digest = text_digest(text, Some(replay), budget)?;
                 if !text.is_empty() && !text.content_ref().is_some_and(|r| r.byte_len() == 0) {
-                    hash.update(b"reasoning");
-                    hash.update(digest);
-                    content = true;
+                    hash.part(b"reasoning", digest);
                 }
             }
             continue;
@@ -267,8 +275,7 @@ pub(super) fn incoming_boundary(
                     if text.is_empty() || text.content_ref().is_some_and(|r| r.byte_len() == 0) {
                         continue;
                     }
-                    hash.update(b"text");
-                    hash.update(digest);
+                    hash.part(b"text", digest);
                 }
                 ContentPart::ToolCall {
                     logical_id,
@@ -278,32 +285,125 @@ pub(super) fn incoming_boundary(
                     arguments,
                     raw_arguments: None,
                 } => {
-                    hash.update(b"tool");
-                    hash.update(tool_digest(
-                        logical_id,
-                        *tool_kind,
-                        namespace.as_deref(),
-                        name,
-                        arguments,
-                        Some(replay),
-                        budget,
-                    )?);
+                    hash.part(
+                        b"tool",
+                        tool_digest(
+                            logical_id,
+                            *tool_kind,
+                            namespace.as_deref(),
+                            name,
+                            arguments,
+                            Some(replay),
+                            budget,
+                        )?,
+                    );
                 }
                 ContentPart::ProviderState { state } => {
-                    let text = unsigned_messages_thinking_text(state)?;
-                    let digest = text_digest(text, Some(replay), budget)?;
-                    if text.is_empty() || text.content_ref().is_some_and(|r| r.byte_len() == 0) {
-                        continue;
+                    hash.reasoning = true;
+                    if state.kind == "reasoning_content" {
+                        if request.native_only {
+                            return None;
+                        }
+                        // Chat aliases have already been normalized by ingress.
+                        // A JSON string reference is storage, not opaque state.
+                        let (digest, nonempty) = json_text::digest(&state.value, replay, budget)?;
+                        if nonempty {
+                            hash.part(b"reasoning", digest);
+                        }
+                    } else {
+                        let text = unsigned_messages_thinking_text(state)?;
+                        let digest = text_digest(text, Some(replay), budget)?;
+                        if !text.is_empty()
+                            && !text.content_ref().is_some_and(|r| r.byte_len() == 0)
+                        {
+                            hash.part(b"reasoning", digest);
+                        }
                     }
-                    hash.update(b"reasoning");
-                    hash.update(digest);
                 }
                 _ => return None,
             }
-            content = true;
         }
     }
-    content.then(|| hash.finalize().into())
+    hash.finish().map(|mut evidence| {
+        evidence.projection_allowed = !request.native_only;
+        evidence
+    })
+}
+
+/// Two bounded projections of the same accepted output. Only the full digest is
+/// an exact response proof; visible-only association is explicitly uncertain.
+#[derive(Clone, Copy)]
+pub(super) struct BoundaryEvidence {
+    full: [u8; 32],
+    visible: Option<[u8; 32]>,
+    reasoning: bool,
+    projection_allowed: bool,
+}
+
+impl BoundaryEvidence {
+    /// Some(false) is full agreement; Some(true) is omitted plaintext reasoning.
+    /// Present (even empty) reasoning never authorizes a projection fallback.
+    pub(super) fn matches(self, incoming: Self) -> Option<bool> {
+        if !incoming.projection_allowed {
+            return None;
+        }
+        if self.full == incoming.full {
+            Some(false)
+        } else if self.reasoning
+            && incoming.projection_allowed
+            && !incoming.reasoning
+            && self.visible.is_some()
+            && self.visible == incoming.visible
+        {
+            Some(true)
+        } else {
+            None
+        }
+    }
+}
+
+struct BoundaryHasher {
+    full: Sha256,
+    visible: Sha256,
+    content: bool,
+    visible_content: bool,
+    reasoning: bool,
+}
+
+impl Default for BoundaryHasher {
+    fn default() -> Self {
+        Self {
+            full: Sha256::new_with_prefix(b"accepted-response-boundary/v2"),
+            visible: Sha256::new_with_prefix(b"accepted-response-boundary/v2"),
+            content: false,
+            visible_content: false,
+            reasoning: false,
+        }
+    }
+}
+
+impl BoundaryHasher {
+    fn part(&mut self, kind: &[u8], digest: [u8; 32]) {
+        self.full.update(kind);
+        self.full.update(digest);
+        self.content = true;
+        if kind == b"reasoning" {
+            self.reasoning = true;
+        } else {
+            self.visible.update(kind);
+            self.visible.update(digest);
+            self.visible_content = true;
+        }
+    }
+
+    fn finish(self) -> Option<BoundaryEvidence> {
+        self.content.then(|| BoundaryEvidence {
+            full: self.full.finalize().into(),
+            visible: self.visible_content.then(|| self.visible.finalize().into()),
+            reasoning: self.reasoning,
+            projection_allowed: true,
+        })
+    }
 }
 
 fn text_digest(

@@ -160,12 +160,18 @@ pub(super) fn close_active(
             revision: entry.revision,
             request_ids: entry.active.request_ids.clone(),
             clipped: entry.active.request_ids_clipped,
-            relation: entry.branch_relation.into(),
+            relation: if entry.active.association_unverified {
+                branches::HistoryRelation::Contextual.into()
+            } else {
+                entry.branch_relation.into()
+            },
             source_unverified: entry.active.source_unverified,
-            association_unverified: matches!(
-                entry.branch_relation,
-                branches::HistoryRelation::Contextual | branches::HistoryRelation::AmbiguousPrefix
-            ),
+            association_unverified: entry.active.association_unverified
+                || matches!(
+                    entry.branch_relation,
+                    branches::HistoryRelation::Contextual
+                        | branches::HistoryRelation::AmbiguousPrefix
+                ),
             capture_partial: entry.active.capture_partial || segment_partial,
         }),
         opening_cause: entry.active.opening_cause,
@@ -678,6 +684,17 @@ fn stage_membership(
             continue;
         };
         result.source_unverified |= membership.source_unverified;
+        result.association_unverified |= membership.association_unverified;
+        if result.association_unverified {
+            use hiroute_domain::HistoryRelationV1;
+            result.relation = if result.relation == HistoryRelationV1::AmbiguousPrefix
+                || membership.relation == HistoryRelationV1::AmbiguousPrefix
+            {
+                HistoryRelationV1::AmbiguousPrefix
+            } else {
+                HistoryRelationV1::Contextual
+            };
+        }
         result.capture_partial |= membership.capture_partial;
         result.clipped |= membership.clipped;
         for id in &membership.request_ids {

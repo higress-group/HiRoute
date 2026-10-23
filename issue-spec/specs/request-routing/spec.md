@@ -441,6 +441,24 @@ this comparison at every inline allowance without changing the native block.
 Empty thinking alone SHALL NOT establish a predecessor. Nonempty signatures and
 redacted thinking SHALL remain opaque and ineligible for this proof; reasoning
 SHALL NOT become visible execution or acquire quality credit.
+Request-local instructions, tool declarations and provider setup SHALL NOT be part
+of execution branch-prefix identity. They remain part of strict ContextHold
+validation. Historical message roles, order and content remain exact.
+When a native client omits the entire actually accepted plaintext reasoning from
+its latest response replay, one uniquely matching old request prefix and nonempty
+accepted visible text or typed tool boundary MAY continue that captured stage.
+This is a visible projection, recorded as contextual association with
+`association_unverified=true`, not a full response or provider-affinity proof.
+Any such edge keeps that uncertainty through the stage's frozen membership,
+including after later full matches. All competing matching branches participate
+in ambiguity detection; native IDs, cursors and completion/admission order SHALL
+NOT disambiguate a visible projection. Present reasoning must match fully; empty
+reasoning carriers cannot erase nonempty accepted reasoning. Opaque or unknown
+state, pure reasoning without a visible witness, changed old prefixes and changed
+tool identity/arguments do not qualify. Captured facts and assessment membership
+stay actual and complete when capture was complete; omitted reasoning is never
+imported as visible execution or quality credit. The projection SHALL NOT grant
+ContextHold reuse or provider-state cleanup. Forwarded native bytes are unchanged.
 An uncertain request cannot overwrite or advance a stronger branch head. Without
 a validated predecessor it starts an independent branch, while a retained completed
 stage may remain an explicitly uncertain contextual evaluation target. Exact

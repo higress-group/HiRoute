@@ -149,6 +149,7 @@ pub(crate) struct AgentTurnTicket {
     pub(crate) request_token: u64,
     pub(crate) agent_turn_id: String,
     pub(crate) new_turn: bool,
+    pub(crate) allow_affinity: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

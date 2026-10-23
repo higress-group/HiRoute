@@ -54,3 +54,17 @@ fn large_peer_json_and_instruction_metadata_cannot_bypass_evidence_budget() {
     request.native_body = Some(json!({"output_config":{"format":{"schema":large}}}));
     assert!(observed_history_with_replay(&request, &[7; 32], None).is_none());
 }
+
+#[test]
+fn oversized_current_setup_does_not_disable_bounded_execution_prefixes() {
+    let mut request = decode_ingress_request(IngressProtocol::Responses,
+        &json!({"model":"route","instructions":"normal setup","input":[{"role":"user","content":"actual A"}]})).unwrap();
+    let before = branch_anchors(&request, &[7; 32], None, &[1]).unwrap();
+    request.instructions[0].content = vec![ContentPart::Text {
+        text: "x".repeat(super::super::fingerprint::MAX_BYTES + 1),
+    }];
+    assert!(observed_history_with_replay(&request, &[7; 32], None).is_none());
+    let after = branch_anchors(&request, &[7; 32], None, &[1]).unwrap();
+    assert_eq!(before.complete, after.complete);
+    assert_eq!(before.prefixes, after.prefixes);
+}

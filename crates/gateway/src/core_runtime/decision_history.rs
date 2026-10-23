@@ -197,12 +197,15 @@ impl ProductionGatewayRuntime {
         self.agent_turn_history
             .bind_request(&ticket, observation.logical_request_id());
         let branch_digest = *ticket.key.branch_digest();
+        let allow_affinity = ticket.allow_affinity;
         let guard = AgentTurnRequestGuard::new(self.agent_turn_history.clone(), ticket);
         // Affinity is subordinate to execution capture. A stale or busy cache
         // can only lose its hint, never the admitted request or its snapshot.
         let hold_ticket = prepared_hold
             .filter(|_| {
-                !(capture.unavailable_input || current_input_unavailable) || correlated.is_some()
+                allow_affinity
+                    && (!(capture.unavailable_input || current_input_unavailable)
+                        || correlated.is_some())
             })
             .and_then(|prepared| {
                 self.context_holds.commit_on_branch(

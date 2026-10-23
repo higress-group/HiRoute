@@ -10,7 +10,7 @@ use crate::server::core_runtime::model_ir::{
 pub(crate) struct AnalyzedRequest {
     pub(super) measured: bool,
     pub(super) branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
-    pub(super) boundaries: Vec<(usize, [u8; 32])>,
+    pub(super) boundaries: Vec<(usize, super::boundary::BoundaryEvidence)>,
     pub(super) anchors: Option<crate::context_hold::HistoryAnchors>,
     pub(super) message_count: usize,
     pub(super) user_origin_unverified: bool,
