@@ -25,10 +25,38 @@ fn events(cipher: &str, summary: &str) -> Vec<ModelStreamEventV1> {
         json!({"type":"response.created","response":{"id":"response-edit","model":"physical","status":"in_progress","output":[]}})
     );
     for (index, item) in output.iter().enumerate() {
-        wire.push_str(&format!(
-            "data: {}\n\n",
-            json!({"type":"response.output_item.done","output_index":index,"item":item})
-        ));
+        let mut start = item.clone();
+        start["status"] = json!("in_progress");
+        match item["type"].as_str().unwrap() {
+            "reasoning" => {
+                start.as_object_mut().unwrap().remove("encrypted_content");
+            }
+            "message" => {
+                start["content"] = json!([]);
+            }
+            "function_call" => {
+                start["arguments"] = json!("");
+            }
+            _ => unreachable!(),
+        }
+        let mut frames =
+            vec![json!({"type":"response.output_item.added","output_index":index,"item":start})];
+        if item["type"] == "message" {
+            let text = &item["content"][0]["text"];
+            frames.extend([
+                json!({"type":"response.output_text.delta","output_index":index,"item_id":item["id"],"content_index":0,"delta":text}),
+                json!({"type":"response.output_text.done","output_index":index,"item_id":item["id"],"content_index":0,"text":text}),
+            ]);
+        } else if item["type"] == "function_call" {
+            frames.extend([
+                json!({"type":"response.function_call_arguments.delta","output_index":index,"item_id":item["id"],"delta":item["arguments"]}),
+                json!({"type":"response.function_call_arguments.done","output_index":index,"item_id":item["id"],"arguments":item["arguments"]}),
+            ]);
+        }
+        frames.push(json!({"type":"response.output_item.done","output_index":index,"item":item}));
+        for frame in frames {
+            wire.push_str(&format!("data: {frame}\n\n"));
+        }
     }
     wire.push_str(&format!("data: {}\n\n", json!({"type":"response.completed","response":{"id":"response-edit","model":"physical","status":"completed","output":output,"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}})));
     let mut decoder = NativeResponseDecoder::new(&profile, 200, true).unwrap();
