@@ -330,6 +330,15 @@ class SelectionTests(unittest.TestCase):
         self.assertTrue(mixed['rust'])
         self.assertIn('daemon', mixed['groups'])
 
+    def test_native_pilot_entry_selects_its_process_regressions(self):
+        for path in ('scripts/pilot-native-app.py', 'scripts/test-pilot-native-app.py'):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertFalse(result['rust'])
+                self.assertFalse(result['frontend'])
+                self.assertIn(['python3', 'scripts/test-pilot-native-app.py'], result['commands'])
+                self.assertIn(['python3', 'scripts/test-validation.py'], result['commands'])
+
     def test_real_pilot_manifest_consumer_is_selected_only_for_applicable_ci_plans(self):
         command = ['python3', 'scripts/test-pilot-builds.py', '--real-consumer']
         inputs = ('scripts/pilot-builds.py', 'scripts/test-pilot-builds.py',

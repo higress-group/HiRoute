@@ -23,6 +23,12 @@ identity, frozen snapshots and checks before reuse/start using fake build/launch
 The separate `--real-consumer` case is required by the affected CI selection and
 checks the production Rust build-script and embedding declaration; local default
 checks never compile or execute those temporary Rust programs.
+The optional native App entry belongs to
+[pilot-native-app.py](../../scripts/pilot-native-app.py), with
+[fixture process regressions](../../scripts/test-pilot-native-app.py) for ordinary
+reopen, profile retention, artifact refusal and lease retirement. Actual macOS
+LaunchServices/native CU and daemon/CLI acceptance remain separate from those
+local entry tests; follow the [App lifecycle guide](../desktop-tauri-pilot.md#managed-native-app-opening-and-reopening).
 [Orphaned data preparation](../../scripts/windows-dev-profile.py) preserves complete
 backups after explicit user authorization; it does not establish a product scenario.
 [Native Desktop session actions](../../scripts/windows-desktop-session.py) admit

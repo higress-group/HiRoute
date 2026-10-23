@@ -12,7 +12,7 @@ import tempfile
 
 
 def tooling_bundle(sources):
-    names = {"pilot-builds.py", "local-rust.py", "remote-rust.py", "desktop-pilot.py", "validation-report.py"}
+    names = {"pilot-builds.py", "local-rust.py", "remote-rust.py", "desktop-pilot.py", "pilot-native-app.py", "validation-report.py"}
     if not isinstance(sources, dict) or set(sources) != names or any(not isinstance(v, str) for v in sources.values()):
         raise ValueError("Incomplete Pilot tooling bundle")
     key = hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest()

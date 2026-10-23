@@ -111,7 +111,7 @@ def dispatch(targets, action, arguments, frontend_dist=None, dry_run=False):
         return 0
     if action in ("pilot", "pilot-build"):
         payload["bundle"] = {name: (REPO / "scripts" / name).read_text() for name in
-                             ("pilot-builds.py", "local-rust.py", "remote-rust.py", "desktop-pilot.py", "validation-report.py")}
+                             ("pilot-builds.py", "local-rust.py", "remote-rust.py", "desktop-pilot.py", "pilot-native-app.py", "validation-report.py")}
     if target["transport"] == "local":
         argv = [sys.executable, "-c", executor]
     else:

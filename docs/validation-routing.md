@@ -668,7 +668,10 @@ source is removed; it does not launch Desktop, CPA or a provider.
 
 Use `pilot-build start --lease LEASE --case CASE` to launch each scenario with
 the existing isolated Pilot launcher. It returns the session and socket for
-`pilot-cli`. All scenarios for that lease use the same build. These managed
+`pilot-cli`. Add `--native-app` for an attested macOS App entry whose ordinary
+opening/reopening preserves the same isolated profile; see the [native App
+lifecycle](desktop-tauri-pilot.md#managed-native-app-opening-and-reopening).
+All scenarios for that lease use the same build. These managed
 bundles must be launched through this entry so sessions are registered before
 launch; direct `pilot start` is refused for them. There is no arbitrary command
 or release-profile override in this reusable build profile.

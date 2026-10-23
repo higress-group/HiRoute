@@ -121,6 +121,64 @@ START=$(python3 scripts/desktop-pilot.py start \
   --process-home /absolute/offline-test-home)
 ```
 
+## Managed native App opening and reopening
+
+For native macOS CU, use an exact-candidate reusable build and explicitly request
+its App entry. Ordinary Pilot startup remains available for WebView/IPC checks.
+
+```sh
+python3 scripts/validation.py pilot-build acquire \
+  --ref refs/heads/codex/my-change --owner my-task --case native-reopen
+python3 scripts/validation.py pilot-build start \
+  --lease LEASE --case native-reopen --native-app
+```
+
+Select the returned `native_app.bundle` absolute `.app` path in native CU. The
+bundle has a unique per-session bundle identifier; its application executable,
+daemon and CLI are hard links to that one managed build, preserving their exact
+bytes and signatures. The build and private session root must be on the same
+filesystem. Do not copy, move or re-sign the entry: create a new owned entry if
+its identity changes. This mode requires a reusable owner lease and its recorded
+non-persistent WebView build configuration. It does not package a release App or
+alter production launch behavior.
+
+Every ordinary Finder/LaunchServices/native-CU opening passes through the same
+private launch guard. The guard checks the open registered lease, candidate,
+original and deployed executable identities, wrapper/configuration files and
+owned directories. It restores only recorded launch values: private test data,
+runtime, temporary directory, working directory and HOME/native Agent locations,
+plus explicitly captured PATH/locale settings and the diagnostic override. It
+never saves or restores the caller's authentication environment. A new private
+HOME is created unless `--process-home` explicitly selects an owned offline one.
+The non-persistent WebView store starts empty on each process launch; product
+data remains in the same test root.
+
+A process-lifetime lock prevents duplicate entry launches. Each successful reopen
+records a new generation, PID/start identity and the same profile. The existing
+process attestation admits only this Desktop and its direct daemon child; an
+unknown process or replaced artifact refuses cleanup and retains evidence.
+Native menu/window operations remain real product behavior: closing a window may
+leave Desktop running, while application quit ends that process.
+
+Use `pilot status --session SESSION` to observe a stopped instance without
+launching it. Native APIs that select, activate, open or capture an App may reopen
+it; after quit, do not use those APIs as a termination check. An intentional
+ordinary reopen is safe through the recorded entry and must then be checked
+against the same session/data root. `pilot stop` stops the verified processes but
+leaves the entry reopenable. `pilot-build finish` revokes the entry first, stops
+its owned processes, removes only the verified deployment links and then releases
+the lease. Later native opening fails closed. Session metadata and evidence stay
+available; another owner's sessions and the daily application are untouched.
+
+Before marking the native case green on the exact candidate, physically select
+and open the App, prove the real daemon/CLI and profile identities, quit and
+observe stopped state, reopen through the ordinary native entry and prove the
+same profile with no duplicate/default instance. Exercise changed-artifact
+refusal and owner-only retirement. The local fixture-process tests cover the
+entry/ownership contract but cannot establish LaunchServices, code-signing,
+physical CU selection or the real product journey. Missing Mac/native tools
+leave this acceptance unexecuted.
+
 ## Real page and IPC
 
 Snapshot references reset each time. Observe, choose the current reference, wait

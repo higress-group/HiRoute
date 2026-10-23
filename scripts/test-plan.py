@@ -117,6 +117,7 @@ VALIDATION_TOOLING = {"scripts/validation.py", "scripts/validation-host.py", "sc
                       "scripts/ci-shards.py", "scripts/test-ci-shards.py",
                       "scripts/pilot-builds.py", "scripts/test-pilot-builds.py",
                       "scripts/desktop-pilot.py", "scripts/test-desktop-pilot.py",
+                      "scripts/pilot-native-app.py", "scripts/test-pilot-native-app.py",
                       "scripts/local-rust.py", "scripts/test-local-rust.py",
                       "scripts/remote-rust.py", "scripts/test-remote-rust.py",
                       "scripts/validation-schedule.py", "scripts/test-validation-schedule.py"}
@@ -568,7 +569,7 @@ def select(paths, full=False):
     if validation_tooling:
         commands.extend([["python3", "scripts/" + name] for name in
                          ("test-validation.py", "test-console-assets.py", "test-windows-dev.py", "test-validation-report.py", "test-local-rust.py", "test-remote-rust.py", "test-validation-schedule.py",
-                          "test-ci-run.py", "test-ci-shards.py", "test-desktop-pilot.py", "test-pilot-builds.py")])
+                          "test-ci-run.py", "test-ci-shards.py", "test-desktop-pilot.py", "test-pilot-builds.py", "test-pilot-native-app.py")])
     # Local script checks stay fixture-only. Actions runs this exact required case
     # through the existing tooling/affected/full gate executor, never a skipped test.
     if os.environ.get("GITHUB_ACTIONS") == "true" and (full or PILOT_CONSUMER_INPUTS.intersection(paths)):

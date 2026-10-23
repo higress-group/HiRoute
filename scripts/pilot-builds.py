@@ -34,7 +34,7 @@ pilot = module("desktop-pilot")
 COMMAND = ["cargo", "build", "--locked", "-p", "hiroute-desktop", "-p", "hiroute-daemon",
            "-p", "hiroute-cli", "--features", "hiroute-desktop/desktop-pilot",
            "--bin", "hiroute-desktop", "--bin", "hirouted", "--bin", "hiroute"]
-DRIVERS = ("pilot-builds.py", "local-rust.py", "remote-rust.py", "desktop-pilot.py", "validation-report.py")
+DRIVERS = ("pilot-builds.py", "local-rust.py", "remote-rust.py", "desktop-pilot.py", "pilot-native-app.py", "validation-report.py")
 VERDICTS = ("green", "red", "expected_red", "not_executed")
 DEFAULT_CPA_MANIFEST = Path("apps/desktop/src-tauri/development-cpa-artifacts.v1.json")
 
@@ -337,6 +337,7 @@ class Builds:
                 "start", "--app", str(Path(row["checkout"]) / "target/debug/hiroute-desktop"),
                 "--build-run", row["id"], "--source-sha", row["sha"], "--root", str(root),
                 "--timeout", str(args.timeout),
+                *(["--native-app"] if getattr(args, "native_app", False) else []),
                 *(["--data-root", args.data_root] if args.data_root else []),
                 *(["--process-home", args.process_home] if args.process_home else [])])
             launch.managed_lease = args.lease
@@ -375,7 +376,7 @@ class Builds:
                             _, session = pilot.read_session(entry["session"])
                             if session["build_run"] != row["id"] or session["source_sha"] != row["sha"]:
                                 raise ValueError("Session belongs to another build")
-                            pilot.stop_group(session)
+                            pilot.stop_session(Path(entry["session"]), session, revoke=True)
                             diagnostics = pilot.diagnostics_index(Path(session["data_root"]))
                             if verdict == "green":
                                 for role in ("desktop", "daemon"):
@@ -419,6 +420,7 @@ def main():
     start.add_argument("--case", required=True)
     start.add_argument("--data-root")
     start.add_argument("--process-home")
+    start.add_argument("--native-app", action="store_true")
     start.add_argument("--timeout", type=float, default=240)
     finish = sub.add_parser("finish")
     finish.add_argument("--lease", required=True)

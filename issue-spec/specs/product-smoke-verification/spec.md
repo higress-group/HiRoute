@@ -187,6 +187,41 @@ attributable terminal results and counts, the preparation failure, and explicit
 unexecuted target/doctest coverage. Completed independent targets cannot establish
 complete validation when dependent targets were not admitted.
 
+### Requirement: Native Pilot App reopening preserves its isolated owner
+
+An explicitly requested macOS native Pilot App entry MUST belong to one registered
+open reusable-build lease and one private session. Its original/deployed Desktop,
+daemon and CLI identities, candidate, launch guard, bundle metadata and isolation
+directories MUST be verified before every initial or ordinary operating-system
+launch. The entry MUST require the managed build's attested non-persistent WebView
+configuration; ordinary production builds retain their existing launch behavior.
+
+Initial launch and ordinary reopening MUST use the same explicit test data root,
+private runtime/temporary directories, working directory and isolated HOME/native
+Agent configuration locations. Ambient authentication environment MUST NOT be
+persisted in the entry or borrowed from the operating-system launcher. Native
+reopening MUST NOT fall through to the daily/default product profile. WebView state
+remains non-persistent while the test profile's product state survives reopening.
+
+Concurrent ordinary openings MUST NOT create a second untracked instance. Each
+new process generation MUST record its PID, native start identity and exact
+executable before business actions. Observation MUST NOT launch a process.
+Ordinary application quit or explicit Pilot stop leaves the open lease's entry
+reopenable. Lease finish MUST revoke the entry before process cleanup and refuse
+subsequent openings; cleanup MUST affect only verified owned processes and deployment
+links, retaining evidence and refusing unknown/reused identities or changed artifacts.
+
+#### Scenario: Native acceptance across ordinary reopen
+
+- **WHEN** an exact-candidate App is physically selected/opened, its real daemon
+  and CLI are verified, and the application is quit then opened through its
+  ordinary native entry
+- **THEN** the new recorded process uses the same isolated profile without a
+  duplicate/default instance; replaced launch artifacts are refused and owner
+  retirement stops only that instance and prevents reopening
+- **AND** local fixture-process or IPC-only success cannot establish this native
+  scenario; unavailable LaunchServices/native CU leaves it unexecuted
+
 ## Implementation references
 
 - [Product control journey](../../../tools/product-e2e/tests/control_shell.rs),

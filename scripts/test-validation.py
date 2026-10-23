@@ -127,7 +127,7 @@ class Routing(unittest.TestCase):
             m.dispatch({'desktop': target}, 'pilot-build', ['status', '--lease', 'a' * 32])
         payload = json.loads(call.call_args.kwargs['input'])
         self.assertEqual(payload['name'], 'desktop')
-        self.assertEqual(set(payload['bundle']), {'pilot-builds.py', 'local-rust.py', 'remote-rust.py', 'desktop-pilot.py', 'validation-report.py'})
+        self.assertEqual(set(payload['bundle']), {'pilot-builds.py', 'local-rust.py', 'remote-rust.py', 'desktop-pilot.py', 'pilot-native-app.py', 'validation-report.py'})
 
     def test_ssh_pilot_and_build_execute_same_caller_driver_instead_of_host_checkout(self):
         caller = self.root / 'caller'
@@ -153,7 +153,7 @@ pilot.record('build:' + sys.argv[1])
 '''
         (caller / 'scripts/desktop-pilot.py').write_text(driver)
         (caller / 'scripts/pilot-builds.py').write_text(build_driver)
-        for name in ('local-rust.py', 'remote-rust.py', 'validation-report.py'):
+        for name in ('local-rust.py', 'remote-rust.py', 'pilot-native-app.py', 'validation-report.py'):
             (caller / 'scripts' / name).write_text('# unused fixture dependency\n')
         (caller / 'scripts/validation-host.py').write_text(Path(host.__file__).read_text())
         stale_driver = "raise SystemExit('stale host checkout driver was executed')\n"
@@ -215,7 +215,7 @@ pilot.record('build:' + sys.argv[1])
                 run.assert_not_called()
 
     def test_bundle_is_content_addressed_immutable_and_private(self):
-        sources = {name: '# fixture\n' for name in ('pilot-builds.py', 'local-rust.py', 'remote-rust.py', 'desktop-pilot.py', 'validation-report.py')}
+        sources = {name: '# fixture\n' for name in ('pilot-builds.py', 'local-rust.py', 'remote-rust.py', 'desktop-pilot.py', 'pilot-native-app.py', 'validation-report.py')}
         with patch.object(host.Path, 'home', return_value=self.root):
             first = host.tooling_bundle(sources)
             self.assertEqual(first, host.tooling_bundle(sources))
