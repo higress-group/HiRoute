@@ -174,6 +174,9 @@ invalidate cross-ingress assertions while runtime tests pass.
 Command descriptor changes select both the CLI `contracts` and Product E2E `product_oracle`
 targets early. Regenerate both `contracts/cli/` and `e2e/product/schema/`: they share the
 command descriptor digest, so updating only the CLI outputs leaves the product contract stale.
+Observation domain ports select the Product E2E `local_observation` target early to
+check the current boundary golden against the canonical port digests. Retained legacy
+observations keep their original digests and remain separate compatibility evidence.
 
 For a full/group plan, early tests preserve the final Cargo package scope, adding the E2E
 owner if needed, and restrict execution with explicit `--test` targets. Focused runtime
