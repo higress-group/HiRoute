@@ -602,38 +602,45 @@ def verify_process_identity(row: dict, item: dict, expected: dict) -> None:
 
 
 def record_started_processes(row: dict) -> list[int]:
-    members = [item for item in process_rows() if item["pgid"] == int(row["pgid"])]
+    snapshot = process_rows()
     recorded = {int(item["pid"]): item for item in row.get("process_identities", [])}
-    if not members:
-        return []
-    leader = next((item for item in members if item["pid"] == int(row["pid"])), None)
-    if leader is None:
+    exited = set()
+    for _ in range(16):
+        if any(item["pid"] in exited for item in snapshot):
+            raise ValueError("an exited PID reappeared during observation")
+        members = [item for item in snapshot if item["pgid"] == int(row["pgid"])]
+        leader = next((item for item in members if item["pid"] == int(row["pid"])), None)
+        # Prove the leader before admitting any newly observed direct child.
+        members.sort(key=lambda item: item["pid"] != int(row["pid"]))
         for item in members:
-            expected = recorded.get(item["pid"])
-            if expected is None:
-                raise ValueError(
-                    "Desktop leader disappeared with an unrecorded group member; refusing cleanup"
-                )
-            verify_process_identity(row, item, expected)
-        return [item["pid"] for item in members]
-    if leader["pid"] not in recorded:
-        identity = capture_process_identity(row, leader, "app")
-        row.setdefault("process_identities", []).append(identity)
-        recorded[leader["pid"]] = identity
-    else:
-        verify_process_identity(row, leader, recorded[leader["pid"]])
-    for item in members:
-        if item["pid"] == leader["pid"]:
-            continue
-        if item["pid"] in recorded:
-            verify_process_identity(row, item, recorded[item["pid"]])
-            continue
-        if item["ppid"] != int(row["pid"]):
-            raise ValueError("unrecorded process is not a direct child of the launched Desktop")
-        identity = capture_process_identity(row, item, "daemon")
-        row["process_identities"].append(identity)
-        recorded[item["pid"]] = identity
-    return [item["pid"] for item in members]
+            try:
+                expected = recorded.get(item["pid"])
+                if expected is not None:
+                    verify_process_identity(row, item, expected)
+                    continue
+                if leader is None:
+                    raise ValueError(
+                        "Desktop leader disappeared with an unrecorded group member; refusing cleanup"
+                    )
+                role = "app" if item["pid"] == leader["pid"] else "daemon"
+                if role == "daemon" and item["ppid"] != int(row["pid"]):
+                    raise ValueError("unrecorded process is not a direct child of the launched Desktop")
+                identity = capture_process_identity(row, item, role)
+                row.setdefault("process_identities", []).append(identity)
+                recorded[item["pid"]] = identity
+            except ProcessLookupError:
+                latest = process_rows()
+                if any(current["pid"] == item["pid"] for current in latest):
+                    raise
+                # Native startup/exit can finish between ps and libproc. Only a
+                # confirmed absent PID may be discarded; recheck all remaining
+                # members, including newcomers, before accepting this snapshot.
+                exited.add(item["pid"])
+                snapshot = latest
+                break
+        else:
+            return [item["pid"] for item in members]
+    raise ValueError("process membership did not stabilize during observation")
 
 
 def owned_process_group(row: dict, *, stopping: bool = False) -> list[int]:

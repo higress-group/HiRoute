@@ -117,6 +117,54 @@ class ProcessOwnershipTests(unittest.TestCase):
     def executable(self, pid):
         return {101: self.app, 102: self.daemon}[pid]
 
+    def test_observation_rechecks_after_short_lived_child_exits(self):
+        app = self.member(101, 1, 101)
+        transient = self.member(103, 101, 101)
+        daemon = self.member(102, 101, 101)
+        self.row["process_identities"] = self.row["process_identities"][:1]
+        def executable(pid):
+            if pid == 103:
+                raise ProcessLookupError("exited during identity read")
+            return self.executable(pid)
+        with mock.patch.object(pilot, "process_rows", side_effect=[[app, transient], [app, daemon]]), \
+                mock.patch.object(pilot, "process_start_time", side_effect=self.start_time), \
+                mock.patch.object(pilot, "process_executable", side_effect=executable):
+            self.assertEqual(pilot.record_started_processes(self.row), [101, 102])
+        self.assertEqual(self.row["process_identities"][1:], [{
+            "pid": 102, "role": "daemon", "start_time": "daemon-start", "executable": str(self.daemon),
+        }])
+
+    def test_observation_never_ignores_a_still_present_unresolved_pid(self):
+        app = self.member(101, 1, 101)
+        transient = self.member(103, 101, 101)
+        for latest in ([app, transient], [app, self.member(103, 1, 999)]):
+            with self.subTest(latest=latest), \
+                    mock.patch.object(pilot, "process_rows", side_effect=[[app, transient], latest]), \
+                    mock.patch.object(pilot, "process_start_time", side_effect=self.start_time), \
+                    mock.patch.object(pilot, "process_executable", side_effect=[self.app, ProcessLookupError("unresolved")]):
+                with self.assertRaisesRegex(ProcessLookupError, "unresolved"):
+                    pilot.record_started_processes(self.row)
+
+    def test_observation_refuses_a_confirmed_exited_pid_reappearing(self):
+        app = self.member(101, 1, 101)
+        first = self.member(103, 101, 101)
+        second = self.member(104, 101, 101)
+        with mock.patch.object(pilot, "process_rows", side_effect=[[app, first], [app, second], [app, first]]), \
+                mock.patch.object(pilot, "process_start_time", side_effect=self.start_time), \
+                mock.patch.object(pilot, "process_executable", side_effect=[self.app, ProcessLookupError(), self.app, ProcessLookupError()]):
+            with self.assertRaisesRegex(ValueError, "exited PID reappeared"):
+                pilot.record_started_processes(self.row)
+
+    def test_observation_rechecks_new_members_after_confirmed_exit(self):
+        app = self.member(101, 1, 101)
+        transient = self.member(103, 101, 101)
+        unknown = self.member(104, 999, 101)
+        with mock.patch.object(pilot, "process_rows", side_effect=[[app, transient], [app, unknown]]), \
+                mock.patch.object(pilot, "process_start_time", side_effect=self.start_time), \
+                mock.patch.object(pilot, "process_executable", side_effect=[self.app, ProcessLookupError("exited"), self.app]):
+            with self.assertRaisesRegex(ValueError, "not a direct child"):
+                pilot.record_started_processes(self.row)
+
     def test_pid_reuse_refuses_signal(self):
         members = [self.member(101, 1, 101)]
         with mock.patch.object(pilot, "process_rows", return_value=members), mock.patch.object(
