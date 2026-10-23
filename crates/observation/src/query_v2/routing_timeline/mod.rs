@@ -313,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    fn expired_timeline_deadline_is_a_scope_error() {
+    fn expired_timeline_deadline_remains_transient_and_a_fresh_read_recovers() {
         let dir = tempfile::tempdir().unwrap();
         let store = crate::query_v2::tests::open(dir.path());
         let reader = ObservationReaderContext::local_user(
@@ -335,7 +335,54 @@ mod tests {
             store
                 .observed_routing_timeline(&reader, &query, 5000)
                 .unwrap_err(),
-            ObservationV2Error::ScopeTooLarge
+            ObservationV2Error::Timeout
+        );
+        let fresh = ObservationReaderContext::local_user(
+            WorkspaceId::default(),
+            "user".into(),
+            1,
+            10_000,
+            false,
+            false,
+        )
+        .unwrap();
+        assert!(
+            store
+                .observed_routing_timeline(&fresh, &query, 5000)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn elapsed_timeline_budget_remains_transient_and_a_fresh_read_recovers() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::query_v2::tests::open(dir.path());
+        let reader = ObservationReaderContext::local_user(
+            WorkspaceId::default(),
+            "user".into(),
+            1,
+            10_000,
+            false,
+            false,
+        )
+        .unwrap();
+        let query = RoutingTimelineQueryV1 {
+            session_id: "session/test".into(),
+            after_watermark: None,
+            limit: 50,
+        };
+        assert_eq!(
+            store
+                .routing_timeline_inner(&reader, &query, 5000, || {
+                    std::thread::sleep(std::time::Duration::from_millis(510));
+                })
+                .unwrap_err(),
+            ObservationV2Error::Timeout
+        );
+        assert!(
+            store
+                .observed_routing_timeline(&reader, &query, 5000)
+                .is_ok()
         );
     }
 
