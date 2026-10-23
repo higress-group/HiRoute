@@ -907,18 +907,8 @@ impl ProductionGatewayRuntime {
                         }
                     }
                 }
-                if agent_turn_guard
-                    .as_ref()
-                    .is_some_and(|guard| guard.decision_deferred)
-                {
-                    // The final decision publication can still fail its memory
-                    // budget. Capture continues, but this request must not publish
-                    // a provider-affinity success before that result is known.
-                    hold_ticket = None;
-                    planner_input.context_hold = None;
-                    planner_input.previous_success_candidate_id = None;
-                }
                 if let Some(guard) = agent_turn_guard.as_ref() {
+                    guard.withhold_pending_affinity(&mut hold_ticket, &mut planner_input);
                     request_observation.bind_agent_turn_output(
                         Arc::clone(&self.agent_turn_history),
                         guard.ticket().clone(),

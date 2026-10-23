@@ -8,6 +8,55 @@ fn decision() -> profiles::BranchDecisionV1 {
 }
 
 #[test]
+fn pending_decision_withholds_affinity_completion_without_changing_planner_authority() {
+    for busy in [false, true] {
+        let fixture = Fixture::new();
+        let request = Fixture::request(json!([{"role":"user","content":"first"}]));
+        let mut admitted = fixture.begin(&request, fixture.prepare(&request));
+        let guard = admitted.guard.as_mut().unwrap();
+        let mut input = profiles::planner::tests::branches::fixture();
+        let selected = input.classification_decision.clone().unwrap();
+        let candidate = &input.candidates[0];
+        input.context_hold = Some(profiles::HoldPreferenceV1 {
+            stable_binding_id: candidate.stable_binding_id.clone(),
+            candidate_id: candidate.candidate_id.clone(),
+            profile_digest: candidate.profile_digest.clone(),
+            reasoning_profile_id: "fixed".into(),
+            origin_group_id: "branch_0".into(),
+        });
+        input.previous_success_candidate_id = Some(candidate.candidate_id.clone());
+        let original_decision = serde_json::to_value(&input.classification_decision).unwrap();
+        let original_policy = serde_json::to_value(&input.policy).unwrap();
+        assert!(admitted.hold_ticket.is_some());
+        if busy {
+            fixture
+                .runtime
+                .agent_turn_history
+                .with_lock_for_runtime_test(|| {
+                    guard.commit_decision_or_defer(&selected).unwrap();
+                });
+        } else {
+            guard.commit_decision_or_defer(&selected).unwrap();
+        }
+        guard.withhold_pending_affinity(&mut admitted.hold_ticket, &mut input);
+        assert_eq!(input.context_hold.is_none(), busy);
+        assert_eq!(input.previous_success_candidate_id.is_none(), busy);
+        // Runtime builds HoldCompletion solely from this ticket after Planner.
+        assert_eq!(admitted.hold_ticket.is_none(), busy);
+        assert_eq!(
+            serde_json::to_value(&input.classification_decision).unwrap(),
+            original_decision
+        );
+        assert_eq!(
+            serde_json::to_value(&input.policy).unwrap(),
+            original_policy
+        );
+        assert!(admitted.guard.is_some());
+        assert!(profiles::Planner.plan(&input).is_ok());
+    }
+}
+
+#[test]
 fn admitted_capture_survives_busy_decision_index_and_remains_evaluable() {
     let fixture = Fixture::new();
     let first = Fixture::request(json!([{"role":"user","content":"first"}]));

@@ -2,6 +2,21 @@
 use super::{AgentTurnHistoryError, AgentTurnRequestGuard, profiles};
 
 impl AgentTurnRequestGuard {
+    pub(super) fn withhold_pending_affinity(
+        &self,
+        hold_ticket: &mut Option<Box<crate::context_hold::HoldTicket>>,
+        input: &mut profiles::PlannerInputV1,
+    ) {
+        if self.decision_deferred {
+            // Publication can still fail its budget after delivery. Suppress
+            // planner hints and the ticket consumed by HoldCompletion together,
+            // before the single planner/execution call. Capture stays admitted.
+            *hold_ticket = None;
+            input.context_hold = None;
+            input.previous_success_candidate_id = None;
+        }
+    }
+
     pub(super) fn commit_decision_or_defer(
         &mut self,
         decision: &profiles::BranchDecisionV1,
