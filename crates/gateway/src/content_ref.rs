@@ -302,7 +302,7 @@ pub fn externalize_model_request(
             >())
             .is_some_and(|bytes| replay.charge_metadata(bytes).is_ok());
         if !charged {
-            // Optional association cannot consume the execution path's budget.
+            // A capacity refusal discards only optional association metadata.
             // Without ingress coverage native-only requests keep capture but
             // cannot establish a successor boundary.
             request.native_history = None;

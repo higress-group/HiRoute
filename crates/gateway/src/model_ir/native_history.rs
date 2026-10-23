@@ -1,5 +1,5 @@
 //! Ingress-owned native positions; consumers do not decode protocol shapes again.
-use super::{MessageRole, ModelRequestIRV1, NativeHistoryItem};
+use super::{ModelRequestIRV1, NativeHistoryItem};
 use crate::server::request_plan::IngressProtocol;
 use serde_json::Value;
 
@@ -18,24 +18,12 @@ impl ModelRequestIRV1 {
         }
         let values = value.as_array()?;
         let mut previous = None;
-        for (position, item) in layout.iter().enumerate() {
+        for item in layout {
             let index = item.native_index?;
             if previous.is_some_and(|previous| index <= previous) {
                 return None;
             }
-            let native = values.get(index)?;
-            // Preserve the typed peer placeholder when a request-local view is
-            // changed after admission. Content storage may change, positions may not.
-            if native.get("type").and_then(Value::as_str) == Some("agent_message") {
-                let message = &self.messages[position];
-                if item.modeled
-                    || message.role != MessageRole::Assistant
-                    || !message.content.is_empty()
-                    || message.name.is_some()
-                {
-                    return None;
-                }
-            }
+            values.get(index)?;
             previous = Some(index);
         }
         Some(layout)

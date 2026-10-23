@@ -169,6 +169,21 @@ fn unknown_setup_does_not_mask_unknown_output_or_disable_known_output() {
 }
 
 #[test]
+fn native_type_extensions_are_not_reinterpreted_as_another_protocol() {
+    for protocol in [IngressProtocol::ChatCompletions, IngressProtocol::Messages] {
+        let (_dir, replay) = replay();
+        let mut value = body(protocol);
+        value["messages"][1]["type"] = json!("agent_message");
+        for allowance in [0, 64 * 1024] {
+            assert_eq!(
+                association(&parse(protocol, &value, &replay, allowance), &replay),
+                Some(true)
+            );
+        }
+    }
+}
+
+#[test]
 fn old_unknown_reasoning_cannot_poison_new_known_response_boundary() {
     let (_dir, replay) = replay();
     for protocol in [IngressProtocol::Responses, IngressProtocol::ChatCompletions] {
