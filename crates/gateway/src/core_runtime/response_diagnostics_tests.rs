@@ -582,6 +582,7 @@ fn run_case(case: &str, root: &Path) {
         let failures: Vec<_> = records
             .iter()
             .filter_map(|r| payload(r, "response_failure"))
+            .filter(|failure| failure.get("capture").is_none())
             .collect();
         assert_eq!(failures.len(), 1, "{case}: {log}");
         let failure = failures[0];
@@ -620,6 +621,32 @@ fn run_case(case: &str, root: &Path) {
         }
         assert!(!failure["request_token"].is_null());
         assert_eq!(failure["request_token"], end["request_token"]);
+        let capture_failures: Vec<_> = records
+            .iter()
+            .filter_map(|r| payload(r, "response_failure"))
+            .filter(|failure| failure.get("capture").is_some())
+            .collect();
+        assert_eq!(
+            capture_failures.len(),
+            usize::from(prebody && capture_enabled),
+            "{case}: {log}"
+        );
+        for capture in capture_failures {
+            // The independent decoder records its first failure once, even
+            // when the failed attempt is followed by a successful fallback.
+            for key in [
+                "request_token",
+                "attempt_index",
+                "stage",
+                "reason",
+                "frame_index",
+            ] {
+                assert_eq!(capture[key], failure[key], "{case}: {key}");
+            }
+            assert!(capture["attempt_token"].is_null());
+            assert_eq!(capture["capture"]["ingress_protocol"], "anthropic_messages");
+            assert_eq!(capture["capture"]["upstream_protocol"], "open_ai_chat");
+        }
     } else {
         assert!(
             records
