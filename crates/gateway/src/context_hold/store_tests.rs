@@ -51,6 +51,7 @@ fn history_request(instruction: u8, messages: &[u8]) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: None,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
         served_model_id: "agent/test".into(),
@@ -624,7 +625,7 @@ fn native_instruction_text_changes_keep_semantic_history_without_kv_or_cleanup_r
 
 #[test]
 fn a_new_native_turn_does_not_authorize_changed_user_assistant_or_tool_prefixes() {
-    let original = crate::server::core_runtime::adapters::decode_ingress_request(
+    let mut original = crate::server::core_runtime::adapters::decode_ingress_request(
         IngressProtocol::Responses,
         &serde_json::json!({"model":"route","input":[
             {"role":"system","content":"native instructions"},
@@ -635,6 +636,10 @@ fn a_new_native_turn_does_not_authorize_changed_user_assistant_or_tool_prefixes(
         ]}),
     )
     .unwrap();
+    // Exercise canonical prefix changes; the variants below deliberately edit
+    // and append IR messages rather than re-decoding a native request.
+    original.native_body = None;
+    original.native_history = None;
     for index in 1..5 {
         let store = ContextHoldStore::default();
         let now = Instant::now();

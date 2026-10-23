@@ -30,10 +30,59 @@ pub(super) fn classify(
         .iter()
         .map(|r| r.request_id.as_str())
         .collect();
-    routing_transitions(&rows)
+    let mut values: Vec<_> = routing_transitions(&rows)
         .into_iter()
         .filter(|t| ids.contains(t.request_id.as_str()))
-        .collect()
+        .collect();
+    coalesce_completed_comparison(turn, identity, &mut values);
+    values
+}
+
+fn coalesce_completed_comparison(
+    turn: &RoutingTimelineTurnV1,
+    identity: Option<&Identity>,
+    values: &mut Vec<AnalysisTransitionV1>,
+) {
+    if turn.finished_at_ms.is_none() || turn.evidence_partial || identity.is_none() {
+        return;
+    }
+    let Some(last) = turn.requests.last() else {
+        return;
+    };
+    let Some(final_comparison) = values
+        .iter()
+        .find(|t| {
+            t.request_id == last.request_id
+                && t.completeness == "complete"
+                && t.previous_session_id.is_some()
+                && t.previous_request_id.is_some()
+                && matches!(
+                    t.kind,
+                    AnalysisTransitionKindV1::BetweenTurnChange
+                        | AnalysisTransitionKindV1::ReasoningChange
+                        | AnalysisTransitionKindV1::Unchanged
+                )
+        })
+        .cloned()
+    else {
+        return;
+    };
+    // The shared classifier keeps per-request diagnostics. A nonfinal request
+    // cannot yet prove the turn's final endpoint, so it may report context reset.
+    // Only the same proven predecessor and identical model/reasoning endpoints
+    // make that diagnostic redundant with this completed turn comparison.
+    // Other intermediate models, gaps, pending requests and relays remain visible.
+    values.retain(|t| {
+        !(t.request_id != final_comparison.request_id
+            && t.kind == AnalysisTransitionKindV1::Unknown
+            && t.completeness == "turn_context_reset"
+            && t.previous_session_id == final_comparison.previous_session_id
+            && t.previous_request_id == final_comparison.previous_request_id
+            && t.previous_model == final_comparison.previous_model
+            && t.model == final_comparison.model
+            && t.model_changed == final_comparison.model_changed
+            && t.reasoning_changed == final_comparison.reasoning_changed)
+    });
 }
 fn append(
     session: &str,
@@ -101,3 +150,7 @@ fn append(
         });
     }
 }
+
+#[cfg(test)]
+#[path = "transition_tests.rs"]
+mod tests;

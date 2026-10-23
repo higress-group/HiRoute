@@ -294,6 +294,20 @@ pub fn externalize_model_request(
     if let Some(pool) = pool {
         pool.seal()?;
     }
+    if let Some(layout) = &request.native_history {
+        let charged = layout
+            .capacity()
+            .checked_mul(std::mem::size_of::<
+                crate::server::core_runtime::model_ir::NativeHistoryItem,
+            >())
+            .is_some_and(|bytes| replay.charge_metadata(bytes).is_ok());
+        if !charged {
+            // A capacity refusal discards only optional association metadata.
+            // Without ingress coverage native-only requests keep capture but
+            // cannot establish a successor boundary.
+            request.native_history = None;
+        }
+    }
     Ok(())
 }
 

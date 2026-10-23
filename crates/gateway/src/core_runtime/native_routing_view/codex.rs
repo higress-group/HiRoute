@@ -34,7 +34,7 @@ pub(super) fn prepare(
         })
         .flatten();
     let peer = latest.filter(|last| is_peer(&items[*last]));
-    let index = peer.and_then(|last| canonical_index(request, items, last));
+    let index = peer.and_then(|last| canonical_index(request, last));
     let projected = peer.zip(index).and_then(|(last, index)| {
         peer_input(items, last, replay, budget).map(|parts| (parts, index))
     });
@@ -62,20 +62,11 @@ fn is_peer(item: &Value) -> bool {
     item.get("type").and_then(Value::as_str) == Some("agent_message")
 }
 
-fn canonical_index(request: &ModelRequestIRV1, items: &[Value], last: usize) -> Option<usize> {
-    // Responses ingress skips additional_tools, emits one Assistant placeholder
-    // for web search, and one canonical message for every other accepted item.
-    // Validate that mapping before using a native ordinal as an event boundary.
-    let is_message =
-        |item: &&Value| item.get("type").and_then(Value::as_str) != Some("additional_tools");
-    if items.iter().filter(is_message).count() != request.messages.len() {
-        return None;
-    }
-    let index = items[..=last]
+fn canonical_index(request: &ModelRequestIRV1, last: usize) -> Option<usize> {
+    let index = request
+        .native_history_layout()?
         .iter()
-        .filter(is_message)
-        .count()
-        .checked_sub(1)?;
+        .position(|item| item.native_index == Some(last))?;
     let placeholder = request.messages.get(index)?;
     if placeholder.role != MessageRole::Assistant
         || !placeholder.content.is_empty()

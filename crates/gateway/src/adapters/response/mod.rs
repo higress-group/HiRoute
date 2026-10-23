@@ -26,6 +26,8 @@ mod native_passthrough_tests;
 #[cfg(test)]
 mod native_reasoning_tests;
 #[cfg(test)]
+mod native_transport_tests;
+#[cfg(test)]
 mod service_tier_tests;
 
 #[cfg(test)]

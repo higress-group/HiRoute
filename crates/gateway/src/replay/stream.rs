@@ -790,24 +790,29 @@ pub(crate) fn write_canonical_json(
             }
             writer.write_all(b"]")
         }
-        serde_json::Value::Object(object) => {
-            writer.write_all(b"{")?;
-            let mut keys = object.keys().collect::<Vec<_>>();
-            keys.sort_unstable();
-            for (index, key) in keys.into_iter().enumerate() {
-                if index != 0 {
-                    writer.write_all(b",")?;
-                }
-                serde_json::to_writer(&mut *writer, key)
-                    .map_err(|error| std::io::Error::other(error.to_string()))?;
-                writer.write_all(b":")?;
-                write_canonical_json(writer, &object[key])?;
-            }
-            writer.write_all(b"}")
-        }
+        serde_json::Value::Object(object) => write_canonical_object(writer, object),
         value => serde_json::to_writer(writer, value)
             .map_err(|error| std::io::Error::other(error.to_string())),
     }
+}
+
+pub(crate) fn write_canonical_object(
+    writer: &mut impl Write,
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> std::io::Result<()> {
+    writer.write_all(b"{")?;
+    let mut keys = object.keys().collect::<Vec<_>>();
+    keys.sort_unstable();
+    for (index, key) in keys.into_iter().enumerate() {
+        if index != 0 {
+            writer.write_all(b",")?;
+        }
+        serde_json::to_writer(&mut *writer, key)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        writer.write_all(b":")?;
+        write_canonical_json(writer, &object[key])?;
+    }
+    writer.write_all(b"}")
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

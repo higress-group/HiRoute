@@ -35,16 +35,11 @@ fn oversized_prior_content_loses_only_fingerprints_and_next_request_recovers() {
 
 #[test]
 fn large_peer_json_and_instruction_metadata_cannot_bypass_evidence_budget() {
-    let mut request = decode_ingress_request(
-        IngressProtocol::Responses,
-        &json!({
-            "model":"route", "input":[{"role":"user", "content":"task"}]
-        }),
-    )
-    .unwrap();
     let large = "x".repeat(super::super::fingerprint::MAX_BYTES / 6 + 1);
-    request.native_only = true;
-    request.native_body = Some(json!({"input":[{"type":"agent_message", "content":large}]}));
+    let mut request = decode_ingress_request(IngressProtocol::Responses, &json!({
+        "model":"route", "input":[{"type":"agent_message", "author":"child", "recipient":"parent",
+            "content":[{"type":"encrypted_content", "encrypted_content":large}]}]
+    })).unwrap();
     assert!(
         observed_history_with_replay(&request, &[7; 32], None)
             .unwrap()

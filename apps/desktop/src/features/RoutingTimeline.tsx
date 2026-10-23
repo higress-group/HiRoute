@@ -21,9 +21,9 @@ export type TimelineTurn = {
   branch_id: string | null; model_configuration_id: string | null; reasoning_profile_id: string | null; group: string | null;
   selection: { simple_probability: number | null; simple_threshold_millis: number | null; selection_reason: string; competence_trigger?: { score: number; floor_millis: number } | null; historical_protection?: TimelineProtection | null } | null;
   tool_continuations: number; relays: { request_id: string; from_model: string | null; to_model: string | null }[];
-  assessment_state: string; assessment: { score: number; partial: boolean; target_from_ordinal: number; target_through_ordinal: number } | null;
+  assessment_state: string; assessment: { score: number; partial: boolean; target_from_turn_id?: string; target_through_turn_id?: string; target_from_ordinal: number; target_through_ordinal: number } | null;
   competence_floor_millis: number | null; protected_turn_ids: string[]; status: string; requests: TimelineRequest[];
-  transitions?: { kind: string; request_id: string; model: { native_model: string | null }; previous_model: { native_model: string | null } | null; completeness: string }[];
+  transitions?: { kind: string; request_id: string; previous_request_id?: string | null; model_changed?: boolean | null; reasoning_changed?: boolean | null; model: { native_model: string | null }; previous_model: { native_model: string | null } | null; completeness: string }[];
   cost_by_model: Cost[]; evidence_partial: boolean; content_digest: string;
 };
 type TimelinePage = { turns: TimelineTurn[]; watermark: string; complete: boolean };
@@ -38,8 +38,8 @@ const TICKS = 18;
 const REQUESTS = 6;
 
 /** `active` allows reads at all; `displayed` adds continuing polling. Otherwise one probe settles availability. */
-export function RoutingTimeline({ session, language, active, displayed, refreshVersion, requestId, onSelectRequest, onOpenPerformance, onViewConversation, onAvailability }: {
-  session: string; language: 'zh' | 'en'; active: boolean; displayed: boolean; refreshVersion: number; requestId: string | null;
+export function RoutingTimeline({ session, language, active, displayed, refreshVersion, requestId, contentCleared = false, clearedRequestIds = [], onSelectRequest, onOpenPerformance, onViewConversation, onAvailability }: {
+  session: string; language: 'zh' | 'en'; active: boolean; displayed: boolean; refreshVersion: number; requestId: string | null; contentCleared?: boolean; clearedRequestIds?: readonly string[];
   onSelectRequest(request: TimelineRequest): void; onOpenPerformance(plan: string): void;
   onViewConversation?(request: TimelineRequest): void; onAvailability?(availability: TimelineAvailability): void;
 }) {
@@ -58,12 +58,13 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   const blockedScope = useRef(false);
   const probed = useRef(false);
   const lastRead = useRef(-Infinity);
+  const failures = useRef(0);
   const stored = useRef(new Map<string, TimelineTurn>());
   const scroller = useRef<HTMLDivElement>(null);
   const timeline = useRef<HTMLElement>(null);
   const pendingFocus = useRef<{ from: Element; owner: string; attribute: 'data-overview-turn' | 'data-turn-id' } | null>(null);
   useEffect(() => { blockedScope.current = false; setError(''); }, [session]);
-  useEffect(() => { watermark.current = null; probed.current = false; lastRead.current = -Infinity; stored.current.clear(); setTurns([]); setSelected(null); setOverviewFocus(null); setLoaded(false); setArrivals(new Set()); setUnseen([]); }, [session, refreshVersion]);
+  useEffect(() => { watermark.current = null; probed.current = false; lastRead.current = -Infinity; failures.current = 0; stored.current.clear(); setTurns([]); setSelected(null); setOverviewFocus(null); setLoaded(false); setArrivals(new Set()); setUnseen([]); }, [session, refreshVersion]);
   useEffect(() => {
     if (!arrivals.size) return;
     const timer = window.setTimeout(() => setArrivals(new Set()), 600);
@@ -104,7 +105,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         for (const turn of page.turns) { if (stored.current.get(turn.turn_id)?.content_digest !== turn.content_digest) { stored.current.set(turn.turn_id, turn); changed = true; } }
         if (fresh.length) { setArrivals(previous => new Set([...previous, ...fresh])); setUnseen(previous => [...new Set([...previous, ...fresh])]); }
         if (changed) setTurns([...stored.current.values()].sort((a, b) => a.started_at_ms - b.started_at_ms || a.turn_id.localeCompare(b.turn_id)));
-        watermark.current = page.watermark; setError(''); setLoaded(true);
+        watermark.current = page.watermark; failures.current = 0; setError(''); setLoaded(true);
         if (!page.complete) schedule(0);
         else { probed.current = true; if (displayed) schedule(2000); }
       } catch (e) {
@@ -117,7 +118,13 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         if (stale) { watermark.current = null; stored.current.clear(); setTurns([]); setLoaded(false); setArrivals(new Set()); setUnseen([]); }
         setError(code);
         if (stale) schedule(0);
-        else { probed.current = true; if (displayed && !blockedScope.current) schedule(2000); }
+        else {
+          probed.current = true;
+          // Keep one visible read in flight; repeated transient failures back off,
+          // while actual capacity limits require an explicit retry.
+          const delay = Math.min(30_000, 2000 * 2 ** Math.min(failures.current++, 4));
+          if (displayed && !blockedScope.current) schedule(delay);
+        }
       } finally { inFlight = false; lastRead.current = performance.now(); }
     }
     const visible = () => { if (document.visibilityState === 'visible') void load(); else window.clearTimeout(timer); };
@@ -175,7 +182,14 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
 
   const selectedTurn = turns.find(t => t.turn_id === selected) ?? turns[turns.length - 1];
   const overviewTabStop = turns.some(turn => turn.turn_id === overviewFocus) ? overviewFocus : selectedTurn?.turn_id;
-  const index = (turn: TimelineTurn) => turns.indexOf(turn) + 1;
+  const coordinates = new Map(turns.map((turn, i) => [turn.turn_id, i + 1]));
+  const index = (turn: TimelineTurn) => coordinates.get(turn.turn_id)!;
+  const assessmentCoordinates = new Map<string, number | null>();
+  for (const turn of turns) {
+    // Assessments refer to authoritative AgentTurnId, while timeline selection
+    // uses the opening RequestId. Ambiguous retained identities cannot locate a score.
+    if (turn.agent_turn_id) assessmentCoordinates.set(turn.agent_turn_id, assessmentCoordinates.has(turn.agent_turn_id) ? null : index(turn));
+  }
   const boundary = (turn: TimelineTurn) => turn.boundary === 'new_user_message' ? text('新消息', 'New message') : turn.boundary === 'context_rebuilt' ? text('上下文重建', 'Context rebuilt') : text('边界未确认', 'Boundary unknown');
   const laneName = (lane: Lane) => lane === 'primary' ? text('主力', 'Primary') : lane === 'regular' ? text('常规', 'Regular') : text('分组未记录', 'Group unknown');
   const tone = (lane: Lane) => lane === 'regular' ? 'cyan' : lane === 'primary' ? 'purple' : '';
@@ -266,7 +280,13 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   }
   function scoreExplanation(turn: TimelineTurn) {
     if (turn.assessment) {
-      const covered = text(`覆盖轮次 ${turn.assessment.target_from_ordinal}–${turn.assessment.target_through_ordinal}`, `covers turns ${turn.assessment.target_from_ordinal}–${turn.assessment.target_through_ordinal}`);
+      const from = assessmentCoordinates.get(turn.assessment.target_from_turn_id ?? '');
+      const through = assessmentCoordinates.get(turn.assessment.target_through_turn_id ?? '');
+      // Producer ordinals can restart across epochs; only exact identities share
+      // the same coordinates as the overview, lane headings and selected detail.
+      const covered = typeof from === 'number' && typeof through === 'number' && from <= through
+        ? from === through ? text(`覆盖轮次 T${from}`, `covers turn T${from}`) : text(`覆盖轮次 T${from}–T${through}`, `covers turns T${from}–T${through}`)
+        : text('覆盖范围包含当前已加载范围外或身份未确认的轮次', 'covers turns outside the loaded range or without a confirmed identity');
       const floor = turn.competence_floor_millis != null ? text(`，下限 ${fixed(turn.competence_floor_millis)}`, `, floor ${fixed(turn.competence_floor_millis)}`) : '';
       const protectedNext = turn.protected_turn_ids.length ? text('低于下限，下一轮交给主力。', ' Below the floor, so the next agent turn went to Primary.') : '';
       return text(`阶段评分${covered}${floor}。${turn.assessment.partial ? '证据不完整。' : ''}${protectedNext}`, `This stage score ${covered}${floor}.${turn.assessment.partial ? ' Evidence is incomplete.' : ''}${protectedNext}`);
@@ -285,7 +305,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
     return <div className="routing-turn-detail">
       <div className="routing-detail-main">
         <div className="routing-detail-head">
-          <strong>T{index(selectedTurn)}</strong><span className="badge no-dot">{boundary(selectedTurn)}</span><span className={`badge no-dot ${tone(lane)}`}>{modelOf(selectedTurn) ?? text('模型未记录', 'Model unknown')}</span>
+          <strong>T{index(selectedTurn)}</strong><span className="badge no-dot">{boundary(selectedTurn)}</span><span className={`badge no-dot ${tone(lane)}`}>{text('模型：', 'Model: ')}{modelOf(selectedTurn) ?? text('未记录', 'unknown')}</span>
           <span className="routing-detail-actions">
             {onViewConversation && selectedTurn.requests[0] && <button type="button" className="btn btn-quiet" onClick={() => onViewConversation(selectedTurn.requests[0])}>{text('查看对话', 'View conversation')}</button>}
             {selectedTurn.plan_id && <button type="button" className="btn btn-quiet" onClick={() => onOpenPerformance(selectedTurn.plan_id!)}>{text('查看模型表现', 'View model performance')}</button>}
@@ -295,7 +315,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           ? text('依据：会话第一轮，或网关确认对话延续并重新判断。客户端自动追加的后台消息也可能满足此规则。', 'Basis: the first session turn, or a fresh decision on gateway-confirmed continuing history. Client-generated background messages can also meet this rule.')
           : selectedTurn.boundary === 'context_rebuilt' ? text('上下文中的消息步骤比上一份可比较记录少，按压缩归因；已重新判断。回退或共享会话的后台、子代理请求也可能满足此条件。', 'The context has fewer message steps than the prior comparable checkpoint, so this is attributed to compaction and judged again. Rewinds or background and subagent requests sharing a session can also meet this condition.')
           : text('没有足够记录确认这一轮的起因。', 'The retained records do not establish what started this turn.')}</p>
-        {selectedTurn.requests[0] && <blockquote className="routing-quote"><ContentExcerpt request={selectedTurn.requests[0].request_id} language={language} fallback={text('这一轮的消息暂不可用', 'This turn’s message is unavailable')} limit={140} revision={selectedTurn.content_digest} /></blockquote>}
+        {selectedTurn.requests[0] && <blockquote className="routing-quote"><ContentExcerpt active={active && displayed} contentCleared={contentCleared || clearedRequestIds.includes(selectedTurn.requests[0].request_id)} request={selectedTurn.requests[0].request_id} language={language} fallback={text('这一轮的消息暂不可用', 'This turn’s message is unavailable')} limit={140} revision={selectedTurn.content_digest} /></blockquote>}
         <div className="routing-detail-block"><span>{text('阶段开始时的模型选择', 'Model selection at the start of this stage')}</span>{historicalExplanation(selectedTurn)}</div>
         <div className="routing-detail-block"><span>{text('胜任评分', 'Competence score')}</span><div><span className={`routing-score ${scoreTone(selectedTurn)}`}>{score(selectedTurn)}</span></div><p>{scoreExplanation(selectedTurn)}</p></div>
         <p className="routing-detail-facts">{[
@@ -305,7 +325,15 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           selectedTurn.reasoning_profile_id ? text(`思考 ${selectedTurn.reasoning_profile_id}`, `reasoning ${selectedTurn.reasoning_profile_id}`) : '',
           selectedTurn.evidence_partial ? text('证据不完整', 'Incomplete evidence') : '',
         ].filter(Boolean).join(' · ')}</p>
-        {changes.map((change, i) => <p key={`transition-${i}`} className="routing-detail-facts">{transition(change.kind)}{change.previous_model?.native_model && ` · ${change.previous_model.native_model} → ${change.model.native_model ?? '?'}`}</p>)}
+        {changes.map((change, i) => {
+          const withinTurn = Boolean(change.previous_request_id && selectedTurn.requests.some(request => request.request_id === change.previous_request_id));
+          const label = change.kind !== 'unknown' || !withinTurn ? transition(change.kind)
+            : change.completeness !== 'complete' ? text('请求间切换证据尚不完整', 'Request transition evidence incomplete')
+            : change.model_changed ? text('本轮请求间模型变化', 'Model change between requests in this turn')
+            : change.reasoning_changed ? text('本轮请求间推理设置变化', 'Reasoning change between requests in this turn')
+            : text('本轮请求间变化未分类', 'Unclassified transition between requests in this turn');
+          return <p key={`transition-${i}`} className="routing-detail-facts">{label}{change.previous_model?.native_model && ` · ${change.previous_model.native_model} → ${change.model.native_model ?? '?'}`}</p>;
+        })}
         {selectedTurn.relays.map((relay, i) => <p key={`relay-${i}`} className="routing-detail-facts">{text('接力', 'Relay')} · {relay.from_model ?? '?'} → {relay.to_model ?? '?'}</p>)}
       </div>
       <div className="routing-detail-requests">
@@ -322,8 +350,8 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   })();
 
   return <section className="routing-timeline" ref={timeline} aria-label={text('路由时间线', 'Routing timeline')}>
-    <div className="routing-live" role="status"><span className={`routing-live-dot${running ? ' running' : ''}`} />{running ? text(`实时 · 第 ${turns.length} 轮正在执行`, `Live · agent turn ${turns.length} is running`) : text('实时', 'Live')}<span className="muted">{text('可见时每 2 秒更新', 'Updates every 2 s while visible')}</span></div>
-    {error && <div className="callout warn" role="alert" data-error-code={error}><span>{blocked ? text('这条会话超出完整读取范围，暂时无法显示时间线。', 'This session exceeds the complete-read limit; its timeline is unavailable.') : text('更新暂时不可用，已读取内容保留。', 'Updates are temporarily unavailable. Loaded records are retained.')}</span><button className="btn" onClick={() => { blockedScope.current = false; lastRead.current = -Infinity; setRetry(n => n + 1); }}>{text('重试', 'Retry')}</button></div>}
+    <div className="routing-live" role="status"><span className={`routing-live-dot${running && !error ? ' running' : ''}`} />{error ? text('更新延迟', 'Update delayed') : running ? text(`实时 · 第 ${turns.length} 轮正在执行`, `Live · agent turn ${turns.length} is running`) : text('实时', 'Live')}<span className="muted">{error ? blocked ? text('等待手动重试', 'Waiting for Retry') : text('可见时自动重试', 'Retries automatically while visible') : text('可见时每 2 秒更新', 'Updates every 2 s while visible')}</span></div>
+    {error && <div className="callout warn" role="alert" data-error-code={error}><span>{blocked ? text('这条会话超出完整读取范围，暂时无法显示时间线。', 'This session exceeds the complete-read limit; its timeline is unavailable.') : turns.length ? text('更新暂时不可用，显示上次读取的内容。', 'Updates are temporarily unavailable. Showing the last successful read.') : text('暂时无法读取，正在自动重试。', 'The read is temporarily unavailable. Retrying automatically.')}</span><button className="btn" onClick={() => { blockedScope.current = false; failures.current = 0; lastRead.current = -Infinity; setRetry(n => n + 1); }}>{text('重试', 'Retry')}</button></div>}
     {!loaded && !error && <p className="muted" role="status">{text('正在读取轮次…', 'Reading turns…')}</p>}
     {loaded && !turns.length && <p className="muted">{text('还没有可显示的轮次。', 'No recorded turns yet.')}</p>}
     {turns.length > 0 && <div className="routing-tiles">
@@ -365,7 +393,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
       <div className="routing-lanes-scroll" ref={scroller} onScroll={markVisible}>
         <div className="routing-lanes" role="group" aria-label={text('Agent 轮次', 'Agent turns')} data-lanes={lanes.length}>
           <div className="routing-lane-corner" />
-          {lanes.map(lane => <div key={lane} className={`routing-lane-label ${tone(lane)}`}><strong>{laneName(lane)}</strong>{laneModel(lane) && <span>{laneModel(lane)}</span>}</div>)}
+          {lanes.map(lane => <div key={lane} className={`routing-lane-label ${tone(lane)}`}><strong>{laneName(lane)}</strong>{laneModel(lane) && <span>{text('模型：', 'Model: ')}{laneModel(lane)}</span>}</div>)}
           {/* One column per agent turn; the grid flows by column, so focus and reading order follow time. */}
           {turns.map(turn => <Fragment key={turn.turn_id}>
             <div className="routing-turn-head" title={new Date(turn.started_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}><strong>T{index(turn)}</strong>{turn.boundary !== 'unknown' && <span className="badge no-dot">{boundary(turn)}</span>}</div>

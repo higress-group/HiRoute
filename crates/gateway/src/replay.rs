@@ -26,8 +26,8 @@ mod stream;
 mod windows_acl;
 
 pub use stream::ReplayReader;
-pub(crate) use stream::write_canonical_json;
 use stream::{ReplayStream, ReplayStreamBuilder};
+pub(crate) use stream::{write_canonical_json, write_canonical_object};
 
 // Spill before a single large JSON string and serde's decode scratch can
 // compete for the same 8 MiB request memory budget.

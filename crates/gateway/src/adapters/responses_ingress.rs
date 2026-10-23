@@ -48,7 +48,7 @@ pub(super) fn decode_responses_input(
             // Native peer messages carry their own author/recipient and can
             // contain ciphertext. Keep the original Responses item intact;
             // neither invent a portable role nor use it as routing history.
-            context.native_only.set(true);
+            context.mark_native_only();
             messages.push(CanonicalMessage {
                 role: MessageRole::Assistant,
                 content: Vec::new(),
@@ -115,7 +115,7 @@ pub(super) fn decode_responses_input(
                         Some("incomplete") => ToolResultStatusV1::Failed,
                         Some("in_progress") | None => ToolResultStatusV1::Unknown,
                         Some(_) => {
-                            context.native_only.set(true);
+                            context.mark_native_only();
                             ToolResultStatusV1::Unknown
                         }
                     },
@@ -259,7 +259,7 @@ fn historical_tool_name(
     if name.is_empty() {
         // Native clients retain failed model-generated calls in history. Keep
         // that payload for the provider without treating it as portable Tool IR.
-        context.native_only.set(true);
+        context.mark_native_only();
     }
     Ok(name)
 }

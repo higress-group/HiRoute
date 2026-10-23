@@ -87,13 +87,6 @@ impl crate::LocalObservationStore {
         now_ms: i64,
     ) -> Result<RoutingTimelinePageV1, ObservationV2Error> {
         self.routing_timeline_inner(reader, query, now_ms, || {})
-            .map_err(|error| {
-                if matches!(error, ObservationV2Error::Timeout) {
-                    ObservationV2Error::ScopeTooLarge
-                } else {
-                    error
-                }
-            })
     }
 
     fn routing_timeline_inner(
@@ -174,31 +167,19 @@ impl crate::LocalObservationStore {
             } else {
                 None
             };
-            state
-                .refresh(
-                    &tx,
-                    reader,
-                    &query.session_id,
-                    target,
-                    now_ms,
-                    changed.as_ref(),
-                )
-                .map_err(|error| {
-                    if matches!(
-                        error,
-                        ObservationV2Error::Unavailable | ObservationV2Error::Timeout
-                    ) && started.elapsed() >= std::time::Duration::from_millis(500)
-                    {
-                        ObservationV2Error::ScopeTooLarge
-                    } else {
-                        error
-                    }
-                })?;
+            state.refresh(
+                &tx,
+                reader,
+                &query.session_id,
+                target,
+                now_ms,
+                changed.as_ref(),
+            )?;
         }
         state.visibility = visibility;
         cursor.expires_at = state.expires_at;
         if started.elapsed() > std::time::Duration::from_millis(500) {
-            return Err(ObservationV2Error::ScopeTooLarge);
+            return Err(ObservationV2Error::Timeout);
         }
         let start = cursor.after.as_ref().map_or(0, |after| {
             state.turns.partition_point(|turn| {
@@ -313,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn expired_timeline_deadline_is_a_scope_error() {
+    fn expired_timeline_deadline_remains_transient_and_a_fresh_read_recovers() {
         let dir = tempfile::tempdir().unwrap();
         let store = crate::query_v2::tests::open(dir.path());
         let reader = ObservationReaderContext::local_user(
@@ -335,7 +316,54 @@ mod tests {
             store
                 .observed_routing_timeline(&reader, &query, 5000)
                 .unwrap_err(),
-            ObservationV2Error::ScopeTooLarge
+            ObservationV2Error::Timeout
+        );
+        let fresh = ObservationReaderContext::local_user(
+            WorkspaceId::default(),
+            "user".into(),
+            1,
+            10_000,
+            false,
+            false,
+        )
+        .unwrap();
+        assert!(
+            store
+                .observed_routing_timeline(&fresh, &query, 5000)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn elapsed_timeline_budget_remains_transient_and_a_fresh_read_recovers() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::query_v2::tests::open(dir.path());
+        let reader = ObservationReaderContext::local_user(
+            WorkspaceId::default(),
+            "user".into(),
+            1,
+            10_000,
+            false,
+            false,
+        )
+        .unwrap();
+        let query = RoutingTimelineQueryV1 {
+            session_id: "session/test".into(),
+            after_watermark: None,
+            limit: 50,
+        };
+        assert_eq!(
+            store
+                .routing_timeline_inner(&reader, &query, 5000, || {
+                    std::thread::sleep(std::time::Duration::from_millis(510));
+                })
+                .unwrap_err(),
+            ObservationV2Error::Timeout
+        );
+        assert!(
+            store
+                .observed_routing_timeline(&reader, &query, 5000)
+                .is_ok()
         );
     }
 

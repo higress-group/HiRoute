@@ -692,7 +692,7 @@ const scenarios = [
         };
       });
       c().showRequestExcerpt(id);
-      await until(() => document.querySelector('.routing-quote')?.textContent.includes(state === 'deleted' ? '消息正文已清理' : '这一轮的消息暂不可用'), `quote ${state} state`);
+      await until(() => document.querySelector('.routing-quote')?.textContent.includes(state === 'deleted' ? '正文已清理' : '这一轮的消息暂不可用'), `quote ${state} state`);
       if (state !== 'deleted') assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Unavailability claimed deletion');
     }
   }],

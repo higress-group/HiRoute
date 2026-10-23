@@ -30,6 +30,9 @@ mod messages_boundary;
 #[path = "boundary/projection_tests.rs"]
 mod projection_boundary;
 
+#[path = "boundary/coverage_tests.rs"]
+mod coverage_boundary;
+
 #[path = "accepted_output_tests.rs"]
 mod accepted_output;
 
@@ -79,6 +82,7 @@ fn request(messages: Vec<CanonicalMessage>) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: None,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
         served_model_id: "agent/test".into(),

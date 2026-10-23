@@ -185,6 +185,12 @@ pub(super) fn classify_precommit(
                         );
                     }
                 };
+                response_diagnostics::native_completion(
+                    state
+                        .projector
+                        .as_mut()
+                        .expect("native projector remains installed"),
+                );
                 let mut failure = None;
                 for unit in units {
                     state.semantic_seen |= unit.semantic;
@@ -859,12 +865,14 @@ fn project_native_chunk_readiness(
     bytes: &[u8],
     end_stream: bool,
 ) -> Result<(Option<Vec<u8>>, bool), Arc<str>> {
-    let units = readiness
+    let projector = readiness
         .projector
         .as_mut()
-        .ok_or_else(|| Arc::from("accepted native projector is unavailable"))?
+        .ok_or_else(|| Arc::from("accepted native projector is unavailable"))?;
+    let units = projector
         .feed(bytes, end_stream)
         .map_err(|error| response_diagnostics::adapter(FailureStage::NativeProjection, error))?;
+    response_diagnostics::native_completion(projector);
     let mut output = Vec::new();
     let mut terminal = false;
     for unit in units {

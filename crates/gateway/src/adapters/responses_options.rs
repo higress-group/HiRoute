@@ -79,7 +79,7 @@ pub(super) fn message_phase(
             Some("commentary") => Ok(Some(ResponsesMessagePhaseV1::Commentary)),
             Some("final_answer") => Ok(Some(ResponsesMessagePhaseV1::FinalAnswer)),
             Some(_) => {
-                context.native_only.set(true);
+                context.mark_native_only();
                 Ok(None)
             }
             _ => Err(ModelIrError::InvalidField("input[].phase")),
@@ -142,19 +142,19 @@ pub(super) fn reasoning_history(
             continue;
         };
         let Some(parts) = value.as_array() else {
-            context.native_only.set(true);
+            context.mark_native_only();
             continue;
         };
         for part in parts {
             let Some(part) = part.as_object() else {
-                context.native_only.set(true);
+                context.mark_native_only();
                 continue;
             };
             ensure_keys(context, part, &["type", "text"], "responses reasoning text")?;
             if part.get("type").and_then(Value::as_str) != Some(part_type)
                 || !part.get("text").is_some_and(Value::is_string)
             {
-                context.native_only.set(true);
+                context.mark_native_only();
             }
         }
     }

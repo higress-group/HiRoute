@@ -207,11 +207,18 @@ pub(super) fn incoming_evidence(
     replay: &ReplayStore,
     budget: &mut FingerprintBudget,
 ) -> Option<BoundaryEvidence> {
+    let native = request.native_history_layout();
+    if request.native_only && native.is_none() {
+        return None;
+    }
     let mut hash = BoundaryHasher::default();
     let mut count = 0;
     for (index, message) in request.messages.iter().enumerate().skip(start) {
         if message.role != MessageRole::Assistant {
             break;
+        }
+        if native.is_some_and(|items| !items[index].modeled) {
+            return None;
         }
         if let Some(history) = request.responses_reasoning_history.get(&index) {
             // Compare the bounded accepted plaintext summary. Native producers
@@ -301,9 +308,6 @@ pub(super) fn incoming_evidence(
                 ContentPart::ProviderState { state } => {
                     hash.reasoning = true;
                     if state.kind == "reasoning_content" {
-                        if request.native_only {
-                            return None;
-                        }
                         // Chat aliases have already been normalized by ingress.
                         // A JSON string reference is storage, not opaque state.
                         let (digest, nonempty) = json_text::digest(&state.value, replay, budget)?;
@@ -325,7 +329,7 @@ pub(super) fn incoming_evidence(
         }
     }
     hash.finish().map(|mut evidence| {
-        evidence.projection_allowed = !request.native_only;
+        evidence.contextual = request.native_only;
         evidence
     })
 }
@@ -337,20 +341,16 @@ pub(super) struct BoundaryEvidence {
     full: [u8; 32],
     visible: Option<[u8; 32]>,
     reasoning: bool,
-    projection_allowed: bool,
+    contextual: bool,
 }
 
 impl BoundaryEvidence {
-    /// Some(false) is full agreement; Some(true) is omitted plaintext reasoning.
+    /// Some(false) is exact agreement; Some(true) is contextual association.
     /// Present (even empty) reasoning never authorizes a projection fallback.
     pub(super) fn matches(self, incoming: Self) -> Option<bool> {
-        if !incoming.projection_allowed {
-            return None;
-        }
         if self.full == incoming.full {
-            Some(false)
+            Some(incoming.contextual)
         } else if self.reasoning
-            && incoming.projection_allowed
             && !incoming.reasoning
             && self.visible.is_some()
             && self.visible == incoming.visible
@@ -401,7 +401,7 @@ impl BoundaryHasher {
             full: self.full.finalize().into(),
             visible: self.visible_content.then(|| self.visible.finalize().into()),
             reasoning: self.reasoning,
-            projection_allowed: true,
+            contextual: false,
         })
     }
 }

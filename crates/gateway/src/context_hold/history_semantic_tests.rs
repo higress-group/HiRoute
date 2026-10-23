@@ -5,7 +5,7 @@ use crate::server::request_plan::IngressProtocol;
 use serde_json::json;
 
 fn request(role: &str) -> ModelRequestIRV1 {
-    decode_ingress_request(
+    let mut request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({"model":"route","stream":false,"input":[
             {"role":role,"content":"first instructions"},
@@ -15,7 +15,12 @@ fn request(role: &str) -> ModelRequestIRV1 {
             {"type":"function_call_output","call_id":"call","output":"tool receipt"}
         ]}),
     )
-    .unwrap()
+    .unwrap();
+    // These tests mutate canonical history directly. Native layout integrity
+    // has separate ingress-based tests and cannot describe these edited values.
+    request.native_body = None;
+    request.native_history = None;
+    request
 }
 
 fn measure(request: &ModelRequestIRV1, prefix: usize) -> HistoryDigests {
@@ -28,20 +33,16 @@ fn measure(request: &ModelRequestIRV1, prefix: usize) -> HistoryDigests {
 #[test]
 fn opaque_observed_capture_does_not_establish_strict_provider_prefix_affinity() {
     let mut opaque = request("system");
-    let complete = measure(&opaque, opaque.messages.len());
     opaque.native_only = true;
     opaque.native_body = Some(json!({"input":[{"type":"agent_message","content":"opaque peer"}]}));
     assert!(visible_history(&opaque, &[37; 32]).is_none());
     let observed = observed_history_with_replay(&opaque, &[37; 32], None)
         .unwrap()
-        .measure(Some(opaque.messages.len()))
-        .unwrap();
-    assert!(observed.prefix_digest.is_none());
-    assert_ne!(observed.complete_digest, complete.complete_digest);
-    assert_ne!(
-        observed.semantic_complete_digest,
-        complete.semantic_complete_digest
-    );
+        .measure(Some(opaque.messages.len()));
+    // A fabricated/missing layout cannot establish either strict or semantic
+    // continuity. Request-owned execution capture has its independent scope.
+    assert!(observed.is_none());
+    assert!(branch_anchors(&opaque, &[37; 32], None, &[]).is_none());
 }
 
 #[test]

@@ -175,6 +175,15 @@ are charged. A full budget or optional capture fault records a recoverable gap a
 cannot replace delivered model output. Scope-hash gap stripes are fixed at 256;
 collisions disclose extra uncertainty rather than false complete capture. Authorization,
 Replay integrity, provider failures and source cancellation retain their own behavior.
+The [ingress coverage map](src/model_ir/native_history.rs), shared by all three
+protocols, to keep conversion eligibility separate from execution association.
+An unmodeled prior item binds its complete native content into the original
+request prefix. Later fully modeled accepted text/tool output can continue its
+actual stage with contextual association; unknown replayed output cannot.
+Position metadata is ephemeral and cannot authorize provider affinity or cleanup.
+The [cross-protocol coverage cases](src/agent_turn_history/boundary/coverage_tests.rs)
+and [retained-peer stages](src/core_runtime/decision_history/retained_peer_tests.rs)
+exercise fresh recovery without removing old input.
 Native Codex peer `agent_message` items use the
 [Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
 forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion
@@ -388,6 +397,17 @@ pair and the last Responses event's closed kind, indexes and array counts. The
 capture worker records only its first failure against the ordinal frozen at
 materialization, with no IDs, body text, hashes or dynamic error strings. This
 diagnostic preserves the original capture abort and cannot certify completion.
+Native delivery separately emits `native_completion_unknown` when its terminal
+proof is incomplete. The protocol projector retains only the first closed reason,
+frame ordinal and event shape; the driver attributes it to the actual attempt.
+This diagnostic carries no content or native identities and cannot change the
+provider result, optional capture or downstream output. Native snapshot equality
+uses complete canonical JSON values, independent of object key order; pure SSE
+comments retain the model's terminal state across transport fragmentation.
+The shared SSE framer also preserves a comment-only EOF tail without a final
+separator; unfinished data/control fields still fail strict EOF, and a comment
+does not supply missing model-terminal evidence.
+See [transport and value regressions](src/adapters/response/native_transport_tests.rs).
 Unix Debug-only
 `runtime/stream_capture.rs` can capture an explicitly enabled private session;
 its `stream_replay` example restores the actual attempt profile and tool mapping.
