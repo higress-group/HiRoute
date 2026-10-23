@@ -452,6 +452,15 @@ fn assert_finished(fixture: &RuntimeFixture, classifier: &NativeProvider, a: &Va
 
 #[test]
 fn real_listener_native_id_change_without_new_input_keeps_one_complete_tool_stage() {
+    native_id_and_input_boundary("b");
+}
+
+#[test]
+fn real_listener_reused_native_id_with_new_input_reclassifies_and_assesses_complete_tool_stage() {
+    native_id_and_input_boundary("a-renamed");
+}
+
+fn native_id_and_input_boundary(b_turn: &str) {
     let regular = NativeProvider::start(vec![
         streamed("id-a-tool", vec![tool("id-a-call")]),
         streamed(
@@ -559,7 +568,24 @@ fn real_listener_native_id_change_without_new_input_keeps_one_complete_tool_stag
 
     input.extend(final_output);
     input.push(json!({"role":"user","content":B_USER}));
-    let b = send(&fixture, &input, "b");
+    let b_context = metadata(&input_headers(&input, b_turn));
+    assert_eq!(b_context["input"]["messages"][0]["index"], 1);
+    assert_eq!(
+        b_context["input"]["messages"][0]["sha256"],
+        json!(format!(
+            "{:x}",
+            Sha256::digest(serde_json::to_vec(&[B_USER]).unwrap())
+        ))
+    );
+    assert_ne!(
+        b_context["input"]["scope_digest"],
+        first_context["input"]["scope_digest"]
+    );
+    if b_turn == "a-renamed" {
+        assert_eq!(b_context["turn_id"], "a-renamed");
+        assert_eq!(b_context["input"]["event_id"], "a-renamed");
+    }
+    let b = send(&fixture, &input, b_turn);
     assert_eq!(b[0]["content"][0]["text"], "ID_B_COMPLETE");
     assert_eq!(
         (regular.calls(), primary.calls(), classifier.calls()),
@@ -567,6 +593,14 @@ fn real_listener_native_id_change_without_new_input_keeps_one_complete_tool_stag
     );
     let facts = wait_execution_facts(&fixture, 3);
     assert_single_planner_run_per_request(&facts, 3);
+    let b_admission = facts
+        .iter()
+        .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")
+        .map(|e| &e["fact"])
+        .nth(2)
+        .unwrap();
+    assert_ne!(b_admission["agent_turn_id"], a["agent_turn_id"]);
+    assert_eq!(b_admission["opening_cause"], "user_message");
     let routes = facts
         .iter()
         .filter(|e| e["fact"]["kind"] == "route_decision")

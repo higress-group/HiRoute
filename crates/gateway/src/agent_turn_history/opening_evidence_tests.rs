@@ -136,7 +136,8 @@ fn independent_boundary_requires_actual_comparable_input_evidence() {
         "no_input",
         "anchors_absent",
         "position_absent",
-        "same_activation",
+        "same_id_new_input",
+        "explicit_unavailable",
         "window_overlap",
         "retry",
     ] {
@@ -163,6 +164,8 @@ fn independent_boundary_requires_actual_comparable_input_evidence() {
             analyzed.anchors = None;
         } else if case == "position_absent" {
             analyzed.anchors.as_mut().unwrap().prefixes.clear();
+        } else if case == "explicit_unavailable" {
+            analyzed.mark_current_input_unavailable();
         } else if case == "window_overlap" {
             analyzed
                 .select_current_input(
@@ -173,11 +176,17 @@ fn independent_boundary_requires_actual_comparable_input_evidence() {
                 )
                 .unwrap();
         }
-        let native = if case == "same_activation" { 1 } else { 2 };
+        let native = if matches!(case, "same_id_new_input" | "explicit_unavailable") {
+            1
+        } else {
+            2
+        };
         let (b, _) = new_turn(admit(&store, &scope, analyzed, Some([native; 32])));
         assert_ne!(a.key, b.key, "{case}");
         let expected = if case == "changed" {
             Cause::HistoryRewrite
+        } else if case == "same_id_new_input" {
+            Cause::UserMessage
         } else {
             Cause::Other
         };
@@ -466,7 +475,100 @@ fn finish_tool_step(store: &AgentTurnHistoryStore, ticket: &AgentTurnTicket, id:
 }
 
 #[test]
-fn changed_native_id_is_retained_for_later_same_activation_synthetic_input() {
+fn selected_input_position_controls_exact_admission_independently_of_native_id() {
+    for appended in [false, true] {
+        for changed_id in [false, true] {
+            let (_directory, replay) = replay();
+            let store = AgentTurnHistoryStore::default();
+            let scope = store.scope_key("workspace", "input-id-matrix").unwrap();
+            let user = text(MessageRole::User, "actual A input");
+            let input = request(vec![user.clone()]);
+            let analyzed = store
+                .prepare_scoped_request(&scope, &input, &replay)
+                .unwrap();
+            let (a, history) = new_turn(admit(&store, &scope, analyzed, Some([1; 32])));
+            drop(history);
+            finish_tool_step(&store, &a, "a-tool");
+
+            let mut messages = vec![
+                user,
+                tool_call("a-tool", "lookup"),
+                tool_result("a-tool", false),
+            ];
+            if appended {
+                messages.push(text(MessageRole::User, "actual B input"));
+            }
+            let input = request(messages);
+            let mut analyzed = store
+                .prepare_scoped_request(&scope, &input, &replay)
+                .unwrap();
+            let index = if appended { 3 } else { 0 };
+            analyzed
+                .select_current_input(
+                    &input.messages[index].content,
+                    Some(CurrentInputPosition::Window {
+                        first: index,
+                        last: index,
+                    }),
+                    &input,
+                    &replay,
+                )
+                .unwrap();
+            let native = if changed_id { 2 } else { 1 };
+            let begin = admit(&store, &scope, analyzed, Some([native; 32]));
+            match begin {
+                AgentTurnBegin::NewTurn {
+                    ticket,
+                    completed,
+                    inherited_decision,
+                    ..
+                } => {
+                    assert!(
+                        appended,
+                        "changed_id={changed_id}: an ID cannot invent input"
+                    );
+                    assert_eq!(ticket.key, a.key, "the accepted response edge is exact");
+                    assert_ne!(ticket.agent_turn_id, a.agent_turn_id);
+                    assert!(
+                        inherited_decision.is_none(),
+                        "new input requests a fresh decision"
+                    );
+                    let completed = completed.unwrap();
+                    assert_eq!(completed.agent_turn_id, a.agent_turn_id);
+                    assert_eq!(
+                        completed.history_membership.unwrap().request_ids,
+                        ["a-tool"]
+                    );
+                    assert_eq!(
+                        store.bind_request(&ticket, "b").unwrap().opening_cause,
+                        Cause::UserMessage
+                    );
+                    store.abort(&ticket);
+                }
+                AgentTurnBegin::Continuation { ticket, decision } => {
+                    assert!(
+                        !appended,
+                        "changed_id={changed_id}: an ID cannot hide input"
+                    );
+                    assert_eq!(ticket.key, a.key);
+                    assert_eq!(ticket.agent_turn_id, a.agent_turn_id);
+                    assert_eq!(decision.branch_id, "regular");
+                    {
+                        let inner = store.inner.lock();
+                        let entry = &inner.entries[&a.key];
+                        assert!(entry.closed.is_empty(), "no closure or assessment target");
+                        assert!(!entry.active.finalized);
+                        assert!(entry.current_segment.is_none());
+                    }
+                    store.abort(&ticket);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn changed_native_id_is_retained_for_later_explicit_existing_turn_input() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::default();
     let scope = store.scope_key("workspace", "latest-native-id").unwrap();
@@ -492,8 +594,8 @@ fn changed_native_id_is_retained_for_later_same_activation_synthetic_input() {
     assert_eq!(a2.agent_turn_id, a.agent_turn_id);
     finish_tool_step(&store, &a2, "a-2");
 
-    // The native activation is still ID2. Its supplemental/synthetic User is
-    // actual wire context, but must not replace the task's captured original user.
+    // ExistingTurn explicitly says the wire User is continuation context.
+    // Production clears the selected position; ID equality alone cannot do so.
     let synthetic = "synthetic continuation notification, not a new task";
     messages.extend([
         tool_call("a-2", "lookup"),
@@ -504,20 +606,14 @@ fn changed_native_id_is_retained_for_later_same_activation_synthetic_input() {
     let mut analyzed = store
         .prepare_scoped_request(&scope, &input, &replay)
         .unwrap();
-    analyzed
-        .select_current_input(
-            &input.messages[5].content,
-            Some(CurrentInputPosition::Window { first: 5, last: 5 }),
-            &input,
-            &replay,
-        )
-        .unwrap();
+    analyzed.mark_current_input_unavailable();
+    assert_eq!(analyzed.current_input_start, None);
     let AgentTurnBegin::Continuation {
         ticket: a3,
         decision: inherited,
     } = admit(&store, &scope, analyzed, Some([2; 32]))
     else {
-        panic!("ID2 to ID2 cannot invent a fresh activation from synthetic User context")
+        panic!("explicit ExistingTurn context must retain the captured original input")
     };
     assert!(!a3.new_turn);
     assert_eq!(a3.key, a.key);
