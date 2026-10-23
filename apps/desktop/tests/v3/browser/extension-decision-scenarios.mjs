@@ -5,7 +5,7 @@ export function extensionDecisionScenarios({ fresh, routing, click, until, all, 
   const assert = (value, message) => { if (!value) throw new Error(message); };
   const custom = { id: 'decision/extension-fixture', revision: 3, name: 'Published custom decision extension with a long name', connection: { kind: 'custom', endpoint: 'https://decision.example/v1/decisions', timeout_ms: 3000 } };
   const native = { ...custom, id: 'decision/native-fixture', name: 'Built-in fixture', connection: { kind: 'system_one', provider: 'compatible', model: 'synthetic', endpoint: 'https://decision.example/systemone', timeout_ms: 3000, auth_header: { name: 'Authorization', value_secret_ref: 'fixture' } } };
-  return ['zh', 'en'].flatMap(language => [false, true].map(branches => scenario(
+  const editorScenarios = ['zh', 'en'].flatMap(language => [false, true].map(branches => scenario(
     `desktop.extension.${branches ? 'branches' : 'smart'}.${language}`, ['extension-decision'],
     `Extension ${branches ? 'categories' : 'difficulty routing'} preserves parked settings (${language})`, async () => {
       let plan;
@@ -81,4 +81,17 @@ export function extensionDecisionScenarios({ fresh, routing, click, until, all, 
       window.extensionCapture = { language, branches, state: 'custom-after-native-switch' };
     }
   )));
+  return [...editorScenarios, ...['zh', 'en'].map(language => scenario(`desktop.extension.help.${language}`, ['extension-decision'], `Current custom protocol help (${language})`, async () => {
+    await fresh(() => { control().handlers.decision_services = () => ({ services: [custom] }); });
+    const t = (zh, en) => language === 'zh' ? zh : en;
+    localStorage.setItem('hiroute.language', language); control().remount();
+    await click(t('模型', 'Models')); await click(t('决策模型', 'Decision models'));
+    await click(t('查看接入协议', 'View protocol'));
+    await until(() => document.querySelector('.classifier-protocol'), 'protocol dialog');
+    await click(t('复制 curl', 'Copy curl'));
+    await until(() => control().clipboard.length > 0, 'current curl');
+    const curl = control().clipboard.at(-1);
+    assert(curl.includes('"route"') && curl.includes('"preceding_stage"') && !curl.includes('"assessment_target"'), 'Protocol help copied a replaced request');
+    assert(all('.classifier-protocol pre')[1].textContent.includes('"group"'), 'Protocol help returned a replaced response');
+  }))];
 }

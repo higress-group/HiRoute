@@ -41,7 +41,7 @@ continues unchanged until its next publication. Default assessments then resolve
 silently to the current default; custom instructions and every criterion remain
 byte-for-byte identical. Reset to default restores current text while preserving
 thresholds. Unsupported context references fail Preview with the scope and field.
-Local rules and custom extensions do not use native applicability. Simple probability remains
+Local rules and custom extensions do not use native applicability. For built-in connections, the simple probability threshold remains
 0.8 and the competence floor remains 0.5 unless configured otherwise.
 
 The applicability protocol supplies separate `prior_context`, `assessment_stage`
