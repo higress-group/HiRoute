@@ -231,6 +231,10 @@ family; the provider may reject it. Unrepresentable cross-protocol state is excl
 before an Attempt. Responses `conversation` is an unsupported stored handle and
 MUST be rejected rather than borrowing a reasoning-state owner's proof;
 `previous_response_id` does not become a substitute for complete visible history.
+On classified routes, a same-session contextual assessment target does not prove
+provider-state ownership or authorize a cleaned retry. An unverified history rewrite
+retains its opaque state on each ordinary candidate/fallback attempt. This does not
+change the existing free-first ContextHold cleanup contract.
 
 ### Requirement: Candidate continuity has an exact scope and bounded lifetime
 
