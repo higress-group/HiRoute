@@ -176,7 +176,7 @@ fn unknown_reasoning_extensions_still_roundtrip_on_the_original_protocol() {
     assert_eq!(native.body["input"], original["input"]);
     assert_eq!(request.native_body.as_ref(), Some(&original));
     let inline = project_candidate_request_template(&request, &profile).unwrap();
-    assert_eq!(inline.bytes, native.bytes);
+    assert_eq!(inline.bytes.as_ref(), native.bytes.as_slice());
     with_replay(request, |request, store, budget| {
         assert_eq!(
             replay_body(request, IngressProtocol::Responses, store, budget),
