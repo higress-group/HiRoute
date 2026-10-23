@@ -212,6 +212,15 @@ migration bytes separately from the complete configuration baseline established
 before Apply. Controller-only inputs stay on the controller; the worker verifies
 its permitted exact-byte copies without widening filesystem access.
 
+Native state includes its lookup relationships, such as a project directory's
+encoded working-directory key, not just journal bytes. Prove that the real client
+loads the original session in the final scope. Preserve historical fields and
+native error rows; a resume proof may exclude a row only when the native replay
+contract excludes it, without deleting it from the journal. SQLite read-only
+connections can still update shared-memory coordination files. Inspect immutable
+evidence from a stopped client only after copying its complete database state;
+an active database requires a consistent snapshot, not piecemeal file copying.
+
 Keep cancellation observations separate: requesting Stop, receiving its
 acknowledgement, observing native interruption, actual HTTP closure, provider
 completion and cleanup are different events. Assert their required causal order,
@@ -221,6 +230,21 @@ Cleanup-induced closure does not prove native cancellation. Join a reader if it
 was started; an uncreated reader needs an explicit not-started observation.
 Reasoning, tool and text progress are distinct from terminal or unknown events;
 successful forwarding alone does not prove native consumption.
+
+Require only acknowledgements the selected native interface actually provides.
+A quiet CLI signal handler need not print an interruption message. Persist the
+owned signal action, observed process result and transport events before checking
+them; a missing exit code or event timestamp cannot be reconstructed as fact.
+
+Separate execution evidence from model answer quality. Prove a tool with its
+actual call/result, exit or artifact effect and the subsequent request carrying
+that result. A model misquoting a nonce in its final answer does not erase a
+successful tool execution. Record that answer error separately; do not replace
+the execution proof with an exact final-text echo. Default-model acceptance needs
+the actual saved model, coherent protocol completion and native receipt of the
+real response. These checks do not establish answer correctness or semantic
+scoring accuracy; an empty, truncated, substituted or unaccepted response still
+fails the execution gate.
 
 Prepare recovery actions and their baseline dependencies before the first
 potentially committed mutation, including native model selection. Recovery uses
