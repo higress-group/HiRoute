@@ -181,3 +181,58 @@ fn native_transport_empty_control_description_still_withholds_completion() {
         }
     }
 }
+
+#[test]
+fn native_item_object_order_is_not_completion_evidence_but_values_are() {
+    // Parse distinct native spellings, so preserve_order feature unification is
+    // exercised rather than accidentally normalized by a shared fixture clone.
+    let original: Value = serde_json::from_str(
+        r#"{
+        "type":"message","id":"item","status":"completed","role":"assistant",
+        "content":[{"type":"output_text","text":"OK","annotations":[]}],
+        "extension":{"first":1,"second":["a","b"]}}
+    "#,
+    )
+    .unwrap();
+    let reordered: Value = serde_json::from_str(
+        r#"{
+        "extension":{"second":["a","b"],"first":1},
+        "content":[{"annotations":[],"text":"OK","type":"output_text"}],
+        "role":"assistant","status":"completed","id":"item","type":"message"}
+    "#,
+    )
+    .unwrap();
+    assert_eq!(original, reordered);
+    for mutation in 0..4 {
+        let mut final_item = reordered.clone();
+        match mutation {
+            0 => {}
+            1 => final_item["extension"]["first"] = json!(2),
+            2 => final_item["extension"]["second"] = json!(["b", "a"]),
+            _ => final_item["content"][0]["text"] = json!("different"),
+        }
+        let wire = [
+            frame(json!({"type":"response.output_item.done","output_index":0,"item":original})),
+            frame(json!({"type":"response.completed","response":{
+                "id":"resp","model":"physical","status":"completed","output":[final_item]}})),
+        ]
+        .concat();
+        for fragment in [1, wire.len()] {
+            let mut decoder = projector(IngressProtocol::Responses);
+            let mut units = Vec::new();
+            for chunk in wire.chunks(fragment) {
+                units.extend(decoder.feed(chunk, false).unwrap());
+            }
+            units.extend(decoder.feed(&[], true).unwrap());
+            assert_eq!(
+                units.last().unwrap().terminal,
+                Some(if mutation == 0 {
+                    NativeTerminalOutcome::Complete
+                } else {
+                    NativeTerminalOutcome::Unknown
+                }),
+                "mutation {mutation}, chunk {fragment}"
+            );
+        }
+    }
+}
