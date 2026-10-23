@@ -28,7 +28,7 @@
 .routing-judgments { display: grid; gap: 4px; }
 .routing-judgments > strong { color: var(--text); font-size: calc(13px * var(--hr-text-scale)); font-weight: 600; }
 .routing-protection-badge { justify-self: start; max-width: 100%; white-space: normal; }
-.routing-lanes-scroll { min-width: 0; overflow-x: auto; padding: 2px 2px 4px; }
+.routing-lanes-scroll { min-width: 0; overflow-x: auto; padding: 4px 0; }
 .routing-lanes { display: grid; width: max-content; min-width: 100%; grid-auto-flow: column; grid-template-columns: var(--routing-label-width); grid-auto-columns: clamp(var(--routing-cell-width), 18vw, 232px); grid-template-rows: auto; gap: 10px; align-items: stretch; }
 .routing-lanes[data-lanes='1'] { grid-template-rows: repeat(2, auto); }
 .routing-lanes[data-lanes='2'] { grid-template-rows: repeat(3, auto); }
@@ -56,7 +56,9 @@
 @media (prefers-reduced-motion: reduce) { .routing-turn[data-new=true] { animation: none; } }
 .routing-turn:hover { border-color: color-mix(in srgb, var(--lane) 60%, transparent); }
 .routing-turn.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.routing-turn:focus-visible, .routing-request:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Keep focus inside each card so the scroll viewport and sticky labels do not clip it. */
+.routing-turn:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.routing-request:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .routing-turn-reason { color: var(--lane); font-size: calc(13px * var(--hr-text-scale)); font-weight: 650; }
 .routing-turn-meta { color: var(--text-soft); font-size: calc(12px * var(--hr-text-scale)); font-variant-numeric: tabular-nums; }
 .routing-ticks { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; min-height: 14px; }

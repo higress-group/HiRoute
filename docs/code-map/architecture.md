@@ -271,6 +271,18 @@ file size nor test churn alone justifies another abstraction or a broad rewrite.
 
 Trial cost reads use the internal admitted `TrustCostScopeV1`, joining retained analysis stage identity to Plan/revision/category/group before calling the shared per-attempt comparison engine. [Evidence-gap scenarios](../../crates/observation/src/store/tests/trust_cost_tests.rs) distinguish partial history from conflicting membership, pending projections from unresolved turns, and conservative coverage from paired subtotals. They preserve the general value query and frozen settlement contracts. The [Desktop timeline](../../apps/desktop/src/features/RoutingTimeline.tsx) reconciles absorbed provisional rows using returned request membership; [focused presentation checks](../../apps/desktop/tests/v3/visual/new-model-trial-active.mjs) cover selection, actual focus transfer without stealing focus, and partial monetary subtotals. Live timeline transition presentation adapts the same endpoint/time membership and classifier used by retained analysis; cache mutexes cover only taking and returning snapshots, never SQL or projection. [Real reader exhaustion](../../crates/daemon/src/control/runtime_timeline_retry_tests.rs) and [CLI follow](../../crates/cli/tests/routing_timeline_follow.rs) verify the structured failure boundary and retry recovery.
 
+[Session detail](../../apps/desktop/src/features/Sessions.tsx) separately refreshes
+the selected summary and visible unresolved excerpts; turn-fact digests do not
+describe body availability. [Live refresh scenarios](../../apps/desktop/tests/v3/visual/session-live-refresh-active.mjs)
+cover delayed content, stale responses and cleanup. Current summary visibility and
+successful cleanup govern cached titles and request excerpts even when cleanup
+removes every catalog row; new requests do not revive cleared request content.
+[Timeline presentation scenarios](../../apps/desktop/tests/v3/visual/timeline-presentation-active.mjs)
+cover exact assessment identities, transient-read recovery and fixed-label geometry.
+The [transition adapter](../../crates/observation/src/query_v2/routing_timeline/transitions.rs)
+coalesces only redundant intermediate comparisons proven by the same completed
+turn endpoints; shared retained-analysis classification and recorded facts remain authoritative.
+
 ### Complete official data and saved default intent
 
 The [feed service](../../crates/daemon/src/model_feed) owns complete snapshot selection,
