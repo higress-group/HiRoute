@@ -39,7 +39,11 @@ fn canonical_json_provenance_belongs_only_to_the_exact_registered_range() {
             !store.is_canonical_json(&whole),
             "a mixed pool cannot inherit one child's provenance"
         );
-        store.release_stream(&canonical).unwrap();
+        assert!(matches!(
+            store.release_stream(&canonical),
+            Err(ReplayError::Integrity)
+        ));
+        store.release_stream(&whole).unwrap();
         assert!(!store.is_canonical_json(&canonical));
     }
 }

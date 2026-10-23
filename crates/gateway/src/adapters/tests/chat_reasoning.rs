@@ -158,61 +158,76 @@ fn replay_backed_chat_aliases_compare_bytes_instead_of_reference_locations() {
     let budget = tree.stream(8 * 1024 * 1024).unwrap();
     let store = manager.begin_request(budget.clone()).unwrap();
     let text = "推理 🧠 \"quoted\"\n".repeat(4096);
-    let first = store
-        .store_content(&serde_json::to_vec(&text).unwrap())
-        .unwrap();
-    let second = store
-        .store_content(&serde_json::to_vec(&text).unwrap())
-        .unwrap();
-    let different = store
-        .store_content(&serde_json::to_vec(&text.replace("推", "理")).unwrap())
-        .unwrap();
-    assert_ne!(first, second);
-    store
-        .prevalidate(&[first.clone(), second.clone(), different.clone()])
-        .unwrap();
-    for (alias, matches) in [
-        (second.json_marker(), true),
-        (json!(text), true),
-        (different.json_marker(), false),
-    ] {
-        let mut body = body();
-        body["messages"][2]["reasoning_content"] = first.json_marker();
-        body["messages"][2]["reasoning"] = alias;
-        let request = decode_ingress_request_with_replay(
-            IngressProtocol::ChatCompletions,
-            &body,
-            Some(&store),
-        )
-        .unwrap();
-        assert_eq!(!request.native_only, matches);
-        if matches {
-            assert!(
-                visible_history_with_replay(&request, &[7; 32], Some(&store))
+    // Alias agreement concerns text bytes. Strict history additionally needs
+    // the JSON producer's provenance; a manually stored raw range is not it.
+    let mut cases = Vec::new();
+    for canonical_proof in [false, true] {
+        let encode = |text: &str| {
+            if canonical_proof {
+                let mut pool = store.begin_content_pool().unwrap();
+                let reference = pool.append_canonical_json(&json!(text)).unwrap();
+                pool.seal().unwrap();
+                reference
+            } else {
+                store
+                    .store_content(&serde_json::to_vec(text).unwrap())
                     .unwrap()
-                    .measure(None)
-                    .is_some()
-            );
-            let profile = exact_state_profile(
-                IngressProtocol::ChatCompletions,
-                IngressProtocol::ChatCompletions,
-            );
-            let template = project_candidate_request_template(&request, &profile).unwrap();
-            let mut reader =
-                sequential_attempt_body(template, store.clone(), &budget, 257).unwrap();
-            let mut bytes = Vec::new();
-            while let Some(chunk) = reader.next_chunk().unwrap() {
-                bytes.extend_from_slice(chunk.bytes());
             }
-            let output: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-            assert_eq!(output["messages"][2]["reasoning"], text);
-            assert_eq!(output["messages"][2]["reasoning_content"], text);
+        };
+        let first = encode(&text);
+        let second = encode(&text);
+        let different = encode(&text.replace("推", "理"));
+        cases.push((canonical_proof, first, second, different));
+    }
+    for (canonical_proof, first, second, different) in cases {
+        assert_ne!(first, second);
+        store
+            .prevalidate(&[first.clone(), second.clone(), different.clone()])
+            .unwrap();
+        for (alias, matches) in [
+            (second.json_marker(), true),
+            (json!(text), true),
+            (different.json_marker(), false),
+        ] {
+            let mut body = body();
+            body["messages"][2]["reasoning_content"] = first.json_marker();
+            body["messages"][2]["reasoning"] = alias;
+            let request = decode_ingress_request_with_replay(
+                IngressProtocol::ChatCompletions,
+                &body,
+                Some(&store),
+            )
+            .unwrap();
+            assert_eq!(!request.native_only, matches);
+            if matches {
+                assert_eq!(
+                    visible_history_with_replay(&request, &[7; 32], Some(&store))
+                        .unwrap()
+                        .measure(None)
+                        .is_some(),
+                    canonical_proof
+                );
+                let profile = exact_state_profile(
+                    IngressProtocol::ChatCompletions,
+                    IngressProtocol::ChatCompletions,
+                );
+                let template = project_candidate_request_template(&request, &profile).unwrap();
+                let mut reader =
+                    sequential_attempt_body(template, store.clone(), &budget, 257).unwrap();
+                let mut bytes = Vec::new();
+                while let Some(chunk) = reader.next_chunk().unwrap() {
+                    bytes.extend_from_slice(chunk.bytes());
+                }
+                let output: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                assert_eq!(output["messages"][2]["reasoning"], text);
+                assert_eq!(output["messages"][2]["reasoning_content"], text);
+            }
+            assert!(
+                decode_ingress_request(IngressProtocol::ChatCompletions, &body)
+                    .unwrap()
+                    .native_only
+            );
         }
-        assert!(
-            decode_ingress_request(IngressProtocol::ChatCompletions, &body)
-                .unwrap()
-                .native_only
-        );
     }
     drop(store);
     drop(manager);
