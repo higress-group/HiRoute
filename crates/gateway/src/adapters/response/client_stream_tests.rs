@@ -19,7 +19,8 @@ fn synthetic_responses_item_ids_are_scoped_to_the_response_and_stable_across_ren
         let document = json!({"id":response_id,"model":"physical","choices":[{
             "index":0,"message":{"role":"assistant","reasoning_content":"thought",
             "content":"answer","tool_calls":[{"id":"call-one","type":"function",
-            "function":{"name":"read","arguments":"{}"}}]},"finish_reason":"tool_calls"}]});
+            "function":{"name":"read","arguments":"{}"}}]},"finish_reason":"tool_calls"}],
+            "usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}});
         let mut decoder = NativeResponseDecoder::new(&candidate, 200, false).unwrap();
         decoder
             .feed(&serde_json::to_vec(&document).unwrap(), true)
