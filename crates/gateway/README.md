@@ -184,7 +184,9 @@ evaluation partial. A later independently complete stage recovers normally.
 [Opening evidence](src/agent_turn_history/store/opening.rs)
 compares the old request and actual current input separately. Reused branches
 also require an appended current input to prove a new activation; a changed native
-identifier alone leaves an exact tool continuation in its existing stage. Missing response
+identifier alone leaves an exact tool continuation in its existing stage. Conversely,
+a repeated identifier cannot suppress a witnessed new current input. Explicit
+continuation metadata makes that input unavailable before boundary selection. Missing response
 completion does not prove a rewritten request. New-message evidence cannot reuse
 the old execution or repair its partial score; missing comparison remains unknown.
 [Closure regressions](src/agent_turn_history/stage_closure_tests.rs) check both

@@ -53,17 +53,11 @@ pub(super) fn request_prefix(
 pub(super) fn fork_opening_cause<'a>(
     entries: impl Iterator<Item = &'a SessionEntry>,
     analyzed: &AnalyzedRequest,
-    native_turn: Option<[u8; 32]>,
-    saved_input: bool,
 ) -> Cause {
     let mut agreed = None;
     for entry in entries {
         let cause = match request_prefix(&entry.checkpoint, analyzed) {
-            RequestPrefix::Match
-                if !saved_input
-                    && !(native_turn.is_some() && native_turn == entry.active.native_turn)
-                    && has_appended_input(&entry.checkpoint, analyzed) =>
-            {
+            RequestPrefix::Match if has_appended_input(&entry.checkpoint, analyzed) => {
                 Cause::UserMessage
             }
             RequestPrefix::Changed => Cause::HistoryRewrite,
