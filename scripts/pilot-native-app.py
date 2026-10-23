@@ -129,10 +129,15 @@ def prepare(args, build, root, runtime, temporary, data, working, log, process_h
     for role, source in sources.items():
         pilot.artifact_is_unchanged(source)
         destination = binaries / Path(source["path"]).name
-        # Same-volume links keep one compiled binary set and preserve its signature.
-        # Never mutate/sign these links: that would also alter the attested build.
-        os.link(source["path"], destination)
-        artifacts[role] = pilot.executable_artifact(destination)
+        # macOS proc_pidpath can report another name for a shared executable
+        # inode. Each App needs its own inode as well as the exact signed bytes.
+        shutil.copy2(source["path"], destination)
+        deployed = pilot.executable_artifact(destination)
+        pilot.artifact_is_unchanged(source)
+        if (deployed["sha256"] != source["sha256"] or deployed["size"] != source["size"]
+                or (deployed["device"], deployed["inode"]) == (source["device"], source["inode"])):
+            raise ValueError("Native App needs a distinct copy of the exact source artifact")
+        artifacts[role] = deployed
     for name in ("desktop-pilot.py", "pilot-native-app.py"):
         shutil.copyfile(Path(__file__).with_name(name), resources / name)
         os.chmod(resources / name, 0o600)
@@ -242,8 +247,8 @@ def stop(session, *, timeout=12.0, revoke=False):
             pilot.write_private_json(session, row)
             stopped = pilot.stop_group(row, timeout)
         if revoke:
-            # Retired bundles keep metadata/logs, not links retaining large build
-            # outputs after the last lease's managed checkout cleanup.
+            # Retired bundles keep metadata/logs, not private executable copies
+            # after the last lease's managed checkout cleanup.
             for artifact in row["artifacts"].values():
                 path = Path(artifact["path"])
                 if path.exists() or path.is_symlink():

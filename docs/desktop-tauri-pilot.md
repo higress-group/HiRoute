@@ -135,12 +135,12 @@ python3 scripts/validation.py pilot-build start \
 
 Select the returned `native_app.bundle` absolute `.app` path in native CU. The
 bundle has a unique per-session bundle identifier; its application executable,
-daemon and CLI are hard links to that one managed build, preserving their exact
-bytes and signatures. An already staged adjacent CPA is included only after its
-hash/size matches the build’s frozen native-target CPA manifest; absent CPA keeps
-the existing subscription-local missing-artifact behavior. The build and private
-session root must be on the same filesystem. Do not copy, move or re-sign the entry: create a new owned entry if
-its identity changes. This mode requires a reusable owner lease and its recorded
+daemon and CLI are private copies from that one managed build, preserving their
+exact bytes and signatures with distinct file identities. Separate executable
+inodes keep macOS process paths stable when multiple Apps use the same build.
+An already staged adjacent CPA is included only after its hash/size matches the build’s frozen native-target CPA manifest; absent CPA keeps
+the existing subscription-local missing-artifact behavior. Do not copy, move or
+re-sign the entry: create a new owned entry if its identity changes. This mode requires a reusable owner lease and its recorded
 non-persistent WebView build configuration. It does not package a release App or
 alter production launch behavior.
 
@@ -168,7 +168,7 @@ it; after quit, do not use those APIs as a termination check. An intentional
 ordinary reopen is safe through the recorded entry and must then be checked
 against the same session/data root. `pilot stop` stops the verified processes but
 leaves the entry reopenable. `pilot-build finish` revokes the entry first, stops
-its owned processes, removes only the verified deployment links and then releases
+its owned processes, removes only the verified deployed files and then releases
 the lease. Later native opening fails closed. Session metadata and evidence stay
 available; another owner's sessions and the daily application are untouched.
 

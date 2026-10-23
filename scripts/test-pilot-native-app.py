@@ -219,6 +219,34 @@ class NativeEntry(unittest.TestCase):
                 path.write_bytes(original)
                 os.utime(path, ns=original_times)
 
+    def test_two_native_apps_keep_distinct_executable_identities_and_retire_independently(self):
+        first_session = self.session
+        self.open_entry()
+        first = self.ready()
+        self.root = self.base / 'hrp-other'
+        self.root.mkdir(mode=0o700)
+        self.session = self.root / 'session.json'
+        self.record['pilot_leases']['lease']['sessions']['other'] = {'session': str(self.session)}
+        self.save_record()
+        self.prepare_entry()
+        for role, source in self.build['artifacts'].items():
+            one, two = first['artifacts'][role], self.row['artifacts'][role]
+            self.assertEqual(len({source['inode'], one['inode'], two['inode']}), 3)
+            self.assertEqual(source['sha256'], one['sha256'])
+            self.assertEqual(source['sha256'], two['sha256'])
+        self.open_entry()
+        second = self.ready()
+        # On macOS this also exercises proc_pidpath after another App has opened.
+        self.assertEqual(native.observe(first_session)[0]['pid'], first['pid'])
+        native.stop(first_session, revoke=True)
+        self.assertEqual(native.observe(self.session)[0]['pid'], second['pid'])
+        self.assertTrue(native.observe(self.session)[1])
+        for artifact in self.build['artifacts'].values():
+            pilot.artifact_is_unchanged(artifact)
+        native.stop(self.session, revoke=True)
+        self.assertFalse(Path(first['app']).exists())
+        self.assertFalse(Path(second['app']).exists())
+
     def test_staged_cpa_preserves_compiled_pin_and_is_retired_with_owned_entry(self):
         source = Path(self.build['artifacts']['daemon']['path']).with_name('cliproxyapi')
         shutil.copyfile(self.binary, source)
@@ -237,7 +265,8 @@ class NativeEntry(unittest.TestCase):
         self.root.mkdir(mode=0o700)
         self.prepare_entry()
         deployed = Path(self.row['artifacts']['cpa']['path'])
-        self.assertEqual(deployed.stat().st_ino, source.stat().st_ino)
+        self.assertNotEqual(deployed.stat().st_ino, source.stat().st_ino)
+        self.assertEqual(pilot.file_sha256(deployed), artifact["sha256"])
         native.verify(self.row, self.session)
         self.record_path.with_name('cpa-manifest.json').write_bytes(contents + b' ')
         with self.assertRaisesRegex(ValueError, 'compiled build input'):

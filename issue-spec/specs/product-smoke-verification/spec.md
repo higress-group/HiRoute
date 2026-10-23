@@ -205,11 +205,13 @@ remains non-persistent while the test profile's product state survives reopening
 
 Concurrent ordinary openings MUST NOT create a second untracked instance. Each
 new process generation MUST record its PID, native start identity and exact
-executable before business actions. Observation MUST NOT launch a process.
+executable before business actions. Each App's deployed executables MUST preserve
+attested source bytes using distinct file identities, so concurrent Apps cannot
+redirect one another's native executable path. Observation MUST NOT launch a process.
 Ordinary application quit or explicit Pilot stop leaves the open lease's entry
 reopenable. Lease finish MUST revoke the entry before process cleanup and refuse
 subsequent openings; cleanup MUST affect only verified owned processes and deployment
-links, retaining evidence and refusing unknown/reused identities or changed artifacts.
+files, retaining evidence and refusing unknown/reused identities or changed artifacts.
 
 #### Scenario: Native acceptance across ordinary reopen
 
