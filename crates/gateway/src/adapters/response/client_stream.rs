@@ -13,6 +13,7 @@ use crate::server::request_plan::IngressProtocol;
 
 use super::{
     ProtocolAdapterError, RenderedSseEvent, client_can_represent_message_phase, responses_terminal,
+    synthetic_responses_item_id,
 };
 
 #[cfg(test)]
@@ -482,7 +483,7 @@ impl IncrementalClientSseRenderer {
                 let usage = responses_usage(&self.usage)?;
                 let mut completed_output = snapshot
                     .iter()
-                    .map(super::render::render_responses_output_block)
+                    .map(|block| super::render::render_responses_output_block(&id, block))
                     .collect::<Result<Vec<_>, _>>()?;
                 for (block, item) in snapshot.iter().zip(&mut completed_output) {
                     if let ResponseBlock::Reasoning { index, .. } = block
@@ -894,9 +895,10 @@ impl IncrementalClientSseRenderer {
         prefix: &str,
         native_item_id: Option<&str>,
     ) -> Result<String, ProtocolAdapterError> {
-        let item_id = native_item_id
-            .map(str::to_owned)
-            .unwrap_or_else(|| format!("{prefix}_{index}"));
+        let item_id = match native_item_id {
+            Some(id) => id.to_owned(),
+            None => synthetic_responses_item_id(self.response_id()?, prefix, index),
+        };
         if item_id.is_empty()
             || item_id.chars().any(char::is_control)
             || self.item_ids.contains_key(&index)

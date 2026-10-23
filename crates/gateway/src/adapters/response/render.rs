@@ -17,9 +17,10 @@ use crate::server::request_plan::IngressProtocol;
 use super::{ProtocolAdapterError, client_can_represent_message_phase, responses_terminal};
 
 pub(super) fn render_responses_output_block(
+    response_id: &str,
     block: &ResponseBlock,
 ) -> Result<Value, ProtocolAdapterError> {
-    responses::render_responses_block(block)
+    responses::render_responses_block(response_id, block)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -558,6 +559,7 @@ fn chat_tool_calls(response: &ModelResponseIRV1) -> Result<Vec<Value>, ProtocolA
 }
 
 fn append_responses_state(
+    response_id: &str,
     output: &mut Vec<Value>,
     state: &[OpaqueProviderState],
 ) -> Result<(), ProtocolAdapterError> {
@@ -584,7 +586,7 @@ fn append_responses_state(
                 ));
             }
         } else {
-            output.push(json!({"type":"reasoning","id":format!("state_{state_index}"),"summary":[],"encrypted_content":state.value}));
+            output.push(json!({"type":"reasoning","id":synthetic_responses_item_id(response_id, "state", state_index as u32),"summary":[],"encrypted_content":state.value}));
         }
     }
     Ok(())

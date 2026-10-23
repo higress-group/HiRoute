@@ -85,7 +85,14 @@ checks are independent. Output delivery counters reflect actual accepted frames 
 
 Native Responses history preserves message.phase, supported turn metadata, reasoning
 fields/summary, nonempty encrypted_content, and legitimate completed item states;
-no process-local reasoning-owner registration is required. Function-call-output
+no process-local reasoning-owner registration is required. For the registered
+Codex subscription endpoint only, outbound replay omits the redundant output-only
+`completed` status from reasoning items because that endpoint rejects the field.
+The original request, reasoning content/ciphertext, item IDs, message phases and
+other item statuses remain unchanged; public Responses endpoints keep native fields.
+Responses items synthesized from other protocols MUST have response-scoped identities
+that agree across incremental, buffered and terminal projections. Native item IDs
+remain exact; block indexes alone MUST NOT become cross-response identities. Function-call-output
 completed/incomplete/in_progress/absent maps to completed/failed/unknown/unknown for
 judgment history, never by inspecting output text. Other supported history items
 accept only their legal lifecycle values. Empty native generated-call names use the
