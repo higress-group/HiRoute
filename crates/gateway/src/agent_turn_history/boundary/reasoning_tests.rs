@@ -88,11 +88,66 @@ fn production_reasoning_boundary_is_independent_of_aggregate_inline_allowance() 
 }
 
 #[test]
+fn production_reasoning_boundary_accepts_empty_native_fields_without_accepting_hidden_content() {
+    for inline_limit in [0, 8 * 1024, 64 * 1024] {
+        let (_directory, replay) = super::replay();
+        let mut capture = BoundaryCapture::default();
+        capture.accept(&ModelEvent::ReasoningFinished {
+            index: 0,
+            text: "Use the requested tool.".into(),
+            status: ResponseItemStatus::Completed,
+        });
+        capture.accept(&ModelEvent::TextFinished {
+            index: 1,
+            text: "READY".into(),
+            annotations: vec![],
+            status: ResponseItemStatus::Completed,
+        });
+        for encrypted in [serde_json::Value::Null, json!("")] {
+            for content in [serde_json::Value::Null, json!([])] {
+                let wire = json!({"model":"route","instructions":"x".repeat(8 * 1024),"input":[
+                    {"type":"reasoning","id":"rs-tool","status":null,
+                     "summary":[{"type":"summary_text","text":"Use the requested tool."}],
+                     "encrypted_content":encrypted,"content":content},
+                    {"role":"assistant","content":"READY"},
+                    {"role":"user","content":"next task"}
+                ]});
+                let request = production_request(&wire, &replay, inline_limit);
+                assert_eq!(
+                    incoming_boundary(&request, 0, &replay, &mut FingerprintBudget::default()),
+                    capture.digest(),
+                    "empty optional reasoning fields at allowance {inline_limit}"
+                );
+                for (field, value) in [
+                    ("encrypted_content", json!("opaque provider state")),
+                    (
+                        "content",
+                        json!([{"type":"reasoning_text","text":"uncaptured text"}]),
+                    ),
+                    ("unrecognized_native_field", serde_json::Value::Null),
+                ] {
+                    let mut changed = wire.clone();
+                    changed["input"][0][field] = value;
+                    let request = production_request(&changed, &replay, inline_limit);
+                    assert!(
+                        incoming_boundary(&request, 0, &replay, &mut FingerprintBudget::default())
+                            .is_none()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membership() {
     use super::super::*;
     use crate::server::core_runtime::model_ir::{ModelStreamEventV1, ToolKindV1};
 
-    for inline_limit in [0, 8 * 1024, 64 * 1024] {
+    for (inline_limit, null_fields) in [0, 8 * 1024, 64 * 1024]
+        .into_iter()
+        .flat_map(|limit| [(limit, false), (limit, true)])
+    {
         let (_directory, replay) = super::replay();
         let store = AgentTurnHistoryStore::default();
         let scope = store.scope_key("workspace", "reasoning-tool").unwrap();
@@ -176,6 +231,11 @@ fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membersh
             json!({"type":"function_call","call_id":"call-1","namespace":"functions","name":"lookup","arguments":"{\"id\":7}"}),
             json!({"type":"function_call_output","call_id":"call-1","output":"tool result"}),
         ]);
+        if null_fields {
+            wire["input"][1]["encrypted_content"] = serde_json::Value::Null;
+            wire["input"][1]["content"] = serde_json::Value::Null;
+            wire["input"][1]["status"] = serde_json::Value::Null;
+        }
         let request = production_request(&wire, &replay, inline_limit);
         let AgentTurnBegin::Continuation {
             ticket: final_request,
