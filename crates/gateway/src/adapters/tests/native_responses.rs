@@ -275,7 +275,7 @@ fn responses_replayed_plain_reasoning_uses_the_existing_bounded_body_path() {
     let native = json!({"model":"alias","input":[{
         "type":"reasoning","id":"reasoning-item","summary":[],
         "content":[{"type":"reasoning_text","text":"plain reasoning ".repeat(4096)}],
-        "provider_extension":{"version":1},"encrypted_content":null
+        "encrypted_content":null
     }]});
     let mut request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
     let profile = CandidateProtocolProfile::exact_portable_path(
