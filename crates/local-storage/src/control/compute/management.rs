@@ -4,7 +4,7 @@
 //! compensation transaction. Public methods implement only the read port.
 
 use hiroute_domain::{
-    CanonicalDigest, ComputeManagementMutationV2, ComputeManagementRepositoryPort,
+    CanonicalDigest, ComputeManagementMutation, ComputeManagementRepositoryPort,
     ComputeManagementSourceV2, ComputeManagementStoredSnapshotV2, OperationId, PortError,
     PortErrorCode, PortResult, WorkspaceId,
 };
@@ -13,6 +13,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 mod compensation;
+mod defaults;
 mod references;
 mod runtime_pool;
 
@@ -23,7 +24,7 @@ use super::{ControlStore, decode, encode, invalid, port, validate_storage_id};
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ManagementEnvelope {
-    compute_management_mutation: ComputeManagementMutationV2,
+    compute_management_mutation: ComputeManagementMutation,
 }
 
 pub(in crate::control) fn stage_control(
@@ -39,6 +40,7 @@ pub(in crate::control) fn stage_control(
     mutation
         .validate_against(current.as_ref())
         .map_err(|_| conflict("compute.management.stage.cas"))?;
+    defaults::validate_before(transaction, workspace, &mutation)?;
     references::validate_removal(transaction, workspace, &mutation)?;
     let identity = mutation
         .desired()
@@ -84,6 +86,7 @@ pub(in crate::control) fn stage_control(
             ],
         )
         .map_err(|_| port("compute.management.stage.effect"))?;
+    defaults::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
     Ok(())
 }
 
@@ -121,9 +124,12 @@ pub(in crate::control) fn activate(
     mutation
         .validate_against(current.as_ref())
         .map_err(|_| conflict("compute.management.activate.cas"))?;
+    defaults::validate_before(transaction, workspace, &mutation)?;
     references::validate_removal(transaction, workspace, &mutation)?;
+    let preferences = defaults::after(transaction, workspace, &mutation)?;
     if let Some(desired) = mutation.desired() {
-        write_source(transaction, workspace, desired, operation_id)
+        write_source(transaction, workspace, desired, operation_id)?;
+        defaults::write(transaction, workspace, mutation.source_id(), &preferences)
     } else {
         let deleted = transaction.execute("DELETE FROM compute_management_sources WHERE workspace_id=?1 AND source_id=?2 AND revision=?3", params![workspace.as_str(), mutation.source_id(), mutation.expected_revision()])
             .map_err(|_| port("compute.management.delete"))?;
@@ -160,6 +166,11 @@ pub(in crate::control) fn current_matches(
         .map_err(|_| port("compute.management.observe.effect"))?;
     if !effect_bound {
         return Err(corrupt("compute.management.observe.effect_binding"));
+    }
+    if let Some(after) = defaults::effect(connection, operation_id.as_str(), false)?
+        && defaults::read(connection, workspace, mutation.source_id())? != after
+    {
+        return Ok(false);
     }
     let current: Option<(String, String)> = connection
         .query_row(
@@ -244,10 +255,23 @@ pub(in crate::control) fn compensate(
             )
             .map_err(|_| port("compute.management.compensate.delete"))?;
     }
+    if let Some(before) = defaults::effect(transaction, operation_id, true)? {
+        defaults::write(transaction, workspace, mutation.source_id(), &before)?;
+    }
     Ok(true)
 }
 
 impl ComputeManagementRepositoryPort for ControlStore {
+    fn source_default_preferences(
+        &self,
+        source_id: &str,
+    ) -> PortResult<hiroute_domain::SourceDefaultPreferencesV1> {
+        defaults::read(
+            &self.connection.borrow(),
+            &WorkspaceId::default(),
+            source_id,
+        )
+    }
     fn compute_management_references(
         &self,
         workspace: &WorkspaceId,
@@ -341,7 +365,7 @@ fn deletion_owned(
         .map_err(|_| port("compute.management.delete.owner"))
 }
 
-fn mutation_from_staged(staged_json: &str) -> PortResult<Option<ComputeManagementMutationV2>> {
+fn mutation_from_staged(staged_json: &str) -> PortResult<Option<ComputeManagementMutation>> {
     let mut envelope: Value = serde_json::from_str(staged_json)
         .map_err(|_| corrupt("compute.management.stage.decode"))?;
     if envelope.get("schema").and_then(Value::as_str) != Some("hiroute.control-desired/v1") {
@@ -354,7 +378,7 @@ fn mutation_from_staged(staged_json: &str) -> PortResult<Option<ComputeManagemen
     mutation_from_control(&control)
 }
 
-fn mutation_from_control(control: &Value) -> PortResult<Option<ComputeManagementMutationV2>> {
+fn mutation_from_control(control: &Value) -> PortResult<Option<ComputeManagementMutation>> {
     if control.get("compute_management_mutation").is_none() {
         return Ok(None);
     }

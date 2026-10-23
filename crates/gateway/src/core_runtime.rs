@@ -884,12 +884,9 @@ impl ProductionGatewayRuntime {
             if let Some(mut outcome) = classification_outcome {
                 if let Some(history) = classification_context {
                     classification::apply_group_policy(&planner_input, &history, &mut outcome);
-                    if let Some(guard) = agent_turn_guard.as_ref()
+                    if let Some(guard) = agent_turn_guard.as_mut()
                         && guard.ticket().new_turn
-                        && self
-                            .agent_turn_history
-                            .commit_decision(guard.ticket(), outcome.decision.clone())
-                            .is_err()
+                        && guard.commit_decision_or_defer(&outcome.decision).is_err()
                     {
                         // History writes are optional. Keep this request's validated
                         // decision, but relinquish all shared history write authority.
@@ -911,6 +908,7 @@ impl ProductionGatewayRuntime {
                     }
                 }
                 if let Some(guard) = agent_turn_guard.as_ref() {
+                    guard.withhold_pending_affinity(&mut hold_ticket, &mut planner_input);
                     request_observation.bind_agent_turn_output(
                         Arc::clone(&self.agent_turn_history),
                         guard.ticket().clone(),
@@ -1351,14 +1349,18 @@ impl ProductionGatewayRuntime {
                     (true, false) => AgentTurnStatus::Interrupted,
                     (false, _) => AgentTurnStatus::Failed,
                 };
-                if let Ok(completed) = self.agent_turn_history.finish_request(
-                    guard.ticket(),
-                    request_observation.metadata().request_id.clone(),
-                    status,
-                    executions,
-                    response_delivery.accepted_count() == 0,
-                    Instant::now(),
-                ) {
+                if guard
+                    .finish_deferred_decision(planner_input.classification_decision.as_ref())
+                    .is_ok()
+                    && let Ok(completed) = self.agent_turn_history.finish_request(
+                        guard.ticket(),
+                        request_observation.metadata().request_id.clone(),
+                        status,
+                        executions,
+                        response_delivery.accepted_count() == 0,
+                        Instant::now(),
+                    )
+                {
                     if let Some(completed) = completed {
                         request_observation.agent_turn_finished(&completed);
                     }
@@ -1552,6 +1554,7 @@ impl Drop for ObservationRequestGuard {
 struct AgentTurnRequestGuard {
     store: Arc<AgentTurnHistoryStore>,
     ticket: Option<AgentTurnTicket>,
+    decision_deferred: bool,
 }
 
 impl AgentTurnRequestGuard {
@@ -1559,6 +1562,7 @@ impl AgentTurnRequestGuard {
         Self {
             store,
             ticket: Some(ticket),
+            decision_deferred: false,
         }
     }
 
@@ -1570,6 +1574,9 @@ impl AgentTurnRequestGuard {
         self.ticket = None;
     }
 }
+
+#[path = "core_runtime/decision_history/deferred_decision.rs"]
+mod deferred_decision;
 
 impl Drop for AgentTurnRequestGuard {
     fn drop(&mut self) {

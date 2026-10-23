@@ -15,6 +15,9 @@ use crate::{
     RevisionSetV1, UpstreamProtocol, WorkspaceId,
 };
 
+mod defaults;
+pub use defaults::*;
+
 pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2: &str = "hiroute.compute-management-source/v3";
 pub const COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V2: &str = "hiroute.compute-management-mutation/v2";
 pub const COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2: &str = "hiroute.compute-management-change/v2";
@@ -700,6 +703,13 @@ pub struct ComputeManagementStoredSnapshotV2 {
 /// Narrow safe-record persistence port. All writes still enter through the existing Operation
 /// control effect; this trait intentionally offers reads only.
 pub trait ComputeManagementRepositoryPort {
+    fn source_default_preferences(
+        &self,
+        _source_id: &str,
+    ) -> PortResult<SourceDefaultPreferencesV1> {
+        Ok(SourceDefaultPreferencesV1::default())
+    }
+
     fn compute_management_source(
         &self,
         source_id: &str,

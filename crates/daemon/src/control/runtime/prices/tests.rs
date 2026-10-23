@@ -436,3 +436,121 @@ fn source_prices_application_apply_replays_restarts_and_never_waits_for_store_on
             .is_empty()
     );
 }
+
+#[test]
+fn model_feed_price_activation_rejects_a_concurrent_override_before_committing_acceptance() {
+    #[cfg(unix)]
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::prices::tests::model_feed_price_activation_rejects_a_concurrent_override_before_committing_acceptance",
+    ) {
+        return;
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = ProductionControlRuntime::open_with_release_catalog(
+        directory.path().join("storage"),
+        paid_catalog(),
+    )
+    .unwrap();
+    let binding = seed_source(&runtime, BillingClass::Paid);
+    let feed = runtime.adapter.model_feed.as_ref().unwrap();
+    let before = feed.current();
+    let slot = runtime.price_snapshot_slot();
+    let retained = slot.capture_current_price_snapshot();
+    let mut snapshot = before.official_snapshot();
+    snapshot.data_revision += 1;
+    snapshot.data.models[0].capabilities.context_tokens += 1;
+    snapshot.data.rating_snapshot.model_catalog_digest =
+        CanonicalDigest::of(&snapshot.data.models).unwrap();
+    snapshot.data.rating_snapshot.digest = snapshot.data.rating_snapshot.computed_digest().unwrap();
+    snapshot.data_digest = CanonicalDigest::of(&snapshot.data).unwrap();
+    let bytes = serde_json::to_vec(
+        &hiroute_integrations::model_feed::FeedPayload::from_snapshot(
+            snapshot,
+            42,
+            "2026-10-18T00:00:00Z".into(),
+            "1".repeat(40),
+            vec![],
+        ),
+    )
+    .unwrap();
+    let app = ApplicationService::new(runtime.application_ports());
+    let result = feed.refresh_using_prepared(
+        |_| {
+            Ok(hiroute_integrations::model_feed::FeedDownload::Content {
+                bytes: bytes.clone(),
+                etag: None,
+            })
+        },
+        |catalog| {
+            let prepared = runtime.adapter.prepare_catalog_prices(catalog)?;
+            let request = PreviewPriceOverrideChangeV2 {
+                target_locator: PriceTargetLocatorV1::Binding {
+                    binding_id: binding.binding_id.clone(),
+                },
+                currency: "USD".into(),
+                valuation_kind: PriceValuationKindV1::UsageEstimate,
+                action: SourcePriceSettingV1::Set {
+                    rates: TokenRatesV1::from_legacy(2_000_000, 6_000_000),
+                },
+                expected_source_revision: binding.source_revision,
+                expected_binding_revision: Some(binding.revision),
+                expected_override_revision: 0,
+            };
+            let response = app.dispatch(wire(
+                "PreviewPriceOverrideChange",
+                serde_json::to_value(request).unwrap(),
+            ));
+            assert!(response.error.is_none(), "{response:?}");
+            let preview: PriceOverridePreviewV2 =
+                serde_json::from_value(response.data.unwrap()).unwrap();
+            let response = app.dispatch(wire(
+                "ApplyPriceOverrideChange",
+                serde_json::to_value(ApplyPriceOverrideChangeV2 {
+                    spec: preview.spec,
+                    accept_digest: preview.change_digest,
+                    expected_revisions: preview.expected_revisions,
+                    idempotency_key: "concurrent-feed-price-edit".into(),
+                })
+                .unwrap(),
+            ));
+            assert!(response.error.is_none(), "{response:?}");
+            Ok(prepared)
+        },
+        |catalog, prepared, commit| {
+            runtime
+                .adapter
+                .activate_catalog_prices(catalog, prepared, commit)
+        },
+    );
+    assert_eq!(result.unwrap_err(), "prices.candidate.dependencies_changed");
+    assert_eq!(feed.current().generation, before.generation);
+    let status = feed.status().unwrap();
+    assert!(status.held.is_none());
+    assert_eq!(status.verification, "none");
+    let after_override = slot.capture_current_price_snapshot();
+    assert!(after_override.generation_ref().is_some());
+    assert_ne!(retained.generation_ref(), after_override.generation_ref());
+    feed.refresh_using_prepared(
+        |_| {
+            Ok(hiroute_integrations::model_feed::FeedDownload::Content {
+                bytes: bytes.clone(),
+                etag: None,
+            })
+        },
+        |catalog| runtime.adapter.prepare_catalog_prices(catalog),
+        |catalog, prepared, commit| {
+            runtime
+                .adapter
+                .activate_catalog_prices(catalog, prepared, commit)
+        },
+    )
+    .unwrap();
+    assert_eq!(feed.current().generation, before.generation + 1);
+    assert_eq!(feed.status().unwrap().held.unwrap().sequence, 42);
+    assert!(
+        slot.capture_current_price_snapshot()
+            .generation_ref()
+            .is_some()
+    );
+    assert_ne!(retained.generation_ref(), after_override.generation_ref());
+}

@@ -94,6 +94,22 @@ macro_rules! response { ($($ty:ty),+ $(,)?) => { alternatives(vec![$(schema::<Ma
 
 pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
     let (mut request, mut response) = match command_id {
+        "compute.defaults.get" => (
+            request!(ComputeDefaultsQueryV1),
+            response!(ComputeDefaultsResultV1),
+        ),
+        "compute.defaults.preview" => (
+            request!(ComputeSavePreviewRequestV3),
+            response!(ComputeSavePreviewV2),
+        ),
+        "models.metadata.list" => (
+            request!(ListModelMetadataV1),
+            response!(ModelMetadataPageV1),
+        ),
+        "models.metadata.get" => (
+            request!(GetModelMetadataV1),
+            response!(ModelMetadataDetailV1),
+        ),
         "prices.effective" => (
             request!(GetEffectivePricesV2),
             response!(EffectivePricesResultV2),

@@ -1,5 +1,5 @@
 use super::*;
-use hiroute_domain::{ComputeManagementMutationV2, VerifiedSecretSubjectV1};
+use hiroute_domain::{ComputeManagementMutation, VerifiedSecretSubjectV1};
 
 impl<'a, C, S, R, E, I> TransactionCoordinator<'a, C, S, R, E, I>
 where
@@ -19,7 +19,7 @@ where
         let Some(value) = operation.plan.control().get("compute_management_mutation") else {
             return Ok(());
         };
-        let mutation: ComputeManagementMutationV2 = serde_json::from_value(value.clone())
+        let mutation: ComputeManagementMutation = serde_json::from_value(value.clone())
             .map_err(|_| TransactionError::EffectOwnershipLost)?;
         let Some(expected) = mutation.expected() else {
             return Ok(());

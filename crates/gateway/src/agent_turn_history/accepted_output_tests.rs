@@ -36,7 +36,7 @@ pub(super) fn tool(store: &AgentTurnHistoryStore, ticket: &AgentTurnTicket, id: 
     );
 }
 
-fn owner() -> ExactProviderPathV1 {
+pub(super) fn owner() -> ExactProviderPathV1 {
     ExactProviderPathV1 {
         provider_id: "p".into(),
         endpoint_id: "e".into(),

@@ -53,7 +53,7 @@ export function shortDate(day: string, language: Language) {
 /** Origin without iteration traces: the feed inclusion date, or the catalog built into this app. */
 export function originLabel(origin: ModelOrigin, language: Language) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
-  if (origin.kind === 'feed') return t(`hiroute.ai 收录 ${shortDate(origin.included_on, language)}`, `Added by hiroute.ai ${shortDate(origin.included_on, language)}`);
+  if (origin.kind === 'feed') return t(`hiroute.ai 资料日期 ${shortDate(origin.as_of, language)}`, `hiroute.ai information as of ${shortDate(origin.as_of, language)}`);
   if (origin.kind === 'embedded') return t('HiRoute 内置', 'Built into HiRoute');
   return t('仅在已发布路由中', 'Only in published routes');
 }

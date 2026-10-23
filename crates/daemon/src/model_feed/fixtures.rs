@@ -35,34 +35,36 @@ pub(crate) fn publication(sequence: u64) -> FeedPayload {
         .unwrap()
         .clone();
     offer.model_configuration_ids.push(MODEL.into());
-    let minimum = env!("CARGO_PKG_VERSION").to_owned();
-    let date = "2026-10-18".to_owned();
-    FeedPayload {
-        schema: MODEL_FEED_SCHEMA.into(),
+    let mut snapshot = catalog.official_snapshot();
+    let data = &mut snapshot.data;
+    data.models.push(definition);
+    data.models
+        .sort_by(|a, b| a.model_configuration_id.cmp(&b.model_configuration_id));
+    data.model_endpoint_capabilities.push(capability);
+    let offer_id = offer.offer_id.clone();
+    *data
+        .offers
+        .iter_mut()
+        .find(|o| o.offer_id == offer_id)
+        .unwrap() = offer;
+    data.rating_snapshot.models.push(reasoning);
+    data.rating_snapshot
+        .models
+        .sort_by(|a, b| a.model_configuration_id.cmp(&b.model_configuration_id));
+    data.rating_snapshot.model_catalog_digest =
+        hiroute_domain::CanonicalDigest::of(&data.models).unwrap();
+    data.rating_snapshot.digest = data.rating_snapshot.computed_digest().unwrap();
+    data.metadata_catalog.canonical_models.push(canonical);
+    data.metadata_catalog
+        .canonical_models
+        .sort_by(|a, b| a.model_key.cmp(&b.model_key));
+    snapshot.data_revision = sequence.max(2);
+    snapshot.data_digest = hiroute_domain::CanonicalDigest::of(data).unwrap();
+    FeedPayload::from_snapshot(
+        snapshot,
         sequence,
-        issued_at: "2026-10-18T00:00:00Z".into(),
-        source_revision: "1".repeat(40),
-        featured: vec![],
-        records: vec![
-            FeedRecord::Model {
-                min_client_version: minimum.clone(),
-                included_on: date.clone(),
-                record: Box::new(FeedModel {
-                    definition,
-                    native_reasoning: Some(reasoning),
-                    canonical,
-                }),
-            },
-            FeedRecord::ModelEndpointCapability {
-                min_client_version: minimum.clone(),
-                included_on: date.clone(),
-                record: capability,
-            },
-            FeedRecord::Offer {
-                min_client_version: minimum,
-                included_on: date,
-                record: offer,
-            },
-        ],
-    }
+        "2026-10-18T00:00:00Z".into(),
+        "1".repeat(40),
+        vec![],
+    )
 }

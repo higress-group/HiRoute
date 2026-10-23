@@ -54,6 +54,10 @@ pub struct ComputeManagementCompilationFactV2 {
     pub authentication: GatewayAuthenticationSemanticsV1,
     pub additional_native_endpoints: Vec<ComputeNativeEndpointV3>,
     pub capabilities: ComputeManagedCapabilitiesV2,
+    pub default_preferences: std::collections::BTreeMap<
+        hiroute_domain::ModelDefaultFieldV1,
+        hiroute_domain::ModelDefaultPreferenceV1,
+    >,
     pub capability_evidence_digest: hiroute_domain::CanonicalDigest,
     pub native_reasoning: NativeReasoningCapabilityV1,
     pub credential: ComputeManagementCredentialCompilationV2,
@@ -240,6 +244,7 @@ fn compile_model(
         authentication: source.authentication.clone(),
         additional_native_endpoints: source.additional_native_endpoints.clone(),
         capabilities: capabilities.clone(),
+        default_preferences: Default::default(),
         capability_evidence_digest: model.capability_evidence_digest.clone(),
         native_reasoning,
         credential,

@@ -66,6 +66,7 @@ happy-path UI journey.
 
 Native reasoning replay is covered by the accepted-response
 [boundary regression](../../crates/gateway/src/agent_turn_history/boundary/reasoning_tests.rs)
+the [unsigned Messages tool-stage cases](../../crates/gateway/src/agent_turn_history/boundary/messages_tests.rs)
 and [current-window turn/continuation cases](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
 The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
 verify that explicit maintenance-purpose evidence excludes a user turn without
@@ -225,6 +226,11 @@ HTTP path or old restore fixture does not prove route revocation or native execu
 Use [HiRoute validation](../../.agents/skills/hiroute-validation/SKILL.md) for the
 current selection, execution, failure or handoff operation. Its routes lead to
 the owning guides; branch convergence remains a separate integration responsibility.
+Hosted prerequisite installation belongs to
+[`ci-prerequisites.py`](../../scripts/ci-prerequisites.py), invoked by the shared
+[`ci-setup` action](../../.github/actions/ci-setup/action.yml).
+[`test-ci-setup.py`](../../scripts/test-ci-setup.py) covers Ubuntu source selection
+and bounded failure handling; the real hosted matrix verifies package installation.
 
 1. Run `python3 scripts/test-plan.py --base <exact-base>`; use `--integration` for
    branch integration. Review affected consumers and explain semantic adjustments.
@@ -253,6 +259,14 @@ Ordinary local/SSH totals and module reports share Cargo-target attribution in
 [validation-report.py](../../scripts/validation-report.py). The
 [runner regressions](../../scripts/test-remote-rust.py) exercise worker results and
 compact waits with nested child summaries, failed and unfinished parents, and multiple targets.
+
+Actual native Gateway obligations stay separate from backend and Worker success
+in [test selection](../test-selection.md#explicit-native-agent-product-gates).
+The shared [native command scope](../../scripts/native-agent-scope.py) prepares
+independent native roots and contains the complete acceptance driver; its exact-PID
+observer belongs to the trusted controller. Client drivers retain business oracles,
+port ownership and cleanup. [Offline regressions](../../scripts/test-native-agent-scope.py)
+do not establish native execution or DSH Web/Cordis scope coverage.
 
 Shared private filesystem behavior has one [platform contract suite](../../crates/platform/src/private_fs/tests.rs): exclusive creation, protected handle reads, permission preservation and identity-bound cleanup. Storage and Worker tests keep domain errors, recovery and lifecycle assertions; the native Windows cases additionally exercise ACLs and held handles.
 
@@ -447,3 +461,18 @@ still require consumer investigation. Repository ignore rules select publication
 regressions; optional ignored skills are not public-checkout test dependencies.
 See [instruction ownership](../../.agents/README.md)
 for pinned generation and actual host discovery, including the shared validation skill.
+
+Complete-model-data regressions cover [canonical wire identity](../../crates/integrations/src/model_feed/validation.rs),
+[manual versus scoped defaults](../../crates/integrations/src/compute/defaults.rs),
+[source/default commit and restart](../../crates/local-storage/src/control/compute/management/tests/defaults.rs),
+[defaults, metadata pagination and removal dialogs](../../apps/desktop/tests/v3/visual/model-metadata-active.mjs),
+[price activation races](../../crates/daemon/src/control/runtime/prices/tests.rs), and
+[slow shared-session reads](../../crates/product-session/src/commands/model_feed/tests.rs).
+The [producer regressions](../../tools/release-facts/src/feed/tests.rs) reject
+uncommitted and committed same-revision corrections and rollback during bootstrap;
+the [service reopen scenario](../../crates/daemon/src/model_feed/tests.rs) preserves
+settings, acceptance and a captured old snapshot across an embedded v2 data upgrade.
+Directory scenarios use real generated inferred and observed records, including
+snapshot-bound provenance reads and retry; IPC is mocked, not native acceptance.
+The installed HTTPS lifecycle uses complete v2 publications, exact documented cache components,
+frozen main/Worker/Continue execution, removal, restart and embedded absorption.

@@ -16,7 +16,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 105); // Combined model-feed, trial-observation and storage-policy surface.
+    assert_eq!(commands.len(), 109); // Includes complete metadata and saved-default intent queries.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));
@@ -90,6 +90,10 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "models.feed.remove.preview",
             "models.feed.remove.apply",
             "models.availability",
+            "compute.defaults.get",
+            "compute.defaults.preview",
+            "models.metadata.list",
+            "models.metadata.get",
             "models.show",
             "prices.effective",
             "prices.override.preview",

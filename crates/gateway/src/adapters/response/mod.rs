@@ -14,6 +14,10 @@ mod search;
 mod wire;
 
 #[cfg(test)]
+mod chat_filtered_tests;
+#[cfg(test)]
+mod chat_tool_delta_tests;
+#[cfg(test)]
 #[path = "native_passthrough_tests.rs"]
 mod native_passthrough_tests;
 #[cfg(test)]
@@ -699,19 +703,10 @@ impl DecoderCore {
                     )
                     .into());
                 }
-                if reason == &FinishReason::Refusal
-                    && !self
-                        .accumulator
-                        .blocks
-                        .values()
-                        .any(|block| matches!(block, MutableResponseBlock::Refusal(_)))
-                {
-                    for block in self.accumulator.blocks.values_mut() {
-                        if let MutableResponseBlock::Text(text) = block {
-                            *block = MutableResponseBlock::Refusal(std::mem::take(text));
-                        }
-                    }
-                }
+                // A terminal content filter describes omitted output; it cannot
+                // reclassify text that earlier canonical events already emitted.
+                // Explicit refusal fields and Messages terminal classification
+                // establish refusal blocks before their content enters this owner.
             }
             ModelEvent::ResponseCompleted { output } => {
                 let mut expected = self.accumulator.clone();

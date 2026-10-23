@@ -25,5 +25,10 @@ exact manifest bytes in the same build and then validates the registry/model-dat
 product identity, and cross-reference digest before exposing any catalog fact. Missing, stale, or
 modified bytes fail closed.
 
-Future HTTPS delivery is outside this MVP boundary and requires its own download authentication,
-rollback, caching, and atomic-activation contract before it can replace this bundled catalog.
+`compiler-input.json` includes only the additional documented pricing facts, public connection hints
+and semantic revision beside the shared model/rating/metadata input. Both compilers emit the same
+`bundle/official-model-data.json` from those inputs for
+both the embedded fallback and the [complete HTTPS feed](../../model-feed/README.md). A selected
+verified website/cache snapshot can replace descriptive model and default-price facts as a whole.
+The installed registry, authentication, adapters and free-offer eligibility remain release-owned.
+Semantic data revisions/digests and publication sequences have independent acceptance floors.

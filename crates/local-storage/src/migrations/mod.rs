@@ -36,6 +36,7 @@ mod delegation_v10;
 #[cfg(test)]
 mod integration_v17_tests;
 mod plan_authoring_v10;
+mod source_defaults_v31;
 mod source_prices_v10;
 mod subscription_v16;
 #[cfg(test)]
@@ -55,7 +56,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 30;
+pub const LATEST_SCHEMA_VERSION: u32 = 31;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -868,6 +869,8 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
              CREATE UNIQUE INDEX secret_owner_fingerprint_idx
              ON secret_entries(owner_scope, fingerprint) WHERE purpose != 'http-header';"),
         (DatabaseKind::Control | DatabaseKind::Runtime, 29) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 31) => Ok(source_defaults_v31::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 31) => Ok(NOOP_V9),
         (DatabaseKind::Control, 30) => Ok(worker_dependencies_v30::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 30) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),

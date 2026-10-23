@@ -1,4 +1,5 @@
 use super::*;
+mod official;
 use hiroute_application::prices::{
     CatalogPriceRuleV2, PriceControlFactsV1, PriceIndexEntryV1, PriceSnapshot, PriceSnapshotSlot,
     PriceSourceBinding, SourcePriceControlPort,
@@ -82,6 +83,14 @@ impl LocalControlAdapter {
         let catalog = self
             .current_catalog()
             .ok_or(ControlReadError::Unavailable)?;
+        self.price_facts_for(stores, deadline, &catalog)
+    }
+    pub(super) fn price_facts_for(
+        &self,
+        stores: &hiroute_local_storage::LocalStorageSet,
+        deadline: Option<std::time::Instant>,
+        catalog: &crate::model_feed::ReleaseCatalogSnapshot,
+    ) -> Result<PriceControlFactsV1, ControlReadError> {
         let check = || {
             if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
                 Err(ControlReadError::Unavailable)
@@ -95,30 +104,39 @@ impl LocalControlAdapter {
         let management = control
             .compute_management_snapshot(&WorkspaceId::default())
             .map_err(map_port)?;
+        let mut catalog_model_ids = catalog
+            .model_data()
+            .models
+            .iter()
+            .map(|m| m.model_configuration_id.clone())
+            .collect::<BTreeSet<_>>();
+        catalog_model_ids.extend(
+            management
+                .sources
+                .iter()
+                .flat_map(|s| &s.models)
+                .filter_map(|m| m.catalog_configuration_id.clone()),
+        );
+        catalog_model_ids.extend(
+            legacy_source_bindings
+                .iter()
+                .map(|(_, binding)| binding.model_configuration_id.clone()),
+        );
         check()?;
         let overrides = control
             .source_price_overrides(&WorkspaceId::default())
             .map_err(map_port)?;
         check()?;
         let legacy = control.price_overrides().map_err(map_port)?;
-        let configuration_revision = overrides
-            .iter()
-            .try_fold(0u64, |sum, value| sum.checked_add(value.revision))
-            .ok_or(ControlReadError::Corrupt)?;
-        let mut revisions = control
+        let revisions = control
             .current_revisions(&WorkspaceId::default())
             .map_err(map_port)?;
-        revisions
-            .dependencies
-            .insert("feed.model_data".into(), catalog.generation);
-        revisions
-            .dependencies
-            .insert("feed.sequence".into(), catalog.accepted_sequence);
-        let (_, sequence, digest) = catalog.model_data_provenance();
+        let configuration_revision = revisions.target;
+        let identity = catalog.official_snapshot();
         let catalog_refs = vec![PriceFactRefV1 {
-            id: catalog.model_data().bundle_version.clone(),
-            revision: sequence,
-            digest: digest.clone(),
+            id: "official-model-data".into(),
+            revision: identity.data_revision,
+            digest: identity.data_digest,
         }];
         check()?;
         let mut source_bindings = Vec::new();
@@ -183,7 +201,7 @@ impl LocalControlAdapter {
                     .clone()
                     .unwrap_or_else(|| model.model_ref.clone());
                 let offer_ref = registered.as_ref().and_then(|(_, resolved)| {
-                    unique_offer(&catalog, resolved, &model_configuration_id)
+                    unique_offer(catalog, resolved, &model_configuration_id)
                         .map(|offer| offer.offer_id.clone())
                 });
                 source_bindings.push(PriceSourceBinding {
@@ -192,6 +210,10 @@ impl LocalControlAdapter {
                     source_identity_digest: source.lineage_digest.clone(),
                     source_origin,
                     connection_option_id: connection_option_id.clone(),
+                    protocol_endpoint_id: super::model_connections::defaults::scoped_capability(
+                        catalog, source, model,
+                    )
+                    .map(|cap| cap.protocol_endpoint_id.clone()),
                     binding_id: model.binding_id.clone(),
                     binding_revision: model.revision,
                     model_configuration_id,
@@ -231,6 +253,7 @@ impl LocalControlAdapter {
                 source_identity_digest: source.identity_digest,
                 source_origin: source.origin,
                 connection_option_id: Some(source.connection_option_id),
+                protocol_endpoint_id: None,
                 binding_id: binding.binding_id,
                 binding_revision: binding.revision,
                 model_configuration_id: binding.model_configuration_id,
@@ -242,11 +265,7 @@ impl LocalControlAdapter {
         let mut entries = Vec::new();
         for binding in &source_bindings {
             check()?;
-            let model = if catalog
-                .model_data()
-                .model(&binding.model_configuration_id)
-                .is_some()
-            {
+            let model = if catalog_model_ids.contains(&binding.model_configuration_id) {
                 PriceModelIdentityV1::CatalogModel(binding.model_configuration_id.clone())
             } else {
                 PriceModelIdentityV1::LocalModel(binding.model_configuration_id.clone())
@@ -265,10 +284,12 @@ impl LocalControlAdapter {
                         && r.model_configuration_id == binding.model_configuration_id
                 })
                 .collect::<Vec<_>>();
+            let documented = official::documented_prices(catalog, binding);
             let mut currencies = rates
                 .iter()
                 .map(|r| r.currency.clone())
                 .collect::<BTreeSet<_>>();
+            currencies.extend(documented.iter().map(|p| p.currency.clone()));
             currencies.insert("USD".into());
             currencies.extend(
                 overrides
@@ -296,25 +317,41 @@ impl LocalControlAdapter {
                     // Subscription reference mappings belong to 19. Until supplied, API equivalent
                     // has no guessed catalog reference; a source-specific manual value can exist.
                     let catalog_rules = if kind == PriceValuationKindV1::UsageEstimate {
-                        rates
-                            .iter()
-                            .filter(|r| r.currency == currency)
-                            .map(|r| {
-                                Ok(CatalogPriceRuleV2 {
-                                    rule_ref: PriceFactRefV1 {
-                                        id: r.price_rate_id.clone(),
-                                        revision: r.revision,
-                                        digest: CanonicalDigest::of(*r)
-                                            .map_err(|_| ControlReadError::Corrupt)?,
-                                    },
-                                    rates: TokenRatesV1::from_legacy(
-                                        r.input_micros_per_million,
-                                        r.output_micros_per_million,
-                                    ),
-                                    schedule: r.schedule.clone(),
+                        if let Some(mut rules) = official::rules(
+                            &documented,
+                            &currency,
+                            catalog.official_snapshot().data_revision,
+                        ) {
+                            // Enriched components retain the exact current legacy base identity.
+                            let bases = rates
+                                .iter()
+                                .filter(|r| r.currency == currency && r.schedule.is_none())
+                                .collect::<Vec<_>>();
+                            if let [base] = bases.as_slice() {
+                                rules[0].rule_ref.id = base.price_rate_id.clone();
+                            }
+                            rules
+                        } else {
+                            rates
+                                .iter()
+                                .filter(|r| r.currency == currency)
+                                .map(|r| {
+                                    Ok(CatalogPriceRuleV2 {
+                                        rule_ref: PriceFactRefV1 {
+                                            id: r.price_rate_id.clone(),
+                                            revision: r.revision,
+                                            digest: CanonicalDigest::of(*r)
+                                                .map_err(|_| ControlReadError::Corrupt)?,
+                                        },
+                                        rates: TokenRatesV1::from_legacy(
+                                            r.input_micros_per_million,
+                                            r.output_micros_per_million,
+                                        ),
+                                        schedule: r.schedule.clone(),
+                                    })
                                 })
-                            })
-                            .collect::<Result<Vec<_>, ControlReadError>>()?
+                                .collect::<Result<Vec<_>, ControlReadError>>()?
+                        }
                     } else {
                         vec![]
                     };
@@ -327,6 +364,9 @@ impl LocalControlAdapter {
                                 Some(o.offer_ref.as_str()) == binding.offer_ref.as_deref()
                                     && o.model_configuration_id == binding.model_configuration_id
                                     && o.currency == currency
+                                    && o.target_rule_id.as_ref().is_none_or(|id| {
+                                        catalog_rules.iter().any(|r| &r.rule_ref.id == id)
+                                    })
                             })
                             .cloned()
                             .collect()
@@ -354,16 +394,84 @@ impl LocalControlAdapter {
             catalog_refs,
             effective: self.price_snapshot.capture_current_price_snapshot(),
             evaluated_at: self.now_ms()?.div_euclid(1000),
-            catalog_model_ids: catalog
-                .model_data()
-                .models
-                .iter()
-                .map(|m| m.model_configuration_id.clone())
-                .collect(),
+            catalog_model_ids,
         })
     }
 }
+pub(super) struct PreparedCatalogPrices {
+    snapshot: PriceSnapshot,
+    revisions: RevisionSetV1,
+    previous_price: Option<PriceGenerationRefV1>,
+}
 impl LocalControlAdapter {
+    pub(super) fn prepare_catalog_prices(
+        &self,
+        catalog: &crate::model_feed::ReleaseCatalogSnapshot,
+    ) -> Result<PreparedCatalogPrices, String> {
+        let stores = self.stores_lock().map_err(|e| e.to_string())?;
+        let revisions = stores
+            .control()
+            .current_revisions(&WorkspaceId::default())
+            .map_err(|e| e.to_string())?;
+        let facts = self
+            .price_facts_for(&stores, None, catalog)
+            .map_err(|_| "prices.candidate.facts")?;
+        drop(stores);
+        let snapshot = PriceSnapshot::build(
+            facts.configuration_revision,
+            facts.catalog_refs,
+            facts.entries,
+        )
+        .map_err(|_| "prices.candidate.build")?;
+        Ok(PreparedCatalogPrices {
+            snapshot,
+            revisions,
+            previous_price: self
+                .price_snapshot
+                .capture_current_price_snapshot()
+                .generation_ref()
+                .cloned(),
+        })
+    }
+    pub(super) fn activate_catalog_prices(
+        &self,
+        catalog: &crate::model_feed::ReleaseCatalogSnapshot,
+        prepared: PreparedCatalogPrices,
+        commit: &mut dyn FnMut() -> Result<(), String>,
+    ) -> Result<(), String> {
+        let stores = self.stores_lock().map_err(|e| e.to_string())?;
+        if stores
+            .control()
+            .current_revisions(&WorkspaceId::default())
+            .map_err(|e| e.to_string())?
+            != prepared.revisions
+            || self
+                .price_snapshot
+                .capture_current_price_snapshot()
+                .generation_ref()
+                != prepared.previous_price.as_ref()
+        {
+            return Err("prices.candidate.dependencies_changed".into());
+        }
+        commit()?;
+        stores
+            .control()
+            .activate_model_feed_generation(
+                &WorkspaceId::default(),
+                catalog.generation,
+                catalog.accepted_sequence,
+            )
+            .map_err(|e| e.to_string())?;
+        if self
+            .price_snapshot
+            .install(prepared.snapshot, prepared.previous_price.as_ref())
+            .is_err()
+        {
+            self.price_snapshot.invalidate_current();
+            return Err("prices.candidate.restart_required".into());
+        }
+        Ok(())
+    }
     pub(super) fn rebuild_price_snapshot(&self) -> PortResult<PriceGenerationRefV1> {
         let facts = self
             .price_control_facts()
@@ -385,9 +493,7 @@ impl LocalControlAdapter {
         if stores
             .control()
             .current_revisions(&WorkspaceId::default())?
-            .dependencies
-            .get("feed.model_data")
-            != facts.revisions.dependencies.get("feed.model_data")
+            != facts.revisions
         {
             return Err(PortError::new(
                 PortErrorCode::Conflict,

@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:599207be26345edcb2ca69333ea50fb0580337aeff58ed0afe8f1fe5e0eca30e",
+  "descriptor_digest": "sha256:4c6ad98a122d461104603829802dcf3d90c09f469756cfb42eedac9a2615f507",
   "visibility": "release",
   "commands": [
     {
@@ -2382,7 +2382,7 @@
       "lifecycle": "released",
       "kind": "query",
       "request_schema": "hiroute.empty-request/v1",
-      "response_schema": "hiroute.model-feed-status/v1",
+      "response_schema": "hiroute.model-feed-status/v2",
       "effect": "none",
       "network": "local_control_only",
       "model_call": "never",
@@ -2431,7 +2431,7 @@
       "lifecycle": "released",
       "kind": "apply",
       "request_schema": "hiroute.empty-request/v1",
-      "response_schema": "hiroute.model-feed-status/v1",
+      "response_schema": "hiroute.model-feed-status/v2",
       "effect": "high_impact_write",
       "network": "local_control_only",
       "model_call": "never",
@@ -2481,7 +2481,7 @@
       "lifecycle": "released",
       "kind": "apply",
       "request_schema": "hiroute.model-feed-settings/v1",
-      "response_schema": "hiroute.model-feed-status/v1",
+      "response_schema": "hiroute.model-feed-status/v2",
       "effect": "high_impact_write",
       "network": "local_control_only",
       "model_call": "never",
@@ -2534,7 +2534,7 @@
       "lifecycle": "released",
       "kind": "query",
       "request_schema": "hiroute.empty-request/v1",
-      "response_schema": "hiroute.model-feed-removal-preview/v1",
+      "response_schema": "hiroute.model-feed-removal-preview/v2",
       "effect": "none",
       "network": "local_control_only",
       "model_call": "never",
@@ -2584,7 +2584,7 @@
       "lifecycle": "released",
       "kind": "apply",
       "request_schema": "hiroute.model-feed-remove/v1",
-      "response_schema": "hiroute.model-feed-status/v1",
+      "response_schema": "hiroute.model-feed-status/v2",
       "effect": "high_impact_write",
       "network": "local_control_only",
       "model_call": "never",
@@ -2635,7 +2635,7 @@
       "lifecycle": "released",
       "kind": "query",
       "request_schema": "hiroute.empty-request/v1",
-      "response_schema": "hiroute.model-availability/v1",
+      "response_schema": "hiroute.model-availability/v2",
       "effect": "none",
       "network": "local_control_only",
       "model_call": "never",
@@ -2664,6 +2664,202 @@
       },
       "negative": {
         "scenario_id": "p0.models.availability.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.defaults.get",
+      "path": [
+        "compute",
+        "defaults",
+        "get"
+      ],
+      "operation_id": "GetComputeDefaults",
+      "trace_ids": [
+        "CLI-073",
+        "APP-073"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Read saved intent, effective capabilities and the exact official default locator.",
+        "usage": "hiroute compute defaults get [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute defaults get --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.defaults.get"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.defaults.get.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.defaults.get.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.defaults.preview",
+      "path": [
+        "compute",
+        "defaults",
+        "preview"
+      ],
+      "operation_id": "PreviewComputeSaveV3",
+      "trace_ids": [
+        "CLI-072",
+        "APP-072"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "preview",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Preview a source save with explicit official-default or preserved-value intent.",
+        "usage": "hiroute compute defaults preview [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
+        "network_and_model_use": "No model use and no non-fixture network access.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute defaults preview --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.defaults.preview"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.defaults.preview.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.defaults.preview.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.metadata.list",
+      "path": [
+        "models",
+        "metadata",
+        "list"
+      ],
+      "operation_id": "ListModelMetadata",
+      "trace_ids": [
+        "CLI-070",
+        "APP-070"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Read a bounded page of complete official model metadata, including descriptive-only records.",
+        "usage": "hiroute models metadata list [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute models metadata list --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id models.metadata.list"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.models.metadata.list.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.models.metadata.list.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "models.metadata.get",
+      "path": [
+        "models",
+        "metadata",
+        "get"
+      ],
+      "operation_id": "GetModelMetadata",
+      "trace_ids": [
+        "CLI-071",
+        "APP-071"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Read an exact scoped metadata record from the selected snapshot.",
+        "usage": "hiroute models metadata get [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute models metadata get --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id models.metadata.get"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.models.metadata.get.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.models.metadata.get.negative",
         "polarity": "negative",
         "state": "executable"
       }

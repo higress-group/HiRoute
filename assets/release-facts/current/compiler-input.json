@@ -103761,5 +103761,646 @@
       "version": "hiroute-20260913/current-1"
     },
     "schema": "hiroute.release-model-data/v2"
+  },
+  "official_model_data": {
+    "data_revision": 1,
+    "pricing_facts": [
+      {
+        "pricing_key": "anthropic-platform/claude-haiku-5-5/claude-haiku-5-5",
+        "product_key": "anthropic-platform",
+        "model_key": "claude-haiku-5-5",
+        "upstream_model_id": "claude-haiku-5-5",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-global-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 100001,
+              "service_tier": "standard",
+              "inference_geo": "global",
+              "prompt_includes_cache_reads_and_writes": true
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "0.5",
+              "cache-read": "0.05",
+              "output": "2.5"
+            }
+          },
+          {
+            "schedule_key": "standard-global-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 100000,
+              "service_tier": "standard",
+              "inference_geo": "global",
+              "prompt_includes_cache_reads_and_writes": true
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "0.1",
+              "cache-read": "0.01",
+              "output": "0.5"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-181",
+          "source-184"
+        ]
+      },
+      {
+        "pricing_key": "anthropic-platform/claude-opus-5-5/claude-opus-5-5",
+        "product_key": "anthropic-platform",
+        "model_key": "claude-opus-5-5",
+        "upstream_model_id": "claude-opus-5-5",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "4",
+              "cache-read": "0.2",
+              "output": "20"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-129",
+          "source-130"
+        ]
+      },
+      {
+        "pricing_key": "anthropic-platform/claude-sonnet-5-5/claude-sonnet-5-5",
+        "product_key": "anthropic-platform",
+        "model_key": "claude-sonnet-5-5",
+        "upstream_model_id": "claude-sonnet-5-5",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-global",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "inference_geo": "global"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "2",
+              "cache-read": "0.1",
+              "output": "10"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-179",
+          "source-184"
+        ]
+      },
+      {
+        "pricing_key": "deepseek-platform/deepseek-v4-1-flash/deepseek-flash",
+        "product_key": "deepseek-platform",
+        "model_key": "deepseek-v4-1-flash",
+        "upstream_model_id": "deepseek-flash",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "off-peak",
+            "condition": {
+              "kind": "time-window-complement",
+              "complement_of": "peak",
+              "timezone": "UTC"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input-cache-hit": "0.003",
+              "input-cache-miss": "0.15",
+              "output": "0.6"
+            }
+          },
+          {
+            "schedule_key": "peak",
+            "condition": {
+              "kind": "time-window",
+              "timezone": "UTC",
+              "days": [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday"
+              ],
+              "windows": [
+                {
+                  "start": "01:00",
+                  "end": "04:00"
+                },
+                {
+                  "start": "06:00",
+                  "end": "10:00"
+                }
+              ]
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input-cache-hit": "0.006",
+              "input-cache-miss": "0.3",
+              "output": "1.2"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-010"
+        ]
+      },
+      {
+        "pricing_key": "deepseek-platform/deepseek-v4-pro-0813/deepseek-v4-pro",
+        "product_key": "deepseek-platform",
+        "model_key": "deepseek-v4-pro-0813",
+        "upstream_model_id": "deepseek-v4-pro",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "off-peak",
+            "condition": {
+              "kind": "time-window-complement",
+              "complement_of": "peak",
+              "timezone": "UTC"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input-cache-hit": "0.022",
+              "input-cache-miss": "0.66",
+              "output": "1.98"
+            }
+          },
+          {
+            "schedule_key": "peak",
+            "condition": {
+              "kind": "time-window",
+              "timezone": "UTC",
+              "days": [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday"
+              ],
+              "windows": [
+                {
+                  "start": "01:00",
+                  "end": "04:00"
+                },
+                {
+                  "start": "06:00",
+                  "end": "10:00"
+                }
+              ]
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input-cache-hit": "0.044",
+              "input-cache-miss": "1.32",
+              "output": "3.96"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-010"
+        ]
+      },
+      {
+        "pricing_key": "openai-platform-global/gpt-6-luna/gpt-6-luna",
+        "product_key": "openai-platform-global",
+        "model_key": "gpt-6-luna",
+        "upstream_model_id": "gpt-6-luna",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "0.2",
+              "cache-read": "0.02",
+              "cache-write": "0.25",
+              "output": "0.75"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "0.1",
+              "cache-read": "0.01",
+              "cache-write": "0.125",
+              "output": "0.5"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-127",
+          "source-128"
+        ]
+      },
+      {
+        "pricing_key": "openai-platform-global/gpt-6-sol/gpt-6-sol",
+        "product_key": "openai-platform-global",
+        "model_key": "gpt-6-sol",
+        "upstream_model_id": "gpt-6-sol",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "4",
+              "cache-read": "0.4",
+              "cache-write": "5",
+              "output": "15"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "2",
+              "cache-read": "0.2",
+              "cache-write": "2.5",
+              "output": "10"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-126",
+          "source-128"
+        ]
+      },
+      {
+        "pricing_key": "openai-platform-global/gpt-6.1-sol/gpt-6.1-sol",
+        "product_key": "openai-platform-global",
+        "model_key": "gpt-6.1-sol",
+        "upstream_model_id": "gpt-6.1-sol",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "4",
+              "cache-read": "0.2",
+              "cache-write": "5",
+              "output": "15"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "2",
+              "cache-read": "0.1",
+              "cache-write": "2.5",
+              "output": "10"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-175",
+          "source-176"
+        ]
+      }
+    ],
+    "connection_hints": [
+      {
+        "connection_option_id": "anthropic.platform.global.v1",
+        "provider_id": "anthropic",
+        "name": {
+          "zh": "Anthropic · API",
+          "en": "Anthropic · API"
+        },
+        "description": {
+          "zh": "按供应商账号与实际用量计费，请确认当前价格。",
+          "en": "Billed according to your provider account and usage. Check current pricing."
+        },
+        "documentation_url": "https://docs.anthropic.com/en/api/getting-started"
+      },
+      {
+        "connection_option_id": "bailian.coding-plan.cn.v1",
+        "provider_id": "bailian",
+        "name": {
+          "zh": "百炼 · Coding Plan",
+          "en": "Alibaba Cloud Model Studio · Coding Plan"
+        },
+        "description": {
+          "zh": "套餐权益与按量 API 分开计费，请使用对应套餐的凭据。",
+          "en": "Plan entitlements are separate from pay-as-you-go API billing. Use the matching plan credential."
+        },
+        "documentation_url": "https://help.aliyun.com/zh/model-studio/coding-plan"
+      },
+      {
+        "connection_option_id": "bailian.payg.cn.v1",
+        "provider_id": "bailian",
+        "name": {
+          "zh": "百炼 · 按量付费",
+          "en": "Alibaba Cloud Model Studio · Pay as you go"
+        },
+        "description": {
+          "zh": "按供应商账号与实际用量计费，请确认当前价格。",
+          "en": "Billed according to your provider account and usage. Check current pricing."
+        },
+        "documentation_url": "https://help.aliyun.com/en/model-studio/base-url"
+      },
+      {
+        "connection_option_id": "bailian.token-plan.cn.v1",
+        "provider_id": "bailian",
+        "name": {
+          "zh": "百炼 · Token Plan",
+          "en": "Alibaba Cloud Model Studio · Token Plan"
+        },
+        "description": {
+          "zh": "套餐权益与按量 API 分开计费，请使用对应套餐的凭据。",
+          "en": "Plan entitlements are separate from pay-as-you-go API billing. Use the matching plan credential."
+        },
+        "documentation_url": "https://help.aliyun.com/zh/model-studio/token-plan-overview"
+      },
+      {
+        "connection_option_id": "claude.subscription.global.v1",
+        "provider_id": "anthropic",
+        "name": {
+          "zh": "Anthropic · Claude Code 订阅",
+          "en": "Anthropic · Claude Code subscription"
+        },
+        "description": {
+          "zh": "复用本机 Claude Code 订阅登录；模型实际可用性由账号权限与调用结果决定。",
+          "en": "Use the local Claude Code subscription login. Availability depends on account permissions and actual requests."
+        },
+        "documentation_url": "https://support.claude.com/"
+      },
+      {
+        "connection_option_id": "codex.subscription.global.v1",
+        "provider_id": "openai",
+        "name": {
+          "zh": "OpenAI · Codex 订阅",
+          "en": "OpenAI · Codex subscription"
+        },
+        "description": {
+          "zh": "套餐权益与按量 API 分开计费，请使用对应套餐的凭据。",
+          "en": "Plan entitlements are separate from pay-as-you-go API billing. Use the matching plan credential."
+        },
+        "documentation_url": "https://developers.openai.com/codex/"
+      },
+      {
+        "connection_option_id": "deepseek.official.global.v1",
+        "provider_id": "deepseek",
+        "name": {
+          "zh": "DeepSeek · 开放平台",
+          "en": "DeepSeek · API"
+        },
+        "description": {
+          "zh": "按供应商账号与实际用量计费，请确认当前价格。",
+          "en": "Billed according to your provider account and usage. Check current pricing."
+        },
+        "documentation_url": "https://api-docs.deepseek.com/"
+      },
+      {
+        "connection_option_id": "google.gemini-api-paid.global.v1",
+        "provider_id": "google",
+        "name": {
+          "zh": "Gemini · 按量付费",
+          "en": "Gemini · Pay as you go"
+        },
+        "description": {
+          "zh": "按供应商账号与实际用量计费，请确认当前价格。",
+          "en": "Billed according to your provider account and usage. Check current pricing."
+        },
+        "documentation_url": "https://ai.google.dev/gemini-api/docs/openai"
+      },
+      {
+        "connection_option_id": "groq.free-plan.global.v1",
+        "provider_id": "groq",
+        "name": {
+          "zh": "Groq · 免费套餐",
+          "en": "Groq · Free Plan"
+        },
+        "description": {
+          "zh": "需要 API Key；仅所列模型有免费资料，额度和限流以官方账号说明为准，未收录条件待确认。",
+          "en": "API key required. Free conditions apply only to listed models. Consult account limits; unrecorded quotas remain unconfirmed."
+        },
+        "documentation_url": "https://console.groq.com/docs/rate-limits"
+      },
+      {
+        "connection_option_id": "kimi.code.cn.v1",
+        "provider_id": "kimi",
+        "name": {
+          "zh": "Kimi · Coding",
+          "en": "Kimi · Coding"
+        },
+        "description": {
+          "zh": "套餐权益与按量 API 分开计费，请使用对应套餐的凭据。",
+          "en": "Plan entitlements are separate from pay-as-you-go API billing. Use the matching plan credential."
+        },
+        "documentation_url": "https://www.kimi.com/code/docs/"
+      },
+      {
+        "connection_option_id": "kimi.open-platform.cn.v1",
+        "provider_id": "kimi",
+        "name": {
+          "zh": "Kimi · 开放平台",
+          "en": "Kimi · Open Platform"
+        },
+        "description": {
+          "zh": "按供应商账号与实际用量计费，请确认当前价格。",
+          "en": "Billed according to your provider account and usage. Check current pricing."
+        },
+        "documentation_url": "https://platform.moonshot.cn/docs/guide/start-using-kimi-api"
+      },
+      {
+        "connection_option_id": "mistral.free-experiment.global.v1",
+        "provider_id": "mistral",
+        "name": {
+          "zh": "Mistral · 免费试用",
+          "en": "Mistral · Free Experiment"
+        },
+        "description": {
+          "zh": "需要 API Key；仅所列模型有免费资料，额度和限流以官方账号说明为准，未收录条件待确认。",
+          "en": "API key required. Free conditions apply only to listed models. Consult account limits; unrecorded quotas remain unconfirmed."
+        },
+        "documentation_url": "https://docs.mistral.ai/getting-started/quickstarts/studio/activate-and-generate-api-key"
+      },
+      {
+        "connection_option_id": "modelscope.free.cn.v1",
+        "provider_id": "modelscope",
+        "name": {
+          "zh": "魔搭 · 免费模型",
+          "en": "ModelScope · Free models"
+        },
+        "description": {
+          "zh": "需要 API Key；仅所列模型有免费资料，额度和限流以官方账号说明为准，未收录条件待确认。",
+          "en": "API key required. Free conditions apply only to listed models. Consult account limits; unrecorded quotas remain unconfirmed."
+        },
+        "documentation_url": "https://www.modelscope.cn/docs/model-service/API-Inference/intro"
+      },
+      {
+        "connection_option_id": "openai.platform.global.v1",
+        "provider_id": "openai",
+        "name": {
+          "zh": "OpenAI · API",
+          "en": "OpenAI · API"
+        },
+        "description": {
+          "zh": "按供应商账号与实际用量计费，请确认当前价格。",
+          "en": "Billed according to your provider account and usage. Check current pricing."
+        },
+        "documentation_url": "https://platform.openai.com/docs/quickstart"
+      },
+      {
+        "connection_option_id": "openrouter.free.global.v1",
+        "provider_id": "openrouter",
+        "name": {
+          "zh": "OpenRouter · 免费模型",
+          "en": "OpenRouter · Free models"
+        },
+        "description": {
+          "zh": "需要 API Key；仅所列模型有免费资料，额度和限流以官方账号说明为准，未收录条件待确认。",
+          "en": "API key required. Free conditions apply only to listed models. Consult account limits; unrecorded quotas remain unconfirmed."
+        },
+        "documentation_url": "https://openrouter.ai/docs/faq"
+      },
+      {
+        "connection_option_id": "siliconflow.free.cn.v1",
+        "provider_id": "siliconflow",
+        "name": {
+          "zh": "硅基流动 · 免费模型",
+          "en": "SiliconFlow · Free models"
+        },
+        "description": {
+          "zh": "需要 API Key；仅所列模型有免费资料，额度和限流以官方账号说明为准，未收录条件待确认。",
+          "en": "API key required. Free conditions apply only to listed models. Consult account limits; unrecorded quotas remain unconfirmed."
+        },
+        "documentation_url": "https://docs.siliconflow.cn/docs/userguide/quickstart"
+      },
+      {
+        "connection_option_id": "zai.coding-plan.global.v1",
+        "provider_id": "zai",
+        "name": {
+          "zh": "Z.AI · Coding Plan",
+          "en": "Z.AI · Coding Plan"
+        },
+        "description": {
+          "zh": "编程套餐仅用于符合官方条款的开发工具，使用专属套餐 Key。",
+          "en": "Coding subscription for developer tools under provider terms; use its dedicated plan key."
+        },
+        "documentation_url": "https://docs.z.ai/devpack/quick-start"
+      },
+      {
+        "connection_option_id": "zai.general.global.v1",
+        "provider_id": "zai",
+        "name": {
+          "zh": "Z.AI · 通用 API",
+          "en": "Z.AI · General API"
+        },
+        "description": {
+          "zh": "国际通用 API，按账号与实际用量计费。",
+          "en": "International general API billed by account and usage."
+        },
+        "documentation_url": "https://docs.z.ai/guides/overview/quick-start"
+      },
+      {
+        "connection_option_id": "zhipu.coding-chat.cn.v1",
+        "provider_id": "zhipu",
+        "name": {
+          "zh": "智谱 · Coding Plan Chat（中国）",
+          "en": "Zhipu · Coding Plan Chat (China)"
+        },
+        "description": {
+          "zh": "套餐权益与按量 API 分开计费，请使用对应套餐的凭据。",
+          "en": "Plan entitlements are separate from pay-as-you-go API billing. Use the matching plan credential."
+        },
+        "documentation_url": "https://docs.bigmodel.cn/cn/coding-plan/quick-start"
+      },
+      {
+        "connection_option_id": "zhipu.coding-plan.cn.v1",
+        "provider_id": "zhipu",
+        "name": {
+          "zh": "智谱 · Coding Plan",
+          "en": "Zhipu · Coding Plan"
+        },
+        "description": {
+          "zh": "套餐权益与按量 API 分开计费，请使用对应套餐的凭据。",
+          "en": "Plan entitlements are separate from pay-as-you-go API billing. Use the matching plan credential."
+        },
+        "documentation_url": "https://docs.bigmodel.cn/cn/coding-plan/quick-start"
+      },
+      {
+        "connection_option_id": "zhipu.general.cn.v1",
+        "provider_id": "zhipu",
+        "name": {
+          "zh": "智谱 · 通用 API",
+          "en": "Zhipu · General API"
+        },
+        "description": {
+          "zh": "按供应商账号与实际用量计费，请确认当前价格。",
+          "en": "Billed according to your provider account and usage. Check current pricing."
+        },
+        "documentation_url": "https://docs.bigmodel.cn/cn/guide/develop/http/introduction"
+      }
+    ]
   }
 }

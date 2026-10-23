@@ -34,13 +34,14 @@ semantics, explicit focused/final run associations and the required agent feedba
 | Shared Worker API and domain harness/launch contracts consumed by Desktop | Preserve backend scope and add `desktop.compile`, even when no Desktop file changes. This bounded mapping does not make every shared-library change a native obligation. |
 | Diagnostics implementation/settings/filtering/writer and its tests | Diagnostics package tests and Clippy, plus Pilot launcher tests; no unrelated Worker/Gateway E2E or frontend build. Add the release-profile regression when changing the build default. |
 | Diagnostics event/record/identity/error contracts | Full short set by default; review cross-boundary consumers. |
-| Hosted backend workflow and execution adapters (`gateway-core.yml`, `ci-run.py`, `ci-shards.py`) | Full hosted matrix, because these files decide what backend validation actually runs; their unit tests alone do not prove the real Actions entry path. |
+| Hosted backend workflow, shared Linux setup and execution adapters (`gateway-core.yml`, `ci-setup/action.yml`, `ci-prerequisites.py`, `ci-run.py`, `ci-shards.py`) | Full hosted matrix, because these files decide what backend validation actually runs; their unit tests alone do not prove the real Actions entry path. |
 | `scripts/test-plan.py`, `scripts/test-test-plan.py`, hosted adapter tests, and the operator skill `.agents/skills/hiroute-integrate/SKILL.md` | Selection and shard-coverage regression tests; no Rust or frontend build when the execution adapters themselves are unchanged. |
 | HOME validation routing and local/SSH Rust runner tooling | Routing, runner and Pilot launcher Python regressions; no Rust/frontend build unless the change also affects product code. |
 | Pilot CPA manifest producer/consumer, reusable-build tests or selection rules | Default local Pilot checks use fake build/launch tools. In Actions (`GITHUB_ACTIONS=true`), affected paths and full plans additionally select the explicit `test-pilot-builds.py --real-consumer` command; its single real Rust case is required and cannot pass by skipping or selecting nothing. No full Desktop acceptance is added. |
 | Bounded manual local GC wrapper | Wrapper and shared local-runner Python regressions; deletion policy remains in the runner. No Rust/frontend build. |
 | Bounded Gateway runtime/protocol tests, routing fixtures, Responses request helper | Package Clippy, explicit target/consumer tests and coverage gates; runtime test changes also select the protocol matrix, and the Responses helper retains the coverage gate and indirect smoke consumer. Gateway runtime includes the known `serde_json/preserve_order` combination from #94. |
 | Real Worker test entries and native-context fixtures | Bounded package compilation plus separate required `product_checks`; ignored native cases are never counted as ordinary Cargo success. Shared native-context fixtures select both Codex/Claude and Qoder consumers. |
+| Installed native routing adapters and Gateway wire/history owners | Preserve ordinary package/Worker consumers and add explicit actual-client `native_checks`. DSH also requires its real Web/Cordis isolated LLM main/title path; ACP alone cannot establish that path. |
 | Qoder native integration, its Worker profile, and shared collaboration settings/Skill boundaries | Keep ordinary owner checks and require the Qoder main-Agent/Worker journey; model-specific Codex/Claude settings do not automatically select this gate or all older Worker journeys. |
 | Shared application/domain/API, Cargo manifests/lockfile, other unclassified scripts, shared E2E harness, assets/contracts, unknown paths | Conservative full proposal until impact is understood; do not equate an unclassified path with proven cross-product impact. |
 
@@ -139,15 +140,59 @@ consumers. Qoder-only fixtures and collaboration settings select the Qoder gate 
 adding the old Codex/Claude lifecycle/read journeys. Registered journey guides and files
 under `docs/` remain documentation-only; changing executable fixtures is different.
 
-`native_required` marks changes under `apps/desktop/src-tauri/` and the known shared
-Worker contracts consumed by that entry. `native_checks` supplies the separate
-`desktop.compile` command template through the configured Mac, enabling `desktop-pilot`
+`native_required` remains the Desktop compilation flag for changes under
+`apps/desktop/src-tauri/` and the known shared Worker contracts consumed by that
+entry. `native_checks` includes the separate `desktop.compile` command template
+through the configured Mac, enabling `desktop-pilot`
 (which includes `desktop-runtime`) to match the managed frontend/Pilot ACL configuration,
 and compiling all targets, including test consumers. Run it early after shared
 contracts integrate; [native compilation](validation-routing.md#native-consumer-compilation)
 explains setup and evidence reuse. These commands stay outside backend `commands`;
 hosted backend success does not execute them. A docs-only `--since` iteration does
 not remove the top-level final obligation.
+
+Gateway wire/history owners also select actual native Gateway obligations for
+Codex, Claude, Qoder, Pi, DSH, OpenCode and Hermes. Installed adapter changes select
+their native client and existing Worker consumers. Each native obligation names
+saved-route use, same-session followup, tools, auxiliary calls and independent
+Restore. DSH additionally names actual Web/Cordis isolated LLM main/title calls.
+The printed acceptance-command placeholder must be replaced with the affected
+native journey, retaining its real business oracles and exact candidate identity.
+An empty test selection, preparation, `--version`, an SDK fixture or ACP alone
+does not pass those obligations. Full backend mode and the integration view retain
+these checks; neither runs them or waives an unexecuted case.
+
+Use `scripts/native-agent-scope.py` to prepare a fresh root outside daily HOME for
+an authorized native command. Pass its absolute entry and exact read-only runtime
+dependencies with repeated `--read-only` arguments. Preparation creates independent
+HOME, native configuration, XDG, session, project, temporary and runtime directories
+without launching a process. `--execute` starts the entire driver and descendants
+under macOS file/signal containment, in an independent process session. It captures
+stdout/stderr privately before even driver imports or guard initialization. The
+driver still owns distinct ports, bounded process cleanup and its business verdicts.
+The entry inherits no provider credentials, proxy or client overrides. Populate
+only the owned native configuration through the journey's normal product path.
+Use `--expose node=/absolute/selected/node` or `--expose rg=/absolute/selected/rg`
+when a driver needs those installed tools on its private PATH; ambient PATH is
+not inherited, and each exposed entry adds only its exact read-only file.
+Keep daily configuration/session directories outside dependency exceptions.
+
+Daily guards retain their original observations and every later delta. On a host
+being used concurrently, an unexplained change to a preexisting file or process
+remains `changed_unattributed`; it cannot establish which process caused it. A new
+isolated execution also takes an explicitly separate immediate before/after file
+observation, without replacing or relabeling the original record. Admission still
+requires the immutable launcher, exact owned-process authority and actual kernel
+denials of out-of-scope writes, daily configuration reads and unrelated signals.
+Violating those enforced boundaries stops execution. Global process survival and
+file changes remain separately reported, never silently waived or marked unchanged.
+If an existing controller needs exact baseline process
+identity, `ExactProcessObserver` in that module reads only requested PIDs through
+macOS libproc on the trusted controller. It launches no process and grants no
+signal authority. Do not send `/bin/ps` back into a sandboxed worker. Missing or
+inaccessible identity leaves the guard red; it cannot identify an unknown writer.
+`Product.close` retains original output frames for both temporary and explicit
+roots, and cleanup/export failures cannot replace the original business failure.
 
 The mapping is intentionally bounded, not automatic dependency discovery. Review
 new or moved contract consumers and extend it where justified. Neither field is an
@@ -184,6 +229,8 @@ command descriptor digest, so updating only the CLI outputs leaves the product c
 Observation domain ports select the Product E2E `local_observation` target early to
 check the current boundary golden against the canonical port digests. Retained legacy
 observations keep their original digests and remain separate compatibility evidence.
+Gateway observation ports and their current Oracle/JSON schema consumers also select
+the exact producer-to-consumer pin regression early. Legacy sealed pins remain unchanged.
 
 For a full/group plan, early tests preserve the final Cargo package scope, adding the E2E
 owner if needed, and restrict execution with explicit `--test` targets. Focused runtime

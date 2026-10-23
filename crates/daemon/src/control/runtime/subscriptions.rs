@@ -835,7 +835,7 @@ impl LocalControlAdapter {
         if operation.state != OperationState::Succeeded {
             return;
         }
-        let Ok(change) = serde_json::from_value::<hiroute_application_api::ComputeManagementChangeV2>(
+        let Ok(change) = hiroute_application_api::saved_compute_change(
             operation.plan.spec().desired_state.clone(),
         ) else {
             return;

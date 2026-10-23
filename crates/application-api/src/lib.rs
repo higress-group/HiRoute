@@ -39,15 +39,19 @@ pub use classifier_diagnostic::*;
 pub use client_access::*;
 pub use command_schemas::{CommandSchemasV1, command_schemas};
 mod compute_control;
+mod compute_defaults;
 mod compute_key_masks;
 mod compute_management;
+pub use compute_defaults::*;
 mod compute_management_v3;
 mod compute_management_view;
 pub use compute_key_masks::*;
 mod generated;
 mod model_catalog;
 mod model_feed;
+mod model_metadata;
 pub use model_feed::*;
+pub use model_metadata::*;
 mod model_connections;
 mod observation_v2;
 pub use model_catalog::*;
@@ -271,7 +275,7 @@ mod protocol_tests {
     #[test]
     fn p0_registry_and_staging_invariants_remain_closed() {
         let commands = planned_commands();
-        assert_eq!(commands.len(), 105);
+        assert_eq!(commands.len(), 109);
         assert_eq!(
             commands
                 .iter()
@@ -319,7 +323,7 @@ mod protocol_tests {
             CommandLifecycle::Released
         );
         let release = release_manifest();
-        assert_eq!(release.commands.len(), 72);
+        assert_eq!(release.commands.len(), 76);
         assert!(release.commands.iter().all(|command| {
             command.lifecycle == CommandLifecycle::Released
                 && command.positive.state == CoverageState::Executable

@@ -7,6 +7,7 @@ import sys
 import json
 import subprocess
 import tempfile
+from copy import deepcopy
 
 sys.dont_write_bytecode = True
 
@@ -250,6 +251,46 @@ class SelectionTests(unittest.TestCase):
         witness = plan.worker_product_checks(['crates/daemon/tests/support/native_task_witness.py'])
         self.assertEqual({row['id'] for row in witness},{'qoder.delegation','dsh.delegation'})
 
+    def test_installed_routing_adapters_retain_worker_and_actual_native_obligations(self):
+        for harness in ('dsh', 'pi', 'opencode'):
+            for path in ('assets/agents/' + harness + '/hiroute-routing.mjs',
+                         'scripts/tests/' + harness + '-routing-adapter.test.mjs'):
+                with self.subTest(path=path):
+                    result = plan.select([path])
+                    self.assertEqual([c['id'] for c in result['product_checks']], [harness + '.delegation'])
+                    self.assertEqual([c['id'] for c in result['native_checks']], [harness + '.native-gateway'])
+                    self.assertNotIn(result['native_checks'][0]['command_template'], result['commands'])
+                    self.assertEqual(result['native_checks'][0]['missing_environment'], 'fail')
+                    if harness == 'dsh':
+                        self.assertIn('web-cordis-isolated-llm-main-and-title',
+                                      result['native_checks'][0]['required_cases'])
+
+    def test_gateway_wire_history_changes_keep_native_gates_in_full_and_integration_plans(self):
+        paths = ['crates/domain/src/observation/execution.rs',
+                 'crates/gateway/src/adapters/request/native.rs',
+                 'crates/gateway/src/agent_turn_history/boundary.rs',
+                 'assets/agents/dsh/hiroute-routing.mjs']
+        result = plan.select(paths)
+        self.assertEqual(result['mode'], 'full')
+        self.assertEqual([c['harnesses'][0] for c in result['native_checks']], list(plan.NATIVE_AGENT_HARNESSES))
+        self.assertEqual([c['id'] for c in result['product_checks']], ['dsh.delegation'])
+        original = deepcopy(result)
+        plan.integration_preflight(result)
+        self.assertEqual(result, original)
+        self.assertFalse(result['native_required'])  # Distinct from the Desktop compile flag.
+        for check in result['native_checks']:
+            self.assertIn('same-session-followup', check['required_cases'])
+            self.assertIn('independent-restore', check['required_cases'])
+        self.assertEqual(plan.select(['docs/test-selection.md'])['native_checks'], [])
+
+    def test_native_scope_tooling_has_bounded_offline_checks(self):
+        for path in plan.NATIVE_SCOPE_TOOLING:
+            result = plan.select([path])
+            self.assertFalse(result['rust'])
+            self.assertEqual(result['native_checks'], [])
+            self.assertEqual(result['product_checks'], [])
+            self.assertIn(['python3', 'scripts/test-native-agent-scope.py'], result['commands'])
+
     def test_worker_context_changes_require_explicit_real_harness_cases(self):
         for path in ('crates/daemon/src/delegation/profile/mod.rs',
                      'crates/daemon/src/delegation/executor/resume.rs',
@@ -369,6 +410,13 @@ class SelectionTests(unittest.TestCase):
                 self.assertIn('--workspace', result['commands'][2])
                 self.assertIn('hosted backend execution contract: ' + path, result['reasons'])
                 self.assertIn(['python3', 'scripts/test-ci-shards.py'], result['commands'])
+                self.assertIn(['python3', 'scripts/test-ci-setup.py'], result['commands'])
+
+    def test_hosted_prerequisite_test_alone_keeps_tooling_scope(self):
+        result = plan.select(['scripts/test-ci-setup.py'])
+        self.assertFalse(result['rust'])
+        self.assertFalse(result['frontend'])
+        self.assertIn(['python3', 'scripts/test-ci-setup.py'], result['commands'])
 
     def test_docs_do_not_build_rust(self):
         result = plan.select(["docs/testing.md", "README.md", "README.zh-CN.md", "AGENTS.md"])
@@ -734,6 +782,27 @@ class IntegrationPreflightTests(unittest.TestCase):
                 self.assertFalse(any('smoke_cli' in c for c in early['commands']))
         unrelated = plan.integration_preflight(plan.select(['crates/observation/src/store/mod.rs']))
         self.assertNotIn('local_observation', unrelated['targets'])
+
+    def test_gateway_observation_pins_check_the_current_producer_early(self):
+        target = 'p0::production::tests::current_oracle_pins_match_producer_and_json_schemas'
+        for path in [
+                'crates/gateway/src/observation/contracts.rs',
+                'crates/gateway/src/observation/schema.rs',
+                'tools/e2e-harness/src/p0/production/types.rs',
+                'e2e/schema/current-production-collector.schema.json',
+                'e2e/schema/current-gateway-result.schema.json']:
+            with self.subTest(path=path):
+                final = plan.select(['Cargo.lock', path])
+                original = json.dumps(final, sort_keys=True)
+                early = plan.integration_preflight(final)
+                command = next(c for c in early['commands'] if target in c)
+                self.assertIn('--lib', command)
+                self.assertIn('--workspace', command)
+                self.assertIn('--all-features', command)
+                self.assertEqual(command[-2:], ['--', '--exact'])
+                self.assertEqual(json.dumps(final, sort_keys=True), original)
+        unrelated = plan.integration_preflight(plan.select(['crates/gateway/src/content_ref.rs']))
+        self.assertFalse(any(target in c for c in unrelated['commands']))
 
     def test_command_descriptors_check_both_generated_contract_consumers_early(self):
         for path in ['crates/application-api/src/commands.rs',

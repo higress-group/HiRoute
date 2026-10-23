@@ -581,6 +581,28 @@ pub async fn dispatch(
             let value = model_reference_query(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
+        "list_model_metadata" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {
+                input: ListModelMetadataV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(list_model_metadata(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "get_model_metadata" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {
+                input: GetModelMetadataV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(get_model_metadata(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "model_feed_status" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -613,10 +635,13 @@ pub async fn dispatch(
         "model_feed_remove_preview" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
-            struct Arguments {}
-            let _: Arguments = serde_json::from_value(args)
+            struct Arguments {
+                #[serde(default)]
+                input: Option<ModelFeedRemovalQueryV2>,
+            }
+            let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
-            let value = model_feed_remove_preview(window, state).await?;
+            let value = model_feed_remove_preview(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "model_feed_remove_apply" => {
@@ -767,6 +792,32 @@ pub async fn dispatch(
                 input.input.accepted,
             )?;
             Ok(Value::Null)
+        }
+        "compute_defaults" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: hiroute_application_api::ComputeDefaultsQueryV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(compute_defaults(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_compute_save_v3" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                change: WebComputeManagementChangeV2,
+                default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(
+                preview_compute_save_v3(window, state, input.change, input.default_preferences)
+                    .await?,
+            )
+            .map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         _ => Err("COMMAND_UNKNOWN".into()),
     }

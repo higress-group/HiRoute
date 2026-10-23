@@ -191,7 +191,12 @@
   },
   {
     "name": "model_feed_remove_preview",
-    "args": [],
+    "args": [
+      {
+        "name": "input",
+        "type": "Option<hiroute_application_api::ModelFeedRemovalQueryV2>"
+      }
+    ],
     "result": "Result<ModelFeedRemovalPreviewV1, DesktopFailure>",
     "host_only": false
   },
@@ -867,5 +872,53 @@
     "args": [],
     "result": "Result<(), DesktopFailure>",
     "host_only": true
+  },
+  {
+    "name": "list_model_metadata",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::ListModelMetadataV1"
+      }
+    ],
+    "result": "Result<hiroute_application_api::ModelMetadataPageV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "get_model_metadata",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::GetModelMetadataV1"
+      }
+    ],
+    "result": "Result<hiroute_application_api::ModelMetadataDetailV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "compute_defaults",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::ComputeDefaultsQueryV1"
+      }
+    ],
+    "result": "Result<hiroute_application_api::ComputeDefaultsResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_compute_save_v3",
+    "args": [
+      {
+        "name": "change",
+        "type": "WebComputeManagementChangeV2"
+      },
+      {
+        "name": "default_preferences",
+        "type": "hiroute_domain::SourceDefaultPreferencesV1"
+      }
+    ],
+    "result": "Result<WebComputeSavePreviewV2, DesktopFailure>",
+    "host_only": false
   }
 ]

@@ -15,8 +15,7 @@ use hiroute_domain::{
 };
 use hiroute_integrations::{
     AgentDiscoveryOutcomeV1, ModelConnectionBaseKindV1, ModelConnectionProbeCancellationV1,
-    NativeCandidateFactBasisV1, NativeCandidateFactValueV1, NativeConnectionProvenanceInputV1,
-    NativeConnectionQualificationV1, NativeModelCapabilityDeclarationV1,
+    NativeConnectionProvenanceInputV1, NativeConnectionQualificationV1,
     NativeModelConnectionCredentialV1, NativeModelConnectionDraftV1, NativeModelDeclarationV1,
 };
 
@@ -372,22 +371,10 @@ impl LocalControlAdapter {
                 display_name: model.display_name.clone(),
                 catalog_configuration_id: Some(MODEL_CONFIGURATION_ID.into()),
                 membership: ComputeModelMembershipV2::Catalog,
-                capabilities: NativeModelCapabilityDeclarationV1 {
-                    tool: registered_fact(model.capabilities.tool),
-                    vision: registered_fact(model.capabilities.vision),
-                    streaming: registered_fact(model.capabilities.streaming),
-                    context_tokens: registered_fact(model.capabilities.context_tokens),
-                    max_output_tokens: registered_fact(model.capabilities.max_output_tokens),
-                    native_reasoning: registered_fact(reasoning.capability.clone()),
-                },
+                capabilities: super::registered::capability_declaration(
+                    &catalog, capability, model, reasoning,
+                ),
             }],
         })
-    }
-}
-
-fn registered_fact<T>(value: T) -> NativeCandidateFactValueV1<T> {
-    NativeCandidateFactValueV1 {
-        value: Some(value),
-        basis: NativeCandidateFactBasisV1::RegisteredCatalog,
     }
 }

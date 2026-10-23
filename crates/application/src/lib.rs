@@ -104,6 +104,8 @@ impl ApplicationService {
             | "ApplyModelFeedSettings"
             | "PreviewModelFeedRemoval"
             | "ApplyModelFeedRemoval"
+            | "ListModelMetadata"
+            | "GetModelMetadata"
             | "GetModelAvailability" => model_feed::dispatch(self, request),
             "ShowModel" => model_catalog::dispatch(self, request),
             "ListWorkPlans" => delegation::work_plans::dispatch(self, request),

@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:599207be26345edcb2ca69333ea50fb0580337aeff58ed0afe8f1fe5e0eca30e",
+  "descriptor_digest": "sha256:4c6ad98a122d461104603829802dcf3d90c09f469756cfb42eedac9a2615f507",
   "expected_red_reasons": [],
   "planned_commands": [
     "console.open",
@@ -84,6 +84,10 @@
     "models.feed.remove.preview",
     "models.feed.remove.apply",
     "models.availability",
+    "compute.defaults.get",
+    "compute.defaults.preview",
+    "models.metadata.list",
+    "models.metadata.get",
     "models.show",
     "models.free",
     "prices.effective",
@@ -174,6 +178,10 @@
     "models.feed.remove.preview",
     "models.feed.remove.apply",
     "models.availability",
+    "compute.defaults.get",
+    "compute.defaults.preview",
+    "models.metadata.list",
+    "models.metadata.get",
     "models.show",
     "prices.effective",
     "prices.override.preview",

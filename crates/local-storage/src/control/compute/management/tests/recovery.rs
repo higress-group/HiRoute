@@ -45,8 +45,10 @@ fn compute_delete_failure_after_secret_activation_rolls_back_all_stores_and_surv
         let restored;
         let restored_revisions;
         let operation_id;
+        let preferences;
         {
             let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            preferences = super::defaults::save_preserved_defaults(&stores);
             before = saved(&stores);
             let registry = TrustedComputeCandidateRegistry::new();
             let input = ProtectedInput;
@@ -130,6 +132,13 @@ fn compute_delete_failure_after_secret_activation_rolls_back_all_stores_and_surv
                 .unwrap();
             }
             assert_eq!(restored, expected);
+            assert_eq!(
+                stores
+                    .control()
+                    .source_default_preferences(&before.source_id)
+                    .unwrap(),
+                preferences
+            );
             if terminal_failure {
                 super::compensation_guards::assert_compensation_owner_and_receipt_guards(
                     &stores,
@@ -208,6 +217,13 @@ fn compute_delete_failure_after_secret_activation_rolls_back_all_stores_and_surv
             OperationState::RolledBack
         );
         assert_eq!(saved(&stores), restored);
+        assert_eq!(
+            stores
+                .control()
+                .source_default_preferences(&before.source_id)
+                .unwrap(),
+            preferences
+        );
         assert_credentials_restored(&stores, &restored);
         assert_eq!(
             stores
@@ -494,4 +510,120 @@ fn compute_delete_activated_before_terminal_journal_failure_completes_once_on_st
             .unwrap(),
         revisions
     );
+}
+
+#[test]
+fn model_defaults_activated_before_terminal_failure_complete_once_on_startup() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let source_id;
+    let operation_id;
+    let expected;
+    let revision;
+    {
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let before = saved(&stores);
+        source_id = before.source_id.clone();
+        let registry = TrustedComputeCandidateRegistry::new();
+        let input = ProtectedInput;
+        let planner =
+            ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+        expected = std::collections::BTreeMap::from([(
+            before.models[0].binding_id.clone(),
+            std::collections::BTreeMap::from([(
+                hiroute_domain::ModelDefaultFieldV1::Vision,
+                hiroute_domain::ModelDefaultPreferenceV1::PreserveSaved,
+            )]),
+        )]);
+        let preview = planner
+            .preview_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                change: edit(
+                    &stores,
+                    &before,
+                    ComputeManagementEditV1::Rename {
+                        display_name: before.display_name.clone(),
+                    },
+                    &[],
+                ),
+                default_preferences: expected.clone(),
+            })
+            .unwrap();
+        let runtime = TransactionRuntime::default();
+        let external = NoExternal;
+        let coordinator = TransactionCoordinator::new(
+            stores.control(),
+            stores.secrets(),
+            stores.runtime(),
+            &external,
+            &input,
+            &runtime,
+        );
+        coordinator.reconcile_startup_and_open().unwrap();
+        let prepared = planner
+            .prepare_apply(ComputeConnectionApplyRequestV1 {
+                spec: preview.result.spec,
+                accept_digest: preview.result.accept_digest,
+                expected_revisions: preview.result.expected_revisions,
+                idempotency_key: "interrupted-defaults".into(),
+            })
+            .unwrap();
+        operation_id = coordinator
+            .accept_prepared(
+                &WorkspaceId::default(),
+                &VerifiedPrincipal::for_local_control(),
+                prepared,
+            )
+            .unwrap()
+            .operation()
+            .operation_id
+            .clone();
+        stores.control().with_connection(|c| c.execute_batch("CREATE TRIGGER fail_defaults_terminal BEFORE UPDATE OF state ON operations WHEN NEW.state='succeeded' BEGIN SELECT RAISE(ABORT, 'fixture_terminal_failure'); END;").unwrap());
+        assert!(coordinator.run(&operation_id).is_err());
+        assert_eq!(
+            stores
+                .control()
+                .source_default_preferences(&source_id)
+                .unwrap(),
+            expected
+        );
+        revision = saved(&stores).revision;
+        assert_eq!(revision, before.revision + 1);
+        stores.control().with_connection(|c| {
+            c.execute_batch("DROP TRIGGER fail_defaults_terminal;")
+                .unwrap()
+        });
+    }
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let input = ProtectedInput;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    for _ in 0..2 {
+        coordinator.reconcile_startup_and_open().unwrap();
+        assert_eq!(
+            stores
+                .control()
+                .load_operation(&operation_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            OperationState::Succeeded
+        );
+        assert_eq!(saved(&stores).revision, revision);
+        assert_eq!(
+            stores
+                .control()
+                .source_default_preferences(&source_id)
+                .unwrap(),
+            expected
+        );
+    }
 }

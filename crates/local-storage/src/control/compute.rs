@@ -156,7 +156,7 @@ impl ControlStore {
         install_dependency_revision_in(
             &transaction,
             workspace,
-            "feed.sequence",
+            "feed.v2_sequence",
             accepted_sequence,
         )?;
         transaction

@@ -18,6 +18,23 @@ pub(super) fn restore_state(
         return Ok((state, Some(reason), false));
     }
     let checkpoint = checkpoint.unwrap();
+    match store.read_data_floor() {
+        Ok(Some(floor)) => match &mut state.data_floor {
+            Some(current) => {
+                if let Err(reason) = current.advance(&floor) {
+                    discard(&mut state, minimum_generation)?;
+                    return Ok((state, Some(reason), false));
+                }
+            }
+            None => state.data_floor = Some(floor),
+        },
+        Ok(None) => {}
+        Err(reason) => {
+            discard(&mut state, minimum_generation)?;
+            return Ok((state, Some(reason), false));
+        }
+    }
+
     if let Err(reason) = loaded {
         // A corrupt state could have accepted more than the control database activated.
         // Only the independently committed high-water record authorizes an explicit reset.

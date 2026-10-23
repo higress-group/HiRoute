@@ -271,3 +271,19 @@ to one convergence owner. Use the [test map](testing.md) to select evidence; nei
 file size nor test churn alone justifies another abstraction or a broad rewrite.
 
 Trial cost reads use the internal admitted `TrustCostScopeV1`, joining retained analysis stage identity to Plan/revision/category/group before calling the shared per-attempt comparison engine. [Evidence-gap scenarios](../../crates/observation/src/store/tests/trust_cost_tests.rs) distinguish partial history from conflicting membership, pending projections from unresolved turns, and conservative coverage from paired subtotals. They preserve the general value query and frozen settlement contracts. The [Desktop timeline](../../apps/desktop/src/features/RoutingTimeline.tsx) reconciles absorbed provisional rows using returned request membership; [focused presentation checks](../../apps/desktop/tests/v3/visual/new-model-trial-active.mjs) cover selection, actual focus transfer without stealing focus, and partial monetary subtotals. Live timeline transition presentation adapts the same endpoint/time membership and classifier used by retained analysis; cache mutexes cover only taking and returning snapshots, never SQL or projection. [Real reader exhaustion](../../crates/daemon/src/control/runtime_timeline_retry_tests.rs) and [CLI follow](../../crates/cli/tests/routing_timeline_follow.rs) verify the structured failure boundary and retry recovery.
+
+### Complete official data and saved default intent
+
+The [feed service](../../crates/daemon/src/model_feed) owns complete snapshot selection,
+semantic/publication floors and retrieval. [Admission](../../crates/integrations/src/model_feed)
+qualifies installed execution without discarding descriptive records. The shared
+[capability resolver](../../crates/integrations/src/compute/defaults.rs) joins saved intent
+and exact current endpoint/product facts; [price projection](../../crates/daemon/src/control/runtime/prices/official.rs)
+uses the same scope with the existing valuation engine. [Source preference persistence](../../crates/local-storage/src/control/compute/management/defaults.rs)
+shares source revisions, effect activation and compensation. The [metadata query owner](../../crates/daemon/src/control/runtime/model_feed/metadata.rs)
+and [removal preview](../../crates/daemon/src/control/runtime/model_feed/removal.rs) provide bounded
+complete reads. The [Desktop directory](../../apps/desktop/src/features/model-feed/ModelMetadataDirectory.tsx)
+keeps field inference visible and loads source/rule details against that same captured
+snapshot. The [feed producer](../../tools/release-facts/src/feed.rs) checks embedded
+semantic identity against HEAD and the supplied baseline before release gating.
+Hosts use product-session; published execution remains in its existing owner.

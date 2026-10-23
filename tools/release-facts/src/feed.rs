@@ -1,12 +1,8 @@
 //! Deterministic feed projection from current ReleaseFacts and recorded supported releases.
-use hiroute_domain::CanonicalDigest;
+use hiroute_domain::{CanonicalDigest, OfficialModelSnapshotV1};
 use hiroute_integrations::{TrustedReleaseCatalog, model_feed::*};
 use serde::Deserialize;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::Path,
-    process::Command,
-};
+use std::{path::Path, process::Command};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -55,24 +51,35 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
     let featured: Vec<FeaturedModel> =
         serde_json::from_slice(&read("assets/model-feed/featured.json")?)
             .map_err(|_| "invalid featured entries")?;
-    // Bootstrap still validates maintained editorial/publication inputs with the client schema.
-    FeedPayload {
-        schema: MODEL_FEED_SCHEMA.into(),
-        sequence: publication.sequence,
-        issued_at: publication.issued_at.clone(),
-        source_revision: "0".repeat(40),
-        records: vec![],
-        featured: featured.clone(),
-    }
-    .validate()
+    validate_publication_fields(
+        publication.sequence,
+        &publication.issued_at,
+        &"0".repeat(40),
+        &featured,
+    )
     .map_err(|e| e.to_string())?;
     let index: ReleaseIndex = serde_json::from_slice(&read("contracts/releases/index.v1.json")?)
         .map_err(|_| "invalid release index")?;
     if index.schema != "hiroute.release-contract-index/v1" {
         return Err("unsupported release index".into());
     }
-    let current =
-        load_catalog(|file| read(&format!("assets/release-facts/current/bundle/{file}")))?;
+    let current = load_catalog(
+        |file| read(&format!("assets/release-facts/current/bundle/{file}")),
+        true,
+    )?;
+    // Validate the complete candidate before release gating, including bootstrap builds.
+    let candidate = FeedPayload::from_snapshot(
+        current.official_snapshot(),
+        publication.sequence,
+        publication.issued_at.clone(),
+        "0".repeat(40),
+        featured.clone(),
+    );
+    candidate.validate().map_err(|e| e.to_string())?;
+    let candidate_bytes =
+        super::canonical_sorted_json_line(&candidate).map_err(|e| e.to_string())?;
+    parse_feed(&candidate_bytes).map_err(|e| e.to_string())?;
+    validate_embedded_history(root, &current.official_snapshot(), base)?;
     let mut clients = Vec::new();
     for release in index.releases {
         if release.channel != "stable" {
@@ -91,6 +98,21 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
         {
             return Err("invalid recorded release identity".into());
         }
+        let reader = git_bytes(
+            root,
+            &[
+                "show",
+                &format!(
+                    "{}:crates/integrations/src/model_feed/mod.rs",
+                    release.revision
+                ),
+            ],
+        );
+        if !reader
+            .is_ok_and(|bytes| String::from_utf8_lossy(&bytes).contains("hiroute.model-feed/v2"))
+        {
+            continue;
+        }
         let snapshot = read(&format!("contracts/releases/{}", release.file))?;
         if CanonicalDigest::of_bytes(&snapshot).as_str() != format!("sha256:{}", release.sha256) {
             return Err("release snapshot digest mismatch".into());
@@ -106,18 +128,21 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
         if resolved.trim() != release.revision {
             return Err(format!("recorded release tag moved: {}", release.tag));
         }
-        let catalog = load_catalog(|file| {
-            git_bytes(
-                root,
-                &[
-                    "show",
-                    &format!(
-                        "{}:assets/release-facts/current/bundle/{file}",
-                        release.revision
-                    ),
-                ],
-            )
-        })?;
+        let catalog = load_catalog(
+            |file| {
+                git_bytes(
+                    root,
+                    &[
+                        "show",
+                        &format!(
+                            "{}:assets/release-facts/current/bundle/{file}",
+                            release.revision
+                        ),
+                    ],
+                )
+            },
+            true,
+        )?;
         clients.push(SupportedFeedClient {
             version: version.to_string(),
             catalog,
@@ -208,7 +233,7 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
             }
         }
         let bytes = super::canonical_sorted_json_line(&payload).map_err(|e| e.to_string())?;
-        if bytes.len().div_ceil(3) * 4 + 1024 > MAX_MODEL_FEED_BYTES {
+        if bytes.len() > MAX_MODEL_FEED_BYTES {
             return Err("generated payload cannot fit the bounded envelope".into());
         }
         bytes
@@ -238,32 +263,99 @@ fn validate_transition(previous: &FeedPayload, next: &FeedPayload) -> Result<(),
     {
         return Err("changed publication requires a higher sequence".into());
     }
-    for record in &next.records {
-        if let Some(old) = previous
-            .records
+    validate_data_identity(
+        previous.data_revision,
+        &previous.data_digest,
+        next.data_revision,
+        &next.data_digest,
+    )?;
+    for entry in &next.featured {
+        if previous
+            .featured
             .iter()
-            .find(|r| r.kind() == record.kind() && r.id() == record.id())
-            && old.included_on() != record.included_on()
+            .find(|old| old.id == entry.id)
+            .is_some_and(|old| old.included_on != entry.included_on)
         {
-            return Err(format!(
-                "first inclusion date changed for {} {}",
-                record.kind(),
-                record.id()
-            ));
+            return Err("first inclusion date changed".into());
         }
+    }
+    Ok(())
+}
+
+fn validate_data_identity(
+    previous_revision: u64,
+    previous_digest: &CanonicalDigest,
+    revision: u64,
+    digest: &CanonicalDigest,
+) -> Result<(), String> {
+    if revision < previous_revision || (revision == previous_revision && digest != previous_digest)
+    {
+        return Err("changed semantic data requires a greater data revision".into());
+    }
+    Ok(())
+}
+
+fn validate_embedded_history(
+    root: &Path,
+    current: &OfficialModelSnapshotV1,
+    base: Option<&str>,
+) -> Result<(), String> {
+    const FILE: &str = "assets/release-facts/current/bundle/official-model-data.json";
+    let mut references = vec!["HEAD".to_owned()];
+    if let Some(base) = base {
+        references.push(
+            git(
+                root,
+                &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
+            )?
+            .trim()
+            .into(),
+        );
+    }
+    // Installed readers retain an embedded data floor even before the first website
+    // publication. Check both local regeneration and committed PR/push changes.
+    for reference in references {
+        if git(root, &["ls-tree", "--name-only", &reference, "--", FILE])?
+            .trim()
+            .is_empty()
+        {
+            continue;
+        }
+        let bytes = git_bytes(root, &["show", &format!("{reference}:{FILE}")])?;
+        let previous: OfficialModelSnapshotV1 =
+            serde_json::from_slice(&bytes).map_err(|_| "invalid previous embedded snapshot")?;
+        previous
+            .validate()
+            .map_err(|_| "invalid previous embedded snapshot")?;
+        validate_data_identity(
+            previous.data_revision,
+            &previous.data_digest,
+            current.data_revision,
+            &current.data_digest,
+        )?;
     }
     Ok(())
 }
 
 fn load_catalog(
     mut read: impl FnMut(&str) -> Result<Vec<u8>, String>,
+    require_complete: bool,
 ) -> Result<TrustedReleaseCatalog, String> {
-    TrustedReleaseCatalog::load_release_facts(
+    let catalog = TrustedReleaseCatalog::load_release_facts(
         &read("manifest.json")?,
         &read("connector-registry.json")?,
         &read("model-data.json")?,
     )
-    .map_err(|e| format!("invalid release catalog: {e}"))
+    .map_err(|e| format!("invalid release catalog: {e}"))?;
+    match read("official-model-data.json") {
+        Ok(bytes) => catalog
+            .with_embedded_official_data(
+                serde_json::from_slice(&bytes).map_err(|_| "invalid official model snapshot")?,
+            )
+            .map_err(|e| e.to_string()),
+        Err(error) if require_complete => Err(error),
+        Err(_) => Ok(catalog),
+    }
 }
 fn git_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let output = Command::new("git")
@@ -289,240 +381,23 @@ pub fn project(
     featured: Vec<FeaturedModel>,
     previous: Option<&FeedPayload>,
 ) -> Result<FeedPayload, String> {
-    let earliest = clients
-        .first()
-        .ok_or("no supported clients")?
-        .version
-        .clone();
-    let included = issued_at.get(..10).ok_or("invalid issue date")?;
-    let mut payload = FeedPayload {
-        schema: MODEL_FEED_SCHEMA.into(),
+    if clients.is_empty() {
+        return Err("no supported clients".into());
+    }
+    let payload = FeedPayload::from_snapshot(
+        current.official_snapshot(),
         sequence,
-        issued_at: issued_at.into(),
-        source_revision: source_revision.into(),
-        records: vec![],
+        issued_at.into(),
+        source_revision.into(),
         featured,
-    };
-    let date = |kind: &str, id: &str| {
-        previous
-            .and_then(|p| p.records.iter().find(|r| r.kind() == kind && r.id() == id))
-            .map_or(included, FeedRecord::included_on)
-            .to_owned()
-    };
-    let ids = current
-        .model_data()
-        .models
-        .iter()
-        .filter(|model| {
-            clients.iter().any(|client| {
-                client
-                    .catalog
-                    .model_data()
-                    .model(&model.model_configuration_id)
-                    .is_none()
-            })
-        })
-        .map(|model| model.model_configuration_id.as_str())
-        .collect::<BTreeSet<_>>();
-    for model in &current.model_data().models {
-        if !ids.contains(model.model_configuration_id.as_str()) {
-            continue;
-        }
-        let upstream = current
-            .model_data()
-            .model_endpoint_capabilities
-            .iter()
-            .filter(|cap| cap.model_configuration_id == model.model_configuration_id)
-            .map(|cap| cap.upstream_model_id.as_str())
-            .collect::<BTreeSet<_>>();
-        let canonical = current
-            .model_metadata()
-            .canonical_models
-            .iter()
-            .find(|canonical| {
-                canonical
-                    .upstream_ids
-                    .iter()
-                    .any(|id| upstream.contains(id.as_str()))
-            })
-            .ok_or_else(|| {
-                format!(
-                    "model has no canonical metadata: {}",
-                    model.model_configuration_id
-                )
-            })?;
-        payload.records.push(FeedRecord::Model {
-            min_client_version: earliest.clone(),
-            included_on: date("model", &model.model_configuration_id),
-            record: Box::new(FeedModel {
-                definition: model.clone(),
-                native_reasoning: current
-                    .native_reasoning()
-                    .iter()
-                    .find(|native| native.model_configuration_id == model.model_configuration_id)
-                    .cloned(),
-                canonical: canonical.clone(),
-            }),
-        });
-    }
-    for record in &current.model_data().model_endpoint_capabilities {
-        if ids.contains(record.model_configuration_id.as_str()) {
-            payload.records.push(FeedRecord::ModelEndpointCapability {
-                min_client_version: earliest.clone(),
-                included_on: date("model_endpoint_capability", &record.capability_id),
-                record: record.clone(),
-            });
-        }
-    }
-    for record in &current.model_data().offers {
-        if record.billing_class != hiroute_domain::BillingClass::Free
-            && record
-                .model_configuration_ids
-                .iter()
-                .any(|id| ids.contains(id.as_str()))
-        {
-            payload.records.push(FeedRecord::Offer {
-                min_client_version: earliest.clone(),
-                included_on: date("offer", &record.offer_id),
-                record: record.clone(),
-            });
-        }
-    }
-    for record in &current.model_data().price_rates {
-        if ids.contains(record.model_configuration_id.as_str())
-            && payload
-                .records
-                .iter()
-                .any(|r| r.kind() == "offer" && r.id() == record.offer_ref)
-        {
-            payload.records.push(FeedRecord::PriceRate {
-                min_client_version: earliest.clone(),
-                included_on: date("price_rate", &record.price_rate_id),
-                record: record.clone(),
-            });
-        }
-    }
-    // A model must have a legal capability + paid/subscription offer on at least one client.
-    // Registry/adapters are never filled in by the feed to force admission.
-    let mut executable_minimums: BTreeMap<String, String> = BTreeMap::new();
-    let mut minimums: BTreeMap<(String, String), String> = BTreeMap::new();
-    for client in clients {
-        let admission = admit(&client.catalog, &payload, &client.version)
-            .map_err(|e| format!("feed admission failed for {}: {e}", client.version))?;
-        let effective = client
-            .catalog
-            .with_feed(&admission)
-            .map_err(|e| e.to_string())?;
-        for id in &ids {
-            let executable = effective
-                .model_data()
-                .model_endpoint_capabilities
-                .iter()
-                .any(|cap| {
-                    cap.model_configuration_id == *id
-                        && effective.model_data().offers.iter().any(|offer| {
-                            offer.endpoint_profile_id == cap.endpoint_profile_id
-                                && offer.endpoint_profile_revision == cap.endpoint_profile_revision
-                                && offer.billing_class != hiroute_domain::BillingClass::Free
-                                && offer
-                                    .model_configuration_ids
-                                    .iter()
-                                    .any(|member| member.as_str() == *id)
-                        })
-                });
-            if executable && client.catalog.model_data().model(id).is_none() {
-                executable_minimums
-                    .entry((*id).to_owned())
-                    .or_insert_with(|| client.version.clone());
-            }
-        }
-        for record in &admission.records {
-            if record.outcome == RecordAdmission::Applied {
-                minimums
-                    .entry((record.kind.clone(), record.id.clone()))
-                    .or_insert_with(|| client.version.clone());
-            }
-        }
-    }
-    let eligible = executable_minimums.keys().cloned().collect::<BTreeSet<_>>();
-    for id in &ids {
-        if !eligible.contains(*id) {
-            println!("model feed: {id} waits for a compatible supported release");
-        }
-    }
-    for (id, minimum) in executable_minimums {
-        minimums.insert(("model".into(), id), minimum);
-    }
-    // Dependent rows advertise the same usable floor as their model/offer, even when
-    // their own scalar facts could be parsed by an earlier registry.
-    for record in &payload.records {
-        let key = (record.kind().to_owned(), record.id().to_owned());
-        let mut dependencies = Vec::new();
-        if let Some(id) = record.model_id() {
-            dependencies.push(("model".to_owned(), id.to_owned()));
-        }
-        if let FeedRecord::PriceRate { record, .. } = record {
-            dependencies.push(("offer".to_owned(), record.offer_ref.clone()));
-        }
-        let required = dependencies
-            .iter()
-            .filter_map(|key| minimums.get(key))
-            .filter_map(|v| semver::Version::parse(v).ok())
-            .max();
-        if let (Some(minimum), Some(required)) = (minimums.get_mut(&key), required)
-            && semver::Version::parse(minimum).map_err(|_| "invalid client minimum")? < required
-        {
-            *minimum = required.to_string();
-        }
-    }
-    payload.records.retain_mut(|record| {
-        let Some(minimum) = minimums.get(&(record.kind().into(), record.id().into())) else {
-            return false;
-        };
-        if record.model_id().is_some_and(|id| !eligible.contains(id)) {
-            return false;
-        }
-        match record {
-            FeedRecord::Model {
-                min_client_version, ..
-            }
-            | FeedRecord::ModelEndpointCapability {
-                min_client_version, ..
-            }
-            | FeedRecord::PriceRate {
-                min_client_version, ..
-            } => *min_client_version = minimum.clone(),
-            FeedRecord::Offer {
-                min_client_version,
-                record,
-                ..
-            } => {
-                *min_client_version = minimum.clone();
-                if !record
-                    .model_configuration_ids
-                    .iter()
-                    .any(|id| eligible.contains(id))
-                {
-                    return false;
-                }
-            }
-        }
-        true
-    });
-    payload
-        .records
-        .sort_by(|a, b| (a.kind(), a.id()).cmp(&(b.kind(), b.id())));
-    payload.featured.sort_by(|a, b| a.id.cmp(&b.id));
+    );
     payload.validate().map_err(|e| e.to_string())?;
+    if let Some(previous) = previous {
+        validate_transition(previous, &payload)?;
+    }
     for client in clients {
-        let admission =
-            admit(&client.catalog, &payload, &client.version).map_err(|e| e.to_string())?;
-        if admission.counts.unresolved > 0 {
-            return Err(format!(
-                "unresolved feed record at declared minimum for {}",
-                client.version
-            ));
-        }
+        // Unsupported external execution references remain descriptive, never omitted.
+        admit(&client.catalog, &payload, &client.version).map_err(|e| e.to_string())?;
     }
     Ok(payload)
 }

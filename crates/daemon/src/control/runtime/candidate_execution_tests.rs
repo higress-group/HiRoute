@@ -106,6 +106,7 @@ fn source_local_fact(
                 profile: "provider-default".into(),
             }),
         },
+        default_preferences: Default::default(),
         capability_evidence_digest: CanonicalDigest::of_bytes(b"manual-capability"),
         native_reasoning: NativeReasoningCapabilityV1::Fixed {
             profile: "provider-default".into(),
@@ -230,6 +231,7 @@ fn registered_runtime_fallback_preserves_exact_provider_endpoint_and_has_no_comm
             max_output_tokens: runtime_fact(8_192),
             native_reasoning: runtime_fact(reasoning.clone()),
         },
+        default_preferences: Default::default(),
         capability_evidence_digest: CanonicalDigest::of_bytes(b"runtime-fallback-capability"),
         native_reasoning: reasoning,
         credential: ComputeManagementCredentialCompilationV2::Native {
@@ -1472,3 +1474,6 @@ fn unknown_native_text_uses_execution_defaults_without_overwriting_unknown_facts
         second.model.model_configuration_id
     );
 }
+
+#[path = "candidate_execution_tests/model_defaults.rs"]
+mod model_defaults;

@@ -25,6 +25,11 @@ with no current runtime or product entry.
 
 ## Frozen configuration
 
+The [execution and association contract](../../issue-spec/specs/request-routing/spec.md#requirement-execution-facts-and-history-association-have-separate-authority)
+separates request-owned actual facts, bounded history projections, shared protocol
+meaning and native evidence. Use it when changing any of the owners below; a cache
+miss, unknown source or missing predecessor must not become a global routing switch.
+
 The [publication projection](../../crates/domain/src/publication/projection.rs)
 keeps branch/reasoning execution keys distinct from source binding identities.
 [Credential admission](../../crates/gateway/src/core_runtime/credentials.rs) and

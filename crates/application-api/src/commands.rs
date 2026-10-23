@@ -958,6 +958,42 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Show model origins, announcements and current local availability."
     ),
     command!(
+        "compute.defaults.get",
+        ["compute", "defaults", "get"],
+        "GetComputeDefaults",
+        ["CLI-073", "APP-073"],
+        Released,
+        Query,
+        "Read saved intent, effective capabilities and the exact official default locator."
+    ),
+    command!(
+        "compute.defaults.preview",
+        ["compute", "defaults", "preview"],
+        "PreviewComputeSaveV3",
+        ["CLI-072", "APP-072"],
+        Released,
+        Preview,
+        "Preview a source save with explicit official-default or preserved-value intent."
+    ),
+    command!(
+        "models.metadata.list",
+        ["models", "metadata", "list"],
+        "ListModelMetadata",
+        ["CLI-070", "APP-070"],
+        Released,
+        Query,
+        "Read a bounded page of complete official model metadata, including descriptive-only records."
+    ),
+    command!(
+        "models.metadata.get",
+        ["models", "metadata", "get"],
+        "GetModelMetadata",
+        ["CLI-071", "APP-071"],
+        Released,
+        Query,
+        "Read an exact scoped metadata record from the selected snapshot."
+    ),
+    command!(
         "models.show",
         ["models", "show"],
         "ShowModel",

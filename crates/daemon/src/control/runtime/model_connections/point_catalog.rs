@@ -151,25 +151,13 @@ pub(super) fn catalog_models(
                 display_name: model.display_name.clone(),
                 catalog_configuration_id: Some(model.model_configuration_id.clone()),
                 membership: ComputeModelMembershipV2::Catalog,
-                capabilities: NativeModelCapabilityDeclarationV1 {
-                    tool: registered(model.capabilities.tool),
-                    vision: registered(model.capabilities.vision),
-                    streaming: registered(model.capabilities.streaming),
-                    context_tokens: registered(model.capabilities.context_tokens),
-                    max_output_tokens: registered(model.capabilities.max_output_tokens),
-                    native_reasoning: registered(reasoning.capability.clone()),
-                },
+                capabilities: super::registered::capability_declaration(
+                    catalog, cap, model, reasoning,
+                ),
             })
         })
         .collect()
 }
-fn registered<T>(value: T) -> NativeCandidateFactValueV1<T> {
-    NativeCandidateFactValueV1 {
-        value: Some(value),
-        basis: NativeCandidateFactBasisV1::RegisteredCatalog,
-    }
-}
-
 pub(super) fn expand_models(
     catalog: &TrustedReleaseCatalog,
     sources: &[NativeApiSource],

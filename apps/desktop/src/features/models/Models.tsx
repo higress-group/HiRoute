@@ -1,3 +1,4 @@
+import { ModelDefaultsEditor } from '../model-feed/ModelDefaultsEditor';
 import { ModelOriginDetails } from '../model-feed/ModelOriginDetails';
 import { ModelFeedPanel } from '../model-feed/ModelFeedPanel';
 import { SecretTransportWarning } from '../../host/ConsoleUi';
@@ -385,6 +386,8 @@ export function Models(props: Props) {
           </div>
 
           {model?.catalog_configuration_id && <ModelOriginDetails modelId={model.catalog_configuration_id} language={props.language} />}
+
+          {model && <ModelDefaultsEditor source={source} bindingId={model.binding_id} language={props.language} mutable={props.mutable} onApply={props.onApply} onSaved={props.onRefresh} />}
 
           {status === 'available' && <p className="field-help">{text('接入就绪仅表示本地路由条件满足，不代表上游推理或工具调用已验证。', 'Connection ready means local routing conditions are met; upstream inference and tool calls are not verified by this status.')}</p>}
 

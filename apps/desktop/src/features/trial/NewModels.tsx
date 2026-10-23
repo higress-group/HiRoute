@@ -1,3 +1,4 @@
+import { readCurrentCatalog } from '../model-feed/catalog-read';
 import { useEffect, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import type { Plan } from '../../plan-editor';
@@ -18,7 +19,7 @@ export function NewModels({ language, active, plans, refreshVersion, onTry, onOp
   useEffect(() => {
     if (!active) return;
     let current = true;
-    void invoke<ModelAvailabilityResult>('model_availability').then(result => { if (current) { setData(result); setError(false); } }).catch(() => { if (current) setError(true); });
+    void readCurrentCatalog(() => invoke<ModelAvailabilityResult>('model_availability')).then(result => { if (current) { setData(result); setError(false); } }).catch(() => { if (current) setError(true); });
     return () => { current = false; };
   }, [active, refreshVersion, retry]);
   const users = new Map<string, Plan[]>();
@@ -38,6 +39,7 @@ export function NewModels({ language, active, plans, refreshVersion, onTry, onOp
   const fromFeed = announcements?.fromFeed ?? false;
   function state(model: AvailableModel) {
     const plansUsing = usedBy(model);
+    if (model.availability.kind === 'descriptive_only') return { tone: '', label: t('资料可查看，当前不可执行', 'Information only; unavailable for execution'), action: t('暂不可试用', 'Unavailable for trial'), primary: false, run: undefined };
     if (model.availability.kind === 'needs_newer_client') return { tone: 'warn', label: t(`需要 HiRoute ${model.availability.version}`, `Requires HiRoute ${model.availability.version}`), action: t('需要更新 HiRoute', 'Update HiRoute first'), primary: false, run: undefined };
     if (model.origin.kind === 'published') return { tone: '', label: t('仅在已发布路由中', 'Only in published routes'), action: t('不能用于新试用', 'Not available for new trials'), primary: false, run: undefined };
     if (plansUsing.length && onOpenPlan) return { tone: 'good', label: plansUsing.length > 1 ? t(`已在 ${plansUsing.length} 个路由中使用`, `Used in ${plansUsing.length} routes`) : t(`已在「${plansUsing[0].desired.display_name}」中使用`, `Used in “${plansUsing[0].desired.display_name}”`), action: t('查看模型表现', 'View model performance'), primary: false, run: () => onOpenPlan(plansUsing[0].agent_plan_id) };

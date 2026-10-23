@@ -869,7 +869,26 @@ impl AgentTurnHistoryStore {
             .inner
             .try_lock()
             .ok_or(AgentTurnHistoryError::Resource)?;
-        let entry = matching_entry_mut(&mut inner, ticket)?;
+        self.commit_decision_locked(&mut inner, ticket, decision)
+    }
+
+    /// Only called after downstream delivery has ended. This uses the same
+    /// bounded store lock as finalization, never a retry loop on the output path.
+    pub(crate) fn commit_decision_after_delivery(
+        &self,
+        ticket: &AgentTurnTicket,
+        decision: BranchDecisionV1,
+    ) -> Result<(), AgentTurnHistoryError> {
+        self.commit_decision_locked(&mut self.inner.lock(), ticket, decision)
+    }
+
+    fn commit_decision_locked(
+        &self,
+        inner: &mut StoreInner,
+        ticket: &AgentTurnTicket,
+        decision: BranchDecisionV1,
+    ) -> Result<(), AgentTurnHistoryError> {
+        let entry = matching_entry_mut(inner, ticket)?;
         if !ticket.new_turn || entry.active.decision.is_some() {
             return Err(AgentTurnHistoryError::Integrity);
         }
@@ -881,7 +900,7 @@ impl AgentTurnHistoryStore {
         if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
             return Err(AgentTurnHistoryError::Resource);
         }
-        let entry = matching_entry_mut(&mut inner, ticket)?;
+        let entry = matching_entry_mut(inner, ticket)?;
         let old = entry.accounted_bytes;
         entry.active.decision = Some(decision);
         entry.accounted_bytes = entry_bytes(&ticket.key, entry);

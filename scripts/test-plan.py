@@ -35,6 +35,7 @@ DIAGNOSTIC_CONTRACTS = (
     "crates/diagnostics/src/identity.rs", "crates/diagnostics/src/error.rs",
 )
 SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py"}
+NATIVE_SCOPE_TOOLING = {"scripts/native-agent-scope.py", "scripts/test-native-agent-scope.py"}
 PILOT_CONSUMER_INPUTS = SELECTION_TOOLING | {
     "scripts/pilot-builds.py", "scripts/test-pilot-builds.py",
     "apps/desktop/src-tauri/build.rs", "apps/desktop/src-tauri/src/development_cpa.rs",
@@ -103,6 +104,8 @@ RELEASE_CONTRACT_TOOLING = {"scripts/release-contracts.py", "scripts/test-releas
                           ".github/workflows/release.yml"}
 HOSTED_BACKEND_EXECUTION = {
     ".github/workflows/gateway-core.yml",
+    ".github/actions/ci-setup/action.yml",
+    "scripts/ci-prerequisites.py",
     "scripts/ci-run.py",
     "scripts/ci-shards.py",
 }
@@ -160,6 +163,49 @@ def desktop_compile_checks(paths):
         "evidence_limit": "Compile production and test consumers on the configured Mac; "
                           "does not execute tests or prove native product behavior.",
     }]
+
+
+# These wire/history owners feed actual native clients as well as protocol fixtures.
+# Full backend expansion cannot execute a client, and an ACP journey cannot prove
+# DSH's Web/Cordis isolated LLM service. Keep those obligations explicit.
+NATIVE_GATEWAY_PREFIXES = (
+    "crates/gateway/src/adapters/", "crates/gateway/src/model_ir/",
+    "crates/gateway/src/agent_turn_history/", "crates/gateway/src/context_hold/",
+    "crates/gateway/src/core_runtime/decision_history", "crates/gateway/src/runtime/driver",
+)
+NATIVE_GATEWAY_PATHS = {"crates/gateway/src/core_runtime.rs"}
+NATIVE_AGENT_HARNESSES = ("codex", "claude", "qoder", "pi", "dsh", "opencode", "hermes")
+NATIVE_ADAPTER_TESTS = {
+    "scripts/tests/" + name + "-routing-adapter.test.mjs": name
+    for name in ("pi", "dsh", "opencode")
+}
+
+
+def native_agent_checks(paths):
+    selected = {name: set() for name in NATIVE_AGENT_HARNESSES}
+    for path in paths:
+        if path.endswith(".md"):
+            continue
+        if path in NATIVE_GATEWAY_PATHS or path.startswith(NATIVE_GATEWAY_PREFIXES):
+            for triggers in selected.values():
+                triggers.add(path)
+        for harness in NATIVE_AGENT_HARNESSES:
+            if path.startswith("assets/agents/" + harness + "/") or NATIVE_ADAPTER_TESTS.get(path) == harness:
+                selected[harness].add(path)
+    return [{
+        "id": harness + ".native-gateway", "harnesses": [harness], "platform": "macos",
+        "trigger_paths": sorted(triggers), "guide": "docs/test-selection.md#explicit-native-agent-product-gates",
+        "command_template": ["python3", "scripts/native-agent-scope.py", "--harness", harness,
+                             "--root", "<fresh-independent-root>", "--read-only", "<installed-runtime>",
+                             "--execute", "--", "<native-acceptance-command>"],
+        "required_cases": ["saved-route-native-request", "same-session-followup",
+                           "tool-continuation", "auxiliary-call", "independent-restore"] +
+                          (["web-cordis-isolated-llm-main-and-title"] if harness == "dsh" else []),
+        "missing_environment": "fail",
+        "evidence_limit": "Actual installed client through the candidate Gateway, with independent "
+                          "HOME/config/session/project/ports and OS file/signal containment. "
+                          "Preparation, --version, fixtures and ACP alone do not prove these cases.",
+    } for harness, triggers in selected.items() if triggers]
 
 
 # One registration per explicit product entry. The ordinary commands only compile ignored
@@ -363,8 +409,14 @@ def worker_product_checks(paths):
             selected.add("opencode_delegation")
         elif path.startswith(DSH_PRODUCT_PREFIXES):
             selected.add("dsh_delegation")
+        elif path.startswith("assets/agents/dsh/") or NATIVE_ADAPTER_TESTS.get(path) == "dsh":
+            selected.add("dsh_delegation")
         elif path.startswith(PI_PRODUCT_PREFIXES):
             selected.add("pi_delegation")
+        elif path.startswith("assets/agents/pi/") or NATIVE_ADAPTER_TESTS.get(path) == "pi":
+            selected.add("pi_delegation")
+        elif path.startswith("assets/agents/opencode/") or NATIVE_ADAPTER_TESTS.get(path) == "opencode":
+            selected.add("opencode_delegation")
         elif path.startswith(ADDITIONAL_MODEL_PREFIXES):
             selected.update(("qoder_delegation", "pi_delegation", "dsh_delegation", "opencode_delegation"))
         elif path in QODER_PRODUCT_PATHS or path.startswith(QODER_PRODUCT_PREFIXES):
@@ -386,7 +438,8 @@ def select(paths, full=False):
     groups = set()
     frontend = full
     native_checks = desktop_compile_checks(paths)
-    native = bool(native_checks)
+    native = bool(native_checks)  # native_required is the established Desktop compilation flag.
+    native_checks.extend(native_agent_checks(paths))
     reasons = []
     selection_tooling = False
     worker_fixture_tooling = False
@@ -416,10 +469,12 @@ def select(paths, full=False):
         if path in WORKER_FIXTURE_TOOLING:
             worker_fixture_tooling = True
             continue
+        if path in NATIVE_SCOPE_TOOLING:
+            continue
         if path in RELEASE_CONTRACT_TOOLING or path.startswith("contracts/releases/"):
             release_contract_tooling = True
             continue
-        if path in SELECTION_TOOLING or path == INTEGRATION_SKILL:
+        if path in SELECTION_TOOLING or path in (INTEGRATION_SKILL, "scripts/test-ci-setup.py"):
             selection_tooling = True
         elif path == "apps/website/data/releases.json":
             # The native upgrade reader embeds this catalog in its contract test.
@@ -543,6 +598,10 @@ def select(paths, full=False):
     commands.extend(agent_commands)
     if selection_tooling:
         commands.append(["python3", "scripts/test-test-plan.py"])
+    if full or "scripts/test-ci-setup.py" in paths:
+        commands.append(["python3", "scripts/test-ci-setup.py"])
+    if full or NATIVE_SCOPE_TOOLING.intersection(paths):
+        commands.append(["python3", "scripts/test-native-agent-scope.py"])
     if full or windows_validation_tooling:
         commands.append(["python3", "scripts/test-windows-ci-report.py"])
         commands.append(["python3", "scripts/test-windows-native-artifacts.py"])
@@ -641,6 +700,20 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
             commands.append([*context, *(["--no-fail-fast"] if collect_failures else []),
                              *[arg for target in behavior for arg in ("--test", target)],
                              "--", "--test-threads=1"])
+    if any(path.startswith("crates/gateway/src/observation/") or path in {
+            "tools/e2e-harness/src/p0/production/types.rs",
+            "e2e/schema/current-production-collector.schema.json",
+            "e2e/schema/current-gateway-result.schema.json"}
+           for path in plan["paths"]):
+        target = "p0::production::tests::current_oracle_pins_match_producer_and_json_schemas"
+        targets.add("current_gateway_observation")
+        reasons.append("current Gateway observation ports: verify producer and Oracle schema pins early")
+        broad = next((c for c in context_plan["commands"] if c[:2] == ["cargo", "test"]
+                      and "--test" not in c and "--lib" not in c), None)
+        context = broad[:] if broad else ["cargo", "test", "--locked", "--all-features"]
+        if "--workspace" not in context and "hiroute-e2e" not in context:
+            context.extend(["-p", "hiroute-e2e"])
+        commands.append([*context, "--lib", target, "--", "--exact"])
     if any(path.startswith("crates/domain/src/observation/") or path in {
             "tools/product-e2e/tests/local_observation.rs",
             "e2e/product/golden/observation/local-observation-boundary.v2.json"}
