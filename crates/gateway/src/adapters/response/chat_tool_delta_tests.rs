@@ -31,12 +31,13 @@ fn projector() -> NativeResponseProjector {
 }
 
 fn chunk(call: Value, finish_reason: Value) -> Vec<u8> {
-    format!(
-        "data: {}\n\n",
-        json!({"id":"response-fixture","object":"chat.completion.chunk","model":"physical",
-            "choices":[{"index":0,"delta":{"tool_calls":[call]},"finish_reason":finish_reason}]})
-    )
-    .into_bytes()
+    let finished = !finish_reason.is_null();
+    let mut value = json!({"id":"response-fixture","object":"chat.completion.chunk","model":"physical",
+        "choices":[{"index":0,"delta":{"tool_calls":[call]},"finish_reason":finish_reason}]});
+    if finished {
+        value["usage"] = json!({"prompt_tokens":4,"completion_tokens":2,"total_tokens":6});
+    }
+    format!("data: {}\n\n", value).into_bytes()
 }
 
 fn opening() -> Vec<u8> {
