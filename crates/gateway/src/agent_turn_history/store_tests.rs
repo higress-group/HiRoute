@@ -27,6 +27,9 @@ mod reasoning_boundary;
 #[path = "boundary/messages_tests.rs"]
 mod messages_boundary;
 
+#[path = "boundary/projection_tests.rs"]
+mod projection_boundary;
+
 #[path = "accepted_output_tests.rs"]
 mod accepted_output;
 

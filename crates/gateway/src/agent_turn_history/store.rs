@@ -65,7 +65,7 @@ struct SessionEntry {
     history_partial: bool,
     capture_gap_epoch: u64,
     checkpoint: TranscriptCheckpoint,
-    response_boundary: Option<[u8; 32]>,
+    response_boundary: Option<super::boundary::BoundaryEvidence>,
     branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
@@ -125,6 +125,7 @@ struct ActiveTurn {
     request_ids: Vec<String>,
     request_ids_clipped: bool,
     source_unverified: bool,
+    association_unverified: bool,
     opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     agent_turn_id: String,
     native_turn: Option<[u8; 32]>,
@@ -401,6 +402,7 @@ impl AgentTurnHistoryStore {
                 request_ids: Vec::new(),
                 request_ids_clipped: false,
                 source_unverified: analyzed.user_origin_unverified,
+                association_unverified: false,
                 opening_cause: match decision_inputs.history_continuity {
                     crate::context_hold::HistoryContinuity::Shortened => {
                         hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened
@@ -482,6 +484,7 @@ impl AgentTurnHistoryStore {
                 request_token,
                 agent_turn_id: turn_id,
                 new_turn: true,
+                allow_affinity: true,
             };
             return Ok(AgentTurnBegin::NewTurn {
                 ticket,
@@ -627,6 +630,7 @@ impl AgentTurnHistoryStore {
                     request_token,
                     agent_turn_id: entry.active.agent_turn_id.clone(),
                     new_turn: false,
+                    allow_affinity: true,
                 };
                 let old_bytes = entry.accounted_bytes;
                 entry.accounted_bytes = entry_bytes(&key, entry);
@@ -743,6 +747,7 @@ impl AgentTurnHistoryStore {
                 request_ids: Vec::new(),
                 request_ids_clipped: false,
                 source_unverified: analyzed.user_origin_unverified,
+                association_unverified: false,
                 opening_cause,
                 agent_turn_id: turn_id.clone(),
                 native_turn: decision_inputs.native_turn,
@@ -773,6 +778,7 @@ impl AgentTurnHistoryStore {
                 request_token,
                 agent_turn_id: turn_id,
                 new_turn: true,
+                allow_affinity: true,
             };
             let old_bytes = entry.accounted_bytes;
             entry.accounted_bytes = entry_bytes(&key, entry);
@@ -999,7 +1005,7 @@ impl AgentTurnHistoryStore {
             entry.active.completed_requests += 1;
             entry.active.executions.extend(executions);
             entry.response_boundary = (!entry.active.capture_partial)
-                .then(|| entry.active.boundary.digest())
+                .then(|| entry.active.boundary.evidence())
                 .flatten();
             let completed = if let Some(next_segment_id) = next_segment_id {
                 Some(close_active(entry, next_segment_id, unix_ms())?)

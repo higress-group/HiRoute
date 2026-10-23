@@ -28,6 +28,7 @@ pub(super) struct BranchAdmission {
     pub(super) key: AgentTurnHistoryKey,
     pub(super) scope: AgentTurnHistoryKey,
     pub(super) relation: HistoryRelation,
+    projected: bool,
     pub(super) inputs: TurnDecisionInputs,
     seed: VecDeque<ClosedTurn>,
     segment: Option<SegmentState>,
@@ -63,7 +64,7 @@ impl AgentTurnHistoryStore {
         analyzed.boundaries = positions
             .iter()
             .filter_map(|position| {
-                super::super::boundary::incoming_boundary(
+                super::super::boundary::incoming_evidence(
                     request,
                     *position,
                     replay,
@@ -72,12 +73,12 @@ impl AgentTurnHistoryStore {
                 .map(|digest| (*position, digest))
             })
             .collect();
-        analyzed.anchors = crate::context_hold::observed_history_with_replay(
+        analyzed.anchors = crate::context_hold::branch_anchors(
             request,
             &self.instance_nonce,
             Some(replay),
-        )
-        .and_then(|history| history.branch_anchors(&positions));
+            &positions,
+        );
         Ok(analyzed)
     }
 
@@ -91,17 +92,25 @@ impl AgentTurnHistoryStore {
         let mut candidates = inner
             .scope_entries(scope)
             .map(|(key, entry)| {
-                let prefix = analyzed.anchors.as_ref().is_some_and(|anchors| {
+                let input_prefix = analyzed.anchors.as_ref().is_some_and(|anchors| {
                     entry.checkpoint.digest.is_some_and(|digest| {
                         anchors
                             .prefixes
                             .contains(&(entry.checkpoint.message_count, digest))
                     })
-                }) && entry.response_boundary.is_some_and(|digest| {
-                    analyzed
-                        .boundaries
-                        .contains(&(entry.checkpoint.message_count, digest))
                 });
+                let response = input_prefix
+                    .then(|| {
+                        let accepted = entry.response_boundary?;
+                        let incoming = analyzed
+                            .boundaries
+                            .iter()
+                            .find(|(position, _)| *position == entry.checkpoint.message_count)?
+                            .1;
+                        accepted.matches(incoming)
+                    })
+                    .flatten();
+                let prefix = response.is_some();
                 let turn =
                     inputs.native_turn.is_some() && inputs.native_turn == entry.active.native_turn;
                 let cursor = analyzed.branch_cursor != (None, None)
@@ -116,6 +125,7 @@ impl AgentTurnHistoryStore {
                         || entry.referenced_segment.is_some()
                         || (!entry.active.finalized && !entry.active.executions.is_empty()),
                     entry.admission_sequence,
+                    response == Some(true),
                 )
             })
             .collect::<Vec<_>>();
@@ -155,11 +165,11 @@ impl AgentTurnHistoryStore {
         let exact = selected.is_some_and(|c| c.1);
         let ambiguous = selected.is_some_and(|first| {
             first.1
-                && candidates
-                    .iter()
-                    .skip(1)
-                    .any(|c| c.1 && c.2 == first.2 && c.3 == first.3 && c.4 == first.4)
+                && candidates.iter().skip(1).any(|c| {
+                    c.1 && c.2 == first.2 && (first.7 || c.7 || c.3 == first.3 && c.4 == first.4)
+                })
         });
+        let projected = selected.is_some_and(|c| c.7) && !ambiguous;
         let selected_entry = selected.and_then(|c| inner.entries.get(&c.0));
         // Old internal callers without measured anchors retain their explicit
         // continuity contract. Production always supplies measured evidence.
@@ -189,6 +199,8 @@ impl AgentTurnHistoryStore {
         }
         let relation = if ambiguous {
             HistoryRelation::AmbiguousPrefix
+        } else if projected {
+            HistoryRelation::Contextual
         } else if exact || legacy_exact {
             HistoryRelation::ExactPrefix
         } else if selected_entry.is_some() {
@@ -256,6 +268,7 @@ impl AgentTurnHistoryStore {
             key,
             scope: scope.clone(),
             relation,
+            projected,
             inputs,
             seed,
             segment,
@@ -295,6 +308,27 @@ impl AgentTurnHistoryStore {
             .ok_or(AgentTurnHistoryError::Resource)?;
         entry.scope = selection.scope.clone();
         entry.branch_relation = selection.relation;
+        entry.active.association_unverified |= selection.projected;
+        let ticket = match begin {
+            AgentTurnBegin::NewTurn {
+                ticket, history, ..
+            } => {
+                if selection.projected
+                    && let Some(membership) = history
+                        .assessment_target
+                        .as_mut()
+                        .and_then(|target| target.history_membership.as_mut())
+                {
+                    membership.relation = HistoryRelation::Contextual.into();
+                    membership.association_unverified = true;
+                }
+                ticket
+            }
+            AgentTurnBegin::Continuation { ticket, .. } => ticket,
+        };
+        // A visible projection is enough for actual-stage capture, never for
+        // provider affinity or provider-state cleanup authorization.
+        ticket.allow_affinity = !selection.projected;
         if !selection.forked || selection.seed.is_empty() {
             return Ok(());
         }

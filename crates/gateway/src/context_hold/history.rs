@@ -37,27 +37,38 @@ pub(crate) struct HistoryDigests {
     pub(crate) latest_user_index: Option<usize>,
 }
 
+/// Scan once for the bounded set of captured branch boundaries. Keep no
+/// transcript-sized index, and never use text similarity as parentage.
+pub(crate) fn branch_anchors(
+    request: &ModelRequestIRV1,
+    key: &[u8; 32],
+    replay: Option<&ReplayStore>,
+    positions: &[usize],
+) -> Option<super::HistoryAnchors> {
+    let mut encoder = Encoder::new(key, b"history-branch/v3", replay)?;
+    // Request-local instructions and tool setup invalidate provider affinity,
+    // not a witnessed predecessor in the actual conversation.
+    encoder.items(request.messages.len())?;
+    let mut prefixes = Vec::with_capacity(positions.len().min(32));
+    if positions.len() > 32 {
+        return None;
+    }
+    for (index, message) in request.messages.iter().enumerate() {
+        encoder.history_item(request, index, message, false)?;
+        if positions.contains(&(index + 1)) {
+            prefixes.push((index + 1, encoder.snapshot()?));
+        }
+    }
+    Some(super::HistoryAnchors {
+        complete: encoder.finish()?,
+        prefixes,
+    })
+}
+
 impl<'a> HistoryEvidence<'a> {
-    /// Scan once for the bounded set of captured branch boundaries. Keep no
-    /// transcript-sized index, and never use text similarity as parentage.
+    #[cfg(test)]
     pub(crate) fn branch_anchors(&self, positions: &[usize]) -> Option<super::HistoryAnchors> {
-        let mut encoder = Encoder::new(self.key, b"history-branch/v2", self.replay)?;
-        encoder.bytes(&self.instruction_digest);
-        encoder.items(self.request.messages.len())?;
-        let mut prefixes = Vec::with_capacity(positions.len().min(32));
-        if positions.len() > 32 {
-            return None;
-        }
-        for (index, message) in self.request.messages.iter().enumerate() {
-            encoder.history_item(self.request, index, message, false)?;
-            if positions.contains(&(index + 1)) {
-                prefixes.push((index + 1, encoder.snapshot()?));
-            }
-        }
-        Some(super::HistoryAnchors {
-            complete: encoder.finish()?,
-            prefixes,
-        })
+        branch_anchors(self.request, self.key, self.replay, positions)
     }
 
     /// Borrow a verified routing-only view without changing strict execution evidence.

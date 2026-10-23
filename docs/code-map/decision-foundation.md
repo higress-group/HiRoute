@@ -101,6 +101,11 @@ invalidate that route, and each request still reauthorizes.
 derives execution scope from request authority independently of ContextHold.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+Request-local model setup remains in strict ContextHold, outside execution-prefix
+identity. A unique visible response projection can retain actual stage capture
+when plaintext reasoning is omitted, with sticky association uncertainty and no
+affinity hint; [projection regressions](../../crates/gateway/src/agent_turn_history/boundary/projection_tests.rs)
+cover competing branches, old-prefix changes and frozen membership.
 Optional content comparisons use the shared [fingerprint budget](../../crates/gateway/src/context_hold/fingerprint.rs)
 before Replay reads and JSON key sorting; exhausting it loses evidence, not routing.
 Matching input text alone never deduplicates requests or proves a predecessor.
