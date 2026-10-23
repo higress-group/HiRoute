@@ -36,6 +36,9 @@ mod coverage_boundary;
 #[path = "boundary/json_reference_tests.rs"]
 mod json_reference_boundary;
 
+#[path = "boundary/json_reference_budget_tests.rs"]
+mod json_reference_budget_boundary;
+
 #[path = "accepted_output_tests.rs"]
 mod accepted_output;
 
