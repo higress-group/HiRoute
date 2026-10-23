@@ -24,6 +24,8 @@ mod native_passthrough_tests;
 mod native_reasoning_tests;
 #[cfg(test)]
 mod service_tier_tests;
+#[cfg(test)]
+mod moderation_metadata_tests;
 
 #[cfg(test)]
 mod size_tests;
