@@ -395,3 +395,16 @@ fn preceding_stage_requires_exact_plan_connection_and_actual_category() {
         }
     }
 }
+
+#[test]
+fn explicit_null_is_not_absence_for_category_or_reason() {
+    for body in [
+        br#"{"category":null,"group":"regular"}"#.as_slice(),
+        br#"{"group":"regular","reason":null}"#,
+    ] {
+        assert_eq!(
+            parse_classifier_response(body, &definition(), None),
+            Err(CallFailure::InvalidOutput)
+        );
+    }
+}

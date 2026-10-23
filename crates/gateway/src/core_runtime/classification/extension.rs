@@ -97,14 +97,19 @@ fn preceding_stage(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Output {
-    #[serde(default)]
-    category: Option<String>,
+    #[serde(default, deserialize_with = "present_field")]
+    category: Option<Box<RawValue>>,
     #[serde(default)]
     group: Option<Box<RawValue>>,
-    #[serde(default)]
-    reason: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present_field")]
+    reason: Option<Box<RawValue>>,
+    #[serde(default, deserialize_with = "present_field")]
     assessment: Option<Box<RawValue>>,
+}
+fn present_field<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Box<RawValue>>, D::Error> {
+    Box::<RawValue>::deserialize(deserializer).map(Some)
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -119,8 +124,12 @@ pub(super) fn parse_response(
     target_category: Option<&str>,
 ) -> Result<ClassifierResponse, CallFailure> {
     let output: Output = serde_json::from_slice(body).map_err(|_| CallFailure::InvalidOutput)?;
-    if output
+    let reason = output
         .reason
+        .map(|raw| serde_json::from_str::<String>(raw.get()))
+        .transpose()
+        .map_err(|_| CallFailure::InvalidOutput)?;
+    if reason
         .as_ref()
         .is_some_and(|reason| reason.is_empty() || reason.chars().count() > 1024)
     {
@@ -135,6 +144,8 @@ pub(super) fn parse_response(
         }
         DecisionDefinitionV1::Categorical { options, .. } => {
             let category = output.category.ok_or(CallFailure::InvalidOutput)?;
+            let category: String =
+                serde_json::from_str(category.get()).map_err(|_| CallFailure::InvalidOutput)?;
             let option = options
                 .iter()
                 .find(|option| option.id == category)
@@ -174,7 +185,7 @@ pub(super) fn parse_response(
         applicability: None,
         native_shape_complete: false,
         extension_group: group,
-        extension_reason: output.reason,
+        extension_reason: reason,
         extension_decision: true,
     })
 }
