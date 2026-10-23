@@ -937,7 +937,11 @@ impl ProductionGatewayRuntime {
                 }
             };
             request_observation.record_plan_stage(plan_started.elapsed());
-            request_observation.record_planner(&planner_input, &planner_output);
+            request_observation.record_planner(
+                &planner_input,
+                &planner_output,
+                identity.native_auxiliary(),
+            );
             // The planner establishes the trusted Plan identity used by every execution fact.
             if let Some(assessment) = &assessment {
                 request_observation.branch_assessment_recorded(assessment);

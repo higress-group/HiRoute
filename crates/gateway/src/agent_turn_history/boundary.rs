@@ -25,6 +25,7 @@ enum Block {
     Text {
         hash: Sha256,
         nonempty: bool,
+        reasoning: bool,
     },
     Tool {
         logical_id: String,
@@ -55,52 +56,21 @@ impl BoundaryCapture {
             return;
         }
         match event {
-            ModelEvent::TextDelta { index, text } => {
-                if self.budget.bytes(text.len()).is_none() {
-                    self.invalidate();
-                    return;
-                }
-                match self.blocks.entry(*index).or_insert_with(|| Block::Text {
-                    hash: Sha256::new(),
-                    nonempty: false,
-                }) {
-                    Block::Text { hash, nonempty } => {
-                        hash.update(text.as_bytes());
-                        *nonempty |= !text.is_empty();
-                    }
-                    _ => self.unavailable = true,
-                }
-            }
+            ModelEvent::TextDelta { index, text } => self.text(*index, text, false, false),
+            ModelEvent::ReasoningDelta { index, text } => self.text(*index, text, true, false),
             ModelEvent::TextFinished {
                 index,
                 text,
                 annotations,
                 ..
             } => {
-                if self.budget.bytes(text.len()).is_none() {
-                    self.invalidate();
-                    return;
-                }
                 if !annotations.is_empty() {
                     self.unavailable = true;
                 }
-                if text.is_empty()
-                    && matches!(
-                        self.blocks.get(index),
-                        Some(Block::Text { nonempty: true, .. })
-                    )
-                {
-                    // An empty terminal cannot erase a previously accepted
-                    // nonempty delta and establish a tool-only boundary.
-                    self.unavailable = true;
-                }
-                self.blocks.insert(
-                    *index,
-                    Block::Text {
-                        hash: Sha256::new_with_prefix(text.as_bytes()),
-                        nonempty: !text.is_empty(),
-                    },
-                );
+                self.text(*index, text, false, true);
+            }
+            ModelEvent::ReasoningFinished { index, text, .. } => {
+                self.text(*index, text, true, true)
             }
             ModelEvent::ToolCallStarted {
                 index, logical_id, ..
@@ -140,9 +110,7 @@ impl BoundaryCapture {
                     self.unavailable = true;
                 }
             }
-            ModelEvent::ReasoningDelta { .. }
-            | ModelEvent::ReasoningFinished { .. }
-            | ModelEvent::RefusalDelta { .. }
+            ModelEvent::RefusalDelta { .. }
             | ModelEvent::RefusalFinished { .. }
             | ModelEvent::ProviderState { .. }
             | ModelEvent::WebSearch { .. }
@@ -158,6 +126,36 @@ impl BoundaryCapture {
         }
     }
 
+    fn text(&mut self, index: u32, text: &str, reasoning: bool, finished: bool) {
+        if self.budget.bytes(text.len()).is_none() {
+            self.invalidate();
+            return;
+        }
+        let block = self.blocks.entry(index).or_insert_with(|| Block::Text {
+            hash: Sha256::new(),
+            nonempty: false,
+            reasoning,
+        });
+        match block {
+            Block::Text {
+                hash,
+                nonempty,
+                reasoning: original,
+            } if *original == reasoning => {
+                if finished {
+                    // A terminal cannot erase accepted nonempty deltas.
+                    self.unavailable |= *nonempty && text.is_empty();
+                    *hash = Sha256::new_with_prefix(text.as_bytes());
+                    *nonempty = !text.is_empty();
+                } else {
+                    hash.update(text.as_bytes());
+                    *nonempty |= !text.is_empty();
+                }
+            }
+            _ => self.unavailable = true,
+        }
+    }
+
     pub(super) fn digest(&self) -> Option<[u8; 32]> {
         if self.unavailable || self.blocks.is_empty() {
             return None;
@@ -169,8 +167,16 @@ impl BoundaryCapture {
                 Block::Text {
                     nonempty: false, ..
                 } => continue,
-                Block::Text { hash: text, .. } => {
-                    hash.update(b"text");
+                Block::Text {
+                    hash: text,
+                    reasoning,
+                    ..
+                } => {
+                    hash.update(if *reasoning {
+                        b"reasoning".as_slice()
+                    } else {
+                        b"text"
+                    });
                     hash.update(text.clone().finalize());
                 }
                 Block::Tool { digest, .. } => {
@@ -197,9 +203,36 @@ pub(super) fn incoming_boundary(
         if message.role != MessageRole::Assistant {
             break;
         }
+        if let Some(history) = request.responses_reasoning_history.get(&index) {
+            // Compare the bounded accepted plaintext summary. Provider state,
+            // extra native fields and non-summary content remain unsupported.
+            if message.name.is_some() || !message.content.is_empty()
+                || history.encrypted_content != crate::server::core_runtime::model_ir::ResponsesReasoningEncryptedContentV1::Absent
+                || history.native_fields.keys().any(|key| key != "summary") {
+                return None;
+            }
+            let summary = history.native_fields.get("summary")?.as_array()?;
+            budget.items(summary.len())?;
+            if summary.len() > 1 {
+                return None;
+            }
+            if let Some(part) = summary.first() {
+                let part = part.as_object()?;
+                if part.len() != 2 || part.get("type")?.as_str()? != "summary_text" {
+                    return None;
+                }
+                let text = part.get("text")?.as_str()?;
+                let digest = text_digest(text, Some(replay), budget)?;
+                if !text.is_empty() && !text.content_ref().is_some_and(|r| r.byte_len() == 0) {
+                    hash.update(b"reasoning");
+                    hash.update(digest);
+                    content = true;
+                }
+            }
+            continue;
+        }
         if message.name.is_some()
             || message.content.is_empty()
-            || request.responses_reasoning_history.contains_key(&index)
             || request.responses_search_history.contains_key(&index)
             || request.responses_annotations.contains_key(&index)
         {

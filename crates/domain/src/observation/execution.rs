@@ -31,7 +31,7 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:3cb9b100385c1f05a92097c2f28eb5c47d61ca495d32d41a8528b7227c81a465";
+    "sha256:57592f8645e74ed2c13a968d8b782bde1819f5f1aa8729b2b5fefa9f5f8d20e6";
 
 /// Exact bounded membership of an immutable captured stage revision. Source
 /// uncertainty and association uncertainty do not mean execution is missing.
@@ -564,6 +564,10 @@ pub enum RouteDecisionOutcomeCodeV1 {
 #[serde(deny_unknown_fields)]
 pub struct RouteDecisionFactV1 {
     pub planner_version: String,
+    /// An explicitly recognized native maintenance call, never a user turn.
+    /// Old records omit this field and remain unclassified.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub native_auxiliary: bool,
     pub plan_id: Option<AgentPlanId>,
     pub route: crate::ModelRequestRouteV2,
     pub input_digest: CanonicalDigest,

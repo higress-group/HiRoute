@@ -46,6 +46,106 @@ fn begin_window(fixture: &Fixture, items: Value, selected: &[usize]) -> Decision
 }
 
 #[test]
+fn native_reasoning_replay_keeps_new_input_and_tool_steps_in_their_actual_turns() {
+    use model_ir::ResponseItemStatus;
+    let fixture = Fixture::new();
+    let mut items = vec![json!({"role":"user","content":"first task"})];
+    let mut a = begin_window(&fixture, json!(items), &[0]);
+    let a_id = a.guard.as_ref().unwrap().ticket().agent_turn_id.clone();
+    fixture.finish(
+        &mut a,
+        &[
+            ModelStreamEventV1::new(
+                0,
+                ModelEvent::ReasoningFinished {
+                    index: 0,
+                    text: String::new(),
+                    status: ResponseItemStatus::Completed,
+                },
+            ),
+            ModelStreamEventV1::new(
+                1,
+                ModelEvent::TextFinished {
+                    index: 1,
+                    text: "READY".into(),
+                    annotations: vec![],
+                    status: ResponseItemStatus::Completed,
+                },
+            ),
+        ],
+        true,
+    );
+    drop(a);
+    items.extend([
+        json!({"type":"reasoning","id":"rs_0","summary":[{"type":"summary_text","text":""}]}),
+        json!({"role":"assistant","content":"READY"}),
+        json!({"role":"user","content":"read the file"}),
+    ]);
+    let mut b = begin_window(&fixture, json!(items), &[1]);
+    assert!(b.correlated.is_none(), "a new input must be judged again");
+    let target = b.history.assessment_target.as_ref().unwrap();
+    assert_eq!(target.through_turn_id, a_id);
+    assert!(!target.target_partial);
+    assert!(
+        !target
+            .history_membership
+            .as_ref()
+            .unwrap()
+            .association_unverified
+    );
+    let b_id = b.guard.as_ref().unwrap().ticket().agent_turn_id.clone();
+    let mut call = tool_event();
+    call.sequence = 1;
+    if let ModelEvent::ToolCallStarted { index, .. } = &mut call.event {
+        *index = 1;
+    }
+    fixture.finish(
+        &mut b,
+        &[
+            ModelStreamEventV1::new(
+                0,
+                ModelEvent::ReasoningFinished {
+                    index: 0,
+                    text: "Read before answering.".into(),
+                    status: ResponseItemStatus::Completed,
+                },
+            ),
+            call,
+            ModelStreamEventV1::new(
+                2,
+                ModelEvent::ToolCallFinished {
+                    index: 1,
+                    logical_id: "tool-1".into(),
+                    status: ResponseItemStatus::Completed,
+                    tool_kind: ToolKindV1::Function,
+                    namespace: None,
+                    name: "read".into(),
+                    arguments: json!({}),
+                },
+            ),
+        ],
+        false,
+    );
+    drop(b);
+    items.extend([
+        json!({"type":"reasoning","id":"rs_0","summary":[{"type":"summary_text","text":"Read before answering."}]}),
+        json!({"role":"assistant","content":""}),
+        json!({"type":"function_call","call_id":"tool-1","name":"read","arguments":"{}"}),
+        json!({"type":"function_call_output","call_id":"tool-1","output":"actual file"}),
+    ]);
+    let continued = begin_window(&fixture, json!(items), &[1]);
+    assert!(!continued.guard.as_ref().unwrap().ticket().new_turn);
+    assert_eq!(
+        continued.guard.as_ref().unwrap().ticket().agent_turn_id,
+        b_id
+    );
+    assert!(
+        continued.correlated.is_some(),
+        "tool continuation inherits the executed group"
+    );
+}
+
+#[test]
 fn current_window_retains_completed_a_for_b_but_fences_a_real_intervening_gap() {
     for multipart in [false, true] {
         for missed in [false, true] {

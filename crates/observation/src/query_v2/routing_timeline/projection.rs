@@ -88,7 +88,18 @@ pub(super) fn project(
 ) -> Result<Vec<Arc<Projected>>, ObservationV2Error> {
     let old: BTreeMap<_, _> = old.iter().map(|t| (t.view.turn_id.as_str(), t)).collect();
     let mut next_bases = BTreeMap::new();
-    let mut ordered: Vec<_> = requests.values().collect();
+    // Keep maintenance request receipts and accounting intact, but do not
+    // manufacture pending user turns for known title/compaction calls. Missing
+    // historical purpose evidence never licenses hiding a request.
+    let mut ordered: Vec<_> = requests
+        .values()
+        .filter(|request| {
+            !request
+                .decision
+                .as_ref()
+                .is_some_and(|d| d.native_auxiliary)
+        })
+        .collect();
     ordered.sort_by_key(|r| (r.first_fact, &r.view.request_id));
     let positions: BTreeMap<_, _> = ordered
         .iter()
