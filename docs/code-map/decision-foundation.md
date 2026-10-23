@@ -83,6 +83,10 @@ interrupted/unknown turns stay in the continuous background suffix; execution
 status and target-score eligibility are separate. The shared immutable
 [native category v1 template](../../crates/domain/src/routing/fixtures/native_category_v1.json)
 feeds native compilation; transport consumes the frozen decision.
+The [core termination boundary](../../crates/gateway-core/src/runtime/driver/error.rs)
+preserves typed cancellation before and after attempt creation. Product completion
+keeps cancellation, accepted executions and captured history separate; a complete
+capture is not proof that an interrupted stage completed.
 Freeze records default/custom assessment intent for every scope before hashing. Legacy native wording
 has [its own current definition](../../crates/domain/src/routing/legacy_category.rs), independent of the C fixture. C applicability
 only gates an otherwise eligible low-score protection opportunity. Invalid or
