@@ -24,6 +24,9 @@ mod opening_cause;
 #[path = "boundary/reasoning_tests.rs"]
 mod reasoning_boundary;
 
+#[path = "boundary/encrypted_tests.rs"]
+mod encrypted_boundary;
+
 #[path = "boundary/messages_tests.rs"]
 mod messages_boundary;
 
@@ -47,6 +50,9 @@ mod capture_gap;
 
 #[path = "concurrent_requests_tests.rs"]
 mod concurrent_requests;
+
+#[path = "stage_closure_tests.rs"]
+mod stage_closure;
 
 struct TestRoot(PathBuf);
 
