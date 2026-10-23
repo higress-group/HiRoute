@@ -95,11 +95,19 @@ fn strict_eof_comment_tail_need_drain_preserves_one_charged_owner() {
         assert_eq!(framer.pending_bytes(), tail.len());
         let retained = budget.snapshot().unwrap();
         assert!(retained.role_live[MemoryRole::SseFrame as usize] >= tail.len());
-        assert_eq!(
-            framer.resume(&mut visitor, &mut sink).unwrap(),
-            SseFeedOutcome::NeedDrain { consumed_bytes: 0 }
-        );
-        assert_eq!(budget.snapshot().unwrap().live, retained.live);
+        let complexity = framer.complexity();
+        for _ in 0..3 {
+            assert_eq!(
+                framer.resume(&mut visitor, &mut sink).unwrap(),
+                SseFeedOutcome::NeedDrain { consumed_bytes: 0 }
+            );
+            assert_eq!(framer.pending_bytes(), tail.len());
+            assert_eq!(framer.complexity(), complexity);
+            let retry = budget.snapshot().unwrap();
+            assert_eq!(retry.live, retained.live);
+            assert_eq!(retry.peak, retained.peak);
+            assert_eq!(retry.rejected, retained.rejected);
+        }
         visitor.classify_one();
         assert_eq!(
             framer.resume(&mut visitor, &mut sink).unwrap(),

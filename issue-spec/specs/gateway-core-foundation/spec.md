@@ -160,6 +160,13 @@ are callback-lifetime views: they cannot enter context, cross await, or be given
 an asynchronous writer. Explicit OwnedSseEvent/encoded units charge retained capacity.
 Unmodified native forwarding may transfer Bytes with output/transport accounting.
 
+At EOF, a remaining tail containing only comments and empty lines has no pending
+event description, even without a final line ending or empty separator. The shared
+framer MUST deliver its exact bytes through the normal bounded visitor path,
+including NeedDrain retries with the same charged owner. This rule supplies no
+model-terminal evidence. Strict EOF MUST still reject unfinished data, event, id,
+retry and unknown control fields, including fields mixed with comments.
+
 Complete single-buffer events should avoid payload copies. Fragmented input retains
 only needed tail; small retained views must copy out or charge the full backing.
 Byte-by-byte input remains O(n). max_event_bytes applies to complete single-chunk

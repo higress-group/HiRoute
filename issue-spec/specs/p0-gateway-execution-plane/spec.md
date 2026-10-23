@@ -398,7 +398,9 @@ all values, unknown members and array order. Pure SSE comments carry no model
 description: they preserve a proven terminal outcome, including failed/incomplete
 outcomes, before or after the optional final marker. A partially received tail may
 delay delivery until framed, but cannot invalidate completion merely by spanning
-transport chunks. An actual conflicting or unknown control description remains
+transport chunks. A pure comment tail at EOF preserves those results even without
+a final line ending or empty separator; comments alone never prove model completion.
+An actual conflicting or unknown control description remains
 distinct from a comment and cannot certify success.
 
 One optional `[DONE]` after the unique Responses terminal is retained and authenticated

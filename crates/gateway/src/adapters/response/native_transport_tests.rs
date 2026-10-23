@@ -266,6 +266,34 @@ fn responses_eof_comment_keeps_failed_incomplete_and_done_evidence() {
 }
 
 #[test]
+fn native_transport_eof_comments_do_not_create_model_terminal() {
+    for protocol in [
+        IngressProtocol::Responses,
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::Messages,
+    ] {
+        for wire in [
+            b": keepalive".as_slice(),
+            b": keepalive\n",
+            b"\r\n: keepalive\r",
+        ] {
+            for fragment in [1, wire.len()] {
+                let mut decoder = projector(protocol);
+                for chunk in wire.chunks(fragment) {
+                    let units = decoder.feed(chunk, false).unwrap();
+                    assert!(units.iter().all(|unit| unit.terminal.is_none()));
+                }
+                assert_eq!(
+                    decoder.feed(&[], true).unwrap_err(),
+                    super::ProtocolAdapterError::ModelIr(super::ModelIrError::MissingTerminalEvent),
+                    "{protocol:?}, wire {wire:?}, chunk {fragment}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn native_transport_eof_still_rejects_unfinished_control_and_json() {
     for tail in [
         b"data: {\"type\":\"response.completed\"".as_slice(),

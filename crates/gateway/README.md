@@ -404,6 +404,9 @@ This diagnostic carries no content or native identities and cannot change the
 provider result, optional capture or downstream output. Native snapshot equality
 uses complete canonical JSON values, independent of object key order; pure SSE
 comments retain the model's terminal state across transport fragmentation.
+The shared SSE framer also preserves a comment-only EOF tail without a final
+separator; unfinished data/control fields still fail strict EOF, and a comment
+does not supply missing model-terminal evidence.
 See [transport and value regressions](src/adapters/response/native_transport_tests.rs).
 Unix Debug-only
 `runtime/stream_capture.rs` can capture an explicitly enabled private session;
