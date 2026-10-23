@@ -219,8 +219,24 @@ fn branches_publish_distinct_reasoning_and_freeze_whole_judgment_overrides() {
     let RequestOwnedRouteV1::Branches { branches, .. } = &routing.request_owned else {
         panic!("branches")
     };
-    assert_eq!(branches[0].judgment.competence.floor_millis, 700);
-    assert_eq!(branches[1].judgment.competence.floor_millis, 500);
+    assert_eq!(
+        branches[0]
+            .judgment
+            .as_ref()
+            .unwrap()
+            .competence
+            .floor_millis,
+        700
+    );
+    assert_eq!(
+        branches[1]
+            .judgment
+            .as_ref()
+            .unwrap()
+            .competence
+            .floor_millis,
+        500
+    );
 }
 
 #[test]

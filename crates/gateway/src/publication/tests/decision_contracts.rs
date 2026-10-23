@@ -17,7 +17,7 @@ fn branch_snapshot() -> GatewayPublicationSnapshotV3 {
             condition: "Task condition\n".repeat(1500),
             group: AliasGroupIdV1::Branch(index as u16),
             primary_group: (index == 0).then_some(AliasGroupIdV1::BranchPrimary(0)),
-            judgment: judgment.clone(),
+            judgment: Some(judgment.clone()),
         })
         .collect();
     routing.request_owned = AliasRequestOwnedRouteV1::Branches {
@@ -105,7 +105,7 @@ fn custom_extension_snapshot() -> GatewayPublicationSnapshotV3 {
                 plan_display_name: Some("Smart".into()),
                 request_owned: AliasRequestOwnedRouteV1::Classified {
                     native_protocol: None,
-                    judgment: Default::default(),
+                    judgment: Some(Default::default()),
                     reselect_on_user_message: false,
                     classifier: AliasComplexityClassifierV1 {
                         revision: "classifier/v1".into(),

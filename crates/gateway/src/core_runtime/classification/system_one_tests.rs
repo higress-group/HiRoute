@@ -375,7 +375,7 @@ fn c_reopened_frozen_questions_ignore_changed_current_authority_defaults() {
                     primary_group: Some(hiroute_domain::MaterializedGroupId::BranchPrimary(
                         i as u16,
                     )),
-                    judgment: j.clone(),
+                    judgment: Some(j.clone()),
                 })
                 .collect();
             let definition =
@@ -386,7 +386,7 @@ fn c_reopened_frozen_questions_ignore_changed_current_authority_defaults() {
                     definition,
                     a.branch_policies
                         .iter()
-                        .map(|b| (b.id.clone(), b.judgment.clone())),
+                        .map(|b| (b.id.clone(), b.judgment.clone().unwrap())),
                 )
                 .unwrap(),
             );
@@ -449,7 +449,7 @@ fn c_omitted_target_distinguishes_absent_evidence_from_policy_mismatch() {
                     .as_mut()
                     .unwrap()
                     .policy
-                    .floor_millis += 1
+                    .floor_millis = Some(501)
             }
         }
         let prepared = request_template(&a, &diagnostic_request(), &h).unwrap();

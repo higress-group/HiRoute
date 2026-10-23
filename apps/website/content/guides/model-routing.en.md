@@ -105,3 +105,5 @@ Open View assessment evidence or Stage details, then locate the session evidence
 - **Later assessment:** a subsequent decision's score for this completed stage, its saved criteria, coverage, and completeness. Applicable low-score protection points to the old stage it assessed.
 
 New drafts cannot rewrite past selection or thresholds. Read missing and partial scores with their coverage; HiRoute never rewrites a plan automatically because of one low score.
+
+With a custom extension, skip the trust and judgment-setting steps: the extension owns the group decision. The editor keeps only categories, conditions and candidates; parked settings return when switching to a built-in connection.

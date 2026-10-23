@@ -58,7 +58,7 @@
                         "user": [
                           {
                             "kind": "text",
-                            "text": "根据所给材料写一篇文章。"
+                            "text": "检查这篇文章的事实和因果论断。"
                           }
                         ],
                         "status": "completed",
@@ -66,7 +66,7 @@
                           [
                             {
                               "kind": "text",
-                              "text": "文章已写出，但将两个没有因果证据的现象写成了因果关系。"
+                              "text": "已完成审稿，但遗漏了没有证据支持的因果断言。"
                             }
                           ]
                         ]
@@ -238,16 +238,15 @@
                       "minLength": 1
                     },
                     "groups": {
-                      "type": "array",
-                      "minItems": 1,
-                      "maxItems": 2,
-                      "uniqueItems": true,
-                      "items": {
-                        "enum": [
+                      "enum": [
+                        [
+                          "regular"
+                        ],
+                        [
                           "regular",
                           "primary"
                         ]
-                      }
+                      ]
                     }
                   }
                 }

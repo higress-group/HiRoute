@@ -109,6 +109,8 @@ def validate_hiroute_request(value: Any) -> dict[str, Any]:
         start = target["from"]
         if type(start) is not int or not 0 <= start < len(conversation):
             raise ProtocolError("preceding_stage.from is outside visible_conversation")
+        _text(target["category"])
+        _text(target["group"])
         categories = {"smart_saving": ["regular", "primary"]} if value["route"]["kind"] == "smart_saving" else {c["id"]: c["groups"] for c in value["route"]["categories"]}
         if target["category"] not in categories or target["group"] not in categories[target["category"]] or type(target["complete"]) is not bool:
             raise ProtocolError("preceding_stage is outside the published route")
@@ -143,6 +145,7 @@ def _route(value: Any) -> None:
             _text(category["condition"])
             if category["groups"] not in (["regular"], ["regular", "primary"]):
                 raise ProtocolError("invalid category groups")
+        _text(value["default_category"])
         if value["default_category"] not in ids:
             raise ProtocolError("default category is not published")
     else:

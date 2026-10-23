@@ -23,7 +23,7 @@ the saved connection's transport and required response fields with synthetic inp
 it does not establish the accuracy of decisions on your tasks.
 
 A **custom extension** is an optional HTTP service that integrates its own provider
-and follows the task definitions and assessment standards sent by HiRoute. Add it
+and chooses the category and regular/primary group from the route shape sent by HiRoute. Its optional stage score is used only for observation. Add it
 from the same page using its complete endpoint. The form provides copyable request
 examples and an OpenAPI download. The [official Jev extension](extensions/jev-decider/README.md)
 is a deployable reference implementation.
@@ -80,7 +80,7 @@ when configured.
 
 ## Adjust judgment settings and inspect results
 
-Advanced judgment settings start collapsed. Expand them to edit the simple/complex
+For built-in decision models, advanced judgment settings start collapsed. Expand them to edit the simple/complex
 criteria, thresholds, assessment instructions and the **0 / 0.5 / 1** competence
 anchors. Category conditions describe task intent, degree conditions describe work
 within a category, and competence standards assess work that has already happened.
@@ -99,7 +99,9 @@ do not rewrite earlier selection reasons.
 
 | Responsibility | Owner |
 | --- | --- |
-| Task definitions, assessment standards, thresholds and model groups | HiRoute, from the published plan |
+| Categories, conditions and model groups | HiRoute, from the published plan |
+| Custom-extension category/group decisions and optional scores | The extension, using its own policy |
+| Built-in assessment standards and thresholds | HiRoute, from the published plan |
 | Selection, eligibility, availability relay and actual-stage observations | HiRoute |
 | Direct System One provider calls and answer mapping for built-in connections | HiRoute's [built-in adapter](api/system-one-design.md) |
 | Provider calls, answer mapping and necessary history trimming for a custom connection | The custom extension, following the supplied definitions and standards |
@@ -113,3 +115,5 @@ describes the product configuration.
 
 Tool subset selection is future protocol documentation only; it has no supported
 runtime or product entry.
+
+Custom-extension routes show categories, conditions and candidates only. Their judgment settings stay parked for a later switch back to a built-in connection. Extensions return `category`, `group`, optional `reason` and optional `{score, partial}` assessment; HiRoute applies no threshold or competence protection to this decision.

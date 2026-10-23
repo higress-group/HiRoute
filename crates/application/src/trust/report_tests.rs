@@ -59,6 +59,7 @@ fn score_states_are_exclusive_and_terminal_completion_does_not_mean_competence()
         TrustCountsV1 {
             executed: 4,
             complete: 1,
+            competence_eligible: 1,
             meets_floor: 1,
             partial: 1,
             awaiting_assessment: 1,

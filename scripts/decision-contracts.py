@@ -17,7 +17,7 @@ def main():
     text = {'type': 'string', 'minLength': 1}
     identifier = {'type': 'string', 'minLength': 1, 'maxLength': 128}
     probability = {'type': 'number', 'minimum': 0, 'maximum': 1}
-    groups = {'type': 'array', 'minItems': 1, 'maxItems': 2, 'uniqueItems': True, 'items': {'enum': ['regular', 'primary']}}
+    groups = {'enum': [['regular'], ['regular', 'primary']]}
     schemas = {
         'Route': {'oneOf': [obj({'kind': {'const': 'smart_saving'}, 'groups': {'const': ['regular', 'primary']}}), obj({'kind': {'const': 'branches'}, 'categories': array(obj({'id': identifier, 'condition': text, 'groups': groups}), 2, 16), 'default_category': identifier})]},
         'ContentPart': {'oneOf': [obj({'kind': {'const': 'text'}, 'text': {'type': 'string'}}), obj({'kind': {'const': 'unavailable'}, 'source_kind': identifier})]},
