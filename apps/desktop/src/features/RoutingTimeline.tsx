@@ -249,6 +249,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   }
 
   function historicalExplanation(turn: TimelineTurn) {
+    if (turn.selection?.selection_reason === 'extension_decision' || turn.selection?.selection_reason === 'decision_unavailable') return <p>{explanation(turn)}</p>;
     const history = turn.selection?.historical_protection;
     if (!history) return <><p>{explanation(turn)}</p><p className="muted">{text('历史保护结果未记录。', 'Historical protection result was not recorded.')}</p></>;
     const p = turn.selection?.simple_probability, threshold = turn.selection?.simple_threshold_millis;

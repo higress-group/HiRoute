@@ -100,6 +100,38 @@ try {
     await evaluate(client, `document.querySelector('[data-error-code] button').click();true`);
     await waitFor(client, `document.querySelectorAll('.routing-turn').length===18`);
   });
+  for (const lang of ['en', 'zh']) await check(`extension-late-assessment-${lang}`, async () => {
+    await open('extension-late-assessment', lang);
+    await waitFor(client, `document.querySelectorAll('.routing-turn').length===18`);
+    await select(14);
+    async function assertExtension(scored) {
+      const view = await evaluate(client, `({title:document.querySelector('.routing-detail-head > strong').textContent,count:document.querySelectorAll('.routing-turn').length,details:document.querySelector('.routing-turn-detail').textContent,score:document.querySelector('.routing-detail-block:last-of-type').textContent,card:document.querySelector('[data-turn-id="turn-14"]').textContent,protected:document.querySelectorAll('[data-turn-id="turn-14"] .routing-protection-badge').length})`);
+      assert.equal(view.title, 'T14'); assert.equal(view.count, 18);
+      assert.ok(view.details.includes('Extension chose regular'), view.details);
+      assert.ok(view.details.includes(lang === 'zh' ? '→ 常规' : '→ Regular'), view.details);
+      assert.equal(view.protected, 0);
+      assert.doesNotMatch(view.details, /floor|protection|threshold|下限|保护|阈值/i);
+      if (scored) {
+        assert.ok(view.score.includes('0.10'), view.score);
+        assert.ok(view.score.includes(lang === 'zh' ? '覆盖轮次 T14' : 'covers turn T14'), view.score);
+        assert.ok(!view.score.includes('2–2'), view.score);
+        assert.ok(view.card.includes('0.10'), view.card);
+      } else assert.ok(!view.score.includes('0.10'), view.score);
+      return view;
+    }
+    // Two transient errors must retain the selected extension decision. Only a
+    // changed T14 is resent on recovery, with a score targeting its AgentTurnId.
+    await waitFor(client, `!!document.querySelector('[data-error-code]')`);
+    const retained = await assertExtension(false);
+    await waitFor(client, `presentationFixture.reads.length>=4 && !document.querySelector('[data-error-code]')`, { timeout: 12000 });
+    const recovered = await assertExtension(true);
+    await shot(`extension-late-assessment-${lang}`);
+    const before = await evaluate(client, 'presentationFixture.reads.length');
+    await evaluate(client, `document.querySelector('#refresh-timeline').click();true`);
+    await waitFor(client, `presentationFixture.reads.length>${before} && document.querySelector('.routing-detail-head > strong')?.textContent==='T14'`);
+    const refreshed = await assertExtension(true);
+    await writeFile(path.join(output, `extension-late-assessment-${lang}.json`), JSON.stringify({ retained, recovered, refreshed, reads: await evaluate(client, 'presentationFixture.reads') }, null, 2));
+  });
 } finally {
   await writeFile(path.join(output, 'timeline-presentation-results.json'), JSON.stringify({ proof: 'production components/styles with controlled IPC; no native/provider calls', results }, null, 2));
   client.close();
