@@ -444,3 +444,31 @@ fn local_rules_and_custom_extensions_keep_their_assessment_and_omission() {
         );
     }
 }
+
+#[test]
+fn custom_extension_parks_unfinished_prompts_without_erasing_them() {
+    use crate::*;
+    let mut editor = native_editor();
+    let native = editor.smart.classifier.clone();
+    let ComplexityClassifierModeV1::DecisionService { service } = &mut editor.smart.classifier
+    else {
+        unreachable!()
+    };
+    service.connection = DecisionConnectionV1::Custom {
+        endpoint: "https://decision.example/v1/decisions".into(),
+        timeout_ms: 3000,
+        auth_header: None,
+    };
+    editor.smart.judgment.degree.instructions = "   ".into();
+    editor.smart.judgment.competence.criteria[1] = "\n\t".into();
+    let parked = editor.smart.judgment.clone();
+    editor.validate_draft().unwrap();
+    let effective = editor.effective().unwrap();
+    assert_eq!(
+        effective.assessment_scopes()[SMART_SAVING_SCOPE_ID],
+        &parked
+    );
+    editor.smart.classifier = native;
+    assert!(editor.effective().is_err());
+    assert_eq!(editor.smart.judgment, parked);
+}

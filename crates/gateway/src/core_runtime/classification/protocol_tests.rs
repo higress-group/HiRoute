@@ -382,7 +382,7 @@ fn preceding_stage_requires_exact_plan_connection_and_actual_category() {
         } else {
             assert!(body["preceding_stage"].is_null());
         }
-        let wire = String::from_utf8(request.template.bytes.clone()).unwrap();
+        let wire = String::from_utf8(request.template.bytes.to_vec()).unwrap();
         for private in [
             "private-stage",
             "private-model",

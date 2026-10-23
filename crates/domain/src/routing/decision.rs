@@ -45,6 +45,26 @@ pub struct DecisionExtensionIdentityV1 {
 }
 
 impl DecisionExtensionIdentityV1 {
+    /// Parked editor text is not an active prompt, but still obeys input safety.
+    pub fn validate_parked(&self) -> bool {
+        self.degree.simple_threshold_millis <= 1000
+            && self.competence.floor_millis <= 1000
+            && [
+                &self.degree.instructions,
+                &self.degree.simple,
+                &self.degree.complex,
+                &self.competence.instructions,
+                &self.competence.criteria[0],
+                &self.competence.criteria[1],
+                &self.competence.criteria[2],
+            ]
+            .iter()
+            .all(|value| {
+                !value
+                    .chars()
+                    .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+            })
+    }
     pub fn execution_policy(&self, name: &str) -> BranchExecutionPolicyV1 {
         BranchExecutionPolicyV1 {
             name: name.into(),
@@ -353,7 +373,9 @@ impl BranchRoutingV1 {
         }
         if self.branches.len() > 16
             || (!draft && self.branches.len() < 2)
-            || !(if draft || extension {
+            || !(if extension {
+                self.judgment.validate_parked()
+            } else if draft {
                 self.judgment.validate_draft()
             } else {
                 self.judgment.validate()
@@ -376,7 +398,9 @@ impl BranchRoutingV1 {
                 && b.name.len() <= 512
                 && (b.condition.is_empty() || prompt(&b.condition))
                 && b.judgment.as_ref().is_none_or(|v| {
-                    if draft || extension {
+                    if extension {
+                        v.validate_parked()
+                    } else if draft {
                         v.validate_draft()
                     } else {
                         v.validate()

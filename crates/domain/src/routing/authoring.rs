@@ -79,7 +79,11 @@ impl PlanEditorStateV2 {
             || self.purpose.chars().count() > 512
             || self.custom_alias.as_ref().is_some_and(|v| v.len() > 64)
             || self.smart.complex_keywords.len() > 64
-            || !self.smart.judgment.validate_draft()
+            || !(if self.smart.classifier.extension_identity().is_some() {
+                self.smart.judgment.validate_parked()
+            } else {
+                self.smart.judgment.validate_draft()
+            })
             || self
                 .branch_routing
                 .as_ref()
