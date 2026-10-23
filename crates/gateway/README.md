@@ -175,6 +175,15 @@ are charged. A full budget or optional capture fault records a recoverable gap a
 cannot replace delivered model output. Scope-hash gap stripes are fixed at 256;
 collisions disclose extra uncertainty rather than false complete capture. Authorization,
 Replay integrity, provider failures and source cancellation retain their own behavior.
+The [ingress coverage map](src/model_ir/native_history.rs), shared by all three
+protocols, to keep conversion eligibility separate from execution association.
+An unmodeled prior item binds its complete native content into the original
+request prefix. Later fully modeled accepted text/tool output can continue its
+actual stage with contextual association; unknown replayed output cannot.
+Position metadata is ephemeral and cannot authorize provider affinity or cleanup.
+The [cross-protocol coverage cases](src/agent_turn_history/boundary/coverage_tests.rs)
+and [retained-peer stages](src/core_runtime/decision_history/retained_peer_tests.rs)
+exercise fresh recovery without removing old input.
 Native Codex peer `agent_message` items use the
 [Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
 forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion

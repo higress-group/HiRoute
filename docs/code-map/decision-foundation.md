@@ -103,6 +103,11 @@ derives execution scope from request authority independently of ContextHold.
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
 Request-local model setup remains in strict ContextHold, outside execution-prefix
 identity. A unique visible response projection can retain actual stage capture
+when retained native history is only partially modeled: [ingress coverage](../../crates/gateway/src/model_ir/native_history.rs)
+binds unknown prior items in full and checks only the accepted-output suffix.
+The [coverage regressions](../../crates/gateway/src/agent_turn_history/boundary/coverage_tests.rs)
+separate old unknown content, new unknown output and new User input across protocols.
+A unique visible response projection also retains actual stage capture
 when plaintext reasoning is omitted, with sticky association uncertainty and no
 affinity hint; [projection regressions](../../crates/gateway/src/agent_turn_history/boundary/projection_tests.rs)
 cover competing branches, old-prefix changes and frozen membership.

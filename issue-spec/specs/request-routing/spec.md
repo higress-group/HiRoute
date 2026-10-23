@@ -90,7 +90,7 @@ alias or two byte-equivalent carriers represent one canonical reasoning state;
 native forwarding retains the original fields. Equivalence MUST compare actual
 bytes, including Replay-backed text, rather than reference locations. Conflicting
 carriers, non-text aliases, aliases on other roles and other unknown historical
-semantics remain native-only and cannot authorize history reuse, conversion or
+semantics remain native-only and cannot authorize provider-prefix reuse, conversion or
 cleanup. Authorized prefix cleanup removes both recognized carriers only within
 the selected prefix. Alias normalization does not bypass session/authority scope,
 tool identity, message order or content-change checks.
@@ -450,6 +450,21 @@ SHALL NOT become visible execution or acquire quality credit.
 Request-local instructions, tool declarations and provider setup SHALL NOT be part
 of execution branch-prefix identity. They remain part of strict ContextHold
 validation. Historical message roles, order and content remain exact.
+Whole-request conversion eligibility SHALL NOT determine execution association.
+Ingress SHALL record each canonical message's native position and semantic
+coverage once. Unmodeled retained items SHALL additionally bind their complete
+native values into the bounded prefix fingerprint, including unknown fields and
+Replay-backed content. Known items keep their existing canonical equivalences.
+A unique matching original prefix and fully modeled accepted-output suffix MAY
+continue a captured stage even when earlier items or current setup remain native-only.
+Such association SHALL be contextual, retain association uncertainty and grant no
+provider affinity or cleanup. Unknown semantics inside the matched assistant
+suffix, missing/invalid position evidence, changed prior values and competing
+candidates SHALL NOT establish that edge. A later current User or tool result
+is actual new input, not part of the previously accepted assistant-output proof.
+Coverage metadata is request-local and bounded; serialization, capacity failure
+or missing Replay backing cannot manufacture it. Losing optional evidence SHALL
+leave routing and actual capture available under their existing fallback rules.
 When a native client omits the entire actually accepted plaintext reasoning from
 its latest response replay, one uniquely matching old request prefix and nonempty
 accepted visible text or typed tool boundary MAY continue that captured stage.

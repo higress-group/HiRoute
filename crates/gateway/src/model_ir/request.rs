@@ -18,6 +18,10 @@ pub struct ModelRequestIRV1 {
     /// or history-prefix reuse/cleanup admission.
     #[serde(skip)]
     pub native_only: bool,
+    /// Request-local positions and semantic coverage produced by ingress.
+    /// These facts never authorize conversion, affinity or source identity.
+    #[serde(skip)]
+    pub native_history: Option<Vec<NativeHistoryItem>>,
     pub schema_version: String,
     pub ingress_protocol: IngressProtocol,
     pub served_model_id: String,
@@ -78,6 +82,13 @@ pub struct ModelRequestIRV1 {
     /// has declared cross-protocol mappings, while unknown fields make ingress native-only.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_reasoning_history: std::collections::BTreeMap<usize, ResponsesReasoningHistoryV1>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NativeHistoryItem {
+    /// None represents the scalar Responses input; otherwise a native array index.
+    pub native_index: Option<usize>,
+    pub modeled: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

@@ -45,6 +45,9 @@ pub(crate) fn branch_anchors(
     replay: Option<&ReplayStore>,
     positions: &[usize],
 ) -> Option<super::HistoryAnchors> {
+    if request.native_only || request.native_history.is_some() {
+        request.native_history_layout()?;
+    }
     let mut encoder = Encoder::new(key, b"history-branch/v3", replay)?;
     // Request-local instructions and tool setup invalidate provider affinity,
     // not a witnessed predecessor in the actual conversation.
@@ -95,6 +98,9 @@ impl<'a> HistoryEvidence<'a> {
         let semantic_request = self.semantic_request.unwrap_or(self.request);
         if semantic_request.messages.len() != self.request.messages.len() {
             return None;
+        }
+        if self.request.native_only || self.request.native_history.is_some() {
+            self.request.native_history_layout()?;
         }
         let mut history = Encoder::new(
             self.key,
@@ -597,31 +603,43 @@ impl<'a> Encoder<'a> {
     ) -> Option<()> {
         self.items(0)?;
         self.tag(b"history-item");
-        let native_items = request
-            .native_body
-            .as_ref()
-            .and_then(|body| body.get("input"))
-            .and_then(Value::as_array);
-        // Ingress does not create a canonical position for additional_tools.
-        // Each encoder visits messages in order, so this bounded offset scans
-        // skipped native items once rather than rescanning each prefix.
-        while native_items
-            .and_then(|items| items.get(message_index + self.native_item_offset))
-            .is_some_and(|item| {
-                item.get("type").and_then(Value::as_str) == Some("additional_tools")
-            })
-        {
-            self.items(1)?;
-            self.native_item_offset += 1;
+        if let Some(layout) = &request.native_history {
+            let item = layout.get(message_index)?;
+            if !item.modeled {
+                // Modeled history keeps its existing canonical equivalences.
+                // Every unmodeled item's full original bytes also bind the
+                // prefix, including extensions and opaque state after Replay.
+                self.tag(b"unmodeled-native-history-item");
+                self.json(request.native_history_item(item)?)?;
+            }
         }
-        if let Some(peer) = native_items
-            .and_then(|items| items.get(message_index + self.native_item_offset))
-            .filter(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
-        {
-            // The portable placeholder is deliberately empty. It cannot stand
-            // in for author, recipient, typed content or ciphertext evidence.
-            self.tag(b"native-peer-message");
-            self.json(peer)?;
+        if request.native_history.is_none() {
+            let native_items = request
+                .native_body
+                .as_ref()
+                .and_then(|body| body.get("input"))
+                .and_then(Value::as_array);
+            // Ingress does not create a canonical position for additional_tools.
+            // Each encoder visits messages in order, so this bounded offset scans
+            // skipped native items once rather than rescanning each prefix.
+            while native_items
+                .and_then(|items| items.get(message_index + self.native_item_offset))
+                .is_some_and(|item| {
+                    item.get("type").and_then(Value::as_str) == Some("additional_tools")
+                })
+            {
+                self.items(1)?;
+                self.native_item_offset += 1;
+            }
+            if let Some(peer) = native_items
+                .and_then(|items| items.get(message_index + self.native_item_offset))
+                .filter(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
+            {
+                // The portable placeholder is deliberately empty. It cannot stand
+                // in for author, recipient, typed content or ciphertext evidence.
+                self.tag(b"native-peer-message");
+                self.json(peer)?;
+            }
         }
         if let Some(search) = request.responses_search_history.get(&message_index) {
             self.web_search_call(search);
@@ -896,6 +914,7 @@ mod tests {
         ModelRequestIRV1 {
             native_body: None,
             native_only: false,
+            native_history: None,
             schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
             ingress_protocol: IngressProtocol::Responses,
             served_model_id: "agent/test".into(),

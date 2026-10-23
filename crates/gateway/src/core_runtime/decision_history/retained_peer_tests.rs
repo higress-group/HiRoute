@@ -25,11 +25,12 @@ fn retained_begin(
             "x-codex-turn-metadata":metadata.to_string()
         }
     });
-    let request = super::super::super::adapters::decode_ingress_request(
+    let mut request = super::super::super::adapters::decode_ingress_request(
         IngressProtocol::Responses,
         &document,
     )
     .unwrap();
+    crate::content_ref::externalize_model_request(&mut request, &fixture.replay, 0).unwrap();
     assert!(
         request.native_only,
         "opaque native history remains on the wire"
@@ -119,12 +120,24 @@ fn opaque_prefix(
     fixture: &Fixture,
     authorized: &crate::server::request_plan::AuthorizedRequestPlan,
 ) -> Vec<Value> {
+    opaque_prefix_item(fixture, authorized, peer_item())
+}
+
+fn peer_item() -> Value {
+    json!({"type":"agent_message", "author":"child", "recipient":"parent", "content":[
+        {"type":"input_text", "text":"native peer envelope"},
+        {"type":"encrypted_content", "encrypted_content":"synthetic opaque peer"}
+    ]})
+}
+
+fn opaque_prefix_item(
+    fixture: &Fixture,
+    authorized: &crate::server::request_plan::AuthorizedRequestPlan,
+    old_item: Value,
+) -> Vec<Value> {
     let mut items = vec![
         json!({"role":"user", "content":"uncaptured ancestor task"}),
-        json!({"type":"agent_message", "author":"child", "recipient":"parent", "content":[
-            {"type":"input_text", "text":"native peer envelope"},
-            {"type":"encrypted_content", "encrypted_content":"synthetic opaque peer"}
-        ]}),
+        old_item,
     ];
     let mut opaque = retained_begin(fixture, authorized, &items, "opaque-turn", "opaque-request");
     fixture.finish_named(
@@ -160,6 +173,11 @@ fn assert_actual_b_target(history: &DecisionHistory, expected_requests: &[&str])
         membership.source_unverified,
         "recovery does not upgrade input-source trust"
     );
+    assert!(membership.association_unverified);
+    assert_eq!(
+        membership.relation,
+        hiroute_domain::HistoryRelationV1::Contextual
+    );
     let visible = serde_json::to_string(&history.history.visible_conversation).unwrap();
     assert!(visible.contains("real new question B"));
     assert!(visible.contains("accepted B final output"));
@@ -191,9 +209,27 @@ fn retained_opaque_peer_history_recovers_new_text_pair_in_same_native_session() 
 
 #[test]
 fn retained_opaque_peer_history_recovers_complete_new_tool_stage_in_same_native_session() {
+    complete_new_tool_stage(peer_item());
+}
+
+#[test]
+fn retained_unknown_message_history_recovers_complete_new_tool_stage() {
+    complete_new_tool_stage(
+        json!({"role":"assistant","content":"old output", "vendor_extension":{"state":"opaque"}}),
+    );
+}
+
+#[test]
+fn retained_unknown_reasoning_history_recovers_complete_new_tool_stage() {
+    complete_new_tool_stage(
+        json!({"type":"reasoning","summary":[],"vendor_extension":{"state":"opaque"}}),
+    );
+}
+
+fn complete_new_tool_stage(old_item: Value) {
     let fixture = Fixture::new();
     let authorized = crate::server::publication::authorized_native_consumer_fixture(None);
-    let mut items = opaque_prefix(&fixture, &authorized);
+    let mut items = opaque_prefix_item(&fixture, &authorized, old_item);
     items.push(json!({"role":"user", "content":"real new question B"}));
     let mut b = retained_begin(&fixture, &authorized, &items, "b-turn", "b-tool");
     fixture.finish_named(

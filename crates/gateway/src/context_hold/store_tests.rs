@@ -51,6 +51,7 @@ fn history_request(instruction: u8, messages: &[u8]) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: None,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
         served_model_id: "agent/test".into(),

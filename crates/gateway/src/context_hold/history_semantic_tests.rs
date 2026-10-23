@@ -28,20 +28,16 @@ fn measure(request: &ModelRequestIRV1, prefix: usize) -> HistoryDigests {
 #[test]
 fn opaque_observed_capture_does_not_establish_strict_provider_prefix_affinity() {
     let mut opaque = request("system");
-    let complete = measure(&opaque, opaque.messages.len());
     opaque.native_only = true;
     opaque.native_body = Some(json!({"input":[{"type":"agent_message","content":"opaque peer"}]}));
     assert!(visible_history(&opaque, &[37; 32]).is_none());
     let observed = observed_history_with_replay(&opaque, &[37; 32], None)
         .unwrap()
-        .measure(Some(opaque.messages.len()))
-        .unwrap();
-    assert!(observed.prefix_digest.is_none());
-    assert_ne!(observed.complete_digest, complete.complete_digest);
-    assert_ne!(
-        observed.semantic_complete_digest,
-        complete.semantic_complete_digest
-    );
+        .measure(Some(opaque.messages.len()));
+    // A fabricated/missing layout cannot establish either strict or semantic
+    // continuity. Request-owned execution capture has its independent scope.
+    assert!(observed.is_none());
+    assert!(branch_anchors(&opaque, &[37; 32], None, &[]).is_none());
 }
 
 #[test]
