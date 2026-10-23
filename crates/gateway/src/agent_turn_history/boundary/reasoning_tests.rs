@@ -152,9 +152,14 @@ fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membersh
     use super::super::*;
     use crate::server::core_runtime::model_ir::{ModelStreamEventV1, ToolKindV1};
 
-    for (inline_limit, null_fields) in [0, 8 * 1024, 64 * 1024]
-        .into_iter()
-        .flat_map(|limit| [(limit, false), (limit, true)])
+    for (inline_limit, null_fields, omitted) in
+        [0, 8 * 1024, 64 * 1024].into_iter().flat_map(|limit| {
+            [
+                (limit, false, false),
+                (limit, true, false),
+                (limit, false, true),
+            ]
+        })
     {
         let (_directory, replay) = super::replay();
         let store = AgentTurnHistoryStore::default();
@@ -244,6 +249,9 @@ fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membersh
             wire["input"][1]["content"] = serde_json::Value::Null;
             wire["input"][1]["status"] = serde_json::Value::Null;
         }
+        if omitted {
+            wire["input"].as_array_mut().unwrap().remove(1);
+        }
         let request = production_request(&wire, &replay, inline_limit);
         let AgentTurnBegin::Continuation {
             ticket: final_request,
@@ -277,7 +285,7 @@ fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membersh
         let membership = completed.history_membership.as_ref().unwrap();
         assert_eq!(membership.request_ids, ["request-tool", "request-final"]);
         assert!(!membership.capture_partial);
-        assert!(!membership.association_unverified);
+        assert_eq!(membership.association_unverified, omitted);
         wire["input"].as_array_mut().unwrap().extend([
             json!({"role":"assistant","content":"actual accepted answer A"}),
             json!({"role":"user","content":"actual new task B"}),

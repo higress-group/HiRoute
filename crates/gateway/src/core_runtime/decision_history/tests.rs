@@ -71,12 +71,16 @@ impl Fixture {
     }
 
     fn prepare(&self, request: &model_ir::ModelRequestIRV1) -> PreparedHold {
+        self.prepare_in_scope(request, 1)
+    }
+
+    fn prepare_in_scope(&self, request: &model_ir::ModelRequestIRV1, scope: u8) -> PreparedHold {
         let history = visible_history_with_replay(request, &[23; 32], Some(&self.replay)).unwrap();
         let mut prepared = self
             .runtime
             .context_holds
             .prepare(
-                ContextHoldKey::for_runtime_test(1),
+                ContextHoldKey::for_runtime_test(scope),
                 &history,
                 Instant::now(),
             )
@@ -106,6 +110,16 @@ impl Fixture {
     }
 
     fn finish(&self, history: &mut DecisionHistory, events: &[ModelStreamEventV1], terminal: bool) {
+        self.finish_named(history, events, terminal, "accepted");
+    }
+
+    fn finish_named(
+        &self,
+        history: &mut DecisionHistory,
+        events: &[ModelStreamEventV1],
+        terminal: bool,
+        request_id: &str,
+    ) {
         let guard = history.guard.as_mut().unwrap();
         if guard.ticket().new_turn {
             let strategy = profiles::ComplexityV1::compile(Vec::<(String, String)>::new()).unwrap();
@@ -123,14 +137,14 @@ impl Fixture {
             .agent_turn_history
             .finish_request(
                 guard.ticket(),
-                "accepted".into(),
+                request_id.into(),
                 AgentTurnStatus::Completed,
                 vec![crate::agent_turn_history::AcceptedExecution {
                     branch_execution: None,
                     model_configuration_id: "model".into(),
                     profile_digest: "profile".into(),
                     executed_branch_id: "smart_saving_simple".into(),
-                    request_id: "accepted".into(),
+                    request_id: request_id.into(),
                 }],
                 terminal,
                 Instant::now(),

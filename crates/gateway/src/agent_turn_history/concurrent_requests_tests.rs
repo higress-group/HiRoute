@@ -476,7 +476,7 @@ fn colliding_gap_stripes_disclose_loss_and_allow_new_complete_pairs() {
 }
 
 #[test]
-fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
+fn captured_tool_boundary_inherits_matching_output_independently_of_model_setup() {
     use crate::server::core_runtime::model_ir::{
         CanonicalInstruction, InstructionRole, ModelEvent, ModelStreamEventV1, ResponseItemStatus,
     };
@@ -490,7 +490,7 @@ fn captured_tool_boundary_inherits_only_matching_arguments_and_model_setup() {
         "arguments",
         "instructions",
     ] {
-        let inherits = !matches!(changed, "whitespace" | "arguments" | "instructions");
+        let inherits = !matches!(changed, "whitespace" | "arguments");
         let (_directory, replay) = replay();
         let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
         let scope = store.scope_key("workspace", changed).unwrap();

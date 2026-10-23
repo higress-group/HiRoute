@@ -249,6 +249,12 @@ fn unsigned_messages_thinking_tool_continuation_keeps_full_frozen_stage() {
             ]}),
             json!({"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":"tool result"}]}),
         ]);
+        // Native clients may append request-local budget/context instructions
+        // between a tool request and its response. They are not past execution.
+        wire["system"] = json!([
+            {"type":"text","text":"x".repeat(8 * 1024)},
+            {"type":"text","text":"updated request budget"}
+        ]);
         let request = production_request(&wire, &replay, inline_limit);
         let AgentTurnBegin::Continuation {
             ticket: final_request,

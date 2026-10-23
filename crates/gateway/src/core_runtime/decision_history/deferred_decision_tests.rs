@@ -1,5 +1,68 @@
 use super::*;
 
+#[test]
+fn initial_index_contention_recovers_exact_same_scope_pair_without_borrowing_sibling() {
+    let fixture = Fixture::new();
+    let a = Fixture::request(json!([{"role":"user","content":"A missed capture"}]));
+    let bypassed = fixture
+        .runtime
+        .agent_turn_history
+        .with_lock_for_runtime_test(|| fixture.begin(&a, fixture.prepare_in_scope(&a, 1)));
+    assert!(bypassed.guard.is_none());
+    assert!(bypassed.hold_ticket.is_none());
+
+    let sibling = Fixture::request(json!([{"role":"user","content":"independent sibling"}]));
+    let mut other = fixture.begin(&sibling, fixture.prepare_in_scope(&sibling, 2));
+    fixture.finish_named(
+        &mut other,
+        &[text_event("sibling actual output")],
+        true,
+        "sibling-request",
+    );
+    drop(other);
+    let c = Fixture::request(json!([
+        {"role":"user","content":"A missed capture"},
+        {"role":"assistant","content":"client claims missed A output"},
+        {"role":"user","content":"fresh C"}
+    ]));
+    let mut captured = fixture.begin(&c, fixture.prepare_in_scope(&c, 1));
+    assert!(captured.guard.is_some());
+    assert!(captured.history.history_partial);
+    assert!(captured.history.assessment_target.is_none());
+    let captured_id = captured
+        .guard
+        .as_ref()
+        .unwrap()
+        .ticket()
+        .agent_turn_id
+        .clone();
+    fixture.finish_named(
+        &mut captured,
+        &[text_event("C actual output")],
+        true,
+        "c-request",
+    );
+    drop(captured);
+    let d = Fixture::request(json!([
+        {"role":"user","content":"A missed capture"},
+        {"role":"assistant","content":"client claims missed A output"},
+        {"role":"user","content":"fresh C"},
+        {"role":"assistant","content":"C actual output"},
+        {"role":"user","content":"fresh D"}
+    ]));
+    let recovered = fixture.begin(&d, fixture.prepare_in_scope(&d, 1));
+    let target = recovered.history.assessment_target.as_ref().unwrap();
+    assert_eq!(target.through_turn_id, captured_id);
+    assert!(!target.target_partial);
+    let membership = serde_json::to_value(&target.history_membership).unwrap();
+    assert!(membership.to_string().contains("c-request"));
+    assert!(!membership.to_string().contains("sibling-request"));
+    let visible = serde_json::to_string(&recovered.history.visible_conversation).unwrap();
+    assert!(visible.contains("C actual output"));
+    assert!(!visible.contains("sibling actual output"));
+    assert!(!visible.contains("client claims missed A output"));
+}
+
 fn decision() -> profiles::BranchDecisionV1 {
     let strategy = profiles::ComplexityV1::compile(Vec::<(String, String)>::new()).unwrap();
     profiles::ComplexityV1::decide(Some("simple"), None, &strategy)
