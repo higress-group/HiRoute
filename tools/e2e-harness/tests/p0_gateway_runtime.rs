@@ -1073,15 +1073,12 @@ fn real_listener_rest_classifier_uses_the_existing_gateway_and_selects_complex()
     );
     assert_eq!(body["visible_conversation"], serde_json::json!([]));
     assert_eq!(
-        body.pointer("/decision/levels/0/criterion")
-            .and_then(|value| value.as_str()),
-        Some(hiroute_domain::DEFAULT_SIMPLE_CRITERION)
+        body["route"],
+        serde_json::json!({"kind":"smart_saving","groups":["regular","primary"]})
     );
-    assert_eq!(
-        body.pointer("/decision/levels/1/criterion")
-            .and_then(|value| value.as_str()),
-        Some(hiroute_domain::DEFAULT_COMPLEX_CRITERION)
-    );
+    assert!(body.get("decision").is_none());
+    assert!(body.get("definition").is_none());
+    assert!(body["preceding_stage"].is_null());
     assert_eq!(body.as_object().unwrap().len(), 5);
     assert!(body.get("model").is_none());
 
