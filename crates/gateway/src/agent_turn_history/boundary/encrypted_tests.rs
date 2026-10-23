@@ -116,7 +116,7 @@ fn encrypted_tool_error_continues_actual_stage_and_next_input_assesses_every_req
         let (_directory, replay) = replay();
         let store = AgentTurnHistoryStore::default();
         let scope = store.scope_key("workspace", "encrypted-retry").unwrap();
-        let begin = |wire| {
+        let begin = |wire: &serde_json::Value| {
             let request = reasoning_boundary::production_request_for(
                 IngressProtocol::Responses,
                 wire,
