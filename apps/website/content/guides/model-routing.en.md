@@ -21,6 +21,8 @@ Models → General models manages models that execute your tasks. Models → Dec
 
 ## Connect a decision model
 
+With a custom extension, skip the trust and judgment-setting steps: the extension owns the group decision. The editor keeps only categories, conditions and candidates; parked settings return when switching to a built-in connection.
+
 1. Open Models → Decision models and select Add decision model.
 2. Choose a provider: Bailian, OpenRouter Jev, TypeSafe, or another compatible connection.
 3. Enter an API key and connection name, then confirm the model name and complete decision endpoint. Expand prefilled values to edit them, or fill in any missing values.
@@ -34,7 +36,7 @@ Save and test saves first, then tests that exact saved connection revision. The 
 
 Every saved edit creates a new revision. A route pins its selected connection revision: saving r2 leaves a published route on r1 until you select r2 in the route and publish changes. Saving or testing a connection does not publish a route. Adding a connection from an unfinished route preserves the draft; publishing remains a separate action when you return.
 
-To implement your own judgment and assessment, choose Connect custom extension from the add menu, enter its complete endpoint, and select authentication. Extensions implement the [Custom extension API](/en/docs/decision-api/). See [Connect decision models](/en/docs/decision-extensions/) for built-in provider configuration and interface mapping. The optional [self-hosted Jev reference extension](/en/docs/jev-decider/) provides deployment examples.
+To choose categories and model groups with your own service, choose Connect custom extension from the add menu, enter its complete endpoint, and select authentication. Extensions implement the [Custom extension API](/en/docs/decision-api/). See [Connect decision models](/en/docs/decision-extensions/) for built-in provider configuration and interface mapping. The optional [self-hosted Jev reference extension](/en/docs/jev-decider/) provides deployment examples.
 
 During real routing, the selected decision connection receives the complete current user content and allowed execution history. History includes user content, accepted assistant text, ordered tool names, and explicit coarse outcomes. The request body excludes system/developer prompts, tool arguments, tool-result bodies, and execution-model credentials. Assessment uses criteria frozen when the target stage executed. Incomplete visible history and an incomplete assessment target retain separate markers.
 
@@ -106,4 +108,3 @@ Open View assessment evidence or Stage details, then locate the session evidence
 
 New drafts cannot rewrite past selection or thresholds. Read missing and partial scores with their coverage; HiRoute never rewrites a plan automatically because of one low score.
 
-With a custom extension, skip the trust and judgment-setting steps: the extension owns the group decision. The editor keeps only categories, conditions and candidates; parked settings return when switching to a built-in connection.
