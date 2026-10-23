@@ -194,8 +194,12 @@ impl ProductionGatewayRuntime {
                 )
             }
         };
-        self.agent_turn_history
-            .bind_request(&ticket, observation.logical_request_id());
+        if let Some(admission) = self
+            .agent_turn_history
+            .bind_request(&ticket, observation.logical_request_id())
+        {
+            observation.agent_turn_admitted(&admission);
+        }
         let branch_digest = *ticket.key.branch_digest();
         let allow_affinity = ticket.allow_affinity;
         let guard = AgentTurnRequestGuard::new(self.agent_turn_history.clone(), ticket);

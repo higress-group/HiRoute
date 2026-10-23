@@ -58,6 +58,7 @@ pub(super) fn ordered_facts(
             }
             ExecutionFactV1::CredentialLease { .. }
             | ExecutionFactV1::RuntimeState { .. }
+            | ExecutionFactV1::AgentTurnAdmitted(_)
             | ExecutionFactV1::AgentTurnFinished { .. }
             | ExecutionFactV1::BranchAssessmentRecorded { .. } => {}
             ExecutionFactV1::AttemptStarted {

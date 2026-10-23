@@ -390,6 +390,18 @@ capture completeness. It SHALL NOT manufacture executions from client assistant
 messages, summaries, equal text or later successful retries. Restart does not add
 a persistence or reconstruction promise for discarded in-memory content.
 
+Gateway admission SHALL record request-to-stage identity independently of routing
+decisions, model affinity and stage closure. The producer epoch, Gateway stage,
+branch and admission revision identify this association; native session IDs and
+inherited decisions alone do not. Observation consumers SHALL use this same
+identity for interleaved requests before closure. Admission does not prove human
+origin, completed work, complete capture or an assessment segment. A later
+admission may reopen a stage without extending an earlier frozen assessment;
+delayed older closure records SHALL NOT override a newer admitted revision.
+Cancelled or failed requests SHALL end their own activity even after accepted
+tool output. Missing closure evidence SHALL NOT imply perpetual execution or
+successful task completion.
+
 Assessment membership SHALL be frozen from the actual captured requests and their
 executed model, profile, Plan and rubric before classification consumes it. Later
 completion, concurrent requests, compaction or index repair SHALL NOT change that

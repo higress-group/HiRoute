@@ -1,5 +1,6 @@
 //! A bounded projection of existing facts. Cursors retain a snapshot while paging and
 //! advance only after every changed turn has been delivered.
+mod admission;
 pub(crate) mod cache;
 mod projection;
 mod read;

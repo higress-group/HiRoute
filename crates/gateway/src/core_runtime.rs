@@ -1341,6 +1341,9 @@ impl ProductionGatewayRuntime {
                     })
                     .unwrap_or_default();
                 let status = match (request_observation.has_accepted_attempt(), result.is_ok()) {
+                    (true, _) if request_observation.accepted_attempt_cancelled() => {
+                        AgentTurnStatus::Interrupted
+                    }
                     (true, true) if model_failed => AgentTurnStatus::Failed,
                     (true, true) if request_observation.accepted_attempt_unknown() => {
                         AgentTurnStatus::Unknown
@@ -1357,7 +1360,13 @@ impl ProductionGatewayRuntime {
                         request_observation.metadata().request_id.clone(),
                         status,
                         executions,
-                        response_delivery.accepted_count() == 0,
+                        // Delivered tools keep a successful stage open for the
+                        // client's continuation. They cannot keep a cancelled
+                        // or failed request alive indefinitely.
+                        matches!(
+                            status,
+                            AgentTurnStatus::Interrupted | AgentTurnStatus::Failed
+                        ) || response_delivery.accepted_count() == 0,
                         Instant::now(),
                     )
                 {

@@ -929,7 +929,11 @@ impl AgentTurnHistoryStore {
         Ok(())
     }
 
-    pub(crate) fn bind_request(&self, ticket: &AgentTurnTicket, request_id: &str) {
+    pub(crate) fn bind_request(
+        &self,
+        ticket: &AgentTurnTicket,
+        request_id: &str,
+    ) -> Option<hiroute_domain::AgentTurnAdmissionV1> {
         let mut inner = self.inner.lock();
         let charge = request_id.len().saturating_mul(3).saturating_add(256);
         inner.evict_to_budget(
@@ -937,12 +941,21 @@ impl AgentTurnHistoryStore {
             Some(&ticket.key),
         );
         let fits = inner.accounted_bytes.saturating_add(charge) <= self.max_memory_bytes;
-        let Ok(entry) = matching_entry_mut(&mut inner, ticket) else {
-            return;
+        let entry = matching_entry_mut(&mut inner, ticket).ok()?;
+        // Admission identity exists independently of bounded membership storage,
+        // decision success and the optional affinity cache. Clipping the index
+        // must not erase which actual stage admitted this request.
+        let admission = hiroute_domain::AgentTurnAdmissionV1 {
+            version: 1,
+            agent_turn_id: entry.active.agent_turn_id.clone(),
+            branch_id: entry.branch_id.clone(),
+            revision: entry.revision,
+            ordinal: entry.active.ordinal,
+            opening_cause: entry.active.opening_cause,
         };
         if !fits || entry.active.request_ids.len() >= 128 {
             entry.active.request_ids_clipped = true;
-            return;
+            return Some(admission);
         }
         entry.active.request_ids.push(request_id.to_owned());
         entry
@@ -955,6 +968,7 @@ impl AgentTurnHistoryStore {
         let new = entry.accounted_bytes;
         inner.replace_accounting(old, new);
         inner.note_peak();
+        Some(admission)
     }
 
     pub(crate) fn finish_request(

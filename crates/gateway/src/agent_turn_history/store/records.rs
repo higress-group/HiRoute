@@ -231,7 +231,10 @@ pub(super) fn close_active(
         closure_proven: closure.proven(status) && entry.active.provider_outcomes_known,
     });
     entry.active.finalized = true;
-    entry.active.output = Default::default();
+    // Keep the bounded identities of accepted tools: an interrupted stage can
+    // resume, and actual later tool results must still address the sealed steps.
+    // Reopening restores those steps, without mutating any frozen snapshot.
+    entry.active.output.next_step();
     Ok(completed)
 }
 

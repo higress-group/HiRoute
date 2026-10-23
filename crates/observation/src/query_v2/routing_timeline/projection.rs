@@ -113,13 +113,32 @@ pub(super) fn project(
     let mut ordinals = BTreeMap::new();
     let mut opening_causes = BTreeMap::new();
     let mut identities = BTreeMap::new();
-    let mut finished = BTreeMap::new();
+    let mut finished = BTreeMap::<_, (u64, &Fact)>::new();
+    let admissions = admission::collect(facts)?;
+    let mut admitted_stages = BTreeMap::<_, Vec<_>>::new();
+    for (id, admission) in &admissions {
+        admitted_stages
+            .entry((admission.epoch, admission.value.agent_turn_id.as_str()))
+            .or_default()
+            .push((*id, *admission));
+    }
     for fact in facts {
-        if let ExecutionFactV1::AgentTurnFinished { agent_turn_id, .. } = &fact.value {
-            finished.insert(agent_turn_id, fact);
+        if let ExecutionFactV1::AgentTurnFinished {
+            agent_turn_id,
+            history_membership,
+            ..
+        } = &fact.value
+        {
+            let revision = history_membership.as_ref().map_or(0, |m| m.revision);
+            let entry = finished
+                .entry((&fact.producer_epoch, agent_turn_id))
+                .or_insert((revision, fact));
+            if revision >= entry.0 {
+                *entry = (revision, fact);
+            }
         }
     }
-    for fact in finished.into_values() {
+    for (_, fact) in finished.into_values() {
         let ExecutionFactV1::AgentTurnFinished {
             agent_turn_id,
             history_membership,
@@ -143,6 +162,31 @@ pub(super) fn project(
         else {
             continue;
         };
+        // A previously finished stage may admit another actual continuation.
+        // Its old frozen membership and score remain immutable, but cannot
+        // close or assess the newly admitted request.
+        let admitted = admitted_stages
+            .get(&(fact.producer_epoch.as_str(), agent_turn_id.as_str()))
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        if !admitted.is_empty() {
+            let Some(membership) = history_membership else {
+                return Err(ObservationV2Error::Unavailable);
+            };
+            if admitted.iter().any(|(_, a)| {
+                a.value.branch_id != membership.branch_id
+                    || a.value.ordinal != *ordinal
+                    || opening_cause.is_some_and(|cause| cause != a.value.opening_cause)
+            }) {
+                return Err(ObservationV2Error::Unavailable);
+            }
+            if admitted
+                .iter()
+                .any(|(_, a)| a.value.revision > membership.revision)
+            {
+                continue;
+            }
+        }
         let mut members = if let Some(membership) = history_membership {
             membership
                 .request_ids
@@ -183,12 +227,32 @@ pub(super) fn project(
             }
             legacy_members
         };
-        if members.is_empty() {
-            continue;
+        if members.iter().any(|r| {
+            admissions.get(r.view.request_id.as_str()).is_some_and(|a| {
+                a.epoch != fact.producer_epoch || a.value.agent_turn_id != *agent_turn_id
+            })
+        }) {
+            return Err(ObservationV2Error::Unavailable);
         }
         let missing_members = history_membership
             .as_ref()
             .is_some_and(|m| m.clipped || m.request_ids.len() != members.len());
+        // Admission can preserve exact identity even when bounded membership
+        // storage clipped. This improves display only; frozen score membership
+        // below still has to cover every displayed request.
+        for (id, _) in admitted {
+            if let Some(request) = requests.get(*id)
+                && !members.iter().any(|r| r.view.request_id == *id)
+            {
+                if history_membership.as_ref().is_none_or(|m| !m.clipped) {
+                    return Err(ObservationV2Error::Unavailable);
+                }
+                members.push(request);
+            }
+        }
+        if members.is_empty() {
+            continue;
+        }
         members.sort_by_key(|r| (r.first_fact, &r.view.request_id));
         let members = members.as_slice();
         if members
@@ -247,24 +311,23 @@ pub(super) fn project(
         next_bases.insert(turn.view.turn_id.clone(), turn.clone());
         result.push(turn);
     }
-    // Requests arrive before AgentTurnFinished. Keep their opening-request ID stable.
-    let mut pending = Vec::new();
-    for request in &ordered {
-        if covered.contains(request.view.request_id.as_str()) {
-            if !pending.is_empty() {
-                result.push(base_turn(&pending, previous, bases, &mut next_bases)?);
-                pending.clear();
+    for pending in admission::pending(&ordered, &covered, &admissions) {
+        let mut turn = base_turn(&pending, previous, bases, &mut next_bases)?;
+        if let Some(admission) = admissions.get(pending[0].view.request_id.as_str()) {
+            let id = turn.view.turn_id.clone();
+            if turn.view.agent_turn_id.as_ref() != Some(&admission.value.agent_turn_id) {
+                let view = &mut Arc::make_mut(&mut turn).view;
+                view.agent_turn_id = Some(admission.value.agent_turn_id.clone());
             }
-            continue;
+            ordinals.insert(id.clone(), admission.value.ordinal);
+            opening_causes.insert(id.clone(), admission.value.opening_cause);
+            identities.insert(
+                id.clone(),
+                (admission.value.ordinal, admission.epoch.to_owned()),
+            );
+            next_bases.insert(id, turn.clone());
         }
-        if !pending.is_empty() && !held(request, LedgerReasonCodeV1::ContextHoldApplied) {
-            result.push(base_turn(&pending, previous, bases, &mut next_bases)?);
-            pending.clear();
-        }
-        pending.push(*request);
-    }
-    if !pending.is_empty() {
-        result.push(base_turn(&pending, previous, bases, &mut next_bases)?);
+        result.push(turn);
     }
     result.sort_by(|a, b| {
         (a.view.started_at_ms, &a.view.turn_id).cmp(&(b.view.started_at_ms, &b.view.turn_id))
@@ -329,9 +392,14 @@ pub(super) fn project(
                     && base.view.model_configuration_id.as_ref() == Some(model_configuration_id)
                     && history_membership.as_ref().map_or_else(
                         || {
-                            ordinals.get(&base.view.turn_id).is_some_and(|n| {
-                                n >= target_from_ordinal && n <= target_through_ordinal
-                            })
+                            !base
+                                .view
+                                .requests
+                                .iter()
+                                .any(|r| admissions.contains_key(r.request_id.as_str()))
+                                && ordinals.get(&base.view.turn_id).is_some_and(|n| {
+                                    n >= target_from_ordinal && n <= target_through_ordinal
+                                })
                         },
                         |membership| {
                             !membership.clipped
@@ -549,14 +617,34 @@ fn make_turn(members: &[&Request]) -> Result<Projected, ObservationV2Error> {
             selection,
             tool_continuations: members
                 .iter()
-                .filter(|r| held(r, LedgerReasonCodeV1::ContextHoldApplied))
+                .filter(|r| {
+                    held(r, LedgerReasonCodeV1::ContextHoldApplied)
+                        || r.decision
+                            .as_ref()
+                            .and_then(|d| d.complexity.as_ref())
+                            .is_some_and(|d| {
+                                d.reason_codes
+                                    .contains(&ComplexityReasonCodeV1::InheritedToolContinuation)
+                            })
+                })
                 .count() as u64,
             relays,
             transitions: Vec::new(),
             assessment_state: "pending".into(),
             assessment: None,
             protected_turn_ids: Vec::new(),
-            status: "running".into(),
+            // Request completion does not prove stage completion. Missing a
+            // stage-closing fact must not manufacture perpetual activity either.
+            status: if members.iter().any(|r| r.view.outcome.is_none()) {
+                "running"
+            } else {
+                match members.last().and_then(|r| r.view.outcome.as_deref()) {
+                    Some("cancelled" | "postcommit_transport_failed") => "interrupted",
+                    Some("failed") => "failed",
+                    _ => "unknown",
+                }
+            }
+            .into(),
             requests: members.iter().map(|r| r.view.clone()).collect(),
             cost_by_model: costs.into_values().collect(),
             evidence_partial: members.iter().any(|r| r.partial),

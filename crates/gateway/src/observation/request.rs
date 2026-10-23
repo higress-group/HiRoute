@@ -883,6 +883,10 @@ impl RequestObservation {
         })
     }
 
+    pub(crate) fn agent_turn_admitted(&self, admission: &hiroute_domain::AgentTurnAdmissionV1) {
+        self.emit_execution(ExecutionFactV1::AgentTurnAdmitted(admission.clone()), None);
+    }
+
     pub(crate) fn agent_turn_finished(&self, turn: &CompletedAgentTurn) {
         let (executed_branch_id, model_configuration_id, profile_digest, attribution) =
             match &turn.attribution {

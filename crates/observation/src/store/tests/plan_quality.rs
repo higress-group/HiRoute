@@ -13,6 +13,7 @@ mod history_membership;
 mod routing_observations;
 mod routing_observations_released;
 mod routing_timeline_protection;
+mod stage_admission;
 mod summary;
 mod trust;
 

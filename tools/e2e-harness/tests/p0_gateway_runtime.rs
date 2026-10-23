@@ -4,6 +4,8 @@ mod runtime_support;
 mod auxiliary_failure_isolation;
 #[path = "p0_gateway_runtime/bearer_auth.rs"]
 mod bearer_auth;
+#[path = "p0_gateway_runtime/cancelled_tool_stage.rs"]
+mod cancelled_tool_stage;
 #[path = "p0_gateway_runtime/context_overflow.rs"]
 mod context_overflow;
 #[path = "p0_gateway_runtime/decision_branches.rs"]
@@ -28,6 +30,8 @@ mod native_input_window;
 mod native_peer_tasks;
 #[path = "p0_gateway_runtime/native_routing_availability.rs"]
 mod native_routing_availability;
+#[path = "p0_gateway_runtime/observed_history.rs"]
+mod observed_history;
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};

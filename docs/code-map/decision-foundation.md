@@ -173,6 +173,17 @@ response is not proof of logical task completion. Observation
 [timeline](../../crates/observation/src/query_v2/routing_timeline/projection.rs) and
 [quality receipts](../../crates/observation/src/receipt/plan_quality.rs) consume exact
 versioned request membership for new facts and retain the old reader for old bytes.
+[Admission identity](../../crates/gateway/src/agent_turn_history/store.rs)
+is emitted before classification and independently of affinity; the
+[pending-stage projection](../../crates/observation/src/query_v2/routing_timeline/admission.rs)
+groups interleaved requests by actual Gateway stage and producer epoch.
+Admission never supplies completion or assessment membership. A later admission
+reopens the view without changing the frozen target; delayed closure revisions
+cannot roll it back. [Admission regressions](../../crates/observation/src/store/tests/plan_quality/stage_admission.rs)
+cover pending branches, reopen, conflicts and request termination. The
+[listener-to-observation bridge](../../tools/e2e-harness/tests/p0_gateway_runtime/observed_history.rs)
+feeds actual Gateway envelopes through the production adapter, persistence and
+reopened timeline query; encrypted tool retries and cancellation exercise it.
 [Interleaved membership regressions](../../crates/observation/src/store/tests/plan_quality/history_membership.rs)
 check reopen and prohibit a late execution from extending a frozen score.
 The [ingress adapters](../../crates/gateway/src/adapters/ingress.rs) normalize

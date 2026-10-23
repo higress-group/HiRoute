@@ -202,7 +202,7 @@ fn interleaved_branches_use_exact_membership_and_late_execution_cannot_extend_a_
     assert_eq!(fact_digests(&db), preserved_digests);
 }
 
-fn fact_digests(db: &rusqlite::Connection) -> Vec<String> {
+pub(super) fn fact_digests(db: &rusqlite::Connection) -> Vec<String> {
     db.prepare("SELECT envelope_digest FROM execution_fact_events ORDER BY envelope_digest")
         .unwrap()
         .query_map([], |r| r.get(0))
