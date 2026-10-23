@@ -16,6 +16,8 @@ pub(crate) struct AnalyzedRequest {
     pub(super) user_origin_unverified: bool,
     pub(super) prior_history_missing: bool,
     pub(super) output_after_latest_user: bool,
+    /// Start of the actual current input, including every envelope in a window.
+    pub(super) current_input_start: Option<usize>,
     pub(super) turns: Vec<AnalyzedTurn>,
     pub(super) tool_results: Vec<(usize, String, ToolStatus)>,
 }
@@ -26,6 +28,7 @@ impl AnalyzedRequest {
     }
 
     pub(crate) fn mark_current_input_unavailable(&mut self) {
+        self.current_input_start = None;
         if let Some(turn) = self.turns.last_mut() {
             turn.user = vec![VisibleContentPart::Unavailable {
                 source_kind: "native_continuation_input".into(),
@@ -57,6 +60,7 @@ impl AnalyzedRequest {
                     user_index: last,
                     user: Vec::new(),
                 });
+                self.current_input_start = Some(first);
                 self.output_after_latest_user = output_after(request, last);
             }
             None => {}
@@ -109,6 +113,7 @@ impl AnalyzedRequest {
             });
         }
         self.output_after_latest_user = output_after(request, index);
+        self.current_input_start = Some(index);
         Ok(())
     }
 
@@ -166,6 +171,7 @@ pub(super) fn analyze_request(
         user_origin_unverified: false,
         prior_history_missing: false,
         output_after_latest_user,
+        current_input_start: user_indices.last().copied(),
         turns,
         tool_results: project_tool_results(request),
     })

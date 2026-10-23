@@ -32,6 +32,8 @@ mod records;
 use records::*;
 #[path = "store/branches.rs"]
 mod branches;
+#[path = "store/opening.rs"]
+mod opening;
 
 pub(crate) const DEFAULT_MAX_MEMORY_BYTES: usize = 500_000_000;
 pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);

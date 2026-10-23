@@ -101,6 +101,11 @@ invalidate that route, and each request still reauthorizes.
 derives execution scope from request authority independently of ContextHold.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+Independent-branch [opening evidence](../../crates/gateway/src/agent_turn_history/store/opening.rs)
+compares the full old request separately from that response edge. Its
+[regressions](../../crates/gateway/src/agent_turn_history/opening_evidence_tests.rs)
+cover interrupted output, concurrent retries, input windows and missing measurements;
+a new-message cause does not authorize predecessor reuse or repair the old score.
 Request-local model setup remains in strict ContextHold, outside execution-prefix
 identity. A unique visible response projection can retain actual stage capture
 when retained native history is only partially modeled: [ingress coverage](../../crates/gateway/src/model_ir/native_history.rs)

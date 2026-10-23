@@ -531,6 +531,8 @@ Session detail MUST show actual agent-turn selection, boundary, group, model/rea
 
 Explicit causes override legacy hints. UserMessage displays New message. HistoryShortened displays Context rebuilt and is attributed to compaction by the owner-selected step-count heuristic. A step is one canonical request message, not a token, tool or timeline turn. Details disclose that a shorter rewind or shared-scope background/subagent request can also satisfy this heuristic. HistoryRewrite and Other remain unknown. NoComparableHistory displays New message only for the first session turn. Without the field, legacy inference displays New message for the first session turn or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. A retained tail with a known later ordinal is not the first session turn. Invalidation alone never proves compaction. Unknown headings omit the badge and details disclose the gap. Supported old bytes and authenticated digests remain readable unchanged; unreleased experimental digests are not admitted.
 
+Opening causes SHALL distinguish the observed request-input boundary from accepted-response association. On an independent branch, a fully matched prior request prefix and an actual current input entirely after that request may establish UserMessage without a complete intervening response. Comparable candidate boundaries must agree; a newer ingress retry, overlapping input window or same native activation cannot be overridden by an older matching prefix. Missing digests or a checkpoint position not measured before concurrent advancement mean Other, not proven HistoryRewrite. A changed comparable request prefix retains HistoryRewrite. This evidence grants no predecessor reuse, affinity, completion or stronger assessment association; the interrupted or unknown prior stage and its frozen partial target remain unchanged. The independent branch captures its own actual execution and starts its own assessment segment.
+
 The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools, native activation/window identifiers and cache presence SHALL NOT establish native provenance. Concurrent execution membership follows the independent branch contract below; an unknown main/child relationship remains explicitly uncertain. The legend states that an eligible exact continuation keeps its model and new messages or rebuilt context trigger fresh judgment.
 
 The opening request supplies stable display identity before completion. Late assessments and valuations update that turn. When late authoritative request membership absorbs provisional rows into a completed turn, Desktop SHALL remove the absorbed rows by their exact opening-request identities, transfer their selection/focus to the owning turn, and reconcile overview, request and turn counts. Names, timing or model similarity SHALL NOT infer membership. Incremental cursors MUST be authenticated and bound to reader, session, page size and retained visibility; pagination freezes fact, valuation and link positions until its changed page is consumed. Reconnect deduplicates equal content digests. Cleared or expired scope invalidates the cursor. Unknown usage/cost remains unknown; per-model currency and valuation basis are preserved. A per-model sum SHALL retain available known amounts when another contribution is unknown, disclose that it is a known subtotal and retain the missing contribution. No known contribution means amount unknown, not zero. Frozen API-equivalent amounts SHALL be labeled estimates in summary and request detail.
@@ -607,6 +609,17 @@ Timeline transition summaries SHALL distinguish a completed turn comparison from
 
 - **WHEN** an old turn without an opening-cause field has a fresh opening decision recording ContextHoldApplied or ContextHoldInvalidated
 - **THEN** the turn shows a new-message boundary; a group change is never labelled as compaction.
+
+#### Scenario: A new input follows an interrupted tool stream
+
+- **WHEN** the old request prefix is unchanged, the client replays delivered text but omits an unfinished tool call, and an actual new input follows the complete old request
+- **THEN** its independent admission records a new-message boundary while the old stage remains interrupted and partial; no old response edge, decision inheritance or affinity is invented.
+- **AND** subsequent complete execution and assessment use only the new branch's actual members, including when both branches execute on the same model and group.
+
+#### Scenario: A missing comparison is not a changed prefix
+
+- **WHEN** a bounded digest is unavailable or a concurrent checkpoint advances beyond measured positions
+- **THEN** the independent opening remains unknown rather than claiming a history rewrite; routing and capture continue with the existing association limits.
 
 #### Scenario: Unknown and retained-tail boundaries
 

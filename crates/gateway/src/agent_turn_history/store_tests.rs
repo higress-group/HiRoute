@@ -20,6 +20,8 @@ mod branch_context;
 
 #[path = "opening_cause_tests.rs"]
 mod opening_cause;
+#[path = "opening_evidence_tests.rs"]
+mod opening_evidence;
 
 #[path = "boundary/reasoning_tests.rs"]
 mod reasoning_boundary;

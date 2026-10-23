@@ -181,6 +181,10 @@ A known successful tool response can leave its stage open; an unknown provider
 outcome cannot be repaired by a later activation or final answer. A proven new
 activation or terminal can close a known stage, while association loss leaves
 evaluation partial. A later independently complete stage recovers normally.
+An independent branch's [opening evidence](src/agent_turn_history/store/opening.rs)
+compares the old request and actual current input separately. Missing response
+completion does not prove a rewritten request. New-message evidence cannot reuse
+the old execution or repair its partial score; missing comparison remains unknown.
 [Closure regressions](src/agent_turn_history/stage_closure_tests.rs) check both
 directions and preserve previously frozen snapshots.
 Request JSON observation uses the same Replay-aware canonical serialization as

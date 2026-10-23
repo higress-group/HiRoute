@@ -299,9 +299,12 @@ fn real_listener_conflicting_parallel_tool_final_stays_partial_and_next_stage_re
         routes[1]["correlation"]["request_id"]
     );
     assert_eq!(scores[0]["fact"]["partial"], true);
+    let mut uncertain_target = old[0]["history_membership"].clone();
+    uncertain_target["relation"] = json!("contextual");
+    uncertain_target["association_unverified"] = json!(true);
     assert_eq!(
-        scores[0]["fact"]["history_membership"],
-        old[0]["history_membership"]
+        scores[0]["fact"]["history_membership"], uncertain_target,
+        "the later request adds association uncertainty without changing frozen members"
     );
     assert_eq!(
         scores[1]["correlation"]["request_id"],
