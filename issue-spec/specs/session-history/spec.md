@@ -521,6 +521,12 @@ Timeline transition summaries SHALL distinguish a completed turn comparison from
 - **THEN** a bounded recheck displays the content; inactive or hidden views stop rechecking and resume when visible.
 - **AND** cleanup removes the excerpt and a stale in-flight read cannot restore it.
 
+#### Scenario: Confirmed cleanup is distinct from content awaiting capture
+
+- **WHEN** successful cleanup or current session metadata confirms deleted or expired content, including when request counts, activity timestamps and turn digests remain unchanged
+- **THEN** visible titles and excerpts discard cached text, show cleared content and stop body retries, including after reopening the session. An empty catalog alone is not proof of deletion.
+- **AND** a later request may make new session content readable without restoring content from requests already confirmed cleared.
+
 #### Scenario: Assessment after a producer epoch changes
 
 - **WHEN** a producer restarts its local ordinal sequence and a later displayed turn has an assessment

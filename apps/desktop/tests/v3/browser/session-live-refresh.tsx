@@ -22,6 +22,15 @@ Object.defineProperty(document, 'visibilityState', { configurable: true, get: ()
 Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
 const fixture = {
   phase: 0, rootsPartial: false, onlyResponse: false, partPartial: false, body: params.get('body') ?? 'pending', deferSummary: false, deferContent: false,
+  clearedSessions: new Map<string, string>(), deletedRequests: new Set<string>(), revivedSessions: new Set<string>(),
+  clear: (session: string, state = 'deleted') => {
+    fixture.clearedSessions.set(session, state);
+    fixture.deletedRequests.add(`request/${session}`);
+  },
+  revive: (session: string) => {
+    fixture.clearedSessions.delete(session);
+    fixture.revivedSessions.add(session);
+  },
   reads: [] as { view: string; query: any; at: number }[], releases: [] as (() => void)[],
   advance: (ms: number) => {
     now += ms;
@@ -31,11 +40,13 @@ const fixture = {
   invalidate: () => window.dispatchEvent(new Event('hiroute-content-invalidated')),
   release: () => { for (const release of fixture.releases.splice(0)) release(); },
 };
+if (params.has('cleared')) fixture.clear('session-1');
 Object.assign(window, { sessionRefreshFixture: fixture });
-const summary = (id: string, phase = fixture.phase) => ({ session_id: id, agent_id: 'claude-code', request_count: phase ? 18 : 12, fallback_request_count: 0, last_request_at_ms: phase ? baseTime + 65000 : baseTime - 60000, correlation_kind: 'native_session', content_completeness: phase ? 'complete' : 'partial' });
+const summary = (id: string, phase = fixture.phase) => ({ session_id: id, agent_id: 'claude-code', request_count: fixture.revivedSessions.has(id) ? 13 : phase ? 18 : 12, fallback_request_count: 0, last_request_at_ms: fixture.revivedSessions.has(id) ? now : phase ? baseTime + 65000 : baseTime - 60000, correlation_kind: 'native_session', content_completeness: fixture.clearedSessions.get(id) ?? (phase || fixture.revivedSessions.has(id) ? 'complete' : 'partial') });
 const request = (session: string) => ({ request_id: `request/${session}`, started_at_ms: baseTime - 60000, outcome: 'completed', native_turn_id: 'turn/one', within_request_fallback: false, final_native_model: 'provider/exact-model', between_turn_model_change: false, previous_native_turn_id: null, previous_turn_model: null, turn_final_native_model: 'provider/exact-model', routing_context: { state: 'recorded', name_state: 'recorded', display_name: 'Daily coding trial', plan_id: 'plan/trial', plan_revision: '1' } });
 const body = (requestId: string, state = fixture.body) => ({ state: fixture.partPartial ? 'partial' : ['deleted', 'expired'].includes(state) ? state : 'complete', chunks: state === 'available' ? [{ text: `Ready user content for ${requestId}`, original_byte_offset: 0 }] : [], next_cursor: null });
 mockIPC(async (command, payload: any) => {
+  if (command === 'observation_delete') { fixture.clear(payload.input.session_id); return {}; }
   if (command !== 'observation_read') throw Error(`Unexpected command ${command}`);
   const { view, query } = payload.request.intent;
   fixture.reads.push({ view, query, at: now });
@@ -47,14 +58,29 @@ mockIPC(async (command, payload: any) => {
     }
     return { sessions: query.cursor ? [summary('older-page')] : Array.from({ length: 12 }, (_, index) => summary(`session-${index + 1}`)), next_cursor: query.cursor ? null : 'page-two' };
   }
-  if (view === 'timeline') return { requests: [request(query.session_id)], next_cursor: null };
-  if (view === 'routing_timeline') return { turns: [], complete: true, watermark: 'constant-timeline-digest' };
+  const sessionRequests = (id: string) => fixture.revivedSessions.has(id)
+    ? [{ ...request(id), request_id: `request/${id}/new`, started_at_ms: baseTime + 65000 }, request(id)] : [request(id)];
+  if (view === 'timeline') return { requests: sessionRequests(query.session_id), next_cursor: null };
+  if (view === 'routing_timeline') return {
+    turns: params.has('routed') ? sessionRequests(query.session_id).map(item => ({
+      turn_id: item.request_id, agent_turn_id: `agent-turn/${item.request_id}`, segment_id: null, started_at_ms: item.started_at_ms,
+      finished_at_ms: item.started_at_ms + 1000, boundary: 'new_user_message', plan_id: null, plan_revision: null,
+      branch_id: null, model_configuration_id: 'provider/exact-model', reasoning_profile_id: null, group: 'regular',
+      selection: null, tool_continuations: 0, relays: [], assessment_state: 'unrated', assessment: null,
+      competence_floor_millis: null, protected_turn_ids: [], status: 'completed',
+      requests: [{ ...item, duration_ms: 1000, native_model: 'provider/exact-model', input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_read_share: null, costs: [] }],
+      transitions: [], cost_by_model: [], evidence_partial: false, content_digest: 'unchanged-digest',
+    })) : [], complete: true, watermark: 'constant-timeline-digest',
+  };
   if (view === 'catalog') {
     if (fixture.body === 'error') throw { code: 'OBSERVATION_READ_TIMEOUT' };
-    return { contents: fixture.body === 'pending' ? [] : [{ content_id: 'content/one', role: fixture.onlyResponse ? 'assistant' : 'user', kind: 'text', state: ['deleted', 'expired'].includes(fixture.body) ? fixture.body : 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: 'message/one', message_ordinal: 1, part_ordinal: 1 }], transcript_roots: [], roots_partial: fixture.rootsPartial, next_cursor: null };
+    // Production cleanup removes catalog rows and transcript roots; it does not
+    // leave a synthetic entry whose state is deleted.
+    const cleared = fixture.deletedRequests.has(query.request_id);
+    return { contents: cleared || fixture.body === 'pending' ? [] : [{ content_id: 'content/one', role: fixture.onlyResponse ? 'assistant' : 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: 'message/one', message_ordinal: 1, part_ordinal: 1 }], transcript_roots: [], roots_partial: cleared || fixture.rootsPartial, next_cursor: null };
   }
   if (view === 'content') {
-    const result = body(query.request_id);
+    const result = body(query.request_id, fixture.deletedRequests.has(query.request_id) ? 'deleted' : fixture.body);
     if (fixture.deferContent) return await new Promise(resolve => fixture.releases.push(() => resolve(result)));
     return result;
   }

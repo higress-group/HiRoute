@@ -87,15 +87,77 @@ try {
     await evaluate(client, `document.querySelector('main').scrollTop=document.querySelector('main').scrollHeight;true`); await flush(); const offscreen = await readCount('true'); await advance(60000); assert.equal(await readCount('true'), offscreen);
     await evaluate(client, `${fixture}.body='available';document.querySelector('main').scrollTop=0;true`); await waitFor(client, `document.querySelector('.selected-excerpt').textContent.includes('Ready user content')`);
   });
-  await run('session.excerpt-deletion-invalidates-in-flight-and-stops-retries', async () => {
+  await run('session.cleanup-already-cleared-session-opens-without-body-reads', async () => {
+    await open('body=available&routed&cleared');
+    await waitFor(client, "document.querySelector('.transcript-head h2')?.textContent==='Content cleared'");
+    await waitFor(client, "document.querySelector('.routing-quote span')?.dataset.contentState==='cleared'");
+    await advance(60000);
+    assert.equal(await readCount("['catalog','content'].includes(r.view)&&r.query.request_id==='request/session-1'"), 0);
+  });
+  await run('session.excerpt-empty-partial-catalog-is-not-proof-of-cleanup', async () => {
     await open('mode=excerpt'); await waitFor(client, `${fixture}.reads.length===1`);
-    await evaluate(client, `${fixture}.body='available';${fixture}.deferContent=true;true`); await advance(2000);
-    await waitFor(client, `${fixture}.releases.length===1`);
-    await evaluate(client, `${fixture}.body='deleted';${fixture}.invalidate();${fixture}.deferContent=false;${fixture}.release();true`); await flush();
-    assert.ok(!(await evaluate(client, `document.querySelector('.selected-excerpt').textContent`)).includes('Ready user content'));
-    await advance(2000); await waitFor(client, `document.querySelector('[data-content-state="cleared"]')!==null`);
-    const reads = await readCount('true'); await advance(60000); assert.equal(await readCount('true'), reads);
-    await shot('session-excerpt-cleared-en-light');
+    await evaluate(client, `${fixture}.rootsPartial=true;true`); await advance(2000);
+    assert.equal(await evaluate(client, "document.querySelector('.selected-excerpt span').dataset.contentState"), 'pending');
+    await evaluate(client, `${fixture}.rootsPartial=false;${fixture}.body='available';true`); await advance(4000);
+    await waitFor(client, "document.querySelector('.selected-excerpt').textContent.includes('Ready user content')");
+  });
+  await run('session.cleanup-empty-catalog-invalidates-in-flight-and-stops-retries', async () => {
+    await open('body=available&routed');
+    await waitFor(client, "!!document.querySelector('.session-pane:not([hidden]) .routing-quote')");
+    await evaluate(client, "document.querySelector('.routing-quote').scrollIntoView({block:'center'});true");
+    await waitFor(client, "document.querySelector('.routing-quote').textContent.includes('Ready user content')");
+    await evaluate(client, `${fixture}.deferContent=true;${fixture}.invalidate();true`);
+    await waitFor(client, `${fixture}.releases.length>0`);
+    await evaluate(client, `document.querySelector('[aria-label="Clear this session"]').click();true`);
+    await waitFor(client, "!!document.querySelector('[role=dialog] .btn-danger')");
+    await evaluate(client, "document.querySelector('[role=dialog] .btn-danger').click();true");
+    await waitFor(client, `${fixture}.clearedSessions.has('session-1')`);
+    await waitFor(client, "document.querySelector('.transcript-head h2').textContent==='Content cleared'");
+    await evaluate(client, `${fixture}.deferContent=false;${fixture}.release();true`); await flush();
+    await waitFor(client, "!document.querySelector('[role=dialog]')");
+    await waitFor(client, "document.querySelector('.routing-quote span')?.dataset.contentState==='cleared'");
+    const filter = "['catalog','content'].includes(r.view)&&r.query.request_id==='request/session-1'";
+    const reads = await readCount(filter); await advance(60000); assert.equal(await readCount(filter), reads);
+    assert.equal(await evaluate(client, "document.querySelector('.routing-quote').textContent"), 'Content cleared');
+    assert.equal(await evaluate(client, "document.querySelector('.transcript-head h2').textContent"), 'Content cleared');
+    assert.equal(await evaluate(client, "document.querySelector('.session-item[aria-current=page] .session-item-title').textContent"), 'Content cleared');
+    await shot('session-cleanup-empty-catalog-en-light');
+    // Timeline and summary reads are independent. Do not permanently classify
+    // a newly arrived request as cleared using an older session summary.
+    await evaluate(client, `${fixture}.deferSummary=true;true`); await advance(2000);
+    await waitFor(client, `${fixture}.releases.length>0`);
+    await evaluate(client, `${fixture}.revivedSessions.add('session-1');true`); await advance(2000);
+    await waitFor(client, "document.querySelectorAll('.routing-turn').length===2");
+    await evaluate(client, `${fixture}.deferSummary=false;${fixture}.release();true`); await flush();
+    await evaluate(client, `${fixture}.revive('session-1');true`); await advance(2000);
+    await waitFor(client, "document.querySelector('.transcript-head h2').textContent.includes('session-1/new')");
+    await waitFor(client, "document.querySelectorAll('.routing-turn').length===2");
+    await evaluate(client, `document.querySelector('[data-turn-id="request/session-1"]').click();true`);
+    await waitFor(client, "document.querySelector('.routing-quote').textContent==='Content cleared'");
+    await evaluate(client, `document.querySelector('[data-turn-id="request/session-1/new"]').click();true`);
+    await evaluate(client, "document.querySelector('.routing-quote').scrollIntoView({block:'center'});true");
+    await waitFor(client, "document.querySelector('.routing-quote').textContent.includes('session-1/new')");
+    assert.ok(!(await evaluate(client, "document.querySelector('.session-item[aria-current=page]').textContent")).includes('Content cleared'));
+  });
+  for (const state of ['deleted', 'expired']) await run(`session.cleanup-${state}-summary-invalidates-cached-excerpts-and-reopens`, async () => {
+    await open('body=available&routed&lang=zh&theme=dark', 755, 600);
+    await waitFor(client, "document.querySelector('.transcript-head h2')?.textContent.includes('Ready user content')");
+    await evaluate(client, "document.querySelector('.routing-quote').scrollIntoView({block:'center'});true");
+    await waitFor(client, "document.querySelector('.routing-quote').textContent.includes('Ready user content')");
+    const summaryBefore = await readCount("r.view==='sessions'&&r.query.session_id");
+    await evaluate(client, `${fixture}.clear('session-1','${state}');true`); await advance(2000);
+    await waitFor(client, "document.querySelector('.transcript-head h2').textContent==='正文已清理'");
+    assert.ok(await readCount("r.view==='sessions'&&r.query.session_id") > summaryBefore);
+    assert.equal(await evaluate(client, "document.querySelector('.session-item[aria-current=page] .session-item-title').textContent"), '正文已清理');
+    assert.equal(await evaluate(client, "document.querySelector('.routing-quote').textContent"), '正文已清理');
+    const filter = "['catalog','content'].includes(r.view)&&r.query.request_id==='request/session-1'";
+    const reads = await readCount(filter); await advance(60000); assert.equal(await readCount(filter), reads);
+    await shot(`session-cleanup-${state}-zh-dark-755`);
+    await evaluate(client, "document.querySelectorAll('.session-item')[1].click();true");
+    await waitFor(client, "document.querySelector('.transcript-head h2').textContent.includes('session-2')");
+    await evaluate(client, "document.querySelectorAll('.session-item')[0].click();true");
+    await waitFor(client, "document.querySelector('.routing-quote span')?.dataset.contentState==='cleared'");
+    assert.equal(await readCount(filter), reads, 'reopening a known cleared session does not fetch body');
   });
 } finally {
   await writeFile(path.join(output, 'session-live-refresh-results.json'), JSON.stringify(results, null, 2));

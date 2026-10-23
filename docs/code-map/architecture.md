@@ -274,7 +274,10 @@ Trial cost reads use the internal admitted `TrustCostScopeV1`, joining retained 
 [Session detail](../../apps/desktop/src/features/Sessions.tsx) separately refreshes
 the selected summary and visible unresolved excerpts; turn-fact digests do not
 describe body availability. [Live refresh scenarios](../../apps/desktop/tests/v3/visual/session-live-refresh-active.mjs)
-cover delayed content, stale responses and cleanup. [Timeline presentation scenarios](../../apps/desktop/tests/v3/visual/timeline-presentation-active.mjs)
+cover delayed content, stale responses and cleanup. Current summary visibility and
+successful cleanup govern cached titles and request excerpts even when cleanup
+removes every catalog row; new requests do not revive cleared request content.
+[Timeline presentation scenarios](../../apps/desktop/tests/v3/visual/timeline-presentation-active.mjs)
 cover exact assessment identities, transient-read recovery and fixed-label geometry.
 The [transition adapter](../../crates/observation/src/query_v2/routing_timeline/transitions.rs)
 coalesces only redundant intermediate comparisons proven by the same completed
