@@ -36,6 +36,27 @@ resources follow `OPENCODE_CONFIG_DIR`, or the OpenCode directory under
 `XDG_CONFIG_HOME` when no extra root is selected. Do not add a second manual
 `plugin` registration. Configure and Restore must preserve unrelated plugins.
 
+OpenCode 1.19.3's native loader waits for resource-directory npm dependencies
+before loading any external plugin, including this self-contained local file.
+This happens before ACP initialization and before the hook's own deadlines can
+apply. A cold resource directory can therefore block on native package installation
+without sending a Gateway request. Validate dependency readiness in the final
+HOME/XDG/resource scope with an actual managed initialization before model
+acceptance. A downloaded package, an incomplete cache, or successful initialization
+after removing the plugin does not establish readiness. Preserve cold-start
+failures separately from acceptance with installed dependencies; increasing a
+test timeout or warming a cache is not a fix for the loader's dependency boundary.
+
+There is no verified 1.19.3 switch that preserves this plugin while bypassing that
+wait. `OPENCODE_PURE` disables all external plugins and cannot substitute for
+ordinary-client acceptance. Without the HiRoute plugin, native custom-provider
+requests still supply session and parent-session headers, so Gateway retains
+observed classification, execution capture and evidence-backed evaluation.
+Purpose, current-event and compression references are weaker: auxiliary requests
+sharing a session may be misattributed. This is a disclosed degraded capability,
+not full metadata recovery. Never disable unrelated plugins or fabricate dependency
+manifests to obtain a passing startup result.
+
 The public `chat.headers` hook emits immutable v2 purpose/session/current-event
 facts before optional enrichment. Known `title`, `summary` and `compaction` calls
 skip the SDK. Ordinary calls use at most one 128-entry SDK page with a 50 ms abort
