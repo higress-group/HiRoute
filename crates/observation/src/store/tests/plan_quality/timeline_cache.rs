@@ -17,26 +17,49 @@ fn timeline_late_completion_resolves_only_its_redundant_intermediate_comparison(
     }
     let channel = fact_channel(&prior, 256 * 1024);
     let writer = writer(&store);
+    let assert_ingested = |envelope: hiroute_domain::ExecutionFactEnvelopeV1| {
+        let request = envelope.correlation.request_id.clone();
+        let sequence = envelope.sequence;
+        let fact_kind = serde_json::to_value(&envelope.fact).unwrap()["kind"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let outcome = offer_fact(&writer, &channel, envelope);
+        assert!(
+            matches!(outcome, WriterCycleOutcome::Ack(_)),
+            "request={request} sequence={sequence} fact={fact_kind:?}: {outcome:?}"
+        );
+    };
     let mut sequence = 0;
     for (fixture, model, at) in [
         (&prior, "regular", 1000),
         (&opening, "primary", 1100),
         (&closing, "primary", 1200),
     ] {
+        let mut candidate = support::candidate(model);
+        if let ExecutionFactV1::CandidateDecision(candidate) = &mut candidate {
+            candidate.native_model = model.into();
+        }
         let mut started = support::attempt_started(model);
         if let ExecutionFactV1::AttemptStarted { request_model, .. } = &mut started {
             *request_model = model.into();
         }
-        for (offset, (fact, attempt)) in [
+        let mut facts = vec![
             (support::route_decision(PLAN), false),
-            (support::candidate(model), false),
+            (candidate, false),
             (started, true),
             (support::attempt_finished(), true),
-            (support::request_finished(), false),
-        ]
-        .into_iter()
-        .enumerate()
-        {
+        ];
+        if fixture.request == prior.request {
+            facts.push((
+                finished_for_model(&prior, "stage-1", "turn-1", 1, "smart_saving", 1000, model),
+                false,
+            ));
+        }
+        if fixture.request != closing.request {
+            facts.push((support::request_finished(), false));
+        }
+        for (offset, (fact, attempt)) in facts.into_iter().enumerate() {
             sequence += 1;
             let envelope = if attempt {
                 fixture.attempt_fact(
@@ -49,25 +72,9 @@ fn timeline_late_completion_resolves_only_its_redundant_intermediate_comparison(
             } else {
                 fixture.fact(sequence, fact, at + offset as i64)
             };
-            assert!(matches!(
-                offer_fact(&writer, &channel, envelope),
-                WriterCycleOutcome::Ack(_)
-            ));
+            assert_ingested(envelope);
         }
     }
-    sequence += 1;
-    assert!(matches!(
-        offer_fact(
-            &writer,
-            &channel,
-            prior.fact(
-                sequence,
-                finished(&prior, "stage-1", "turn-1", 1, "smart_saving", 1000),
-                1010
-            )
-        ),
-        WriterCycleOutcome::Ack(_)
-    ));
     let mut query = RoutingTimelineQueryV1 {
         session_id: prior.session.to_string(),
         after_watermark: None,
@@ -83,21 +90,30 @@ fn timeline_late_completion_resolves_only_its_redundant_intermediate_comparison(
             .iter()
             .any(|t| t.kind == AnalysisTransitionKindV1::Unknown)
     );
-    let mut finished = finished(&opening, "stage-2", "turn-2", 2, "smart_saving", 1100);
+    // Turn completion belongs to the still-open final request. Appending it to
+    // the already-frozen opening request would violate receipt immutability.
+    let mut finished = finished_for_model(
+        &closing,
+        "stage-2",
+        "turn-2",
+        2,
+        "smart_saving",
+        1100,
+        "primary",
+    );
     if let ExecutionFactV1::AgentTurnFinished {
-        last_request_id,
+        first_request_id,
         finished_at_ms,
         ..
     } = &mut finished
     {
-        *last_request_id = Some(closing.request.clone());
+        *first_request_id = Some(opening.request.clone());
         *finished_at_ms = 1210;
     }
-    sequence += 1;
-    assert!(matches!(
-        offer_fact(&writer, &channel, opening.fact(sequence, finished, 1210)),
-        WriterCycleOutcome::Ack(_)
-    ));
+    for (fact, at) in [(finished, 1210), (support::request_finished(), 1211)] {
+        sequence += 1;
+        assert_ingested(closing.fact(sequence, fact, at));
+    }
     query.after_watermark = Some(provisional.watermark);
     let delta = store
         .observed_routing_timeline(&reader(), &query, 5000)
