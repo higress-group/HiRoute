@@ -221,9 +221,30 @@ pub(super) fn run_case(case: &str, root: &Path) {
         classified[1]["visible_conversation"][0]["status"],
         if disconnect { "interrupted" } else { "failed" }
     );
-    // Complete evidence of a failed/interrupted stage is not successful task
-    // execution. There is no unfinished provider response in this zero-attempt case.
-    assert_eq!(classified[1]["history_partial"], false);
+    // A2 produced no accepted output edge. B therefore opens an independent
+    // branch and discloses a contextual history gap, while its assessment can
+    // still address every actual member of the already frozen A stage.
+    assert_eq!(classified[1]["history_partial"], true);
+    assert_eq!(classified[1]["assessment_target"]["from"], 0);
+    assert_eq!(
+        classified[1]["visible_conversation"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let disclosures = classified[1]["latest_user"].as_array().unwrap();
+    for source in [
+        "prior_execution_history_missing",
+        "assessment_target_association_unverified",
+    ] {
+        assert!(disclosures.contains(&json!({"kind":"unavailable","source_kind":source})));
+    }
+    assert!(
+        !disclosures
+            .iter()
+            .any(|part| part["source_kind"] == "assessment_target_capture_gap")
+    );
     assert_recovery(&final_facts);
     wait_replay_clean(&root.join("replay"));
 }
@@ -290,10 +311,29 @@ fn assert_recovery(facts: &[Value]) {
     }
     let assessments = named(facts, "branch_assessment_recorded");
     assert_eq!(assessments.len(), 2);
-    for (assessment, stage) in assessments.iter().zip(&stages) {
+    for (index, (assessment, stage)) in assessments.iter().zip(&stages).enumerate() {
+        let mut expected_membership = stage["fact"]["history_membership"].clone();
+        if index == 0 {
+            // Fork projection discloses the uncertain A -> B association. It
+            // must not change A's frozen branch, revision, members or coverage.
+            expected_membership["relation"] = json!("contextual");
+            expected_membership["association_unverified"] = json!(true);
+        }
         assert_eq!(
             assessment["fact"]["history_membership"],
-            stage["fact"]["history_membership"]
+            expected_membership
+        );
+        assert_eq!(
+            assessment["fact"]["target_from_turn_id"],
+            stage["fact"]["agent_turn_id"]
+        );
+        assert_eq!(
+            assessment["fact"]["target_through_turn_id"],
+            stage["fact"]["agent_turn_id"]
+        );
+        assert_eq!(
+            assessment["fact"]["model_configuration_id"],
+            stage["fact"]["model_configuration_id"]
         );
         assert_eq!(assessment["fact"]["partial"], false);
     }
