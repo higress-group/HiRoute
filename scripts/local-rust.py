@@ -391,7 +391,7 @@ def run(store, args, prepare=None, on_record=None):
     return store.load(key)
 
 
-def main():
+def argument_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
     p = sub.add_parser("run", help="Exact committed candidate in an isolated worktree")
@@ -425,6 +425,11 @@ def main():
     p.add_argument("id")
     p.add_argument("--verdict", choices=("green", "expected_red", "red"), required=True)
     p.add_argument("--evidence-saved", action="store_true", required=True)
+    return parser
+
+
+def main():
+    parser = argument_parser()
     args = parser.parse_args()
     store = Store()
     if args.action == "run":

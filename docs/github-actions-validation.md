@@ -201,6 +201,28 @@ Build concurrency defaults to the runner CPU count; incremental compilation is
 disabled. Every job keeps its own checkout-local Cargo output. The hosted job is
 disposable, so there is no persistent worktree cleanup service.
 
+### Rust test concurrency
+
+Compiler jobs and host CPU count do not describe effective test concurrency.
+Full hosted unit/binary, integration and doctest bundles use the `hosted-default` policy:
+they pass no `--test-threads` override, including for CPA bridge unit tests and
+process-backed CLI, daemon and Gateway targets. Libtest can select its default or
+consume `RUST_TEST_THREADS` from the launch environment. The report retains these
+settings separately and leaves effective runtime concurrency explicitly unknown.
+
+This is an explicit hosted exception to the focused/SSH process-target one-thread
+policy and the workspace DAG's per-target bounds. The hosted bundles retain their
+existing workspace/all-features graph and complete target inventory; the runner
+does not split those bundles or silently insert a focused target's bound. Affected
+plans and explicit gates retain their selected commands, including any explicit
+harness bound, under `selected-command`. Shard planning tests cover both policies.
+
+Use these recorded differences when comparing a focused pass with a hosted failure.
+A later pass does not establish that concurrency caused an earlier failure.
+Changing the hosted bounds requires separate execution evidence; neither a retry
+nor this diagnostic metadata changes production deadlines, assertions or the
+meaning of an earlier failure.
+
 ## Evidence and failures
 
 Each invocation checks the full expected SHA against HEAD and rejects tracked
@@ -213,7 +235,16 @@ not establish product scenario acceptance.
 
 `artifacts/ci/<name>/` contains the complete command log and JSON result, including
 revision, CPU count, platform, timestamps, and Cargo/Rust versions for Cargo
-commands. Failure prints the log tail; Actions uploads available artifacts even
+commands. Rust test results and derived reports also retain `harness_concurrency`:
+the requested thread arguments (an empty list means omitted), the launch
+`RUST_TEST_THREADS` value and whether that environment was observed, the configured
+limit/source when unambiguous, the applicable policy, and an unknown effective
+thread count. A configured limit is not measured active concurrency: Cargo config,
+custom harnesses and test-created threads may change runtime behavior. Older or
+non-hosted records without an environment snapshot remain unknown rather than
+being reconstructed from today's environment or CPU count.
+
+Failure prints the log tail; Actions uploads available artifacts even
 when a check fails. Each shard uses a distinct artifact name; the aggregate job does not
 replace those per-command records. Timeout and cancellation stop the command process group
 before removing its private short TMPDIR. A forcibly terminated VM cannot be

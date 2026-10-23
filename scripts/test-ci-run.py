@@ -92,6 +92,45 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIsNone(result["process_exit"])
 
+    def test_cargo_launch_records_environment_and_requested_limit_without_measuring_threads(self):
+        # A real child process observes the same environment that result/report record.
+        # This is runner evidence, not execution of HiRoute Rust tests.
+        binary = self.root / "bin"
+        binary.mkdir()
+        fixture = ("#!" + sys.executable + "\nimport json, os, sys\n"
+                   "if 'metadata' in sys.argv:\n"
+                   "    print(json.dumps({'target_directory': os.path.join(os.getcwd(), 'target')}))\n"
+                   "elif '--version' in sys.argv:\n    print('fixture toolchain')\n"
+                   "else:\n    print('RUST_TEST_THREADS=' + str(os.environ.get('RUST_TEST_THREADS')))\n"
+                   "    print('test result: ok. 1 passed; 0 failed; 0 ignored')\n")
+        for name in ("cargo", "rustc"):
+            (binary / name).write_text(fixture)
+            (binary / name).chmod(0o755)
+        cases = [(None, [], "default", None), ("4", [], "environment", 4),
+                 ("4", ["--", "--test-threads", "2"], "argument", 2)]
+        for index, (environment, arguments, source, limit) in enumerate(cases):
+            output = self.root / ("cargo-" + str(index))
+            with self.subTest(source=source), patch.dict(os.environ, {
+                    "PATH": str(binary) + os.pathsep + os.environ["PATH"]}):
+                os.environ.pop("RUST_TEST_THREADS", None)
+                if environment is not None:
+                    os.environ["RUST_TEST_THREADS"] = environment
+                with patch.object(ci.os, "cpu_count", return_value=16):
+                    self.assertEqual(ci.execute(["cargo", "test", *arguments], self.root, output,
+                                                self.sha, 5, True), 0)
+            result = json.loads((output / "result.json").read_text())
+            report = json.loads((output / "validation-report.json").read_text())
+            harness = result["harness_concurrency"]
+            self.assertEqual(harness["environment_threads"], environment)
+            self.assertEqual(harness["configuration_source"], source)
+            self.assertEqual(harness["configured_thread_limit"], limit)
+            self.assertEqual(harness["policy"], "selected-command")
+            self.assertIsNone(harness["effective_threads"])
+            self.assertEqual(harness["effective_state"], "unknown")
+            self.assertEqual(report["context"]["harness_concurrency"], harness)
+            self.assertIn("RUST_TEST_THREADS=" + str(environment), (output / "command.log").read_text())
+            self.assertIn("runtime concurrency is unknown", (output / "validation-report.md").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

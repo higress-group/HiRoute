@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -298,6 +299,87 @@ pilot.record('build:' + sys.argv[1])
         self.assertNotIn('--source', argv)
         self.assertNotIn('--jobs', argv)
         self.assertNotIn('--cargo-only', argv)
+
+    def test_desktop_help_uses_real_runner_options_but_omits_wrapper_owned_values(self):
+        repo = Path(host.__file__).resolve().parent.parent
+        direct = subprocess.run([sys.executable, str(repo / 'scripts/local-rust.py'), 'run', '--help'],
+                                text=True, capture_output=True, timeout=10, check=True).stdout
+        for transport in ('local', 'ssh'):
+            target = {'transport': transport, 'repo': str(self.root)}
+            with self.subTest(transport=transport), patch.object(m.subprocess, 'run') as run, \
+                    patch.object(m.subprocess, 'check_output') as git, contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(m.dispatch({'desktop': target}, 'desktop', ['run', '--help']), 0)
+            run.assert_not_called()
+            git.assert_not_called()
+            help_text = output.getvalue()
+            self.assertIn('validation.py desktop run', help_text)
+            self.assertIn('exact pushed candidate from origin', help_text)
+            self.assertIn('local Mac', help_text)
+            self.assertIn("defaults to the caller's HEAD", help_text)
+            self.assertIn('[--sha SHA]', help_text)
+            for option in ('--source', '--repo', '--jobs'):
+                self.assertIn(option, direct)
+                self.assertNotIn(option, help_text)
+            flags = lambda value: set(re.findall(r'(?m)^  (?:-h, )?(--[\w-]+)', value))
+            self.assertEqual(flags(help_text), flags(direct) - {'--source', '--repo', '--jobs'})
+            self.assertIn('--wait-for-lock', help_text)
+
+    def test_real_validation_cli_desktop_help_works_before_contacting_execution_host(self):
+        self.write({'desktop': {'transport': 'ssh', 'host': 'unreachable-help-fixture', 'repo': '/missing/checkout'}})
+        result = subprocess.run([sys.executable, str(Path(m.__file__)), '--config', str(self.config),
+                                 'desktop', 'run', '--help'], text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('exact pushed candidate from origin', result.stdout)
+        self.assertNotIn('--source', result.stdout)
+
+    def test_source_overrides_explain_desktop_origin_and_local_backend_separately(self):
+        for action, expected in [('desktop', 'exact pushed candidate from origin'),
+                                 ('backend', 'Local backend selects committed source')]:
+            for override in (['--source', 'local'], ['--source=origin']):
+                p = self.payload(action, ['run', *override])
+                p['name'] = action
+                with self.subTest(action=action, override=override), \
+                        patch.object(host.sys, 'platform', 'darwin'), patch.object(host.subprocess, 'run') as run:
+                    with self.assertRaisesRegex(ValueError, expected):
+                        host.execute(p)
+                    run.assert_not_called()
+        for override in (['--repo', '/other'], ['--jobs=7']):
+            p = self.payload('desktop', ['run', *override])
+            p['name'] = 'desktop'
+            with patch.object(host.sys, 'platform', 'darwin'), self.assertRaisesRegex(ValueError, 'validation.json'):
+                host.execute(p)
+
+    def test_cargo_help_and_options_are_not_interpreted_as_wrapper_overrides(self):
+        p = self.payload('desktop', ['run', '--ref', 'refs/heads/test', '--', 'cargo', 'check', '--help', '--jobs=3'])
+        p['name'] = 'desktop'
+        with patch.object(host.sys, 'platform', 'darwin'), \
+                patch.object(host.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
+            self.assertEqual(host.execute(p), 0)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[argv.index('--') + 1:], ['cargo', 'check', '--help', '--jobs=3'])
+
+    def test_real_parser_abbreviations_cannot_override_wrapper_source_or_configuration(self):
+        spec = importlib.util.spec_from_file_location('local_rust', Path(m.__file__).with_name('local-rust.py'))
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        prefix = ['run', '--ref', 'refs/heads/test', '--sha', 'a' * 40]
+        for canonical, abbreviations, value, expected in (
+                ('source', ['--so', '--sou', '--sour'], 'local', 'exact pushed candidate from origin'),
+                ('jobs', ['--j', '--jo', '--job'], '7', 'validation.json'),
+                ('repo', ['--rep'], '/other/repository', 'validation.json')):
+            for abbreviation in abbreviations:
+                for override in ([abbreviation, value], [abbreviation + '=' + value]):
+                    args = [*prefix, *override, '--', 'cargo', 'check']
+                    # Positive control: these are accepted overrides in the real direct runner.
+                    parsed = runner.argument_parser().parse_args(args)
+                    self.assertEqual(str(getattr(parsed, canonical)), value)
+                    p = self.payload('desktop', args)
+                    p['name'] = 'desktop'
+                    with self.subTest(override=override), patch.object(host.sys, 'platform', 'darwin'), \
+                            patch.object(host.subprocess, 'run') as run:
+                        with self.assertRaisesRegex(ValueError, expected):
+                            host.execute(p)
+                        run.assert_not_called()
 
     def test_platform_and_gui_fail_before_starting_product(self):
         p = self.payload('pilot', ['start', '--app', '/tmp/app'])

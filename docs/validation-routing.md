@@ -81,6 +81,16 @@ option; the SSH backend workbench keeps its own queue. Cleanup still fails fast
 when another owner is active. Waiting never starts a second compiler or changes
 the exact candidate, default target directory or evidence rules.
 
+`desktop run --help` derives its admitted options from the caller's runner parser,
+omitting `--source`, `--repo` and `--jobs`. Configure repository and compiler jobs
+in `validation.json`; full or abbreviated overrides are rejected, with a
+source-specific reason for source overrides.
+Desktop always fetches from origin, even on a local Mac, so push the exact candidate
+after public-content checks and omit `--source`. Local backend help follows the
+same wrapper-owned-option rule and retains local committed-source selection.
+The `--sha` help reflects the caller-HEAD default; `--wait-for-lock` remains available.
+Help does not contact the execution host or require its checkout to be updated.
+
 Arguments after `backend`/`desktop` otherwise follow the selected runner's CLI.
 SSH backend returns a queued run ID and supports `wait/status/logs/cleanup/gc`.
 Use `backend wait RUN_ID --timeout 50` for one compact terminal or timeout

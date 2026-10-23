@@ -234,6 +234,10 @@ def run_commands(shard, commands):
         argv = [sys.executable, str(runner), "--name", f"{shard}-{index}", "--phase", "final"]
         if command[:2] == ["cargo", "test"]:
             argv.append("--require-tests")
+            # Full workspace bundles retain libtest defaults, including process
+            # targets. Affected/gate commands retain their planner-selected flags.
+            policy = "hosted-default" if command[:len(FULL_TEST)] == FULL_TEST else "selected-command"
+            argv.extend(["--harness-policy", policy])
         completed = subprocess.run([*argv, "--", *command])
         if completed.returncode:
             return completed.returncode

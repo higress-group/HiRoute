@@ -111,6 +111,42 @@ class Parsing(unittest.TestCase):
 
 
 class Feedback(unittest.TestCase):
+    def test_harness_settings_distinguish_omitted_environment_argument_and_unknown(self):
+        command = ["cargo", "test", "--locked"]
+        omitted = report.harness_concurrency(command, {})
+        self.assertEqual(omitted["requested_threads"], [])
+        self.assertTrue(omitted["environment_recorded"])
+        self.assertEqual(omitted["configuration_source"], "default")
+        self.assertIsNone(omitted["configured_thread_limit"])
+        old = report.context(row(cpu_count=16))["harness_concurrency"]
+        self.assertFalse(old["environment_recorded"])
+        self.assertEqual(old["configuration_source"], "unknown")
+        self.assertIsNone(old["effective_threads"])
+        for arguments in (["--test-threads=2"], ["--test-threads", "2"]):
+            context = report.harness_concurrency([*command, "--", *arguments], {"RUST_TEST_THREADS": "8"})
+            self.assertEqual(context["requested_threads"], ["2"])
+            self.assertEqual(context["environment_threads"], "8")
+            self.assertEqual(context["configuration_source"], "argument")
+            self.assertEqual(context["configured_thread_limit"], 2)
+            self.assertIsNone(context["effective_threads"])
+
+    def test_ambiguous_or_invalid_thread_setting_does_not_invent_limit(self):
+        for arguments in (["--test-threads"], ["--test-threads=0"], ["--test-threads=oops"],
+                          ["--test-threads=1", "--test-threads=2"]):
+            context = report.harness_concurrency(["cargo", "test", "--", *arguments], {"RUST_TEST_THREADS": "8"})
+            self.assertIsNone(context["configured_thread_limit"])
+            self.assertIsNone(context["effective_threads"])
+        self.assertIsNone(report.harness_concurrency(["cargo", "check"], {}))
+
+    def test_same_command_with_different_launch_environment_reports_context_gap(self):
+        command = row()["command"]
+        focused = report.build_report(row(harness_concurrency=report.harness_concurrency(
+            command, {"RUST_TEST_THREADS": "1"})), target())
+        final = report.build_report(row(phase="final", process_exit=101,
+                                       harness_concurrency=report.harness_concurrency(command, {})),
+                                    target(failed=True), [focused])
+        self.assertEqual(final["findings"][0]["context_differences"], ["harness_concurrency"])
+
     def test_child_failures_are_not_attributed_to_parent_regressions(self):
         focused = report.build_report(row(), target())
         # A parent can intentionally spawn a failing test and still pass its own assertion.

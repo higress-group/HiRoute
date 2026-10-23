@@ -237,6 +237,15 @@ and [Gateway preparation](../../tools/e2e-harness/src/p0/production/candidate.rs
 the exact receipts consumed by admission; same-byte caches from another recipe do
 not replace them. Failed admission retains independent results and missing coverage.
 
+Hosted shard inventory and harness policy belong to
+[ci-shards.py](../../scripts/ci-shards.py); [ci-run.py](../../scripts/ci-run.py)
+captures launch concurrency settings for the [shared report](../../scripts/validation-report.py).
+See [the hosted guide](../github-actions-validation.md#rust-test-concurrency) for
+the explicit process-target exception and unknown effective concurrency.
+The [host adapter](../../scripts/validation-host.py) derives admitted local/Desktop
+run help from the [local runner parser](../../scripts/local-rust.py), while retaining
+configured repository/jobs and Desktop origin-fetch admission.
+
 Ordinary local/SSH totals and module reports share Cargo-target attribution in
 [validation-report.py](../../scripts/validation-report.py). The
 [runner regressions](../../scripts/test-remote-rust.py) exercise worker results and

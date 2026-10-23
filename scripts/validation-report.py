@@ -161,7 +161,36 @@ def context(record):
                 profile="release" if "--release" in command else "default",
                 build_options=build, build_jobs=record.get("build_jobs"),
                 harness_options=command[command.index("--") + 1:] if "--" in command else [],
+                harness_concurrency=record.get("harness_concurrency", harness_concurrency(command)),
                 command=command)
+
+
+def harness_concurrency(command, environment=None, policy=None):
+    """Record launch settings, never infer measured concurrency from host CPUs.
+
+    Cargo config, custom harnesses and test-created threads can change runtime
+    behavior. Even an explicit libtest limit is configuration, not a measurement.
+    """
+    if command[:2] != ["cargo", "test"]:
+        return None
+    arguments = command[command.index("--") + 1:] if "--" in command else []
+    requested = []
+    for index, argument in enumerate(arguments):
+        if argument == "--test-threads":
+            requested.append(arguments[index + 1] if index + 1 < len(arguments) else None)
+        elif argument.startswith("--test-threads="):
+            requested.append(argument.split("=", 1)[1])
+    inherited = environment.get("RUST_TEST_THREADS") if environment is not None else None
+    source = "argument" if requested else ("environment" if inherited is not None else
+                                           "default" if environment is not None else "unknown")
+    selected = requested[0] if len(requested) == 1 else inherited if not requested else None
+    limit = int(selected) if isinstance(selected, str) and re.fullmatch(r"[0-9]+", selected) else None
+    if limit is not None and limit < 1:
+        limit = None
+    return dict(requested_threads=requested, environment_threads=inherited,
+                environment_recorded=environment is not None, configured_thread_limit=limit,
+                configuration_source=source, effective_threads=None, effective_state="unknown",
+                policy=policy)
 
 
 def compare(report, related):
@@ -180,7 +209,7 @@ def compare(report, related):
             findings.append(dict(common, kind="repeated_final", action="Explain why this exact final command needed another run."))
         if report["process_exit"] in (None, 0) or previous.get("phase") != "focused" or not previous.get("observed_tests_passed"):
             continue
-        differences = [key for key in ("package_scope", "requested_features", "platform", "architecture", "rustc", "cargo", "profile", "build_options", "build_jobs", "harness_options")
+        differences = [key for key in ("package_scope", "requested_features", "platform", "architecture", "rustc", "cargo", "profile", "build_options", "build_jobs", "harness_options", "harness_concurrency")
                        if previous.get("context", {}).get(key) != report["context"].get(key)]
         unknown = [key for key in ("platform", "architecture", "rustc", "cargo")
                    if not report["context"].get(key) or not previous.get("context", {}).get(key)]
@@ -279,8 +308,12 @@ def build_report(record, log, related=()):
 
 def markdown(report):
     lines = ["# Validation feedback", "", "Candidate: `" + str(report["sha"]) + "`; phase: " + report["phase"],
-             "", "Process exit: " + str(report["process_exit"]) + "; observed target report complete: " + str(report["complete"]),
-             "", "| Cargo target | Seconds | Passed / failed / ignored | Complete |", "| --- | ---: | --- | --- |"]
+             "", "Process exit: " + str(report["process_exit"]) + "; observed target report complete: " + str(report["complete"])]
+    harness = report["context"].get("harness_concurrency")
+    if harness:
+        lines += ["", "Harness concurrency (launch settings; runtime concurrency is unknown):",
+                  "", "```json", json.dumps(harness, indent=2), "```"]
+    lines += ["", "| Cargo target | Seconds | Passed / failed / ignored | Complete |", "| --- | ---: | --- | --- |"]
     for module in report["modules"]:
         counts = module["counts"]
         values = " / ".join(str(counts[k]) for k in ("passed", "failed", "ignored")) if counts else "unknown"
