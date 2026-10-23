@@ -388,6 +388,14 @@ Current classifier input SHALL disclose the same uncertainty without removing it
 readable content, assessment target or applicability question.
 Observed and verified source evidence share the same authorized execution scope;
 source uncertainty is retained on each record, not used to select separate stores.
+For an accepted Responses reasoning boundary, absent, null or empty encrypted
+content and absent, null or empty-array reasoning content SHALL represent no
+additional content. A retained null lifecycle status SHALL NOT break the boundary.
+These equivalences apply only to comparison with the bounded actually accepted
+plaintext summary and subsequent output; they SHALL NOT rewrite forwarded native
+items or establish an edge on empty content alone. Opaque state, nonempty extra
+reasoning content, changed summaries and unknown native fields SHALL remain
+ineligible for this exact-boundary proof.
 An uncertain request cannot overwrite or advance a stronger branch head. Without
 a validated predecessor it starts an independent branch, while a retained completed
 stage may remain an explicitly uncertain contextual evaluation target. Exact

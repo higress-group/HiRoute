@@ -9,7 +9,8 @@ use crate::content_ref::ContentValueExt;
 use crate::context_hold::fingerprint::FingerprintBudget;
 use crate::replay::{ReplayStore, write_canonical_json};
 use crate::server::core_runtime::model_ir::{
-    ContentPart, MessageRole, ModelEvent, ModelRequestIRV1, ToolKindV1,
+    ContentPart, MessageRole, ModelEvent, ModelRequestIRV1, ResponsesReasoningEncryptedContentV1,
+    ToolKindV1,
 };
 
 const MAX_BLOCKS: usize = 128;
@@ -204,11 +205,24 @@ pub(super) fn incoming_boundary(
             break;
         }
         if let Some(history) = request.responses_reasoning_history.get(&index) {
-            // Compare the bounded accepted plaintext summary. Provider state,
-            // extra native fields and non-summary content remain unsupported.
-            if message.name.is_some() || !message.content.is_empty()
-                || history.encrypted_content != crate::server::core_runtime::model_ir::ResponsesReasoningEncryptedContentV1::Absent
-                || history.native_fields.keys().any(|key| key != "summary") {
+            // Compare the bounded accepted plaintext summary. Native producers
+            // can retain explicit empty fields without adding provider state or
+            // content. Keep this evidence projection separate from wire replay.
+            if message.name.is_some()
+                || !message.content.is_empty()
+                || history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque
+                || history
+                    .native_fields
+                    .iter()
+                    .any(|(key, value)| match key.as_str() {
+                        "summary" => false,
+                        "status" => !value.is_null(),
+                        "content" => {
+                            !value.is_null() && !value.as_array().is_some_and(Vec::is_empty)
+                        }
+                        _ => true,
+                    })
+            {
                 return None;
             }
             let summary = history.native_fields.get("summary")?.as_array()?;
