@@ -104,6 +104,11 @@ outside the host's outbound ephemeral range; the parent keeps that lease through
 the isolated child's Gateway shutdown. On Unix it shares the publication fixture's
 per-user address-lock namespace across worktrees and runner temporary directories.
 
+The [Gateway runtime fixture](../../tools/e2e-harness/tests/runtime_support/listeners.rs)
+holds its product and optional control listeners together during preparation,
+then releases both immediately before starting the child. Releasing a `bind(0)`
+probe before choosing the other address can assign both roles the same port.
+
 The [shared product session](../../crates/product-session/src) owns confirmation,
 exact-digest authority and command orchestration tests. Its permit-drop and
 broker-abort cases verify that cancelled callers can retry, while stale permits
