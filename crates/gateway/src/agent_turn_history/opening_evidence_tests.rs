@@ -255,3 +255,173 @@ fn checkpoint_advancing_past_measured_positions_is_unavailable_not_rewritten() {
     );
     store.abort(&b);
 }
+
+#[test]
+fn changed_native_id_without_new_input_keeps_exact_tool_stage_until_real_new_input() {
+    use crate::server::core_runtime::model_ir::{
+        ModelEvent, ModelStreamEventV1, ResponseItemStatus,
+    };
+
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::default();
+    let scope = store.scope_key("workspace", "native-id-only").unwrap();
+    let user = text(MessageRole::User, "A: look up the fixture");
+    let mut messages = vec![user.clone()];
+    let input = request(messages.clone());
+    let mut analyzed = store
+        .prepare_scoped_request(&scope, &input, &replay)
+        .unwrap();
+    analyzed.mark_user_origin_unverified();
+    let (a, history) = new_turn(admit(&store, &scope, analyzed, Some([1; 32])));
+    drop(history);
+    let original = store.bind_request(&a, "a-tool").unwrap();
+    store.commit_decision(&a, decision("regular")).unwrap();
+    accepted_output::tool(&store, &a, "call-1", "lookup");
+    store.accept_output(
+        &a,
+        &[ModelStreamEventV1::new(
+            1,
+            ModelEvent::ToolCallFinished {
+                index: 1,
+                logical_id: "call-1".into(),
+                tool_kind: ToolKindV1::Function,
+                namespace: Some("functions".into()),
+                name: "lookup".into(),
+                arguments: json!({"must_not_be_projected":"secret detail"}),
+                status: ResponseItemStatus::Completed,
+            },
+        )],
+    );
+    assert!(
+        store
+            .finish_request(
+                &a,
+                "a-tool".into(),
+                AgentTurnStatus::Completed,
+                vec![execution("model", "profile", "regular", "a-tool")],
+                false,
+                Instant::now()
+            )
+            .unwrap()
+            .is_none()
+    );
+
+    messages.extend([tool_call("call-1", "lookup"), tool_result("call-1", false)]);
+    let input = request(messages.clone());
+    let mut analyzed = store
+        .prepare_scoped_request(&scope, &input, &replay)
+        .unwrap();
+    analyzed
+        .select_current_input(
+            &user.content,
+            Some(CurrentInputPosition::Window { first: 0, last: 0 }),
+            &input,
+            &replay,
+        )
+        .unwrap();
+    analyzed.mark_user_origin_unverified();
+    let AgentTurnBegin::Continuation {
+        ticket: continued,
+        decision: inherited,
+    } = admit(&store, &scope, analyzed, Some([2; 32]))
+    else {
+        panic!(
+            "an exact tool edge plus a changed native ID is not a new input or assessment boundary"
+        )
+    };
+    assert!(!continued.new_turn);
+    assert_eq!(continued.key, a.key);
+    assert_eq!(continued.agent_turn_id, a.agent_turn_id);
+    assert_eq!(inherited.branch_id, "regular");
+    let next = store.bind_request(&continued, "a-final").unwrap();
+    assert_eq!(next.opening_cause, original.opening_cause);
+    {
+        let inner = store.inner.lock();
+        let entry = &inner.entries[&a.key];
+        assert!(
+            entry.closed.is_empty(),
+            "tool continuation cannot close or score A"
+        );
+        assert!(!entry.active.finalized);
+        assert!(entry.current_segment.is_none());
+    }
+    accepted_output::text_output(&store, &continued, "A completed");
+    let closed = store
+        .finish_request(
+            &continued,
+            "a-final".into(),
+            AgentTurnStatus::Completed,
+            vec![execution("model", "profile", "regular", "a-final")],
+            true,
+            Instant::now(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(closed.agent_turn_id, a.agent_turn_id);
+    assert_eq!(closed.status, AgentTurnStatus::Completed);
+    assert!(!closed.history_partial);
+    assert_eq!(
+        closed.history_membership.as_ref().unwrap().request_ids,
+        ["a-tool", "a-final"]
+    );
+
+    messages.extend([
+        text(MessageRole::Assistant, "A completed"),
+        text(MessageRole::User, "B: inspect the next independent fixture"),
+    ]);
+    let input = request(messages);
+    let mut analyzed = store
+        .prepare_scoped_request(&scope, &input, &replay)
+        .unwrap();
+    analyzed
+        .select_current_input(
+            &input.messages[4].content,
+            Some(CurrentInputPosition::Window { first: 4, last: 4 }),
+            &input,
+            &replay,
+        )
+        .unwrap();
+    analyzed.mark_user_origin_unverified();
+    let AgentTurnBegin::NewTurn {
+        ticket: b,
+        history,
+        inherited_decision,
+        completed,
+    } = admit(&store, &scope, analyzed, Some([3; 32]))
+    else {
+        panic!("a genuinely appended input must still request a fresh decision")
+    };
+    assert!(inherited_decision.is_none());
+    assert!(
+        completed.is_none(),
+        "A already closed on its actual final response"
+    );
+    assert_ne!(b.agent_turn_id, a.agent_turn_id);
+    assert_eq!(
+        store.bind_request(&b, "b").unwrap().opening_cause,
+        Cause::UserMessage
+    );
+    let target = history.assessment_target.as_ref().unwrap();
+    assert!(!target.target_partial);
+    assert_eq!(target.through_turn_id, a.agent_turn_id);
+    assert_eq!(target.segment_id, closed.segment_id);
+    assert_eq!(target.history_membership, closed.history_membership);
+    assert_eq!(history.visible_conversation.len(), 1);
+    assert_eq!(
+        history.visible_conversation[0].status,
+        AgentTurnStatus::Completed
+    );
+    assert_eq!(
+        history.visible_conversation[0].steps,
+        vec![
+            vec![VisibleContentPart::ToolActivity {
+                tool: "functions.lookup".into(),
+                status: ToolStatus::Completed
+            }],
+            vec![VisibleContentPart::Text {
+                text: "A completed".into()
+            }],
+        ]
+    );
+    store.abort(&b);
+}

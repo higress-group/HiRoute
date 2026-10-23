@@ -449,3 +449,182 @@ fn assert_finished(fixture: &RuntimeFixture, classifier: &NativeProvider, a: &Va
         }
     );
 }
+
+#[test]
+fn real_listener_native_id_change_without_new_input_keeps_one_complete_tool_stage() {
+    let regular = NativeProvider::start(vec![
+        streamed("id-a-tool", vec![tool("id-a-call")]),
+        streamed(
+            "id-a-final",
+            vec![message("id-a-answer", "final_answer", "ID_A_COMPLETE")],
+        ),
+        streamed(
+            "id-b-final",
+            vec![message("id-b-answer", "final_answer", "ID_B_COMPLETE")],
+        ),
+    ]);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![
+        reply(CLASSIFIER_SIMPLE),
+        reply(CLASSIFIER_SIMPLE_WITH_ASSESSMENT),
+    ]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&regular, &primary, &classifier],
+        1,
+    );
+    let mut input = vec![json!({"role":"user","content":A_USER})];
+    let first_headers = input_headers(&input, "a-original");
+    let delivered = send(&fixture, &input, "a-original");
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0]["type"], "function_call");
+    let receipt = json!({"type":"function_call_output","call_id":delivered[0]["call_id"],
+        "output":"The controlled fixture read completed."});
+    input.extend(delivered);
+    input.push(receipt);
+    let after_tool = wait_execution_facts(&fixture, 1);
+    assert!(!after_tool.iter().any(|e| matches!(
+        e["fact"]["kind"].as_str(),
+        Some("agent_turn_finished" | "branch_assessment_recorded")
+    )));
+
+    // The same validated User window survives unchanged; only advisory native
+    // IDs differ. No new User envelope is inserted by the client or fixture.
+    let metadata = |headers: &[(String, String)]| -> Value {
+        serde_json::from_str(
+            &headers
+                .iter()
+                .find(|(key, _)| key == "x-hiroute-routing-context")
+                .unwrap()
+                .1,
+        )
+        .unwrap()
+    };
+    let first_context = metadata(&first_headers);
+    let mut next_context = metadata(&input_headers(&input, "a-renamed"));
+    assert_ne!(next_context["turn_id"], first_context["turn_id"]);
+    assert_ne!(
+        next_context["input"]["event_id"],
+        first_context["input"]["event_id"]
+    );
+    assert_eq!(next_context["input"]["messages"][0]["index"], 0);
+    next_context["turn_id"] = first_context["turn_id"].clone();
+    next_context["input"]["event_id"] = first_context["input"]["event_id"].clone();
+    assert_eq!(
+        next_context, first_context,
+        "all window hashes, indices and scope remain exact"
+    );
+    let final_output = send(&fixture, &input, "a-renamed");
+    assert_eq!(final_output[0]["content"][0]["text"], "ID_A_COMPLETE");
+    assert_eq!(classifier_body(&regular, 1)["input"], json!(input));
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (2, 0, 1),
+        "changing a native ID must not reclassify an exact tool continuation"
+    );
+    let before_b = wait_execution_facts(&fixture, 2);
+    let admissions = before_b
+        .iter()
+        .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")
+        .map(|e| &e["fact"])
+        .collect::<Vec<_>>();
+    assert_eq!(admissions.len(), 2);
+    for key in ["agent_turn_id", "branch_id", "ordinal", "opening_cause"] {
+        assert_eq!(
+            admissions[0][key], admissions[1][key],
+            "ID-only change cannot replace {key}"
+        );
+    }
+    assert!(
+        !before_b
+            .iter()
+            .any(|e| e["fact"]["kind"] == "branch_assessment_recorded")
+    );
+    let finished = before_b
+        .iter()
+        .filter(|e| e["fact"]["kind"] == "agent_turn_finished")
+        .map(|e| &e["fact"])
+        .collect::<Vec<_>>();
+    assert_eq!(finished.len(), 1);
+    let a = finished[0];
+    assert_eq!(a["status"], "completed");
+    assert_eq!(a["history_partial"], false);
+    assert_eq!(a["history_membership"]["capture_partial"], false);
+    assert_eq!(
+        a["history_membership"]["request_ids"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    input.extend(final_output);
+    input.push(json!({"role":"user","content":B_USER}));
+    let b = send(&fixture, &input, "b");
+    assert_eq!(b[0]["content"][0]["text"], "ID_B_COMPLETE");
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (3, 0, 2)
+    );
+    let facts = wait_execution_facts(&fixture, 3);
+    assert_single_planner_run_per_request(&facts, 3);
+    let routes = facts
+        .iter()
+        .filter(|e| e["fact"]["kind"] == "route_decision")
+        .collect::<Vec<_>>();
+    assert_eq!(routes.len(), 3);
+    for (route, expected) in
+        routes
+            .iter()
+            .zip(["external_classifier", "inherited", "external_classifier"])
+    {
+        assert_eq!(route["fact"]["complexity"]["decision_source"], expected);
+        assert_eq!(route["fact"]["complexity"]["execution_group"], "regular");
+        assert_eq!(route["fact"]["complexity"]["fallback_used"], false);
+    }
+    assert_eq!(
+        a["history_membership"]["request_ids"],
+        json!([
+            routes[0]["correlation"]["request_id"],
+            routes[1]["correlation"]["request_id"]
+        ])
+    );
+    let scores = facts
+        .iter()
+        .filter(|e| e["fact"]["kind"] == "branch_assessment_recorded")
+        .collect::<Vec<_>>();
+    assert_eq!(scores.len(), 1);
+    assert_eq!(
+        scores[0]["correlation"]["request_id"],
+        routes[2]["correlation"]["request_id"]
+    );
+    let score = &scores[0]["fact"];
+    assert_eq!(score["partial"], false);
+    assert_eq!(score["history_membership"], a["history_membership"]);
+    for key in [
+        "segment_id",
+        "plan_id",
+        "plan_revision",
+        "model_configuration_id",
+        "profile_digest",
+    ] {
+        assert!(!a[key].is_null());
+        assert_eq!(score[key], a[key], "B assesses the actual complete A {key}");
+    }
+    let assessed = classifier_body(&classifier, 1);
+    let from = assessed["assessment_target"]["from"].as_u64().unwrap() as usize;
+    let target = &assessed["visible_conversation"].as_array().unwrap()[from..];
+    assert_eq!(target.len(), 1);
+    assert_eq!(target[0]["status"], "completed");
+    assert!(target[0]["user"].to_string().contains(A_USER));
+    assert!(target[0]["steps"].to_string().contains("ID_A_COMPLETE"));
+    assert_eq!(target[0]["steps"].as_array().unwrap().len(), 2);
+    let page = super::observed_history::timeline(&facts);
+    assert_eq!(page.turns.len(), 2);
+    assert_eq!(page.turns[0].status, "completed");
+    assert_eq!(page.turns[0].requests.len(), 2);
+    assert!(!page.turns[0].assessment.as_ref().unwrap().partial);
+    assert_eq!(
+        page.turns[1].boundary,
+        RoutingTurnBoundaryV1::NewUserMessage
+    );
+}
