@@ -171,6 +171,7 @@ impl ProductionReplaySeedEnvelope {
 
 pub struct ProductionAttemptState {
     managed_cpa: bool,
+    request_reasoning_projection: Option<RequestReasoningProjection>,
     #[cfg(all(unix, debug_assertions))]
     capture: Option<super::stream_capture::Capture>,
     response_status: Option<http::StatusCode>,
@@ -197,9 +198,29 @@ pub struct ProductionAttemptState {
     runtime_state_authority: RuntimeStateAuthoritySignal,
 }
 
+/// Bounded diagnostic facts from this attempt's actual encoder, never authority.
+struct RequestReasoningProjection {
+    reason: hiroute_diagnostics::event::ReasoningCleanupReason,
+    fields_removed: usize,
+    cleaned_prefix_len: Option<usize>,
+}
+
 impl ProductionAttemptState {
     pub(crate) fn trusts_cpa_execution_metadata(&self) -> bool {
         self.managed_cpa
+    }
+
+    pub(crate) fn report_request_reasoning_projection(
+        &self,
+        request: &crate::server::core_runtime::observation::RequestObservation,
+    ) {
+        if let Some(projection) = &self.request_reasoning_projection {
+            request.reasoning_cleanup(
+                projection.reason.clone(),
+                projection.fields_removed,
+                projection.cleaned_prefix_len,
+            );
+        }
     }
 
     #[cfg(all(unix, debug_assertions))]

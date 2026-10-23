@@ -23,6 +23,8 @@ mod deferred_decision_tests;
 mod native_tests;
 #[path = "observed_tests.rs"]
 mod observed_tests;
+#[path = "retained_peer_tests.rs"]
+mod retained_peer_tests;
 #[path = "window_event_tests.rs"]
 mod window_event_tests;
 

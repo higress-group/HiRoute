@@ -36,6 +36,9 @@ mod responses_options;
 #[path = "tests/message_phase.rs"]
 mod message_phase;
 
+#[path = "tests/reasoning_extensions.rs"]
+mod reasoning_extensions;
+
 fn exact_state_profile(
     ingress: IngressProtocol,
     upstream: IngressProtocol,

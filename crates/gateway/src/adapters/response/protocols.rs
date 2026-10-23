@@ -187,6 +187,10 @@ fn decode_responses_sse(
         .into());
     }
     match native_type {
+        "response.metadata" => super::responses_sideband::moderation_notification(
+            object,
+            core.accumulator.response_id.as_deref(),
+        )?,
         "response.created" | "response.in_progress" => {
             allow(object, &["type", "sequence_number", "response"])?;
             let response = object_field(object, "response")?;

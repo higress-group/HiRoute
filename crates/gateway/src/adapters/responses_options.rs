@@ -114,11 +114,50 @@ pub(super) fn internal_chat_message_metadata(
 }
 
 pub(super) fn reasoning_history(
+    context: &DecodeContext,
     value: &Value,
 ) -> Result<ResponsesReasoningHistoryV1, ModelIrError> {
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("input[]"))?;
+    // Known reasoning omission is not a mapping for arbitrary native state.
+    // Resolve the shape before Replay externalization, keeping unknown bytes
+    // native-only through the existing request/affinity/cleanup boundaries.
+    ensure_keys(
+        context,
+        object,
+        &[
+            "type",
+            "id",
+            "status",
+            "summary",
+            "content",
+            "encrypted_content",
+            "internal_chat_message_metadata_passthrough",
+        ],
+        "responses reasoning history",
+    )?;
+    for (field, part_type) in [("summary", "summary_text"), ("content", "reasoning_text")] {
+        let Some(value) = object.get(field).filter(|value| !value.is_null()) else {
+            continue;
+        };
+        let Some(parts) = value.as_array() else {
+            context.native_only.set(true);
+            continue;
+        };
+        for part in parts {
+            let Some(part) = part.as_object() else {
+                context.native_only.set(true);
+                continue;
+            };
+            ensure_keys(context, part, &["type", "text"], "responses reasoning text")?;
+            if part.get("type").and_then(Value::as_str) != Some(part_type)
+                || !part.get("text").is_some_and(Value::is_string)
+            {
+                context.native_only.set(true);
+            }
+        }
+    }
     let native_fields = object
         .iter()
         .filter(|(key, value)| {

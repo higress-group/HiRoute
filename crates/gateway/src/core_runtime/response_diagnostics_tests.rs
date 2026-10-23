@@ -33,6 +33,9 @@ use crate::server::test_control::{
 mod capture;
 use capture::{assert_capture, create_capture_session, wait_for_captured_request_eof};
 
+#[path = "response_diagnostics_tests/request_projection.rs"]
+mod request_projection;
+
 const CHILD_CASE: &str = "HIROUTE_STREAM_DIAGNOSTIC_CASE";
 const CHILD_ROOT: &str = "HIROUTE_STREAM_DIAGNOSTIC_ROOT";
 const TOKEN: &str = "SENTINEL_CLIENT_CREDENTIAL";
@@ -341,6 +344,9 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
 }
 
 fn run_case(case: &str, root: &Path) {
+    if case.starts_with("request_projection_") {
+        return request_projection::run_case(case, root);
+    }
     let facts = Facts::default();
     let capture_enabled = std::env::var_os("HIROUTE_PRIVATE_STREAM_CAPTURE").is_some();
     if capture_enabled {
@@ -628,7 +634,8 @@ fn run_case(case: &str, root: &Path) {
             .collect();
         assert_eq!(
             capture_failures.len(),
-            usize::from(prebody && capture_enabled),
+            // Canonical history capture is independent of opt-in private wire capture.
+            usize::from(prebody),
             "{case}: {log}"
         );
         for capture in capture_failures {

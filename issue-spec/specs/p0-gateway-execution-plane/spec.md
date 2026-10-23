@@ -118,6 +118,29 @@ remain; omission emits safe WARN only when it actually changes projection. Prefl
 and unchanged projection emit none, and ordinary omission creates no cleanup retry
 or persistent watermark.
 
+Responses `response.metadata` carrying the recognized
+`metadata.openai_chatgpt_moderation_metadata` notification is non-content sideband.
+Its response ID must match the already started response, its sequence number must
+be a nonnegative integer, and its known prompt/generation/tool-call/tool-response
+members must be objects. Their contents remain opaque. Native forwarding preserves
+the original notification, while canonical capture adds no output, tool action,
+model identity, terminal or safety decision from it. It may occur before content,
+between content events or after the terminal without altering actual execution.
+Unknown envelope/metadata variants, safety buffering and verification are not
+covered by this admission. Missing terminals, errors and refusals retain their
+existing meaning; ignored notification content cannot manufacture successful capture.
+
+Declared reasoning omission covers recognized native structures, not unknown
+continuation semantics. Responses reasoning history recognizes its existing item
+metadata and encrypted-content carrier, plus ordered `summary_text`/`text` and
+`reasoning_text`/`text` parts in `summary` and `content`. Unknown item/part fields,
+unknown text variants or non-text carriers keep their original same-protocol
+payload but make cross-protocol projection explicitly unavailable. They cannot
+authorize provider-prefix reuse or cleanup. This shape decision precedes Replay
+externalization; moving bytes out of line does not change the result. Known
+encrypted, signed, unsigned and redacted reasoning keeps its existing mapping and
+actual-projection WARN contract.
+
 ### Requirement: Decision history has one bounded process-local owner
 
 The history owner resolves bounded predecessor evidence and admits independent

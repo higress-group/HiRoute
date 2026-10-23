@@ -73,9 +73,9 @@ pub struct ModelRequestIRV1 {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_internal_chat_message_metadata:
         std::collections::BTreeMap<usize, ResponsesInternalChatMessageMetadataV1>,
-    /// Native Responses reasoning-item history retained for an exact same-provider
-    /// continuation. The opaque encrypted state remains a ProviderState content part;
-    /// this sidecar preserves other native fields without interpreting their format.
+    /// Native Responses reasoning-item history retained for same-protocol forwarding.
+    /// The opaque encrypted state remains a ProviderState content part; known text
+    /// has declared cross-protocol mappings, while unknown fields make ingress native-only.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_reasoning_history: std::collections::BTreeMap<usize, ResponsesReasoningHistoryV1>,
 }
@@ -111,8 +111,9 @@ pub struct ResponsesInternalChatMessageMetadataV1 {
 #[serde(deny_unknown_fields)]
 pub struct ResponsesReasoningHistoryV1 {
     /// Native, non-authority fields of a Responses reasoning item. These are
-    /// preserved for Responses; standard summary/content text may also be
-    /// projected to a protocol with a plaintext reasoning field.
+    /// preserved for Responses; supported summary_text/reasoning_text parts may
+    /// also project to a plaintext reasoning field. Unknown fields are not covered
+    /// by declared reasoning omission and make the decoded request native-only.
     pub native_fields: serde_json::Map<String, serde_json::Value>,
     /// Wire shape of the native `encrypted_content` sibling. Only `Opaque`
     /// corresponds to a ProviderState payload; no source registration is required.

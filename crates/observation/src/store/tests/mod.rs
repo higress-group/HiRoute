@@ -7,6 +7,7 @@ mod incremental_completeness;
 mod plan_quality;
 mod retention;
 mod retention_matrix;
+mod request_purpose;
 mod store_flow;
 pub(crate) mod support;
 mod valuation_v2;

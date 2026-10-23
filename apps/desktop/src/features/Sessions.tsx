@@ -15,7 +15,7 @@ import { RoutingTimeline, type TimelineAvailability, type TimelineRequest } from
 type Page<T> = { next_cursor: string | null } & T;
 type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; last_request_at_ms: number; correlation_kind: CorrelationKind; content_completeness: string };
 type RoutingContext = { state: 'recorded' | 'unavailable' | 'conflicted'; display_name: string | null; name_state: 'recorded' | 'unavailable'; plan_id?: string | null; plan_revision?: string | null };
-type Request = { request_id: string; started_at_ms: number; outcome: string | null; native_turn_id: string | null; within_request_fallback: boolean | null; final_native_model: string | null; between_turn_model_change: boolean | null; previous_native_turn_id: string | null; previous_turn_model: string | null; turn_final_native_model: string | null; routing_context?: RoutingContext };
+type Request = { request_id: string; started_at_ms: number; outcome: string | null; native_turn_id: string | null; within_request_fallback: boolean | null; final_native_model: string | null; between_turn_model_change: boolean | null; previous_native_turn_id: string | null; previous_turn_model: string | null; turn_final_native_model: string | null; routing_context?: RoutingContext; native_auxiliary?: boolean | null };
 type Content = { content_id: string; role: string; kind: string; state: string; direction: string; media_type: string; message_occurrence_id: string; message_ordinal?: number; part_ordinal?: number; fork_id?: string; downstream_delivery?: string | null };
 type Hit = { session_id: string; request_id: string; content_id: string; original_text_offset: number };
 type Ancestry = { roots: { state: string }[]; gap: string | null };
@@ -648,10 +648,13 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
   const node = useRef<HTMLSpanElement>(null);
   const [value, setValue] = useState('');
   const [invalidation, setInvalidation] = useState(0);
+  const requestKey = JSON.stringify([request, limit, revision, invalidation]);
+  const [requestResult, setRequestResult] = useState<{ key: string; phase: 'pending' | 'available' | 'unavailable' | 'cleared'; text: string } | null>(null);
   useEffect(() => { const invalidate = () => { setValue(''); setInvalidation(v => v + 1); }; window.addEventListener('hiroute-content-invalidated', invalidate); return () => window.removeEventListener('hiroute-content-invalidated', invalidate); }, []);
   useEffect(() => {
     const controller = new AbortController(); let started = false;
     setValue('');
+    setRequestResult(request ? { key: requestKey, phase: 'pending', text: '' } : null);
     async function load() {
       try {
         if (hit) {
@@ -667,8 +670,14 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
           return;
         }
         if (request) {
-          const title = await firstRequestTitle(request, controller.signal, { sawContent: false, allDeleted: true, incomplete: false }, true);
-          if (!controller.signal.aborted && title !== null) setValue(excerpt(title, limit));
+          const state: TitleScanState = { sawContent: false, allDeleted: true, incomplete: false };
+          const title = await firstRequestTitle(request, controller.signal, state, true);
+          if (!controller.signal.aborted) {
+            const phase = title !== null ? 'available' : state.sawContent && state.allDeleted && !state.incomplete ? 'cleared' : 'unavailable';
+            setRequestResult({ key: requestKey, phase, text: title === null ? '' : excerpt(title, limit) });
+            onCompleteness?.(title === null || state.incomplete);
+            onContentState?.(phase === 'cleared' ? 'cleared' : title === null || state.incomplete ? 'partial' : 'recorded');
+          }
           return;
         }
         if (!session) return;
@@ -680,6 +689,9 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
         do {
           const timeline: Page<{ requests: Request[] }> = await read('timeline', { session_id: session, limit: 50, cursor, from_ms: 0, to_ms: toMs, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: false }, controller.signal);
           for (const request of timeline.requests) {
+            // Only affirmative native-purpose evidence excludes a title input.
+            // Direct request/hit navigation still exposes the original content.
+            if (request.native_auxiliary === true) continue;
             if (firstRequest) {
               firstRequest = false;
               if (request.final_native_model) onModel?.(request.final_native_model);
@@ -699,14 +711,15 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
           if (cursor) seen.add(cursor);
         } while (cursor && !controller.signal.aborted);
         if (!controller.signal.aborted) {
-          onCompleteness?.(state.incomplete);
-          onContentState?.(state.sawContent && state.allDeleted ? 'cleared' : !state.sawContent || state.incomplete ? 'partial' : 'recorded');
+          onCompleteness?.(state.incomplete || !state.sawContent);
+          onContentState?.(state.sawContent && state.allDeleted && !state.incomplete ? 'cleared' : !state.sawContent || state.incomplete ? 'partial' : 'recorded');
         }
       } catch {
         // Keep the semantic row visible, while making the missing content
         // explicit instead of silently leaving it indistinguishable from a
         // successfully recorded fallback title.
         if (!controller.signal.aborted) {
+          if (request) setRequestResult({ key: requestKey, phase: 'unavailable', text: '' });
           onCompleteness?.(true);
           onContentState?.('partial');
         }
@@ -716,5 +729,12 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
     if (node.current) observer.observe(node.current);
     return () => { controller.abort(); observer.disconnect(); };
   }, [session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset, invalidation, limit, revision]);
+  if (request && !hit) {
+    const result = requestResult?.key === requestKey ? requestResult : null;
+    const text = !result || result.phase === 'pending' ? (language === 'zh' ? '正在读取消息…' : 'Loading message…')
+      : result.phase === 'cleared' ? (language === 'zh' ? '消息正文已清理' : 'Message content cleared')
+        : result.text || fallback || (language === 'zh' ? '消息暂不可用' : 'Message unavailable');
+    return <span ref={node}>{text}</span>;
+  }
   return <span ref={node}>{value || fallback || (hit ? (language === 'zh' ? '查看命中正文' : 'Open matching content') : '')}</span>;
 }

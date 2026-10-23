@@ -8,6 +8,108 @@ fn classifier_body(classifier: &NativeProvider, index: usize) -> serde_json::Val
 }
 
 #[test]
+fn real_listener_moderation_metadata_keeps_complete_history_and_assessment() {
+    use serde_json::json;
+    const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
+    let notification = json!({"type":"response.metadata","response_id":"stream-ok","sequence_number":7,
+        "metadata":{"openai_chatgpt_moderation_metadata":{
+            "prompt":{"marker":"notification-only"},"generation":{},"tool_call":{},"tool_response":{}}}});
+    let notification_wire = format!("event: response.metadata\ndata: {notification}\n\n");
+    let wire = std::str::from_utf8(RESPONSES_STREAM_OK).unwrap().replace(
+        "event: response.completed",
+        &format!("{notification_wire}event: response.completed"),
+    );
+    let regular = NativeProvider::start(vec![ProviderReply::StreamDrip {
+        status: 200,
+        chunks: wire.as_bytes().chunks(31).map(<[u8]>::to_vec).collect(),
+        interval: Duration::ZERO,
+    }]);
+    let primary = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: RESPONSES_OK,
+    }]);
+    let classifier = NativeProvider::start(
+        [CLASSIFIER_SIMPLE, ASSESSED_COMPLEX]
+            .into_iter()
+            .map(|body| ProviderReply::Complete {
+                status: 200,
+                error_kind: None,
+                body,
+            })
+            .collect(),
+    );
+    let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+        &[&regular, &primary, &classifier],
+        1,
+        ObservationFaults::healthy(),
+    );
+    let send = |input, stream| {
+        request(
+            fixture.address,
+            "POST",
+            "/v1/responses",
+            &[
+                ("X-HiRoute-Token", TOKEN),
+                ("session-id", "moderation-history"),
+            ],
+            &serde_json::to_vec(&json!({"model":MODEL,"input":input,"stream":stream})).unwrap(),
+        )
+    };
+    let a = json!({"role":"user","content":"first actual task"});
+    let first = send(json!([a.clone()]), true);
+    assert_eq!(first.status, 200);
+    assert!(
+        first
+            .body
+            .windows(notification_wire.len())
+            .any(|part| part == notification_wire.as_bytes())
+    );
+    let second = send(
+        json!([a, {"role":"assistant","content":"ok"},
+        {"role":"user","content":"second actual task"}]),
+        false,
+    );
+    assert_eq!(second.status, 200);
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (1, 1, 2)
+    );
+    let decision = classifier_body(&classifier, 1);
+    assert_eq!(
+        decision["visible_conversation"].as_array().unwrap().len(),
+        1,
+        "{decision}"
+    );
+    assert_eq!(
+        decision["visible_conversation"][0]["steps"],
+        json!([[{"kind":"text","text":"ok"}]])
+    );
+    assert_eq!(
+        decision["visible_conversation"][0]["status"], "completed",
+        "{decision}"
+    );
+    assert_eq!(decision["history_partial"], false, "{decision}");
+    assert_eq!(decision["assessment_target"]["from"], 0, "{decision}");
+    assert!(!decision.to_string().contains("notification-only"));
+    let facts = wait_execution_facts(&fixture, 2);
+    let assessments = facts
+        .iter()
+        .filter(|row| row["fact"]["kind"] == "branch_assessment_recorded")
+        .collect::<Vec<_>>();
+    assert_eq!(assessments.len(), 1, "{facts:?}");
+    assert_eq!(assessments[0]["fact"]["partial"], false);
+    assert_eq!(assessments[0]["fact"]["score"], 0.75);
+    assert_eq!(
+        assessments[0]["fact"]["history_membership"]["request_ids"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn real_listener_accepted_history_does_not_infer_missing_tool_result_status() {
     let simple = NativeProvider::start(vec![
         ProviderReply::Complete {

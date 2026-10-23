@@ -332,6 +332,10 @@ pub struct ObservedRequestSummary {
     pub native_turn_id: Option<String>,
     pub relation_conflicted: bool,
     pub routing_context: ObservationRoutingContextV1,
+    /// Affirmative retained native maintenance-purpose evidence. Absence is
+    /// unclassified, never proof that a request came from a human.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_auxiliary: Option<bool>,
     pub attempted_model_count: u32,
     pub within_request_fallback: Option<bool>,
     pub final_native_model: Option<String>,
