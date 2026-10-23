@@ -407,6 +407,7 @@ fn compile_classifier_authority(
     }
     let mut authority = compile_classifier_mode_authority(&classifier.mode, publication_revision)?;
     let value = Arc::make_mut(&mut authority);
+    value.plan_identity = Some((routing.agent_plan_id.clone(), alias.agent_plan_revision));
     match &routing.request_owned {
         AliasRequestOwnedRouteV1::Classified {
             judgment,
@@ -414,8 +415,12 @@ fn compile_classifier_authority(
             ..
         } => {
             if let Some(p) = native_protocol {
-                p.validate_smart(judgment)
-                    .map_err(PublicationInstallError::NativeProtocol)?;
+                p.validate_smart(
+                    judgment
+                        .as_ref()
+                        .ok_or(PublicationInstallError::InvalidPlannerPolicy)?,
+                )
+                .map_err(PublicationInstallError::NativeProtocol)?;
                 if value.system_one_model.is_none() {
                     return Err(PublicationInstallError::NativeProtocol(
                         hiroute_domain::NativeProtocolError::ContentMismatch,
@@ -424,10 +429,17 @@ fn compile_classifier_authority(
             }
             value.native_protocol = native_protocol.clone();
             value.decision = native_protocol.as_ref().map_or_else(
-                || judgment.degree.definition().into(),
+                || {
+                    judgment
+                        .clone()
+                        .unwrap_or_default()
+                        .degree
+                        .definition()
+                        .into()
+                },
                 |p| p.decision.clone(),
             );
-            value.smart_judgment = Some(judgment.clone());
+            value.smart_judgment = judgment.clone();
         }
         AliasRequestOwnedRouteV1::Branches {
             branches,
@@ -449,6 +461,7 @@ fn compile_classifier_authority(
                 || hiroute_domain::branch_decision_definition(branches, default_branch_id),
                 |p| p.decision.clone(),
             );
+            value.default_category = Some(default_branch_id.clone());
             value.smart_judgment = None;
             value.branch_policies = branches.clone();
         }
@@ -566,6 +579,9 @@ pub(crate) fn compile_classifier_mode_authority(
         },
     };
     Ok(Arc::new(RestBranchClassifierAuthorityV1 {
+        extension_identity: mode.extension_identity(),
+        plan_identity: None,
+        default_category: None,
         decision_provider: match mode {
             hiroute_domain::ComplexityClassifierModeV1::DecisionService { service } => {
                 match &service.connection {
@@ -889,6 +905,7 @@ fn compile_routing(
                 .map_err(|_| PublicationInstallError::InvalidPlannerPolicy)?;
             (
                 MaterializedRouteV1::Branches {
+                    extension: classifier.mode.extension_identity(),
                     native_protocol: native_protocol.clone(),
                     branches: branches.clone(),
                     default_branch_id: default_branch_id.clone(),
@@ -939,8 +956,9 @@ fn compile_routing(
             };
             (
                 MaterializedRouteV1::SmartSaving {
+                    extension: classifier.mode.extension_identity(),
                     native_protocol: native_protocol.clone(),
-                    judgment: Box::new(judgment.clone()),
+                    judgment: Box::new(judgment.clone().unwrap_or_default()),
                     simple_group_id,
                     simple_fallback_group_ids: simple.into_iter().skip(1).collect(),
                     complex_group_id,

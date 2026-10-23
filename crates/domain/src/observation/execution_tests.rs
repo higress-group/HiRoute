@@ -158,6 +158,7 @@ fn fixed_execution_has_recorded_context_without_plan_identity() {
 fn external_and_rule_fallback_classification_facts_are_explicit() {
     let mut external = route();
     external.complexity = Some(BranchDecisionV1 {
+        extension_reason: None,
         decision_protocol: Some(crate::DecisionProtocolV1::LocalRules),
         routing_observation: None,
         policy: None,
@@ -185,6 +186,7 @@ fn external_and_rule_fallback_classification_facts_are_explicit() {
 
     let mut fallback = route();
     fallback.complexity = Some(BranchDecisionV1 {
+        extension_reason: None,
         decision_protocol: Some(crate::DecisionProtocolV1::LocalRules),
         routing_observation: None,
         policy: None,
@@ -604,6 +606,7 @@ fn route() -> RouteDecisionFactV1 {
         output_digest: digest("output"),
         branch: PlannedBranchV1::CustomExactOrder,
         complexity: Some(BranchDecisionV1 {
+            extension_reason: None,
             decision_protocol: Some(crate::DecisionProtocolV1::LocalRules),
             routing_observation: None,
             policy: None,

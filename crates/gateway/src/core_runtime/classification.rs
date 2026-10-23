@@ -26,6 +26,8 @@ mod c_capability;
 #[path = "classification/c_request.rs"]
 mod c_request;
 pub use c_capability::CClassifierDiagnosticOutcome;
+#[path = "classification/extension.rs"]
+mod extension;
 #[path = "classification/group_policy.rs"]
 mod group_policy;
 #[path = "classification/protocol.rs"]
@@ -50,10 +52,7 @@ use crate::runtime::TargetResolver;
 use crate::server::request_plan::{
     ClassifierAuthenticationAuthorityV1, RestBranchClassifierAuthorityV1,
 };
-use protocol::{
-    ClassifierAssessment, ClassifierResponse, classifier_request_template,
-    parse_classifier_response,
-};
+use protocol::{ClassifierAssessment, ClassifierResponse};
 
 const CLASSIFIER_CLEANUP_TIMEOUT: Duration = Duration::from_millis(250);
 const CLASSIFIER_RESPONSE_BYTES: usize = 64 * 1024;
@@ -125,6 +124,7 @@ struct PreparedDecisionRequest {
     template: PreparedReplayTemplate,
     has_target: bool,
     target_partial: bool,
+    target_category: Option<String>,
     bindings: Option<system_one::Bindings>,
 }
 
@@ -188,6 +188,7 @@ impl ProductionGatewayRuntime {
             .map_err(|_| ClassifierDiagnosticError::InvalidConfig)?;
         let mut classifier = crate::server::publication::compile_classifier_mode_authority(mode, 1)
             .map_err(|_| ClassifierDiagnosticError::InvalidConfig)?;
+        Arc::make_mut(&mut classifier).default_category = Some("general".into());
         // Exercise category and degree in one synthetic first turn, without business tokens.
         Arc::make_mut(&mut classifier).decision =
             hiroute_domain::DecisionDefinitionV1::Categorical {
@@ -299,7 +300,12 @@ impl ProductionGatewayRuntime {
         if result.decision.decision_source != ComplexityDecisionSourceV1::ExternalClassifier {
             return Err(ClassifierDiagnosticError::Integrity);
         }
-        if result.decision.simple_probability.is_none() {
+        if result.decision.simple_probability.is_none()
+            && !matches!(
+                result.decision.selection_reason,
+                hiroute_domain::ModelGroupReasonV1::ExtensionDecision
+            )
+        {
             return Err(ClassifierDiagnosticError::InvalidOutput);
         }
         Ok(ClassifierDiagnosticOutcome {
@@ -348,7 +354,7 @@ impl ProductionGatewayRuntime {
                 let prepared = if classifier.system_one_model.is_some() {
                     system_one::request_template(classifier, request.request, request.history)
                 } else {
-                    classifier_request_template(request.request, request.history, classifier)
+                    extension::request_template(request.request, request.history, classifier)
                         .map_err(|_| CallFailure::RejectedInput)
                 };
                 match prepared {
@@ -438,18 +444,27 @@ impl ProductionGatewayRuntime {
                 Ok(ClassificationOutcome {
                     diagnostic_failure: None,
                     decision: BranchDecisionV1 {
+                        extension_reason: response.extension_reason,
                         decision_protocol: Some(hiroute_domain::DecisionProtocolV1::LocalRules),
                         routing_observation,
                         policy: None,
                         competence_trigger: None,
-                        execution_group: hiroute_domain::ExecutionGroupV1::Regular,
+                        execution_group: response
+                            .extension_group
+                            .unwrap_or(hiroute_domain::ExecutionGroupV1::Primary),
                         simple_probability: response
                             .probabilities
                             .as_ref()
                             .and_then(|p| p.get("simple"))
                             .and_then(|p| serde_json::Number::from_f64(*p)),
                         simple_threshold_millis: None,
-                        selection_reason: if response.degree_failed {
+                        selection_reason: if response.extension_decision {
+                            if response.degree_failed {
+                                hiroute_domain::ModelGroupReasonV1::DecisionUnavailable
+                            } else {
+                                hiroute_domain::ModelGroupReasonV1::ExtensionDecision
+                            }
+                        } else if response.degree_failed {
                             hiroute_domain::ModelGroupReasonV1::DegreeUnavailable
                         } else {
                             hiroute_domain::ModelGroupReasonV1::SimpleTask
@@ -741,7 +756,11 @@ impl ProductionGatewayRuntime {
         if status == StatusCode::OK {
             let result = match &prepared.bindings {
                 Some(bindings) => system_one::parse_response(&body, bindings),
-                None => parse_classifier_response(&body, &classifier.decision, prepared.has_target),
+                None => extension::parse_response(
+                    &body,
+                    &classifier.decision,
+                    prepared.target_category.as_deref(),
+                ),
             };
             diagnostic.finish(result.as_ref().err().copied());
             return Ok(result);

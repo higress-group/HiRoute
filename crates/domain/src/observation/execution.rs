@@ -277,6 +277,8 @@ pub enum DecisionProtocolV1 {
 #[serde(deny_unknown_fields)]
 pub struct BranchDecisionV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_protocol: Option<DecisionProtocolV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub routing_observation: Option<crate::RoutingObservationV1>,

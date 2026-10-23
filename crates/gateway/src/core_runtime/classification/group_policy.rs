@@ -36,6 +36,38 @@ fn reduce(
     if outcome.decision.decision_source == ComplexityDecisionSourceV1::Inherited {
         return;
     }
+    if let Some(extension) = extension_identity(input) {
+        let (name, dual) = match &input.policy.route {
+            MaterializedRouteV1::SmartSaving { .. } => ("Smart saving", true),
+            MaterializedRouteV1::Branches { branches, .. } => {
+                let Some(branch) = branches
+                    .iter()
+                    .find(|branch| branch.id == outcome.decision.branch_id)
+                else {
+                    return;
+                };
+                (branch.name.as_str(), branch.primary_group.is_some())
+            }
+            _ => return,
+        };
+        outcome.decision.policy = Some(extension.execution_policy(name));
+        outcome.decision.simple_threshold_millis = None;
+        outcome.decision.simple_probability = None;
+        outcome.decision.competence_trigger = None;
+        if outcome.decision.fallback_used {
+            if matches!(input.policy.route, MaterializedRouteV1::Branches { .. }) {
+                outcome.decision.execution_group = if dual {
+                    ExecutionGroupV1::Primary
+                } else {
+                    ExecutionGroupV1::Regular
+                };
+            }
+            outcome.decision.selection_reason = ModelGroupReasonV1::DecisionFallback;
+        } else if !dual {
+            outcome.decision.execution_group = ExecutionGroupV1::Regular;
+        }
+        return;
+    }
     let (judgment, name, scope_id, dual) = match &input.policy.route {
         MaterializedRouteV1::SmartSaving { judgment, .. } => (
             judgment.as_ref(),
@@ -48,7 +80,10 @@ fn reduce(
                 return;
             };
             (
-                &branch.judgment,
+                branch
+                    .judgment
+                    .as_ref()
+                    .expect("validated built-in judgment"),
                 branch.name.as_str(),
                 branch.id.as_str(),
                 branch.primary_group.is_some(),
@@ -163,6 +198,16 @@ fn reduce(
         });
 }
 
+fn extension_identity(
+    input: &PlannerInputV1,
+) -> Option<&hiroute_domain::DecisionExtensionIdentityV1> {
+    match &input.policy.route {
+        MaterializedRouteV1::SmartSaving { extension, .. }
+        | MaterializedRouteV1::Branches { extension, .. } => extension.as_ref(),
+        _ => None,
+    }
+}
+
 fn native_protocol(input: &PlannerInputV1) -> Option<&hiroute_domain::FrozenNativeProtocolV1> {
     match &input.policy.route {
         MaterializedRouteV1::SmartSaving {
@@ -181,6 +226,9 @@ fn execution_policy(
     judgment: &hiroute_domain::JudgmentSettingsV1,
     name: &str,
 ) -> hiroute_domain::BranchExecutionPolicyV1 {
+    if let Some(extension) = extension_identity(input) {
+        return extension.execution_policy(name);
+    }
     native_protocol(input).map_or_else(
         || judgment.execution_policy(name),
         |p| p.execution_policy(scope, judgment, name),
@@ -303,7 +351,20 @@ pub(in crate::server::core_runtime) fn execution_position(
             };
             Some((
                 branch.id.as_str(),
-                execution_policy(input, &branch.id, &branch.judgment, &branch.name),
+                extension_identity(input).map_or_else(
+                    || {
+                        execution_policy(
+                            input,
+                            &branch.id,
+                            branch
+                                .judgment
+                                .as_ref()
+                                .expect("validated built-in judgment"),
+                            &branch.name,
+                        )
+                    },
+                    |extension| extension.execution_policy(&branch.name),
+                ),
                 group,
             ))
         }),

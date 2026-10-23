@@ -1156,6 +1156,7 @@ fn external_classification_drives_existing_smart_groups_without_rule_score() {
         ],
     );
     planner_input.classification_decision = Some(BranchDecisionV1 {
+        extension_reason: None,
         decision_protocol: Some(hiroute_domain::DecisionProtocolV1::LocalRules),
         routing_observation: None,
         policy: None,
@@ -1209,6 +1210,7 @@ fn external_decision_can_be_inherited_without_inventing_a_rule_threshold() {
     )
     .unwrap();
     let previous = BranchDecisionV1 {
+        extension_reason: None,
         decision_protocol: Some(hiroute_domain::DecisionProtocolV1::LocalRules),
         routing_observation: None,
         policy: None,

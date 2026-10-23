@@ -328,7 +328,9 @@ impl FrozenNativeProtocolV1 {
         let expected = Self::freeze(
             &self.protocol,
             c_v1_branch_decision_definition(branches, default_id),
-            branches.iter().map(|b| (b.id.clone(), b.judgment.clone())),
+            branches
+                .iter()
+                .map(|b| (b.id.clone(), b.judgment.clone().unwrap_or_default())),
         )?;
         if *self != expected {
             return Err(NativeProtocolError::ContentMismatch);

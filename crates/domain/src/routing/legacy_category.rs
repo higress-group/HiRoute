@@ -41,7 +41,7 @@ pub(super) fn compose(
                 id: b.id.clone(),
                 criterion: b.condition.clone(),
                 refinement: b.primary_group.map(|_| {
-                    let mut degree = b.judgment.degree.definition();
+                    let mut degree = b.judgment.clone().unwrap_or_default().degree.definition();
                     degree.instructions = format!(
                         "{}{}{}{}{}{}",
                         template.degree_prefix,

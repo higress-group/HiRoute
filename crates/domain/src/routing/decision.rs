@@ -14,14 +14,44 @@ pub const DEFAULT_COMPETENCE_CRITERIA: [&str; 3] = [
 #[serde(deny_unknown_fields)]
 pub struct BranchExecutionPolicyV1 {
     pub name: String,
-    pub floor_millis: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<DecisionExtensionIdentityV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floor_millis: Option<u16>,
     /// Digest of the effective frozen standard, for built-in and custom decisions.
     pub criteria_digest: Option<crate::CanonicalDigest>,
 }
 
 impl BranchExecutionPolicyV1 {
     pub fn validate(&self) -> bool {
-        text(&self.name, 128) && self.floor_millis <= 1000
+        text(&self.name, 128)
+            && match &self.extension {
+                Some(extension) => {
+                    extension.revision > 0
+                        && super::strategy::valid_reference(&extension.id)
+                        && self.floor_millis.is_none()
+                        && self.criteria_digest.is_none()
+                }
+                None => self.floor_millis.is_some_and(|floor| floor <= 1000),
+            }
+    }
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionExtensionIdentityV1 {
+    pub id: String,
+    pub revision: u64,
+}
+
+impl DecisionExtensionIdentityV1 {
+    pub fn execution_policy(&self, name: &str) -> BranchExecutionPolicyV1 {
+        BranchExecutionPolicyV1 {
+            name: name.into(),
+            extension: Some(self.clone()),
+            floor_millis: None,
+            criteria_digest: None,
+        }
     }
 }
 
@@ -164,6 +194,8 @@ pub enum ModelGroupReasonV1 {
     ComplexTask,
     LowCompetence,
     DegreeUnavailable,
+    ExtensionDecision,
+    DecisionUnavailable,
     SingleGroup,
     DecisionFallback,
     AvailabilityRelay,
@@ -233,7 +265,8 @@ impl JudgmentSettingsV1 {
     pub fn execution_policy(&self, name: &str) -> BranchExecutionPolicyV1 {
         BranchExecutionPolicyV1 {
             name: name.into(),
-            floor_millis: self.competence.floor_millis,
+            extension: None,
+            floor_millis: Some(self.competence.floor_millis),
             criteria_digest: crate::CanonicalDigest::of(&(
                 &self.competence.instructions,
                 &self.competence.criteria,
