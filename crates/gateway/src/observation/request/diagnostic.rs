@@ -5,6 +5,39 @@ use crate::server::core_runtime::observation::wire_diagnostic;
 use hiroute_diagnostics::{correlation::CorrelationDomain, event::DiagnosticEvent};
 
 impl RequestObservation {
+    /// Main native projection evidence, not optional canonical capture status.
+    pub(crate) fn native_completion_unknown(
+        &self,
+        upstream_protocol: hiroute_diagnostics::event::IngressProtocol,
+        evidence: hiroute_diagnostics::event::NativeCompletionEvidence,
+    ) {
+        let state = self.lock_state();
+        let attempt = state
+            .accepted_attempt
+            .as_ref()
+            .or(state.current_attempt.as_ref())
+            .or(state.pending_attempt.as_ref());
+        let attempt_index = u64::from(
+            attempt
+                .map(|a| a.ordinal)
+                .filter(|ordinal| *ordinal != 0)
+                .unwrap_or(state.next_attempt_ordinal),
+        );
+        let attempt_token = attempt
+            .filter(|a| !a.attempt_id.is_empty())
+            .and_then(|a| self.attempt_token(&a.attempt_id));
+        drop(state);
+        self.emit_diagnostic(DiagnosticEvent::NativeCompletionUnknown(
+            hiroute_diagnostics::event::NativeCompletionUnknown {
+                request_token: self.inner.request_token,
+                attempt_index,
+                attempt_token,
+                upstream_protocol,
+                evidence,
+            },
+        ));
+    }
+
     #[cfg(test)]
     pub(crate) fn response_failure(
         &self,

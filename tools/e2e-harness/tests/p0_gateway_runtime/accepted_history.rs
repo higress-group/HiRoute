@@ -10,7 +10,6 @@ fn classifier_body(classifier: &NativeProvider, index: usize) -> serde_json::Val
 #[test]
 fn real_listener_moderation_metadata_keeps_complete_history_and_assessment() {
     use serde_json::json;
-    const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
     let notification = json!({"type":"response.metadata","response_id":"stream-ok","sequence_number":7,
         "metadata":{"openai_chatgpt_moderation_metadata":{
             "prompt":{"marker":"notification-only"},"generation":{},"tool_call":{},"tool_response":{}}}});
@@ -19,6 +18,29 @@ fn real_listener_moderation_metadata_keeps_complete_history_and_assessment() {
         "event: response.completed",
         &format!("{notification_wire}event: response.completed"),
     );
+    assert_stream_keeps_complete_history_and_assessment(&wire, &notification_wire);
+}
+
+#[test]
+fn real_listener_native_completion_ignores_object_order_and_transport_comments() {
+    // This is the terminal message with reversed top-level and nested object keys.
+    // Keeping the raw spelling exercises production serde_json/preserve_order too.
+    let done = concat!(
+        "event: response.output_item.done\n",
+        r#"data: {"type":"response.output_item.done","output_index":0,"item":{"content":[{"annotations":[],"text":"ok","type":"output_text"}],"role":"assistant","status":"completed","id":"runtime-message","type":"message"}}"#,
+        "\n\n"
+    );
+    let mut wire = std::str::from_utf8(RESPONSES_STREAM_OK).unwrap().replace(
+        "event: response.completed",
+        &format!("{done}event: response.completed"),
+    );
+    wire.push_str(": keepalive\n\ndata: [DONE]\n\n: final keepalive\n\n");
+    assert_stream_keeps_complete_history_and_assessment(&wire, done);
+}
+
+fn assert_stream_keeps_complete_history_and_assessment(wire: &str, preserved: &str) {
+    use serde_json::json;
+    const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
     let regular = NativeProvider::start(vec![ProviderReply::StreamDrip {
         status: 200,
         chunks: wire.as_bytes().chunks(31).map(<[u8]>::to_vec).collect(),
@@ -62,8 +84,8 @@ fn real_listener_moderation_metadata_keeps_complete_history_and_assessment() {
     assert!(
         first
             .body
-            .windows(notification_wire.len())
-            .any(|part| part == notification_wire.as_bytes())
+            .windows(preserved.len())
+            .any(|part| part == preserved.as_bytes())
     );
     let second = send(
         json!([a, {"role":"assistant","content":"ok"},
@@ -93,6 +115,14 @@ fn real_listener_moderation_metadata_keeps_complete_history_and_assessment() {
     assert_eq!(decision["assessment_target"]["from"], 0, "{decision}");
     assert!(!decision.to_string().contains("notification-only"));
     let facts = wait_execution_facts(&fixture, 2);
+    let attempts = facts
+        .iter()
+        .filter(|row| row["fact"]["kind"] == "attempt_finished")
+        .collect::<Vec<_>>();
+    assert_eq!(attempts.len(), 2, "{facts:?}");
+    for attempt in attempts {
+        assert_eq!(attempt["fact"]["provider_model_event"], "response_complete");
+    }
     let assessments = facts
         .iter()
         .filter(|row| row["fact"]["kind"] == "branch_assessment_recorded")

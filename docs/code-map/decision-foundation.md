@@ -113,6 +113,9 @@ affinity hint; [projection regressions](../../crates/gateway/src/agent_turn_hist
 cover competing branches, old-prefix changes and frozen membership.
 Optional content comparisons use the shared [fingerprint budget](../../crates/gateway/src/context_hold/fingerprint.rs)
 before Replay reads and JSON key sorting; exhausting it loses evidence, not routing.
+The [layout capacity regression](../../crates/gateway/src/core_runtime/decision_history/layout_budget_tests.rs)
+refuses actual optional allocation, preserves captured execution and verifies a
+complete later tool stage after capacity recovers.
 Matching input text alone never deduplicates requests or proves a predecessor.
 Concurrent requests receive separate tickets; frozen snapshots retain their own
 accounted payload and exact target membership. A busy or stale affinity cache loses

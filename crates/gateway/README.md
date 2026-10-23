@@ -397,6 +397,14 @@ pair and the last Responses event's closed kind, indexes and array counts. The
 capture worker records only its first failure against the ordinal frozen at
 materialization, with no IDs, body text, hashes or dynamic error strings. This
 diagnostic preserves the original capture abort and cannot certify completion.
+Native delivery separately emits `native_completion_unknown` when its terminal
+proof is incomplete. The protocol projector retains only the first closed reason,
+frame ordinal and event shape; the driver attributes it to the actual attempt.
+This diagnostic carries no content or native identities and cannot change the
+provider result, optional capture or downstream output. Native snapshot equality
+uses complete canonical JSON values, independent of object key order; pure SSE
+comments retain the model's terminal state across transport fragmentation.
+See [transport and value regressions](src/adapters/response/native_transport_tests.rs).
 Unix Debug-only
 `runtime/stream_capture.rs` can capture an explicitly enabled private session;
 its `stream_replay` example restores the actual attempt profile and tool mapping.

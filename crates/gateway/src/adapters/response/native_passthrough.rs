@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 
+use hiroute_diagnostics::event::NativeCompletionReason as CompletionReason;
 #[cfg(test)]
 use hiroute_gateway_core::runtime::body::BudgetTree;
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
@@ -26,6 +27,8 @@ use super::wire::optional_str;
 #[path = "native_passthrough_helpers.rs"]
 mod helpers;
 use helpers::*;
+#[path = "native_passthrough_diagnostic.rs"]
+mod diagnostic;
 #[path = "native_passthrough_evidence.rs"]
 mod evidence;
 
@@ -180,6 +183,7 @@ impl NativeResponseProjector {
                 response_items: BTreeMap::new(),
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
+                completion_diagnostic: diagnostic::CompletionDiagnostic::default(),
                 responses_done_seen: false,
                 usage: ModelUsage::default(),
                 usage_input_overflow: false,
@@ -313,6 +317,7 @@ pub(super) struct ProjectionState {
     response_items: BTreeMap<u32, ResponseItemEvidence>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
+    completion_diagnostic: diagnostic::CompletionDiagnostic,
     responses_done_seen: bool,
     usage: ModelUsage,
     usage_input_overflow: bool,
@@ -340,6 +345,7 @@ impl ProjectionState {
         &mut self,
         value: &mut Value,
     ) -> Result<ProjectionMetadata, ProtocolAdapterError> {
+        self.completion_diagnostic.shape = Some(super::diagnostic_shape::shape(None, Some(value)));
         let object = value.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
         let metadata = match self.protocol {
             IngressProtocol::Responses => self.project_responses_nonstream(object),
@@ -369,6 +375,10 @@ impl ProjectionState {
             return Ok((None, ProjectionMetadata::opaque()));
         }
         let parsed = serde_json::from_slice(data);
+        self.completion_diagnostic.shape = Some(super::diagnostic_shape::shape(
+            event_type,
+            parsed.as_ref().ok(),
+        ));
         if self.protocol == IngressProtocol::Responses
             && event_type.is_none_or(|event| event == "response.metadata")
             && let Ok(Value::Object(object)) = &parsed
@@ -387,6 +397,12 @@ impl ProjectionState {
         if after_terminal {
             // Reuse the same owned identity projection, but a second provider
             // description can no longer certify one unambiguous completion.
+            if self.protocol == IngressProtocol::Responses {
+                self.completion_diagnostic
+                    .note(CompletionReason::PostTerminal);
+            } else {
+                self.completion_diagnostic.generic();
+            }
             self.mark_unowned_uncertain();
         }
         if self.protocol == IngressProtocol::ChatCompletions && data == b"[DONE]" {
@@ -459,10 +475,14 @@ impl ProjectionState {
             .map(str::to_owned)
         else {
             self.response_items_uncertain = true;
+            self.completion_diagnostic
+                .note(CompletionReason::EventTypeMissing);
             return Ok(ProjectionMetadata::opaque());
         };
         if event_type.is_some_and(|event| event != native_type) {
             self.response_items_uncertain = true;
+            self.completion_diagnostic
+                .note(CompletionReason::EventTypeMismatch);
         }
         let mut terminal = None;
         let mut failure = None;
@@ -487,6 +507,8 @@ impl ProjectionState {
                 let native_id = string_field(object, "item_id")?.to_owned();
                 if !self.tools.contains_key(&index) {
                     self.response_items_uncertain = true;
+                    self.completion_diagnostic
+                        .note(CompletionReason::UntrackedToolItem);
                     return Ok(ProjectionMetadata::opaque());
                 }
                 let logical =
@@ -511,6 +533,10 @@ impl ProjectionState {
                     && (self.response_items_uncertain
                         || response.get("status").and_then(Value::as_str) != Some(expected.0))
                 {
+                    if response.get("status").and_then(Value::as_str) != Some(expected.0) {
+                        self.completion_diagnostic
+                            .note(CompletionReason::TerminalStatus);
+                    }
                     NativeTerminalOutcome::Unknown
                 } else {
                     expected.1
@@ -736,7 +762,11 @@ impl ProjectionState {
             "completed" => NativeTerminalOutcome::Complete,
             "incomplete" => NativeTerminalOutcome::Incomplete,
             "failed" => NativeTerminalOutcome::Failed,
-            _ => NativeTerminalOutcome::Unknown,
+            _ => {
+                self.completion_diagnostic
+                    .note(CompletionReason::TerminalStatus);
+                NativeTerminalOutcome::Unknown
+            }
         };
         self.set_terminal(terminal)?;
         Ok(ProjectionMetadata {

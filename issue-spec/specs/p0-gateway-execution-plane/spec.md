@@ -392,6 +392,15 @@ may be proven against matching final summary only when item/position/all delta/d
 text agree and content is absent/null; explicit content/conflict/missing summary
 cannot be hidden by that rule.
 
+Complete native item comparisons MUST ignore JSON object member order recursively,
+including when a consumer enables order-preserving JSON parsing. They still compare
+all values, unknown members and array order. Pure SSE comments carry no model
+description: they preserve a proven terminal outcome, including failed/incomplete
+outcomes, before or after the optional final marker. A partially received tail may
+delay delivery until framed, but cannot invalidate completion merely by spanning
+transport chunks. An actual conflicting or unknown control description remains
+distinct from a comment and cannot certify success.
+
 One optional `[DONE]` after the unique Responses terminal is retained and authenticated
 once. When terminal verification needs EOF, buffer terminal/tail boundedly and deliver
 it with downstream EOS only after verification, preventing normal client exit from

@@ -1,5 +1,6 @@
 //! Bounded evidence for the gateway's own completion claim, not a wire schema.
 
+use hiroute_diagnostics::event::NativeCompletionReason as Reason;
 use hiroute_gateway_core::runtime::body::MemoryRole;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -39,6 +40,10 @@ impl ProjectionState {
         &mut self,
         outcome: NativeTerminalOutcome,
     ) -> Result<(), ProtocolAdapterError> {
+        if outcome == NativeTerminalOutcome::Unknown && self.protocol != IngressProtocol::Responses
+        {
+            self.completion_diagnostic.generic();
+        }
         if self.terminal.replace(outcome).is_some() {
             return Err(ModelIrError::InvalidResponseLifecycle(
                 "native response emitted more than one terminal".into(),
@@ -49,6 +54,11 @@ impl ProjectionState {
     }
 
     pub(super) fn mark_unowned_uncertain(&mut self) {
+        if self.protocol == IngressProtocol::Responses {
+            self.completion_diagnostic.note(Reason::UnownedEvent);
+        } else {
+            self.completion_diagnostic.generic();
+        }
         match self.protocol {
             IngressProtocol::Responses => self.response_items_uncertain = true,
             IngressProtocol::Messages => self.messages_stop = Some(NativeTerminalOutcome::Unknown),
@@ -59,6 +69,11 @@ impl ProjectionState {
     pub(in crate::server::core_runtime::adapters::response) fn withhold_terminal_completion(
         &mut self,
     ) {
+        if self.protocol == IngressProtocol::Responses {
+            self.completion_diagnostic.note(Reason::PostTerminal);
+        } else {
+            self.completion_diagnostic.generic();
+        }
         self.terminal = Some(NativeTerminalOutcome::Unknown);
     }
 
@@ -72,6 +87,7 @@ impl ProjectionState {
             // Failure to retain evidence must not reject otherwise legal wire.
             let Ok(charge) = self.budget.reserve(MemoryRole::SemanticState, 128) else {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic.note(Reason::EvidenceBudget);
                 return;
             };
             self.retained.push(charge);
@@ -98,6 +114,7 @@ impl ProjectionState {
                     .extend(added_text);
             } else {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic.note(Reason::EvidenceBudget);
             }
         }
         let known = self
@@ -110,12 +127,14 @@ impl ProjectionState {
                 .is_some_and(|previous| Some(previous) != identity)
         {
             self.response_items_uncertain = true;
+            self.completion_diagnostic.note(Reason::ItemIdentity);
         }
         known.identity = identity;
         if done {
             let digest = digest_item(item);
             if known.done.is_some_and(|previous| previous != digest) {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic.note(Reason::ItemSnapshot);
             }
             known.done = Some(digest);
         }
@@ -127,25 +146,35 @@ impl ProjectionState {
         }
         let Some(output) = response.get("output").and_then(Value::as_array) else {
             self.response_items_uncertain = true;
+            self.completion_diagnostic.note(Reason::MissingOutput);
             return;
         };
         for (&index, known) in &self.response_items {
             let Some(item) = output.get(index as usize).and_then(Value::as_object) else {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic
+                    .note_output(Reason::MissingOutputItem, index);
                 return;
             };
-            if known.identity != response_item_identity(item)
-                || known.done.is_some_and(|digest| digest != digest_item(item))
-                || known.added_text.iter().any(|prefix| {
-                    final_text(item, prefix.position, prefix.kind)
-                        .and_then(|text| text.as_bytes().get(..prefix.length))
-                        .is_none_or(|text| {
-                            let digest: [u8; 32] = Sha256::digest(text).into();
-                            digest != prefix.hash
-                        })
-                })
-            {
+            let reason = if known.identity != response_item_identity(item) {
+                Some(Reason::ItemIdentity)
+            } else if known.done.is_some_and(|digest| digest != digest_item(item)) {
+                Some(Reason::ItemSnapshot)
+            } else if known.added_text.iter().any(|prefix| {
+                final_text(item, prefix.position, prefix.kind)
+                    .and_then(|text| text.as_bytes().get(..prefix.length))
+                    .is_none_or(|text| {
+                        let digest: [u8; 32] = Sha256::digest(text).into();
+                        digest != prefix.hash
+                    })
+            }) {
+                Some(Reason::AddedTextPrefix)
+            } else {
+                None
+            };
+            if let Some(reason) = reason {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic.note_output(reason, index);
             }
         }
     }
@@ -157,6 +186,7 @@ impl ProjectionState {
     ) -> bool {
         if event.ends_with(".delta") && !object.get("delta").is_some_and(Value::is_string) {
             self.response_items_uncertain = true;
+            self.completion_diagnostic.note(Reason::InvalidDelta);
             return false;
         }
         let delta = event
@@ -187,6 +217,11 @@ impl ProjectionState {
         });
         let (Some(identity), Some(index), Some(position)) = (identity, index, position) else {
             self.response_items_uncertain = true;
+            self.completion_diagnostic.note(if identity.is_none() {
+                Reason::DeltaIdentity
+            } else {
+                Reason::DeltaPosition
+            });
             return delta.is_some();
         };
         let key = (index, position, kind);
@@ -204,6 +239,7 @@ impl ProjectionState {
             let charge_size = std::mem::size_of::<ResponseDeltaEvidence>() + 128;
             let Ok(charge) = self.budget.reserve(MemoryRole::SemanticState, charge_size) else {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic.note(Reason::EvidenceBudget);
                 return delta.is_some();
             };
             self.retained.push(charge);
@@ -225,10 +261,12 @@ impl ProjectionState {
         let item_id: [u8; 32] = Sha256::digest(identity.as_bytes()).into();
         if known.item_id != item_id {
             self.response_items_uncertain = true;
+            self.completion_diagnostic.note(Reason::DeltaIdentity);
         }
         if let Some(delta) = delta {
             if known.done_digest.is_some() {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic.note(Reason::DeltaAfterDone);
             }
             known.hash.update(delta.as_bytes());
             known.saw_delta = true;
@@ -237,6 +275,7 @@ impl ProjectionState {
             let digest: [u8; 32] = Sha256::digest(completed.as_bytes()).into();
             if known.done_digest.replace(digest).is_some() {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic.note(Reason::DuplicateDone);
             }
             if !had_prior && delta.is_none() {
                 // A done-only event can establish complete textual evidence.
@@ -268,27 +307,42 @@ impl ProjectionState {
                 .and_then(Value::as_object)
                 .and_then(|item| final_text(item, position as usize, kind));
             let observed: [u8; 32] = known.hash.clone().finalize().into();
-            if item_type != Some(expected_type)
-                || id.is_none_or(|id| {
-                    let digest: [u8; 32] = Sha256::digest(id.as_bytes()).into();
-                    known.item_id != digest
+            let reason = if output.is_none() {
+                Some(Reason::MissingOutput)
+            } else if item.is_none() {
+                Some(Reason::MissingOutputItem)
+            } else if item_type != Some(expected_type) {
+                Some(Reason::DeltaFinalType)
+            } else if id.is_none_or(|id| {
+                let digest: [u8; 32] = Sha256::digest(id.as_bytes()).into();
+                known.item_id != digest
+            }) {
+                Some(Reason::DeltaFinalIdentity)
+            } else if text.is_none_or(|text| {
+                let prefix = if known.saw_delta {
+                    known.prefix_length
+                } else {
+                    0
+                };
+                text.as_bytes().get(prefix..).is_none_or(|suffix| {
+                    let digest: [u8; 32] = Sha256::digest(suffix).into();
+                    observed != digest
                 })
-                || text.is_none_or(|text| {
-                    let prefix = if known.saw_delta {
-                        known.prefix_length
-                    } else {
-                        0
-                    };
-                    text.as_bytes().get(prefix..).is_none_or(|suffix| {
-                        let digest: [u8; 32] = Sha256::digest(suffix).into();
-                        observed != digest
-                    }) || known.done_digest.is_some_and(|digest| {
-                        let final_digest: [u8; 32] = Sha256::digest(text.as_bytes()).into();
-                        digest != final_digest
-                    })
+            }) {
+                Some(Reason::DeltaFinalText)
+            } else if text.is_some_and(|text| {
+                known.done_digest.is_some_and(|digest| {
+                    let final_digest: [u8; 32] = Sha256::digest(text.as_bytes()).into();
+                    digest != final_digest
                 })
-            {
+            }) {
+                Some(Reason::DoneFinalText)
+            } else {
+                None
+            };
+            if let Some(reason) = reason {
                 self.response_items_uncertain = true;
+                self.completion_diagnostic.note_output(reason, index);
             }
         }
     }
