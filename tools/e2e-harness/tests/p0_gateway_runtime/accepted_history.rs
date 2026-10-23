@@ -38,6 +38,22 @@ fn real_listener_native_completion_ignores_object_order_and_transport_comments()
     assert_stream_keeps_complete_history_and_assessment(&wire, done);
 }
 
+#[test]
+fn real_listener_native_eof_comment_keeps_complete_history_and_assessment() {
+    for tail in [
+        ": final keepalive",
+        ": final keepalive\n",
+        ": final keepalive\r",
+    ] {
+        let mut wire = std::str::from_utf8(RESPONSES_STREAM_OK).unwrap().to_owned();
+        wire.push_str("data: [DONE]\n\n");
+        wire.push_str(tail);
+        // The shared listener assertions require the exact tail bytes, a complete
+        // model event, and a full assessment of the captured execution next turn.
+        assert_stream_keeps_complete_history_and_assessment(&wire, tail);
+    }
+}
+
 fn assert_stream_keeps_complete_history_and_assessment(wire: &str, preserved: &str) {
     use serde_json::json;
     const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;

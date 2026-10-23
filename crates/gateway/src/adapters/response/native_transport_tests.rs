@@ -160,6 +160,138 @@ fn native_transport_partial_comment_delays_without_reclassifying_terminal() {
 }
 
 #[test]
+fn native_transport_eof_comment_preserves_terminal_for_all_protocols() {
+    for protocol in [
+        IngressProtocol::Responses,
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::Messages,
+    ] {
+        let terminal = complete_wire(protocol);
+        for comment in [
+            b": keepalive".as_slice(),
+            b": keepalive\n",
+            b": keepalive\r",
+            b": first\r\n: second\r\n",
+        ] {
+            let wire = [terminal.as_slice(), comment].concat();
+            // Also force the terminal and the first comment byte into one feed.
+            // That path must delay Chat/Messages terminal delivery until EOF.
+            for first_end in [0, terminal.len() + 1] {
+                for fragment in [1, 7, wire.len()] {
+                    let mut decoder = projector(protocol);
+                    let mut units = Vec::new();
+                    if first_end != 0 {
+                        units.extend(decoder.feed(&wire[..first_end], false).unwrap());
+                        assert!(units.iter().all(|unit| unit.terminal.is_none()));
+                    }
+                    for chunk in wire[first_end..].chunks(fragment) {
+                        units.extend(decoder.feed(chunk, false).unwrap());
+                    }
+                    if first_end != 0 {
+                        assert!(units.iter().all(|unit| unit.terminal.is_none()));
+                    }
+                    units.extend(decoder.feed(&[], true).unwrap());
+                    assert_eq!(
+                        units
+                            .iter()
+                            .filter_map(|unit| unit.terminal)
+                            .collect::<Vec<_>>(),
+                        vec![NativeTerminalOutcome::Complete],
+                        "{protocol:?}, comment {comment:?}, first {first_end}, chunk {fragment}"
+                    );
+                    assert_eq!(
+                        units.iter().map(|unit| unit.source_bytes).sum::<usize>(),
+                        wire.len()
+                    );
+                    let tail = units.iter().find(|unit| unit.bytes == comment).unwrap();
+                    assert!(!tail.semantic);
+                    assert_eq!(tail.source_bytes, comment.len());
+                    assert!(
+                        units
+                            .iter()
+                            .flat_map(|unit| unit.bytes.iter().copied())
+                            .collect::<Vec<_>>()
+                            .ends_with(comment)
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn responses_eof_comment_keeps_failed_incomplete_and_done_evidence() {
+    for (event, status, expected) in [
+        ("response.failed", "failed", NativeTerminalOutcome::Failed),
+        (
+            "response.incomplete",
+            "incomplete",
+            NativeTerminalOutcome::Incomplete,
+        ),
+    ] {
+        for comment in [
+            b": keepalive".as_slice(),
+            b": keepalive\n",
+            b": keepalive\r",
+        ] {
+            for with_done in [false, true] {
+                let mut wire = responses_terminal(event, status);
+                if with_done {
+                    wire.extend_from_slice(b"data: [DONE]\n\n");
+                }
+                wire.extend_from_slice(comment);
+                for fragment in [1, wire.len()] {
+                    let mut decoder = projector(IngressProtocol::Responses);
+                    let mut units = Vec::new();
+                    for chunk in wire.chunks(fragment) {
+                        units.extend(decoder.feed(chunk, false).unwrap());
+                    }
+                    assert!(units.iter().all(|unit| unit.terminal.is_none()));
+                    units.extend(decoder.feed(&[], true).unwrap());
+                    assert_eq!(
+                        units
+                            .iter()
+                            .filter_map(|unit| unit.terminal)
+                            .collect::<Vec<_>>(),
+                        vec![expected],
+                        "{event}, comment {comment:?}, done {with_done}, chunk {fragment}"
+                    );
+                    let tail = units.iter().find(|unit| unit.bytes == comment).unwrap();
+                    assert!(!tail.semantic);
+                    assert_eq!(tail.source_bytes, comment.len());
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn native_transport_eof_still_rejects_unfinished_control_and_json() {
+    for tail in [
+        b"data: {\"type\":\"response.completed\"".as_slice(),
+        b"data:\n",
+        b"event: response.future\n",
+        b"id: next\r",
+        b"retry: 1000\r\n",
+        b"vendor-control: unknown",
+        b": comment\ndata: {",
+    ] {
+        let wire = [complete_wire(IngressProtocol::Responses), tail.to_vec()].concat();
+        for fragment in [1, wire.len()] {
+            let mut decoder = projector(IngressProtocol::Responses);
+            for chunk in wire.chunks(fragment) {
+                let units = decoder.feed(chunk, false).unwrap();
+                assert!(units.iter().all(|unit| unit.terminal.is_none()));
+            }
+            assert!(
+                decoder.feed(&[], true).is_err(),
+                "tail {tail:?}, chunk {fragment}"
+            );
+        }
+    }
+}
+
+#[test]
 fn native_transport_empty_control_description_still_withholds_completion() {
     for control in [
         b"event: response.future\n\n".as_slice(),
