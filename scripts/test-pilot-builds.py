@@ -391,6 +391,33 @@ print('fixture build completed')
         self.assertEqual(len(list((self.store.root / 'runs').iterdir())), 1)
         self.assertEqual(len(list((self.store.root / 'checkouts').iterdir())), 0)
 
+    def test_native_platform_preflight_does_not_register_an_unfinishable_session(self):
+        result = self.acquire()
+        args = types.SimpleNamespace(lease=result['lease'], case='model', timeout=1,
+                                     data_root=None, process_home=None, native_app=True)
+        with patch.object(m.sys, 'platform', 'linux'), patch.object(m.pilot, 'start') as launch:
+            with self.assertRaisesRegex(ValueError, 'requires macOS'):
+                self.manager.start(args)
+            launch.assert_not_called()
+        owner = self.manager.locate(result['lease'])['pilot_leases'][result['lease']]
+        self.assertEqual(owner['sessions'], {})
+        self.assertEqual(self.finish(result)['cleanup'], 'removed')
+
+    def test_native_cpa_preflight_does_not_register_an_unfinishable_session(self):
+        result = self.acquire()
+        sidecar = Path(result['checkout']) / 'target/debug/cliproxyapi'
+        sidecar.write_text('unattested fixture sidecar')
+        sidecar.chmod(0o700)
+        args = types.SimpleNamespace(lease=result['lease'], case='model', timeout=1,
+                                     data_root=None, process_home=None, native_app=True)
+        with patch.object(m.sys, 'platform', 'darwin'), patch.object(m.pilot, 'start') as launch:
+            with self.assertRaisesRegex(ValueError, 'no unique native target'):
+                self.manager.start(args)
+            launch.assert_not_called()
+        owner = self.manager.locate(result['lease'])['pilot_leases'][result['lease']]
+        self.assertEqual(owner['sessions'], {})
+        self.assertEqual(self.finish(result)['cleanup'], 'removed')
+
     def test_raw_pilot_start_cannot_create_unregistered_session(self):
         result = self.acquire()
         args = m.pilot.build_parser().parse_args(['start', '--build-run', result['build_run'],

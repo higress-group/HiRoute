@@ -259,6 +259,7 @@ class Builds:
         expected = self.store.record_path(row["id"]).parent / "frontend-dist"
         if Path(frontend["path"]) != expected or tree_digest(expected) != frontend["sha256"]:
             raise ValueError("Reusable frontend content changed")
+        return build
 
     def acquire(self, args):
         cases = sorted(set(args.case))
@@ -320,13 +321,17 @@ class Builds:
                         checkout=row["checkout"], cases=cases, scenario="unassessed")
 
     def start(self, args):
+        if getattr(args, "native_app", False) and sys.platform != "darwin":
+            raise ValueError("--native-app requires macOS LaunchServices")
         row = self.locate(args.lease)
         with self.locked(row["pilot_reuse"]["key"]), self.store.locked(row["checkout"]):
             row = self.store.load(row["id"])
             owner = row["pilot_leases"][args.lease]
             if owner["state"] != "open" or args.case not in owner["cases"]:
                 raise ValueError("Closed lease or undeclared case")
-            self.verify(row, row["pilot_reuse"]["recipe"])
+            build = self.verify(row, row["pilot_reuse"]["recipe"])
+            if getattr(args, "native_app", False):
+                pilot.native_app_module().staged_cpa(build)
             if args.case in owner["sessions"]:
                 raise ValueError("Case already started; inspect its recorded session instead of duplicating it")
             root = Path("/tmp").resolve() / ("hrp-" + uuid.uuid4().hex[:12])
