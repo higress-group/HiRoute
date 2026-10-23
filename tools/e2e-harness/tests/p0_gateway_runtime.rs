@@ -30,6 +30,8 @@ mod native_input_window;
 mod native_peer_tasks;
 #[path = "p0_gateway_runtime/native_routing_availability.rs"]
 mod native_routing_availability;
+#[path = "p0_gateway_runtime/native_tool_conflict.rs"]
+mod native_tool_conflict;
 #[path = "p0_gateway_runtime/observed_history.rs"]
 mod observed_history;
 
