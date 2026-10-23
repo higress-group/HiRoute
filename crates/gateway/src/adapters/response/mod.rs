@@ -52,14 +52,9 @@ use crate::server::core_runtime::model_ir::{
 use crate::server::core_runtime::profiles::NativeProviderStateEmission;
 use crate::server::request_plan::IngressProtocol;
 
-use super::ProtocolAdapterError;
-
-/// Responses labels its ordinary assistant answer with `final_answer`. Messages and Chat
-/// Completions have only that assistant-output channel, so the label is losslessly implicit in
-/// those protocols. Every other named phase remains Responses-only and must fail closed.
-fn client_can_represent_message_phase(protocol: IngressProtocol, phase: Option<&str>) -> bool {
-    phase.is_none() || protocol == IngressProtocol::Responses || phase == Some("final_answer")
-}
+use super::{
+    ProtocolAdapterError, can_represent_message_phase as client_can_represent_message_phase,
+};
 
 struct ResponsesTerminalProjection {
     event: &'static str,

@@ -8,7 +8,7 @@ use crate::server::core_runtime::profiles::{
 };
 use crate::server::request_plan::IngressProtocol;
 
-use super::{ChatToolProjection, ProtocolAdapterError};
+use super::{ChatToolProjection, ProtocolAdapterError, can_represent_message_phase};
 
 mod native;
 mod reader;
@@ -874,7 +874,22 @@ fn validate_message_shapes(
             !request.responses_reasoning_history.contains_key(index)
                 && !portable_completed_response_item(request, *index)
         })
-        || !request.responses_message_phases.is_empty()
+        || request
+            .responses_message_phases
+            .iter()
+            .any(|(index, phase)| {
+                request
+                    .messages
+                    .get(*index)
+                    .is_none_or(|message| message.role != MessageRole::Assistant)
+                    || !can_represent_message_phase(
+                        target,
+                        Some(match phase {
+                            ResponsesMessagePhaseV1::Commentary => "commentary",
+                            ResponsesMessagePhaseV1::FinalAnswer => "final_answer",
+                        }),
+                    )
+            })
         || !request.responses_internal_chat_message_metadata.is_empty()
         || (target == IngressProtocol::Messages
             && (!request.tool_namespaces.is_empty() || !request.responses_tool_order.is_empty())))

@@ -35,6 +35,14 @@ use thiserror::Error;
 
 use super::model_ir::ModelIrError;
 use super::profiles::{CapabilityError, ContextProjectionError};
+use crate::server::request_plan::IngressProtocol;
+
+/// Responses labels its ordinary assistant answer with `final_answer`. Messages and Chat
+/// Completions have only that assistant-output channel, so the label is losslessly implicit in
+/// those protocols. Every other named phase remains Responses-only and must fail closed.
+fn can_represent_message_phase(protocol: IngressProtocol, phase: Option<&str>) -> bool {
+    phase.is_none() || protocol == IngressProtocol::Responses || phase == Some("final_answer")
+}
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum ProtocolAdapterError {

@@ -60,6 +60,11 @@ response-scoped synthetic item identity across incremental and buffered renderer
 provider-native item IDs stay exact. The [request regression](src/adapters/tests/codex_replay.rs)
 and [response lifecycle scenarios](src/adapters/response/client_stream_tests.rs)
 cover endpoint isolation, replay and identity consistency.
+Request history and response rendering share the
+[phase representation rule](src/adapters/mod.rs): `final_answer` maps to the ordinary
+assistant channel on Chat and Messages; other named phases require Responses.
+Native Responses keeps the original phases. The
+[history projection cases](src/adapters/tests/message_phase.rs) cover this boundary.
 
 Messages thinking computation is projected in
 [request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
