@@ -23,6 +23,8 @@ pub(crate) use history::{branch_anchors, observed_history_with_replay};
 pub(crate) struct HistoryAnchors {
     pub(crate) complete: [u8; 32],
     pub(crate) prefixes: Vec<(usize, [u8; 32])>,
+    /// Exact raw JSON bytes bound a prefix without canonical equivalence proof.
+    pub(crate) contextual: bool,
 }
 pub(crate) use identity::{ContextIdentityFacts, identity_facts};
 pub(crate) use routing::hermes_observed_input;

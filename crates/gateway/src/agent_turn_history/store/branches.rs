@@ -125,7 +125,9 @@ impl AgentTurnHistoryStore {
                         || entry.referenced_segment.is_some()
                         || (!entry.active.finalized && !entry.active.executions.is_empty()),
                     entry.admission_sequence,
-                    response == Some(true),
+                    response.is_some_and(|projected| {
+                        projected || analyzed.anchors.as_ref().is_some_and(|a| a.contextual)
+                    }),
                 )
             })
             .collect::<Vec<_>>();

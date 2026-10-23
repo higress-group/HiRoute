@@ -555,7 +555,7 @@ fn captured_tool_boundary_inherits_matching_output_independently_of_model_setup(
         ]);
         if changed == "replay-arguments" {
             let mut pool = replay.begin_content_pool().unwrap();
-            let reference = pool.append_json(&json!({"id": 7}), true).unwrap();
+            let reference = pool.append_canonical_json(&json!({"id": 7})).unwrap();
             pool.seal().unwrap();
             if let ContentPart::ToolCall { arguments, .. } = &mut continued.messages[1].content[0] {
                 *arguments = reference.json_marker();

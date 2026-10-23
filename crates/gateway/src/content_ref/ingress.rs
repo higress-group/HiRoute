@@ -819,7 +819,7 @@ impl Compactor<'_> {
         let stats = scanner.finish()?;
         let reference = match stats.reserve_workspace(self.replay, value.len() as u64) {
             Ok(_scratch) => match serde_json::from_str::<Value>(value) {
-                Ok(parsed) => self.pool()?.append_json(&parsed, true)?,
+                Ok(parsed) => self.pool()?.append_canonical_json(&parsed)?,
                 Err(_) => return Ok(()),
             },
             Err(ReplayError::Body(_)) => self.pool()?.append(value.as_bytes())?,
@@ -853,7 +853,7 @@ impl Compactor<'_> {
             // into a request failure if Value rejects its numeric shape.
             return Ok(());
         };
-        let canonical = self.pool()?.append_json(&parsed, true)?.wire_marker();
+        let canonical = self.pool()?.append_canonical_json(&parsed)?.wire_marker();
         self.generated_markers.remove(&(value.as_ptr() as usize));
         *value = canonical;
         self.generated_markers.insert(value.as_ptr() as usize);
@@ -863,7 +863,7 @@ impl Compactor<'_> {
     fn externalize_json(&mut self, value: &mut Value) -> Result<(), ReplayError> {
         // ContextHold hashes these request-local JSON ranges as canonical
         // bytes, independent of the caller's object insertion order.
-        let reference = self.pool()?.append_json(value, true)?;
+        let reference = self.pool()?.append_canonical_json(value)?;
         *value = reference.json_marker();
         Ok(())
     }

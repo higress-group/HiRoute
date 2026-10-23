@@ -148,6 +148,14 @@ identical text, native request IDs and completion order do not establish parenta
 The response comparison ignores zero-byte text placeholders added to a tool-only
 response by a native client, after checking any Replay reference. Whitespace and
 other actual content remain significant; original requests and capture are preserved.
+Semantic JSON uses one [canonical Replay producer](src/replay.rs). Only an exact
+registered range with that provenance can prove canonical tool-output equivalence;
+raw argument strings retained under memory pressure remain forwardable. Branch
+lookup can bind such an old prefix by distinct raw-byte evidence, with contextual
+association and no provider affinity, so later normal tool stages still recover.
+The [JSON boundary regressions](src/agent_turn_history/boundary/json_reference_tests.rs)
+and [capacity recovery cases](src/agent_turn_history/boundary/json_reference_budget_tests.rs)
+cover both protocol decoding and the actual shared allocation refusal.
 Bounded plaintext Responses reasoning summaries are compared with the accepted
 reasoning events, including empty-summary placeholders. Changed summaries, opaque
 provider state and unsupported native fields lose the edge; reasoning stays out

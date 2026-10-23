@@ -354,6 +354,17 @@ integrity guarantee. ContextHold alone may stream HMAC relevant externalized fie
 through the existing reader for continuity without another cache; failed reads
 create no hold.
 
+Semantic JSON ranges have one canonical writer: object keys are ordered
+recursively, while values and array order remain significant. Canonical provenance
+belongs to the exact registered request-owned range; a locator, containing range,
+raw stream or adjacent range cannot grant it. Native argument strings retained
+without normalization under memory pressure remain forwardable, but cannot prove
+canonical tool-output equivalence or provider affinity. Branch lookup may compare
+their exact raw bytes under a distinct domain and disclose a contextual relation,
+so an old uncertain prefix does not prevent later normal tool stages and their
+cross-turn assessment from recovering. This does not rewrite or interpret opaque
+strings, change ContentRef serialization, or allocate a second body representation.
+
 Large strings, including images/tool arguments/reasoning/signatures/metadata/formats,
 externalize without truncation. An inline threshold, queue size, chunk size, or
 retained allocation threshold cannot act as a hidden field/message/protocol cap.

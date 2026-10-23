@@ -216,7 +216,7 @@ impl ProductionAttemptState {
     ) {
         if let Some(projection) = &self.request_reasoning_projection {
             request.reasoning_cleanup(
-                projection.reason.clone(),
+                projection.reason,
                 projection.fields_removed,
                 projection.cleaned_prefix_len,
             );
