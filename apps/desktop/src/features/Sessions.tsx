@@ -826,7 +826,7 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
   // Mask cached text in the same render that receives a visibility change.
   const currentStatus = contentCleared ? 'cleared' : status;
   const directRequest = Boolean(request && !hit);
-  const statusText = currentStatus === 'cleared' ? (directRequest ? (language === 'zh' ? '消息正文已清理' : 'Message content cleared') : (language === 'zh' ? '正文已清理' : 'Content cleared'))
+  const statusText = currentStatus === 'cleared' ? (language === 'zh' ? '正文已清理' : 'Content cleared')
     : currentStatus === 'loading' ? (language === 'zh' ? '正在读取消息…' : 'Loading message…')
       : directRequest && ['pending', 'error'].includes(currentStatus) ? (language === 'zh' ? '这一轮的消息暂不可用' : 'This turn’s message is unavailable')
         : currentStatus === 'error' ? (language === 'zh' ? '正文暂时无法读取' : 'Content is temporarily unavailable')
