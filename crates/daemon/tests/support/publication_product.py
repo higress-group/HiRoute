@@ -699,19 +699,24 @@ finally:
                                   'cleanup_error_type': type(cleanup_failure).__name__ if cleanup_failure else None}), flush=True)
             elif self.temporary is not None:
                 self.temporary.cleanup()
+            else:
+                # Retained-root drivers may have caught the business exception
+                # into their own report before close; sys.exc_info() is then clear.
+                self.preserve_outputs(failure=False)
         if cleanup_failure is not None and not failed:
             raise cleanup_failure
 
-    def preserve_outputs(self):
+    def preserve_outputs(self, failure=True):
         """Retain original output bytes and frame offsets without printing their bodies."""
         offsets, cursor = [], 0
         for index, output in enumerate(self.outputs):
             assert isinstance(output, bytes), 'Product output must retain its original bytes'
             offsets.append({'output_index': index, 'offset': cursor, 'length': len(output)})
             cursor += len(output) + 1
+        prefix = 'harness-failure' if failure else 'harness-outputs'
         for name, body in (
-                ('harness-failure.bin', b'\n'.join(self.outputs)),
-                ('harness-failure.json', (json.dumps({'frames': offsets}, indent=2) + '\n').encode())):
+                (prefix + '.bin', b'\n'.join(self.outputs)),
+                (prefix + '.json', (json.dumps({'frames': offsets}, indent=2) + '\n').encode())):
             descriptor = os.open(self.root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
             with os.fdopen(descriptor, 'wb') as stream:
                 stream.write(body)

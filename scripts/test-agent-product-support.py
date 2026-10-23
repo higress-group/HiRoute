@@ -523,6 +523,16 @@ class ProductFailureEvidenceTests(unittest.TestCase):
             finally:
                 self.product.close()
 
+    def test_retained_root_exports_after_driver_catches_its_business_exception(self):
+        try:
+            raise AssertionError('driver records this failure in its report')
+        except AssertionError:
+            pass
+        self.product.close()
+        blob = (self.product.root / 'harness-outputs.bin').read_bytes()
+        rows = json.loads((self.product.root / 'harness-outputs.json').read_text())['frames']
+        self.assertEqual([blob[row['offset']:row['offset'] + row['length']] for row in rows], self.product.outputs)
+
     def test_cleanup_failure_without_prior_error_stays_red_and_retains_output(self):
         self.product.stop = lambda **kwargs: (_ for _ in ()).throw(RuntimeError('cleanup failed'))
         with self.assertRaisesRegex(RuntimeError, '^cleanup failed$'):
