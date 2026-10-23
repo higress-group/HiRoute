@@ -632,12 +632,22 @@ fn run_case(case: &str, root: &Path) {
             .filter_map(|r| payload(r, "response_failure"))
             .filter(|failure| failure.get("capture").is_some())
             .collect();
-        assert_eq!(
-            capture_failures.len(),
-            // Canonical history capture is independent of opt-in private wire capture.
-            usize::from(prebody),
-            "{case}: {log}"
-        );
+        if case == "resource_limit" {
+            // Previously accepted partial chunks may exhaust the capture
+            // decoder's independent 512 KiB budget before the main decoder
+            // rejects the 6 MiB frame. Cancellation may instead reach that
+            // worker first. Neither ordering creates a second main failure.
+            assert!(capture_failures.len() <= 1, "{case}: {log}");
+        } else {
+            // Afterbody semantic failures cancel the offending chunk before
+            // capture commit. Prebody capture still reports its own failure,
+            // independently of opt-in private wire capture.
+            assert_eq!(
+                capture_failures.len(),
+                usize::from(prebody),
+                "{case}: {log}"
+            );
+        }
         for capture in capture_failures {
             // The independent decoder records its first failure once, even
             // when the failed attempt is followed by a successful fallback.
