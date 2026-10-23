@@ -68,11 +68,58 @@ Missing version, timeout, or invalid directory cannot manufacture remote results
 a prior registered directory remains available, while a first failed lookup creates
 no static substitute candidates. Discovery success does not prove inference.
 
+If an in-flight Codex lookup is superseded by an enabled, access-bearing newer
+generation of the same registered authorization, the old result MUST be discarded.
+Registration MAY rediscover once using the latest generation within the same
+upstream deadline. It MUST NOT follow removal, disable, loss of access credentials
+or replacement of the registered authorization. Ordinary transport failure MUST
+NOT itself trigger this generation handoff. Continued updates or exhausted time
+remain explicit bounded failures; no background restart is required.
+
+An empty account directory with a validated latest terminal discovery failure,
+discard or completed empty registration MUST fail promptly rather than consume
+the remaining control budget by polling the same empty result, only when the
+whole registration is quiescent and its observation is consistent with that
+directory read. An attempt discarded before an authorized handoff is not a
+terminal registration. Pending work and concurrent changes during the read may
+still converge within the original budget. Missing or invalid diagnostic
+metadata, unknown registration state and retained older failures do not establish
+a terminal empty directory.
+A nonempty retained directory keeps its existing pin and authorization checks.
+
 #### Scenario: Directory lookup fails and later recovers
 
 - **WHEN** an approved lease temporarily cannot obtain a client version or directory
 - **THEN** failure MUST remain explicit and bounded; a later refresh uses the actual
   selected engine and current account results without inventing membership.
+
+#### Scenario: Authorization changes while its directory is being discovered
+
+- **WHEN** the same registered account gains a newer enabled authorization generation
+  before a lookup can register its results
+- **THEN** the old results are discarded, at most one rediscovery uses the latest
+  credentials and rules within the original deadline, and removal, disable or
+  replacement cannot publish the superseded results.
+
+#### Scenario: Failed initial discovery leaves an empty directory
+
+- **WHEN** account controls are correct but the latest observable discovery is
+  terminal and the account directory is empty
+- **THEN** an ordinary pin read fails promptly without another remote lookup or
+  waiting out the entire control budget; a later explicit check may recover it.
+
+#### Scenario: A pin read overlaps authorization handoff
+
+- **WHEN** an old attempt is discarded but the same registration still has a
+  bounded rediscovery to run
+- **THEN** an empty pin read continues its original convergence wait, without
+  another refresh, until the registration settles or the budget expires.
+
+#### Scenario: A catalog read overlaps successful registration
+
+- **WHEN** registration changes between the model read and its status observation
+- **THEN** the mixed response MUST NOT establish a terminal empty directory; a
+  subsequent stable read may observe the successful catalog within the same budget.
 
 ### Requirement: Native static API imports retain native precedence and evidence
 

@@ -11,6 +11,7 @@ export type HomeRead<T> =
   | { status: 'error'; code: string; message?: string; previous?: T; retryable?: boolean };
 
 export type HomeService = {
+  nativeConnectionLost?: boolean;
   daemon: 'running' | 'starting' | 'unavailable' | 'read_only' | 'unknown';
   gateway: 'ready' | 'empty' | 'no_new_calls' | 'unavailable' | 'unknown';
   recoveryReady: boolean | null;

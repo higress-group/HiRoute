@@ -2,6 +2,7 @@ import type { Options } from '../plan-editor';
 import { TrialQuickStart } from '../features/trial/TrialQuickStart';
 import { NewModels } from '../features/trial/NewModels';
 import { useTrustSuggestions } from '../features/trust/use-trust-suggestions';
+import { NativeConnectionRecovery } from './NativeConnectionRecovery';
 import { startupFailureText } from '../storage-recovery';
 import { randomId } from '../random-id.ts';
 import { hostCapabilities } from '../host/index.ts';
@@ -101,7 +102,7 @@ function failureHelp(code: string, language: 'zh' | 'en', operation?: DesktopOpe
     CHANGE_PREVIEW_STALE: ['预览已过期，请重新预览当前方案。', 'The preview is stale. Preview the current plan again.'],
     LATEST_EDIT_NOT_APPLIED: ['已恢复原操作，最新编辑尚未应用。请先核对原操作结果。', 'The original operation was restored. Check its result before applying the latest edit.'],
     OPERATION_IN_PROGRESS: ['这次保存仍在进行，完成后即可再次保存。', 'This save is still running. Save again after it finishes.'],
-    TRUSTED_AUTHORITY_UNAVAILABLE: ['此连接仅支持查看，无法授权变更。', 'This connection supports viewing but cannot authorize a change.'],
+    TRUSTED_AUTHORITY_UNAVAILABLE: ['本机可信连接不可用，请恢复本机连接后重试。', 'The trusted local connection is unavailable. Restore the local connection and retry.'],
     IDEMPOTENCY_KEY_REUSED: ['上一次保存仍在处理中。请先查看其结果，最新编辑尚未应用。', 'The previous save is still being processed. Check its result first; the latest edit was not applied.'],
   };
   return messages[code]?.[language === 'zh' ? 0 : 1]
@@ -178,6 +179,11 @@ export function DesktopApp() {
     { id: 'sessions', label: text.pages.sessions, icon: 'sessions' },
   ];
 
+  useEffect(() => {
+    const refresh = () => { void home.refreshDesktop(); };
+    window.addEventListener('hiroute-native-connection-unavailable', refresh);
+    return () => window.removeEventListener('hiroute-native-connection-unavailable', refresh);
+  }, [home.refreshDesktop]);
   const serviceStatus = deriveHomeServiceStatus(home.reads.service);
   const startupFailure = home.startup?.state === 'failed' ? home.startup : null;
   const startupMessage = startupFailureText(startupFailure?.code, startupFailure?.storage_recovery, language, 'macos');
@@ -190,6 +196,7 @@ export function DesktopApp() {
     service_recovery: language === 'zh' ? '正在恢复本机服务' : 'Restoring the local service',
   })[upgradePhase] : undefined;
   const serviceLabel = {
+    connection_lost: language === 'zh' ? '本机连接需要恢复' : 'Local connection needs recovery',
     read_only: text.serviceReadOnly,
     unavailable: text.serviceUnavailable,
     ready: text.serviceReady,
@@ -697,6 +704,7 @@ export function DesktopApp() {
         <HostNotices language={language} />
         {notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="info" /><span>{notice}</span></div></div>}
         {upgradePhaseText && <div className="callout" role="status" aria-live="polite"><UiIcon name="info" /><div><strong>{upgradePhaseText}</strong><p>{language === 'zh' ? '请等待升级完成；请保留原数据与完整安装包。' : 'Wait for the upgrade to finish. Keep the original data and complete installation package.'}</p></div></div>}
+        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} serviceResponsive={home.reads.service.status === 'ready'} onRefresh={home.refreshDesktop} onRecovered={async () => { await home.refreshAll(); setRefreshVersion(value => value + 1); }} />
         {startupFailure && <div className="callout bad startup-recovery" role="alert" data-error-code={startupFailure.code}>
           <UiIcon name="warning" />
           <div>

@@ -59,9 +59,11 @@ class Contract(unittest.TestCase):
                 self.fail('Unexpected controller command')
             with patch.object(runner, 'CONFIG', config), \
                  patch.object(runner, 'validate'), patch.object(runner, 'command', side_effect=committed_command), \
+                 patch.object(runner, 'console_assets', side_effect=AssertionError('Caller must not read frontend bytes')), \
                  patch.object(runner.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as ssh, \
                  patch.object(runner.sys, 'argv', ['remote-rust.py', 'run', '--ref', 'refs/heads/fixture',
                                                   '--sha', candidate, '--plan', 'workbench-port', '--phase', 'focused',
+                                                  '--frontend-dist', '~/.cache/console candidate/dist',
                                                   '--', 'cargo', 'check', '--locked']):
                 runner.main()
             payload = json.loads(ssh.call_args.kwargs['input'])
@@ -71,18 +73,24 @@ class Contract(unittest.TestCase):
             self.assertIn(['git', 'show', executor + ':scripts/remote-rust.py'], commands)
             self.assertEqual(payload['source'], '# committed fixture source\n')
             self.assertEqual(payload['executor_digest'], hashlib.sha256(payload['source'].encode()).hexdigest())
+            self.assertEqual(payload['frontend_dist'], '~/.cache/console candidate/dist')
+            self.assertEqual(payload['ssh_host'], 'fixture-host')
+            self.assertNotIn('console_assets_bundle', payload)
 
     def test_configured_bootstrap_keeps_repository_files_separate(self):
         with tempfile.TemporaryDirectory() as directory:
             source = '# immutable fixture driver\n'
             payload = dict(source=source, executor_sha='a' * 40, sha='b' * 40,
                            executor_digest=hashlib.sha256(source.encode()).hexdigest(),
-                           id='run-1', workbench='.local/share/github-workbench')
+                           id='run-1', workbench='.local/share/github-workbench',
+                           frontend_dist='~/remote-only/dist')
             with patch('pathlib.Path.home', return_value=Path(directory)), \
                  patch('sys.stdin', io.StringIO(json.dumps(payload))), patch('sys.stdout', io.StringIO()), \
                  patch('os.umask'), patch('subprocess.Popen'):
                 exec(runner.BOOTSTRAP, {})
-            self.assertTrue((Path(directory) / payload['workbench'] / 'runs/run-1/request.json').exists())
+            run = Path(directory) / payload['workbench'] / 'runs/run-1'
+            self.assertEqual(json.loads((run / 'request.json').read_text())['frontend_dist'], '~/remote-only/dist')
+            self.assertFalse((run / 'console-assets.json').exists())
             self.assertFalse((Path(directory) / runner.ROOT / 'runs').exists())
 
     def test_new_repository_worker_respects_an_existing_workbench_capacity_lease(self):
@@ -239,8 +247,10 @@ sys.exit(101 if bad else 0)
                 runner.save(path, request)
                 with patch.object(runner.Path, 'home', return_value=home), patch.dict(os.environ, {}, clear=False), \
                      patch.object(runner.tempfile, 'gettempdir', return_value=str(base.resolve())), \
+                     patch.object(runner, 'console_assets') as console, \
                      patch.object(runner, 'MIN_FREE_BYTES', 0), \
                      patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}):
+                    console.return_value.preflight.return_value = dict(state='not_required', cases=[])
                     runner.worker(path)
                 result = json.loads((run / 'result.json').read_text())
                 if result.get('temporary_directory'):
@@ -714,7 +724,7 @@ sys.exit(int((home/'exit-code').read_text()))
                     run = workbench / 'runs' / key
                     run.mkdir(parents=True)
                     request = dict(id=key, ref=ref, sha=sha, executor_sha=sha, origin=str(source),
-                                   command=['cargo', 'test', '--no-fail-fast'], retention='always',
+                                   command=['cargo', 'test', '--lib', '--no-fail-fast'], retention='always',
                                    exclusive=False, timeout=10, plan='focused-counts', phase='focused')
                     runner.save(run / 'request.json', request)
                     with patch.object(runner.Path, 'home', return_value=home), \

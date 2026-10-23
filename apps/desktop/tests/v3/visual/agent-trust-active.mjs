@@ -130,9 +130,12 @@ try {
       await navigate(client, fixtureUrl('product-shell.html'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.productShell)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/product-shell-scenarios.mjs').then(module => module.productShellScenarioCatalog)");
-      const selected = selectScenarios(catalog, subscriptionProxyOnly
+      const requested = process.env.HIROUTE_BROWSER_SCENARIOS?.split(',');
+      const applicable = hostTransport === 'console' ? catalog.filter(item => !item.capabilities.includes('native-recovery')) : catalog;
+      const required = productShellRequired.filter(id => applicable.some(item => item.id === id));
+      const selected = selectScenarios(applicable, subscriptionProxyOnly
         ? { capability: 'subscription-proxy', requiredIds: focusedRequirements['subscription-proxy'] }
-        : { ids: process.env.HIROUTE_BROWSER_SCENARIOS?.split(','), requiredIds: process.env.HIROUTE_BROWSER_SCENARIOS?.split(',') ?? productShellRequired });
+        : { ids: requested, requiredIds: requested ?? required });
       const results = [];
       for (const { id } of selected) {
         const viewport = ['desktop.models.subscription-scan.recommended-login',
@@ -147,6 +150,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(s => s.capabilities.includes('native-recovery'))) {
+        checks.push(...await (await import('./native-connection-captures.mjs')).nativeConnectionCaptures(client, baseUrl, outputRoot));
+      }
       if (selected.some(s => s.id === 'desktop.settings.storage-capacity')) {
         checks.push(...await (await import('./storage-capacity-captures.mjs')).runStorageCapacityCaptures(client, outputRoot));
       }

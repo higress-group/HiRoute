@@ -280,6 +280,7 @@ impl ManagedCpaRuntime {
             &live.artifact.version().to_string(),
             self.spec.control_timeout,
             expected.is_some(),
+            &self.diagnostics.handle().context(),
         ) {
             Ok(discovered) => {
                 self.emit_stage(
@@ -294,7 +295,7 @@ impl ManagedCpaRuntime {
                 self.emit_stage(
                     CpaStageKind::ControlCall,
                     CpaStageOutcome::Failed {
-                        code: control_failure_code(&error),
+                        code: error.diagnostic_code(),
                     },
                     control_started.elapsed().as_millis() as u64,
                     inner.restart_count,
@@ -374,25 +375,5 @@ impl ManagedCpaRuntime {
         }
         crate::request_context::check()?;
         Ok(result)
-    }
-}
-
-fn control_failure_code(error: &AccountDiscoveryError) -> CpaFailureCode {
-    use crate::http::LoopbackHttpError;
-    match error {
-        AccountDiscoveryError::Http(LoopbackHttpError::Io(error)) => {
-            if matches!(
-                error.kind(),
-                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-            ) {
-                CpaFailureCode::ControlTimeout
-            } else {
-                CpaFailureCode::ControlTransport
-            }
-        }
-        AccountDiscoveryError::ManagementAuthentication
-        | AccountDiscoveryError::DownstreamAuthentication => CpaFailureCode::ControlAuthentication,
-        AccountDiscoveryError::PinNotApplied => CpaFailureCode::ControlPinNotApplied,
-        _ => CpaFailureCode::ControlRejected,
     }
 }

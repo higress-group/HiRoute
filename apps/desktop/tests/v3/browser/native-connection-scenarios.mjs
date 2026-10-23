@@ -1,0 +1,68 @@
+import { scenario } from './scenario-selection.mjs';
+
+export function nativeConnectionScenarios({ fresh, click, until, text, calls, control }) {
+  const c = control;
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  async function lose() {
+    c().desktop.native_connection = 'recovery_required';
+    c().desktop.trusted_authority = false;
+    c().handlers.observation_read = () => { throw { source: 'native', code: 'TRUSTED_AUTHORITY_UNAVAILABLE' }; };
+    await c().callHost('observation_read', {}).catch(() => {});
+    await until(() => document.querySelector('[data-connection-state="recovery_required"]'), 'lost native connection');
+  }
+  return [
+    scenario('desktop.connection.unowned-service', ['native-recovery'], 'An externally managed daemon cannot be taken over from the Desktop recovery control', async () => {
+      await fresh(); await lose();
+      c().desktop.native_connection = 'not_owned';
+      await c().callHost('observation_read', {}).catch(() => {});
+      await until(() => document.querySelector('[data-connection-state="not_owned"]'), 'external service ownership');
+      assert(text().includes('其他入口管理'), 'External ownership guidance missing');
+      assert(!document.querySelector('.native-connection-recovery button'), 'External daemon can be taken over');
+      assert(calls('recover_native_connection').length === 0, 'Recovery touched an external daemon');
+    }),
+    scenario('desktop.connection.loss-retry-recovery', ['native-recovery'], 'Live service with lost authority shows accurate read errors and only explicit recovery restores it', async () => {
+      await fresh(); await lose(); await click('会话');
+      await until(() => text().includes('暂时无法读取记录'), 'accurate observation error');
+      const health = document.querySelector('.sidebar-health')?.textContent ?? '';
+      assert(health.includes('需要恢复') && !health.includes('只读'), 'Lost authority masquerades as a healthy or intentionally read-only service');
+      const retry = [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '重试');
+      assert(retry, 'Read retry missing'); retry.click();
+      await until(() => text().includes('暂时无法读取记录'), 'retry stays refused');
+      assert(calls('recover_native_connection').length === 0, 'Read retry silently restarted the service');
+      c().handlers.recover_native_connection = async payload => {
+        assert(Object.keys(payload).length === 0, 'WebView supplied native authority or filesystem parameters');
+        c().desktop.native_connection = 'ready'; c().desktop.trusted_authority = true;
+        delete c().handlers.observation_read;
+      };
+      await click('恢复本机连接');
+      await until(() => !document.querySelector('.native-connection-recovery'), 'recovered status');
+      assert(calls('recover_native_connection').length === 1, 'Recovery was repeated');
+    }),
+    scenario('desktop.connection.pending-and-failed-recovery', ['native-recovery'], 'Pending and failed recovery preserve an explicit action and prevent duplicate submission', async () => {
+      await fresh(); await lose();
+      let release;
+      c().handlers.recover_native_connection = () => new Promise((_, reject) => { release = reject; });
+      await click('恢复本机连接');
+      const button = document.querySelector('.native-connection-recovery button');
+      assert(button.disabled, 'Concurrent recovery remains enabled'); button.click();
+      assert(calls('recover_native_connection').length === 1, 'Concurrent recovery submitted twice');
+      release({ source: 'native', code: 'AUTHORITY_RECOVERY_PENDING' });
+      await until(() => text().includes('尚未收到完整回复'), 'pending reply guidance');
+      assert(c().desktop.native_connection === 'recovery_required', 'Pending reply became a successful connection');
+      c().handlers.recover_native_connection = () => { throw { source: 'native', code: 'AUTHORITY_RECOVERY_UNAVAILABLE' }; };
+      await click('恢复本机连接'); await until(() => text().includes('连接恢复未完成'), 'failed resynchronization guidance');
+      c().desktop.native_connection = 'restart_required';
+      await c().callHost('observation_read', {}).catch(() => {});
+      await until(() => document.querySelector('[data-connection-state="restart_required"]'), 'closed or invalid channel state');
+      assert(!document.querySelector('.native-connection-recovery button'), 'Invalid channel offered unsafe reuse');
+      c().desktop.native_connection = 'recovery_required';
+      await c().callHost('observation_read', {}).catch(() => {});
+      await until(() => document.querySelector('.native-connection-recovery button'), 'retry after pending stop');
+      c().handlers.desktop_snapshot = () => { throw { source: 'native', code: 'DAEMON_UNAVAILABLE' }; };
+      c().handlers.recover_native_connection = () => { throw { source: 'native', code: 'DAEMON_START_FAILED' }; };
+      await click('恢复本机连接');
+      await until(() => text().includes('当前无法确认本机服务状态'), 'failed connection restoration cannot claim a responsive daemon');
+      assert(!document.querySelector('.native-connection-recovery').textContent.includes('本机服务仍可响应'), 'Old reachability was displayed as current after a failed connection restoration');
+    }),
+  ];
+}

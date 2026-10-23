@@ -7,7 +7,7 @@ pub mod operation_observation;
 pub mod session;
 pub mod web_confirmation;
 pub use authority::{HostAuthority, SessionAuthority};
-pub use session::ProductSession;
+pub use session::{NativeConnectionStatus, ProductSession};
 #[cfg(feature = "test-support")]
 pub mod fault;
 pub fn random_id() -> Result<String, String> {

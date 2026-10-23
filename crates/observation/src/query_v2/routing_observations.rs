@@ -10,10 +10,14 @@ const MAX_SAFE_BYTES: usize = 32 * 1024 * 1024;
 // The partial index excludes unrelated safe projections before opening JSON
 // payload pages. Invalid legacy JSON remains visible to the original predicate
 // so the read still fails closed, while index creation can preserve those bytes.
-// The fixed join order then bounds retained producer-identity lookups.
+// Covered safe bodies and producer identities avoid scattered table reads on a
+// cold store. The fixed join order bounds retained producer-identity lookups.
+// Stream in the covering index's unique request/digest order: ordering by rowid
+// would sort every match before LIMIT or the reader's byte ceiling can stop it.
+// This is an internal scan order; stage pages keep their existing time order.
 pub(super) const SUMMARY_SQL: &str = "SELECT f.body_json,e.producer_id,e.producer_epoch,e.stream_id,e.event_id
-        FROM observation_safe_facts_v2 f
-        CROSS JOIN execution_fact_events e ON e.workspace_id=f.workspace_id AND e.request_id=f.request_id AND e.envelope_digest=f.original_digest
+        FROM observation_safe_facts_v2 f INDEXED BY observation_safe_route_payloads
+        CROSS JOIN execution_fact_events e INDEXED BY execution_facts_request_identity ON e.workspace_id=f.workspace_id AND e.request_id=f.request_id AND e.envelope_digest=f.original_digest
         JOIN logical_requests r ON r.workspace_id=f.workspace_id AND r.request_id=f.request_id
         JOIN sessions s ON s.workspace_id=r.workspace_id AND s.session_id=r.session_id
         LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
@@ -28,7 +32,7 @@ pub(super) const SUMMARY_SQL: &str = "SELECT f.body_json,e.producer_id,e.produce
                OR COALESCE(json_extract(f.body_json,'$.routing_observation.plan_revision'),json_extract(f.body_json,'$.routing_context.plan_revision')) IS NULL)
           AND (:runs IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(:runs))))
           AND (s.tombstone_reason IS NULL OR EXISTS(SELECT 1 FROM observation_tombstones t WHERE t.workspace_id=r.workspace_id AND t.session_id=r.session_id AND t.delete_scope='content_only'))
-        ORDER BY f.rowid LIMIT 10001";
+        ORDER BY f.request_id,f.original_digest LIMIT 10001";
 
 pub(super) fn summarize(
     transaction: &Transaction<'_>,
@@ -191,7 +195,7 @@ pub(super) fn summarize(
         LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
         WHERE e.workspace_id=:workspace AND r.started_at_ms>=:from AND r.started_at_ms<:to AND (:session IS NULL OR r.session_id=:session)
           AND (:runs IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(:runs))))
-          AND NOT EXISTS(SELECT 1 FROM observation_safe_facts_v2 f WHERE f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest)",
+          AND NOT EXISTS(SELECT 1 FROM observation_safe_facts_v2 f INDEXED BY observation_safe_kind_fields WHERE f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest)",
         named_params! {":workspace":reader.workspace().as_str(),":from":from_ms,":to":to_ms,":session":query.session_id,":runs":runs}, |r| r.get(0))?;
     let complete = !result.scan_limited
         && result.missing_projection_events == 0

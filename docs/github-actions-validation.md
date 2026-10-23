@@ -64,6 +64,19 @@ Rust runners and depend on the frontend result without rebuilding it there. The 
 `backend` status is a small aggregate job, so the public branch-protection contract remains
 stable while individual shard jobs can run concurrently.
 
+Pilot manifest inputs, reusable-build tooling and selection-rule changes select
+`python3 scripts/test-pilot-builds.py --real-consumer` in Actions; full CI plans
+select it as well. This uses the existing selected-tooling executor for tooling-only
+PRs, or the affected/full backend gates when Rust product checks are also selected.
+Failure blocks the aggregate `backend` result. The explicit entry requires exactly
+one executed, unskipped case and a real compiler. Its four bounded subprocess phases
+retain exit codes and stdout/stderr under `artifacts/ci/pilot-manifest-consumer/`,
+included in the existing CI artifact upload even on failure. The default local
+`test-pilot-builds.py` invocation runs fixture-only regressions and never executes
+these temporary Rust programs, regardless of compiler availability. The CI case
+proves build-script/embedding consumption of the frozen snapshot, not native Desktop,
+CPA, provider or installation acceptance.
+
 Changes to `gateway-core.yml`, `ci-run.py`, or `ci-shards.py` force a full plan on the pull
 request because those files define the hosted backend execution contract. Changes only to
 their tests or documentation keep the ordinary tooling-only selection.

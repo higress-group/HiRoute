@@ -187,6 +187,7 @@ pub(crate) trait CpaControlPlane: Send + Sync {
         expected_version: &str,
         timeout: Duration,
         refresh_models: bool,
+        diagnostics: &hiroute_diagnostics::context::DiagnosticContext,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError>;
 }
 
@@ -258,6 +259,30 @@ pub(crate) enum AccountDiscoveryError {
     Json(serde_json::Error),
     #[error(transparent)]
     Http(#[from] crate::http::LoopbackHttpError),
+}
+
+impl AccountDiscoveryError {
+    pub(crate) fn diagnostic_code(&self) -> hiroute_diagnostics::event::CpaFailureCode {
+        use crate::http::LoopbackHttpError;
+        use hiroute_diagnostics::event::CpaFailureCode;
+        match self {
+            Self::Http(LoopbackHttpError::Io(error)) => {
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) {
+                    CpaFailureCode::ControlTimeout
+                } else {
+                    CpaFailureCode::ControlTransport
+                }
+            }
+            Self::ManagementAuthentication | Self::DownstreamAuthentication => {
+                CpaFailureCode::ControlAuthentication
+            }
+            Self::PinNotApplied => CpaFailureCode::ControlPinNotApplied,
+            _ => CpaFailureCode::ControlRejected,
+        }
+    }
 }
 
 #[cfg(test)]

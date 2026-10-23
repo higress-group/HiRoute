@@ -51,7 +51,11 @@ const DIAGNOSTIC_COMMANDS: &[&str] = &[
     "set_diagnostic_level",
     "open_diagnostic_directory",
 ];
-const STARTUP_COMMANDS: &[&str] = &["startup_status", "open_startup_recovery_directory"];
+const STARTUP_COMMANDS: &[&str] = &[
+    "startup_status",
+    "open_startup_recovery_directory",
+    "recover_native_connection",
+];
 const CONFIRMATION_COMMANDS: &[&str] = &["web_confirmation_snapshot", "resolve_web_confirmation"];
 const EXTERNAL_URL_COMMANDS: &[&str] = &["open_external_url"];
 const WINDOW_BEHAVIOR_COMMANDS: &[&str] = &["perform_titlebar_double_click"];

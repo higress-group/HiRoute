@@ -15,6 +15,9 @@ pub enum ApplyPurpose {
 pub trait HostAuthority: Send + Sync + Any {
     fn as_any(&self) -> &dyn Any;
     fn has_authority(&self) -> bool;
+    fn native_connection(&self) -> Option<crate::NativeConnectionStatus> {
+        None
+    }
     fn register_operation(
         &self,
         digest: &CanonicalDigest,
@@ -234,6 +237,9 @@ impl SessionAuthority {
     }
 }
 impl HostAuthority for SessionAuthority {
+    fn native_connection(&self) -> Option<crate::NativeConnectionStatus> {
+        self.host.native_connection()
+    }
     fn as_any(&self) -> &dyn Any {
         self.host.as_any()
     }

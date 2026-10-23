@@ -336,6 +336,7 @@ impl LocalControlAdapter {
                     let source_override = overrides.iter().find(|o| o.target == target).cloned();
                     entries.push(PriceIndexEntryV1 {
                         target,
+                        execution_binding_id: Some(binding.binding_id.clone()),
                         actual_offer_ref: offer.map(|o| o.offer_id.clone()),
                         reference_model_offer_ref: None,
                         catalog_rules,

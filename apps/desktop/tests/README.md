@@ -29,6 +29,7 @@ proves native authorization, persistence, process cleanup or real model calls.
 
 | User capability | Representative tests | Unique guarantee |
 | --- | --- | --- |
+| Restore a lost native connection while the daemon responds | `desktop.connection.loss-retry-recovery`, `desktop.connection.pending-and-failed-recovery`, `desktop.connection.unowned-service` in [shell scenarios](v3/browser/native-connection-scenarios.mjs), [production captures](v3/visual/native-connection-captures.mjs) | Accurate Home/Sessions read errors, explicit recovery, duplicate prevention, pending/failure states, external ownership refusal, and zh/en light/dark geometry at both window sizes. Native Resident/daemon faults, exact reply synchronization with unchanged daemon identity, running work, old confirmation expiry and retained data require separate macOS execution. |
 | Recover after a storage upgrade refuses startup | [Recovery presentation](storage-recovery.test.mjs), [production-style scenarios](v3/visual/storage-recovery-scenarios.mjs), [storage owner proof](../../../crates/local-storage/src/migrations/startup_recovery.rs) | Original-program reinstall requires the authoritative admitted unchanged group; unknown causes never grant downgrade. Verified source guidance names the exact batch, source directory and guides; long names wrap in both languages/themes. Windows supplies a route from the displayed log folder; macOS offers the preserved-material action. Missing/unsafe locations grant neither located recovery nor resume. Native installed upgrade, complete restoration and real requests remain separate acceptance. |
 | Search session content and continue reading matches | [Session scenarios](v3/browser/session-window-scenarios.mjs), [session layout captures](v3/visual/session-window-active.mjs) | Results represent distinct matching sessions; keyword edits discard stale pages, failed continuation withdraws its cursor, and clearing search resumes automatic selection after an in-flight detail read. Pending indexing and complete empty results remain distinct. Chinese/English searching, results, empty, pending and retry states stay readable at 1200×813 and 755×600 using production styles. Real lookup, fresh authorization and Worker activity require native acceptance. |
 | Connect an API through the service directory | [Connection flow scenarios](v3/visual/connection-flow-active.mjs), [directory and draft rules](connection-directory.test.mjs) | Full branded directory, separate product drafts and keys, checked source name, cancellation, explicit model selection and inherited append behavior. Uses production styles; native save and live calls need separate acceptance. |
@@ -60,6 +61,21 @@ proves native authorization, persistence, process cleanup or real model calls.
 | Inspect a model or open its documentation | `desktop.models.documentation-retains-input`; [model-to-route scenario](v3/browser/model-to-route-scenarios.mjs) | Local readiness does not claim inference success; browser failure retains form input; web anchors retain their default action; route creation uses the selected model. |
 | Change model grouping or inspect page controls | `desktop.models.view-switch`, `desktop.presentation.control-layout`; [presentation scenarios](v3/browser/presentation-interactions.mjs) | Production styles preserve model/connection counts, selected model and visible selection. Chinese/English and light/dark checks reject browser-default buttons and horizontal overflow from long recent-session titles at the supported small window. |
 | Try a new model, judge its evidence and follow live routing | `timeline.initial-failure-retry-recovers.*`, `timeline.polls-only-while-displayed-and-visible`, `trust.scoring-states.both-groupings.*`, `quickstart.*.inline-connection-guard.model-change-and-back` in [trial scenarios](v3/visual/new-model-trial-active.mjs) | A failed timeline read keeps its tab, error and Retry until recovery, while only a confirmed empty read hides the tab; polling continues only while the timeline is shown and the window is visible, after one availability probe. Per-model and per-executor groupings both show scoring coverage and complete/partial/awaiting/unscored counts. Changing models, going back or leaving the quick start asks before discarding the inline connection form; Cancel keeps the model and input. `HIROUTE_BROWSER_TRANSPORT=console` runs the same scenarios over the console host. Real feed retrieval, saved trials and live sessions require native acceptance. |
+
+The focused timeline pricing checks run with
+`node tests/v3/visual/new-model-trial.mjs <evidence-directory> --timeline-pricing`.
+They also run in the default trial suite. Production components must remove a
+provisional row absorbed by exact completed-request membership, retain selection,
+actual keyboard focus and correct counts, and show known API-equivalent subtotals alongside unknown
+contributions in Chinese and English. Mock IPC proves presentation, while the
+native model-save publication journey covers installed price edits, real Gateway
+valuation, frozen history and restart.
+
+Completion focus scenarios exercise overview and lane controls with real keyboard
+and mouse events, including visible keyboard focus. They retain focus on an
+unrelated search field, a surviving turn or the page body instead of moving it
+because selection changed. English/light at 755×600 and Chinese/dark at 1200×813
+use production components and styles; native WebView acceptance remains separate.
 
 The [historical protection and overview scenarios](v3/visual/new-model-trial-protection-active.mjs)
 run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --protection`.

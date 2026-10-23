@@ -85,6 +85,7 @@
     "allow-worker-task-continue",
     "allow-diagnostic-status",
     "allow-startup-status",
+    "allow-recover-native-connection",
     "allow-open-startup-recovery-directory",
     "allow-update-status",
     "allow-update-check",

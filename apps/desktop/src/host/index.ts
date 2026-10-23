@@ -1,6 +1,7 @@
 import { browserCapabilities, type HostCapabilities, type HostKind, type HostTransport } from './types.ts';
 import { consoleTransport, consoleCapabilities } from './console.ts';
 import type { WebConfirmationRequest } from '../features/web-confirmation.ts';
+import { nativeConnectionLost } from '../native-connection.ts';
 import type { ThemePreference, ResolvedTheme } from '../ui/preferences';
 export type { HostCapabilities, HostKind, HostTransport } from './types.ts';
 export { plaintextConsole } from './console.ts';
@@ -46,7 +47,7 @@ async function browserCall(command: string, args: Record<string, unknown>): Prom
   }
   return consoleTransport.call(command, args);
 }
-export async function invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+async function invokeHost<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
   if (override) {
     if (override.capabilities().host === 'console' && ['open_external_url', 'save_classifier_openapi', 'open_diagnostic_directory', 'open_startup_recovery_directory'].includes(command)) return browserCall(command, args) as Promise<T>;
     return override.call<T>(command, args);
@@ -54,6 +55,13 @@ export async function invoke<T>(command: string, args: Record<string, unknown> =
   if (hostKind() === 'tauri') return (await import('./tauri.ts')).tauriTransport.call<T>(command, args);
   if (hostKind() === 'shell-console' && (command.startsWith('update_') || command.startsWith('login_start_') || ['open_external_url', 'save_classifier_openapi', 'open_in_browser', 'restart_service', 'reconnect'].includes(command))) return (await import('@tauri-apps/api/core')).invoke<T>(`shell_${command}`, args);
   return browserCall(command, args) as Promise<T>;
+}
+export async function invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+  try { return await invokeHost<T>(command, args); }
+  catch (error) {
+    if (hostKind() === 'tauri' && nativeConnectionLost(error)) window.dispatchEvent(new Event('hiroute-native-connection-unavailable'));
+    throw error;
+  }
 }
 export async function listenForHostConfirmations(onRequest: (request: WebConfirmationRequest) => void): Promise<() => void> { return hostKind() === 'tauri' ? (await import('./tauri.ts')).listenNativeConfirmation(onRequest) : () => {}; }
 export async function syncHostTheme(preference: ThemePreference, resolved: ResolvedTheme): Promise<'skipped' | 'synced'> { if (hostKind() !== 'tauri') return 'skipped'; await (await import('./tauri.ts')).syncNativeTheme(preference, resolved); return 'synced'; }

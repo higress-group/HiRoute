@@ -128,6 +128,7 @@ fn check_stale_manager(old: Option<&str>) {
         "8.0.4-hiroute.4",
         Duration::from_secs(2),
         true,
+        &hiroute_diagnostics::context::DiagnosticHandle::noop().context(),
     );
     stop.store(true, Ordering::SeqCst);
     let _ = TcpStream::connect(address);

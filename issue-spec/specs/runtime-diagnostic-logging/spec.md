@@ -85,6 +85,22 @@ evidence cannot be reported as complete replay. Read chunks are not original TCP
 packets. A successful sample without the actual historical failure cannot establish
 that its cause was fixed. This private artifact is never normal product logging.
 
+### Requirement: Subscription validation identifies the unmet condition
+
+CPA subscription discovery SHALL distinguish inventory/account reads, control
+updates, account pin validation and downstream catalog validation. A phase emits
+entry before blocking and a terminal outcome with its own elapsed time, the shared
+budget consumed, explicit-refresh intent and poll count. One discovery span ties
+these observations together without an account identity. Terminal failures remain
+visible at Warn; normal details remain Debug.
+
+Pin evidence SHALL report the last observed equality/boolean/count facts for account
+identity continuity, retry policy, persisted prefix/retry/cooling controls, nonempty
+account models, exact model prefixes, valid stripped IDs and missing downstream membership. Unreached
+checks remain absent, rather than false. Polling MUST NOT emit a record per poll.
+Paths, credentials, account/model names and raw responses remain excluded. Historical
+records lacking these observations cannot establish which pin condition failed.
+
 ### Requirement: Diagnostic degradation cannot block business execution
 
 Queues, per-event size, file rotation, and retention MUST be bounded. Request

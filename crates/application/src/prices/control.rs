@@ -157,6 +157,7 @@ pub fn preview_source_price_change(
         Some(entry) => entry.source_override = Some(change.after),
         None => entries.push(PriceIndexEntryV1 {
             target: target.clone(),
+            execution_binding_id: Some(change.binding_id.clone()),
             actual_offer_ref: None,
             reference_model_offer_ref: None,
             catalog_rules: vec![],

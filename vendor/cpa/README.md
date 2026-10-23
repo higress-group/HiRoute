@@ -60,15 +60,57 @@ upstream response bodies. An initial failure does not create model entries.
 This does not add polling or a new catalog cache. Inference does not discover
 models. Successful listing is not proof that inference succeeds.
 
+An enabled newer generation of the same registration can supersede an in-flight
+lookup. The stale result is discarded and the registration owner can discover
+once for the latest access-bearing generation, sharing the original five-second
+deadline. Removal, disable, lost access and a different registration epoch cannot
+request this handoff. Transport failure alone does not retry. Continued churn
+remains bounded and observable; an old account cannot populate a replacement.
+
 HiRoute's ordinary routing compilation and Codex preview read and verify the
 registered catalog without repeating an already-correct auth control PATCH.
 An explicit subscription check refreshes it; credential/version changes use the
 existing auth update path. This keeps remote directory availability out of
 unchanged preview/publication reads while retaining all account pin checks.
+When the directory is empty and the whole registration is quiescent with a
+consistent terminal observation, a pin read fails immediately instead of polling
+that empty result for 20 seconds. The existing response's `registration_pending`
+flag covers the whole registration, including the gap before a bounded handoff.
+Queued auth updates and reconciliation passes share that same scope.
+Two observations bracket the local catalog read; any intervening transition makes
+that response pending. No registry lock spans discovery or management I/O.
+Pending work still gets its existing convergence wait. Missing/malformed
+observations, unknown registration state and an older retained failure cannot
+shorten the wait. A nonempty retained directory still undergoes every normal pin check.
 For native borrowing, the fields PATCH carries the validated lease's current `hiroute_client_version`
 alongside its controls. CPA persists and synchronously discovers that version
 even when its watcher still holds the preceding metadata. No access or refresh
 token is included in this control request.
+
+The existing authenticated account-model response also carries the private
+`hiroute.cpa-model-discovery/v1` observation. CPA retains the first failed or
+discarded attempt and the latest attempt per account, including phase, closed
+reason, total/phase durations, HTTP or proxy status, model counts and up to six
+phase timings. Credentials, native version, account/model IDs, URLs and raw errors
+are excluded. The in-memory store holds at most 128 accounts and reports evictions;
+process exit loses it. Retention starts when this artifact starts, so it cannot
+recover historical failures from an older process. Older concurrent attempts
+cannot overwrite the latest attempt. No new endpoint or maintenance channel is
+introduced. Transport retry settings are unchanged; generation handoff shares
+the original five-second discovery deadline.
+In-flight registration counts are separate from the retained history, survive
+history eviction and are deleted when the last overlapping registration exits.
+
+HiRoute validates this metadata independently of model membership, emits bounded
+`cpa_model_discovery` transitions on its existing diagnostic context and explicitly
+marks missing, invalid or truncated observations. Repeated polling does not emit
+the same transition again. Proxy CONNECT rejection has its own status; it must
+not be interpreted as an upstream HTTP response. An empty successful upstream
+list, filtering to zero models and discarding a stale authorization are distinct
+observations. These facts diagnose listing and registration, not inference.
+Registration also records generation and registration-epoch equality as separate
+booleans, so a stale result identifies the actual failed guard without exposing
+authorization identifiers or generation values.
 
 On Windows, native Codex and Claude file borrowing uses
 [`borrowed_native_windows.rs`](../../crates/cpa-bridge/src/borrowed_native_windows.rs).

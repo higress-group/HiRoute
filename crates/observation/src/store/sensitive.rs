@@ -13,15 +13,31 @@ struct Marker {
 }
 
 pub(crate) fn migrate(transaction: &Connection) -> Result<(), Error> {
+    // Rebuildable indexes keep tiny query fields separate from large carriers.
+    // Guard JSON expressions so index creation preserves malformed legacy bytes;
+    // readers still evaluate the original extraction on invalid JSON and fail.
     transaction.execute_batch(
         "CREATE TABLE IF NOT EXISTS observation_safe_facts_v2(workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,original_digest TEXT NOT NULL,body_json TEXT NOT NULL,PRIMARY KEY(workspace_id,request_id,original_digest));
          CREATE INDEX IF NOT EXISTS observation_safe_route_decisions ON observation_safe_facts_v2(workspace_id)
+           WHERE CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.event_kind') ELSE 'route_decision' END='route_decision';
+         CREATE INDEX IF NOT EXISTS observation_safe_kind_fields ON observation_safe_facts_v2(
+           workspace_id,request_id,original_digest,json_valid(body_json),
+           CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.event_kind') END);
+         CREATE INDEX IF NOT EXISTS observation_safe_route_payloads ON observation_safe_facts_v2(workspace_id,request_id,original_digest,body_json)
            WHERE CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.event_kind') ELSE 'route_decision' END='route_decision';
          CREATE TABLE IF NOT EXISTS observation_request_tombstones_v2(workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,deleted_ms INTEGER NOT NULL,PRIMARY KEY(workspace_id,request_id));
          CREATE TABLE IF NOT EXISTS observation_sensitive_payloads_v2(
             id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,session_id TEXT NOT NULL,
             request_id TEXT NOT NULL,created_ms INTEGER NOT NULL,body_json TEXT NOT NULL);
          CREATE INDEX IF NOT EXISTS observation_sensitive_session_v2 ON observation_sensitive_payloads_v2(workspace_id,session_id);
+         CREATE INDEX IF NOT EXISTS observation_payload_query_fields ON observation_sensitive_payloads_v2(
+            id,json_valid(body_json),
+            CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.fact.kind') END,
+            CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.fact.model_configuration_id') END,
+            CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.fact.profile_digest') END,
+            CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.fact.reasoning_profile_id') END,
+            CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.fact.complexity') END,
+            CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.fact.reason') END);
          CREATE TABLE IF NOT EXISTS observation_attempt_models_v2(
             workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,ordinal INTEGER NOT NULL,model_id TEXT NOT NULL,
             PRIMARY KEY(workspace_id,request_id,ordinal));"

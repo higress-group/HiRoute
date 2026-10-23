@@ -6,12 +6,23 @@
 [Execution locations](../validation-routing.md) owns caller HOME routing,
 per-origin SSH workbenches, shared compiler capacity and separate candidate/driver
 revision identities. A runner setup failure is not a product test result.
+The [console artifact owner](../../scripts/console-assets.py) checks selected SSH
+installed-package prerequisites before Rust execution and verifies the same-candidate
+frontend from an execution-host staging directory under the runner's checkout lease.
+Standard file tools supply that directory; the runner does not transport frontend bytes.
 Windows development execution is owned by [windows-dev.py](../../scripts/windows-dev.py)
 and its [native executor](../../scripts/windows-dev-host.py), reached through
 `validation.py windows`. HOME configuration owns machine/session/client locations;
 the project owns artifact admission, exact-case execution and revision-bound evidence.
 Its four temporary-directory native artifact ACL/recovery cases can execute without
 replacing an existing installation; installed-product cases still require a fresh profile.
+Reusable Desktop Pilot build admission belongs to
+[pilot-builds.py](../../scripts/pilot-builds.py); its
+[lifecycle regressions](../../scripts/test-pilot-builds.py) cover manifest-content
+identity, frozen snapshots and checks before reuse/start using fake build/launch tools.
+The separate `--real-consumer` case is required by the affected CI selection and
+checks the production Rust build-script and embedding declaration; local default
+checks never compile or execute those temporary Rust programs.
 [Orphaned data preparation](../../scripts/windows-dev-profile.py) preserves complete
 backups after explicit user authorization; it does not establish a product scenario.
 [Native Desktop session actions](../../scripts/windows-desktop-session.py) admit

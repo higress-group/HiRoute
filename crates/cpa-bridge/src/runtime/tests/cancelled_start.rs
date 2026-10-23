@@ -77,9 +77,17 @@ impl CpaControlPlane for ReadyControl {
         version: &str,
         timeout: Duration,
         refresh: bool,
+        diagnostics: &hiroute_diagnostics::context::DiagnosticContext,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         self.control.discover_and_pin(
-            address, auth_dir, identities, secrets, version, timeout, refresh,
+            address,
+            auth_dir,
+            identities,
+            secrets,
+            version,
+            timeout,
+            refresh,
+            diagnostics,
         )
     }
 }

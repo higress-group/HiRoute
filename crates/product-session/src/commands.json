@@ -798,6 +798,12 @@
     "host_only": true
   },
   {
+    "name": "recover_native_connection",
+    "args": [],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": true
+  },
+  {
     "name": "open_startup_recovery_directory",
     "args": [],
     "result": "Result<(), String>",

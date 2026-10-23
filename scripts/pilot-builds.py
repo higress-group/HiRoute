@@ -12,6 +12,7 @@ import platform
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -35,6 +36,7 @@ COMMAND = ["cargo", "build", "--locked", "-p", "hiroute-desktop", "-p", "hiroute
            "--bin", "hiroute-desktop", "--bin", "hirouted", "--bin", "hiroute"]
 DRIVERS = ("pilot-builds.py", "local-rust.py", "remote-rust.py", "desktop-pilot.py", "validation-report.py")
 VERDICTS = ("green", "red", "expected_red", "not_executed")
+DEFAULT_CPA_MANIFEST = Path("apps/desktop/src-tauri/development-cpa-artifacts.v1.json")
 
 
 def digest(value):
@@ -56,7 +58,74 @@ def tree_digest(root):
     return digest(entries)
 
 
-def build_recipe(repo, sha, jobs):
+def validate_cpa_manifest(contents):
+    def reject_constant(value):
+        raise ValueError("Non-finite JSON constant: " + value)
+
+    try:
+        value = json.loads(contents.decode("utf-8"), parse_constant=reject_constant)
+    except (UnicodeDecodeError, ValueError):
+        raise ValueError("CPA manifest must be a UTF-8 JSON object") from None
+    if not isinstance(value, dict):
+        raise ValueError("CPA manifest must be a UTF-8 JSON object")
+
+
+def read_cpa_manifest(path):
+    """Read one stable regular file without following a final-component link."""
+    path = Path(path)
+    try:
+        before = path.lstat()
+        if path.is_symlink() or not stat.S_ISREG(before.st_mode):
+            raise ValueError("CPA manifest must be a real regular file")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as source:
+            opened = os.fstat(source.fileno())
+            if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+                raise ValueError("CPA manifest changed while opening")
+            contents = source.read()
+            after = os.fstat(source.fileno())
+        final = path.lstat()
+    except OSError:
+        raise ValueError("CPA manifest is missing or unreadable") from None
+    identity = lambda item: (item.st_dev, item.st_ino, item.st_mode, item.st_size,
+                             item.st_mtime_ns, item.st_ctime_ns)
+    if path.is_symlink() or not stat.S_ISREG(final.st_mode) or not (
+            identity(before) == identity(opened) == identity(after) == identity(final)):
+        raise ValueError("CPA manifest changed while reading")
+    validate_cpa_manifest(contents)
+    return contents
+
+
+def candidate_cpa_manifest(repo, sha):
+    relative = DEFAULT_CPA_MANIFEST.as_posix()
+    try:
+        entry = subprocess.check_output(
+            ["git", "-C", str(repo), "ls-tree", sha, "--", relative], text=True, timeout=30).strip()
+        fields = entry.split(None, 3)
+        if len(fields) != 4 or fields[:2] not in (["100644", "blob"], ["100755", "blob"]):
+            raise ValueError
+        contents = subprocess.check_output(
+            ["git", "-C", str(repo), "show", sha + ":" + relative], timeout=30)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        raise ValueError("Candidate default CPA manifest is missing or not a regular file") from None
+    validate_cpa_manifest(contents)
+    return contents
+
+
+def select_cpa_manifest(repo, sha):
+    selected = os.environ.get("HIROUTE_CPA_MANIFEST")
+    if selected is None:
+        return candidate_cpa_manifest(repo, sha)
+    try:
+        supplied = Path(selected)
+        path = supplied if supplied.is_absolute() else repo / DEFAULT_CPA_MANIFEST.parent / supplied
+        path = Path(os.path.abspath(path))
+    except (OSError, TypeError, ValueError):
+        raise ValueError("HIROUTE_CPA_MANIFEST does not identify a valid CPA manifest") from None
+    return read_cpa_manifest(path)
+
+
+def build_recipe(repo, sha, jobs, cpa_manifest=None):
     # These are the only inherited knobs supported by this fixed build profile.
     # Values may contain private paths/flags; persist their digest, not plaintext.
     knobs = {k: v for k, v in os.environ.items() if
@@ -77,9 +146,12 @@ def build_recipe(repo, sha, jobs):
     if sys.platform == "darwin":
         versions["sdk"] = subprocess.check_output(["xcrun", "--show-sdk-version"], text=True, timeout=30).strip()
         versions["sdk_path"] = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True, timeout=30).strip()
+    if cpa_manifest is None:
+        cpa_manifest = select_cpa_manifest(repo, sha)
     return dict(sha=sha, origin=local.git(repo, "remote", "get-url", "origin"), command=COMMAND,
                 profile="debug", jobs=jobs, toolchain=toolchain, tools=versions,
                 platform=[sys.platform, platform.machine(), platform.release()], environment=digest(knobs),
+                cpa_manifest={"sha256": hashlib.sha256(cpa_manifest).hexdigest()},
                 drivers={name: pilot.file_sha256(Path(__file__).with_name(name)) for name in DRIVERS})
 
 
@@ -127,9 +199,16 @@ class Builds:
             raise ValueError("Lease/build identity mismatch")
         return row
 
-    def prepare(self, timeout):
+    def prepare(self, timeout, manifest):
         def frontend(checkout, env, row, descriptors):
             run = self.store.record_path(row["id"]).parent
+            # Cargo consumes these verified bytes even if the borrowed source changes
+            # while npm/Cargo run. Only the build-owned snapshot survives ingestion.
+            snapshot = run / "cpa-manifest.json"
+            with snapshot.open("xb") as output:
+                os.chmod(snapshot, 0o600)
+                output.write(manifest)
+            env["HIROUTE_CPA_MANIFEST"] = str(snapshot)
             log = run / "frontend.log"
             env["PYTHONDONTWRITEBYTECODE"] = "1"
             for argv in (["npm", "--prefix", "apps/desktop", "ci"],
@@ -169,6 +248,9 @@ class Builds:
     def verify(self, row, recipe):
         if row["pilot_reuse"]["recipe"] != recipe or row["command"] != COMMAND:
             raise ValueError("Build inputs differ")
+        snapshot = self.store.record_path(row["id"]).parent / "cpa-manifest.json"
+        if hashlib.sha256(read_cpa_manifest(snapshot)).hexdigest() != recipe["cpa_manifest"]["sha256"]:
+            raise ValueError("Compiled CPA manifest snapshot changed")
         self.store.verify(row)
         build = pilot.verify_managed_pilot_build(row["id"], str(Path(row["checkout"]) / "target/debug/hiroute-desktop"), row["sha"])
         if build["artifacts"] != row["pilot_reuse"]["artifacts"]:
@@ -193,7 +275,8 @@ class Builds:
             local.git(repo, "merge-base", "--is-ancestor", args.sha, ref)
         finally:
             local.git(repo, "update-ref", "-d", ref)
-        recipe = build_recipe(repo, args.sha, args.jobs)
+        manifest = select_cpa_manifest(repo, args.sha)
+        recipe = build_recipe(repo, args.sha, args.jobs, manifest)
         key = digest(recipe)
         with self.locked(key):
             index = self.index(key)
@@ -207,7 +290,7 @@ class Builds:
             else:
                 run_args = types.SimpleNamespace(repo=str(repo), ref=args.ref, sha=args.sha, source="origin",
                                                 jobs=args.jobs, command=COMMAND, keep=True, cargo_only=False, timeout=args.timeout)
-                row = local.run(self.store, run_args, prepare=self.prepare(args.timeout),
+                row = local.run(self.store, run_args, prepare=self.prepare(args.timeout, manifest),
                                 on_record=lambda record: local.remote.save(index, {"run": record["id"], "key": key}))
                 if row.get("process_exit") != 0 or row.get("error") or row.get("scenario") != "unassessed":
                     raise ValueError("Pilot build failed/unknown; retained run " + row["id"])
