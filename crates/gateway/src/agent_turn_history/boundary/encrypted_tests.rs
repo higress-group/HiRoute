@@ -30,6 +30,7 @@ fn events(cipher: &str, summary: &str) -> Vec<ModelStreamEventV1> {
         match item["type"].as_str().unwrap() {
             "reasoning" => {
                 start.as_object_mut().unwrap().remove("encrypted_content");
+                start["summary"] = json!([]);
             }
             "message" => {
                 start["content"] = json!([]);
@@ -193,6 +194,53 @@ fn encrypted_tool_error_continues_actual_stage_and_next_input_assesses_every_req
             .as_array_mut()
             .unwrap()
             .extend(suffix(&cipher, ""));
+        // Assert the evidence contracts independently of branch selection so a
+        // regression identifies the failed boundary, not only its final routing.
+        let request = reasoning_boundary::production_request_for(
+            IngressProtocol::Responses,
+            &wire,
+            &replay,
+            inline_limit,
+        );
+        let analyzed = store
+            .prepare_scoped_request(&scope, &request, &replay)
+            .unwrap();
+        {
+            let inner = store.inner.lock();
+            let entry = inner.entries.get(&a.key).unwrap();
+            assert!(
+                !entry.active.capture_partial,
+                "accepted output capture must be complete"
+            );
+            let accepted = entry
+                .response_boundary
+                .expect("accepted response has a boundary");
+            let anchors = analyzed
+                .anchors
+                .as_ref()
+                .expect("actual input is fingerprintable");
+            assert!(
+                anchors.prefixes.contains(&(
+                    entry.checkpoint.message_count,
+                    entry
+                        .checkpoint
+                        .digest
+                        .expect("original input has a fingerprint")
+                )),
+                "the original input prefix is unchanged"
+            );
+            let incoming = analyzed
+                .boundaries
+                .iter()
+                .find(|(position, _)| *position == entry.checkpoint.message_count)
+                .expect("actual replay exposes the accepted response boundary")
+                .1;
+            assert_eq!(
+                accepted.matches(incoming),
+                Some(true),
+                "actual replay matches accepted opaque and visible output"
+            );
+        }
         let AgentTurnBegin::Continuation {
             ticket,
             decision: inherited,
