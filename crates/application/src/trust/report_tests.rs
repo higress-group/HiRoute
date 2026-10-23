@@ -263,3 +263,32 @@ fn suggestion_projection_matches_report_for_every_direction_without_report_rows(
         }
     }
 }
+
+#[test]
+fn extension_assessments_count_as_scored_without_a_competence_denominator() {
+    let mut extension = stage("extension", Some((1.0, false)), false);
+    extension.sample.branch_execution.as_mut().unwrap().policy =
+        hiroute_domain::DecisionExtensionIdentityV1 {
+            id: "extension/test".into(),
+            revision: 1,
+        }
+        .execution_policy("Extension");
+    let extension_only = counts(&[&extension], &BTreeMap::new());
+    assert_eq!(extension_only.complete, 1);
+    assert_eq!(extension_only.unscored, 0);
+    assert_eq!(extension_only.competence_rate(), None);
+    let native = stage("native", Some((0.5, false)), false);
+    let mixed = counts(&[&extension, &native], &BTreeMap::new());
+    assert_eq!(mixed.complete, 2);
+    assert_eq!(mixed.scoring_coverage(), Some(1.0));
+    assert_eq!(mixed.competence_rate(), Some(1.0));
+    let mut old_extension = native;
+    old_extension.sample.selection = Some(selection(0.8, "simple_task", "regular"));
+    old_extension
+        .sample
+        .selection
+        .as_mut()
+        .unwrap()
+        .decision_protocol = Some(hiroute_domain::DecisionProtocolV1::CustomExtensionV1);
+    assert_eq!(replay(&[old_extension], &[700]).included, 0);
+}

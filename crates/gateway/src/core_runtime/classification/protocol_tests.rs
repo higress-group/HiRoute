@@ -308,3 +308,90 @@ fn builtin_probability_normalization_keeps_strict_keys_and_sum() {
             .is_err()
     );
 }
+
+#[test]
+fn preceding_stage_requires_exact_plan_connection_and_actual_category() {
+    use crate::agent_turn_history::{AssessmentTarget, ExecutionAttribution, PlanSnapshot};
+    let mut authority = (*authority()).clone();
+    authority.decision = categories();
+    authority.default_category = Some("review".into());
+    authority.plan_identity = Some(("plan/test".into(), 7));
+    let mut history = history(true);
+    history.assessment_target = Some(AssessmentTarget {
+        segment_id: "private-stage".into(),
+        first_turn_id: "turn-1".into(),
+        through_turn_id: "turn-1".into(),
+        first_ordinal: 1,
+        through_ordinal: 1,
+        target_partial: false,
+        plan: PlanSnapshot {
+            plan_id: "plan/test".into(),
+            plan_revision: 7,
+        },
+        attribution: ExecutionAttribution::Single {
+            selected_branch_id: "write".into(),
+            executed_branch_id: "write".into(),
+            model_configuration_id: "private-model".into(),
+            profile_digest: "private-profile".into(),
+        },
+        branch_execution: Some(hiroute_domain::BranchExecutionV1 {
+            policy: authority
+                .extension_identity
+                .as_ref()
+                .unwrap()
+                .execution_policy("Write"),
+            group: ExecutionGroupV1::Primary,
+            candidate_index: 0,
+        }),
+    });
+    for variant in 0..5 {
+        let mut candidate = history.clone();
+        let target = candidate.assessment_target.as_mut().unwrap();
+        match variant {
+            1 => target.plan.plan_revision = 6,
+            2 => {
+                target
+                    .branch_execution
+                    .as_mut()
+                    .unwrap()
+                    .policy
+                    .extension
+                    .as_mut()
+                    .unwrap()
+                    .revision = 2
+            }
+            3 => target.attribution = ExecutionAttribution::Mixed,
+            4 => {
+                if let ExecutionAttribution::Single {
+                    executed_branch_id, ..
+                } = &mut target.attribution
+                {
+                    *executed_branch_id = "review".into();
+                }
+            }
+            _ => (),
+        }
+        let request =
+            classifier_request_template(&request("Review now"), &candidate, &authority).unwrap();
+        let body: Value = serde_json::from_slice(&request.template.bytes).unwrap();
+        if variant == 0 {
+            assert_eq!(
+                body["preceding_stage"],
+                json!({"from":0,"category":"write","group":"primary","complete":true})
+            );
+        } else {
+            assert!(body["preceding_stage"].is_null());
+        }
+        let wire = String::from_utf8(request.template.bytes.clone()).unwrap();
+        for private in [
+            "private-stage",
+            "private-model",
+            "private-profile",
+            "plan/test",
+            "floor_millis",
+            "simple_threshold",
+        ] {
+            assert!(!wire.contains(private));
+        }
+    }
+}

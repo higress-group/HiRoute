@@ -13,10 +13,10 @@ test('long judgment prompts remain editable and the wire schema has no per-promp
   judgment.degree.instructions = '   ';
   assert.match(judgmentIssue(judgment, 'global', true, 'zh').selector, /degree-instructions/);
   const { schemas } = JSON.parse(readFileSync(new URL('../../../decision-extensions/api/decision.openapi.json', import.meta.url), 'utf8')).components;
-  for (const definition of [schemas.OrdinalDefinition, schemas.CategoricalDefinition, schemas.AssessmentTarget]) {
-    assert.deepEqual(definition.properties.instructions, { type: 'string', minLength: 1 });
-  }
-  assert.equal(schemas.OrdinalDefinition.properties.levels.items.properties.id.maxLength, 128);
+  assert.equal(schemas.OrdinalDefinition, undefined);
+  const category = schemas.Route.oneOf[1].properties.categories.items;
+  assert.deepEqual(category.properties.condition, { type: 'string', minLength: 1 });
+  assert.equal(category.properties.id.maxLength, 128);
 });
 
 test('custom auth does not infer stored schemes, and only new bearer input is prefixed', () => {
@@ -41,16 +41,16 @@ test('references retain each published and draft pin, excluding inactive routing
 });
 test('protocol examples separate the new task decision from its prior assessment target', () => {
   const { first, assessment } = protocolExamples;
-  assert.equal(first.request.assessment_target, null);
+  assert.equal(first.request.preceding_stage, null);
   assert.equal(first.response.assessment, undefined);
-  assert.equal(first.request.decision.kind, 'ordinal');
-  assert.equal(assessment.request.assessment_target.from, 0);
+  assert.equal(first.request.route.kind, 'smart_saving');
+  assert.equal(assessment.request.preceding_stage.from, 0);
   assert.equal(assessment.request.visible_conversation[0].branch_id, undefined);
-  assert.equal(assessment.response.decision.choice, 'review');
+  assert.equal(assessment.response.category, 'review');
   for (const key of ['first', 'assessment']) {
     assert.doesNotMatch(protocolCurl(key), /\n\+/);
     const request = JSON.parse(protocolCurl(key).split("--data-raw '")[1].slice(0, -1));
-    assert.deepEqual(Object.keys(request).sort(), ['assessment_target', 'decision', 'history_partial', 'latest_user', 'visible_conversation']);
+    assert.deepEqual(Object.keys(request).sort(), ['history_partial', 'latest_user', 'preceding_stage', 'route', 'visible_conversation']);
     assert.deepEqual(request, protocolExamples[key].request);
   }
 });

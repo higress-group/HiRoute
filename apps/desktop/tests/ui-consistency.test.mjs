@@ -89,14 +89,14 @@ test('the native classifier download embeds the public OpenAPI contract byte for
   const embedded = native.match(/include_str!\("([^"]+)"\)/)[1];
   assert.equal(readFileSync(join(desktop, 'src-tauri/src/bridge', embedded), 'utf8'), readFileSync(contractPath, 'utf8'));
   assert.deepEqual(openapi.components.schemas.ClassifierRequest.required, [
-    'decision',
+    'route',
     'latest_user',
     'visible_conversation',
     'history_partial',
-    'assessment_target',
+    'preceding_stage',
   ]);
   assert.equal(openapi.components.schemas.ClassifierRequest.additionalProperties, false);
-  assert.deepEqual(openapi.components.schemas.ClassifierResponse.required, ['decision']);
+  assert.deepEqual(openapi.components.schemas.ClassifierResponse.required, []);
   assert.equal(openapi.components.schemas.ClassifierResponse.additionalProperties, false);
   assert.equal(openapi.components.schemas.Assessment.properties.score.minimum, 0);
   assert.equal(openapi.components.schemas.Assessment.properties.score.maximum, 1);
