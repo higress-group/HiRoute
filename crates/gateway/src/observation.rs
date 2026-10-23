@@ -651,6 +651,11 @@ pub(super) fn unix_nanos() -> u64 {
 
 #[cfg(test)]
 pub(super) fn accepted_request_for_runtime_test() -> RequestObservation {
+    accepted_request_named_for_runtime_test("request:runtime-test")
+}
+
+#[cfg(test)]
+pub(super) fn accepted_request_named_for_runtime_test(request_id: &str) -> RequestObservation {
     let gateway = GatewayObservation::with_sinks_and_policy(
         true,
         64 * 1024,
@@ -672,7 +677,7 @@ pub(super) fn accepted_request_for_runtime_test() -> RequestObservation {
             session_scope: "request_scoped".into(),
             correlation_provenance: "test".into(),
             turn_id: "turn:runtime-test".into(),
-            request_id: "request:runtime-test".into(),
+            request_id: request_id.into(),
             authority_id: "authority:runtime-test".into(),
             authority_epoch: 1,
             publication_revision: 1,
