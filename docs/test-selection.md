@@ -200,6 +200,41 @@ umbrella for native Agent execution: `native_required: false` cannot waive
 `product_checks`, and a successful headless Agent journey cannot replace required
 Desktop acceptance.
 
+### Native preparation and recovery evidence
+
+Before enabling real model requests, exercise the actual entry, interpreter,
+imports and preparation under the same containment as the business run. Keep
+physical model admission closed. A compile-only check or a mocked preparation
+sequence cannot prove this boundary. Complete-state migration follows final
+HOME/XDG selection and precedes any native command that can initialize those
+directories, including version discovery. Preserve the source state; compare
+migration bytes separately from the complete configuration baseline established
+before Apply. Controller-only inputs stay on the controller; the worker verifies
+its permitted exact-byte copies without widening filesystem access.
+
+Keep cancellation observations separate: requesting Stop, receiving its
+acknowledgement, observing native interruption, actual HTTP closure, provider
+completion and cleanup are different events. Assert their required causal order,
+not one client's incidental total ordering. A client may close HTTP before its
+Stop acknowledgement, or only after consuming another genuine stream event.
+Cleanup-induced closure does not prove native cancellation. Join a reader if it
+was started; an uncreated reader needs an explicit not-started observation.
+Reasoning, tool and text progress are distinct from terminal or unknown events;
+successful forwarding alone does not prove native consumption.
+
+Prepare recovery actions and their baseline dependencies before the first
+potentially committed mutation, including native model selection. Recovery uses
+its own bounded steps even when the business deadline has expired. An Apply
+acknowledgement is not the configuration commit. After an uncertain Apply outcome,
+query actual production state before Restore; an unavailable query
+is unknown, not proof that nothing changed. Record the first business failure,
+Restore, restored-default inference and owned cleanup independently. A later
+cleanup error must neither replace the first failure nor disappear behind a
+green report. Require the controller and worker exit results as well as each
+business gate. Business failure stops its subsequent requests; an independently
+authorized default-inference reserve remains subject to successful complete
+Restore and the unchanged physical-call ledger.
+
 ## Integration preflight
 
 ContextHold, decision-history and runtime selection changes select the ContextHold

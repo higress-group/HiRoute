@@ -196,6 +196,9 @@ for explicit inputs, writable roots, required outcomes and cleanup. Report a
 preparation/cleanup failure separately while retaining the first product failure.
 Process exit, successful setup or the model's success text cannot replace a
 Gateway receipt and an independent tool artifact.
+The [native preparation and recovery contract](../test-selection.md#native-preparation-and-recovery-evidence)
+keeps actual preparation before model admission, cancellation causality, uncertain
+Apply recovery and independent cleanup results explicit.
 
 ## Keep assertions independent of implementation layout
 
