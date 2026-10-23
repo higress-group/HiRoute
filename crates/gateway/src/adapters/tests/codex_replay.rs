@@ -81,8 +81,8 @@ fn assert_codex_replay_wire(additional_tools: bool, cleanup: Option<usize>) {
     let mut body = json!({"model":"route","stream":true,"input":[
         {"role":"system","content":"long instruction ".repeat(500)},
         {"type":"reasoning","id":"rs-old-first","status":"completed","summary":[{"type":"summary_text","text":"old thought"}]},
-        {"type":"message","id":"msg-old","role":"assistant","content":[{"type":"output_text","text":"old answer"}]},
         {"type":"reasoning","id":"rs-old-second","status":"completed","summary":[]},
+        {"type":"message","id":"msg-old","role":"assistant","content":[{"type":"output_text","text":"old answer"}]},
         {"role":"user","content":"next task"},
         {"type":"reasoning","id":"rs-native","status":"completed","summary":[{"type":"summary_text","text":"retained thought"}],"encrypted_content":"opaque-native-state"},
         {"type":"message","id":"msg-native","role":"assistant","status":"completed","phase":"final_answer","content":[{"type":"output_text","text":"answer"}]},
