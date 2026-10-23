@@ -14,7 +14,10 @@ use crate::server::core_runtime::profiles::{
 };
 use crate::server::request_plan::IngressProtocol;
 
-use super::{ProtocolAdapterError, client_can_represent_message_phase, responses_terminal};
+use super::{
+    ProtocolAdapterError, client_can_represent_message_phase, responses_terminal,
+    synthetic_responses_item_id,
+};
 
 pub(super) fn render_responses_output_block(
     response_id: &str,
