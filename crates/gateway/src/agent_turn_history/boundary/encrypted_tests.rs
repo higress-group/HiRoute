@@ -1,59 +1,57 @@
 use super::*;
 use crate::agent_turn_history::boundary::{BoundaryCapture, incoming_evidence};
 use crate::context_hold::fingerprint::FingerprintBudget;
-use crate::server::core_runtime::model_ir::{
-    ModelEvent, ModelStreamEventV1, OpaqueProviderState, ResponseItemStatus,
-};
+use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
 
-fn events(cipher: &str) -> Vec<ModelStreamEventV1> {
-    vec![
-        ModelEvent::ReasoningFinished {
-            index: 0,
-            text: String::new(),
-            status: ResponseItemStatus::Completed,
-        },
-        ModelEvent::ProviderState {
-            state: Box::new(OpaqueProviderState {
-                block_index: Some(0),
-                kind: "encrypted_content".into(),
-                value: json!(cipher),
-            }),
-        },
-        ModelEvent::TextFinished {
-            index: 1,
-            text: "Apply the edit.".into(),
-            annotations: vec![],
-            status: ResponseItemStatus::Completed,
-        },
-        ModelEvent::ToolCallStarted {
-            index: 2,
-            logical_id: "call-edit".into(),
-            native_id: "call-edit".into(),
-            tool_kind: ToolKindV1::Function,
-            namespace: None,
-            name: "edit".into(),
-            owner: Box::new(accepted_output::owner()),
-            item_id: None,
-        },
-        ModelEvent::ToolCallFinished {
-            index: 2,
-            logical_id: "call-edit".into(),
-            tool_kind: ToolKindV1::Function,
-            namespace: None,
-            name: "edit".into(),
-            arguments: json!({"justification":"", "value":1}),
-            status: ResponseItemStatus::Completed,
-        },
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(i, event)| ModelStreamEventV1::new(i as u64, event))
-    .collect()
+fn events(cipher: &str, summary: &str) -> Vec<ModelStreamEventV1> {
+    use crate::server::core_runtime::adapters::NativeResponseDecoder;
+    use crate::server::core_runtime::profiles::{
+        CandidateProtocolProfile, NativeProviderStateEmission, fixed_reasoning,
+    };
+    let mut profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    profile.capability.native_provider_state = NativeProviderStateEmission::Native;
+    let output = vec![
+        json!({"type":"reasoning","id":"rs-edit","status":"completed","summary": if summary.is_empty() {vec![]} else {vec![json!({"type":"summary_text","text":summary})]},"encrypted_content":cipher}),
+        json!({"type":"message","id":"msg-edit","status":"completed","role":"assistant", "content":[{"type":"output_text","text":"Apply the edit.","annotations":[]}]}),
+        json!({"type":"function_call","id":"fc-edit","status":"completed","call_id":"call-edit","name":"edit","arguments":"{\"justification\":\"\",\"value\":1}"}),
+    ];
+    let mut wire = format!(
+        "data: {}\n\n",
+        json!({"type":"response.created","response":{"id":"response-edit","model":"physical","status":"in_progress","output":[]}})
+    );
+    for (index, item) in output.iter().enumerate() {
+        wire.push_str(&format!(
+            "data: {}\n\n",
+            json!({"type":"response.output_item.done","output_index":index,"item":item})
+        ));
+    }
+    wire.push_str(&format!("data: {}\n\n", json!({"type":"response.completed","response":{"id":"response-edit","model":"physical","status":"completed","output":output,"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}})));
+    let mut decoder = NativeResponseDecoder::new(&profile, 200, true).unwrap();
+    decoder.feed(wire.as_bytes(), true).unwrap();
+    let events = decoder.finish().unwrap().events;
+    let provider = events
+        .iter()
+        .position(|e| matches!(e.event, ModelEvent::ProviderState { .. }))
+        .unwrap();
+    let finished = events
+        .iter()
+        .position(|e| matches!(e.event, ModelEvent::ReasoningFinished { .. }))
+        .unwrap();
+    assert!(
+        provider < finished,
+        "use actual empty-summary lifecycle order"
+    );
+    events
 }
 
-fn suffix(cipher: &str) -> Vec<serde_json::Value> {
+fn suffix(cipher: &str, summary: &str) -> Vec<serde_json::Value> {
     vec![
-        json!({"type":"reasoning","id":"rs-edit","summary":[],"encrypted_content":cipher}),
+        json!({"type":"reasoning","id":"rs-edit","summary": if summary.is_empty() {vec![]} else {vec![json!({"type":"summary_text","text":summary})]},"encrypted_content":cipher}),
         json!({"role":"assistant","content":"Apply the edit."}),
         json!({"type":"function_call","call_id":"call-edit","name":"edit","arguments":"{\"value\":1,\"justification\":\"\"}"}),
         json!({"type":"function_call_output","call_id":"call-edit","output":"Error: invalid justification: expected a non-empty sentence"}),
@@ -62,50 +60,54 @@ fn suffix(cipher: &str) -> Vec<serde_json::Value> {
 
 #[test]
 fn encrypted_boundary_requires_the_actual_accepted_state_across_replay_layouts() {
-    let cipher = "opaque-state-".repeat(256);
-    let mut captured = BoundaryCapture::default();
-    for event in events(&cipher) {
-        captured.accept(&event.event);
-    }
-    let accepted = captured
-        .evidence()
-        .expect("known delivered ciphertext is comparable");
-    for inline_limit in [0, 8 * 1024, 64 * 1024] {
-        for variant in ["same", "changed", "missing", "uncaptured"] {
-            let (_directory, replay) = replay();
-            let mut items = suffix(&cipher);
-            if variant == "changed" {
-                items[0]["encrypted_content"] = json!(format!("{cipher}different"));
-            } else if variant == "missing" {
-                items[0]
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("encrypted_content");
-            }
-            let wire = json!({"model":"route","instructions":"x".repeat(8 * 1024),"input":items});
-            let request = reasoning_boundary::production_request_for(
-                IngressProtocol::Responses,
-                &wire,
-                &replay,
-                inline_limit,
-            );
-            let proof = incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default());
-            let result = if variant == "uncaptured" {
-                let mut visible_only = BoundaryCapture::default();
-                for event in events(&cipher) {
-                    if !matches!(event.event, ModelEvent::ProviderState { .. }) {
-                        visible_only.accept(&event.event);
-                    }
+    for summary in ["", "Use the requested tool."] {
+        let cipher = "opaque-state-".repeat(256);
+        let mut captured = BoundaryCapture::default();
+        for event in events(&cipher, summary) {
+            captured.accept(&event.event);
+        }
+        let accepted = captured
+            .evidence()
+            .expect("known delivered ciphertext is comparable");
+        for inline_limit in [0, 8 * 1024, 64 * 1024] {
+            for variant in ["same", "changed", "missing", "uncaptured"] {
+                let (_directory, replay) = replay();
+                let mut items = suffix(&cipher, summary);
+                if variant == "changed" {
+                    items[0]["encrypted_content"] = json!(format!("{cipher}different"));
+                } else if variant == "missing" {
+                    items[0]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("encrypted_content");
                 }
-                proof.and_then(|p| visible_only.evidence().unwrap().matches(p))
-            } else {
-                proof.and_then(|p| accepted.matches(p))
-            };
-            assert_eq!(
-                result,
-                (variant == "same").then_some(true),
-                "{variant}, allowance {inline_limit}"
-            );
+                let wire =
+                    json!({"model":"route","instructions":"x".repeat(8 * 1024),"input":items});
+                let request = reasoning_boundary::production_request_for(
+                    IngressProtocol::Responses,
+                    &wire,
+                    &replay,
+                    inline_limit,
+                );
+                let proof =
+                    incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default());
+                let result = if variant == "uncaptured" {
+                    let mut visible_only = BoundaryCapture::default();
+                    for event in events(&cipher, summary) {
+                        if !matches!(event.event, ModelEvent::ProviderState { .. }) {
+                            visible_only.accept(&event.event);
+                        }
+                    }
+                    proof.and_then(|p| visible_only.evidence().unwrap().matches(p))
+                } else {
+                    proof.and_then(|p| accepted.matches(p))
+                };
+                assert_eq!(
+                    result,
+                    (variant == "same").then_some(true),
+                    "{variant}, allowance {inline_limit}"
+                );
+            }
         }
     }
 }
@@ -148,7 +150,7 @@ fn encrypted_tool_error_continues_actual_stage_and_next_input_assesses_every_req
         store.commit_decision(&a, decision("regular")).unwrap();
         store.bind_request(&a, "tool-request");
         let cipher = "opaque-state-".repeat(256);
-        store.accept_output(&a, &events(&cipher));
+        store.accept_output(&a, &events(&cipher, ""));
         store
             .finish_request(
                 &a,
@@ -162,7 +164,7 @@ fn encrypted_tool_error_continues_actual_stage_and_next_input_assesses_every_req
         wire["input"]
             .as_array_mut()
             .unwrap()
-            .extend(suffix(&cipher));
+            .extend(suffix(&cipher, ""));
         let AgentTurnBegin::Continuation {
             ticket,
             decision: inherited,

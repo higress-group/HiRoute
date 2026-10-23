@@ -9,8 +9,8 @@ use crate::content_ref::{ContentValueExt, unsigned_messages_thinking_text};
 use crate::context_hold::fingerprint::FingerprintBudget;
 use crate::replay::{ReplayStore, write_canonical_json};
 use crate::server::core_runtime::model_ir::{
-    ContentPart, MessageRole, ModelEvent, ModelRequestIRV1, ResponsesReasoningEncryptedContentV1,
-    ToolKindV1,
+    ContentPart, MessageRole, ModelEvent, ModelRequestIRV1, ResponseBlockKind,
+    ResponsesReasoningEncryptedContentV1, ToolKindV1,
 };
 
 mod json_text;
@@ -62,6 +62,11 @@ impl BoundaryCapture {
             return;
         }
         match event {
+            ModelEvent::ContentBlockStarted {
+                index,
+                block_kind: ResponseBlockKind::Reasoning,
+                ..
+            } => self.text(*index, "", true, false),
             ModelEvent::TextDelta { index, text } => self.text(*index, text, false, false),
             ModelEvent::ReasoningDelta { index, text } => self.text(*index, text, true, false),
             ModelEvent::TextFinished {
