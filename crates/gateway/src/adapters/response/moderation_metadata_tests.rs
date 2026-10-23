@@ -73,7 +73,7 @@ fn decode(
 
 #[test]
 fn moderation_metadata_preserves_output_before_during_and_after_content() {
-    let projection = super::super::test_tool_projection();
+    let projection = test_tool_projection();
     let expected = decode(&frames(), 17, projection.clone()).unwrap();
     for position in [1, 3, 5] {
         let mut input = frames();
@@ -96,7 +96,7 @@ fn moderation_metadata_preserves_native_notification_bytes() {
             true,
             "alias".into(),
             None,
-            super::super::test_tool_projection(),
+            test_tool_projection(),
         )
         .unwrap();
         projector.feed(&wire(&frames()[..1]), false).unwrap();
@@ -157,11 +157,11 @@ fn moderation_metadata_cannot_hide_unknown_or_control_semantics() {
     for item in invalid {
         let mut input = frames();
         input.insert(3, item);
-        assert!(decode(&input, 17, super::super::test_tool_projection()).is_err());
+        assert!(decode(&input, 17, test_tool_projection()).is_err());
     }
     let mut before_start = frames();
     before_start.insert(0, metadata());
-    assert!(decode(&before_start, 17, super::super::test_tool_projection()).is_err());
+    assert!(decode(&before_start, 17, test_tool_projection()).is_err());
     let mut decoder = NativeResponseDecoder::new(&profile(), 200, true).unwrap();
     decoder.feed(&wire(&frames()[..1]), false).unwrap();
     assert!(
@@ -179,7 +179,7 @@ fn moderation_metadata_does_not_supply_a_missing_terminal() {
     let mut input = frames();
     input.pop();
     input.push(metadata());
-    assert!(decode(&input, 17, super::super::test_tool_projection()).is_err());
+    assert!(decode(&input, 17, test_tool_projection()).is_err());
 }
 
 #[test]
@@ -192,7 +192,7 @@ fn moderation_metadata_preserves_tool_completion_and_usage() {
         json!({"type":"response.function_call_arguments.done","output_index":0,"item_id":"tool-1","arguments":"{}"}),
         frames().pop().unwrap(),
     ];
-    let projection = super::super::test_tool_projection();
+    let projection = test_tool_projection();
     let expected = decode(&input, 17, projection.clone()).unwrap();
     input.insert(3, metadata());
     assert_eq!(decode(&input, 1, projection).unwrap(), expected);
@@ -206,7 +206,7 @@ fn moderation_metadata_does_not_replace_refusal_or_error() {
         json!({"type":"response.failed","response":{"error":{"code":"server_error","message":"failure"}}}),
     ] {
         let mut input = vec![frames()[0].clone(), terminal];
-        let projection = super::super::test_tool_projection();
+        let projection = test_tool_projection();
         let expected = decode(&input, 17, projection.clone()).unwrap();
         input.insert(1, metadata());
         assert_eq!(decode(&input, 17, projection).unwrap(), expected);
