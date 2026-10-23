@@ -173,7 +173,7 @@ fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membersh
         );
         wire["input"].as_array_mut().unwrap().extend([
             json!({"type":"reasoning","id":"rs-tool","status":"completed","summary":[{"type":"summary_text","text":"Use the requested tool."}]}),
-            json!({"type":"function_call","call_id":"call-1","name":"functions.lookup","arguments":"{\"id\":7}"}),
+            json!({"type":"function_call","call_id":"call-1","namespace":"functions","name":"lookup","arguments":"{\"id\":7}"}),
             json!({"type":"function_call_output","call_id":"call-1","output":"tool result"}),
         ]);
         let request = production_request(&wire, &replay, inline_limit);
