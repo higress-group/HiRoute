@@ -128,7 +128,7 @@ pub(super) fn snapshot(
         (
             AliasRequestOwnedRouteV1::Classified {
                 native_protocol: None,
-                judgment: Some(Default::default()),
+                judgment: (!rest_classifier).then(Default::default),
                 // Retained legacy value has no effect on fresh group judgment
                 // or candidate continuity within the selected group.
                 reselect_on_user_message: true,
