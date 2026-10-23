@@ -95,6 +95,7 @@ pub(super) fn rows(
                             native_turn_id: r.get(15)?,
                             relation_conflicted: false,
                             routing_context: context,
+                            native_auxiliary: None,
                             attempted_model_count: count,
                             within_request_fallback: (count > 0).then_some(count > 1),
                             final_native_model: model.native_model.clone(),

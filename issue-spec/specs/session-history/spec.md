@@ -155,6 +155,20 @@ plain mentions, or trailing real text are not. Complete leading Claude
 question. Context-only sessions use a neutral title and update when later real input
 becomes readable, including across fixed-range pagination and home activity refresh.
 
+Session title scans skip only requests with affirmative retained native auxiliary
+purpose evidence, including when those requests precede the first main request or
+fill a timeline page. The same selection supplies the preview's model and route.
+Raw request lists, direct request excerpts, search hits, receipts and costs retain
+auxiliary calls. Missing, legacy, deleted or conflicting purpose evidence remains
+unclassified and cannot hide a request or prove human origin. Auxiliary-only
+sessions use a neutral title; this is not evidence of content cleanup.
+
+Request excerpts show a pending state before visibility-triggered reads and while
+loading. Empty or failed reads are unavailable, not deleted. A cleared-content
+label requires explicit deleted content evidence with no unresolved catalog gap.
+These presentation states do not claim that a particular historical request lost
+its body or that all session content is complete.
+
 Complete leading Codex setup blocks, including recommended_plugins and an exact
 `# AGENTS.md instructions` heading (optionally naming a path) followed by a complete
 `<INSTRUCTIONS>...</INSTRUCTIONS>` block, are also presentation context. A following
