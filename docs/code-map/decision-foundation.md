@@ -111,7 +111,9 @@ uses bounded scope-hash stripes; a collision is conservative and recoverable.
 
 [Native normalization](../../crates/gateway/src/context_hold/routing.rs) admits
 known purpose independently from optional enrichment. Known auxiliary calls never
-consume main history slots. The [v2 codec](../../crates/gateway/src/context_hold/routing/v2.rs)
+consume main history slots. The [DSH emitter](../../assets/agents/dsh/hiroute-routing.mjs)
+also follows isolated LLM services while retaining its managed transport gate.
+The [v2 codec](../../crates/gateway/src/context_hold/routing/v2.rs)
 validates the optional native cursor and final-wire input window. The
 [current input view](../../crates/gateway/src/core_runtime/native_routing_view.rs)
 selects current content without changing any original message role.

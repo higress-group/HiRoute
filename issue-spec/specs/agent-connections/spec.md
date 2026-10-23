@@ -536,6 +536,10 @@ process; arbitrary SDK hosts that share and independently unload a mutable
 provider registry, third-party virtual routes and signal-replacing summaries
 require separate evidence. A transient optional failure SHALL NOT latch routing
 off, and summary content SHALL NOT reconstruct prior accepted task execution.
+DSH managed model streams SHALL retain minimal purpose/session evidence across
+native LLM service isolation, including Web session main and title calls. Listening
+across service scopes SHALL NOT attach metadata to unmanaged providers or remove
+the existing Agent/grant transport gate.
 DSH relay/settlement envelopes after the latest actual input SHALL
 NOT acquire that input's proof merely by arriving in its active native turn.
 OpenCode binds a bounded native message lookup to the current message ID, preserving

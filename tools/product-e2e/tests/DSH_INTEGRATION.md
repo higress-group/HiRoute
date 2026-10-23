@@ -46,6 +46,10 @@ The supported native GenerateOptions has no per-call headers: a managed provider
 existing Agent/grant headers gate the request-local final transport wrapper.
 Its immutable context follows iterator creation, next, return and throw, including
 nested and overlapping calls, without changing provider bodies or errors.
+The root-loaded middleware listens across Cordis LLM service scopes. Native Web
+session isolation must not filter it out: exercise both main/tool continuations
+and session-title calls with the actual Web UI separately from ACP. The existing
+managed-provider and Agent/grant transport gates still restrict metadata writes.
 
 An optional window proof maps the current native turn/start activation's User
 events to final wire User ordinals and binds the entire bounded User-envelope
