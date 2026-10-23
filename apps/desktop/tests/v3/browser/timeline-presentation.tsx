@@ -13,7 +13,7 @@ const model = 'managed-provider/exact-model-id';
 const turns = Array.from({ length: 18 }, (_, offset): TimelineTurn => {
   const n = offset + 1;
   const request = { request_id: `request-${n}`, started_at_ms: 1_790_000_000_000 + n * 1000, duration_ms: 500, native_model: model, input_tokens: 1000, output_tokens: 20, cache_read_tokens: 800, cache_read_share: .8, costs: [], outcome: 'completed' };
-  return { turn_id: `turn-${n}`, agent_turn_id: `agent-turn-${n}`, segment_id: `segment-${n}`, started_at_ms: request.started_at_ms, finished_at_ms: request.started_at_ms + 500, boundary: 'new_user_message', plan_id: 'plan-1', plan_revision: 2, branch_id: 'smart', model_configuration_id: 'configuration-1', reasoning_profile_id: null, group: n % 2 ? 'regular' : 'primary', selection: { simple_probability: .8, simple_threshold_millis: 700, selection_reason: 'simple_task' }, tool_continuations: 0, relays: [], assessment_state: 'scored', assessment: { score: .4, partial: false, target_from_ordinal: 2, target_through_ordinal: 2, target_from_turn_id: n === 15 ? 'outside-retained-scope' : 'turn-14', target_through_turn_id: n === 15 ? 'turn-15' : 'turn-14' }, competence_floor_millis: 500, protected_turn_ids: [], status: 'completed', requests: [request], transitions: [], cost_by_model: [], evidence_partial: false, content_digest: `digest-${n}` };
+  return { turn_id: `turn-${n}`, agent_turn_id: `agent-turn-${n}`, segment_id: `segment-${n}`, started_at_ms: request.started_at_ms, finished_at_ms: request.started_at_ms + 500, boundary: 'new_user_message', plan_id: 'plan-1', plan_revision: 2, branch_id: 'smart', model_configuration_id: 'configuration-1', reasoning_profile_id: null, group: n % 2 ? 'regular' : 'primary', selection: { simple_probability: .8, simple_threshold_millis: 700, selection_reason: 'simple_task' }, tool_continuations: 0, relays: [], assessment_state: 'scored', assessment: { score: .4, partial: false, target_from_ordinal: 2, target_through_ordinal: 2, target_from_turn_id: n === 15 ? 'outside-retained-scope' : 'agent-turn-14', target_through_turn_id: n === 15 ? 'agent-turn-15' : 'agent-turn-14' }, competence_floor_millis: 500, protected_turn_ids: [], status: 'completed', requests: [request], transitions: [], cost_by_model: [], evidence_partial: false, content_digest: `digest-${n}` };
 });
 // The two known endpoints share a turn, so this gap is a request comparison,
 // not a claim that the completed cross-turn comparison is missing.
@@ -23,6 +23,9 @@ turns[13].transitions = [
   { kind: 'between_turn_change', request_id: 'request-14-extra', previous_request_id: 'request-13', model: { native_model: model }, previous_model: { native_model: 'earlier-model' }, completeness: 'complete' },
   { kind: 'within_request_fallback', request_id: 'request-14-extra', previous_request_id: 'request-14', model: { native_model: model }, previous_model: { native_model: 'failed-model' }, completeness: 'complete' },
 ];
+turns[13].transitions.push({ kind: 'unknown', request_id: 'request-14-extra', previous_request_id: 'request-14', model: { native_model: model }, previous_model: { native_model: 'different-model' }, model_changed: true, completeness: 'complete' });
+turns[16].agent_turn_id = turns[17].agent_turn_id = 'duplicate-agent-turn';
+turns[15].assessment = { ...turns[15].assessment!, target_from_turn_id: 'duplicate-agent-turn', target_through_turn_id: 'duplicate-agent-turn' };
 turns[14].transitions = [{ kind: 'unknown', request_id: 'request-15', previous_request_id: 'outside-retained-request', model: { native_model: model }, previous_model: null, completeness: 'unknown' }];
 Object.assign(window, { presentationFixture: { reads, turns } });
 mockIPC((command, payload: any) => {

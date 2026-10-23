@@ -40,6 +40,8 @@ try {
       assert.ok(!details.includes('2–2'), details);
       assert.ok(details.includes(lang === 'zh' ? '请求间切换证据尚不完整' : 'Request transition evidence incomplete'), details);
       assert.ok(details.includes(lang === 'zh' ? '跨轮模型切换' : 'Between-turn model change'), details);
+      assert.ok(details.includes(lang === 'zh' ? '本轮请求间模型变化' : 'Model change between requests in this turn'), details);
+      assert.ok(details.includes('different-model → managed-provider/exact-model-id'), details);
       assert.ok(details.includes(lang === 'zh' ? '请求内模型回退' : 'Within-request fallback'), details);
       const model = await evaluate(client, `document.querySelector('.routing-detail-head').textContent`);
       assert.ok(model.includes(lang === 'zh' ? '模型：managed-provider/exact-model-id' : 'Model: managed-provider/exact-model-id'), model);
@@ -50,6 +52,10 @@ try {
       assert.ok(missing.includes(lang === 'zh' ? '当前已加载范围外' : 'outside the loaded range'), missing);
       assert.ok(missing.includes(lang === 'zh' ? '切换证据尚不完整' : 'Transition evidence incomplete'), missing);
       assert.ok(!missing.includes(lang === 'zh' ? '请求间切换证据尚不完整' : 'Request transition evidence incomplete'), missing);
+      await select(16);
+      const ambiguous = await evaluate(client, `document.querySelector('.routing-detail-block:last-of-type').textContent`);
+      assert.ok(ambiguous.includes(lang === 'zh' ? '身份未确认' : 'without a confirmed identity'), ambiguous);
+      assert.ok(!ambiguous.includes('T17') && !ambiguous.includes('T18'), ambiguous);
     });
     await check(`occlusion-focus-${name}`, async () => {
       await open('coordinates', lang, theme, width, height);

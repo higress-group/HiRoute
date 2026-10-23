@@ -23,7 +23,7 @@ export type TimelineTurn = {
   tool_continuations: number; relays: { request_id: string; from_model: string | null; to_model: string | null }[];
   assessment_state: string; assessment: { score: number; partial: boolean; target_from_turn_id?: string; target_through_turn_id?: string; target_from_ordinal: number; target_through_ordinal: number } | null;
   competence_floor_millis: number | null; protected_turn_ids: string[]; status: string; requests: TimelineRequest[];
-  transitions?: { kind: string; request_id: string; previous_request_id?: string | null; model: { native_model: string | null }; previous_model: { native_model: string | null } | null; completeness: string }[];
+  transitions?: { kind: string; request_id: string; previous_request_id?: string | null; model_changed?: boolean | null; reasoning_changed?: boolean | null; model: { native_model: string | null }; previous_model: { native_model: string | null } | null; completeness: string }[];
   cost_by_model: Cost[]; evidence_partial: boolean; content_digest: string;
 };
 type TimelinePage = { turns: TimelineTurn[]; watermark: string; complete: boolean };
@@ -184,6 +184,12 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   const overviewTabStop = turns.some(turn => turn.turn_id === overviewFocus) ? overviewFocus : selectedTurn?.turn_id;
   const coordinates = new Map(turns.map((turn, i) => [turn.turn_id, i + 1]));
   const index = (turn: TimelineTurn) => coordinates.get(turn.turn_id)!;
+  const assessmentCoordinates = new Map<string, number | null>();
+  for (const turn of turns) {
+    // Assessments refer to authoritative AgentTurnId, while timeline selection
+    // uses the opening RequestId. Ambiguous retained identities cannot locate a score.
+    if (turn.agent_turn_id) assessmentCoordinates.set(turn.agent_turn_id, assessmentCoordinates.has(turn.agent_turn_id) ? null : index(turn));
+  }
   const boundary = (turn: TimelineTurn) => turn.boundary === 'new_user_message' ? text('新消息', 'New message') : turn.boundary === 'context_rebuilt' ? text('上下文重建', 'Context rebuilt') : text('边界未确认', 'Boundary unknown');
   const laneName = (lane: Lane) => lane === 'primary' ? text('主力', 'Primary') : lane === 'regular' ? text('常规', 'Regular') : text('分组未记录', 'Group unknown');
   const tone = (lane: Lane) => lane === 'regular' ? 'cyan' : lane === 'primary' ? 'purple' : '';
@@ -274,11 +280,11 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   }
   function scoreExplanation(turn: TimelineTurn) {
     if (turn.assessment) {
-      const from = coordinates.get(turn.assessment.target_from_turn_id ?? '');
-      const through = coordinates.get(turn.assessment.target_through_turn_id ?? '');
+      const from = assessmentCoordinates.get(turn.assessment.target_from_turn_id ?? '');
+      const through = assessmentCoordinates.get(turn.assessment.target_through_turn_id ?? '');
       // Producer ordinals can restart across epochs; only exact identities share
       // the same coordinates as the overview, lane headings and selected detail.
-      const covered = from !== undefined && through !== undefined && from <= through
+      const covered = typeof from === 'number' && typeof through === 'number' && from <= through
         ? from === through ? text(`覆盖轮次 T${from}`, `covers turn T${from}`) : text(`覆盖轮次 T${from}–T${through}`, `covers turns T${from}–T${through}`)
         : text('覆盖范围包含当前已加载范围外或身份未确认的轮次', 'covers turns outside the loaded range or without a confirmed identity');
       const floor = turn.competence_floor_millis != null ? text(`，下限 ${fixed(turn.competence_floor_millis)}`, `, floor ${fixed(turn.competence_floor_millis)}`) : '';
@@ -290,7 +296,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
     return text('这一轮没有评分。', 'This agent turn was not scored.');
   }
   const status = (turn: TimelineTurn) => ({ running: text('运行中', 'Running'), completed: text('完成', 'Completed'), failed: text('失败', 'Failed'), interrupted: text('中断', 'Interrupted') } as Record<string, string>)[turn.status] ?? text('状态未知', 'Status unknown');
-  const transition = (kind: string, withinTurn = false) => kind === 'unknown' && withinTurn ? text('请求间切换证据尚不完整', 'Request transition evidence incomplete') : ({ initial_selection: text('首次选择', 'Initial selection'), between_turn_change: text('跨轮模型切换', 'Between-turn model change'), continuation_boundary: text('续接边界', 'Continuation boundary'), within_request_fallback: text('请求内模型回退', 'Within-request fallback'), credential_relay: text('凭据接力', 'Credential relay'), reasoning_change: text('推理设置变化', 'Reasoning change'), unknown: text('切换证据尚不完整', 'Transition evidence incomplete') } as Record<string, string>)[kind] ?? text('切换类型未知', 'Unknown transition');
+  const transition = (kind: string) => ({ initial_selection: text('首次选择', 'Initial selection'), between_turn_change: text('跨轮模型切换', 'Between-turn model change'), continuation_boundary: text('续接边界', 'Continuation boundary'), within_request_fallback: text('请求内模型回退', 'Within-request fallback'), credential_relay: text('凭据接力', 'Credential relay'), reasoning_change: text('推理设置变化', 'Reasoning change'), unknown: text('切换证据尚不完整', 'Transition evidence incomplete') } as Record<string, string>)[kind] ?? text('切换类型未知', 'Unknown transition');
 
   const detail = selectedTurn && (() => {
     const lane = laneOf(selectedTurn);
@@ -319,7 +325,15 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           selectedTurn.reasoning_profile_id ? text(`思考 ${selectedTurn.reasoning_profile_id}`, `reasoning ${selectedTurn.reasoning_profile_id}`) : '',
           selectedTurn.evidence_partial ? text('证据不完整', 'Incomplete evidence') : '',
         ].filter(Boolean).join(' · ')}</p>
-        {changes.map((change, i) => <p key={`transition-${i}`} className="routing-detail-facts">{transition(change.kind, Boolean(change.previous_request_id && selectedTurn.requests.some(request => request.request_id === change.previous_request_id)))}{change.previous_model?.native_model && ` · ${change.previous_model.native_model} → ${change.model.native_model ?? '?'}`}</p>)}
+        {changes.map((change, i) => {
+          const withinTurn = Boolean(change.previous_request_id && selectedTurn.requests.some(request => request.request_id === change.previous_request_id));
+          const label = change.kind !== 'unknown' || !withinTurn ? transition(change.kind)
+            : change.completeness !== 'complete' ? text('请求间切换证据尚不完整', 'Request transition evidence incomplete')
+            : change.model_changed ? text('本轮请求间模型变化', 'Model change between requests in this turn')
+            : change.reasoning_changed ? text('本轮请求间推理设置变化', 'Reasoning change between requests in this turn')
+            : text('本轮请求间变化未分类', 'Unclassified transition between requests in this turn');
+          return <p key={`transition-${i}`} className="routing-detail-facts">{label}{change.previous_model?.native_model && ` · ${change.previous_model.native_model} → ${change.model.native_model ?? '?'}`}</p>;
+        })}
         {selectedTurn.relays.map((relay, i) => <p key={`relay-${i}`} className="routing-detail-facts">{text('接力', 'Relay')} · {relay.from_model ?? '?'} → {relay.to_model ?? '?'}</p>)}
       </div>
       <div className="routing-detail-requests">
