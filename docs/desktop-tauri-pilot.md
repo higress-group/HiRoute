@@ -136,8 +136,10 @@ python3 scripts/validation.py pilot-build start \
 Select the returned `native_app.bundle` absolute `.app` path in native CU. The
 bundle has a unique per-session bundle identifier; its application executable,
 daemon and CLI are hard links to that one managed build, preserving their exact
-bytes and signatures. The build and private session root must be on the same
-filesystem. Do not copy, move or re-sign the entry: create a new owned entry if
+bytes and signatures. An already staged adjacent CPA is included only after its
+hash/size matches the build’s frozen native-target CPA manifest; absent CPA keeps
+the existing subscription-local missing-artifact behavior. The build and private
+session root must be on the same filesystem. Do not copy, move or re-sign the entry: create a new owned entry if
 its identity changes. This mode requires a reusable owner lease and its recorded
 non-persistent WebView build configuration. It does not package a release App or
 alter production launch behavior.

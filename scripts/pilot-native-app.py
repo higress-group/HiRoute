@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Private, source-attested macOS App entry for one reusable Pilot lease."""
 import contextlib
+import hashlib
 import fcntl
 import importlib.util
 import json
 import os
 from pathlib import Path
 import plistlib
+import platform
 import shlex
 import shutil
 import stat
@@ -42,6 +44,33 @@ def file_identity(path):
                 mtime_ns=info.st_mtime_ns, sha256=pilot.file_sha256(path))
 
 
+def staged_cpa(build):
+    """Preserve an explicitly staged CPA only when the compiled manifest pins it."""
+    source = Path(build["artifacts"]["daemon"]["path"]).with_name("cliproxyapi")
+    if not source.exists() and not source.is_symlink():
+        return None
+    artifact = pilot.executable_artifact(source)
+    result = Path(build["result"])
+    record = json.loads(result.read_text())
+    manifest_bytes = result.with_name("cpa-manifest.json").read_bytes()
+    pinned = record.get("pilot_reuse", {}).get("recipe", {}).get("cpa_manifest", {}).get("sha256")
+    if hashlib.sha256(manifest_bytes).hexdigest() != pinned:
+        raise ValueError("Staged CPA manifest does not match the compiled build input")
+    manifest = json.loads(manifest_bytes)
+    system = "macos" if sys.platform == "darwin" else sys.platform
+    machine = platform.machine().lower()
+    arch = {"arm64": "aarch64", "amd64": "x86_64"}.get(machine, machine)
+    matches = [item for item in manifest.get("artifacts", [])
+               if item.get("os") == system and item.get("arch") == arch]
+    if manifest.get("schema") != "hiroute.desktop.cpa-artifacts/v1" or len(matches) != 1:
+        raise ValueError("Staged CPA manifest has no unique native target")
+    selected = matches[0]
+    if (selected.get("binary_name") != "cliproxyapi" or selected.get("sha256") != artifact["sha256"]
+            or selected.get("size") != artifact["size"]):
+        raise ValueError("Staged CPA does not match the compiled manifest hash/size")
+    return artifact
+
+
 def verify(row, session):
     native = row["native_app"]
     if native["state"] != "enabled":
@@ -62,6 +91,8 @@ def verify(row, session):
         row["build_run"], native["source_artifacts"]["app"]["path"], row["source_sha"])
     if build["artifacts"] != native["source_artifacts"]:
         raise ValueError("Native App source build changed")
+    if native["source_cpa"] is not None and staged_cpa(build) != native["source_cpa"]:
+        raise ValueError("Native App staged CPA was replaced or modified")
     record = json.loads(Path(row["build_result"]).read_text())
     lease = record.get("pilot_leases", {}).get(native["lease"], {})
     if lease.get("state") != "open" or not any(
@@ -76,7 +107,6 @@ def verify(row, session):
         window["incognito"] = True
     overlay["app"]["windows"] = windows
     overlay["build"] = {"frontendDist": str(checkout / "apps/desktop/dist")}
-    import hashlib
     expected = hashlib.sha256(json.dumps(overlay, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
     if record.get("pilot_frontend", {}).get("tauri_config_sha256") != expected:
         raise ValueError("Native App needs an attested non-persistent WebView configuration")
@@ -92,7 +122,11 @@ def prepare(args, build, root, runtime, temporary, data, working, log, process_h
     binaries = pilot.make_subdirectory(contents, "MacOS")
     resources = pilot.make_subdirectory(contents, "Resources")
     artifacts = {}
-    for role, source in build["artifacts"].items():
+    cpa = staged_cpa(build)
+    sources = dict(build["artifacts"])
+    if cpa is not None:
+        sources["cpa"] = cpa
+    for role, source in sources.items():
         pilot.artifact_is_unchanged(source)
         destination = binaries / Path(source["path"]).name
         # Same-volume links keep one compiled binary set and preserve its signature.
@@ -135,7 +169,7 @@ def prepare(args, build, root, runtime, temporary, data, working, log, process_h
                    bundle, contents, binaries, resources)
     row["native_app"] = dict(bundle=str(bundle), bundle_identifier=identifier, state="enabled",
                              lease=args.managed_lease, generation=0, environment=environment,
-                             source_artifacts=build["artifacts"],
+                             source_artifacts=build["artifacts"], source_cpa=cpa,
                              directories={str(path): pilot.directory_identity(path) for path in directories},
                              files=[file_identity(path) for path in (launcher, contents / "Info.plist",
                                     resources / "desktop-pilot.py", resources / "pilot-native-app.py")])

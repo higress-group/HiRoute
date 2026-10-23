@@ -4,6 +4,8 @@ import hashlib
 import importlib.util
 import json
 import os
+import platform
+import sys
 from pathlib import Path
 import shutil
 import signal
@@ -112,6 +114,11 @@ class NativeEntry(unittest.TestCase):
         self.patch.start()
         self.addCleanup(self.patch.stop)
         self.build = pilot.verify_managed_pilot_build(self.run, str(debug / 'hiroute-desktop'), sha)
+        self.prepare_entry()
+        self.processes = []
+        self.addCleanup(self.cleanup_processes)
+
+    def prepare_entry(self):
         directories = {name: pilot.make_subdirectory(self.root, name) for name in ('runtime', 'tmp', 'data', 'working', 'logs')}
         log = directories['logs'] / 'desktop.log'
         log.touch(mode=0o600)
@@ -119,8 +126,6 @@ class NativeEntry(unittest.TestCase):
             self.session, self.row = native.prepare(
                 types.SimpleNamespace(managed_lease='lease', diagnostic_level='debug'), self.build, self.root,
                 directories['runtime'], directories['tmp'], directories['data'], directories['working'], log, None)
-        self.processes = []
-        self.addCleanup(self.cleanup_processes)
 
     def save_record(self):
         self.record_path.write_text(json.dumps(self.record))
@@ -213,6 +218,37 @@ class NativeEntry(unittest.TestCase):
                 self.assertEqual(native.observe(self.session)[0]['pid'], 0)
                 path.write_bytes(original)
                 os.utime(path, ns=original_times)
+
+    def test_staged_cpa_preserves_compiled_pin_and_is_retired_with_owned_entry(self):
+        source = Path(self.build['artifacts']['daemon']['path']).with_name('cliproxyapi')
+        shutil.copyfile(self.binary, source)
+        source.chmod(0o700)
+        artifact = pilot.executable_artifact(source)
+        machine = platform.machine().lower()
+        manifest = {'schema': 'hiroute.desktop.cpa-artifacts/v1', 'artifacts': [{
+            'os': 'macos' if sys.platform == 'darwin' else sys.platform,
+            'arch': {'arm64': 'aarch64', 'amd64': 'x86_64'}.get(machine, machine),
+            'binary_name': 'cliproxyapi', 'sha256': artifact['sha256'], 'size': artifact['size']}]}
+        contents = json.dumps(manifest).encode()
+        self.record_path.with_name('cpa-manifest.json').write_bytes(contents)
+        self.record['pilot_reuse']['recipe'] = {'cpa_manifest': {'sha256': hashlib.sha256(contents).hexdigest()}}
+        self.save_record()
+        shutil.rmtree(self.root)  # This test has not launched the owned fixture yet.
+        self.root.mkdir(mode=0o700)
+        self.prepare_entry()
+        deployed = Path(self.row['artifacts']['cpa']['path'])
+        self.assertEqual(deployed.stat().st_ino, source.stat().st_ino)
+        native.verify(self.row, self.session)
+        self.record_path.with_name('cpa-manifest.json').write_bytes(contents + b' ')
+        with self.assertRaisesRegex(ValueError, 'compiled build input'):
+            native.verify(self.row, self.session)
+        self.record_path.with_name('cpa-manifest.json').write_bytes(contents)
+        native.stop(self.session, revoke=True)
+        self.assertFalse(deployed.exists())
+        self.assertTrue(source.is_file())
+        source.write_bytes(b'replacement')
+        with self.assertRaisesRegex(ValueError, 'compiled manifest hash/size'):
+            native.staged_cpa(self.build)
 
     def test_closed_lease_or_missing_incognito_attestation_refused(self):
         for mutate in ('lease', 'config'):
