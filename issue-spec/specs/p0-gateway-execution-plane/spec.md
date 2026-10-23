@@ -130,6 +130,17 @@ Unknown envelope/metadata variants, safety buffering and verification are not
 covered by this admission. Missing terminals, errors and refusals retain their
 existing meaning; ignored notification content cannot manufacture successful capture.
 
+Declared reasoning omission covers recognized native structures, not unknown
+continuation semantics. Responses reasoning history recognizes its existing item
+metadata and encrypted-content carrier, plus ordered `summary_text`/`text` and
+`reasoning_text`/`text` parts in `summary` and `content`. Unknown item/part fields,
+unknown text variants or non-text carriers keep their original same-protocol
+payload but make cross-protocol projection explicitly unavailable. They cannot
+authorize provider-prefix reuse or cleanup. This shape decision precedes Replay
+externalization; moving bytes out of line does not change the result. Known
+encrypted, signed, unsigned and redacted reasoning keeps its existing mapping and
+actual-projection WARN contract.
+
 ### Requirement: Decision history has one bounded process-local owner
 
 The history owner resolves bounded predecessor evidence and admits independent

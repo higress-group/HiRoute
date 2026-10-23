@@ -82,6 +82,15 @@ terminal, refusal or error. Unknown variants, including safety-control siblings,
 remain unsupported; [stream regressions](src/adapters/response/moderation_metadata_tests.rs)
 cover fragmentation, lifecycle placement, tool completion and negative controls.
 
+Responses reasoning history is admitted by
+[the ingress shape owner](src/adapters/responses_options.rs) before Replay
+externalization. Known summary/content text and encrypted state keep their declared
+protocol mappings and actual-projection WARN accounting. Unknown item/part fields
+or plaintext variants remain intact for native forwarding, exclude cross-protocol
+candidates and cannot authorize provider-prefix affinity or cleanup. The
+[reasoning-extension regressions](src/adapters/tests/reasoning_extensions.rs)
+check inline/Replay equivalence and known signed/redacted/encrypted controls.
+
 ## Native session correlation
 
 [context_hold/identity.rs](src/context_hold/identity.rs) resolves native identity

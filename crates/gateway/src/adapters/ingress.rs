@@ -200,8 +200,10 @@ fn decode_responses(
                     responses_message_phases.insert(message_index, phase);
                 }
                 if item_type == Some("reasoning") {
-                    responses_reasoning_history
-                        .insert(message_index, responses_options::reasoning_history(item)?);
+                    responses_reasoning_history.insert(
+                        message_index,
+                        responses_options::reasoning_history(context, item)?,
+                    );
                 }
             }
         }
