@@ -19,6 +19,7 @@ type Content = { content_id: string; role: string; kind: string; state: string; 
 type Hit = { session_id: string; request_id: string; content_id: string; original_text_offset: number };
 type Ancestry = { roots: { state: string }[]; gap: string | null };
 type ContentState = 'recorded' | 'partial' | 'cleared';
+const isCleared = (completeness?: string) => completeness === 'deleted' || completeness === 'expired';
 const errorCode = (error: unknown) => safeDiagnosticCode(error, 'LOCAL_SERVICE_UNAVAILABLE');
 function sessionTimeLabel(value: number, language: 'zh' | 'en') {
   const date = new Date(value);
@@ -89,6 +90,16 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   const keywordTimer = useRef<number | null>(null);
   const initialTarget = useRef(initialSession);
   const initialRequestTarget = useRef(initialRequest);
+  function acceptSummaryVisibility(summaries: Summary[]) {
+    // Called only after the read's generation guard. Current metadata supersedes
+    // a local cleanup-success hint, including a session revived by new traffic.
+    setSessionContentStates(current => {
+      if (!summaries.some(item => item.session_id in current)) return current;
+      const next = { ...current };
+      for (const item of summaries) delete next[item.session_id];
+      return next;
+    });
+  }
   function clearTimelineSelection() {
     timelineGeneration.current++;
     setBusy(false); setTimelineError('');
@@ -120,6 +131,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
       } else {
         const page = await read<Page<{ sessions: Summary[] }>>('sessions', { ...queryWindow, session_id: null, limit: 50, cursor, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: effectiveOnlySwitch });
         if (epoch !== generation.current) return;
+        acceptSummaryVisibility(page.sessions);
         setListLoaded(true); setSessions(current => cursor ? [...current, ...page.sessions] : page.sessions); setSessionCursor(page.next_cursor); setHits([]); setPartial(false);
       }
     } catch (e) {
@@ -136,6 +148,42 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     void load();
     return () => { generation.current++; };
   }, [reload, refreshVersion, active]);
+  // Refresh just the selected summary. List pagination keeps its original window
+  // and order; a newer selected row must not restart that query or its selection.
+  useEffect(() => {
+    if (!active || !session || cleanupOpen) return;
+    let stopped = false, inFlight = false;
+    let timer: number | undefined;
+    const controller = new AbortController();
+    const schedule = () => {
+      window.clearTimeout(timer);
+      if (!stopped && document.visibilityState !== 'hidden') timer = window.setTimeout(() => void refreshSummary(), 2000);
+    };
+    async function refreshSummary() {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      const listGeneration = generation.current;
+      const detailGeneration = timelineGeneration.current;
+      try {
+        const page = await read<Page<{ sessions: Summary[] }>>('sessions', {
+          session_id: session, from_ms: 0, to_ms: Date.now() + 1, limit: 1, cursor: null,
+          agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: false,
+        }, controller.signal);
+        if (stopped || document.hidden || listGeneration !== generation.current || detailGeneration !== timelineGeneration.current) return;
+        const updated = page.sessions.find(item => item.session_id === session);
+        if (updated) {
+          acceptSummaryVisibility([updated]);
+          setFocusedSummary(updated);
+          setSessions(current => current.map(item => item.session_id === session ? updated : item));
+        }
+      } catch { /* Retain the last summary; the next visible read can recover. */ }
+      finally { inFlight = false; schedule(); }
+    }
+    const visibility = () => { window.clearTimeout(timer); if (document.visibilityState !== 'hidden') void refreshSummary(); };
+    document.addEventListener('visibilitychange', visibility);
+    schedule();
+    return () => { stopped = true; controller.abort(); window.clearTimeout(timer); document.removeEventListener('visibilitychange', visibility); };
+  }, [session, active, cleanupOpen, reload, refreshVersion]);
   useEffect(() => {
     if (!searchMounted.current) { searchMounted.current = true; return; }
     const timer = window.setTimeout(() => { keywordTimer.current = null; void load(null, { keyword }); }, 260);
@@ -168,7 +216,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
       ]);
       if (epoch !== timelineGeneration.current) return;
       if (exactRequest && !page.requests.some(item => item.request_id === exactRequest)) setTimelineError('OBSERVATION_REQUEST_UNAVAILABLE');
-      if (!cursor && summaryPage?.sessions[0]) setFocusedSummary(summaryPage.sessions[0]);
+      if (!cursor && summaryPage?.sessions[0]) { acceptSummaryVisibility(summaryPage.sessions); setFocusedSummary(summaryPage.sessions[0]); }
       setRequests(current => cursor ? [...current, ...page.requests] : page.requests); setRequestCursor(page.next_cursor);
       if (!cursor && !hit && !exactRequest) {
         const first = page.requests[0]?.request_id ?? null;
@@ -239,6 +287,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   }
   const selectedSummary = sessions.find(item => item.session_id === session)
     ?? (focusedSummary?.session_id === session ? focusedSummary : undefined);
+  const selectedContentCleared = Boolean(session && sessionContentStates[session] === 'cleared') || isCleared(selectedSummary?.content_completeness);
   const agentName = (id?: string) => !id
     ? text('未关联 Agent', 'Unlinked Agent')
     : id.toLowerCase().includes('codex') ? 'Codex'
@@ -307,28 +356,28 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
               const context = sessions.find(item => item.session_id === hit.session_id);
               return <button className={`session-item${session === hit.session_id ? ' active' : ''}`} key={hit.session_id} aria-current={session === hit.session_id ? 'page' : undefined} onClick={() => void timeline(hit.session_id, null, hit)}>
                 <div className="session-item-top"><span className="muted session-item-time">{context ? sessionTimeLabel(context.last_request_at_ms, language) : text('搜索命中', 'Match')}</span></div>
-                <div className="session-item-title"><ContentExcerpt hit={hit} language={language} fallback={text('查看命中正文', 'Open matching content')} revision={refreshVersion + reload} /></div>
-                <div className="session-item-meta">{context ? <><span>{agentName(context.agent_id)}</span>{sessionRoutes[context.session_id] && <><span>·</span><span>{sessionRoutes[context.session_id]}</span></>}{sessionModels[context.session_id] && <><span>·</span><span>{sessionModels[context.session_id]}</span></>}</> : text('点击读取所在会话', 'Open the matching session')}</div>
+                <div className="session-item-title"><ContentExcerpt active={active} contentCleared={sessionContentStates[hit.session_id] === 'cleared' || isCleared(context?.content_completeness)} hit={hit} language={language} fallback={text('查看命中正文', 'Open matching content')} revision={refreshVersion + reload} /></div>
+                <div className="session-item-meta">{context ? <><span>{agentName(context.agent_id)}</span>{sessionRoutes[context.session_id] && <><span>·</span><span>Plan: {sessionRoutes[context.session_id]}</span></>}{sessionModels[context.session_id] && <><span>·</span><span>{sessionModels[context.session_id]}</span></>}</> : text('点击读取所在会话', 'Open the matching session')}</div>
               </button>;
             })}
             {searchCursor && !listError && <button className="btn session-more" disabled={listBusy} onClick={() => void load(searchCursor)}>{text('加载更多结果', 'Load more results')}</button>}
             {!listBusy && !listError && !hits.length && <div className="empty-state session-list-empty"><div><span className="empty-icon"><UiIcon name="search" /></span><h3>{partial ? text('尚未找到匹配', 'No match found yet') : text('没有匹配的会话', 'No matching sessions')}</h3><p>{partial ? text('部分正文暂不可搜索，可稍后刷新。', 'Some content is not searchable yet. Refresh later.') : text('试试其他关键词。', 'Try another keyword.')}</p></div></div>}
-          </> : <>{sessions.map(item => { const contentState = sessionContentStates[item.session_id] ?? (['deleted', 'expired'].includes(item.content_completeness) ? 'cleared' : item.content_completeness === 'complete' ? 'recorded' : 'partial'); return <button className={`session-item${session === item.session_id ? ' active' : ''}`} key={item.session_id} aria-current={session === item.session_id ? 'page' : undefined} onClick={() => void timeline(item.session_id)}><div className="session-item-top"><span className="muted session-item-time">{sessionTimeLabel(item.last_request_at_ms, language)}</span>{contentState === 'cleared' ? <span className="badge warn no-dot">{text('正文已清理', 'Content cleared')}</span> : contentState === 'partial' ? <span className="badge warn no-dot">{text('记录不完整', 'Incomplete record')}</span> : item.fallback_request_count > 0 && <span className="badge warn no-dot">{text('请求内回退', 'Request fallback')}</span>}</div><div className="session-item-title"><ContentExcerpt session={item.session_id} language={language} fallback={text('会话记录', 'Session')} limit={48} revision={`${refreshVersion + reload}:${item.last_request_at_ms}:${item.request_count}`} onModel={model => setSessionModels(current => current[item.session_id] === model ? current : { ...current, [item.session_id]: model })} onRoute={route => setSessionRoutes(current => current[item.session_id] === route ? current : { ...current, [item.session_id]: route })} /></div><div className="session-item-meta"><span>{agentName(item.agent_id)}</span>{sessionRoutes[item.session_id] && <><span>·</span><span>{sessionRoutes[item.session_id]}</span></>}{sessionModels[item.session_id] && <><span>·</span><span>{sessionModels[item.session_id]}</span></>}{!sessionRoutes[item.session_id] && !sessionModels[item.session_id] && <><span>·</span><span>{item.request_count} {text('个请求', 'requests')}</span></>}</div></button>; })}{sessionCursor && !listError && <button className="btn session-more" disabled={listBusy} onClick={() => void load(sessionCursor)}>{text('加载更多会话', 'Load more sessions')}</button>}{!busy && !listError && listLoaded && !sessions.length && <div className="empty-state session-list-empty"><div><h3>{text('当前筛选没有会话', 'No sessions match this filter')}</h3><p>{text('切换到全部会话。', 'Show all sessions.')}</p></div></div>}</>}
+          </> : <>{sessions.map(item => { const contentState = sessionContentStates[item.session_id] ?? (isCleared(item.content_completeness) ? 'cleared' : item.content_completeness === 'complete' ? 'recorded' : 'partial'); return <button className={`session-item${session === item.session_id ? ' active' : ''}`} key={item.session_id} aria-current={session === item.session_id ? 'page' : undefined} onClick={() => void timeline(item.session_id)}><div className="session-item-top"><span className="muted session-item-time">{sessionTimeLabel(item.last_request_at_ms, language)}</span>{contentState === 'cleared' ? <span className="badge warn no-dot">{text('正文已清理', 'Content cleared')}</span> : contentState === 'partial' ? <span className="badge warn no-dot">{text('记录不完整', 'Incomplete record')}</span> : item.fallback_request_count > 0 && <span className="badge warn no-dot">{text('请求内回退', 'Request fallback')}</span>}</div><div className="session-item-title"><ContentExcerpt active={active} contentCleared={contentState === 'cleared'} session={item.session_id} language={language} fallback={text('会话记录', 'Session')} limit={48} revision={`${refreshVersion + reload}:${item.last_request_at_ms}:${item.request_count}`} onModel={model => setSessionModels(current => current[item.session_id] === model ? current : { ...current, [item.session_id]: model })} onRoute={route => setSessionRoutes(current => current[item.session_id] === route ? current : { ...current, [item.session_id]: route })} /></div><div className="session-item-meta"><span>{agentName(item.agent_id)}</span>{sessionRoutes[item.session_id] && <><span>·</span><span>Plan: {sessionRoutes[item.session_id]}</span></>}{sessionModels[item.session_id] && <><span>·</span><span>{sessionModels[item.session_id]}</span></>}{!sessionRoutes[item.session_id] && !sessionModels[item.session_id] && <><span>·</span><span>{item.request_count} {text('个请求', 'requests')}</span></>}</div></button>; })}{sessionCursor && !listError && <button className="btn session-more" disabled={listBusy} onClick={() => void load(sessionCursor)}>{text('加载更多会话', 'Load more sessions')}</button>}{!busy && !listError && listLoaded && !sessions.length && <div className="empty-state session-list-empty"><div><h3>{text('当前筛选没有会话', 'No sessions match this filter')}</h3><p>{text('切换到全部会话。', 'Show all sessions.')}</p></div></div>}</>}
         </div>
       </aside>
 
       <section className="session-transcript">
         {session ? <article className="session-detail">
           <div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => { timelineGeneration.current++; factGeneration.current++; setSession(null); setRequest(null); setFactsOpen(false); if (!listLoaded) void load(); }}><UiIcon name="arrowLeft" />{text('返回会话列表', 'Back to sessions')}</button></div>
-          <header className="transcript-head"><div><h2><ContentExcerpt session={session} language={language} fallback={text('会话正文', 'Conversation')} limit={56} revision={refreshVersion + reload} onModel={model => setSessionModels(current => current[session] === model ? current : { ...current, [session]: model })} onRoute={route => setSessionRoutes(current => current[session] === route ? current : { ...current, [session]: route })} /></h2><p>{[agentName(selectedSummary?.agent_id), sessionRoutes[session], selectedSummary ? sessionTimeLabel(selectedSummary.last_request_at_ms, language) : undefined].filter(Boolean).join(' · ')}</p></div><div className="transcript-actions">{routed && <div className="segmented session-view-tabs" role="group" aria-label={text('会话视图', 'Session view')}>{([['timeline', text('路由时间线', 'Routing timeline')], ['conversation', text('对话', 'Conversation')]] as const).map(([value, label]) => <button key={value} type="button" className={`segment${pane === value ? ' active' : ''}`} aria-pressed={pane === value} onClick={() => setSessionView(value)}>{label}</button>)}</div>}<button className="btn" type="button" disabled={!request} onClick={() => factsOpen ? setFactsOpen(false) : openFacts()}><UiIcon name="activity" />{factsOpen ? text('收起运行记录', 'Hide run record') : text('运行记录', 'Run record')}</button>{!factsOpen && <button className="icon-btn" type="button" aria-label={text('清理此会话', 'Clear this session')} disabled={busy} onClick={() => { setCleanupError(''); setCleanupOpen(true); }}><UiIcon name="trash" /></button>}</div></header>
+          <header className="transcript-head"><div><h2><ContentExcerpt active={active} contentCleared={selectedContentCleared} session={session} language={language} fallback={text('会话正文', 'Conversation')} limit={56} revision={`${refreshVersion + reload}:${selectedSummary?.last_request_at_ms}:${selectedSummary?.request_count}`} onModel={model => setSessionModels(current => current[session] === model ? current : { ...current, [session]: model })} onRoute={route => setSessionRoutes(current => current[session] === route ? current : { ...current, [session]: route })} /></h2><p>{[agentName(selectedSummary?.agent_id), sessionRoutes[session] ? `Plan: ${sessionRoutes[session]}` : undefined, selectedSummary ? sessionTimeLabel(selectedSummary.last_request_at_ms, language) : undefined].filter(Boolean).join(' · ')}</p></div><div className="transcript-actions">{routed && <div className="segmented session-view-tabs" role="group" aria-label={text('会话视图', 'Session view')}>{([['timeline', text('路由时间线', 'Routing timeline')], ['conversation', text('对话', 'Conversation')]] as const).map(([value, label]) => <button key={value} type="button" className={`segment${pane === value ? ' active' : ''}`} aria-pressed={pane === value} onClick={() => setSessionView(value)}>{label}</button>)}</div>}<button className="btn" type="button" disabled={!request} onClick={() => factsOpen ? setFactsOpen(false) : openFacts()}><UiIcon name="activity" />{factsOpen ? text('收起运行记录', 'Hide run record') : text('运行记录', 'Run record')}</button>{!factsOpen && <button className="icon-btn" type="button" aria-label={text('清理此会话', 'Clear this session')} disabled={busy} onClick={() => { setCleanupError(''); setCleanupOpen(true); }}><UiIcon name="trash" /></button>}</div></header>
           {focusedRequest && focusedRequest === request && <div className="callout session-detail-feedback session-request-focus" data-request-id={focusedRequest} role="status"><UiIcon name="activity" /><div><strong>{selectedRequest ? text('已定位所选请求', 'Selected request') : timelineError ? text('所选请求不可用', 'Selected request unavailable') : text('正在定位所选请求…', 'Locating selected request…')}</strong>{selectedRequest && <p>{new Date(selectedRequest.started_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}{selectedRequest.final_native_model && ' · ' + selectedRequest.final_native_model}<br />{text('下方包含本次请求的历史对话和回复。', 'The content below includes this request’s conversation history and response.')}</p>}</div><button className="btn" type="button" onClick={() => void timeline(session)}>{text('查看完整会话', 'View full session')}</button></div>}
           {timelineError && <div className="callout bad session-detail-feedback" role="alert" data-error-code={timelineError}><UiIcon name="warning" /><div><strong>{text('会话详情没有刷新', 'The session details were not refreshed')}</strong><p>{nativeConnectionReadText(timelineError, language) ?? (requests.length ? text('已加载的请求仍然保留。', 'Previously loaded requests are still available.') : text('暂时无法读取这条会话。', 'This session is temporarily unavailable.'))}</p><button className="btn" type="button" onClick={() => void timeline(session, null, undefined, focusedRequest)}>{text('重试', 'Retry')}</button></div></div>}
           <div className={`session-routing-and-conversation show-${pane}`}>
           <Disclosure className="native-details session-model-performance" label={text('本会话的模型表现', 'Model performance in this session')} language={language} onOpenChange={setQualityOpen}><PlanQuality key={session} sessionId={session} language={language} compact active={active && qualityOpen} refreshVersion={refreshVersion + reload} onOpenEvidence={(targetSession, targetRequest) => void timeline(targetSession, null, undefined, targetRequest)} /></Disclosure>
-          <div className="session-pane" hidden={pane !== 'timeline'}><RoutingTimeline key={session} session={session} language={language} active={active} displayed={pane === 'timeline'} refreshVersion={refreshVersion + reload} requestId={routingRequestId} onOpenPerformance={setQualityPlan} onAvailability={setRouting} onSelectRequest={selectTimelineRequest} onViewConversation={item => { selectTimelineRequest(item); setSessionView('conversation'); }} /></div>
+          <div className="session-pane" hidden={pane !== 'timeline'}><RoutingTimeline key={session} session={session} contentCleared={selectedContentCleared} clearedRequestIds={Object.keys(requestContentStates).filter(id => requestContentStates[id] === 'cleared')} language={language} active={active} displayed={pane === 'timeline'} refreshVersion={refreshVersion + reload} requestId={routingRequestId} onOpenPerformance={setQualityPlan} onAvailability={setRouting} onSelectRequest={selectTimelineRequest} onViewConversation={item => { selectTimelineRequest(item); setSessionView('conversation'); }} /></div>
           <section className="routing-conversation" hidden={pane !== 'conversation'} aria-label={text('对话', 'Conversation')}>
           {requests.length > 1 && <Disclosure className="native-details request-timeline" label={text(`请求记录（${requests.length}）`, `Requests (${requests.length})`)} language={language}><nav className="native-list" aria-label={text('请求时间线', 'Request timeline')}>{requests.map((item, index) => <button className={`list-row${request === item.request_id ? ' active' : ''}`} key={item.request_id} aria-current={request === item.request_id ? 'true' : undefined} onClick={() => { setRequestPicked(true); setRequest(item.request_id); setReadingRequests([item.request_id]); setAnchor(null); }}><span className="row-main"><span className="row-title">{text('请求', 'Request')} {index + 1}</span><span className="row-meta">{item.routing_context?.state === 'recorded' && item.routing_context.display_name ? item.routing_context.display_name : item.final_native_model ?? text('路由未记录', 'Route not recorded')}{item.within_request_fallback === true ? text(' · 请求内回退', ' · Request fallback') : item.between_turn_model_change === true ? text(' · 跨轮切换', ' · Turn change') : ''}</span></span></button>)}{requestCursor && <button className="btn" disabled={busy} onClick={() => void timeline(session, requestCursor)}>{text('加载更多请求', 'Load more requests')}</button>}</nav></Disclosure>}
-          {displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setRequestPicked(true); setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
+          {displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody contentCleared={selectedContentCleared || requestContentStates[id] === 'cleared'} request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setRequestPicked(true); setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
           </section></div>
         </article> : <div className="empty-state session-no-selection"><div><span className="empty-icon"><UiIcon name="sessions" /></span><h3>{text('选择一个会话', 'Select a session')}</h3></div></div>}
       </section>
@@ -347,7 +396,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     </Dialog>
   </ProductPage>;
 }
-function RequestBody({ request, summary, attemptModels, anchor, language, onOpenFacts, onContentState, onNextRequest, onMoreRequests }: { request: string; summary?: Request; attemptModels: string[]; anchor: Hit | null; language: 'zh' | 'en'; onOpenFacts(): void; onContentState(requestId: string, state: ContentState): void; onNextRequest?: () => void; onMoreRequests?: () => void }) {
+function RequestBody({ request, contentCleared, summary, attemptModels, anchor, language, onOpenFacts, onContentState, onNextRequest, onMoreRequests }: { request: string; contentCleared: boolean; summary?: Request; attemptModels: string[]; anchor: Hit | null; language: 'zh' | 'en'; onOpenFacts(): void; onContentState(requestId: string, state: ContentState): void; onNextRequest?: () => void; onMoreRequests?: () => void }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const [catalog, setCatalog] = useState<Content[]>([]);
   const [events, setEvents] = useState<Record<string, ReadableEvent>>({});
@@ -396,9 +445,10 @@ function RequestBody({ request, summary, attemptModels, anchor, language, onOpen
     finally { if (epoch === generation.current) setBusy(false); }
   }
   useEffect(() => {
+    if (contentCleared) { setCatalog([]); setEvents({}); setCursor(null); return; }
     controller.current = new AbortController(); void load();
     return () => { generation.current++; controller.current.abort(); };
-  }, [request]);
+  }, [request, contentCleared]);
   async function checkAncestry(roots: string[], partial: boolean, epoch: number) {
     if (partial) setAncestryIncomplete(true);
     if (!roots.length) return;
@@ -411,8 +461,14 @@ function RequestBody({ request, summary, attemptModels, anchor, language, onOpen
     ? 'cleared'
     : !catalog.length || contentIncomplete ? 'partial' : 'recorded';
   useEffect(() => {
-    if (catalogLoaded || error) onContentState(request, contentState);
-  }, [request, contentState, catalogLoaded, error, onContentState]);
+    if (!contentCleared && (catalogLoaded || error)) onContentState(request, contentState);
+  }, [request, contentState, contentCleared, catalogLoaded, error, onContentState]);
+  // Hide child message caches immediately; preserve navigation to new requests.
+  if (contentCleared) return <section className="transcript-body">
+    <p className="oc-meta">{text('正文已清理', 'Content cleared')}</p>
+    {onNextRequest && <button className="btn" type="button" onClick={onNextRequest}>{text('继续读取下一请求', 'Continue to next request')}</button>}
+    {onMoreRequests && <button className="btn" type="button" onClick={onMoreRequests}>{text('加载更多请求', 'Load more requests')}</button>}
+  </section>;
   const occurrences = groupOccurrences(catalog.filter(item => displayableContent(item.kind)));
   const displayRuns = contentDisplayRuns(occurrences);
   // Input may replay answers from other models; a request's model and fallback
@@ -590,6 +646,7 @@ async function completeTitlePart(requestId: string, contentId: string, signal: A
   const seen = new Set<string>();
   do {
     const page: { state: string; chunks: { text: string }[]; next_cursor: string | null } = await read('content', { request_id: requestId, content_id: contentId, cursor, anchor_offset: null }, signal);
+    if (signal.aborted || ['deleted', 'expired'].includes(page.state)) return { text: null, incomplete: true };
     const next = page.chunks.map(chunk => chunk.text).join('');
     byteCount += new TextEncoder().encode(next).length;
     if (byteCount > TITLE_CONTENT_LIMIT) return { text: null, incomplete: true };
@@ -610,8 +667,8 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
     const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null } = await read('catalog', { request_id: requestId, limit: 200, cursor }, signal);
     contents.push(...page.contents);
     state.sawContent ||= page.contents.length > 0;
-    state.allDeleted &&= page.contents.every(item => item.state === 'deleted');
-    state.incomplete ||= Boolean(page.roots_partial) || page.contents.some(item => !['available', 'complete', 'deleted'].includes(item.state));
+    state.allDeleted &&= page.contents.every(item => ['deleted', 'expired'].includes(item.state));
+    state.incomplete ||= Boolean(page.roots_partial) || page.contents.some(item => !['available', 'complete', 'deleted', 'expired'].includes(item.state));
     cursor = page.next_cursor ?? null;
     if (cursor && seen.has(cursor)) { state.incomplete = true; break; }
     if (cursor) seen.add(cursor);
@@ -645,97 +702,134 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
 }
 
 /** `request` shows that request's latest user message, e.g. the message that opened an agent turn. */
-export function ContentExcerpt({ session, request, hit, language, fallback = '', limit = 160, revision = 0, onCompleteness, onContentState, onModel, onRoute }: { session?: string; request?: string; hit?: Hit; language: 'zh' | 'en'; fallback?: string; limit?: number; revision?: number | string; onCompleteness?: (incomplete: boolean) => void; onContentState?: (state: ContentState) => void; onModel?: (model: string) => void; onRoute?: (route: string) => void }) {
+export function ContentExcerpt({ session, request, hit, language, fallback = '', limit = 160, revision = 0, active = true, contentCleared = false, onCompleteness, onContentState, onModel, onRoute }: { session?: string; request?: string; hit?: Hit; language: 'zh' | 'en'; fallback?: string; limit?: number; revision?: number | string; active?: boolean; contentCleared?: boolean; onCompleteness?: (incomplete: boolean) => void; onContentState?: (state: ContentState) => void; onModel?: (model: string) => void; onRoute?: (route: string) => void }) {
   const node = useRef<HTMLSpanElement>(null);
-  const [value, setValue] = useState('');
-  const [invalidation, setInvalidation] = useState(0);
-  const requestKey = JSON.stringify([request, limit, revision, invalidation]);
-  const [requestResult, setRequestResult] = useState<{ key: string; phase: 'pending' | 'available' | 'unavailable' | 'cleared'; text: string } | null>(null);
-  useEffect(() => { const invalidate = () => { setValue(''); setInvalidation(v => v + 1); }; window.addEventListener('hiroute-content-invalidated', invalidate); return () => window.removeEventListener('hiroute-content-invalidated', invalidate); }, []);
+  const key = JSON.stringify([session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset, limit, revision]);
+  type ExcerptStatus = 'loading' | 'pending' | 'ready' | 'absent' | 'cleared' | 'error';
+  const [result, setResult] = useState<{ key: string; value: string; status: ExcerptStatus }>({ key, value: '', status: 'loading' });
+  const current = result.key === key ? result : { key, value: '', status: 'loading' as const };
+  const { value, status } = current;
+  const setValue = (value: string) => setResult(previous => ({ ...(previous.key === key ? previous : current), key, value }));
+  const setStatus = (status: ExcerptStatus) => setResult(previous => ({ ...(previous.key === key ? previous : current), key, status }));
+  const callbacks = useRef({ onCompleteness, onContentState, onModel, onRoute });
+  callbacks.current = { onCompleteness, onContentState, onModel, onRoute };
+  useEffect(() => { setResult({ key, value: '', status: 'loading' }); }, [key]);
   useEffect(() => {
-    const controller = new AbortController(); let started = false;
-    setValue('');
-    setRequestResult(request ? { key: requestKey, phase: 'pending', text: '' } : null);
+    if (contentCleared) {
+      setValue(''); setStatus('cleared');
+      callbacks.current.onCompleteness?.(false);
+      callbacks.current.onContentState?.('cleared');
+      return;
+    }
+    let stopped = false, visible = false, inFlight = false, resolved = false;
+    let timer: number | undefined, controller: AbortController | undefined;
+    let retryMs = 2000;
+    const eligible = () => !stopped && active && visible && document.visibilityState !== 'hidden';
+    const schedule = () => {
+      window.clearTimeout(timer);
+      if (eligible() && !resolved) {
+        timer = window.setTimeout(() => void load(), retryMs);
+        retryMs = Math.min(retryMs * 2, 30000);
+      }
+    };
+    function report(title: string | null, state: TitleScanState) {
+      const cleared = state.sawContent && state.allDeleted && !state.incomplete;
+      resolved = cleared || (state.sawContent && !state.incomplete);
+      setValue(title === null ? '' : excerpt(title, limit));
+      setStatus(cleared ? 'cleared' : !resolved ? 'pending' : title !== null ? 'ready' : 'absent');
+      callbacks.current.onCompleteness?.(!resolved);
+      callbacks.current.onContentState?.(cleared ? 'cleared' : resolved ? 'recorded' : 'partial');
+    }
     async function load() {
+      if (!eligible() || inFlight || resolved) return;
+      inFlight = true;
+      controller = new AbortController();
+      const signal = controller.signal;
       try {
         if (hit) {
-          const page = await read<{ state?: string; chunks: { text: string; original_byte_offset: number }[] }>('content', { request_id: hit.request_id, content_id: hit.content_id, cursor: null, anchor_offset: hit.original_text_offset }, controller.signal);
-          if (controller.signal.aborted) return;
-          setValue(excerptAround(page.chunks.map(c => c.text).join(''), Math.max(0, hit.original_text_offset - (page.chunks[0]?.original_byte_offset ?? 0)), limit));
-          if (typeof page.state === 'string') {
-            const incomplete = !['available', 'complete'].includes(page.state);
-            onCompleteness?.(incomplete);
-            if (page.state === 'deleted') onContentState?.('cleared');
-            else if (incomplete) onContentState?.('partial');
-          }
+          const page = await read<{ state?: string; chunks: { text: string; original_byte_offset: number }[] }>('content', { request_id: hit.request_id, content_id: hit.content_id, cursor: null, anchor_offset: hit.original_text_offset }, signal);
+          if (signal.aborted) return;
+          const cleared = ['deleted', 'expired'].includes(page.state ?? '');
+          resolved = cleared || ['available', 'complete'].includes(page.state ?? '');
+          setValue(cleared ? '' : excerptAround(page.chunks.map(c => c.text).join(''), Math.max(0, hit.original_text_offset - (page.chunks[0]?.original_byte_offset ?? 0)), limit));
+          setStatus(cleared ? 'cleared' : resolved ? 'ready' : 'pending');
+          callbacks.current.onCompleteness?.(!resolved);
+          callbacks.current.onContentState?.(cleared ? 'cleared' : resolved ? 'recorded' : 'partial');
           return;
         }
-        if (request) {
-          const state: TitleScanState = { sawContent: false, allDeleted: true, incomplete: false };
-          const title = await firstRequestTitle(request, controller.signal, state, true);
-          if (!controller.signal.aborted) {
-            const phase = title !== null ? 'available' : state.sawContent && state.allDeleted && !state.incomplete ? 'cleared' : 'unavailable';
-            setRequestResult({ key: requestKey, phase, text: title === null ? '' : excerpt(title, limit) });
-            onCompleteness?.(title === null || state.incomplete);
-            onContentState?.(phase === 'cleared' ? 'cleared' : title === null || state.incomplete ? 'partial' : 'recorded');
-          }
-          return;
-        }
-        if (!session) return;
         const state: TitleScanState = { sawContent: false, allDeleted: true, incomplete: false };
+        if (request) {
+          const title = await firstRequestTitle(request, signal, state, true);
+          if (!signal.aborted) report(title, state);
+          return;
+        }
+        if (!session) { resolved = true; return; }
         let cursor: string | null = null;
         const toMs = Date.now() + 1;
         let firstRequest = true;
         const seen = new Set<string>();
         do {
-          const timeline: Page<{ requests: Request[] }> = await read('timeline', { session_id: session, limit: 50, cursor, from_ms: 0, to_ms: toMs, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: false }, controller.signal);
-          for (const request of timeline.requests) {
+          const timeline: Page<{ requests: Request[] }> = await read('timeline', { session_id: session, limit: 50, cursor, from_ms: 0, to_ms: toMs, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: false }, signal);
+          if (signal.aborted) return;
+          for (const item of timeline.requests) {
             // Only affirmative native-purpose evidence excludes a title input.
             // Direct request/hit navigation still exposes the original content.
-            if (request.native_auxiliary === true) continue;
+            if (item.native_auxiliary === true) continue;
             if (firstRequest) {
               firstRequest = false;
-              if (request.final_native_model) onModel?.(request.final_native_model);
-              const routing = request.routing_context;
-              if (routing?.state === 'recorded' && routing.name_state === 'recorded' && routing.display_name) onRoute?.(routing.display_name);
+              if (item.final_native_model) callbacks.current.onModel?.(item.final_native_model);
+              const routing = item.routing_context;
+              if (routing?.state === 'recorded' && routing.name_state === 'recorded' && routing.display_name) callbacks.current.onRoute?.(routing.display_name);
             }
-            const title = await firstRequestTitle(request.request_id, controller.signal, state);
-            if (title !== null) {
-              if (!controller.signal.aborted) setValue(excerpt(title, limit));
-              onCompleteness?.(state.incomplete);
-              onContentState?.(state.incomplete ? 'partial' : 'recorded');
-              return;
-            }
+            const title = await firstRequestTitle(item.request_id, signal, state);
+            if (signal.aborted) return;
+            if (title !== null) { report(title, state); return; }
           }
           cursor = timeline.next_cursor;
           if (cursor && seen.has(cursor)) { state.incomplete = true; break; }
           if (cursor) seen.add(cursor);
-        } while (cursor && !controller.signal.aborted);
-        if (!controller.signal.aborted) {
-          onCompleteness?.(state.incomplete || !state.sawContent);
-          onContentState?.(state.sawContent && state.allDeleted && !state.incomplete ? 'cleared' : !state.sawContent || state.incomplete ? 'partial' : 'recorded');
-        }
+        } while (cursor && !signal.aborted);
+        if (!signal.aborted) report(null, state);
       } catch {
-        // Keep the semantic row visible, while making the missing content
-        // explicit instead of silently leaving it indistinguishable from a
-        // successfully recorded fallback title.
-        if (!controller.signal.aborted) {
-          if (request) setRequestResult({ key: requestKey, phase: 'unavailable', text: '' });
-          onCompleteness?.(true);
-          onContentState?.('partial');
+        if (!signal.aborted) {
+          setStatus('error');
+          callbacks.current.onCompleteness?.(true);
+          callbacks.current.onContentState?.('partial');
         }
-      }
+      } finally { inFlight = false; schedule(); }
     }
-    const observer = new IntersectionObserver(entries => { if (!started && entries.some(e => e.isIntersecting)) { started = true; void load(); } });
+    const visibility = () => {
+      window.clearTimeout(timer);
+      if (!eligible()) controller?.abort();
+      else if (!resolved) { retryMs = 2000; void load(); }
+    };
+    // Abort synchronously on privacy invalidation: a pending old response must
+    // never repopulate the body while React schedules the next render.
+    const invalidate = () => {
+      controller?.abort(); window.clearTimeout(timer); resolved = false; retryMs = 2000;
+      setValue(''); setStatus('pending');
+      if (!inFlight) void load();
+    };
+    const observer = new IntersectionObserver(entries => {
+      visible = entries.some(entry => entry.isIntersecting);
+      visibility();
+    });
     if (node.current) observer.observe(node.current);
-    return () => { controller.abort(); observer.disconnect(); };
-  }, [session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset, invalidation, limit, revision]);
-  if (request && !hit) {
-    const result = requestResult?.key === requestKey ? requestResult : null;
-    const text = !result || result.phase === 'pending' ? (language === 'zh' ? '正在读取消息…' : 'Loading message…')
-      : result.phase === 'cleared' ? (language === 'zh' ? '消息正文已清理' : 'Message content cleared')
-        : result.text || fallback || (language === 'zh' ? '消息暂不可用' : 'Message unavailable');
-    return <span ref={node}>{text}</span>;
-  }
-  return <span ref={node}>{value || fallback || (hit ? (language === 'zh' ? '查看命中正文' : 'Open matching content') : '')}</span>;
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('hiroute-content-invalidated', invalidate);
+    return () => {
+      stopped = true; controller?.abort(); window.clearTimeout(timer); observer.disconnect();
+      document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('hiroute-content-invalidated', invalidate);
+    };
+  }, [session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset, limit, revision, active, contentCleared]);
+  // Mask cached text in the same render that receives a visibility change.
+  const currentStatus = contentCleared ? 'cleared' : status;
+  const directRequest = Boolean(request && !hit);
+  const statusText = currentStatus === 'cleared' ? (directRequest ? (language === 'zh' ? '消息正文已清理' : 'Message content cleared') : (language === 'zh' ? '正文已清理' : 'Content cleared'))
+    : currentStatus === 'loading' ? (language === 'zh' ? '正在读取消息…' : 'Loading message…')
+      : directRequest && ['pending', 'error'].includes(currentStatus) ? (language === 'zh' ? '这一轮的消息暂不可用' : 'This turn’s message is unavailable')
+        : currentStatus === 'error' ? (language === 'zh' ? '正文暂时无法读取' : 'Content is temporarily unavailable')
+          : currentStatus === 'pending' ? (language === 'zh' ? '正文尚未就绪' : 'Content is not ready yet') : undefined;
+  return <span ref={node} data-content-state={currentStatus === 'loading' ? 'pending' : currentStatus} title={statusText}>{(contentCleared ? '' : value) || ((request || hit || currentStatus === 'cleared') && statusText) || fallback || (hit ? (language === 'zh' ? '查看命中正文' : 'Open matching content') : '')}</span>;
 }

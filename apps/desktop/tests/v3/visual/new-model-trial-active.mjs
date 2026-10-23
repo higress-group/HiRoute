@@ -296,7 +296,8 @@ try {
   await open(`lang=${lang}&view=timeline&timeline-error=1`);
   await waitFor(client,`document.querySelector('.routing-timeline [role=alert]')?.getClientRects().length>0`);
   assert.ok(await evaluate(client,`document.querySelector('.session-view-tabs')?.getClientRects().length>0`),'a failed first read keeps the timeline tab');
-  assert.ok(await evaluate(client,`document.querySelector('.routing-timeline [role=alert]').textContent.includes(${JSON.stringify(lang==='zh'?'更新暂时不可用':'temporarily unavailable')})`));
+  assert.ok(await evaluate(client,`document.querySelector('.routing-timeline [role=alert]').textContent.includes(${JSON.stringify(lang==='zh'?'暂时无法读取':'temporarily unavailable')})`));
+  assert.ok(await evaluate(client,`!document.querySelector('.routing-timeline [role=alert]').textContent.includes(${JSON.stringify(lang==='zh'?'上次读取的内容':'last successful read')})`),'a failed first read does not imply retained content');
   await shot(`timeline-initial-failure-${lang}-755`);
   await evaluate(client,`window.timelineFail=false;true`);
   const retriedAt=await evaluate(client,'performance.now()');
