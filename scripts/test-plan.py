@@ -103,6 +103,8 @@ RELEASE_CONTRACT_TOOLING = {"scripts/release-contracts.py", "scripts/test-releas
                           ".github/workflows/release.yml"}
 HOSTED_BACKEND_EXECUTION = {
     ".github/workflows/gateway-core.yml",
+    ".github/actions/ci-setup/action.yml",
+    "scripts/ci-prerequisites.py",
     "scripts/ci-run.py",
     "scripts/ci-shards.py",
 }
@@ -415,7 +417,7 @@ def select(paths, full=False):
         if path in RELEASE_CONTRACT_TOOLING or path.startswith("contracts/releases/"):
             release_contract_tooling = True
             continue
-        if path in SELECTION_TOOLING or path == INTEGRATION_SKILL:
+        if path in SELECTION_TOOLING or path in (INTEGRATION_SKILL, "scripts/test-ci-setup.py"):
             selection_tooling = True
         elif path == "apps/website/data/releases.json":
             # The native upgrade reader embeds this catalog in its contract test.
@@ -538,6 +540,8 @@ def select(paths, full=False):
     commands.extend(agent_commands)
     if selection_tooling:
         commands.append(["python3", "scripts/test-test-plan.py"])
+    if full or "scripts/test-ci-setup.py" in paths:
+        commands.append(["python3", "scripts/test-ci-setup.py"])
     if full or windows_validation_tooling:
         commands.append(["python3", "scripts/test-windows-ci-report.py"])
         commands.append(["python3", "scripts/test-windows-native-artifacts.py"])

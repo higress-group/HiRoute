@@ -210,6 +210,11 @@ HTTP path or old restore fixture does not prove route revocation or native execu
 Use [HiRoute validation](../../.agents/skills/hiroute-validation/SKILL.md) for the
 current selection, execution, failure or handoff operation. Its routes lead to
 the owning guides; branch convergence remains a separate integration responsibility.
+Hosted prerequisite installation belongs to
+[`ci-prerequisites.py`](../../scripts/ci-prerequisites.py), invoked by the shared
+[`ci-setup` action](../../.github/actions/ci-setup/action.yml).
+[`test-ci-setup.py`](../../scripts/test-ci-setup.py) covers Ubuntu source selection
+and bounded failure handling; the real hosted matrix verifies package installation.
 
 1. Run `python3 scripts/test-plan.py --base <exact-base>`; use `--integration` for
    branch integration. Review affected consumers and explain semantic adjustments.
