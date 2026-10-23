@@ -79,6 +79,7 @@ impl ProtocolState {
         event_type: Option<&str>,
         data: &[u8],
         output: &mut VecDeque<ModelStreamEventV1>,
+        diagnostic_shape: &mut Option<hiroute_diagnostics::event::ResponseEventShape>,
     ) -> Result<(), ProtocolAdapterError> {
         match self {
             Self::Responses {
@@ -96,7 +97,8 @@ impl ProtocolState {
                     *done_seen = true;
                     return Ok(());
                 }
-                decode_responses_sse(core, tools, event_type, data, output)
+                *diagnostic_shape = Some(super::diagnostic_shape::shape(event_type, None));
+                decode_responses_sse(core, tools, event_type, data, output, diagnostic_shape)
             }
             Self::Chat {
                 core,
@@ -170,8 +172,10 @@ fn decode_responses_sse(
     event_type: Option<&str>,
     data: &[u8],
     output: &mut VecDeque<ModelStreamEventV1>,
+    diagnostic_shape: &mut Option<hiroute_diagnostics::event::ResponseEventShape>,
 ) -> Result<(), ProtocolAdapterError> {
     let value = parse_data(data)?;
+    *diagnostic_shape = Some(super::diagnostic_shape::shape(event_type, Some(&value)));
     let object = checked_object(&value)?;
     let native_type = required_str(object, "type")?;
     if let Some(sse_type) = event_type

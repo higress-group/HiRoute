@@ -178,6 +178,7 @@ fn capture_multi_summary_rejection_reports_counts_without_summary_text_or_encryp
         json!({"type":"response.created","response":{"id":"PRIVATE_ID","model":"physical"}}),
         json!({"type":"response.output_item.done","output_index":0,"item":{
             "type":"reasoning","id":"PRIVATE_REASONING_ID","status":"completed",
+            "encrypted_content":"PRIVATE_ENCRYPTED_STATE",
             "summary":[{"type":"summary_text","text":"PRIVATE_FIRST"},
                 {"type":"summary_text","text":"PRIVATE_SECOND"}]}}),
     ]);
@@ -194,6 +195,7 @@ fn capture_multi_summary_rejection_reports_counts_without_summary_text_or_encryp
         "PRIVATE_REASONING_ID",
         "PRIVATE_FIRST",
         "PRIVATE_SECOND",
+        "PRIVATE_ENCRYPTED_STATE",
     ] {
         assert!(!log.contains(private));
     }

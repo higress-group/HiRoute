@@ -83,8 +83,34 @@ impl RequestObservation {
                 field,
                 frame_index: position.map(|p| p.0).filter(|n| *n != 0),
                 received_bytes: position.map(|p| p.1),
+                capture: None,
             },
         ));
+    }
+
+    /// Called at materialization, before this attempt is promoted. Keep its
+    /// ordinal even if the off-path capture worker runs after a later fallback.
+    pub(in crate::server::core_runtime::observation) fn capture_response_failure_context(
+        &self,
+    ) -> hiroute_diagnostics::event::ResponseFailure {
+        hiroute_diagnostics::event::ResponseFailure {
+            request_token: self.inner.request_token,
+            attempt_index: u64::from(self.lock_state().next_attempt_ordinal),
+            stage: hiroute_diagnostics::event::ResponseFailureStage::Decode,
+            reason: hiroute_diagnostics::event::ResponseFailureReason::OtherProtocol,
+            attempt_token: None,
+            field: None,
+            frame_index: None,
+            received_bytes: None,
+            capture: None,
+        }
+    }
+
+    pub(in crate::server::core_runtime::observation) fn capture_response_failure(
+        &self,
+        failure: hiroute_diagnostics::event::ResponseFailure,
+    ) {
+        self.emit_diagnostic(DiagnosticEvent::ResponseFailure(failure));
     }
 
     pub(in crate::server::core_runtime::observation) fn wire_diagnostic(

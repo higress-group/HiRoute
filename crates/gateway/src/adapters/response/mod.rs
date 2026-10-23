@@ -36,6 +36,7 @@ pub(super) fn test_tool_projection() -> super::continuation::ToolIdProjection {
 }
 
 pub use decoder::{DecodedNativeResponse, NativeResponseDecoder, ResponseDecodeStatus};
+mod diagnostic_shape;
 pub(crate) use native_passthrough::{NativeResponseProjector, NativeTerminalOutcome};
 pub use render::{ClientResponseRenderer, RenderedClientResponse, RenderedSseEvent};
 

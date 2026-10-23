@@ -361,7 +361,13 @@ for disable, restart, independent-source isolation and re-enable evidence.
 
 `runtime/driver/response_diagnostics.rs` owns the closed, payload-free failure
 classification; `adapters/response/decoder.rs` reports SSE event ordinal and
-received-byte upper bound without per-token logs. Unix Debug-only
+received-byte upper bound without per-token logs. An observation-side decoder
+failure adds an optional `capture` context to the same diagnostic: actual protocol
+pair and the last Responses event's closed kind, indexes and array counts. The
+capture worker records only its first failure against the ordinal frozen at
+materialization, with no IDs, body text, hashes or dynamic error strings. This
+diagnostic preserves the original capture abort and cannot certify completion.
+Unix Debug-only
 `runtime/stream_capture.rs` can capture an explicitly enabled private session;
 its `stream_replay` example restores the actual attempt profile and tool mapping.
 This is offline decoder evidence, not proof of network timing or task completion.

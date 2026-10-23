@@ -77,6 +77,7 @@ enum CaptureJob {
         alias: String,
         status: Arc<CaptureStatus>,
         reservation: CaptureReservation,
+        failure_context: Box<hiroute_diagnostics::event::ResponseFailure>,
     },
     Native {
         id: u64,
@@ -198,6 +199,7 @@ impl CanonicalCaptureProducer {
         };
         let job = CaptureJob::Begin {
             id: handle.id,
+            failure_context: Box::new(request.capture_response_failure_context()),
             request,
             profile,
             tool_id_projection,
@@ -423,6 +425,7 @@ fn process_job(
             alias,
             status,
             reservation,
+            failure_context,
         } => {
             if status.failed.load(Ordering::Acquire) {
                 status.finish();
@@ -439,7 +442,8 @@ fn process_job(
                         streaming,
                         alias,
                         budget.clone(),
-                    ),
+                    )
+                    .with_failure_context(*failure_context),
                     status,
                     _reservation: reservation,
                     accepted_started: false,
@@ -455,6 +459,9 @@ fn process_job(
                 return;
             };
             if let Err(reason) = state.tracker.observe(event) {
+                if let Some(failure) = state.tracker.take_decode_failure() {
+                    state.request.capture_response_failure(failure);
+                }
                 mark_failed(&state.status, reason);
             }
         }
