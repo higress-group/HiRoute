@@ -214,7 +214,9 @@ pub fn externalize_model_request(
                             {
                                 continue;
                             }
-                            if field == "text" && let Value::String(text) = value {
+                            if field == "text"
+                                && let Value::String(text) = value
+                            {
                                 externalize_value(text, replay, &mut pool, &mut inline_remaining)?;
                             } else {
                                 externalize_json(

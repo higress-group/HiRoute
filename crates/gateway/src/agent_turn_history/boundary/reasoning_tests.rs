@@ -34,7 +34,11 @@ fn production_request(
 
 #[test]
 fn production_reasoning_boundary_is_independent_of_aggregate_inline_allowance() {
-    for summary in ["", "Read \\\"notes\\\" first.\n中文", "__hiroute_content_ref_v2_1_0_1_1__"] {
+    for summary in [
+        "",
+        "Read \\\"notes\\\" first.\n中文",
+        "__hiroute_content_ref_v2_1_0_1_1__",
+    ] {
         for inline_limit in [0, 8 * 1024, 64 * 1024] {
             let (_directory, replay) = super::replay();
             let mut capture = BoundaryCapture::default();
@@ -76,6 +80,155 @@ fn production_reasoning_boundary_is_independent_of_aggregate_inline_allowance() 
                 incoming_boundary(&opaque, 0, &replay, &mut FingerprintBudget::default()).is_none()
             );
         }
+    }
+}
+
+#[test]
+fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membership() {
+    use super::super::*;
+    use crate::server::core_runtime::model_ir::{ModelStreamEventV1, ToolKindV1};
+
+    for inline_limit in [0, 8 * 1024, 64 * 1024] {
+        let (_directory, replay) = super::replay();
+        let store = AgentTurnHistoryStore::default();
+        let scope = store.scope_key("workspace", "reasoning-tool").unwrap();
+        let begin = |request: &crate::server::core_runtime::model_ir::ModelRequestIRV1| {
+            store
+                .begin_with_admission(
+                    scope.clone(),
+                    super::plan(1),
+                    store
+                        .prepare_scoped_request(&scope, request, &replay)
+                        .unwrap(),
+                    TurnDecisionInputs {
+                        native_turn: None,
+                        history_continuity: crate::context_hold::HistoryContinuity::Continuing,
+                        reselect_on_user_message: true,
+                    },
+                    std::time::Instant::now(),
+                    || Some(()),
+                )
+                .unwrap()
+                .unwrap()
+                .0
+        };
+        let mut wire = json!({"model":"route","instructions":"x".repeat(8 * 1024),"input":[
+            {"role":"user","content":"actual tool task A"}
+        ]});
+        let request = production_request(&wire, &replay, inline_limit);
+        let (a, history) = super::new_turn(begin(&request));
+        drop(history);
+        store
+            .commit_decision(&a, super::decision("regular"))
+            .unwrap();
+        store.bind_request(&a, "request-tool");
+        store.accept_output(
+            &a,
+            &[ModelStreamEventV1::new(
+                0,
+                ModelEvent::ReasoningFinished {
+                    index: 0,
+                    text: "Use the requested tool.".into(),
+                    status: ResponseItemStatus::Completed,
+                },
+            )],
+        );
+        super::accepted_output::tool(&store, &a, "call-1", "lookup");
+        store.accept_output(
+            &a,
+            &[ModelStreamEventV1::new(
+                2,
+                ModelEvent::ToolCallFinished {
+                    index: 1,
+                    logical_id: "call-1".into(),
+                    tool_kind: ToolKindV1::Function,
+                    namespace: Some("functions".into()),
+                    name: "lookup".into(),
+                    arguments: json!({"id":7}),
+                    status: ResponseItemStatus::Completed,
+                },
+            )],
+        );
+        assert!(
+            store
+                .finish_request(
+                    &a,
+                    "request-tool".into(),
+                    AgentTurnStatus::Completed,
+                    vec![super::execution(
+                        "actual-model",
+                        "profile",
+                        "regular",
+                        "request-tool"
+                    )],
+                    false,
+                    std::time::Instant::now(),
+                )
+                .unwrap()
+                .is_none()
+        );
+        wire["input"].as_array_mut().unwrap().extend([
+            json!({"type":"reasoning","id":"rs-tool","status":"completed","summary":[{"type":"summary_text","text":"Use the requested tool."}]}),
+            json!({"type":"function_call","call_id":"call-1","name":"functions.lookup","arguments":"{\"id\":7}"}),
+            json!({"type":"function_call_output","call_id":"call-1","output":"tool result"}),
+        ]);
+        let request = production_request(&wire, &replay, inline_limit);
+        let AgentTurnBegin::Continuation {
+            ticket: final_request,
+            decision,
+        } = begin(&request)
+        else {
+            panic!("the accepted reasoning/tool edge must inherit at allowance {inline_limit}")
+        };
+        assert_eq!(final_request.key, a.key);
+        assert_eq!(final_request.agent_turn_id, a.agent_turn_id);
+        assert_eq!(decision.branch_id, "regular");
+        store.bind_request(&final_request, "request-final");
+        super::accepted_output::text_output(&store, &final_request, "actual accepted answer A");
+        let completed = store
+            .finish_request(
+                &final_request,
+                "request-final".into(),
+                AgentTurnStatus::Completed,
+                vec![super::execution(
+                    "actual-model",
+                    "profile",
+                    "regular",
+                    "request-final",
+                )],
+                true,
+                std::time::Instant::now(),
+            )
+            .unwrap()
+            .unwrap();
+        assert!(!completed.history_partial);
+        let membership = completed.history_membership.as_ref().unwrap();
+        assert_eq!(membership.request_ids, ["request-tool", "request-final"]);
+        assert!(!membership.capture_partial);
+        assert!(!membership.association_unverified);
+        wire["input"].as_array_mut().unwrap().extend([
+            json!({"role":"assistant","content":"actual accepted answer A"}),
+            json!({"role":"user","content":"actual new task B"}),
+        ]);
+        let request = production_request(&wire, &replay, inline_limit);
+        let (b, frozen) = super::new_turn(begin(&request));
+        let target = frozen.assessment_target.as_ref().unwrap();
+        assert_eq!(target.through_turn_id, a.agent_turn_id);
+        assert!(!target.target_partial);
+        assert_eq!(target.history_membership.as_ref().unwrap(), membership);
+        assert!(matches!(
+            &target.attribution,
+            ExecutionAttribution::Single { model_configuration_id, .. }
+                if model_configuration_id == "actual-model"
+        ));
+        let visible = serde_json::to_string(&frozen.visible_conversation).unwrap();
+        assert!(visible.contains("actual tool task A"));
+        assert!(visible.contains("actual accepted answer A"));
+        assert!(visible.contains("completed"));
+        assert!(!visible.contains("Use the requested tool."));
+        assert!(!visible.contains("tool result"));
+        store.abort(&b);
+        assert_eq!(target.history_membership.as_ref().unwrap(), membership);
     }
 }
 

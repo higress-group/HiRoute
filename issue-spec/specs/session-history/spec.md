@@ -135,6 +135,11 @@ Recorded plan identity follows [route history](../request-routing-history/spec.m
   empty summary/text placeholders do not manufacture a history rewrite. Changed
   summaries, opaque provider state and unsupported fields remain unproven, and
   reasoning is never imported into competence-assessment content.
+- **AND** bounded comparison retains the same meaning when request content moves
+  from inline strings into request-owned Replay backing, including after earlier
+  fields consume the aggregate inline allowance. A matching tool continuation and
+  its accepted final answer retain one exact frozen request membership for the
+  next input's assessment.
 - **AND** recognized native title/compaction requests retain immutable receipts
   and monetary accounting while their explicit auxiliary marker excludes them
   from user-turn projection. Historical records without that marker remain
