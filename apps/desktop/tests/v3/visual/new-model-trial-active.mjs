@@ -70,9 +70,33 @@ async function timelinePricingChecks() {
   results.push({id:`timeline.known-reference-subtotal-with-unknown-requests.${lang}`,status:'passed'});
  }
 }
+async function additionalAgentMappings() {
+ for (const lang of ['en','zh']) for (const [family,name] of [['dsh','DeepSeek Harness'],['pi','Pi'],['qoder','Qoder'],['opencode','OpenCode']]) {
+  await open(`lang=${lang}&view=quickstart&agent-family=${family}`,755,600);
+  await click('.new-models button',lang==='zh'?'试用':'Try');
+  await waitFor(client,`!!document.querySelector('.trial-agent-choice select')`);
+  await evaluate(client,`(()=>{const el=[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name));el.click();return true;})()`);
+  if(lang==='zh') await evaluate(client,`document.querySelector('.trial-presets input:checked').click()`);
+  await evaluate(client,`(()=>{const el=document.querySelector('.trial-agent-choice select');el.value=${JSON.stringify(`agent_${family}_default`)};el.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+  await waitFor(client,`!document.querySelector('.trial-presets')`);
+  assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),false,'additional routing does not require Claude presets');
+  await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
+  await waitFor(client,`!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+  await click('.trial-review button',lang==='zh'?'保存并发布路由':'Save and publish route');
+  await waitFor(client,`!!document.querySelector('.trial-mapping .trial-agent-choice')`);
+  await click('.trial-mapping button',lang==='zh'?'检查并映射 Agent':'Review and map Agent');
+  await waitFor(client,`document.querySelector('.trial-mapping .callout.good')?.textContent.includes(${JSON.stringify(lang==='zh'?'映射已确认':'Mapping confirmed')})`);
+  const label=await evaluate(client,`document.querySelector('.trial-mapping .callout.good strong').textContent`);
+  assert.ok(label.includes(name)); assert.doesNotMatch(label,/opus|sonnet|haiku/i,'non-Claude confirmation never claims Claude presets');
+  assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='preview_agent_settings').payload.input.spec.model.settings.mode`),`${family}_additional`);
+  await shot(`quickstart-${family}-mapping-${lang}-755`);
+  results.push({id:`quickstart.${family}.${lang}.no-claude-presets`,status:'passed'});
+ }
+}
 try {
  if(process.argv.includes('--timeline-pricing')) { await timelinePricingChecks(); }
  else {
+ await additionalAgentMappings();
  for(const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',755,600],['en','dark',1200,813],['zh','light',1200,813]]) {
   await open(`lang=${lang}&theme=${theme}&view=feed-home`,width,height);
   await waitFor(client,`!!document.querySelector('.new-model-card')`);

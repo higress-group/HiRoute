@@ -6,6 +6,10 @@ import type { DesktopOperation, DesktopSnapshot } from '../../../src/product/hom
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
 const desktop = structuredClone(readyDesktop); desktop.catalog = { plans: [], drafts: [] }; desktop.pending = null;
 const agents = structuredClone(readyAgents); agents.agents = [{...agents.agents.find(a=>a.agent_id==='agent_claude_default')!,context_id:'agent-context/claude/default',settings:{state:'not_configured',restore_point_ref:null,model_verified:false}}];agents.plans.plans=[];
+const additionalFamily = new URLSearchParams(location.search).get('agent-family');
+if (['dsh', 'pi', 'qoder', 'opencode'].includes(additionalFamily ?? '')) agents.agents.push({
+ ...structuredClone(agents.agents[0]), agent_id:`agent_${additionalFamily}_default`, context_id:`agent-context/${additionalFamily}/default`,
+});
 const decision = {id:'decision/trial',revision:1,name:'Saved decision model',connection:{kind:'custom',endpoint:'https://decision.example.test',timeout_ms:10000}};
 let observed:DesktopOperation|null=null;
 let publishLost=false;
@@ -41,11 +45,13 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   return {state:'succeeded',operation:observed};
  }
  if(command==='preview_agent_settings') {
-  const agent=agents.agents[0];
+  const agent=agents.agents.find(a=>a.context_id===payload.input.spec.context_id)!;
   const selection=structuredClone(payload.input.spec.model.settings);
   // Match the native snapshot's map order rather than echoing the form object.
-  const p=selection.preset_mappings;
-  selection.preset_mappings={haiku:p.haiku,opus:p.opus,sonnet:p.sonnet};
+  if (selection.mode==='claude_launcher') {
+   const p=selection.preset_mappings;
+   selection.preset_mappings={haiku:p.haiku,opus:p.opus,sonnet:p.sonnet};
+  }
   agent.settings={state:'configured',restore_point_ref:'restore/test',model_verified:false,operation_id:'operation/map',operation_state:'succeeded',current_selection:selection};
   return {preview:{applicable:true,blockers:[]},mutation:{state:'applied',operation:{operation_id:'operation/map',state:'succeeded',sequence:1,cancellable:false}}};
  }
