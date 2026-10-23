@@ -106,7 +106,9 @@ compares the full old request separately from that response edge. Both reused
 and independent branches require an actually appended input to establish a new
 activation; a native identifier change alone cannot close a tool stage. Its
 [regressions](../../crates/gateway/src/agent_turn_history/opening_evidence_tests.rs)
-cover interrupted output, concurrent retries, input windows and missing measurements;
+cover interrupted output, concurrent retries, input windows and missing measurements.
+They also vary input and identifier independently: repeated IDs cannot hide new
+input, while explicit continuation evidence makes current input unavailable;
 a new-message cause does not authorize predecessor reuse or repair the old score.
 Request-local model setup remains in strict ContextHold, outside execution-prefix
 identity. A unique visible response projection can retain actual stage capture

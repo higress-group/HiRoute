@@ -187,15 +187,16 @@ impl AgentTurnHistoryStore {
             super::opening::fork_opening_cause(
                 inner.scope_entries(scope).map(|(_, entry)| entry),
                 analyzed,
-                inputs.native_turn,
-                inputs.history_continuity.uses_saved_user(),
             )
         });
         if let Some(entry) = selected_entry
             && analyzed.measured
         {
             inputs.history_continuity = if exact && !ambiguous {
-                if inputs.native_turn.is_some() && inputs.native_turn == entry.active.native_turn {
+                if inputs.native_turn.is_some()
+                    && inputs.native_turn == entry.active.native_turn
+                    && !super::opening::has_appended_input(&entry.checkpoint, analyzed)
+                {
                     HistoryContinuity::NativeSameTurn
                 } else if inputs.native_turn.is_some()
                     && entry.active.native_turn.is_some()

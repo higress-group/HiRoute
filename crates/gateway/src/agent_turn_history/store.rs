@@ -552,7 +552,6 @@ impl AgentTurnHistoryStore {
             // An exact response edge permits continuation; a changed native ID
             // does not turn that continuation into a new observed input.
             decision_inputs.history_continuity.semantic_continuity()
-                && !decision_inputs.history_continuity.uses_saved_user()
                 && opening::has_appended_input(&entry.checkpoint, &analyzed)
         } else {
             decision_inputs.history_continuity
