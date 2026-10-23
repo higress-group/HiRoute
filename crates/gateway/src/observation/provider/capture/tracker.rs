@@ -24,6 +24,10 @@ mod memory_tests;
 #[path = "usage_tests.rs"]
 mod usage_tests;
 
+#[cfg(test)]
+#[path = "diagnostic_tests.rs"]
+mod diagnostic_tests;
+
 pub(super) struct CanonicalResponseTracker {
     budget: StreamBudget,
     profile: Arc<CandidateProtocolProfile>,
