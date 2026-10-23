@@ -137,6 +137,8 @@ pub struct ExecutionFactEnvelopeV1 {
 pub enum ExecutionFactV1 {
     RouteDecision {
         planner_version: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        native_auxiliary: bool,
         plan_id: Option<String>,
         route: hiroute_domain::ModelRequestRouteV2,
         input_digest: String,

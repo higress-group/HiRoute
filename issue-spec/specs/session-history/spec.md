@@ -127,6 +127,19 @@ Recorded plan identity follows [route history](../request-routing-history/spec.m
 - **THEN** the view MUST preserve both requests, tool context, actual models, and
   final answer without inferring that the first request completed the whole task.
 
+#### Scenario: Native reasoning replay and maintenance calls
+
+- **WHEN** a native client replays an accepted bounded plaintext reasoning summary
+  followed by visible output or a tool call
+- **THEN** exact accepted summary/output evidence may establish the response edge;
+  empty summary/text placeholders do not manufacture a history rewrite. Changed
+  summaries, opaque provider state and unsupported fields remain unproven, and
+  reasoning is never imported into competence-assessment content.
+- **AND** recognized native title/compaction requests retain immutable receipts
+  and monetary accounting while their explicit auxiliary marker excludes them
+  from user-turn projection. Historical records without that marker remain
+  unclassified; missing purpose evidence cannot hide an ordinary request.
+
 ### Requirement: Titles and folded context do not rewrite recorded content
 
 Session title comes from the first readable real user input in request/message

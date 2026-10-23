@@ -32,6 +32,10 @@ enum Identity {
 }
 
 impl ContextIdentityFacts {
+    pub(crate) fn native_auxiliary(&self) -> bool {
+        !self.routing.track
+    }
+
     fn apply_routing(&mut self, mut routing: super::routing::RoutingFacts) {
         if routing.identity_conflict {
             self.identity = Identity::RequestScoped;

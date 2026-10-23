@@ -117,6 +117,13 @@ identical text, native request IDs and completion order do not establish parenta
 The response comparison ignores zero-byte text placeholders added to a tool-only
 response by a native client, after checking any Replay reference. Whitespace and
 other actual content remain significant; original requests and capture are preserved.
+Bounded plaintext Responses reasoning summaries are compared with the accepted
+reasoning events, including empty-summary placeholders. Changed summaries, opaque
+provider state and unsupported native fields lose the edge; reasoning stays out
+of the competence-assessment transcript. Known native maintenance calls retain
+their receipts and costs but carry an explicit optional auxiliary marker so the
+timeline does not manufacture pending user turns. Older unmarked facts remain
+visible under their original conservative interpretation.
 Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
 commits are branch-scoped; optional cache misses cannot discard execution capture.
 Same-scope actual completed stages remain contextual candidates with disclosed

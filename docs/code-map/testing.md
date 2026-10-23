@@ -64,6 +64,14 @@ happy-path UI journey.
 | Native Desktop / installed Agent / live provider | The selected real integration path and independently observed outcome | Bound to its exact environment, revision and executed scenarios |
 | Frozen compatibility / expected-red / oracle fixture | A historical reader, intended rejection or test oracle | Not current product completion |
 
+Native reasoning replay is covered by the accepted-response
+[boundary regression](../../crates/gateway/src/agent_turn_history/boundary/reasoning_tests.rs)
+and [current-window turn/continuation cases](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
+The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
+verify that explicit maintenance-purpose evidence excludes a user turn without
+removing the request, while unmarked retained records remain visible. These
+component assertions do not replace the real DSH Web/HiRoute acceptance.
+
 Start with the representative cases in the [capability map](README.md). A file
 named `product`, a golden containing `green`, or a zero process exit does not prove
 execution. In `tools/product-e2e`, [transaction recovery](../../tools/product-e2e/tests/transaction_recovery.rs)

@@ -18,6 +18,10 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_pre_auxiliary = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:3cb9b100385c1f05a92097c2f28eb5c47d61ca495d32d41a8528b7227c81a465";
         let persisted_pre_membership = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
@@ -43,6 +47,7 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_digest.as_str()
                 == "sha256:80b4ff13af8abc79d7721fea42141300beade2acf1d2659983ceaafcdc6e4799";
         if !(current
+            || persisted_pre_auxiliary
             || persisted_pre_membership
             || persisted_pre_opening
             || persisted_v1
@@ -71,7 +76,7 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidEnvelope);
         }
-        if !(current || persisted_pre_membership)
+        if !(current || persisted_pre_auxiliary || persisted_pre_membership)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::AgentTurnFinished {
@@ -82,7 +87,7 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !current
+        if !(current || persisted_pre_auxiliary)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::AgentTurnFinished {
@@ -96,22 +101,34 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
+        if !current
+            && matches!(&self.fact, ExecutionFactV1::RouteDecision(route) if route.native_auxiliary)
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
         self.trust.validate()?;
         self.fact.validate()?;
-        if (current || persisted_pre_membership || persisted_pre_opening)
+        if (current || persisted_pre_auxiliary || persisted_pre_membership || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
             if route.complexity.as_ref().is_some_and(|d| d.decision_protocol.is_none()
                 || (d.decision_protocol != Some(DecisionProtocolV1::SystemOneC) && d.routing_observation.is_some())))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_membership || persisted_pre_opening)
+        if !(current
+            || persisted_pre_auxiliary
+            || persisted_pre_membership
+            || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
                 if route.complexity.as_ref().is_some_and(|decision| decision.routing_observation.is_some()))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_membership || persisted_pre_opening || persisted_pre_c)
+        if !(current
+            || persisted_pre_auxiliary
+            || persisted_pre_membership
+            || persisted_pre_opening
+            || persisted_pre_c)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::RouteDecision(route)
@@ -132,6 +149,7 @@ impl ExecutionFactEnvelopeV1 {
         }
         if let Some(pricing) = &self.pricing {
             if !(current
+                || persisted_pre_auxiliary
                 || persisted_pre_membership
                 || persisted_pre_opening
                 || persisted_function_only

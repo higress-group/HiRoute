@@ -1944,6 +1944,18 @@
         "crates/domain/src/observation/execution_validation.rs",
         "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
       ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-auxiliary digest 3cb9b100385c1f05a92097c2f28eb5c47d61ca495d32d41a8528b7227c81a465 without native_auxiliary",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained pre-auxiliary records and preserve their canonical bytes and history membership. Missing purpose evidence remains unknown; old records cannot authenticate a true native_auxiliary marker or enter live ingestion.",
+      "removal_condition": "Retire only when supported stores and backups no longer retain pre-auxiliary facts or an authenticated conversion preserves their original evidence.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs"
+      ]
     }
   ]
 }
