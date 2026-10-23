@@ -12,6 +12,15 @@ fn production_request(
     replay: &crate::replay::ReplayStore,
     inline_limit: usize,
 ) -> crate::server::core_runtime::model_ir::ModelRequestIRV1 {
+    production_request_for(IngressProtocol::Responses, wire, replay, inline_limit)
+}
+
+pub(super) fn production_request_for(
+    protocol: IngressProtocol,
+    wire: &serde_json::Value,
+    replay: &crate::replay::ReplayStore,
+    inline_limit: usize,
+) -> crate::server::core_runtime::model_ir::ModelRequestIRV1 {
     use crate::content_ref::{
         compact_ingress_document_with_markers, externalize_model_request, parse_ingress_document,
         scan_ingress_document,
@@ -21,17 +30,16 @@ fn production_request(
     let raw = raw.seal().unwrap();
     let stats = scan_ingress_document(replay.reader(&raw).unwrap()).unwrap();
     let (mut document, mut workspace) =
-        parse_ingress_document(IngressProtocol::Responses, replay, &raw, stats).unwrap();
+        parse_ingress_document(protocol, replay, &raw, stats).unwrap();
     compact_ingress_document_with_markers(
-        IngressProtocol::Responses,
+        protocol,
         &mut document,
         replay,
         workspace.generated_markers(),
     )
     .unwrap();
     let mut request =
-        decode_ingress_request_with_replay(IngressProtocol::Responses, &document, Some(replay))
-            .unwrap();
+        decode_ingress_request_with_replay(protocol, &document, Some(replay)).unwrap();
     externalize_model_request(&mut request, replay, inline_limit).unwrap();
     request
 }

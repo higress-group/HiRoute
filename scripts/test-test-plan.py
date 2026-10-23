@@ -783,6 +783,27 @@ class IntegrationPreflightTests(unittest.TestCase):
         unrelated = plan.integration_preflight(plan.select(['crates/observation/src/store/mod.rs']))
         self.assertNotIn('local_observation', unrelated['targets'])
 
+    def test_gateway_observation_pins_check_the_current_producer_early(self):
+        target = 'p0::production::tests::current_oracle_pins_match_producer_and_json_schemas'
+        for path in [
+                'crates/gateway/src/observation/contracts.rs',
+                'crates/gateway/src/observation/schema.rs',
+                'tools/e2e-harness/src/p0/production/types.rs',
+                'e2e/schema/current-production-collector.schema.json',
+                'e2e/schema/current-gateway-result.schema.json']:
+            with self.subTest(path=path):
+                final = plan.select(['Cargo.lock', path])
+                original = json.dumps(final, sort_keys=True)
+                early = plan.integration_preflight(final)
+                command = next(c for c in early['commands'] if target in c)
+                self.assertIn('--lib', command)
+                self.assertIn('--workspace', command)
+                self.assertIn('--all-features', command)
+                self.assertEqual(command[-2:], ['--', '--exact'])
+                self.assertEqual(json.dumps(final, sort_keys=True), original)
+        unrelated = plan.integration_preflight(plan.select(['crates/gateway/src/content_ref.rs']))
+        self.assertFalse(any(target in c for c in unrelated['commands']))
+
     def test_command_descriptors_check_both_generated_contract_consumers_early(self):
         for path in ['crates/application-api/src/commands.rs',
                      'crates/application-api/src/commands/help.rs',

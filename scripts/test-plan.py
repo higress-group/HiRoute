@@ -700,6 +700,20 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
             commands.append([*context, *(["--no-fail-fast"] if collect_failures else []),
                              *[arg for target in behavior for arg in ("--test", target)],
                              "--", "--test-threads=1"])
+    if any(path.startswith("crates/gateway/src/observation/") or path in {
+            "tools/e2e-harness/src/p0/production/types.rs",
+            "e2e/schema/current-production-collector.schema.json",
+            "e2e/schema/current-gateway-result.schema.json"}
+           for path in plan["paths"]):
+        target = "p0::production::tests::current_oracle_pins_match_producer_and_json_schemas"
+        targets.add("current_gateway_observation")
+        reasons.append("current Gateway observation ports: verify producer and Oracle schema pins early")
+        broad = next((c for c in context_plan["commands"] if c[:2] == ["cargo", "test"]
+                      and "--test" not in c and "--lib" not in c), None)
+        context = broad[:] if broad else ["cargo", "test", "--locked", "--all-features"]
+        if "--workspace" not in context and "hiroute-e2e" not in context:
+            context.extend(["-p", "hiroute-e2e"])
+        commands.append([*context, "--lib", target, "--", "--exact"])
     if any(path.startswith("crates/domain/src/observation/") or path in {
             "tools/product-e2e/tests/local_observation.rs",
             "e2e/product/golden/observation/local-observation-boundary.v2.json"}

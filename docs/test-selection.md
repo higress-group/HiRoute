@@ -220,6 +220,8 @@ command descriptor digest, so updating only the CLI outputs leaves the product c
 Observation domain ports select the Product E2E `local_observation` target early to
 check the current boundary golden against the canonical port digests. Retained legacy
 observations keep their original digests and remain separate compatibility evidence.
+Gateway observation ports and their current Oracle/JSON schema consumers also select
+the exact producer-to-consumer pin regression early. Legacy sealed pins remain unchanged.
 
 For a full/group plan, early tests preserve the final Cargo package scope, adding the E2E
 owner if needed, and restrict execution with explicit `--test` targets. Focused runtime
