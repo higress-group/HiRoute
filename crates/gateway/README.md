@@ -136,6 +136,13 @@ timeline does not manufacture pending user turns. Older unmarked facts remain
 visible under their original conservative interpretation.
 Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
 commits are branch-scoped; optional cache misses cannot discard execution capture.
+An admitted request keeps its capture ticket if publishing its frozen decision
+temporarily lacks history resources. The [request guard](src/core_runtime/decision_history/deferred_decision.rs)
+retries that publication once after downstream delivery, under the same store
+budget and ticket checks. This loses optional provider affinity while the result
+is pending. A final capacity failure leaves a gap; it cannot turn already delivered
+output into a model error. Initial capture admission remains bounded and may fail
+independently, so this does not promise lossless capture under every resource fault.
 Same-scope actual completed stages remain contextual candidates with disclosed
 association uncertainty when no unique predecessor is established. Unknown association
 never grants provider-prefix affinity. Unsupported response shapes may lose an exact
