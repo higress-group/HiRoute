@@ -496,7 +496,40 @@ The view SHALL disclose that client background messages can satisfy the new-mess
 
 The opening request supplies stable display identity before completion. Late assessments and valuations update that turn. When late authoritative request membership absorbs provisional rows into a completed turn, Desktop SHALL remove the absorbed rows by their exact opening-request identities, transfer their selection/focus to the owning turn, and reconcile overview, request and turn counts. Names, timing or model similarity SHALL NOT infer membership. Incremental cursors MUST be authenticated and bound to reader, session, page size and retained visibility; pagination freezes fact, valuation and link positions until its changed page is consumed. Reconnect deduplicates equal content digests. Cleared or expired scope invalidates the cursor. Unknown usage/cost remains unknown; per-model currency and valuation basis are preserved. A per-model sum SHALL retain available known amounts when another contribution is unknown, disclose that it is a known subtotal and retain the missing contribution. No known contribution means amount unknown, not zero. Frozen API-equivalent amounts SHALL be labeled estimates in summary and request detail.
 
-Reads retain shared authorization, a 500 ms storage deadline, and explicit retryable scope errors beyond 10,000 requests, 50,000 facts or a 1 MiB response. Cache locks cover only take/return, never database reads, projection or serialization. Visible Desktop timelines refresh every two seconds; hidden views stop polling and catch up when shown. A storage timeout stops automatic retries until explicit Retry. Busy readers quietly honor the bounded retry hint while retaining content. CLI --follow emits NDJSON through the same query, preserves terminal errors, remains interruptible while busy and retries at most three consecutive transient unavailable failures. Live and retained readers use recorded endpoint/start-time membership and the same retained transition classifier; unrelated timestamp ties stay unassigned.
+Reads retain shared authorization, a 500 ms storage deadline, and explicit scope errors beyond 10,000 requests, 50,000 facts or a 1 MiB response. Deadline exhaustion is a transient read timeout, not evidence that the retained population exceeds a capacity limit. Cache locks cover only take/return, never database reads, projection or serialization. Visible Desktop timelines refresh every two seconds; hidden views stop polling and catch up when shown. Transient failures retain the last successful view, disclose that it is awaiting refresh, and retry with bounded backoff while visible. Actual capacity failures require explicit Retry. Busy readers honor the bounded retry hint while retaining content. CLI --follow emits NDJSON through the same query, preserves terminal errors, remains interruptible while busy and retries at most three consecutive transient unavailable failures. Live and retained readers use recorded endpoint/start-time membership and the same retained transition classifier; unrelated timestamp ties stay unassigned.
+
+Selected-session summary metadata and visible unresolved excerpts SHALL refresh independently of the turn-fact digest. Refreshing an existing session SHALL preserve selection, loaded list pages and scroll position; a stale response from an earlier selection SHALL NOT replace the current session. Transient content failures and pending content SHALL NOT be described as proven deletion. Content cleanup invalidates visible excerpts and later reads SHALL respect current visibility instead of restoring cleared content.
+
+Displayed assessment ranges SHALL resolve exact target turn identities through the same chronological display coordinates as the overview and lanes. Producer-local ordinals SHALL NOT stand in for displayed turn numbers. A target outside the loaded or retained range SHALL be disclosed without inventing a number. Plan names and execution model identifiers SHALL be labeled by their distinct meaning; a friendly model name requires an authoritative mapping, and the exact execution identifier remains available.
+
+Timeline transition summaries SHALL distinguish a completed turn comparison from intermediate request comparisons. A complete authoritative comparison may subsume a redundant nonfinal unknown comparison only when both identify the same known predecessor and the same previous/current model and reasoning identities and change facts. Different endpoints, different models, pending or partial evidence, within-request fallback and credential relays remain distinguishable. A missing request-level comparison SHALL NOT be presented as a missing final turn comparison.
+
+#### Scenario: A bounded timeline read times out and recovers
+
+- **WHEN** a timeline within capacity limits temporarily exhausts its read deadline
+- **THEN** the response identifies a retryable timeout, Desktop retains its last successful view and retries while visible, and recovery resumes updates without manual navigation.
+- **AND** a real request, fact or response-size limit still produces a capacity failure rather than an unbounded read.
+
+#### Scenario: Summary changes while a timeline is selected
+
+- **WHEN** later requests update a selected session's last activity or content completeness
+- **THEN** its header and existing list entry refresh without resetting selected turns, list pagination or scroll position, and an older response cannot overwrite a later selection.
+
+#### Scenario: Excerpt becomes readable without another turn fact
+
+- **WHEN** a visible excerpt's content becomes readable after an empty or failed read while its turn digest remains unchanged
+- **THEN** a bounded recheck displays the content; inactive or hidden views stop rechecking and resume when visible.
+- **AND** cleanup removes the excerpt and a stale in-flight read cannot restore it.
+
+#### Scenario: Assessment after a producer epoch changes
+
+- **WHEN** a producer restarts its local ordinal sequence and a later displayed turn has an assessment
+- **THEN** the assessment uses its exact target identities to name the displayed turns, or explicitly reports a target outside the available range.
+
+#### Scenario: A multi-request turn gains a complete comparison
+
+- **WHEN** a completed turn has an authoritative complete comparison and an earlier redundant unknown comparison of the same known predecessor and model identities
+- **THEN** the turn summary presents the complete comparison while retaining request records and all distinct request-level changes or evidence gaps.
 
 #### Scenario: Assessment arrives during pagination
 
@@ -635,6 +668,11 @@ Above the routing lanes, session detail MUST provide a compact overview with one
 
 - **WHEN** turns arrive while the user navigates overview marks or lane controls by keyboard
 - **THEN** the overview keeps one Tab stop and its readable labels, arrow navigation and activation work, and chronological lane focus and live-follow or explicit-selection behavior remain available as matching marks are added
+
+#### Scenario: Scroll beneath fixed lane labels
+
+- **WHEN** lane cards move behind the fixed label column during horizontal scrolling
+- **THEN** the entire fixed column occludes those cards visually and for pointer hit testing, while keyboard focus remains visible and the focused turn can be brought into view.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253019758
