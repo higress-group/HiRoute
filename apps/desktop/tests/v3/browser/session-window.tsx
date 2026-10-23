@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from './host-mock';
 import { PlanQuality, type PlanQualityModel } from '../../../src/features/PlanQuality';
-import { Sessions } from '../../../src/features/Sessions';
+import { ContentExcerpt, Sessions } from '../../../src/features/Sessions';
 import { Home, HomeNavigation } from '../../../src/features/home';
 import type { HomeReads } from '../../../src/features/home/types';
 import { projectHomeActivity } from '../../../src/product/home-projections';
@@ -45,6 +45,7 @@ const control = {
   showHome: () => {},
   showSessions: () => {},
   showQualityPlan: () => {},
+  showRequestExcerpt: (_request: string) => {},
   qualityModels: [] as PlanQualityModel[],
   reset: () => {},
 };
@@ -159,10 +160,12 @@ function Harness() {
   const [refresh, setRefresh] = useState(0);
   const [qualityVisible, setQualityVisible] = useState(false);
   const [homeVisible, setHomeVisible] = useState(false);
+  const [requestExcerpt, setRequestExcerpt] = useState<string | null>(null);
   control.bumpRefresh = () => setRefresh(value => value + 1);
   control.showHome = () => setHomeVisible(true);
   control.showSessions = () => { setHomeVisible(false); setQualityVisible(false); };
   control.showQualityPlan = () => { setHomeVisible(false); setQualityVisible(true); };
+  control.showRequestExcerpt = request => setRequestExcerpt(request);
   control.reset = () => {
     control.requests = {};
     control.catalog = {};
@@ -175,6 +178,7 @@ function Harness() {
     control.language = 'zh';
     setQualityVisible(false);
     setHomeVisible(false);
+    setRequestExcerpt(null);
     setRefresh(0);
     setGeneration(value => value + 1);
   };
@@ -202,7 +206,8 @@ function Harness() {
         <p className="sr-only">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实数据。</p>
         {homeVisible && <Home language="zh" reads={homeReads} onAction={() => {}} />}
         {qualityVisible && <PlanQuality key={'quality-' + generation} planId="plan/quality" planRevision={1} currentModels={control.qualityModels} active={!homeVisible} refreshVersion={refresh} language="zh" />}
-        <div hidden={homeVisible || qualityVisible}><Sessions key={generation} active={!homeVisible && !qualityVisible} language={control.language} refreshVersion={refresh} onOpenAgents={() => {}} /></div>
+        {requestExcerpt && <blockquote className="routing-quote"><ContentExcerpt request={requestExcerpt} language={control.language} fallback="这一轮的消息暂不可用" /></blockquote>}
+        <div hidden={homeVisible || qualityVisible || requestExcerpt !== null}><Sessions key={generation} active={!homeVisible && !qualityVisible && requestExcerpt === null} language={control.language} refreshVersion={refresh} onOpenAgents={() => {}} /></div>
       </div></main>
     </div>
   </PresentationRoot>;

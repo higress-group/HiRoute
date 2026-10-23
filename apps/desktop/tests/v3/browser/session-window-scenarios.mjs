@@ -638,6 +638,36 @@ const scenarios = [
     assert(latest.only_model_switch === true, 'Filter was not applied by the query');
     assert(!text().includes('没有匹配的会话'), 'Filter was reported as an empty search');
   }],
+  ['request excerpt distinguishes pending reads from missing or deleted content', async () => {
+    const id = 'request/quote-loading';
+    const pending = deferred();
+    await fresh(control => {
+      seedSimple(control);
+      control.views.catalog = query => query.request_id === id ? pending.promise : control.defaultRead('catalog', query);
+      control.texts['quote-body'] = '后来读取到的真实消息';
+    });
+    c().showRequestExcerpt(id);
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('正在读取消息'), 'pending quote is not missing or cleared');
+    assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Pending quote claimed deletion');
+    pending.resolve({ contents: [{ content_id: 'quote-body', role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' }], roots_partial: false, next_cursor: null });
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('后来读取到的真实消息'), 'loaded quote replaces pending state');
+  }],
+  ['request excerpt requires explicit deletion evidence for a cleared label', async () => {
+    for (const state of ['empty', 'failed', 'deleted']) {
+      const id = `request/quote-${state}`;
+      await fresh(control => {
+        seedSimple(control);
+        control.views.catalog = query => {
+          if (query.request_id !== id) return control.defaultRead('catalog', query);
+          if (state === 'failed') throw { code: 'DAEMON_UNAVAILABLE' };
+          return { contents: state === 'deleted' ? [{ content_id: 'deleted-quote', role: 'user', kind: 'text', state: 'deleted', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' }] : [], roots_partial: false, next_cursor: null };
+        };
+      });
+      c().showRequestExcerpt(id);
+      await until(() => document.querySelector('.routing-quote')?.textContent.includes(state === 'deleted' ? '消息正文已清理' : '这一轮的消息暂不可用'), `quote ${state} state`);
+      if (state !== 'deleted') assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Unavailability claimed deletion');
+    }
+  }],
   ['session title skips proven auxiliary requests before selecting main title and model', async () => {
     await fresh(control => {
       const id = 'observation-session/aux-title';

@@ -1,5 +1,6 @@
 use super::support::{Fixture, open_store, route_decision};
 use crate::query_v2::ObservationReaderContext;
+use crate::writer::ObservationCommitPort;
 use hiroute_domain::{ExecutionFactV1, ObservationRequestQuery, ObservedRequestSummary};
 use serde_json::Value;
 
