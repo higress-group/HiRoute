@@ -110,6 +110,36 @@ and applicability cannot rescue invalid/missing assessment or select a category.
 Same-turn inheritance, ContextHold, candidate ordering and availability relay
 retain their existing rules. C is inapplicable to custom-extension v1 and heuristics.
 
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235110154
+
+For a custom extension, HiRoute MUST execute the returned category/group without simple thresholds, competence floors or historical protection. Its optional same-category assessment is observation only. Single-group categories ignore the returned group. These decisions retain the same continuation, ContextHold, candidate and relay boundaries.
+
+#### Scenario: A new user turn keeps the selected group
+
+- **WHEN** using a built-in decision connection, a custom-branch follow-up selects the same group and its held candidate remains valid
+- **THEN** the Gateway MUST prefer that candidate while retaining the fresh category/degree decision.
+
+#### Scenario: Unresolved problem remains relevant
+
+- **WHEN** using a built-in decision connection, P(simple) meets T, a complete eligible score is below F and applicability equals 0.5
+- **THEN** Primary protection MUST apply; equality does not suppress it.
+
+#### Scenario: Problem no longer governs current work
+
+- **WHEN** using a built-in decision connection, all historical protection guards hold and applicability is below 0.5
+- **THEN** The historical trigger MUST be suppressed and the regular group selected without altering the raw score.
+
+#### Scenario: Applicability is unavailable
+
+- **WHEN** using a built-in decision connection, a low-score protection opportunity has no valid applicability result
+- **THEN** Protection MUST be retained conservatively, with the unavailability reason recorded.
+
+#### Scenario: Extension selection is authoritative
+
+- **WHEN** an extension returns regular with a complete low score for the preceding same-category stage
+- **THEN** HiRoute MUST execute regular without applying threshold or protection policy and may record the score for observation.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370180
 

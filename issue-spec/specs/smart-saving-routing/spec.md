@@ -21,6 +21,15 @@ Heuristic classification uses the existing deterministic English/Chinese policy,
 generates no model-derived competence score, and hides probability/rubric controls
 while retaining their parked edits. Custom extensions directly select regular or primary and hide judgment controls while preserving parked edits. Built-in connections use the published thresholds and rubric of the shared [decision policy](../decision-services/spec.md); provider-specific hidden thresholds cannot override them.
 
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6236473660
+
+#### Scenario: Existing route uses the Familiar threshold
+
+- **WHEN** using a built-in decision connection, a saved smart-saving route with threshold 0.80 is opened
+- **THEN** the editor MUST display Difficulty routing and Familiar without changing
+  the stored mode, candidate ordering or selected decision source.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
@@ -46,6 +55,19 @@ current work, using the fixed 0.5 applicability boundary and the shared
 [decision policy](../decision-services/spec.md). It never tunes T/F, changes the
 raw assessment anchors, merges current difficulty with historical performance or
 overrides a complex current task. Research thresholds are not product defaults.
+
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235629301
+
+#### Scenario: Exactly at both thresholds
+
+- **WHEN** using a built-in decision connection, simple probability is 0.8 and a complete applicable score is 0.5
+- **THEN** Default policy MUST allow economy; equality is not incompetence.
+
+#### Scenario: C suppression with unchanged thresholds
+
+- **WHEN** using a built-in decision connection, simple probability meets the configured threshold, a complete eligible score is strictly below the floor and valid applicability is below 0.5
+- **THEN** Economy MUST be allowed by suppressing only that historical trigger, without changing either threshold or score.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
@@ -107,12 +129,56 @@ samples. Keeping a level is a normal choice, not incomplete onboarding.
 
 The safety-net explanation follows the selected judgment settings. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Custom extensions own their decision policy; HiRoute does not apply low-score protection to their decisions. Published routing follows its frozen settings; editor explanations describe the next publication.
 
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235185303
+
+#### Scenario: Custom threshold and adjacent suggestions
+
+- **WHEN** using a built-in decision connection, a route has threshold 0.72
+- **THEN** it displays Custom 0.72 until an explicit edit; an upward suggestion is
+  0.65 and a downward suggestion is 0.80, without silently replacing the value.
+
+#### Scenario: Native safety-net explanation
+
+- **WHEN** using a built-in decision connection, the selected decision connection is System One
+- **THEN** the editor explains that relevant low-score history protects the next turn, unavailable applicability retains protection, and fixed or unrelated history allows simple tasks to remain with Regular.
+
+#### Scenario: Custom extension has no HiRoute safety net
+
+- **WHEN** the selected decision connection is a custom extension
+- **THEN** the editor explains direct extension group selection and observation-only scores, with no HiRoute threshold or low-score protection controls.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
 ### Requirement: Threshold replay previews recorded stages
 
 While a user chooses a trust level or threshold for a published difficulty-routing Plan or two-group branch, HiRoute SHALL show a replay preview computed from that Plan's retained recorded stages in a disclosed scope (published revision and time window, defaulting to the active revision's last seven days). For a candidate threshold t, a stage SHALL count as regular when its recorded decision-model simple probability is at least t and it was not selected for low-competence protection, and as primary otherwise. Stages selected for low-competence protection SHALL be counted as primary and reported separately, because their protection depends on earlier scores. Stages without a recorded model probability, including heuristic, degree-unavailable, decision-fallback, single-group and availability-relay selections, SHALL be excluded and counted by reason. The preview SHALL show regular and primary counts and shares among included stages, the excluded counts, the recorded share at the threshold actually in force, and a label that it is an estimate from history rather than a prediction. The preview SHALL state that it estimates how recorded work would have been allocated and does not establish competence on stages that the regular group did not handle. The preview SHALL be computed by the backend over the complete in-scope population or return a classified retryable failure; it SHALL NOT call a model, rerun a judgment or change the Plan. The same facts SHALL be available through the public observation CLI with help and schema discovery.
+
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235187673
+
+Custom-extension decisions MUST be excluded by their recorded protocol, including old extension decisions with degree probabilities. They cannot enter threshold replay or threshold suggestions. A current custom-extension Plan exposes no threshold policy from parked draft values.
+
+#### Scenario: Preview at a lower threshold
+
+- **WHEN** using a built-in decision connection, a Plan has 100 in-scope stages with recorded probabilities, 10 low-competence protections and 20 heuristic stages, and the user previews a lower threshold
+- **THEN** the preview counts the 10 protections as primary, excludes the 20 heuristic stages with their reason, and reports the regular share among the remaining included stages at the new threshold.
+
+#### Scenario: Equality meets the threshold
+
+- **WHEN** using a built-in decision connection, a recorded stage probability equals the candidate threshold
+- **THEN** the stage counts as regular, consistent with the runtime rule that equality meets the threshold.
+
+#### Scenario: No usable history
+
+- **WHEN** using a built-in decision connection, the scope contains no stage with a recorded decision-model probability
+- **THEN** the preview states that no recorded evidence is available and shows no estimated shares instead of zero.
+
+#### Scenario: Higher level from lower-level history
+
+- **WHEN** using a built-in decision connection, a Plan's history was recorded at the Trial level and the user previews Hands-off
+- **THEN** the preview shows the estimated regular share and states that the stages it would newly send to the regular group were handled by the primary group and carry no regular-group competence evidence.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
@@ -155,7 +221,30 @@ Source SPEC comments:
 
 ### Requirement: User-facing names describe difficulty routing
 
-User-facing Desktop text, website guides, README files and user documentation SHALL call the smart-saving mode "Difficulty routing" (按难度分流), described as giving simple tasks to the regular model and giving complex tasks, or turns requiring low-score protection, to the primary model. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Custom extensions directly select the group using their own policy; HiRoute does not apply low-score protection to their decisions. Published routing follows its frozen settings; editor explanations describe the next publication. They SHALL call its groups "Regular" (常规) and "Primary" (主力), the same names that two-group custom branches use. Names SHALL NOT present the mode or a group as a saving, because a regular model can cost more than the primary model. Desktop cost statements remain labelled estimates on the disclosed basis. README files, the website and user documentation MAY present lower cost and longer-lasting subscriptions as the benefit of placing a cheaper model in the Regular group, provided they state that condition and never promise savings unconditionally. The new-routing dialog SHALL keep the four modes and SHALL offer "Try a new model" as a template of difficulty routing. Further templates MAY be added only as prefilled difficulty-routing drafts without new semantics. Stored identifiers, CLI arguments, JSON values, schemas, machine-readable output and routing semantics SHALL remain unchanged, including `smart_saving`, `smart` and the stored economy group. Human-readable CLI help MAY show the display name beside the identifier.
+User-facing Desktop text, website guides, README files and user documentation SHALL call the smart-saving mode "Difficulty routing" (按难度分流), For built-in decisions, it is described as giving simple tasks to the regular model and giving complex tasks, or turns requiring low-score protection, to the primary model. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Custom extensions directly select the group using their own policy; HiRoute does not apply low-score protection to their decisions. Published routing follows its frozen settings; editor explanations describe the next publication. They SHALL call its groups "Regular" (常规) and "Primary" (主力), the same names that two-group custom branches use. Names SHALL NOT present the mode or a group as a saving, because a regular model can cost more than the primary model. Desktop cost statements remain labelled estimates on the disclosed basis. README files, the website and user documentation MAY present lower cost and longer-lasting subscriptions as the benefit of placing a cheaper model in the Regular group, provided they state that condition and never promise savings unconditionally. The new-routing dialog SHALL keep the four modes and SHALL offer "Try a new model" as a template of difficulty routing. Further templates MAY be added only as prefilled difficulty-routing drafts without new semantics. Display-name changes SHALL leave stored identifiers, CLI arguments, JSON values, schemas, machine-readable output and routing semantics unchanged, including `smart_saving`, `smart` and the stored economy group. Human-readable CLI help MAY show the display name beside the identifier.
+
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6236473660
+
+#### Scenario: Existing Plan after upgrade
+
+- **WHEN** display names change and a user opens a Plan saved as `smart_saving` before that naming change
+- **THEN** Desktop shows Difficulty routing with Regular and Primary groups. The display-name change MUST NOT alter stored content, digest or runtime behavior; separately specified extension protocol changes retain their own compatibility contract.
+
+#### Scenario: CLI compatibility
+
+- **WHEN** only the display names change and a script uses the existing smart-saving CLI arguments and JSON output
+- **THEN** The display-name change MUST leave command arguments and machine-readable output unchanged; human-readable help may use the new display name. Extension wire evolution follows its explicit API contract.
+
+#### Scenario: Expensive regular model
+
+- **WHEN** a user places a model that costs more than the primary model in the regular group
+- **THEN** no Desktop text calls the mode or the group a saving, and the model performance view shows any positive cost difference as additional cost.
+
+#### Scenario: Conditional cost benefit in introductory material
+
+- **WHEN** a README or website introduces difficulty routing and its cost benefit
+- **THEN** it uses the Difficulty routing, Regular and Primary names and may explain that placing a cheaper model in Regular lowers cost or makes subscriptions last longer, without promising savings for every configuration.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
