@@ -31,7 +31,7 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:57592f8645e74ed2c13a968d8b782bde1819f5f1aa8729b2b5fefa9f5f8d20e6";
+    "sha256:857e4f2b42278ac3877e34f2188eeecc7c1d188832316b23f577f3bc0b82b1ac";
 
 /// Exact bounded membership of an immutable captured stage revision. Source
 /// uncertainty and association uncertainty do not mean execution is missing.
@@ -698,6 +698,7 @@ pub enum AgentTurnStatusV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ExecutionFactV1 {
+    AgentTurnAdmitted(super::AgentTurnAdmissionV1),
     RouteDecision(Box<RouteDecisionFactV1>),
     CandidateDecision(Box<CandidateDecisionFactV1>),
     CredentialLease {

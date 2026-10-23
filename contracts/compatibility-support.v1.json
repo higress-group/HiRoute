@@ -596,6 +596,7 @@
           "allowed_paths": [
             "crates/domain/src/observation/execution_validation.rs",
             "crates/domain/src/observation/execution_tests.rs",
+            "crates/domain/src/observation/agent_turn_admission_tests.rs",
             "e2e/golden/p0-gateway-golden.json",
             "e2e/schema/p0-execution-fact.schema.json",
             "tools/e2e-harness/src/p0/types.rs"
@@ -2012,6 +2013,19 @@
         "crates/domain/src/observation/execution_tests.rs",
         "crates/observation/src/query_v2/requests/purpose.rs",
         "crates/observation/src/store/tests/request_purpose.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "pre-admission digest 57592f8645e74ed2c13a968d8b782bde1819f5f1aa8729b2b5fefa9f5f8d20e6 from retained 968d3abb3003b55cc03cc594c366d4625fd19801",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained pre-admission Product facts with their original bytes and digest, including opening cause, exact history membership, native auxiliary and optional pricing. Missing admission remains unrecorded and never gains identity from an inherited decision or affinity. No older contract may authenticate AgentTurnAdmitted, and live ingestion accepts only the current descriptor. The frozen synthetic 968 storage fixture exercises the original shape without claiming a real provider run.",
+      "removal_condition": "Remove only after all supported activity stores and backups have no pre-admission facts, or an authenticated evidence-preserving conversion replaces this reader.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/agent_turn_admission_tests.rs",
+        "crates/domain/src/observation/fixtures/pre-admission-968-finished.json"
       ]
     }
   ]

@@ -90,6 +90,7 @@ pub(super) fn reopen_finalized(entry: &mut SessionEntry, user: &[VisibleContentP
         entry.active.steps = wire.steps;
     } else {
         entry.active.user = user.to_vec();
+        entry.active.output = Default::default();
         entry.active.capture_partial = true;
         entry.history_partial = true;
     }

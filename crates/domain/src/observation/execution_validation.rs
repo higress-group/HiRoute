@@ -9,8 +9,8 @@ impl ExecutionFactEnvelopeV1 {
         self.validate_contract(false)
     }
 
-    /// Authenticates immutable observation rows written before Product v2. This is a storage
-    /// recovery seam, not an ingestion compatibility path.
+    /// Authenticates immutable observation rows written under supported older
+    /// contracts. This is a storage recovery seam, not an ingestion path.
     pub fn validate_persisted_contract(&self) -> Result<(), ExecutionFactError> {
         self.validate_contract(true)
     }
@@ -18,6 +18,10 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_pre_admission = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:57592f8645e74ed2c13a968d8b782bde1819f5f1aa8729b2b5fefa9f5f8d20e6";
         let persisted_pre_auxiliary = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
@@ -47,6 +51,7 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_digest.as_str()
                 == "sha256:80b4ff13af8abc79d7721fea42141300beade2acf1d2659983ceaafcdc6e4799";
         if !(current
+            || persisted_pre_admission
             || persisted_pre_auxiliary
             || persisted_pre_membership
             || persisted_pre_opening
@@ -76,7 +81,13 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidEnvelope);
         }
-        if !(current || persisted_pre_auxiliary || persisted_pre_membership)
+        if !current && matches!(&self.fact, ExecutionFactV1::AgentTurnAdmitted(_)) {
+            return Err(ExecutionFactError::InvalidFact);
+        }
+        if !(current
+            || persisted_pre_admission
+            || persisted_pre_auxiliary
+            || persisted_pre_membership)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::AgentTurnFinished {
@@ -87,7 +98,7 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_auxiliary)
+        if !(current || persisted_pre_admission || persisted_pre_auxiliary)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::AgentTurnFinished {
@@ -101,14 +112,18 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !current
+        if !(current || persisted_pre_admission)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route) if route.native_auxiliary)
         {
             return Err(ExecutionFactError::InvalidFact);
         }
         self.trust.validate()?;
         self.fact.validate()?;
-        if (current || persisted_pre_auxiliary || persisted_pre_membership || persisted_pre_opening)
+        if (current
+            || persisted_pre_admission
+            || persisted_pre_auxiliary
+            || persisted_pre_membership
+            || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
             if route.complexity.as_ref().is_some_and(|d| d.decision_protocol.is_none()
                 || (d.decision_protocol != Some(DecisionProtocolV1::SystemOneC) && d.routing_observation.is_some())))
@@ -116,6 +131,7 @@ impl ExecutionFactEnvelopeV1 {
             return Err(ExecutionFactError::InvalidFact);
         }
         if !(current
+            || persisted_pre_admission
             || persisted_pre_auxiliary
             || persisted_pre_membership
             || persisted_pre_opening)
@@ -125,6 +141,7 @@ impl ExecutionFactEnvelopeV1 {
             return Err(ExecutionFactError::InvalidFact);
         }
         if !(current
+            || persisted_pre_admission
             || persisted_pre_auxiliary
             || persisted_pre_membership
             || persisted_pre_opening
@@ -149,6 +166,7 @@ impl ExecutionFactEnvelopeV1 {
         }
         if let Some(pricing) = &self.pricing {
             if !(current
+                || persisted_pre_admission
                 || persisted_pre_auxiliary
                 || persisted_pre_membership
                 || persisted_pre_opening
@@ -241,6 +259,7 @@ impl FrozenExecutionTrustV1 {
 impl ExecutionFactV1 {
     pub fn validate(&self) -> Result<(), ExecutionFactError> {
         match self {
+            Self::AgentTurnAdmitted(admission) => admission.validate(),
             Self::RouteDecision(route) => route.validate(),
             Self::CandidateDecision(candidate) => candidate.validate(),
             Self::CredentialLease {

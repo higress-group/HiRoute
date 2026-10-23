@@ -226,6 +226,19 @@ fn assert_not_closed(fixture: &RuntimeFixture, count: usize) {
         )),
         "a completed HTTP/tool attempt is not a closed logical stage: {facts:?}"
     );
+    let page = super::observed_history::timeline(&facts);
+    assert_eq!(
+        page.turns.len(),
+        1,
+        "no affinity hint must not split the admitted stage"
+    );
+    assert_eq!(page.turns[0].requests.len(), count);
+    assert!(page.turns[0].agent_turn_id.is_some());
+    assert!(page.turns[0].segment_id.is_none());
+    assert_eq!(
+        page.turns[0].status, "unknown",
+        "completed tools await client continuation; they are not an active HTTP request or a completed task"
+    );
 }
 
 fn assert_observed_retention(fixture: &RuntimeFixture, decisions: &[&Value], opaque: &str) {
@@ -432,6 +445,12 @@ fn assert_encrypted_tool_retry(proved: bool) {
     // Facts: every actual request/attempt is retained, irrespective of origin
     // proof or whether the native tool returned an error.
     let facts = wait_execution_facts(&fixture, 4);
+    let page = super::observed_history::timeline(&facts);
+    assert_eq!(page.turns.len(), 2);
+    assert_eq!(page.turns[0].requests.len(), 3);
+    assert_eq!(page.turns[1].requests.len(), 1);
+    assert_eq!(page.turns[0].status, "completed");
+    assert_eq!(page.turns[0].assessment.as_ref().unwrap().score, 0.75);
     assert_single_planner_run_per_request(&facts, 4);
     let decisions = facts
         .iter()

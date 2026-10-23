@@ -135,6 +135,7 @@ pub struct ExecutionFactEnvelopeV1 {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)] // Stable wire fact enum; keep its typed payloads inline.
 pub enum ExecutionFactV1 {
+    AgentTurnAdmitted(hiroute_domain::AgentTurnAdmissionV1),
     RouteDecision {
         planner_version: String,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
