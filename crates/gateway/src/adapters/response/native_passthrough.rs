@@ -21,6 +21,7 @@ use crate::server::request_plan::IngressProtocol;
 
 use super::super::continuation::{ToolIdProjection, project_delivered_tool_id};
 use super::super::{ChatToolIdentity, ChatToolProjection, ProtocolAdapterError};
+use super::wire::optional_str;
 
 #[path = "native_passthrough_helpers.rs"]
 mod helpers;
@@ -941,9 +942,7 @@ impl ProjectionState {
                 None => u32_field(call, "index")?,
             };
             let existing = self.tools.get(&index).cloned();
-            let native_id = call
-                .get("id")
-                .and_then(Value::as_str)
+            let native_id = optional_str(call, "id")?
                 // Chat argument deltas can retain an explicit empty id. It
                 // supplies no replacement identity; only an already bound
                 // index can provide the original tool id in that case.
@@ -954,8 +953,9 @@ impl ProjectionState {
             let emitted_name = call
                 .get("function")
                 .and_then(Value::as_object)
-                .and_then(|function| function.get("name"))
-                .and_then(Value::as_str)
+                .map(|function| optional_str(function, "name"))
+                .transpose()?
+                .flatten()
                 .map(str::to_owned);
             let identity = match emitted_name {
                 Some(emitted_name) => self.chat_identity(&emitted_name)?,

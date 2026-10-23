@@ -176,3 +176,48 @@ fn canonical_chat_rejects_partial_tool_identity_changes() {
         assert!(decoder.feed(&chunk(delta, Value::Null), false).is_err());
     }
 }
+
+#[test]
+fn native_and_canonical_chat_reject_invalid_tool_identity_types() {
+    for invalid in [json!(7), json!(false), json!([]), json!({})] {
+        for delta in [
+            json!({"index":0,"id":invalid,"function":{"arguments":"{}"}}),
+            json!({"index":0,"function":{"name":invalid,"arguments":"{}"}}),
+        ] {
+            let bytes = chunk(delta, Value::Null);
+            let mut native = projector();
+            native.feed(&opening(), false).unwrap();
+            assert!(native.feed(&bytes, false).is_err());
+            let mut canonical = NativeResponseDecoder::new(&profile(), 200, true).unwrap();
+            canonical.feed(&opening(), false).unwrap();
+            assert!(canonical.feed(&bytes, false).is_err());
+        }
+    }
+}
+
+#[test]
+fn native_and_canonical_chat_treat_null_identity_as_bound_delta_only() {
+    let tail = chunk(
+        json!({"index":0,"id":null,"function":{"name":null,"arguments":"{}"}}),
+        json!("tool_calls"),
+    );
+    let wire = [opening(), tail, b"data: [DONE]\n\n".to_vec()].concat();
+    let mut native = projector();
+    let units = native.feed(&wire, true).unwrap();
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Complete)
+    );
+    let mut canonical = NativeResponseDecoder::new(&profile(), 200, true).unwrap();
+    canonical.feed(&wire, true).unwrap();
+    assert!(canonical.finish().is_ok());
+    for delta in [
+        json!({"index":0,"id":null,"function":{"name":"inspect","arguments":"{}"}}),
+        json!({"index":0,"id":"call-fixture","function":{"name":null,"arguments":"{}"}}),
+    ] {
+        let bytes = chunk(delta, Value::Null);
+        assert!(projector().feed(&bytes, false).is_err());
+        let mut canonical = NativeResponseDecoder::new(&profile(), 200, true).unwrap();
+        assert!(canonical.feed(&bytes, false).is_err());
+    }
+}
