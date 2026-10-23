@@ -24,6 +24,6 @@
 
 计划和会话统计覆盖匹配范围内所有保留决策，不受阶段分页及模型/评分筛选影响。当前事件标记四类分类器协议；已知其他协议单独计数，不会让混合范围永久不完整。有认证格式证据的受支持早期记录也按已知旧发布计数；无法证明格式的无标记事件、缺失投影和读取上限仍形成覆盖缺口：计数可见，完整比例不可用。仅删除正文保留安全证据，完整事实删除或到期按现有流程移除。每个评分范围在冻结时记录其默认或自定义意图。比例描述路由行为，不声称准确率或质量提升。
 
-CLI 沿用 `decision services list/apply/test` 和现有 routing 编辑、预览、应用流程。编辑结构使用 `smart.judgment`，自定义分支使用 `branch_routing.judgment`、分支 `primary_candidates` 和可选完整 `judgment`。自定义扩展自行决定策略，在已发布路由内直接返回类别和模型组；可选前段评分仅用于观察，HiRoute 不应用阈值或低分保护。扩展路由隐藏判断设置并保留原编辑值，切回内置连接时恢复。新执行投影不包含判断设置；旧发布及 Operation 记录仍可读取。表单提供示例和唯一当前 OpenAPI。
+CLI 沿用 `decision services list/apply/test` 和现有 routing 编辑、预览、应用流程。编辑结构使用 `smart.judgment`，自定义分支使用 `branch_routing.judgment`、分支 `primary_candidates` 和可选完整 `judgment`。自定义扩展自行决定策略，在已发布路由内直接返回类别和模型组；可选前段评分仅用于观察，HiRoute 不应用阈值或低分保护。扩展路由隐藏判断设置并保留原编辑值，切回内置连接时恢复。当前自定义扩展的执行投影不包含判断设置，携带旧判断设置的执行格式会被拒绝，不提供旧自定义扩展数据适配。内置服务已有的发布及 Operation 兼容支持保持不变。表单提供示例和唯一当前 OpenAPI。
 
-详见 [HiRoute 扩展 API 语义](../decision-extensions/api/README.zh-CN.md)、[可选的 Jev 自托管部署](../decision-extensions/extensions/jev-decider/README.zh-CN.md)、[System One 映射](../decision-extensions/api/system-one-design.md)与[代码职责](code-map/decision-foundation.md)。早期开发期扩展结构不提供协商路径；受支持的已发布 HiRoute 数据继续使用登记的准入与恢复读取器。扩展不能选择工具。
+详见 [HiRoute 扩展 API 语义](../decision-extensions/api/README.zh-CN.md)、[可选的 Jev 自托管部署](../decision-extensions/extensions/jev-decider/README.zh-CN.md)、[System One 映射](../decision-extensions/api/system-one-design.md)与[代码职责](code-map/decision-foundation.md)。早期开发期扩展结构不提供协商路径；内置服务已发布数据及共用观察历史继续使用登记的准入与恢复读取器，不包含已停用的旧自定义扩展专属格式。扩展不能选择工具。

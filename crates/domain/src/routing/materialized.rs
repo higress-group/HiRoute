@@ -591,11 +591,11 @@ fn validate_request_groups(
                         || b.name.trim().is_empty()
                         || b.condition.trim().is_empty()
                         || b.name.len() > 512
-                        || b.judgment
-                            .as_ref()
-                            .map_or(classifier.mode.extension_identity().is_none(), |j| {
-                                !j.validate()
-                            })
+                        || if classifier.mode.extension_identity().is_some() {
+                            b.judgment.is_some()
+                        } else {
+                            b.judgment.as_ref().is_none_or(|j| !j.validate())
+                        }
                 })
             {
                 return Err(CompiledPlanError::InvalidGroups);
@@ -624,14 +624,13 @@ fn validate_request_groups(
             classifier
                 .validate()
                 .map_err(|_| CompiledPlanError::InvalidClassifier)?;
-            if judgment
-                .as_ref()
-                .map_or(classifier.mode.extension_identity().is_none(), |j| {
-                    !j.validate()
-                })
-                || (simple_groups.as_slice() != [MaterializedGroupId::Economy]
-                    && simple_groups.as_slice()
-                        != [MaterializedGroupId::Economy, MaterializedGroupId::Primary])
+            if (if classifier.mode.extension_identity().is_some() {
+                judgment.is_some()
+            } else {
+                judgment.as_ref().is_none_or(|j| !j.validate())
+            }) || (simple_groups.as_slice() != [MaterializedGroupId::Economy]
+                && simple_groups.as_slice()
+                    != [MaterializedGroupId::Economy, MaterializedGroupId::Primary])
                 || complex_groups.as_slice() != [MaterializedGroupId::Primary]
                 || groups.keys().copied().collect::<BTreeSet<_>>()
                     != BTreeSet::from([MaterializedGroupId::Economy, MaterializedGroupId::Primary])

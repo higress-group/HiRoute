@@ -6,8 +6,6 @@ fn branch_snapshot() -> GatewayPublicationSnapshotV3 {
     let AliasRequestOwnedRouteV1::Classified { classifier, .. } = &routing.request_owned else {
         unreachable!()
     };
-    let mut judgment = hiroute_domain::JudgmentSettingsV1::default();
-    judgment.degree.instructions = "Degree standard\n".repeat(1000);
     let branches = ["writing", "review"]
         .into_iter()
         .enumerate()
@@ -17,7 +15,7 @@ fn branch_snapshot() -> GatewayPublicationSnapshotV3 {
             condition: "Task condition\n".repeat(1500),
             group: AliasGroupIdV1::Branch(index as u16),
             primary_group: (index == 0).then_some(AliasGroupIdV1::BranchPrimary(0)),
-            judgment: Some(judgment.clone()),
+            judgment: None,
         })
         .collect();
     routing.request_owned = AliasRequestOwnedRouteV1::Branches {
@@ -43,8 +41,31 @@ fn branch_snapshot() -> GatewayPublicationSnapshotV3 {
 
 #[test]
 fn publication_preserves_long_category_and_degree_prompts() {
-    let snapshot = branch_snapshot();
-    let compiled = super::super::compiler::compile(&snapshot).unwrap();
+    let mut snapshot = branch_snapshot();
+    let AliasRequestOwnedRouteV1::Branches {
+        classifier,
+        branches,
+        ..
+    } = &mut snapshot.aliases[0].routing.as_mut().unwrap().request_owned
+    else {
+        unreachable!()
+    };
+    *custom_connection(&mut classifier.mode) = hiroute_domain::DecisionConnectionV1::SystemOne {
+        provider: "compatible".into(),
+        model: "synthetic".into(),
+        endpoint: "https://decision.example/systemone".into(),
+        timeout_ms: 3000,
+        auth_header: hiroute_domain::ClassifierAuthHeaderV1 {
+            name: "Authorization".into(),
+            value_secret_ref: "fixture".into(),
+        },
+    };
+    for branch in branches {
+        let mut judgment = hiroute_domain::JudgmentSettingsV1::default();
+        judgment.degree.instructions = "Degree standard\n".repeat(1000);
+        branch.judgment = Some(judgment);
+    }
+    let compiled = super::super::compiler::compile(&reseal(snapshot)).unwrap();
     let authority = compiled.aliases["smart"]
         .execution
         .classifier
@@ -105,7 +126,7 @@ fn custom_extension_snapshot() -> GatewayPublicationSnapshotV3 {
                 plan_display_name: Some("Smart".into()),
                 request_owned: AliasRequestOwnedRouteV1::Classified {
                     native_protocol: None,
-                    judgment: Some(Default::default()),
+                    judgment: None,
                     reselect_on_user_message: false,
                     classifier: AliasComplexityClassifierV1 {
                         revision: "classifier/v1".into(),
@@ -241,5 +262,54 @@ fn custom_extension_accepts_trusted_http_https_and_optional_custom_header() {
             Err(PublicationInstallError::InvalidPlannerPolicy)
         ));
         assert!(installer.prepare(reseal(invalid_timeout)).is_err());
+    }
+}
+
+#[test]
+fn publication_requires_current_custom_and_builtin_judgment_shapes() {
+    for mut snapshot in [custom_extension_snapshot(), branch_snapshot()] {
+        assert!(super::super::compiler::compile(&snapshot).is_ok());
+        match &mut snapshot.aliases[0].routing.as_mut().unwrap().request_owned {
+            AliasRequestOwnedRouteV1::Classified { judgment, .. } => {
+                *judgment = Some(Default::default())
+            }
+            AliasRequestOwnedRouteV1::Branches { branches, .. } => {
+                branches[0].judgment = Some(Default::default())
+            }
+            _ => unreachable!(),
+        }
+        assert!(super::super::compiler::compile(&reseal(snapshot)).is_err());
+    }
+    for mut snapshot in [custom_extension_snapshot(), branch_snapshot()] {
+        let request = &mut snapshot.aliases[0].routing.as_mut().unwrap().request_owned;
+        let classifier = match request {
+            AliasRequestOwnedRouteV1::Classified { classifier, .. }
+            | AliasRequestOwnedRouteV1::Branches { classifier, .. } => classifier,
+            _ => unreachable!(),
+        };
+        *custom_connection(&mut classifier.mode) =
+            hiroute_domain::DecisionConnectionV1::SystemOne {
+                provider: "compatible".into(),
+                model: "synthetic".into(),
+                endpoint: "https://decision.example/systemone".into(),
+                timeout_ms: 3000,
+                auth_header: hiroute_domain::ClassifierAuthHeaderV1 {
+                    name: "Authorization".into(),
+                    value_secret_ref: "fixture".into(),
+                },
+            };
+        assert!(super::super::compiler::compile(&reseal(snapshot.clone())).is_err());
+        match &mut snapshot.aliases[0].routing.as_mut().unwrap().request_owned {
+            AliasRequestOwnedRouteV1::Classified { judgment, .. } => {
+                *judgment = Some(Default::default())
+            }
+            AliasRequestOwnedRouteV1::Branches { branches, .. } => {
+                for branch in branches {
+                    branch.judgment = Some(Default::default());
+                }
+            }
+            _ => unreachable!(),
+        }
+        assert!(super::super::compiler::compile(&reseal(snapshot)).is_ok());
     }
 }

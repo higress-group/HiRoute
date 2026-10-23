@@ -50,10 +50,12 @@ pub(super) fn validate_execution(
                         || frozen.condition != selected.condition
                         || frozen.group != G::Branch(i as u16)
                         || frozen.primary_group != expected_primary
-                        || frozen.judgment.as_ref().map_or(
-                            routing.classifier.extension_identity().is_none(),
-                            |judgment| judgment != routing.judgment_for(selected),
-                        )
+                        || frozen.judgment.as_ref()
+                            != routing
+                                .classifier
+                                .extension_identity()
+                                .is_none()
+                                .then(|| routing.judgment_for(selected))
                     {
                         return Err(PlanVersionError::Invalid);
                     }
@@ -101,11 +103,11 @@ pub(super) fn validate_execution(
                     return Err(PlanVersionError::Invalid);
                 }
                 if simple_groups != &[G::Economy, G::Primary]
-                    || materialized_judgment
-                        .as_ref()
-                        .map_or(classifier_mode.extension_identity().is_none(), |frozen| {
-                            judgment != frozen
-                        })
+                    || materialized_judgment.as_ref()
+                        != classifier_mode
+                            .extension_identity()
+                            .is_none()
+                            .then_some(judgment)
                     || reselect_on_user_message != materialized_reselect
                     || complex_groups != &[G::Primary]
                     || classifier

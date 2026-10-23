@@ -258,7 +258,7 @@ and actual positions. An extension decision is presented as selected by the deci
 and actual positions, without HiRoute threshold or protection explanations. Both use the same
 [quality queries](../session-history/spec.md).
 
-Parked unfinished prompt text MUST NOT block custom-extension publication. New derived execution payloads omit judgment settings; source drafts retain their bytes, including complete branch overrides. Released publications and unfinished or completed Operation envelopes retain original present judgment fields and canonical digests when read or revalidated.
+Parked unfinished prompt text MUST NOT block custom-extension publication. New derived execution payloads omit judgment settings; source drafts retain their bytes, including complete branch overrides. Current custom publications and Operations MUST use the execution shape without judgment and validate their exact parked source against sealed configuration. Old custom-only execution and Operation formats have no compatibility adapter. Existing native frozen configuration and common historical Observation authentication keep their supported behavior.
 
 #### Scenario: Extension route hides decision settings
 
@@ -376,7 +376,7 @@ context handling and its own decision policy; it never selects models, candidate
 
 The typed producer, parser, official extension, examples and OpenAPI MUST describe one current shape. It replaced
 the earlier v1 judgment shape in place, without a legacy reader, negotiation or user-visible protocol version.
-Released Plans and connections stay readable; their stored judgment settings remain parked for built-in connections.
+Custom execution payloads, publications and Operations support only the current format without judgment settings; a custom execution payload carrying judgment MUST be rejected, with no legacy normalization adapter. Current editor judgment settings remain parked for switching back to built-in connections. Existing native data and shared historical Observation authentication retain their support.
 An extension that has not been upgraded fails like any invalid decision call and uses the existing fallback. The API
 guide/OpenAPI supply complete wire schemas; the durable policy is here.
 
@@ -400,12 +400,17 @@ The request carries the preceding actual category before the new category is kno
 #### Scenario: Extension not yet upgraded
 
 - **WHEN** a published route calls an extension that still implements only the replaced v1 shape
-- **THEN** the call MUST fail validation and use the existing decision-failure fallback; the published Plan stays readable and save-and-test reports that the extension does not implement the current contract.
+- **THEN** the call MUST fail validation and use the existing decision-failure fallback; the current published Plan stays valid and save-and-test reports that the extension does not implement the current contract.
 
 #### Scenario: The extension chooses a different category
 
 - **WHEN** the request includes an eligible actual writing stage and the extension selects review
 - **THEN** HiRoute MUST preserve the review decision and discard the returned assessment; no writing score may affect review.
+
+#### Scenario: Legacy custom execution judgment is rejected
+
+- **WHEN** a custom smart or branch execution payload contains judgment settings
+- **THEN** Plan validation and Gateway publication installation MUST reject it; current custom payloads omit judgment, while source editor settings stay parked and native payloads still require their valid frozen judgment.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246369555

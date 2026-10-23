@@ -158,7 +158,7 @@ While a user chooses a trust level or threshold for a published difficulty-routi
 Related source specifications:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235187673
 
-Custom-extension decisions MUST be excluded by their recorded protocol, including old extension decisions with degree probabilities. They cannot enter threshold replay or threshold suggestions. A current custom-extension Plan exposes no threshold policy from parked draft values.
+Custom-extension decisions MUST be excluded by their recorded protocol, independently of any probability field. They cannot enter threshold replay or threshold suggestions. A current custom-extension Plan exposes no threshold policy from parked draft values.
 
 #### Scenario: Preview at a lower threshold
 

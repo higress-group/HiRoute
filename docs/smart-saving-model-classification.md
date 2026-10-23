@@ -75,11 +75,11 @@ routing behavior and do not claim accuracy or quality improvement.
 
 The CLI keeps `decision services list/apply/test` and the existing routing preview/apply workflow.
 Editor data uses `smart.judgment`, or `branch_routing.judgment` with branch `primary_candidates` and optional
-complete `judgment`. Custom extensions own their decision policy and directly return category/group within the published route. Their optional prior-stage scores are observation only; HiRoute applies no thresholds or low-score protection. Custom routes hide judgment controls and keep parked source values for switching back to a built-in connection. New execution projections omit judgment settings, while released Plans and Operations remain readable. Their form provides
+complete `judgment`. Custom extensions own their decision policy and directly return category/group within the published route. Their optional prior-stage scores are observation only; HiRoute applies no thresholds or low-score protection. Custom routes hide judgment controls and keep parked source values for switching back to a built-in connection. Current custom execution projections omit judgment settings and reject the former present-judgment shape; no old custom data adapter is provided. Built-in released Plans and Operations keep their existing support. Their form provides
 examples and the single current OpenAPI. No separate Secret-management UI is needed.
 
 See [HiRoute extension API semantics](../decision-extensions/api/README.md), [optional self-hosted Jev deployment](../decision-extensions/extensions/jev-decider/README.md),
 [System One mapping](../decision-extensions/api/system-one-design.md) and [code owners](code-map/decision-foundation.md).
-Earlier development-only custom-extension shapes have no negotiation path; supported
-released HiRoute data uses the registered admission/recovery readers.
+Earlier custom-extension shapes have no compatibility path; supported built-in data and
+shared Observation history retain the registered admission/recovery readers.
 Custom extensions cannot select tools.

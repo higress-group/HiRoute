@@ -136,7 +136,7 @@ impl PlanEditorStateV2 {
     }
 
     pub fn effective(&self) -> Result<AgentPlanAuthoringV2, PlanAuthoringError> {
-        self.effective_with_native(Some(&super::NativeProtocolSelectionV1::default()), false)
+        self.effective_with_native(Some(&super::NativeProtocolSelectionV1::default()))
     }
 
     /// Validate a retained operation against its already sealed configuration, not
@@ -145,19 +145,12 @@ impl PlanEditorStateV2 {
         &self,
         frozen: &AgentPlanAuthoringV2,
     ) -> Result<AgentPlanAuthoringV2, PlanAuthoringError> {
-        let current = self.effective_with_native(frozen.native_protocol(), false)?;
-        if current == *frozen {
-            return Ok(current);
-        }
-        // Released custom Operations normalized default assessment text while sealing their
-        // configuration. Rebuild that exact old projection for comparison, never for writes.
-        self.effective_with_native(frozen.native_protocol(), true)
+        self.effective_with_native(frozen.native_protocol())
     }
 
     fn effective_with_native(
         &self,
         protocol: Option<&super::NativeProtocolSelectionV1>,
-        resolve_parked: bool,
     ) -> Result<AgentPlanAuthoringV2, PlanAuthoringError> {
         self.validate_draft()?;
         let strategy = match self.mode {
@@ -173,7 +166,7 @@ impl PlanEditorStateV2 {
                     None
                 };
                 {
-                    if resolve_parked || routing.classifier.extension_identity().is_none() {
+                    if routing.classifier.extension_identity().is_none() {
                         routing.judgment = routing
                             .judgment
                             .resolve_assessment(routing.native_protocol.as_ref())
@@ -199,15 +192,14 @@ impl PlanEditorStateV2 {
                 } else {
                     None
                 };
-                let judgment =
-                    if !resolve_parked && self.smart.classifier.extension_identity().is_some() {
-                        self.smart.judgment.clone()
-                    } else {
-                        self.smart
-                            .judgment
-                            .resolve_assessment(native_protocol.as_ref())
-                            .map_err(PlanAuthoringError::NativeProtocol)?
-                    };
+                let judgment = if self.smart.classifier.extension_identity().is_some() {
+                    self.smart.judgment.clone()
+                } else {
+                    self.smart
+                        .judgment
+                        .resolve_assessment(native_protocol.as_ref())
+                        .map_err(PlanAuthoringError::NativeProtocol)?
+                };
                 AgentPlanStrategyV2::SmartSaving {
                     native_protocol,
                     economy: self.smart.economy.clone(),

@@ -30,7 +30,7 @@ Return HTTP 200 and strict JSON with no duplicate or unknown members, at most 64
 
 Every new user turn decides again. Same-turn tool continuations and replay inherit the frozen decision while history and authority remain valid. HiRoute retains held-candidate preference within the selected group and regular-to-primary availability relay; direct primary selection never downgrades. Model failures cannot manufacture scores.
 
-The current shape replaces the earlier v1 probability response in place, without a legacy reader or version selector. Existing plans and connections remain readable. An un-upgraded extension fails save-and-test and uses the execution fallback above. Drafts retain built-in judgment edits, but extension routes neither display nor publish those execution settings.
+The current shape replaces the earlier v1 probability response in place, without a legacy reader or version selector. Custom execution supports only the current format without judgment settings; old custom-only persisted formats have no compatibility adapter. Current saved connection fields are unchanged, and supported built-in data and shared Observation history retain their existing readers. An un-upgraded extension fails save-and-test and uses the execution fallback above. Drafts retain built-in judgment edits, but extension routes neither display nor publish those execution settings.
 
 ## Examples
 

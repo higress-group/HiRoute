@@ -41,7 +41,7 @@ Desktop calls connections decision models or custom extensions; CLI retains
 existing Secret storage. Custom HTTP belongs to a saved connection, not inline
 `rest` authoring. Current development v1 replaces the earlier decision shape;
 the custom-extension v1 shape has no old-format negotiation. New native publications freeze historical problem applicability in the existing System One
-wire envelope. Earlier frozen publications keep their original execution semantics.
+wire envelope. Earlier built-in frozen publications keep their original execution semantics.
 
 Editor input/readback has no native protocol or background selection. Effective
 native authoring records the current internal protocol, with a fixed eight-turn
@@ -152,4 +152,4 @@ released-decision count beside protected stages. Product requirements belong to
 [smart-saving routing](../../issue-spec/specs/smart-saving-routing/spec.md) and
 [session history](../../issue-spec/specs/session-history/spec.md).
 
-Custom observations carry extension identity and an optional bounded reason without a competence floor. Complete scores remain scored coverage and may enter averages; competence rates use only complete stages with a real floor, and custom protocol decisions never enter threshold replay. Retained Operation validation preserves the earlier custom default normalization only to authenticate sealed inputs; new publication keeps parked text exact. The [pre-extension Operation fixture](../../crates/application/src/routing/authoring/fixtures/pre-extension-custom-operation.json) and [observation boundaries](../../crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs) cover old bytes and reject new authority under old schemas.
+Custom observations carry extension identity and an optional bounded reason without a competence floor. Complete scores remain scored coverage and may enter averages; competence rates use only complete stages with a real floor, and custom protocol decisions never enter threshold replay. Current custom execution requires absent judgment; Domain Plan validation and Gateway snapshot installation reject the old present-judgment shape. [Current publication/Operation scenarios](../../crates/application/src/routing/authoring/tests.rs) preserve parked source exactly and reject inconsistent sealed inputs, without a custom-only normalization adapter. Native frozen validation and the common [observation boundaries](../../crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs) retain supported historical bytes and reject new authority under old schemas.
