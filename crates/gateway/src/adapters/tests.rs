@@ -33,6 +33,9 @@ mod structured_output;
 #[path = "tests/responses_options.rs"]
 mod responses_options;
 
+#[path = "tests/message_phase.rs"]
+mod message_phase;
+
 fn exact_state_profile(
     ingress: IngressProtocol,
     upstream: IngressProtocol,
