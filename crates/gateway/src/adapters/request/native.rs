@@ -146,6 +146,9 @@ pub(super) fn project(
         messages.retain(|m| !matches!(m["role"].as_str(), Some("system" | "developer")));
         object.insert("system".into(), Value::Array(system));
     }
+    // Status sidecars use the original canonical indexes. Normalize before
+    // prefix cleanup removes reasoning items and shifts later native positions.
+    normalize_codex_replay(&mut body, profile, request);
     if let Some(end) = omit_prefix {
         if request.native_only {
             return Err(ProtocolAdapterError::ClientUnrepresentable(
@@ -154,7 +157,6 @@ pub(super) fn project(
         }
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
-    normalize_codex_replay(&mut body, profile, request);
     Ok(body)
 }
 
@@ -174,10 +176,15 @@ fn normalize_codex_replay(
     let Some(input) = body.get_mut("input").and_then(Value::as_array_mut) else {
         return;
     };
-    for (index, item) in input.iter_mut().enumerate() {
+    for (index, item) in input
+        .iter_mut()
+        // Tool declarations do not occupy canonical message positions.
+        .filter(|item| item.get("type").and_then(Value::as_str) != Some("additional_tools"))
+        .enumerate()
+    {
         // Native leaves may already be Replay refs. Lifecycle admission retains
-        // the bounded status beside the canonical item at the same input index;
-        // never inspect a marker string as if it were the original status.
+        // the bounded status beside the original canonical message; never inspect
+        // a marker string as if it were the original status.
         let status = if request.ingress_protocol == IngressProtocol::Responses
             && request.native_body.is_some()
         {
