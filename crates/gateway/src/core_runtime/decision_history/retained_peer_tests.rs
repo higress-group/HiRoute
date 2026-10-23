@@ -119,8 +119,9 @@ fn retained_begin(
 fn opaque_prefix(
     fixture: &Fixture,
     authorized: &crate::server::request_plan::AuthorizedRequestPlan,
+    capture_prior: bool,
 ) -> Vec<Value> {
-    opaque_prefix_item(fixture, authorized, peer_item())
+    opaque_prefix_item(fixture, authorized, peer_item(), capture_prior)
 }
 
 fn peer_item() -> Value {
@@ -134,24 +135,31 @@ fn opaque_prefix_item(
     fixture: &Fixture,
     authorized: &crate::server::request_plan::AuthorizedRequestPlan,
     old_item: Value,
+    capture_prior: bool,
 ) -> Vec<Value> {
     let mut items = vec![
         json!({"role":"user", "content":"uncaptured ancestor task"}),
         old_item,
     ];
-    let mut opaque = retained_begin(fixture, authorized, &items, "opaque-turn", "opaque-request");
-    fixture.finish_named(
-        &mut opaque,
-        &[text_event("accepted opaque-stage output")],
-        true,
-        "opaque-request",
-    );
-    drop(opaque);
+    if capture_prior {
+        let mut opaque =
+            retained_begin(fixture, authorized, &items, "opaque-turn", "opaque-request");
+        fixture.finish_named(
+            &mut opaque,
+            &[text_event("accepted opaque-stage output")],
+            true,
+            "opaque-request",
+        );
+    }
     items.push(json!({"role":"assistant", "content":"accepted opaque-stage output"}));
     items
 }
 
-fn assert_actual_b_target(history: &DecisionHistory, expected_requests: &[&str]) {
+fn assert_actual_b_target(
+    history: &DecisionHistory,
+    expected_requests: &[&str],
+    capture_prior: bool,
+) {
     let target = history
         .history
         .assessment_target
@@ -181,15 +189,24 @@ fn assert_actual_b_target(history: &DecisionHistory, expected_requests: &[&str])
     let visible = serde_json::to_string(&history.history.visible_conversation).unwrap();
     assert!(visible.contains("real new question B"));
     assert!(visible.contains("accepted B final output"));
-    assert!(!visible.contains("uncaptured ancestor task"));
+    if !capture_prior {
+        assert!(!visible.contains("uncaptured ancestor task"));
+        assert!(!visible.contains("accepted opaque-stage output"));
+    }
     assert!(!visible.contains("synthetic opaque peer"));
 }
 
 #[test]
 fn retained_opaque_peer_history_recovers_new_text_pair_in_same_native_session() {
+    for capture_prior in [false, true] {
+        new_text_pair(capture_prior);
+    }
+}
+
+fn new_text_pair(capture_prior: bool) {
     let fixture = Fixture::new();
     let authorized = crate::server::publication::authorized_native_consumer_fixture(None);
-    let mut items = opaque_prefix(&fixture, &authorized);
+    let mut items = opaque_prefix(&fixture, &authorized, capture_prior);
     items.push(json!({"role":"user", "content":"real new question B"}));
     let mut b = retained_begin(&fixture, &authorized, &items, "b-turn", "b-final");
     fixture.finish_named(
@@ -204,7 +221,12 @@ fn retained_opaque_peer_history_recovers_new_text_pair_in_same_native_session() 
         json!({"role":"user", "content":"real new question C"}),
     ]);
     let c = retained_begin(&fixture, &authorized, &items, "c-turn", "c-question");
-    assert_actual_b_target(&c, &["b-final"]);
+    let expected: &[&str] = if capture_prior {
+        &["opaque-request", "b-final"]
+    } else {
+        &["b-final"]
+    };
+    assert_actual_b_target(&c, expected, capture_prior);
 }
 
 #[test]
@@ -227,9 +249,16 @@ fn retained_unknown_reasoning_history_recovers_complete_new_tool_stage() {
 }
 
 fn complete_new_tool_stage(old_item: Value) {
+    for capture_prior in [false, true] {
+        complete_new_tool_stage_with_capture(old_item.clone(), capture_prior);
+    }
+}
+
+fn complete_new_tool_stage_with_capture(old_item: Value, capture_prior: bool) {
+    let complete_prior = old_item["type"] == "agent_message";
     let fixture = Fixture::new();
     let authorized = crate::server::publication::authorized_native_consumer_fixture(None);
-    let mut items = opaque_prefix_item(&fixture, &authorized, old_item);
+    let mut items = opaque_prefix_item(&fixture, &authorized, old_item, capture_prior);
     items.push(json!({"role":"user", "content":"real new question B"}));
     let mut b = retained_begin(&fixture, &authorized, &items, "b-turn", "b-tool");
     fixture.finish_named(
@@ -270,5 +299,21 @@ fn complete_new_tool_stage(old_item: Value) {
         json!({"role":"user", "content":"real new question C"}),
     ]);
     let c = retained_begin(&fixture, &authorized, &items, "c-turn", "c-question");
-    assert_actual_b_target(&c, &["b-tool", "b-final"]);
+    let expected: &[&str] = if capture_prior && complete_prior {
+        &["opaque-request", "b-tool", "b-final"]
+    } else {
+        &["b-tool", "b-final"]
+    };
+    assert_actual_b_target(&c, expected, capture_prior);
+    if capture_prior && !complete_prior {
+        let visible = serde_json::to_string(&c.history.visible_conversation).unwrap();
+        assert!(
+            visible.contains("uncaptured ancestor task"),
+            "actual earlier input remains background"
+        );
+        assert!(
+            visible.contains("accepted opaque-stage output"),
+            "actual earlier output is retained"
+        );
+    }
 }

@@ -5,7 +5,7 @@ use crate::server::request_plan::IngressProtocol;
 use serde_json::json;
 
 fn request(role: &str) -> ModelRequestIRV1 {
-    decode_ingress_request(
+    let mut request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({"model":"route","stream":false,"input":[
             {"role":role,"content":"first instructions"},
@@ -15,7 +15,12 @@ fn request(role: &str) -> ModelRequestIRV1 {
             {"type":"function_call_output","call_id":"call","output":"tool receipt"}
         ]}),
     )
-    .unwrap()
+    .unwrap();
+    // These tests mutate canonical history directly. Native layout integrity
+    // has separate ingress-based tests and cannot describe these edited values.
+    request.native_body = None;
+    request.native_history = None;
+    request
 }
 
 fn measure(request: &ModelRequestIRV1, prefix: usize) -> HistoryDigests {
