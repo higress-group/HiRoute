@@ -10,6 +10,7 @@ mod native_passthrough_sse;
 mod protocols;
 mod render;
 mod responses_lifecycle;
+mod responses_sideband;
 mod search;
 mod wire;
 
@@ -18,14 +19,14 @@ mod chat_filtered_tests;
 #[cfg(test)]
 mod chat_tool_delta_tests;
 #[cfg(test)]
+mod moderation_metadata_tests;
+#[cfg(test)]
 #[path = "native_passthrough_tests.rs"]
 mod native_passthrough_tests;
 #[cfg(test)]
 mod native_reasoning_tests;
 #[cfg(test)]
 mod service_tier_tests;
-#[cfg(test)]
-mod moderation_metadata_tests;
 
 #[cfg(test)]
 mod size_tests;

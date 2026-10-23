@@ -368,6 +368,21 @@ impl ProjectionState {
             self.responses_done_seen = true;
             return Ok((None, ProjectionMetadata::opaque()));
         }
+        let parsed = serde_json::from_slice(data);
+        if self.protocol == IngressProtocol::Responses
+            && event_type.is_none_or(|event| event == "response.metadata")
+            && let Ok(Value::Object(object)) = &parsed
+            && object.get("type").and_then(Value::as_str) == Some("response.metadata")
+            && super::responses_sideband::moderation_notification(
+                object,
+                self.response_id.as_deref(),
+            )
+            .is_ok()
+        {
+            // The same semantic admission as canonical capture. A notification
+            // cannot replace an earlier terminal, including at the stream tail.
+            return Ok((None, ProjectionMetadata::opaque()));
+        }
         let after_terminal = self.terminal.take().is_some();
         if after_terminal {
             // Reuse the same owned identity projection, but a second provider
@@ -391,7 +406,7 @@ impl ProjectionState {
                 },
             ));
         }
-        let mut value: Value = match serde_json::from_slice(data) {
+        let mut value: Value = match parsed {
             Ok(Value::Object(object)) => Value::Object(object),
             Ok(_) | Err(_)
                 if event_type.is_some_and(|event| unowned_extension(self.protocol, event)) =>

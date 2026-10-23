@@ -75,6 +75,13 @@ renderers omit foreign reasoning without inventing signatures. The
 [production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
 covers the listener boundary, including tool continuation.
 
+Response-side [moderation notifications](src/adapters/response/responses_sideband.rs)
+are validated separately from model output. The known `response.metadata` moderation
+shape keeps its exact native wire and does not add canonical content or change a
+terminal, refusal or error. Unknown variants, including safety-control siblings,
+remain unsupported; [stream regressions](src/adapters/response/moderation_metadata_tests.rs)
+cover fragmentation, lifecycle placement, tool completion and negative controls.
+
 ## Native session correlation
 
 [context_hold/identity.rs](src/context_hold/identity.rs) resolves native identity

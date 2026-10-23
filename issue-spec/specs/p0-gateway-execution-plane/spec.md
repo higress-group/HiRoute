@@ -118,6 +118,18 @@ remain; omission emits safe WARN only when it actually changes projection. Prefl
 and unchanged projection emit none, and ordinary omission creates no cleanup retry
 or persistent watermark.
 
+Responses `response.metadata` carrying the recognized
+`metadata.openai_chatgpt_moderation_metadata` notification is non-content sideband.
+Its response ID must match the already started response, its sequence number must
+be a nonnegative integer, and its known prompt/generation/tool-call/tool-response
+members must be objects. Their contents remain opaque. Native forwarding preserves
+the original notification, while canonical capture adds no output, tool action,
+model identity, terminal or safety decision from it. It may occur before content,
+between content events or after the terminal without altering actual execution.
+Unknown envelope/metadata variants, safety buffering and verification are not
+covered by this admission. Missing terminals, errors and refusals retain their
+existing meaning; ignored notification content cannot manufacture successful capture.
+
 ### Requirement: Decision history has one bounded process-local owner
 
 The history owner resolves bounded predecessor evidence and admits independent

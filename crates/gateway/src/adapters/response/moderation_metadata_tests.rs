@@ -112,6 +112,62 @@ fn moderation_metadata_preserves_native_notification_bytes() {
 }
 
 #[test]
+fn moderation_metadata_preserves_native_terminal_at_eof() {
+    for (event, status, expected) in [
+        (
+            "response.completed",
+            "completed",
+            NativeTerminalOutcome::Complete,
+        ),
+        (
+            "response.incomplete",
+            "incomplete",
+            NativeTerminalOutcome::Incomplete,
+        ),
+        ("response.failed", "failed", NativeTerminalOutcome::Failed),
+    ] {
+        let terminal = json!({"type":event,"response":{"id":"response-1","model":"physical",
+            "status":status,"output":[],"usage":{"input_tokens":3,"output_tokens":0}}});
+        for invalid in [false, true] {
+            let mut notification = metadata();
+            if invalid {
+                notification["safety_buffering"] = json!(true);
+            }
+            let notification_bytes = wire(&[notification.clone()]);
+            let bytes = wire(&[frames()[0].clone(), terminal.clone(), notification]);
+            for fragment in [1, 17, usize::MAX] {
+                let mut projector = NativeResponseProjector::new_for_observation(
+                    &profile(),
+                    true,
+                    "alias".into(),
+                    None,
+                    test_tool_projection(),
+                )
+                .unwrap();
+                let mut units = Vec::new();
+                for chunk in bytes.chunks(fragment) {
+                    units.extend(projector.feed(chunk, false).unwrap());
+                }
+                units.extend(projector.feed(&[], true).unwrap());
+                assert_eq!(
+                    units.last().unwrap().terminal,
+                    Some(if invalid {
+                        NativeTerminalOutcome::Unknown
+                    } else {
+                        expected
+                    })
+                );
+                assert!(units.iter().any(|unit| unit.bytes == notification_bytes));
+                assert_eq!(
+                    units.iter().filter(|unit| unit.terminal.is_some()).count(),
+                    1
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn moderation_metadata_cannot_hide_unknown_or_control_semantics() {
     let mut invalid = vec![
         json!({"type":"response.metadata","response_id":"response-1","sequence_number":7,"metadata":{"safety_buffering":{}}}),
