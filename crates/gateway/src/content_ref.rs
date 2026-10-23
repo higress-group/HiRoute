@@ -196,6 +196,12 @@ pub fn externalize_model_request(
     }
     for history in request.responses_reasoning_history.values_mut() {
         for (key, value) in &mut history.native_fields {
+            // Empty control fields remain inspectable at every inline budget.
+            // Their null shape adds no text or provider state to the boundary.
+            if value.is_null() && matches!(key.as_str(), "content" | "status") {
+                replay.charge_metadata(std::mem::size_of::<Value>())?;
+                continue;
+            }
             // Cross-protocol projections still need the plaintext leaves. Keep
             // their small structural envelope, not a raw-JSON ref to the array.
             if matches!(key.as_str(), "summary" | "content")
