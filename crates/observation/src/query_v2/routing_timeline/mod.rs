@@ -87,13 +87,6 @@ impl crate::LocalObservationStore {
         now_ms: i64,
     ) -> Result<RoutingTimelinePageV1, ObservationV2Error> {
         self.routing_timeline_inner(reader, query, now_ms, || {})
-            .map_err(|error| {
-                if matches!(error, ObservationV2Error::Timeout) {
-                    ObservationV2Error::ScopeTooLarge
-                } else {
-                    error
-                }
-            })
     }
 
     fn routing_timeline_inner(
@@ -174,31 +167,19 @@ impl crate::LocalObservationStore {
             } else {
                 None
             };
-            state
-                .refresh(
-                    &tx,
-                    reader,
-                    &query.session_id,
-                    target,
-                    now_ms,
-                    changed.as_ref(),
-                )
-                .map_err(|error| {
-                    if matches!(
-                        error,
-                        ObservationV2Error::Unavailable | ObservationV2Error::Timeout
-                    ) && started.elapsed() >= std::time::Duration::from_millis(500)
-                    {
-                        ObservationV2Error::ScopeTooLarge
-                    } else {
-                        error
-                    }
-                })?;
+            state.refresh(
+                &tx,
+                reader,
+                &query.session_id,
+                target,
+                now_ms,
+                changed.as_ref(),
+            )?;
         }
         state.visibility = visibility;
         cursor.expires_at = state.expires_at;
         if started.elapsed() > std::time::Duration::from_millis(500) {
-            return Err(ObservationV2Error::ScopeTooLarge);
+            return Err(ObservationV2Error::Timeout);
         }
         let start = cursor.after.as_ref().map_or(0, |after| {
             state.turns.partition_point(|turn| {
