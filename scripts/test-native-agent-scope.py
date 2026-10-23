@@ -68,6 +68,19 @@ class NativeScopeTests(unittest.TestCase):
         self.assertIn('(deny file-write* (literal ' + json.dumps(str(root / 'native-isolation.sb')), policy)
         self.assertIn('(deny file-read-xattr ', policy)
 
+    def test_only_explicit_installed_tools_enter_the_private_path(self):
+        root = self.base / 'tools'
+        prepared = scope.prepare_scope('dsh', root, [str(self.binary)], expose={'node': self.binary},
+                                       daily_home=self.daily, inherited={'PATH': '/ambient/bin'})
+        self.assertEqual((root / 'bin/node').resolve(), self.binary)
+        self.assertEqual(list((root / 'bin').iterdir()), [root / 'bin/node'])
+        self.assertNotIn('/ambient/bin', prepared['environment']['PATH'])
+        self.assertEqual(prepared['exposed_binaries'], {'node': str(self.binary)})
+        for name in ('../node', '/node', '.', ''):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'plain name'):
+                scope.prepare_scope('dsh', self.base / 'refused', [str(self.binary)],
+                                    expose={name: self.binary}, daily_home=self.daily)
+
     def test_daily_config_session_and_broad_dependency_exceptions_are_refused(self):
         config = self.daily / '.codex/config.toml'
         config.write_text('private fixture bytes')

@@ -172,6 +172,9 @@ stdout/stderr privately before even driver imports or guard initialization. The
 driver still owns distinct ports, bounded process cleanup and its business verdicts.
 The entry inherits no provider credentials, proxy or client overrides. Populate
 only the owned native configuration through the journey's normal product path.
+Use `--expose node=/absolute/selected/node` or `--expose rg=/absolute/selected/rg`
+when a driver needs those installed tools on its private PATH; ambient PATH is
+not inherited, and each exposed entry adds only its exact read-only file.
 Keep daily configuration/session directories outside dependency exceptions.
 
 Daily guards remain strict. If an existing controller needs exact baseline process

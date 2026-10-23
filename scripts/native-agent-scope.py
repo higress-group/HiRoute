@@ -11,6 +11,7 @@ import errno
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import time
 
@@ -80,24 +81,33 @@ def sandbox_policy(root, daily_home, read_only):
     return policy
 
 
-def prepare_scope(harness, root, command, *, read_only=(), daily_home=None, inherited=None):
+def prepare_scope(harness, root, command, *, read_only=(), expose=None, daily_home=None, inherited=None):
     if harness not in HARNESSES:
         raise ValueError('unknown native harness')
     if not command or not Path(command[0]).is_absolute() or not Path(command[0]).is_file():
         raise ValueError('native acceptance command needs an absolute installed entry')
     root = Path(root).resolve()
     daily_home = Path.home() if daily_home is None else Path(daily_home).resolve()
-    reads = [*read_only, command[0]]
+    exposed = {}
+    for name, value in ({} if expose is None else expose).items():
+        path = Path(value)
+        if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}', name) or not path.is_absolute() or not path.is_file():
+            raise ValueError('exposed tool requires a plain name and absolute installed file')
+        exposed[name] = path.resolve(strict=True)
+    reads = [*read_only, command[0], *exposed.values()]
     # Resolve and validate before creating the scope. No host/native subprocess probe.
     policy = sandbox_policy(root, daily_home, reads)
     root.mkdir(mode=0o700, exist_ok=False)
     env = isolated_environment(root, inherited)
     for value in {env[key] for key in PATHS} | {str(root / 'project'), str(root / 'bin'), str(root / 'sessions')}:
         Path(value).mkdir(mode=0o700, parents=True, exist_ok=True)
+    for name, path in exposed.items():
+        (root / 'bin' / name).symlink_to(path)
     private_write(root / 'native-isolation.sb', policy.encode())
     launch = [str(SANDBOX), '-f', str(root / 'native-isolation.sb'), *map(str, command)]
     result = {'harness': harness, 'root': str(root), 'environment': env, 'command': launch,
               'read_only': sorted({str(Path(value).resolve()) for value in reads}),
+              'exposed_binaries': {name: str(path) for name, path in exposed.items()},
               'evidence_limit': 'Preparation only; caller-owned cleanup and every native business oracle remain required.'}
     private_write(root / 'native-scope.private.json', (json.dumps(result, indent=2) + '\n').encode())
     return result
@@ -164,6 +174,8 @@ def main():
     parser.add_argument('--harness', required=True, choices=HARNESSES)
     parser.add_argument('--root', required=True, help='Fresh independent root outside daily HOME')
     parser.add_argument('--read-only', action='append', default=[], help='Exact installed file or dependency directory')
+    parser.add_argument('--expose', action='append', default=[], metavar='NAME=/ABSOLUTE/ENTRY',
+                        help='Expose only this explicitly selected tool in the private PATH')
     parser.add_argument('--execute', action='store_true', help='Execute only after the caller has allocated its native lease')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -171,7 +183,13 @@ def main():
     if args.execute and (sys.platform != 'darwin' or not SANDBOX.is_file()):
         parser.error('macOS OS containment unavailable; execution refused')
     try:
-        prepared = prepare_scope(args.harness, args.root, command, read_only=args.read_only)
+        exposed = {}
+        for value in args.expose:
+            name, separator, entry = value.partition('=')
+            if not separator or name in exposed:
+                raise ValueError('exposed tool names must be explicit and unique')
+            exposed[name] = entry
+        prepared = prepare_scope(args.harness, args.root, command, read_only=args.read_only, expose=exposed)
     except (ValueError, OSError) as error:
         parser.error(str(error))
     print(json.dumps({'state': 'executing' if args.execute else 'prepared-no-execution',
