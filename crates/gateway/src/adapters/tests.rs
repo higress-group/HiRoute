@@ -18,6 +18,9 @@ use crate::server::request_plan::IngressProtocol;
 #[path = "tests/native_responses.rs"]
 mod native_responses;
 
+#[path = "tests/codex_replay.rs"]
+mod codex_replay;
+
 #[path = "tests/payload_tolerance.rs"]
 mod payload_tolerance;
 

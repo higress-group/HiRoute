@@ -6,6 +6,45 @@ use crate::server::core_runtime::model_ir::ResponseItemStatus;
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
 #[test]
+fn synthetic_responses_item_ids_are_scoped_to_the_response_and_stable_across_renderers() {
+    let candidate = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses, IngressProtocol::ChatCompletions, "physical", fixed_reasoning("fixed"),
+    );
+    let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
+    let mut all_ids = std::collections::BTreeSet::new();
+    for response_id in ["response-one", "response-two"] {
+        let document = json!({"id":response_id,"model":"physical","choices":[{
+            "index":0,"message":{"role":"assistant","reasoning_content":"thought",
+            "content":"answer","tool_calls":[{"id":"call-one","type":"function",
+            "function":{"name":"read","arguments":"{}"}}]},"finish_reason":"tool_calls"}]});
+        let mut decoder = NativeResponseDecoder::new(&candidate, 200, false).unwrap();
+        decoder.feed(&serde_json::to_vec(&document).unwrap(), true).unwrap();
+        let mut renderer = IncrementalClientSseRenderer::new(profile.clone(), "route").unwrap();
+        let events: Vec<_> = decoder.take_events().iter()
+            .flat_map(|event| renderer.push(event).unwrap()).collect();
+        let decoded = decoder.finish().unwrap();
+        let RenderedClientResponse::Json { body, .. } = ClientResponseRenderer::render_nonstream_with_profile(
+            &profile, "route", &decoded.response).unwrap() else { panic!("JSON response") };
+        let RenderedClientResponse::Sse { events: buffered, .. } = ClientResponseRenderer::render_stream_with_profile(
+            &profile, "route", &decoded.response).unwrap() else { panic!("SSE response") };
+        let expected: Vec<_> = body["output"].as_array().unwrap().iter()
+            .map(|item| item["id"].as_str().unwrap().to_owned()).collect();
+        assert_eq!(expected.len(), 3);
+        for stream in [&events, &buffered] {
+            let added: Vec<_> = stream.iter().filter(|event| event.event.as_deref() == Some("response.output_item.added"))
+                .map(|event| event.data["item"]["id"].as_str().unwrap().to_owned()).collect();
+            let completed = stream.iter().find(|event| event.event.as_deref() == Some("response.completed")).unwrap();
+            assert_eq!(added, expected);
+            assert_eq!(completed.data["response"]["output"], body["output"]);
+        }
+        for id in expected {
+            assert!(id.len() <= 64 && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+            assert!(all_ids.insert(id), "different responses must not reuse synthetic item identities");
+        }
+    }
+}
+
+#[test]
 fn responses_decoder_accepts_one_done_marker_only_after_terminal() {
     let candidate = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Responses,
