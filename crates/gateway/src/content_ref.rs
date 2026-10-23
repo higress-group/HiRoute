@@ -203,8 +203,20 @@ pub fn externalize_model_request(
             {
                 for part in parts {
                     if let Some(fields) = part.as_object_mut() {
-                        for value in fields.values_mut() {
-                            if !contains_replay_string_ref(value, replay) {
+                        for (field, value) in fields {
+                            // Known tags are bounded grammar, just like native
+                            // body type/role. Plaintext leaves use the same
+                            // string refs as ingress, so optional comparison
+                            // and projection never depend on the inline budget.
+                            if field == "type"
+                                && matches!(value.as_str(), Some("summary_text" | "reasoning_text"))
+                                || contains_replay_string_ref(value, replay)
+                            {
+                                continue;
+                            }
+                            if field == "text" && let Value::String(text) = value {
+                                externalize_value(text, replay, &mut pool, &mut inline_remaining)?;
+                            } else {
                                 externalize_json(
                                     value,
                                     replay,
