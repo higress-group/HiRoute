@@ -1,0 +1,72 @@
+import { branchRouting } from '../../../src/features/decision-services/types.ts';
+import { scenario } from './scenario-selection.mjs';
+
+export function extensionDecisionScenarios({ fresh, routing, click, until, all, calls, control }) {
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const custom = { id: 'decision/extension-fixture', revision: 3, name: 'Published custom decision extension with a long name', connection: { kind: 'custom', endpoint: 'https://decision.example/v1/decisions', timeout_ms: 3000 } };
+  const native = { ...custom, id: 'decision/native-fixture', name: 'Built-in fixture', connection: { kind: 'system_one', provider: 'compatible', model: 'synthetic', endpoint: 'https://decision.example/systemone', timeout_ms: 3000, auth_header: { name: 'Authorization', value_secret_ref: 'fixture' } } };
+  return ['zh', 'en'].flatMap(language => [false, true].map(branches => scenario(
+    `desktop.extension.${branches ? 'branches' : 'smart'}.${language}`, ['extension-decision'],
+    `Extension ${branches ? 'categories' : 'difficulty routing'} preserves parked settings (${language})`, async () => {
+      let plan;
+      await fresh(() => {
+        control().handlers.decision_services = () => ({ services: [custom, native] });
+        control().handlers.desktop_snapshot = payload => {
+          const snapshot = structuredClone(control().fixtureResponse('desktop_snapshot', payload));
+          plan = snapshot.catalog.plans[0];
+          const strategy = plan.desired.strategy;
+          strategy.classifier = { kind: 'decision_service', service: custom };
+          strategy.judgment.degree.instructions = '   ';
+          strategy.judgment.competence.criteria[1] = '\n\t';
+          plan.desired.delegation_enabled = false;
+          if (branches) {
+            const route = branchRouting(custom);
+            route.judgment = structuredClone(strategy.judgment);
+            route.branches.forEach((branch, index) => {
+              branch.name = index ? 'Review / 审稿' : 'Draft / 起草';
+              branch.condition = 'Review the supplied article and report concrete changes without assuming its author or source. 根据当前任务选择类别。';
+              branch.candidates = structuredClone(strategy.economy);
+              branch.primary_candidates = structuredClone(strategy.primary);
+              branch.judgment = index ? null : structuredClone(strategy.judgment);
+            });
+            plan.desired.mode = 'custom_branches';
+            plan.desired.strategy = { mode: 'branches', routing: route };
+          }
+          return snapshot;
+        };
+        control().handlers.plan_editor_options = payload => {
+          const result = structuredClone(control().fixtureResponse('plan_editor_options', payload));
+          if (payload?.input?.authoring) {
+            control().handlers.desktop_snapshot({});
+            const editor = result.authoring.editor;
+            editor.mode = plan.desired.mode;
+            editor.delegation_enabled = false;
+            if (branches) editor.branch_routing = structuredClone(plan.desired.strategy.routing);
+            else editor.smart = { ...editor.smart, ...structuredClone(plan.desired.strategy) };
+          }
+          return result;
+        };
+      });
+      const t = (zh, en) => language === 'zh' ? zh : en;
+      localStorage.setItem('hiroute.language', language);
+      control().remount();
+      if (language === 'zh') await routing();
+      else { await click('Smart routing'); await until(() => all('.master-list .list-row').length, 'route list'); all('.master-list .list-row')[0].click(); }
+      await until(() => document.querySelector('.decision-selector'), 'extension editor');
+      assert(!document.querySelector('.decision-judgment-fields'), 'Extension exposed judgment fields');
+      assert(!document.querySelector('.trust-level-control'), 'Extension exposed threshold control');
+      await click(t('决策模型', 'Decision model'));
+      await until(() => document.querySelector('.decision-judgment-fields'), 'restored native fields');
+      const field = document.querySelector(`[data-decision-field="${branches ? 'branch-0' : 'smart'}-degree-instructions"]`);
+      assert(field?.value === '   ', 'Switching sources discarded the parked prompt');
+      await click(t('自定义扩展', 'Custom extension'));
+      await until(() => !document.querySelector('.decision-judgment-fields'), 'custom fields hidden again');
+      assert(!calls('test_classifier_decision').length, 'Source switching implicitly probed the connection');
+      for (const element of all('.decision-selector, .branch-routing-card, .field-label')) {
+        const rect = element.getBoundingClientRect();
+        assert(rect.width > 30 && rect.right <= innerWidth + 1, 'Editor label or control overflowed');
+      }
+      window.extensionCapture = { language, branches, state: 'custom-after-native-switch' };
+    }
+  )));
+}

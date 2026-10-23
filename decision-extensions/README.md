@@ -50,7 +50,7 @@ Difficulty routing uses one task scope, so simple and complex are not separate t
 
 ## How HiRoute selects and executes models
 
-For a task with two groups, regular/economy models are selected when this call's
+For a built-in decision model with two groups, regular/economy models are selected when this call's
 simple probability meets the threshold (default **0.8**) and there is no applicable
 complete score below the competence floor (default **0.5**). Otherwise HiRoute
 selects primary models. Low-score protection uses only a fresh score for the
@@ -104,7 +104,7 @@ do not rewrite earlier selection reasons.
 | Built-in assessment standards and thresholds | HiRoute, from the published plan |
 | Selection, eligibility, availability relay and actual-stage observations | HiRoute |
 | Direct System One provider calls and answer mapping for built-in connections | HiRoute's [built-in adapter](api/system-one-design.md) |
-| Provider calls, answer mapping and necessary history trimming for a custom connection | The custom extension, following the supplied definitions and standards |
+| Provider calls, answer mapping and necessary history trimming for a custom connection | The custom extension, using its own policy within the published categories and groups |
 
 The custom [extension API](api/README.md) can return the current decision and a
 preceding-stage assessment in one call. Its current **v1** has one request shape;

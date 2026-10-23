@@ -1,5 +1,6 @@
 import { scenario, scenarioCatalog, runScenarios } from './scenario-selection.mjs';
 import { productShellRequired } from './scenario-requirements.mjs';
+import { extensionDecisionScenarios } from './extension-decision-scenarios.mjs';
 import { cProtocolScenarios } from './c-protocol-scenarios.mjs';
 import { nativeConnectionScenarios } from './native-connection-scenarios.mjs';
 import { presentationScenarios } from './presentation-interactions.mjs';
@@ -59,6 +60,7 @@ async function routing() {
 }
 const scenarios = [
   ...nativeConnectionScenarios({ fresh, click, until, text, calls, control: c }),
+  ...extensionDecisionScenarios({ fresh, routing, click, until, all, calls, control: c }),
   ...cProtocolScenarios({ fresh, routing, click, until, all, text, calls, setInput, control: c }),
   ...presentationScenarios,
   scenario('desktop.routing.two-context-conflict', ['routing-editor'], 'A rival context revision refuses stale publication and preserves the current draft', async () => {

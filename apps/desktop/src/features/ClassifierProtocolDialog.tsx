@@ -72,7 +72,7 @@ export function ClassifierProtocolDialog({
         <h3>{text('响应示例', 'Response example')}</h3>
         <pre><code>{JSON.stringify(protocolExamples[example].response, null, 2)}</code></pre>
         <p>{example === 'first' ? text('首次请求的 preceding_stage 为 null。扩展直接返回 regular 或 primary。', 'The first request has preceding_stage: null. Return regular or primary directly.') : text('category 选择已发布分支，group 选择模型组。preceding_stage.from 是历史中的零基起始下标；评分只属于同类别的前一实际阶段。', 'category selects a published branch and group selects its model group. preceding_stage.from is a zero-based history index; assessment belongs only to the actual preceding stage in the same category.')}</p>
-        <p>{text('choice 和概率的 ID 必须来自本次定义。score 为 0–1；partial 必填，目标证据不完整时为 true；reason 可选。返回 HTTP 200 和纯 JSON，不附加未知字段。', 'choice and probability IDs must match the definition. score is 0–1; partial is required and true for incomplete target evidence; reason is optional. Return HTTP 200 with strict JSON and no unknown fields.')}</p>
+        <p>{text('category 必须来自已发布类别；双组范围返回 regular 或 primary。assessment 可选，其中 score 为 0–1，partial 必填且证据不完整时为 true。reason 可选。返回 HTTP 200 和纯 JSON，不附加未知字段。', 'category must match a published category; dual-group scopes return regular or primary. assessment is optional; within it, score is 0–1 and partial is required and true for incomplete evidence. reason is optional. Return HTTP 200 with strict JSON and no unknown fields.')}</p>
       </section>
     </div>
   </Dialog>;

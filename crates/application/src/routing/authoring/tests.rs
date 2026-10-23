@@ -562,8 +562,23 @@ fn retained_custom_operation_keeps_old_default_normalization_and_authenticated_b
         "36e8d1731217012d33b8d9c766e07083b17c383d"
     );
     let spec: ChangeSpecV1 = serde_json::from_value(fixture["spec"].clone()).unwrap();
-    let external: Vec<ExternalEffectIntentV1> =
-        serde_json::from_value(fixture["external"].clone()).unwrap();
+    let external: Vec<ExternalEffectIntentV1> = fixture["external"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| {
+            ExternalEffectIntentV1::from_registered_adapter(
+                value["effect_id"].as_str().unwrap(),
+                serde_json::from_value(value["kind"].clone()).unwrap(),
+                value["target"].as_str().unwrap(),
+                serde_json::from_value(value["before_fingerprint"].clone()).unwrap(),
+                value["desired"].clone(),
+                value["desired_mode"].as_u64().unwrap() as u32,
+                value["sensitive"].as_bool().unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
     assert_eq!(
         CanonicalDigest::of(&spec).unwrap().as_str(),
         fixture["spec_digest"]
