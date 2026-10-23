@@ -34,6 +34,7 @@ pub(super) struct BranchAdmission {
     segment: Option<SegmentState>,
     partial: bool,
     forked: bool,
+    opening_cause: Option<hiroute_domain::AgentTurnOpeningCauseV1>,
     completed: Option<Box<CompletedAgentTurn>>,
 }
 
@@ -182,13 +183,24 @@ impl AgentTurnHistoryStore {
             entry.pending_request.is_none()
                 && (entry.active.source_unverified || !analyzed.user_origin_unverified)
         }) && (exact && !ambiguous || legacy_exact);
+        let opening_cause = (analyzed.measured && !reusable).then(|| {
+            super::opening::fork_opening_cause(
+                inner.scope_entries(scope).map(|(_, entry)| entry),
+                analyzed,
+                inputs.native_turn,
+                inputs.history_continuity.uses_saved_user(),
+            )
+        });
         if let Some(entry) = selected_entry
             && analyzed.measured
         {
             inputs.history_continuity = if exact && !ambiguous {
                 if inputs.native_turn.is_some() && inputs.native_turn == entry.active.native_turn {
                     HistoryContinuity::NativeSameTurn
-                } else if inputs.native_turn.is_some() && entry.active.native_turn.is_some() {
+                } else if inputs.native_turn.is_some()
+                    && entry.active.native_turn.is_some()
+                    && super::opening::has_appended_input(&entry.checkpoint, analyzed)
+                {
                     HistoryContinuity::NativeNewTurn
                 } else {
                     HistoryContinuity::Continuing
@@ -227,10 +239,7 @@ impl AgentTurnHistoryStore {
                 // but cannot declare the still-running tool stage complete.
                 let new_activation = exact
                     && !ambiguous
-                    && (inputs.history_continuity == HistoryContinuity::NativeNewTurn
-                        || analyzed.turns.last().is_some_and(|turn| {
-                            turn.user_index > entry.checkpoint.active_user_index
-                        }));
+                    && super::opening::has_appended_input(&entry.checkpoint, analyzed);
                 let closure = if new_activation {
                     StageClosure::NewActivation
                 } else {
@@ -290,6 +299,7 @@ impl AgentTurnHistoryStore {
             segment,
             partial,
             forked: !reusable,
+            opening_cause,
             completed,
         })
     }
@@ -329,6 +339,13 @@ impl AgentTurnHistoryStore {
             AgentTurnBegin::NewTurn {
                 ticket, history, ..
             } => {
+                if let Some(cause) = selection.opening_cause {
+                    // Only a new independent branch receives this evidence.
+                    // It has no current scoring segment to repair or inherit;
+                    // the old segment remains separately frozen and partial.
+                    debug_assert!(selection.forked && entry.current_segment.is_none());
+                    entry.active.opening_cause = cause;
+                }
                 if selection.projected
                     && let Some(membership) = history
                         .assessment_target

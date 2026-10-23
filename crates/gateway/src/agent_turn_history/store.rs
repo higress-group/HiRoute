@@ -32,6 +32,8 @@ mod records;
 use records::*;
 #[path = "store/branches.rs"]
 mod branches;
+#[path = "store/opening.rs"]
+mod opening;
 
 pub(crate) const DEFAULT_MAX_MEMORY_BYTES: usize = 500_000_000;
 pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
@@ -546,13 +548,21 @@ impl AgentTurnHistoryStore {
             .entries
             .get(&key)
             .ok_or(AgentTurnHistoryError::Integrity)?;
-        let appended_user = decision_inputs.history_continuity
-            == crate::context_hold::HistoryContinuity::NativeNewTurn
-            || matches!(
-                decision_inputs.history_continuity,
-                crate::context_hold::HistoryContinuity::Continuing
-                    | crate::context_hold::HistoryContinuity::NativeSameTurn
-            ) && latest.user_index > entry.checkpoint.active_user_index;
+        let appended_user = if analyzed.measured {
+            // An exact response edge permits continuation; a changed native ID
+            // does not turn that continuation into a new observed input.
+            decision_inputs.history_continuity.semantic_continuity()
+                && !decision_inputs.history_continuity.uses_saved_user()
+                && opening::has_appended_input(&entry.checkpoint, &analyzed)
+        } else {
+            decision_inputs.history_continuity
+                == crate::context_hold::HistoryContinuity::NativeNewTurn
+                || matches!(
+                    decision_inputs.history_continuity,
+                    crate::context_hold::HistoryContinuity::Continuing
+                        | crate::context_hold::HistoryContinuity::NativeSameTurn
+                ) && latest.user_index > entry.checkpoint.active_user_index
+        };
         let inheritable_decision = entry.active.decision.is_some() && entry.active.plan == plan;
         let needs_decision = !inheritable_decision
             || !decision_inputs.history_continuity.semantic_continuity()
@@ -619,6 +629,13 @@ impl AgentTurnHistoryStore {
                     );
                 }
                 entry.branch_cursor = analyzed.branch_cursor;
+                if analyzed.measured
+                    && let Some(native_turn) = decision_inputs.native_turn
+                {
+                    // Exact continuation proves the execution association. Keep
+                    // its latest native hint without changing stage or input.
+                    entry.active.native_turn = Some(native_turn);
+                }
                 entry.active.output.next_step();
                 entry.active.boundary = Default::default();
                 entry.response_boundary = None;

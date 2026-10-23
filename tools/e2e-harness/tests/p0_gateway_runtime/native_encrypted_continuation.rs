@@ -33,7 +33,7 @@ fn reply(body: &'static [u8]) -> ProviderReply {
     }
 }
 
-fn message(id: &str, phase: &str, text: &str) -> Value {
+pub(super) fn message(id: &str, phase: &str, text: &str) -> Value {
     json!({"type":"message","id":id,"role":"assistant","status":"completed",
         "phase":phase,"content":[{"type":"output_text","text":text,"annotations":[]}]})
 }
@@ -44,7 +44,7 @@ fn edit(id: &str, justification: &str) -> Value {
             "old_string":"old","new_string":"new","justification":justification}).to_string()})
 }
 
-fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
+pub(super) fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
     let mut events = vec![json!({"type":"response.created","response":{
         "id":id,"model":"runtime-native","status":"in_progress","output":[]}})];
     for (index, item) in output.iter().enumerate() {
