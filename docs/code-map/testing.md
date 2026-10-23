@@ -65,9 +65,14 @@ happy-path UI journey.
 | Frozen compatibility / expected-red / oracle fixture | A historical reader, intended rejection or test oracle | Not current product completion |
 
 Native reasoning replay is covered by the accepted-response
-[boundary regression](../../crates/gateway/src/agent_turn_history/boundary/reasoning_tests.rs)
+[boundary regression](../../crates/gateway/src/agent_turn_history/boundary/reasoning_tests.rs),
+the [encrypted replay cases](../../crates/gateway/src/agent_turn_history/boundary/encrypted_tests.rs),
 the [unsigned Messages tool-stage cases](../../crates/gateway/src/agent_turn_history/boundary/messages_tests.rs)
 and [current-window turn/continuation cases](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
+[Stage closure cases](../../crates/gateway/src/agent_turn_history/stage_closure_tests.rs)
+distinguish captured membership, provider outcomes and closure proof; the
+[request JSON observation cases](../../crates/gateway/src/observation/content/request_json_replay_tests.rs)
+verify Replay expansion, integrity and bounded storage without leaking locators.
 The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
 verify that explicit maintenance-purpose evidence excludes a user turn without
 removing the request, while unmarked retained records remain visible. These

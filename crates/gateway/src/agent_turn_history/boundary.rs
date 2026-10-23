@@ -20,6 +20,7 @@ const MAX_BLOCKS: usize = 128;
 #[derive(Default)]
 pub(super) struct BoundaryCapture {
     blocks: BTreeMap<u32, Block>,
+    encrypted: BTreeMap<u32, [u8; 32]>,
     unavailable: bool,
     budget: FingerprintBudget,
 }
@@ -46,11 +47,13 @@ impl BoundaryCapture {
                     _ => 0,
                 }
             })
-            .sum()
+            .sum::<usize>()
+            + self.encrypted.len() * 256
     }
 
     pub(super) fn invalidate(&mut self) {
         self.blocks.clear();
+        self.encrypted.clear();
         self.unavailable = true;
     }
 
@@ -74,6 +77,32 @@ impl BoundaryCapture {
             }
             ModelEvent::ReasoningFinished { index, text, .. } => {
                 self.text(*index, text, true, true)
+            }
+            ModelEvent::ProviderState { state } if state.kind == "encrypted_content" => {
+                let digest = state
+                    .value
+                    .as_str()
+                    .and_then(|text| text_digest(text, None, &mut self.budget));
+                match (state.block_index, digest) {
+                    (Some(index), Some(digest))
+                        if matches!(
+                            self.blocks.get(&index),
+                            Some(Block::Text {
+                                reasoning: true,
+                                ..
+                            })
+                        ) =>
+                    {
+                        if self
+                            .encrypted
+                            .insert(index, digest)
+                            .is_some_and(|old| old != digest)
+                        {
+                            self.unavailable = true;
+                        }
+                    }
+                    _ => self.unavailable = true,
+                }
             }
             ModelEvent::ToolCallStarted {
                 index, logical_id, ..
@@ -125,6 +154,7 @@ impl BoundaryCapture {
         }
         if self.blocks.len() > MAX_BLOCKS || self.unavailable {
             self.blocks.clear();
+            self.encrypted.clear();
             self.unavailable = true;
         }
     }
@@ -169,11 +199,11 @@ impl BoundaryCapture {
             return None;
         }
         let mut hash = BoundaryHasher::default();
-        for block in self.blocks.values() {
+        for (index, block) in &self.blocks {
             match block {
                 Block::Text {
                     nonempty: false, ..
-                } => continue,
+                } => {}
                 Block::Text {
                     hash: text,
                     reasoning,
@@ -185,6 +215,9 @@ impl BoundaryCapture {
                     );
                 }
                 Block::Tool { digest, .. } => hash.part(b"tool", (*digest)?),
+            }
+            if let Some(digest) = self.encrypted.get(index) {
+                hash.part(b"encrypted_content", *digest);
             }
         }
         hash.finish()
@@ -221,12 +254,14 @@ pub(super) fn incoming_evidence(
             return None;
         }
         if let Some(history) = request.responses_reasoning_history.get(&index) {
-            // Compare the bounded accepted plaintext summary. Native producers
+            // Compare accepted plaintext and opaque state independently. Exact
+            // ciphertext equality proves replay, never its meaning or affinity.
+            // Native producers
             // can retain explicit empty fields without adding provider state or
             // content. Keep this evidence projection separate from wire replay.
             if message.name.is_some()
-                || !message.content.is_empty()
-                || history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque
+                || (history.encrypted_content != ResponsesReasoningEncryptedContentV1::Opaque
+                    && !message.content.is_empty())
                 || history
                     .native_fields
                     .iter()
@@ -241,6 +276,18 @@ pub(super) fn incoming_evidence(
             {
                 return None;
             }
+            let encrypted =
+                if history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque {
+                    let [ContentPart::ProviderState { state }] = message.content.as_slice() else {
+                        return None;
+                    };
+                    if state.kind != "encrypted_content" {
+                        return None;
+                    }
+                    Some(text_digest(state.value.as_str()?, Some(replay), budget)?)
+                } else {
+                    None
+                };
             hash.reasoning = true;
             let summary = history.native_fields.get("summary")?.as_array()?;
             budget.items(summary.len())?;
@@ -257,6 +304,9 @@ pub(super) fn incoming_evidence(
                 if !text.is_empty() && !text.content_ref().is_some_and(|r| r.byte_len() == 0) {
                     hash.part(b"reasoning", digest);
                 }
+            }
+            if let Some(digest) = encrypted {
+                hash.part(b"encrypted_content", digest);
             }
             continue;
         }
@@ -342,6 +392,7 @@ pub(super) struct BoundaryEvidence {
     visible: Option<[u8; 32]>,
     reasoning: bool,
     contextual: bool,
+    encrypted: bool,
 }
 
 impl BoundaryEvidence {
@@ -349,9 +400,11 @@ impl BoundaryEvidence {
     /// Present (even empty) reasoning never authorizes a projection fallback.
     pub(super) fn matches(self, incoming: Self) -> Option<bool> {
         if self.full == incoming.full {
-            Some(incoming.contextual)
+            Some(self.encrypted || incoming.encrypted || incoming.contextual)
         } else if self.reasoning
             && !incoming.reasoning
+            && !self.encrypted
+            && !incoming.encrypted
             && self.visible.is_some()
             && self.visible == incoming.visible
         {
@@ -368,6 +421,7 @@ struct BoundaryHasher {
     content: bool,
     visible_content: bool,
     reasoning: bool,
+    encrypted: bool,
 }
 
 impl Default for BoundaryHasher {
@@ -378,6 +432,7 @@ impl Default for BoundaryHasher {
             content: false,
             visible_content: false,
             reasoning: false,
+            encrypted: false,
         }
     }
 }
@@ -387,8 +442,9 @@ impl BoundaryHasher {
         self.full.update(kind);
         self.full.update(digest);
         self.content = true;
-        if kind == b"reasoning" {
+        if kind == b"reasoning" || kind == b"encrypted_content" {
             self.reasoning = true;
+            self.encrypted |= kind == b"encrypted_content";
         } else {
             self.visible.update(kind);
             self.visible.update(digest);
@@ -402,6 +458,7 @@ impl BoundaryHasher {
             visible: self.visible_content.then(|| self.visible.finalize().into()),
             reasoning: self.reasoning,
             contextual: false,
+            encrypted: self.encrypted,
         })
     }
 }

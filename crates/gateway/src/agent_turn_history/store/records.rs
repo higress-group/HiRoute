@@ -64,10 +64,37 @@ pub(super) fn matching_entry_mut<'a>(
     Ok(entry)
 }
 
+/// Freezing immutable execution membership does not itself prove a stage ended.
+/// Keep that proof separate from whether all accepted content was captured.
+pub(super) enum StageClosure {
+    RequestTerminal,
+    NewActivation,
+    ConfigurationChanged,
+    AssociationLost,
+}
+
+impl StageClosure {
+    fn proven(&self, status: AgentTurnStatus) -> bool {
+        match self {
+            Self::RequestTerminal => status != AgentTurnStatus::Unknown,
+            Self::NewActivation | Self::ConfigurationChanged => true,
+            Self::AssociationLost => false,
+        }
+    }
+}
+
+fn segment_has_unproven_closure(entry: &SessionEntry, segment: &SegmentState) -> bool {
+    entry
+        .closed
+        .iter()
+        .any(|turn| turn.completed.segment_id == segment.segment_id && !turn.closure_proven)
+}
+
 pub(super) fn close_active(
     entry: &mut SessionEntry,
     next_segment_id: String,
     finished_at_ms: u64,
+    closure: StageClosure,
 ) -> Result<CompletedAgentTurn, AgentTurnHistoryError> {
     if entry.active.finalized
         && entry
@@ -109,7 +136,7 @@ pub(super) fn close_active(
                         // independently captured future tasks partial forever.
                         // A retry/reclassification ID alone is not a new input
                         // boundary, and refinalizing the same turn cannot heal it.
-                        && !(segment.partial
+                        && !((segment.partial || segment_has_unproven_closure(entry, segment))
                             && !entry.active.capture_partial
                             && entry.active.opening_cause
                                 == hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
@@ -201,6 +228,7 @@ pub(super) fn close_active(
         decision: decision.clone(),
         wire,
         completed: completed.clone(),
+        closure_proven: closure.proven(status) && entry.active.provider_outcomes_known,
     });
     entry.active.finalized = true;
     entry.active.output = Default::default();
@@ -266,7 +294,7 @@ pub(super) fn snapshot(
                 through_turn_id: segment.through_turn_id.clone(),
                 first_ordinal: segment.first_ordinal,
                 through_ordinal: segment.through_ordinal,
-                target_partial: segment.partial,
+                target_partial: segment.partial || segment_has_unproven_closure(entry, segment),
                 plan: last.completed.plan.clone(),
                 attribution: last.completed.attribution.clone(),
             }),

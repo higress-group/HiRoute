@@ -484,65 +484,71 @@ fn complete_actual_stage_remains_assessable_with_unverified_context_and_source()
 }
 
 #[test]
-fn proven_same_turn_reopen_can_close_full_membership_without_mutating_old_snapshot() {
-    let (_directory, replay) = replay();
-    let store = AgentTurnHistoryStore::default();
-    let scope = store
-        .scope_key("workspace", "closure-same-turn-reopen")
-        .unwrap();
-    let mut messages = vec![text(MessageRole::User, "A")];
-    let (a, _) = new_turn(measured(
-        &store,
-        &scope,
-        &request(messages.clone()),
-        &replay,
-        false,
-    ));
-    accepted_output::text_output(&store, &a, "Delivered A prefix");
-    finish(&store, &a, "a-unknown", AgentTurnStatus::Unknown, true);
-    let (fork, frozen) = new_turn(measured(
-        &store,
-        &scope,
-        &request(vec![text(MessageRole::User, "Unrelated rewrite")]),
-        &replay,
-        false,
-    ));
-    assert!(target_with_members(&frozen, &["a-unknown"]).target_partial);
-    store.abort(&fork);
+fn same_turn_reopen_preserves_provider_outcomes_and_frozen_snapshots() {
+    for provider_status in [AgentTurnStatus::Completed, AgentTurnStatus::Unknown] {
+        let (_directory, replay) = replay();
+        let store = AgentTurnHistoryStore::default();
+        let scope = store
+            .scope_key("workspace", "closure-same-turn-reopen")
+            .unwrap();
+        let mut messages = vec![text(MessageRole::User, "A")];
+        let (a, _) = new_turn(measured(
+            &store,
+            &scope,
+            &request(messages.clone()),
+            &replay,
+            false,
+        ));
+        accepted_tool(&store, &a, "call-1");
+        finish(&store, &a, "a-first", provider_status, false);
+        let (fork, frozen) = new_turn(measured(
+            &store,
+            &scope,
+            &request(vec![text(MessageRole::User, "Unrelated rewrite")]),
+            &replay,
+            false,
+        ));
+        assert!(target_with_members(&frozen, &["a-first"]).target_partial);
+        store.abort(&fork);
 
-    messages.push(text(MessageRole::Assistant, "Delivered A prefix"));
-    let AgentTurnBegin::Continuation {
-        ticket: resumed, ..
-    } = measured(&store, &scope, &request(messages.clone()), &replay, false)
-    else {
-        panic!("the exact accepted prefix must reopen the original execution")
-    };
-    assert_eq!(resumed.key, a.key);
-    assert_eq!(resumed.agent_turn_id, a.agent_turn_id);
-    assert!(store.inner.lock().entries[&a.key].closed.is_empty());
-    accepted_output::text_output(&store, &resumed, "A is finally complete");
-    finish(
-        &store,
-        &resumed,
-        "a-final",
-        AgentTurnStatus::Completed,
-        true,
-    );
-    messages.extend([
-        text(MessageRole::Assistant, "A is finally complete"),
-        text(MessageRole::User, "Assess all of A"),
-    ]);
-    let (b, history) = new_turn(measured(&store, &scope, &request(messages), &replay, false));
-    let target = target_with_members(&history, &["a-unknown", "a-final"]);
-    assert!(!target.target_partial);
-    assert_eq!(history.visible_conversation.len(), 1);
-    let visible = serde_json::to_string(&history.visible_conversation).unwrap();
-    assert!(visible.contains("Delivered A prefix"));
-    assert!(visible.contains("A is finally complete"));
-    assert!(target_with_members(&frozen, &["a-unknown"]).target_partial);
-    assert_eq!(
-        frozen.visible_conversation[0].status,
-        AgentTurnStatus::Unknown
-    );
-    store.abort(&b);
+        messages.extend([tool_call("call-1", "lookup"), tool_result("call-1", false)]);
+        let AgentTurnBegin::Continuation {
+            ticket: resumed, ..
+        } = measured(&store, &scope, &request(messages.clone()), &replay, false)
+        else {
+            panic!("the exact accepted prefix must reopen the original execution")
+        };
+        assert_eq!(resumed.key, a.key);
+        assert_eq!(resumed.agent_turn_id, a.agent_turn_id);
+        assert!(store.inner.lock().entries[&a.key].closed.is_empty());
+        accepted_output::text_output(&store, &resumed, "A is finally complete");
+        finish(
+            &store,
+            &resumed,
+            "a-final",
+            AgentTurnStatus::Completed,
+            true,
+        );
+        messages.extend([
+            text(MessageRole::Assistant, "A is finally complete"),
+            text(MessageRole::User, "Assess all of A"),
+        ]);
+        let (b, history) = new_turn(measured(&store, &scope, &request(messages), &replay, false));
+        let target = target_with_members(&history, &["a-first", "a-final"]);
+        assert_eq!(
+            target.target_partial,
+            provider_status == AgentTurnStatus::Unknown,
+            "a later final cannot invent the earlier provider outcome"
+        );
+        assert_eq!(history.visible_conversation.len(), 1);
+        let visible = serde_json::to_string(&history.visible_conversation).unwrap();
+        assert!(visible.contains("functions.lookup"));
+        assert!(visible.contains("A is finally complete"));
+        assert!(target_with_members(&frozen, &["a-first"]).target_partial);
+        assert_eq!(
+            frozen.visible_conversation[0].status,
+            AgentTurnStatus::Unknown
+        );
+        store.abort(&b);
+    }
 }

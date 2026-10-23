@@ -161,15 +161,33 @@ shipped daemon through ACP, including separately built listener processes.
 Outer test-runner flags alone do not establish a child executable's feature graph;
 the prepared SUT recipe binds its manifest and source revision. Default-feature
 library checks separately cover the standalone Gateway's JSON representation.
-Bounded plaintext Responses reasoning summaries are compared with the accepted
-reasoning events, including empty-summary placeholders. Changed summaries, opaque
-provider state and unsupported native fields lose the edge; reasoning stays out
-of the competence-assessment transcript. Known native maintenance calls retain
+Bounded Responses reasoning summaries and encrypted content are compared with
+the actual accepted reasoning events, including empty-summary placeholders.
+Encrypted content is compared only by its exact bounded digest after Replay
+integrity verification. It is never decrypted or projected into assessment;
+equality provides contextual continuity without provider affinity. Changed or
+uncaptured ciphertext, changed summaries and unsupported native fields lose the
+edge. [Encrypted continuation cases](src/agent_turn_history/boundary/encrypted_tests.rs)
+include a failed tool result followed by recovery in the same execution stage.
+Known native maintenance calls retain
 their receipts and costs but carry an explicit optional auxiliary marker so the
 timeline does not manufacture pending user turns. Older unmarked facts remain
 visible under their original conservative interpretation.
 Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
 commits are branch-scoped; optional cache misses cannot discard execution capture.
+Freezing request membership does not prove that the stage ended. The store keeps
+capture coverage, actual provider outcomes and stage-closure proof independently.
+A known successful tool response can leave its stage open; an unknown provider
+outcome cannot be repaired by a later activation or final answer. A proven new
+activation or terminal can close a known stage, while association loss leaves
+evaluation partial. A later independently complete stage recovers normally.
+[Closure regressions](src/agent_turn_history/stage_closure_tests.rs) check both
+directions and preserve previously frozen snapshots.
+Request JSON observation uses the same Replay-aware canonical serialization as
+comparison, with bounded chunks and integrity checks instead of retaining internal
+locators. [Observation regressions](src/observation/content/request_json_replay_tests.rs)
+cover nested strings, tool JSON, literal-marker isolation and missing backing.
+Response ciphertext remains excluded from retained observation content.
 An admitted request keeps its capture ticket if publishing its frozen decision
 temporarily lacks history resources. The [request guard](src/core_runtime/decision_history/deferred_decision.rs)
 retries that publication once after downstream delivery, under the same store

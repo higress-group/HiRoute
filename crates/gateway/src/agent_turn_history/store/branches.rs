@@ -222,7 +222,21 @@ impl AgentTurnHistoryStore {
             if seal {
                 let segment = self.allocate_id(inner, "segment")?;
                 let entry = inner.entries.get_mut(key).expect("selected entry");
-                completed = Some(Box::new(close_active(entry, segment, unix_ms())?));
+                // Only a witnessed activation after the accepted output can
+                // establish this boundary. A missing edge freezes evidence,
+                // but cannot declare the still-running tool stage complete.
+                let new_activation = exact
+                    && !ambiguous
+                    && (inputs.history_continuity == HistoryContinuity::NativeNewTurn
+                        || analyzed.turns.last().is_some_and(|turn| {
+                            turn.user_index > entry.checkpoint.active_user_index
+                        }));
+                let closure = if new_activation {
+                    StageClosure::NewActivation
+                } else {
+                    StageClosure::AssociationLost
+                };
+                completed = Some(Box::new(close_active(entry, segment, unix_ms(), closure)?));
                 let old = entry.accounted_bytes;
                 entry.accounted_bytes = entry_bytes(key, entry);
                 let new = entry.accounted_bytes;
