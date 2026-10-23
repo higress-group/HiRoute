@@ -52,6 +52,10 @@ fn unsigned_messages_thinking_boundary_survives_production_replay() {
                     capture.digest(),
                     "thinking {thinking:?}, signature {signature:?}, allowance {inline_limit}"
                 );
+                // Materialization seals its Replay owner. Give this independent
+                // wire assertion its own request lifecycle before later probes.
+                let (_wire_directory, wire_replay) = super::replay();
+                let wire_request = production_request(&wire, &wire_replay, inline_limit);
                 let mut profile = crate::server::core_runtime::profiles::CandidateProtocolProfile::exact_portable_path(
                     IngressProtocol::Messages, IngressProtocol::Messages, "physical",
                     crate::server::core_runtime::profiles::fixed_reasoning("fixed"),
@@ -64,16 +68,17 @@ fn unsigned_messages_thinking_boundary_survives_production_replay() {
                     crate::server::core_runtime::profiles::Fidelity::Exact;
                 let template =
                     crate::server::core_runtime::adapters::project_candidate_request_template(
-                        &request, &profile,
+                        &wire_request,
+                        &profile,
                     )
                     .unwrap();
-                replay
-                    .prevalidate(&crate::content_ref::model_content_refs(&request))
+                wire_replay
+                    .prevalidate(&crate::content_ref::model_content_refs(&wire_request))
                     .unwrap();
                 let mut body = crate::server::core_runtime::adapters::sequential_attempt_body(
                     template,
-                    replay.clone(),
-                    replay.budget(),
+                    wire_replay.clone(),
+                    wire_replay.budget(),
                     127,
                 )
                 .unwrap();
