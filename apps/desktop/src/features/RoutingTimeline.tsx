@@ -19,7 +19,7 @@ export type TimelineTurn = {
   turn_id: string; agent_turn_id: string | null; segment_id: string | null; started_at_ms: number; finished_at_ms: number | null;
   boundary: 'new_user_message' | 'context_rebuilt' | 'unknown'; plan_id: string | null; plan_revision: number | null;
   branch_id: string | null; model_configuration_id: string | null; reasoning_profile_id: string | null; group: string | null;
-  selection: { simple_probability: number | null; simple_threshold_millis: number | null; selection_reason: string; competence_trigger?: { score: number; floor_millis: number } | null; historical_protection?: TimelineProtection | null } | null;
+  selection: { extension_reason?: string; simple_probability: number | null; simple_threshold_millis: number | null; selection_reason: string; competence_trigger?: { score: number; floor_millis: number } | null; historical_protection?: TimelineProtection | null } | null;
   tool_continuations: number; relays: { request_id: string; from_model: string | null; to_model: string | null }[];
   assessment_state: string; assessment: { score: number; partial: boolean; target_from_ordinal: number; target_through_ordinal: number } | null;
   competence_floor_millis: number | null; protected_turn_ids: string[]; status: string; requests: TimelineRequest[];
@@ -258,6 +258,8 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
     const p = turn.selection?.simple_probability, threshold = turn.selection?.simple_threshold_millis;
     const trigger = turn.selection?.competence_trigger;
     switch (turn.selection?.selection_reason) {
+      case 'extension_decision': return `${text('由决策扩展选择', 'Selected by the decision extension')}${turn.selection.extension_reason ? ` · ${turn.selection.extension_reason}` : ''} → ${target}.`;
+      case 'decision_unavailable': return text(`扩展未提供有效模型组，保留任务类别并使用主力 → ${target}。`, `The extension did not return a valid group; keep the category and use primary → ${target}.`);
       case 'simple_task': return text(`简单概率 ${p?.toFixed(2) ?? '—'} ≥ 阈值 ${fixed(threshold)}，没有适用的低分 → ${target}。`, `P(simple) ${p?.toFixed(2) ?? '—'} ≥ threshold ${fixed(threshold)} with no applicable low score → ${target}.`);
       case 'complex_task': return text(`简单概率 ${p?.toFixed(2) ?? '—'} < 阈值 ${fixed(threshold)} → ${target}。`, `P(simple) ${p?.toFixed(2) ?? '—'} < threshold ${fixed(threshold)} → ${target}.`);
       case 'low_competence': return trigger ? text(`上一阶段评分 ${trigger.score.toFixed(2)} 低于下限 ${fixed(trigger.floor_millis)} → ${target}。`, `The previous stage scored ${trigger.score.toFixed(2)}, below the ${fixed(trigger.floor_millis)} floor → ${target}.`) : text(`上一阶段低于胜任下限 → ${target}。`, `The previous stage was below the competence floor → ${target}.`);

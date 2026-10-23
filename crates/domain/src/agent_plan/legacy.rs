@@ -80,7 +80,7 @@ impl PlanVersionV1 {
 
                     economy: group(MaterializedGroupId::Economy)?,
                     primary: group(MaterializedGroupId::Primary)?,
-                    judgment: judgment.clone(),
+                    judgment: judgment.clone().ok_or(PlanVersionError::Invalid)?,
                     reselect_on_user_message: *reselect_on_user_message,
                     classifier: classifier.mode.clone(),
                     complex_keywords: classifier.user_keywords.clone(),

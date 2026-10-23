@@ -307,6 +307,9 @@ impl BranchRoutingV1 {
         if self.native_protocol.is_some() && !super::native_mode(&self.classifier) {
             return Err(super::NativeProtocolError::ContentMismatch);
         }
+        if self.classifier.extension_identity().is_some() {
+            return Ok(());
+        }
         for b in &self.branches {
             super::validate_assessment_scope(
                 self.native_protocol.as_ref(),
@@ -328,7 +331,9 @@ impl BranchRoutingV1 {
         Ok(())
     }
     pub fn validate(&self, draft: bool) -> bool {
+        let extension = self.classifier.extension_identity().is_some();
         if !draft
+            && !extension
             && (self.native_protocol.is_some() && !super::native_mode(&self.classifier)
                 || self.branches.iter().any(|b| {
                     super::validate_assessment_scope(
@@ -348,7 +353,7 @@ impl BranchRoutingV1 {
         }
         if self.branches.len() > 16
             || (!draft && self.branches.len() < 2)
-            || !(if draft {
+            || !(if draft || extension {
                 self.judgment.validate_draft()
             } else {
                 self.judgment.validate()
@@ -371,7 +376,7 @@ impl BranchRoutingV1 {
                 && b.name.len() <= 512
                 && (b.condition.is_empty() || prompt(&b.condition))
                 && b.judgment.as_ref().is_none_or(|v| {
-                    if draft {
+                    if draft || extension {
                         v.validate_draft()
                     } else {
                         v.validate()

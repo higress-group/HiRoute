@@ -20,8 +20,8 @@ export function TrustSuggestions({ report, language, onThreshold, onDivision, on
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   const named = report.branches.length > 1;
   function facts(counts: TrustCounts, upward: boolean) {
-    return t(`完整评分阶段 ${counts.complete}（要求 ≥30）· 胜任率 ${ratio(counts.meets_floor, counts.complete)}（${upward ? '要求 ≥85%' : '低于 70% 时建议下调'}）· 评分覆盖 ${ratio(counts.complete, counts.executed)}${upward ? '（要求 ≥60%）' : ''} · 来自 ${counts.sessions} 个会话${upward ? '（要求 ≥3）' : ''}`,
-      `${counts.complete} fully scored stages (≥30 required) · ${ratio(counts.meets_floor, counts.complete)} competence (${upward ? '≥85% required' : 'below 70% suggests stepping down'}) · ${ratio(counts.complete, counts.executed)} scored${upward ? ' (≥60% required)' : ''} · ${counts.sessions} sessions${upward ? ' (≥3 required)' : ''}`);
+    return t(`完整评分阶段 ${counts.complete}（要求 ≥30）· 胜任率 ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)}（${upward ? '要求 ≥85%' : '低于 70% 时建议下调'}）· 评分覆盖 ${ratio(counts.complete, counts.executed)}${upward ? '（要求 ≥60%）' : ''} · 来自 ${counts.sessions} 个会话${upward ? '（要求 ≥3）' : ''}`,
+      `${counts.complete} fully scored stages (≥30 required) · ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)} competence (${upward ? '≥85% required' : 'below 70% suggests stepping down'}) · ${ratio(counts.complete, counts.executed)} scored${upward ? ' (≥60% required)' : ''} · ${counts.sessions} sessions${upward ? ' (≥3 required)' : ''}`);
   }
   function banner(branch: TrustBranch): SuggestionBanner {
     const s = branch.suggestion;
@@ -77,13 +77,14 @@ export function TrustTiles({ report, language }: { report: TrustReport; language
   if (!regular.length) return null;
   const total = sum(report.rows, row => row.counts.executed);
   const executed = sum(regular, row => row.counts.executed), complete = sum(regular, row => row.counts.complete), meets = sum(regular, row => row.counts.meets_floor);
+  const eligible = sum(regular, row => row.counts.competence_eligible ?? row.counts.complete);
   const unscored = executed - complete;
   const protections = sum(report.rows, row => row.protections.length), relays = sum(report.rows, row => row.availability_relays);
   const cost = report.cost.kind === 'available' ? report.cost.comparison : null;
   const money = (micros: number | null | undefined) => cost && micros != null ? formatMoney(cost.currency, (micros / 1_000_000).toFixed(2)) : '—';
   return <div className="trust-tiles">
     <div className="trust-tile"><span>{t('交给常规模型的阶段', 'Stages given to Regular')}</span><strong>{ratio(executed, total)}</strong><small>{executed} / {total}</small></div>
-    <div className="trust-tile"><span>{t('常规模型胜任率', 'Regular competence')}</span><strong>{ratio(meets, complete)}</strong><small>{t(`${meets} / ${complete} 达到下限 · ${unscored} 未完整评分`, `${meets} / ${complete} meet the floor · ${unscored} not fully scored`)}</small></div>
+    <div className="trust-tile"><span>{t('常规模型胜任率', 'Regular competence')}</span><strong>{ratio(meets, eligible)}</strong><small>{t(`${meets} / ${eligible} 达到下限 · ${unscored} 未完整评分`, `${meets} / ${eligible} meet the floor · ${unscored} not fully scored`)}</small></div>
     <div className="trust-tile"><span>{t('低分保护', 'Low-score protection')}</span><strong>{t(`${protections} 次`, String(protections))}</strong><small>{t(`另有 ${relays} 次故障接力，不算没做好`, `${relays} availability relays are not counted as failures`)}</small></div>
     <div className="trust-tile"><span>{t('常规模型阶段估算费用', 'Estimated Regular cost')}</span><strong>{money(cost?.routed_estimate_micros)}</strong><small>{cost ? t(`同样用量按主力估算 ${money(cost.reference_estimate_micros)}`, `Same usage at Primary prices: ${money(cost.reference_estimate_micros)}`) : t('费用对比暂不可用', 'Cost comparison unavailable')}</small></div>
   </div>;

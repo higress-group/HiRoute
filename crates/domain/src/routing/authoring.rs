@@ -162,16 +162,18 @@ impl PlanEditorStateV2 {
                     None
                 };
                 {
-                    routing.judgment = routing
-                        .judgment
-                        .resolve_assessment(routing.native_protocol.as_ref())
-                        .map_err(PlanAuthoringError::NativeProtocol)?;
-                    for branch in &mut routing.branches {
-                        if let Some(j) = &branch.judgment {
-                            branch.judgment = Some(
-                                j.resolve_assessment(routing.native_protocol.as_ref())
-                                    .map_err(PlanAuthoringError::NativeProtocol)?,
-                            );
+                    if routing.classifier.extension_identity().is_none() {
+                        routing.judgment = routing
+                            .judgment
+                            .resolve_assessment(routing.native_protocol.as_ref())
+                            .map_err(PlanAuthoringError::NativeProtocol)?;
+                        for branch in &mut routing.branches {
+                            if let Some(j) = &branch.judgment {
+                                branch.judgment = Some(
+                                    j.resolve_assessment(routing.native_protocol.as_ref())
+                                        .map_err(PlanAuthoringError::NativeProtocol)?,
+                                );
+                            }
                         }
                     }
                     AgentPlanStrategyV2::Branches { routing }
@@ -186,11 +188,14 @@ impl PlanEditorStateV2 {
                 } else {
                     None
                 };
-                let judgment = self
-                    .smart
-                    .judgment
-                    .resolve_assessment(native_protocol.as_ref())
-                    .map_err(PlanAuthoringError::NativeProtocol)?;
+                let judgment = if self.smart.classifier.extension_identity().is_some() {
+                    self.smart.judgment.clone()
+                } else {
+                    self.smart
+                        .judgment
+                        .resolve_assessment(native_protocol.as_ref())
+                        .map_err(PlanAuthoringError::NativeProtocol)?
+                };
                 AgentPlanStrategyV2::SmartSaving {
                     native_protocol,
                     economy: self.smart.economy.clone(),
@@ -334,18 +339,20 @@ impl AgentPlanAuthoringV2 {
                     ..
                 },
             ) => {
-                if !judgment.validate() {
+                if classifier.extension_identity().is_none() && !judgment.validate() {
                     return Err(PlanAuthoringError::InvalidStrategy);
                 }
                 if native_protocol.is_some() && !super::native_mode(classifier) {
                     return Err(PlanAuthoringError::InvalidStrategy);
                 }
-                super::validate_assessment_scope(
-                    native_protocol.as_ref(),
-                    super::SMART_SAVING_SCOPE_ID,
-                    judgment,
-                )
-                .map_err(PlanAuthoringError::NativeProtocol)?;
+                if classifier.extension_identity().is_none() {
+                    super::validate_assessment_scope(
+                        native_protocol.as_ref(),
+                        super::SMART_SAVING_SCOPE_ID,
+                        judgment,
+                    )
+                    .map_err(PlanAuthoringError::NativeProtocol)?;
+                }
                 validate(economy)?;
                 validate(primary)?;
                 classifier

@@ -427,6 +427,9 @@ fn compile_classifier_authority(
                     ));
                 }
             }
+            if value.extension_identity.is_none() && judgment.is_none() {
+                return Err(PublicationInstallError::InvalidPlannerPolicy);
+            }
             value.native_protocol = native_protocol.clone();
             value.decision = native_protocol.as_ref().map_or_else(
                 || {
@@ -461,6 +464,11 @@ fn compile_classifier_authority(
                 || hiroute_domain::branch_decision_definition(branches, default_branch_id),
                 |p| p.decision.clone(),
             );
+            if value.extension_identity.is_none()
+                && branches.iter().any(|branch| branch.judgment.is_none())
+            {
+                return Err(PublicationInstallError::InvalidPlannerPolicy);
+            }
             value.default_category = Some(default_branch_id.clone());
             value.smart_judgment = None;
             value.branch_policies = branches.clone();
