@@ -157,6 +157,13 @@ Desktop acceptance.
 
 ## Integration preflight
 
+ContextHold, decision-history and runtime selection changes select the ContextHold
+listener target before final workspace execution. Its cleanup journey distinguishes
+the free-first recovery contract from classified causal branches; a shared session
+or contextual score target alone cannot authorize provider-history deletion. Direct
+ContextHold test changes retain the protocol/coverage consumers, serialized process
+execution and the known `serde_json/preserve_order` feature context.
+
 Use `python3 scripts/test-plan.py --base BASE_SHA --integration` after combining task branches.
 The added `integration` view prints early checks without modifying the top-level final commands
 or running anything. Selected Python gates precede the coverage-manifest target; the protocol

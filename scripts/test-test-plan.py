@@ -678,6 +678,42 @@ class SelectionTests(unittest.TestCase):
 
 
 class IntegrationPreflightTests(unittest.TestCase):
+    def test_affinity_and_history_changes_check_context_hold_before_final(self):
+        for path in [
+                'crates/gateway/src/core_runtime.rs',
+                'crates/gateway/src/context_hold/store.rs',
+                'crates/gateway/src/agent_turn_history/store/branches.rs',
+                'crates/gateway/src/core_runtime/decision_history.rs',
+                'crates/gateway/src/runtime/driver/selection.rs']:
+            with self.subTest(path=path):
+                final = plan.select(['Cargo.lock', path])
+                original = json.dumps(final, sort_keys=True)
+                early = plan.integration_preflight(final)
+                self.assertIn('p0_gateway_context_hold', early['targets'])
+                commands = [c for c in early['commands'] if c[:2] == ['cargo', 'test']]
+                self.assertEqual(commands[0][-2:], ['--test', 'p0_gateway_matrix_coverage'])
+                command = next(c for c in commands if 'p0_gateway_context_hold' in c)
+                self.assertIn('--workspace', command)
+                self.assertIn('--all-features', command)
+                self.assertEqual(command[-2:], ['--', '--test-threads=1'])
+                self.assertEqual(json.dumps(final, sort_keys=True), original)
+
+    def test_context_hold_leaf_retains_protocol_feature_and_process_consumers(self):
+        for path in ['tools/e2e-harness/tests/p0_gateway_context_hold.rs',
+                     'tools/e2e-harness/tests/p0_gateway_context_hold/cleanup.rs']:
+            with self.subTest(path=path):
+                final = plan.select([path])
+                self.assertEqual(final['mode'], 'affected')
+                commands = [c for c in final['commands'] if c[:2] == ['cargo', 'test']]
+                self.assertTrue(any('p0_gateway_protocol' in c for c in commands))
+                command = next(c for c in commands if 'p0_gateway_context_hold' in c)
+                self.assertIn('serde_json/preserve_order', command)
+                self.assertEqual(command[-2:], ['--', '--test-threads=1'])
+                early = plan.integration_preflight(final)
+                command = next(c for c in early['commands'] if 'p0_gateway_context_hold' in c)
+                self.assertIn('p0_gateway_protocol', command)
+                self.assertIn('serde_json/preserve_order', command)
+
     def test_observation_ports_check_current_boundary_without_narrowing_final(self):
         for path in [
                 'crates/domain/src/observation/execution.rs',
