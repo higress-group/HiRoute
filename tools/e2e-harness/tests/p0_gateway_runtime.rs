@@ -18,6 +18,8 @@ mod hermes_identity;
 mod history_bypass;
 #[path = "p0_gateway_runtime/instruction_history.rs"]
 mod instruction_history;
+#[path = "p0_gateway_runtime/interrupted_input_boundary.rs"]
+mod interrupted_input_boundary;
 #[path = "p0_gateway_runtime/native_encrypted_continuation.rs"]
 mod native_encrypted_continuation;
 #[path = "p0_gateway_runtime/native_existing_turn.rs"]
