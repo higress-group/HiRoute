@@ -342,6 +342,54 @@ fn terminal_request_with_unknown_outcome_does_not_prove_stage_closure() {
 }
 
 #[test]
+fn new_activation_cannot_turn_a_provider_unknown_tool_response_into_complete_evidence() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::default();
+    let scope = store
+        .scope_key("workspace", "closure-tool-provider-unknown")
+        .unwrap();
+    let mut messages = vec![text(MessageRole::User, "Look up the record")];
+    let (a, _) = new_turn(measured(
+        &store,
+        &scope,
+        &request(messages.clone()),
+        &replay,
+        false,
+    ));
+    accepted_tool(&store, &a, "call-1");
+    // Unlike a known Completed tool response, the provider outcome itself is
+    // unresolved. The emitted call and a new user input cannot prove that
+    // the old response ended; keep the actual accepted capture intact.
+    finish(
+        &store,
+        &a,
+        "a-provider-unknown",
+        AgentTurnStatus::Unknown,
+        false,
+    );
+    messages.extend([
+        tool_call("call-1", "lookup"),
+        tool_result("call-1", false),
+        text(MessageRole::User, "Independent B"),
+    ]);
+    let AgentTurnBegin::NewTurn {
+        ticket: b,
+        history,
+        completed,
+        ..
+    } = measured(&store, &scope, &request(messages), &replay, false)
+    else {
+        panic!("the real new activation must still be independently routable")
+    };
+    assert_eq!(completed.unwrap().status, AgentTurnStatus::Unknown);
+    assert!(
+        target_with_members(&history, &["a-provider-unknown"]).target_partial,
+        "a routing boundary cannot supply the missing provider outcome"
+    );
+    store.abort(&b);
+}
+
+#[test]
 fn later_complete_new_input_recovers_without_washing_an_unclosed_segment() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::default();
