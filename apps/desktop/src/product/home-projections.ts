@@ -1,5 +1,6 @@
 import type { Agent, AgentSnapshot } from '../agents';
 import { agentHasNoModelConnection, agentModelStatus } from '../features/agents/status.ts';
+import { agentBrand, agentDisplayName, agentEcosystem } from '../features/agents/ecosystems.ts';
 import type {
   HomeActivity,
   HomeAgents,
@@ -184,18 +185,11 @@ function facet(state: string | undefined): HomeFacetState {
 
 function projectAgent(agent: Agent): HomeAgents['agents'][number] {
   const model = agentModelStatus(agent);
-  const normalized = agent.agent_id.toLowerCase();
-  const brand = normalized.includes('codex')
-    ? 'codex'
-    : normalized.includes('claude') ? 'claude-code' : normalized.includes('qoder') ? 'qoder' : 'agent';
   return {
     agentId: agent.agent_id,
     contextId: agent.context_id ?? undefined,
-    displayName: agent.agent_id === 'agent_codex_default'
-      ? 'Codex'
-      : agent.agent_id === 'agent_claude_default' ? 'Claude Code'
-        : agent.agent_id === 'agent_qoder_default' ? 'Qoder' : agent.agent_id,
-    brand,
+    displayName: agentEcosystem(agent.agent_id) ? agentDisplayName(agent.agent_id, 'en') : agent.agent_id,
+    brand: agentBrand(agent.agent_id),
     model: agentHasNoModelConnection(agent) ? 'unsupported'
       : model ? facet(model.state) : 'unknown',
     collaboration: facet(agent.settings?.collaboration?.state),
@@ -221,17 +215,15 @@ function dateTimeLabel(milliseconds: number): string {
 }
 
 export function projectHomeActivity(page: ObservationSessionPage): HomeActivity {
-  const agentName = (id: string) => id.toLocaleLowerCase().includes('codex')
-    ? 'Codex'
-    : id.toLocaleLowerCase().includes('claude')
-      ? 'Claude Code'
-      : 'Agent';
   return {
     sessions: page.sessions.map(session => ({
       sessionId: session.session_id || null,
+      agentId: session.agent_id || undefined,
       title: '',
       requestCount: session.request_count,
-      agentName: session.agent_id ? agentName(session.agent_id) : undefined,
+      agentName: session.agent_id
+        ? agentEcosystem(session.agent_id) ? agentDisplayName(session.agent_id, 'en') : 'Agent'
+        : undefined,
       occurredAtMs: session.last_request_at_ms,
       occurredAtLabel: dateTimeLabel(session.last_request_at_ms),
       modelSwitch: session.fallback_request_count > 0,

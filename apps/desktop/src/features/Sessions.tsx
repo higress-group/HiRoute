@@ -10,6 +10,7 @@ import { nativeConnectionReadText } from '../native-connection';
 import { safeDiagnosticCode } from '../error-code';
 import { observationRead as read } from './observation-client';
 import { PlanQuality } from './PlanQuality';
+import { agentDisplayName } from './agents/ecosystems';
 import { RoutingTimeline, type TimelineAvailability, type TimelineRequest } from './RoutingTimeline';
 type Page<T> = { next_cursor: string | null } & T;
 type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; last_request_at_ms: number; correlation_kind: CorrelationKind; content_completeness: string };
@@ -241,9 +242,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     ?? (focusedSummary?.session_id === session ? focusedSummary : undefined);
   const agentName = (id?: string) => !id
     ? text('未关联 Agent', 'Unlinked Agent')
-    : id.toLowerCase().includes('codex') ? 'Codex'
-      : id.toLowerCase().includes('claude') ? 'Claude Code'
-        : text('本机 Agent', 'Local Agent');
+    : agentDisplayName(id, language);
   const emptyFirstUse = listLoaded && !listBusy && !listError && !keyword.trim() && !onlySwitch && sessions.length === 0;
   const selectedRequest = requests.find(item => item.request_id === request);
   const displayedRequestIds = request ? (readingRequests.length ? readingRequests : [request]) : [];

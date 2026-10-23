@@ -48,6 +48,34 @@ const emptySummary = { models: [], scored_stage_count: 0, unrated_stage_count: 0
 const openQuality = () => { const disclosure = document.querySelector('.session-model-performance summary'); if (disclosure && !disclosure.parentElement.open) disclosure.click(); };
 
 const scenarios = [
+  ['supported Agent names appear in both the session list and selected heading', async () => {
+    const agents = [
+      ['codex', 'Codex'], ['claude', 'Claude Code'], ['dsh', 'DeepSeek Harness'],
+      ['pi', 'Pi'], ['qoder', 'Qoder'], ['hermes', 'Hermes'], ['opencode', 'OpenCode'],
+      ['unknown', null], [null, null],
+    ];
+    for (const language of ['zh', 'en']) for (const [family, name] of agents) {
+      const expected = name ?? (family
+        ? language === 'zh' ? '本机 Agent' : 'Local Agent'
+        : language === 'zh' ? '未关联 Agent' : 'Unlinked Agent');
+      await fresh(control => {
+        control.language = language;
+        seedSimple(control);
+        control.views.sessions = query => {
+          const page = control.defaultRead('sessions', query);
+          return { ...page, sessions: page.sessions.map(row => ({ ...row,
+            agent_id: family ? `agent_${family}_default` : '',
+          })) };
+        };
+      });
+      await until(() => rows().length === 1, `${language} ${family} session row`);
+      assert(rows()[0].textContent.includes(expected), `${language} ${family} list lacks ${expected}`);
+      rows()[0].click();
+      await until(() => document.querySelector('.transcript-head p'), 'selected session heading');
+      assert(document.querySelector('.transcript-head p').textContent.includes(expected),
+        `${language} ${family} heading lacks ${expected}`);
+    }
+  }],
   ['replayed history keeps attribution while reading skips hidden response pages', async () => {
     await fresh(control => {
       seedSimple(control, Date.now() - 60_000, { final_native_model: 'glm-5.3', within_request_fallback: true });
