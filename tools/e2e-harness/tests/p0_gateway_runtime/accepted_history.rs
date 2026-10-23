@@ -8,6 +8,199 @@ fn classifier_body(classifier: &NativeProvider, index: usize) -> serde_json::Val
 }
 
 #[test]
+fn real_listener_tool_json_key_order_keeps_complete_stage_and_assessment() {
+    assert_tool_json_history(false);
+}
+
+#[test]
+fn real_listener_changed_tool_json_value_cannot_inherit_the_accepted_stage() {
+    assert_tool_json_history(true);
+}
+
+fn assert_tool_json_history(changed_value: bool) {
+    use serde_json::{Value, json};
+    // Both the provider and client use deliberate, different nonlexical key
+    // orders. A sorted client spelling alone would miss the preserve_order bug.
+    const TOOL: &[u8] = br#"{"id":"json-tool","model":"runtime-native","status":"completed","output":[{"type":"function_call","id":"fc-native","call_id":"native-call","namespace":"tools","name":"lookup","arguments":"{\"z\":3,\"list\":[1,2],\"a\":{\"y\":2,\"x\":1}}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
+    const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
+    let reply = |body| ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body,
+    };
+    let mut regular_replies = vec![reply(TOOL)];
+    if !changed_value {
+        regular_replies.push(reply(RESPONSES_OK));
+    }
+    let regular = NativeProvider::start(regular_replies);
+    let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+    let classifier = NativeProvider::start(vec![
+        reply(CLASSIFIER_SIMPLE),
+        reply(if changed_value {
+            CLASSIFIER_COMPLEX
+        } else {
+            ASSESSED_COMPLEX
+        }),
+    ]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+        &[&regular, &primary, &classifier],
+        1,
+        ObservationFaults::healthy(),
+    );
+    let send = |input: &[Value]| {
+        let response = request(
+            fixture.address,
+            "POST",
+            "/v1/responses",
+            &[
+                ("X-HiRoute-Token", TOKEN),
+                ("session-id", "tool-json-history"),
+            ],
+            &serde_json::to_vec(&json!({"model":MODEL,"input":input,"stream":false})).unwrap(),
+        );
+        assert_eq!(
+            response.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&response.body)
+        );
+        serde_json::from_slice::<Value>(&response.body).unwrap()
+    };
+    let mut input = vec![json!({"role":"user","content":"actual A: look up the record"})];
+    let first = send(&input);
+    let mut tool = first["output"][0].clone();
+    let native_arguments = tool["arguments"].as_str().unwrap();
+    assert_eq!(
+        native_arguments,
+        r#"{"z":3,"list":[1,2],"a":{"y":2,"x":1}}"#
+    );
+    let accepted_arguments: Value = serde_json::from_str(native_arguments).unwrap();
+    let replayed_arguments = if changed_value {
+        r#" { "list" : [1,2], "a" : { "x":1,"y":2 }, "z":4 } "#
+    } else {
+        r#" { "list" : [1,2], "a" : { "x":1,"y":2 }, "z":3 } "#
+    };
+    tool["arguments"] = json!(replayed_arguments);
+    let call_id = tool["call_id"].clone();
+    input.extend([
+        tool,
+        json!({"type":"function_call_output","call_id":call_id,"output":"private actual tool receipt"}),
+    ]);
+    let second = send(&input);
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        if changed_value { (1, 1, 2) } else { (2, 0, 1) },
+        "only the semantically identical tool result may inherit A's actual Regular execution"
+    );
+    let forwarded = classifier_body(
+        if changed_value { &primary } else { &regular },
+        usize::from(!changed_value),
+    );
+    let forwarded_tool = forwarded["input"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["type"] == "function_call")
+        .unwrap();
+    assert_eq!(forwarded_tool["call_id"], call_id);
+    let forwarded_arguments: Value =
+        serde_json::from_str(forwarded_tool["arguments"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        forwarded_arguments,
+        serde_json::from_str::<Value>(replayed_arguments).unwrap()
+    );
+    assert_eq!(forwarded_arguments == accepted_arguments, !changed_value);
+    assert!(!forwarded.to_string().contains("__hiroute_content_ref"));
+    if !changed_value {
+        input.extend(second["output"].as_array().unwrap().iter().cloned());
+        input.push(json!({"role":"user","content":"actual B: design the next step"}));
+        send(&input);
+        assert_eq!(
+            (regular.calls(), primary.calls(), classifier.calls()),
+            (2, 1, 2)
+        );
+        let assessed = classifier_body(&classifier, 1);
+        assert_eq!(assessed["history_partial"], false, "{assessed}");
+        assert_eq!(assessed["assessment_target"]["from"], 0, "{assessed}");
+        assert_eq!(
+            assessed["visible_conversation"].as_array().unwrap().len(),
+            1
+        );
+        assert_eq!(assessed["visible_conversation"][0]["status"], "completed");
+        assert_eq!(
+            assessed["visible_conversation"][0]["steps"],
+            json!([
+                [{"kind":"tool_activity","tool":"tools.lookup","status":"unknown"}],
+                [{"kind":"text","text":"ok"}]
+            ])
+        );
+        assert!(!assessed.to_string().contains("private actual tool receipt"));
+    }
+    let facts = wait_execution_facts(&fixture, if changed_value { 2 } else { 3 });
+    let decisions = facts
+        .iter()
+        .filter(|event| event["fact"]["kind"] == "route_decision")
+        .collect::<Vec<_>>();
+    assert_eq!(decisions.len(), if changed_value { 2 } else { 3 });
+    assert_eq!(
+        decisions[1]["fact"]["complexity"]["decision_source"],
+        if changed_value {
+            "external_classifier"
+        } else {
+            "inherited"
+        }
+    );
+    assert!(
+        decisions
+            .iter()
+            .all(|event| event["fact"]["complexity"]["fallback_used"] == false)
+    );
+    let members = json!([
+        decisions[0]["correlation"]["request_id"],
+        decisions[1]["correlation"]["request_id"]
+    ]);
+    let stage = facts.iter().find(|event| {
+        event["fact"]["kind"] == "agent_turn_finished"
+            && event["fact"]["history_membership"]["request_ids"] == members
+    });
+    if changed_value {
+        assert!(
+            stage.is_none(),
+            "changed arguments cannot join both executions into A: {facts:?}"
+        );
+        return;
+    }
+    let stage = &stage.expect("both actual Regular requests finish one stage")["fact"];
+    assert_eq!(stage["status"], "completed");
+    assert_eq!(stage["history_partial"], false);
+    assert_eq!(stage["history_membership"]["capture_partial"], false);
+    assert_eq!(stage["history_membership"]["clipped"], false);
+    let assessment = facts
+        .iter()
+        .find(|event| {
+            event["fact"]["kind"] == "branch_assessment_recorded"
+                && event["correlation"]["request_id"] == decisions[2]["correlation"]["request_id"]
+        })
+        .expect("the real B request assesses A's complete tool stage");
+    assert_eq!(
+        assessment["fact"]["history_membership"],
+        stage["history_membership"]
+    );
+    assert_eq!(assessment["fact"]["partial"], false);
+    assert_eq!(assessment["fact"]["score"], 0.75);
+    let attempts = facts
+        .iter()
+        .filter(|event| event["fact"]["kind"] == "attempt_finished")
+        .collect::<Vec<_>>();
+    assert_eq!(attempts.len(), 3);
+    assert!(
+        attempts
+            .iter()
+            .all(|event| event["fact"]["provider_model_event"] == "response_complete")
+    );
+}
+
+#[test]
 fn real_listener_moderation_metadata_keeps_complete_history_and_assessment() {
     use serde_json::json;
     let notification = json!({"type":"response.metadata","response_id":"stream-ok","sequence_number":7,
