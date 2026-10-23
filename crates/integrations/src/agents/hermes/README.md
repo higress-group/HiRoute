@@ -83,6 +83,16 @@ Keep this credential in that provider, never global model headers that can reach
 another auxiliary provider. Protected restore records retain their exact prior
 provider values, including older placeholder keys.
 
+The native auxiliary API does not currently expose its task name through the
+main-request middleware. Without a native session or purpose marker, its request
+remains independently authorized and classifiable, with request-scoped observation
+and no main-conversation history association. It is not labelled as a known
+auxiliary merely because middleware metadata is absent: the same absence can
+occur when a main-request adapter fails. This preserves main routing availability
+and excludes unassociated summaries from later main-stage evaluation, at the cost
+of an extra classification and unavailable auxiliary-to-parent attribution.
+Do not install global auxiliary-purpose headers or infer purpose from summary text.
+
 The plugin matches the exact saved provider definition, alias, native address and
 transport; it carries the token and the actual native session ID through existing
 SDK headers. It preserves unrelated request parameters and headers. Invalid or

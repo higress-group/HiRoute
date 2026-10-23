@@ -227,13 +227,19 @@ Fixed and free-first routes make zero decision calls. Current low-score protecti
 and failure rules belong to [decision policy](../decision-services/spec.md).
 
 Lossless same-protocol opaque provider state is forwarded even across a source/model
-family; the provider may reject it. Unrepresentable cross-protocol state is excluded
-before an Attempt. Responses `conversation` is an unsupported stored handle and
+family; the provider may reject it. Cross-protocol projection follows only declared
+conversion rules, including the known reasoning omissions and actual-projection
+warnings in the [execution-plane contract](../p0-gateway-execution-plane/spec.md#requirement-historical-tools-and-reasoning-do-not-require-delivery-registries).
+That reasoning rule does not permit dropping unknown state, stored handles, tool
+semantics or other unrepresentable fields; those exclude the candidate before an
+Attempt. Responses `conversation` is an unsupported stored handle and
 MUST be rejected rather than borrowing a reasoning-state owner's proof;
 `previous_response_id` does not become a substitute for complete visible history.
 On classified routes, a same-session contextual assessment target does not prove
 provider-state ownership or authorize a cleaned retry. An unverified history rewrite
-retains its opaque state on each ordinary candidate/fallback attempt. This does not
+retains its original canonical state for every candidate/fallback projection; only
+the same declared conversion rules apply, without additional history cleanup.
+Ordinary reasoning omission does not create a cleanup retry or watermark. This does not
 change the existing free-first ContextHold cleanup contract.
 
 ### Requirement: Candidate continuity has an exact scope and bounded lifetime

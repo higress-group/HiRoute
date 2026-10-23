@@ -60,6 +60,11 @@ response-scoped synthetic item identity across incremental and buffered renderer
 provider-native item IDs stay exact. The [request regression](src/adapters/tests/codex_replay.rs)
 and [response lifecycle scenarios](src/adapters/response/client_stream_tests.rs)
 cover endpoint isolation, replay and identity consistency.
+Request history and response rendering share the
+[phase representation rule](src/adapters/mod.rs): `final_answer` maps to the ordinary
+assistant channel on Chat and Messages; other named phases require Responses.
+Native Responses keeps the original phases. The
+[history projection cases](src/adapters/tests/message_phase.rs) cover this boundary.
 
 Messages thinking computation is projected in
 [request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
@@ -361,7 +366,13 @@ for disable, restart, independent-source isolation and re-enable evidence.
 
 `runtime/driver/response_diagnostics.rs` owns the closed, payload-free failure
 classification; `adapters/response/decoder.rs` reports SSE event ordinal and
-received-byte upper bound without per-token logs. Unix Debug-only
+received-byte upper bound without per-token logs. An observation-side decoder
+failure adds an optional `capture` context to the same diagnostic: actual protocol
+pair and the last Responses event's closed kind, indexes and array counts. The
+capture worker records only its first failure against the ordinal frozen at
+materialization, with no IDs, body text, hashes or dynamic error strings. This
+diagnostic preserves the original capture abort and cannot certify completion.
+Unix Debug-only
 `runtime/stream_capture.rs` can capture an explicitly enabled private session;
 its `stream_replay` example restores the actual attempt profile and tool mapping.
 This is offline decoder evidence, not proof of network timing or task completion.

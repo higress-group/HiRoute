@@ -435,6 +435,22 @@ fn real_listener_hermes_compression_and_fresh_gateway_retain_observed_routing_wi
             (simple.calls(), complex.calls(), classifier.calls()),
             (4, 0, 4)
         );
+        // A native auxiliary client without purpose/session evidence remains
+        // an independently classified request. Do not manufacture an auxiliary
+        // label from missing middleware, or lend it the main conversation.
+        assert!(
+            classifier_body(&classifier, 1)
+                .to_string()
+                .contains("AUXILIARY_CALCULATION")
+        );
+        for index in [0, 2, 3] {
+            assert!(
+                !classifier_body(&classifier, index)
+                    .to_string()
+                    .contains("AUXILIARY_CALCULATION"),
+                "unidentified auxiliary execution must not enter main history"
+            );
+        }
         let facts = wait_execution_facts(&fixture, 4);
         let decisions = facts
             .iter()

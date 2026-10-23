@@ -1,11 +1,15 @@
+use hiroute_diagnostics::event::{
+    IngressProtocol as DiagnosticProtocol, ResponseCaptureFailure, ResponseEventShape,
+    ResponseFailure, ResponseFailureStage,
+};
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::server::core_runtime::adapters::{
-    ChatToolProjection, ClientResponseRenderer, IncrementalClientSseRenderer,
-    NativeResponseDecoder, NativeResponseProjector, RenderedClientResponse, ResponseDecodeStatus,
-    ToolIdProjection,
+    ChatToolProjection, ClientResponseRenderer, DecodedNativeResponse,
+    IncrementalClientSseRenderer, NativeResponseDecoder, NativeResponseProjector,
+    ProtocolAdapterError, RenderedClientResponse, ResponseDecodeStatus, ToolIdProjection,
 };
 use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, ClientProtocolProfile};
@@ -24,6 +28,10 @@ mod memory_tests;
 #[path = "usage_tests.rs"]
 mod usage_tests;
 
+#[cfg(test)]
+#[path = "diagnostic_tests.rs"]
+mod diagnostic_tests;
+
 pub(super) struct CanonicalResponseTracker {
     budget: StreamBudget,
     profile: Arc<CandidateProtocolProfile>,
@@ -41,6 +49,9 @@ pub(super) struct CanonicalResponseTracker {
     native_pending: Vec<u8>,
     native_pending_reservation: Option<Reservation>,
     source_ended: bool,
+    failure_context: Option<ResponseFailure>,
+    decode_failure: Option<ResponseFailure>,
+    decode_failed: bool,
 }
 
 struct CanonicalWireUnit {
@@ -98,7 +109,80 @@ impl CanonicalResponseTracker {
             native_pending: Vec::new(),
             native_pending_reservation: None,
             source_ended: false,
+            failure_context: None,
+            decode_failure: None,
+            decode_failed: false,
         }
+    }
+
+    pub(super) fn with_failure_context(mut self, context: ResponseFailure) -> Self {
+        self.failure_context = Some(context);
+        self
+    }
+
+    pub(super) fn take_decode_failure(&mut self) -> Option<ResponseFailure> {
+        self.decode_failure.take()
+    }
+
+    fn note_decode_failure(
+        &mut self,
+        error: &ProtocolAdapterError,
+        stage: ResponseFailureStage,
+        position: (u64, u64),
+        shape: Option<ResponseEventShape>,
+    ) {
+        if self.decode_failed {
+            return;
+        }
+        self.decode_failed = true;
+        if let Some(mut failure) = self.failure_context.clone() {
+            let (reason, field) = crate::runtime::response_failure_category(error);
+            failure.stage = stage;
+            failure.reason = reason;
+            failure.field = field;
+            failure.frame_index = (position.0 != 0).then_some(position.0);
+            failure.received_bytes = Some(position.1);
+            failure.capture = Some(ResponseCaptureFailure {
+                ingress_protocol: diagnostic_protocol(self.ingress),
+                upstream_protocol: diagnostic_protocol(self.profile.capability.upstream_protocol),
+                last_event: shape,
+            });
+            self.decode_failure = Some(failure);
+        }
+    }
+
+    fn decode_status(
+        &mut self,
+        action: impl FnOnce(
+            &mut NativeResponseDecoder,
+        ) -> Result<ResponseDecodeStatus, ProtocolAdapterError>,
+    ) -> Result<ResponseDecodeStatus, &'static str> {
+        let decoder = self
+            .decoder
+            .as_mut()
+            .ok_or("canonical_response_decoder_unavailable")?;
+        match action(decoder) {
+            Ok(status) => Ok(status),
+            Err(error) => {
+                let position = decoder.diagnostic_position();
+                let shape = decoder.diagnostic_shape();
+                self.note_decode_failure(&error, ResponseFailureStage::Decode, position, shape);
+                Err("canonical_response_decode_failed")
+            }
+        }
+    }
+
+    fn finish_decoder(&mut self) -> Result<DecodedNativeResponse, &'static str> {
+        let decoder = self
+            .decoder
+            .take()
+            .ok_or("canonical_response_decoder_unavailable")?;
+        let position = decoder.diagnostic_position();
+        let shape = decoder.diagnostic_shape();
+        decoder.finish().map_err(|error| {
+            self.note_decode_failure(&error, ResponseFailureStage::EndOfStream, position, shape);
+            "canonical_response_terminal_malformed"
+        })
     }
 
     pub(super) fn observe(&mut self, event: CapturedNativeEvent) -> Result<(), &'static str> {
@@ -156,12 +240,10 @@ impl CanonicalResponseTracker {
         if self.native_output && self.streaming {
             return self.feed_native_stream(bytes, end_stream);
         }
-        let mut status = self
-            .decoder
-            .as_mut()
-            .ok_or("canonical_response_body_before_head")?
-            .feed(bytes, end_stream)
-            .map_err(|_| "canonical_response_decode_failed")?;
+        if self.decoder.is_none() {
+            return Err("canonical_response_body_before_head");
+        }
+        let mut status = self.decode_status(|decoder| decoder.feed(bytes, end_stream))?;
         loop {
             let events = self
                 .decoder
@@ -172,21 +254,11 @@ impl CanonicalResponseTracker {
             if status != ResponseDecodeStatus::NeedDrain {
                 break;
             }
-            status = self
-                .decoder
-                .as_mut()
-                .ok_or("canonical_response_decoder_unavailable")?
-                .resume()
-                .map_err(|_| "canonical_response_decode_failed")?;
+            status = self.decode_status(NativeResponseDecoder::resume)?;
         }
         if end_stream {
             self.source_ended = true;
-            let decoded = self
-                .decoder
-                .take()
-                .ok_or("canonical_response_decoder_unavailable")?
-                .finish()
-                .map_err(|_| "canonical_response_terminal_malformed")?;
+            let decoded = self.finish_decoder()?;
             self.observe_events(decoded.events)?;
             if !self.streaming && !self.native_output {
                 let rendered = ClientResponseRenderer::render_nonstream(
@@ -263,22 +335,13 @@ impl CanonicalResponseTracker {
             }
             self.feed_capture_decoder(&[], true)?;
             self.source_ended = true;
-            self.decoder
-                .take()
-                .ok_or("canonical_response_decoder_unavailable")?
-                .finish()
-                .map_err(|_| "canonical_response_terminal_malformed")?;
+            self.finish_decoder()?;
         }
         Ok(())
     }
 
     fn feed_capture_decoder(&mut self, bytes: &[u8], end_stream: bool) -> Result<(), &'static str> {
-        let mut status = self
-            .decoder
-            .as_mut()
-            .ok_or("canonical_response_decoder_unavailable")?
-            .feed(bytes, end_stream)
-            .map_err(|_| "canonical_response_decode_failed")?;
+        let mut status = self.decode_status(|decoder| decoder.feed(bytes, end_stream))?;
         loop {
             let events = self
                 .decoder
@@ -289,12 +352,7 @@ impl CanonicalResponseTracker {
             if status != ResponseDecodeStatus::NeedDrain {
                 return Ok(());
             }
-            status = self
-                .decoder
-                .as_mut()
-                .ok_or("canonical_response_decoder_unavailable")?
-                .resume()
-                .map_err(|_| "canonical_response_decode_failed")?;
+            status = self.decode_status(NativeResponseDecoder::resume)?;
         }
     }
 
@@ -408,6 +466,14 @@ impl CanonicalResponseTracker {
             delivery.merge(std::mem::take(&mut self.pending_delivery));
         }
         Ok(delivery)
+    }
+}
+
+fn diagnostic_protocol(protocol: IngressProtocol) -> DiagnosticProtocol {
+    match protocol {
+        IngressProtocol::Responses => DiagnosticProtocol::OpenAiResponses,
+        IngressProtocol::ChatCompletions => DiagnosticProtocol::OpenAiChat,
+        IngressProtocol::Messages => DiagnosticProtocol::AnthropicMessages,
     }
 }
 
