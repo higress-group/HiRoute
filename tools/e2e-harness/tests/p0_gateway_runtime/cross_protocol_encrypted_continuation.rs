@@ -292,24 +292,33 @@ fn assert_cross_response_retention(fixture: &RuntimeFixture, decisions: &[&Value
     }
 }
 
+// Responses message phases have no exact Chat/Messages representation. Keep
+// this control focused on supported conversion plus omitted provider state;
+// native_encrypted_continuation separately preserves the actual DSH phases.
+fn portable_message(id: &str, text: &str) -> Value {
+    let mut item = message(id, "final_answer", text);
+    item.as_object_mut().unwrap().remove("phase");
+    item
+}
+
 fn cross_protocol_continuation(ingress: IngressProtocol) {
     let regular = NativeProvider::start(vec![
         streamed(
             "cross-a-tool",
             vec![
                 json!({"type":"reasoning","id":"cross-rs","summary":[],"status":"completed","encrypted_content":OMITTED_STATE}),
-                message("cross-commentary", "commentary", COMMENTARY),
+                portable_message("cross-commentary", COMMENTARY),
                 edit("cross-edit", "The requested fixture must be updated."),
             ],
         ),
         streamed(
             "cross-a-final",
-            vec![message("cross-a-message", "final_answer", "A_COMPLETE")],
+            vec![portable_message("cross-a-message", "A_COMPLETE")],
         ),
     ]);
     let primary = NativeProvider::start(vec![streamed(
         "cross-b-final",
-        vec![message("cross-b-message", "final_answer", "B_COMPLETE")],
+        vec![portable_message("cross-b-message", "B_COMPLETE")],
     )]);
     let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_COMPLEX)]);
     let fixture = RuntimeFixture::launch_rest_classified_with_native_control(

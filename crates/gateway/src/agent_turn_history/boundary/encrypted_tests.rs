@@ -276,6 +276,10 @@ fn encrypted_tool_error_continues_actual_stage_and_next_input_assesses_every_req
             json!({"role":"user","content":"next actual input"}),
         ]);
         let (b, frozen) = new_turn(begin(&wire));
+        assert!(
+            b.allow_affinity,
+            "later exact plaintext output recovers affinity"
+        );
         let target = frozen.assessment_target.as_ref().unwrap();
         assert!(!target.target_partial);
         let membership = target.history_membership.as_ref().unwrap();

@@ -461,14 +461,24 @@ fn assert_encrypted_tool_retry(proved: bool) {
             decision["fact"]["complexity"]["execution_group"],
             if index < 3 { "regular" } else { "primary" }
         );
-        assert!(
-            decision["fact"]["reason_ledger"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|reason| reason["code"] != "CONTEXT_HOLD_APPLIED"),
-            "opaque association must never grant candidate affinity: {decision}"
-        );
+        let affinity_applied = decision["fact"]["reason_ledger"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|reason| reason["code"] == "CONTEXT_HOLD_APPLIED");
+        if index == 1 {
+            assert!(
+                !affinity_applied,
+                "the opaque response edge cannot grant candidate affinity"
+            );
+        } else if index == 2 {
+            // The next response is an independently captured ordinary tool
+            // boundary. Earlier opaque history must not disable affinity forever.
+            assert!(
+                affinity_applied,
+                "later exact tool evidence recovers affinity"
+            );
+        }
         let request_id = &decision["correlation"]["request_id"];
         let attempts = facts
             .iter()
