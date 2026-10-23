@@ -16,6 +16,8 @@ use super::{
     synthetic_responses_item_id,
 };
 
+#[path = "client_projection.rs"]
+mod projection;
 #[cfg(test)]
 #[path = "client_stream_tests.rs"]
 mod tests;
@@ -132,27 +134,7 @@ impl IncrementalClientSseRenderer {
             .into());
         }
         self.validate_event_capability(&event.event)?;
-        let omit = match &event.event {
-            ModelEvent::ProviderState { state } => match self.profile.protocol {
-                IngressProtocol::Responses => state.kind != "encrypted_content",
-                IngressProtocol::Messages => !matches!(
-                    state.kind.as_str(),
-                    "thinking_signature" | "redacted_thinking"
-                ),
-                IngressProtocol::ChatCompletions => true,
-            },
-            ModelEvent::ContentBlockStarted {
-                block_kind: ResponseBlockKind::Reasoning,
-                ..
-            }
-            | ModelEvent::ReasoningDelta { .. }
-            | ModelEvent::ReasoningFinished { .. } => {
-                self.profile.protocol == IngressProtocol::Messages
-                    && self.profile.source_protocol != IngressProtocol::Messages
-            }
-            _ => false,
-        };
-        if omit {
+        if !Self::retains_event(&self.profile, &event.event) {
             if matches!(
                 &event.event,
                 ModelEvent::ProviderState { .. } | ModelEvent::ContentBlockStarted { .. }

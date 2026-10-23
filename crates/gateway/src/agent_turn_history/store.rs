@@ -141,6 +141,9 @@ struct ActiveTurn {
     first_request_id: Option<String>,
     last_request_id: Option<String>,
     last_request_status: AgentTurnStatus,
+    // Provider outcomes are facts about every actual request, independent of
+    // whether the routing stage is still waiting for a tool continuation.
+    provider_outcomes_known: bool,
     capture_partial: bool,
     finalized: bool,
 }
@@ -150,6 +153,7 @@ struct ClosedTurn {
     decision: BranchDecisionV1,
     wire: Arc<VisibleAgentTurn>,
     completed: CompletedAgentTurn,
+    closure_proven: bool,
 }
 
 #[derive(Clone)]
@@ -426,6 +430,7 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
+                provider_outcomes_known: true,
                 capture_partial: missing_current_output,
                 finalized: false,
             };
@@ -690,7 +695,14 @@ impl AgentTurnHistoryStore {
             if let Some(next_segment_id) = next_segment_id {
                 // A new activation closes this routing stage, not the logical task.
                 // Only a witnessed interruption may claim Interrupted.
-                Some(close_active(entry, next_segment_id, unix_ms())?)
+                let closure = if appended_user {
+                    StageClosure::NewActivation
+                } else if entry.active.plan != plan {
+                    StageClosure::ConfigurationChanged
+                } else {
+                    StageClosure::AssociationLost
+                };
+                Some(close_active(entry, next_segment_id, unix_ms(), closure)?)
             } else {
                 None
             }
@@ -763,6 +775,7 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
+                provider_outcomes_known: true,
                 capture_partial: false,
                 finalized: false,
             };
@@ -997,6 +1010,7 @@ impl AgentTurnHistoryStore {
                 entry.active.request_ids_clipped = true;
             }
             entry.active.last_request_id = Some(request_id);
+            entry.active.provider_outcomes_known &= status != AgentTurnStatus::Unknown;
             entry.active.last_request_status = if terminal {
                 status
             } else {
@@ -1008,7 +1022,12 @@ impl AgentTurnHistoryStore {
                 .then(|| entry.active.boundary.evidence())
                 .flatten();
             let completed = if let Some(next_segment_id) = next_segment_id {
-                Some(close_active(entry, next_segment_id, unix_ms())?)
+                Some(close_active(
+                    entry,
+                    next_segment_id,
+                    unix_ms(),
+                    StageClosure::RequestTerminal,
+                )?)
             } else {
                 None
             };

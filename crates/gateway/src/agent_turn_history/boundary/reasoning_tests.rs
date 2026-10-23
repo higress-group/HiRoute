@@ -1,4 +1,4 @@
-use crate::agent_turn_history::boundary::{BoundaryCapture, incoming_boundary};
+use crate::agent_turn_history::boundary::{BoundaryCapture, incoming_boundary, incoming_evidence};
 use crate::context_hold::fingerprint::FingerprintBudget;
 use crate::server::core_runtime::adapters::{
     decode_ingress_request, decode_ingress_request_with_replay,
@@ -89,7 +89,10 @@ fn production_reasoning_boundary_is_independent_of_aggregate_inline_allowance() 
             opaque["input"][0]["encrypted_content"] = json!("opaque provider state");
             let opaque = production_request(&opaque, &replay, inline_limit);
             assert!(
-                incoming_boundary(&opaque, 0, &replay, &mut FingerprintBudget::default()).is_none()
+                incoming_evidence(&opaque, 0, &replay, &mut FingerprintBudget::default())
+                    .and_then(|incoming| capture.evidence().unwrap().matches(incoming))
+                    .is_none(),
+                "uncaptured encrypted state cannot match accepted plaintext"
             );
         }
     }
@@ -138,7 +141,8 @@ fn production_reasoning_boundary_accepts_empty_native_fields_without_accepting_h
                     changed["input"][0][field] = value;
                     let request = production_request(&changed, &replay, inline_limit);
                     assert!(
-                        incoming_boundary(&request, 0, &replay, &mut FingerprintBudget::default())
+                        incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default())
+                            .and_then(|incoming| capture.evidence().unwrap().matches(incoming))
                             .is_none()
                     );
                 }
@@ -357,7 +361,9 @@ fn native_reasoning_replay_compares_accepted_summary_before_visible_answer() {
         opaque["input"][0]["encrypted_content"] = json!("uncaptured provider state");
         let decoded = decode_ingress_request(IngressProtocol::Responses, &opaque).unwrap();
         assert!(
-            incoming_boundary(&decoded, 0, &replay, &mut FingerprintBudget::default()).is_none()
+            incoming_evidence(&decoded, 0, &replay, &mut FingerprintBudget::default())
+                .and_then(|incoming| capture.evidence().unwrap().matches(incoming))
+                .is_none()
         );
     }
 }

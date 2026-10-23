@@ -1,3 +1,6 @@
+#[path = "content/request_json_replay_tests.rs"]
+mod request_json_replay;
+
 #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
 #[path = "tests/usage_order.rs"]
 mod usage_order;

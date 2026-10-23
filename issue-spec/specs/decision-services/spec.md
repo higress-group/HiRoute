@@ -381,6 +381,21 @@ revision, actual model/profile and rubric before calling the decision service.
 Late output, retry, fallback or another branch's completion cannot change that
 snapshot, assessment object or already selected route.
 
+Known encrypted reasoning content MAY establish contextual continuity only when
+its bounded, integrity-verified replay bytes exactly match the encrypted content
+actually accepted downstream, together with the supported visible response
+boundary. Equality SHALL NOT imply decryption, semantic understanding or provider
+affinity. Missing, changed, uncaptured or unsupported opaque state cannot be
+discarded to manufacture a visible-only match. Representation as inline text or
+a Replay reference SHALL NOT change this comparison.
+
+Accepted history SHALL describe the actual client protocol projection. Internal
+response-boundary evidence SHALL NOT be filtered by the retained-content display
+policy. Conversely, content explicitly omitted by protocol conversion SHALL NOT
+be associated with later accepted bytes. Deferred events remain pending until
+their wire unit is accepted. A nonstream error that replaces the body SHALL NOT
+record discarded text or tools as delivered execution output.
+
 Capture admission SHALL be independent of optional ContextHold preparation/commit.
 Branch-scoped affinity uses stronger validity checks; missing/stale/busy affinity
 loses only the preference. Capacity/conflict/observation faults SHALL NOT block
@@ -398,6 +413,18 @@ usable input may temporarily fall back, but later genuine A and B in the same
 session SHALL classify and capture, and B SHALL assess A's actual execution where
 retained. Retry IDs cannot heal a missing old execution. No additional model call,
 sidecar, disk history or session lock held across network execution is introduced.
+
+Assessment completeness SHALL require both complete captured membership and proven
+closure of every included execution stage. Freezing a revision after association
+loss is not closure proof. Actual provider outcomes SHALL remain distinct from a
+stage waiting for tool continuation: a known successful tool response may belong
+to an open stage, while an unknown provider outcome remains unresolved even after
+a new activation, configuration change or later final response. A new activation
+can delimit an otherwise known stage without asserting that its logical task
+succeeded. Partial targets remain assessable as partial; later independently
+complete stages SHALL recover complete evaluation. Reopening a proven same-stage
+continuation may extend its actual membership but cannot mutate a prior snapshot
+or invent a missing earlier provider outcome.
 
 The store SHALL bound total history to its configured budget (default 500,000,000
 bytes), including branch indexes and pinned snapshots, with default one-hour idle

@@ -15,6 +15,9 @@ use super::super::schema::{ContentRefV1, LifecycleFactV1};
 use super::{CANONICALIZATION_VERSION, CONTENT_CHUNK_BYTES, ContentChunk, RequestObservation};
 use hiroute_diagnostics::event::{DiagnosticEvent, SpillBegin, StorageMode};
 
+#[path = "request_json.rs"]
+mod json;
+
 /// One coalescing read: how many bytes were filled and what the reads cost.
 #[derive(Debug)]
 struct ChunkRead {
@@ -390,16 +393,7 @@ impl RequestObservation {
                 &reference,
             )
         } else {
-            let bytes = serde_json::to_vec(value).map_err(|_| ())?;
-            self.append_inline(
-                message_ordinal,
-                part_ordinal,
-                role,
-                kind,
-                "application/json",
-                &bytes,
-            );
-            Ok(())
+            self.append_replay_json(replay, message_ordinal, part_ordinal, role, kind, value)
         }
     }
 
