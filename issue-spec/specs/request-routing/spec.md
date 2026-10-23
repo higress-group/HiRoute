@@ -367,6 +367,45 @@ HiRoute SHALL accept the managed Hermes main conversation and its model/tool con
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
 
+### Requirement: Execution facts and history association have separate authority
+
+Every authorized request owns its actual execution identity, accepted output and
+terminal outcome. A native session ID limits association lookup; it is not a
+single active execution slot. A request's classification, selected group and
+actual execution SHALL remain distinct facts. Optional association failures SHALL
+NOT rewrite these facts or replace output already accepted by the client.
+
+History branches and predecessor edges are bounded projections of captured facts,
+not another execution authority. Exact, ambiguous and contextual association SHALL
+remain distinguishable. A missing edge does not prove missing execution; a missing
+capture does not prove an independent or complete execution. Projection rebuilding
+may use only retained actual facts and their original authority, identities and
+capture completeness. It SHALL NOT manufacture executions from client assistant
+messages, summaries, equal text or later successful retries. Restart does not add
+a persistence or reconstruction promise for discarded in-memory content.
+
+Assessment membership SHALL be frozen from the actual captured requests and their
+executed model, profile, Plan and rubric before classification consumes it. Later
+completion, concurrent requests, compaction or index repair SHALL NOT change that
+membership. Origin uncertainty and association uncertainty SHALL remain separate
+from execution completeness and eligibility for evaluation.
+
+Protocol adapters own wire interpretation. Forwarding, accepted-output capture and
+history comparison SHALL agree on tool identity, reasoning content and terminal
+semantics; a provider-specific dialect remains scoped to its verified interface.
+Replay owns bounded storage and integrity, not alternate protocol meaning.
+Equivalent inline and externalized values SHALL produce the same supported
+semantic interpretation and native output. Unsupported or opaque values retain
+their original bytes without inventing a comparable semantic boundary.
+
+Native Agent adapters supply evidence of input position, request purpose, identity
+and lineage. They SHALL NOT independently infer execution history or claim human
+origin from an unverified callback. Missing evidence loses only the conclusion
+that depends on it. Classification and actual capture retain their existing
+availability contract. Capacity exhaustion and optional capture faults may leave
+explicit bounded gaps; they SHALL NOT corrupt retained facts, block model output
+or prevent fresh complete requests in the same session from recovering evaluation.
+
 ### Requirement: Native routing remains available without perfect input provenance
 
 After authorization, usable requests SHALL retain classification, model selection,

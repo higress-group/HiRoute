@@ -15,6 +15,8 @@ use std::time::Duration;
 
 #[path = "current_event_tests.rs"]
 mod current_event_tests;
+#[path = "deferred_decision_tests.rs"]
+mod deferred_decision_tests;
 #[path = "native_tests.rs"]
 mod native_tests;
 #[path = "observed_tests.rs"]
