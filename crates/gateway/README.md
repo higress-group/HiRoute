@@ -220,6 +220,12 @@ are charged. A full budget or optional capture fault records a recoverable gap a
 cannot replace delivered model output. Scope-hash gap stripes are fixed at 256;
 collisions disclose extra uncertainty rather than false complete capture. Authorization,
 Replay integrity, provider failures and source cancellation retain their own behavior.
+Core preserves request cancellation as a typed transport result even before an
+upstream attempt starts. Product observation records that request as cancelled and
+its admitted stage as interrupted; complete request capture can remain complete.
+Ordinary preparation failures remain failed. Neither a final cancelled token nor
+error text replaces the actual termination cause, and late cancellation cannot
+rewrite completed delivery.
 The [ingress coverage map](src/model_ir/native_history.rs), shared by all three
 protocols, to keep conversion eligibility separate from execution association.
 An unmodeled prior item binds its complete native content into the original

@@ -806,9 +806,8 @@ impl ProductionGatewayRuntime {
                         .await;
                     }
                     Err(classification::ClassificationError::Cancelled) => {
-                        return Err(TransportError::Io(
-                            "request cancelled during classification".into(),
-                        ));
+                        request_observation.finish("cancelled");
+                        return Err(TransportError::Cancelled);
                     }
                     Err(classification::ClassificationError::Integrity) => {
                         return write_typed_error_phase(
@@ -1307,6 +1306,8 @@ impl ProductionGatewayRuntime {
             drop(core_session);
             let runtime_state_authority_failed =
                 !response_started && runtime_state_authority.failed();
+            let request_cancelled = request_observation.accepted_attempt_cancelled()
+                || matches!(&result, Err(TransportError::Cancelled));
             let model_failed = result.is_ok() && request_observation.accepted_attempt_failed();
             let observation_outcome = if model_failed {
                 "failed"
@@ -1314,7 +1315,7 @@ impl ProductionGatewayRuntime {
                 classify_request_observation_outcome(
                     request_observation.has_accepted_attempt(),
                     result.is_ok(),
-                    request_observation.accepted_attempt_cancelled(),
+                    request_cancelled,
                 )
             };
             if let Some(mut guard) = agent_turn_guard.take() {
@@ -1341,9 +1342,7 @@ impl ProductionGatewayRuntime {
                     })
                     .unwrap_or_default();
                 let status = match (request_observation.has_accepted_attempt(), result.is_ok()) {
-                    (true, _) if request_observation.accepted_attempt_cancelled() => {
-                        AgentTurnStatus::Interrupted
-                    }
+                    (_, _) if request_cancelled => AgentTurnStatus::Interrupted,
                     (true, true) if model_failed => AgentTurnStatus::Failed,
                     (true, true) if request_observation.accepted_attempt_unknown() => {
                         AgentTurnStatus::Unknown
@@ -1377,7 +1376,7 @@ impl ProductionGatewayRuntime {
                 }
             }
             request_observation.finish(observation_outcome);
-            if runtime_state_authority_failed {
+            if runtime_state_authority_failed && !request_cancelled {
                 write_typed_error_phase(
                     session,
                     StatusCode::SERVICE_UNAVAILABLE,
@@ -1395,10 +1394,10 @@ impl ProductionGatewayRuntime {
 fn classify_request_observation_outcome(
     accepted: bool,
     completed: bool,
-    accepted_attempt_cancelled: bool,
+    request_cancelled: bool,
 ) -> &'static str {
-    match (accepted, completed, accepted_attempt_cancelled) {
-        (true, _, true) => "cancelled",
+    match (accepted, completed, request_cancelled) {
+        (_, _, true) => "cancelled",
         (true, true, false) => "accepted",
         (true, false, false) => "postcommit_transport_failed",
         (false, _, _) => "failed",

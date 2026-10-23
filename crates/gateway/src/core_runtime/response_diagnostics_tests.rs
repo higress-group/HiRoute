@@ -36,6 +36,9 @@ use capture::{assert_capture, create_capture_session, wait_for_captured_request_
 #[path = "response_diagnostics_tests/request_projection.rs"]
 mod request_projection;
 
+#[path = "response_diagnostics_tests/pre_attempt_cancel.rs"]
+mod pre_attempt_cancel;
+
 const CHILD_CASE: &str = "HIROUTE_STREAM_DIAGNOSTIC_CASE";
 const CHILD_ROOT: &str = "HIROUTE_STREAM_DIAGNOSTIC_ROOT";
 const TOKEN: &str = "SENTINEL_CLIENT_CREDENTIAL";
@@ -344,6 +347,9 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
 }
 
 fn run_case(case: &str, root: &Path) {
+    if case.starts_with("pre_attempt_") {
+        return pre_attempt_cancel::run_case(case, root);
+    }
     if case.starts_with("request_projection_") {
         return request_projection::run_case(case, root);
     }

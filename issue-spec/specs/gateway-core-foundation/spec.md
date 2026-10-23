@@ -202,6 +202,15 @@ those boundaries. Cancel/deadline while paused unwinds filter continuations, wri
 connection/body/output children and blocks new connects. A native callback panic
 becomes current scope/stream failure, not process/worker failure.
 
+Request cancellation MUST remain a typed result across the core-to-product
+transport boundary, including before any upstream Attempt starts or is accepted.
+Ordinary preparation failures remain failures. A final cancellation-token state
+or an error message is not proof of the termination cause: deadlines and cleanup
+also cancel child work. A late cancellation SHALL NOT rewrite an already completed
+delivery. Product request/stage outcomes consume this typed cause independently
+of accepted-execution membership and capture completeness; no Attempt or missing
+capture may be invented to represent a cancelled request.
+
 ### Requirement: Publication installation is independent of configuration sources
 
 Core accepts a compiled envelope through source-neutral PublicationInstaller,
