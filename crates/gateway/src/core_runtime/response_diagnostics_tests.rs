@@ -634,7 +634,8 @@ fn run_case(case: &str, root: &Path) {
             .collect();
         assert_eq!(
             capture_failures.len(),
-            usize::from(prebody && capture_enabled),
+            // Canonical history capture is independent of opt-in private wire capture.
+            usize::from(prebody),
             "{case}: {log}"
         );
         for capture in capture_failures {
