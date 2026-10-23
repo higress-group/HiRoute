@@ -632,6 +632,18 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
             commands.append([*context, *(["--no-fail-fast"] if collect_failures else []),
                              *[arg for target in behavior for arg in ("--test", target)],
                              "--", "--test-threads=1"])
+    if any(path.startswith("crates/domain/src/observation/") or path in {
+            "tools/product-e2e/tests/local_observation.rs",
+            "e2e/product/golden/observation/local-observation-boundary.v2.json"}
+           for path in plan["paths"]):
+        targets.add("local_observation")
+        reasons.append("observation ports: check the current Product boundary golden before final")
+        broad = next((c for c in context_plan["commands"] if c[:2] == ["cargo", "test"]
+                      and "--test" not in c and "--lib" not in c), None)
+        context = broad[:] if broad else ["cargo", "test", "--locked", "--all-features"]
+        if "--workspace" not in context and "hiroute-product-e2e" not in context:
+            context.extend(["-p", "hiroute-product-e2e"])
+        commands.append([*context, "--test", "local_observation"])
     if storage_startup:
         targets.update({"publication_process", "pre_gateway_compute_routing"})
         reasons.append("storage startup: exercise the production daemon initialization order")

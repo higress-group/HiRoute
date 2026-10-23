@@ -678,6 +678,27 @@ class SelectionTests(unittest.TestCase):
 
 
 class IntegrationPreflightTests(unittest.TestCase):
+    def test_observation_ports_check_current_boundary_without_narrowing_final(self):
+        for path in [
+                'crates/domain/src/observation/execution.rs',
+                'crates/domain/src/observation/pricing.rs',
+                'crates/domain/src/observation/envelope.rs',
+                'tools/product-e2e/tests/local_observation.rs',
+                'e2e/product/golden/observation/local-observation-boundary.v2.json']:
+            with self.subTest(path=path):
+                final = plan.select(['Cargo.lock', path])
+                original = json.dumps(final, sort_keys=True)
+                early = plan.integration_preflight(final)
+                self.assertIn('local_observation', early['targets'])
+                command = next(c for c in early['commands'] if 'local_observation' in c)
+                self.assertEqual(command[-2:], ['--test', 'local_observation'])
+                self.assertIn('--workspace', command)
+                self.assertIn('--all-features', command)
+                self.assertEqual(json.dumps(final, sort_keys=True), original)
+                self.assertFalse(any('smoke_cli' in c for c in early['commands']))
+        unrelated = plan.integration_preflight(plan.select(['crates/observation/src/store/mod.rs']))
+        self.assertNotIn('local_observation', unrelated['targets'])
+
     def test_command_descriptors_check_both_generated_contract_consumers_early(self):
         for path in ['crates/application-api/src/commands.rs',
                      'crates/application-api/src/commands/help.rs',

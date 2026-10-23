@@ -115,6 +115,20 @@ fn current_window_preserves_unlisted_users_and_binds_the_final_wire_scope() {
     );
     assert_eq!(original.messages[0].role, MessageRole::User);
     assert_eq!(original.messages[3].role, MessageRole::User);
+    assert_eq!(
+        view.current_input_position(),
+        Some(CurrentInputPosition::Window { first: 2, last: 2 })
+    );
+    let mut crossed = envelope.clone();
+    crossed["input"]["messages"] = json!([
+        {"index":0,"sha256":hashes[0]}, {"index":1,"sha256":hashes[1]}
+    ]);
+    let rejected = fixture.view(&original, crossed);
+    assert!(
+        rejected.current_input().is_none(),
+        "a batch cannot bridge actual output"
+    );
+    assert!(rejected.current_input_position().is_none());
     envelope["input"]["scope_digest"] = "0".repeat(64).into();
     let rejected = fixture.view(&original, envelope);
     assert!(rejected.current_input().is_none());
@@ -209,6 +223,10 @@ fn native_user_batch_combines_all_inputs_and_keeps_tool_results_after_it() {
         .collect::<Vec<_>>();
     assert_eq!(real.len(), 3);
     assert_eq!(view.current_input().unwrap().len(), 2);
+    assert_eq!(
+        view.current_input_position(),
+        Some(CurrentInputPosition::Window { first: 0, last: 1 })
+    );
     assert!(projected.messages.iter().any(|m| {
         m.content
             .iter()

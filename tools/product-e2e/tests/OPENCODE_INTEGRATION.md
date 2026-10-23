@@ -28,6 +28,69 @@ journeys use real Git repositories/linked worktrees, place foreign configuration
 and an import sentinel beyond the confirmed stop, and exercise false stops through
 the public CLI before native database creation, tool import or model work.
 
+## Ordinary routing metadata
+
+The ordinary client automatically scans `plugins/hiroute-routing.js` under the
+selected resource root. `OPENCODE_CONFIG` selects only a configuration file;
+resources follow `OPENCODE_CONFIG_DIR`, or the OpenCode directory under
+`XDG_CONFIG_HOME` when no extra root is selected. Do not add a second manual
+`plugin` registration. Configure and Restore must preserve unrelated plugins.
+
+The public `chat.headers` hook emits immutable v2 purpose/session/current-event
+facts before optional enrichment. Known `title`, `summary` and `compaction` calls
+skip the SDK. Ordinary calls use at most one 128-entry SDK page with a 50 ms abort
+deadline and four unresolved reads per plugin instance. An SDK that ignores abort
+retains its slot until settlement; saturation loses optional enrichment while
+new ordinary calls remain routable. These are configured bounds, not measured
+latency guarantees.
+
+The exact current native message and chronological page positions locate a
+completed successful summary and its exact compaction parent. Imported IDs are
+not chronological, and transformed model history is not the SDK page. Missing,
+reordered, cross-session or ambiguous entries omit the affected reference.
+`turn_id` and `event_id` always identify this activation. Any old source belongs
+only in optional compression references; Gateway still requires independently
+captured execution boundaries before inheriting history.
+
+The strict synthetic-only boolean `compaction_continue` shape is a private
+OpenCode 1.19.3 capability. A confirmed continuation uses `input.kind=existing_turn`
+so summary text cannot become new task input; its real output remains capturable.
+A missing source may require temporary fallback for that call. Unsupported markers
+and SDK failures retain observed-batch semantics. Callback IDs, copied overflow
+parts, late child results, cold caches and new native sessions never prove human
+origin. Actual child/fork session identity stays separate from parent/cache affinity.
+Fresh same-session A/B must still classify, capture and evaluate actual A after
+lookup failure, saturation, compaction and restart.
+
+In OpenCode 1.19.3, failed native compaction can leave summary work pending. The
+first ordinary input can trigger only the summary retry, leaving that input's main
+task unexecuted. Preserve this limitation even when a later new A/B succeeds.
+The verified recovery conditions are a new independent A/B after that retry, or
+a successful explicit user ACP `/compact` retry followed by a new independent
+A/B. Both require the additional summary request; summaries remain auxiliary and
+must not acquire main-task capture. Conditional recovery does not establish
+unconditional delivery of the first input.
+
+OpenCode 1.19.3 background subagents require the explicit experimental opt-in
+`OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`. Without it, the native task gate
+can refuse before child creation. Scope the flag to the selected isolated ACP
+process and report flag-enabled acceptance separately from default support.
+
+Cold continuation acceptance resumes the same owned session in a new native
+process without `chat.message` prewarming. The exact OpenCode 1.19.3 installed
+legacy JavaScript SDK forwards `auto: true` in `session.summarize` although its
+legacy types omit that field. Bind this version-specific engine path to the exact
+session/project and actually advertised provider/model. Require auxiliary-summary
+exclusion, typed continuation, actual completed output capture and subsequent
+independent A/B. Keep its evidence separate from ordinary CLI automatic pressure
+and portable typed SDK support.
+
+The Node hook regressions are component evidence. Native acceptance additionally
+requires the actual installed loader, both transports, actual model-group changes,
+exact assessment membership, tools/children, compaction/restarts, injected faults
+and complete Restore followed by default inference. Controlled quality scores test
+wiring and do not establish semantic scoring accuracy.
+
 ## Real product entry
 
 Set `HIROUTE_PRODUCT_CANDIDATE_SHA` to the exact candidate and `HIROUTE_WORKER_OPENCODE_BINARY` to the selected official native binary. Unix acceptance also requires installed `rg` on the runner PATH: the fixture exposes that exact native tool in its private PATH so Skill loading does not depend on an upstream tool download. Run through the [configured validation runner](../../../docs/validation-routing.md):
@@ -44,10 +107,12 @@ The ordinary saved-model journey also checks installed
 `plugins/hiroute-routing.js` auto-discovery through two native turns and actual
 custom-decision history. It runs without Worker pure mode and binds both `cwd`
 and `PWD` to the owned project. A missing-plugin control must still return the
-model result while decisions report empty partial history and no assessment.
-Restoring the plugin cannot conceal intervening uncaptured turns; restarting
-Gateway cannot revive process-local history. Model Restore must remove the owned
-plugin and preserve the full baseline, followed by real native ACP session startup.
+model result and retain observed classification, actual capture and evaluation
+with explicit uncertainty. Restoring the plugin cannot invent missing execution;
+restarting Gateway cannot revive discarded process-local history. Fresh same-session
+A/B after either boundary must recover actual capture and assessment. Model Restore
+must remove the owned plugin and preserve the full baseline, followed by real native
+startup and default inference without a provider/model override.
 
 The explicit collaboration prerequisite check uses private configuration and history while loading the actual installed user Skill directory through OpenCode's resource loader. It disables native external `.agents`/`.claude` Skill discovery only for that isolated check, so an unrelated same-name global Skill cannot race the explicit resource. It validates exact path/body and a nonce-correlated trusted CLI result. It does not parse daily model configuration to authorize installation, inject a substitute installed Skill, or establish real delegated completion. Ordinary Agent and Worker Skill discovery remains native; a successful isolated check does not prove that an existing daily session loaded this file.
 

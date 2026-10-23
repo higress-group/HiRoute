@@ -16,6 +16,7 @@ class DecisionEndpoint(BaseHTTPRequestHandler):
     c_vectors = False
     c_applicability = 0.75
     c_score = 1.0
+    native_history_assessment = False
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
@@ -37,6 +38,8 @@ class DecisionEndpoint(BaseHTTPRequestHandler):
                     level['id']: 1.0 if index == 0 else 0.0
                     for index, level in enumerate(refinement['levels'])}}
             result = {'decision': decision}
+            if self.native_history_assessment and isinstance(body.get('assessment_target'), dict):
+                result['assessment'] = {'score': 0.75, 'partial': False}
         raw = encoded(result)
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
@@ -51,7 +54,8 @@ class DecisionEndpoint(BaseHTTPRequestHandler):
 @contextmanager
 def native_history_decisions(product, plan_id, editor):
     """Observe real native routing through a saved service and public Plan edits."""
-    endpoint_type = type('NativeHistoryEndpoint', (DecisionEndpoint,), {'requests': []})
+    endpoint_type = type('NativeHistoryEndpoint', (DecisionEndpoint,),
+                         {'requests': [], 'native_history_assessment': True})
     endpoint = ThreadingHTTPServer(('127.0.0.1', 0), endpoint_type)
     worker = threading.Thread(target=endpoint.serve_forever, daemon=True)
     worker.start()

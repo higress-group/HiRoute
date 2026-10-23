@@ -10,6 +10,38 @@ fn declaration() -> serde_json::Value {
 }
 
 #[test]
+fn opencode_routing_resource_root_is_independent_of_an_explicit_config_file() {
+    for use_extra in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path();
+        let xdg = home.join("xdg-config");
+        let selected = home.join("selected/custom.jsonc");
+        let extra_root = use_extra.then(|| home.join("extra-resources"));
+        let context = crate::agents::OpenCodeNativeContext::from_lookup(home, |name| match name {
+            "XDG_CONFIG_HOME" => Some(xdg.clone().into_os_string()),
+            "OPENCODE_CONFIG" => Some(selected.clone().into_os_string()),
+            "OPENCODE_CONFIG_DIR" => extra_root.clone().map(PathBuf::into_os_string),
+            _ => None,
+        })
+        .unwrap();
+        let resource = extra_root.unwrap_or_else(|| xdg.join("opencode"));
+        let mut configured = layout(home);
+        configured.opencode_context = Some(context);
+        let scanner = FilesystemAgentScannerV1::new(configured, registry());
+        assert_eq!(scanner.opencode_user_models_target(), selected);
+        assert_eq!(
+            scanner.native_routing_adapter_target(AgentKindV1::OpenCode),
+            Some(resource.join("plugins/hiroute-routing.js"))
+        );
+        assert!(!selected.exists());
+        assert!(
+            !resource.exists(),
+            "passive target selection must not write native resources"
+        );
+    }
+}
+
+#[test]
 fn installed_opencode_routing_plugin_preserves_passive_import_but_foreign_plugins_do_not() {
     let root = tempfile::tempdir().unwrap();
     let scanner = scanner(root.path());

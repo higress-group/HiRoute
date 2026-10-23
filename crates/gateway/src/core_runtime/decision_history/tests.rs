@@ -19,6 +19,8 @@ mod current_event_tests;
 mod native_tests;
 #[path = "observed_tests.rs"]
 mod observed_tests;
+#[path = "window_event_tests.rs"]
+mod window_event_tests;
 
 struct Fixture {
     runtime: ProductionGatewayRuntime,

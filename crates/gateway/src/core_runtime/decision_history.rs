@@ -4,7 +4,9 @@ use super::{
     AgentTurnBegin, AgentTurnHistoryError, AgentTurnRequestGuard, PlanSnapshot,
     ProductionGatewayRuntime, RequestObservation, model_ir, profiles,
 };
-use crate::agent_turn_history::{AgentTurnHistorySnapshot, TurnDecisionInputs};
+use crate::agent_turn_history::{
+    AgentTurnHistorySnapshot, CurrentInputPosition, TurnDecisionInputs,
+};
 use crate::context_hold::{HoldTicket, PreparedHold};
 use crate::replay::ReplayStore;
 use std::time::Instant;
@@ -38,7 +40,7 @@ pub(super) struct HistoryInput<'a> {
     pub(super) request: &'a model_ir::ModelRequestIRV1,
     pub(super) replay: &'a ReplayStore,
     pub(super) current_input: Option<&'a [model_ir::ContentPart]>,
-    pub(super) current_input_index: Option<usize>,
+    pub(super) current_input_position: Option<CurrentInputPosition>,
     pub(super) current_input_unavailable: bool,
 }
 
@@ -62,7 +64,7 @@ impl ProductionGatewayRuntime {
                 request,
                 replay,
                 current_input: None,
-                current_input_index: None,
+                current_input_position: None,
                 current_input_unavailable: false,
             },
         )
@@ -80,7 +82,7 @@ impl ProductionGatewayRuntime {
             request,
             replay,
             current_input,
-            current_input_index,
+            current_input_position,
             current_input_unavailable,
         } = input;
         let Some(capture) = capture else {
@@ -104,14 +106,19 @@ impl ProductionGatewayRuntime {
             .and_then(|mut analyzed| {
                 analyzed.set_branch_cursor(capture.branch_cursor.0, capture.branch_cursor.1);
                 if current_input_unavailable {
-                    analyzed.select_unavailable_event(
-                        current_input_index.ok_or(AgentTurnHistoryError::NoUserTurn)?,
-                        request,
-                    )?;
+                    let Some(CurrentInputPosition::Event(index)) = current_input_position else {
+                        return Err(AgentTurnHistoryError::NoUserTurn);
+                    };
+                    analyzed.select_unavailable_event(index, request)?;
                 } else if capture.unavailable_input {
                     analyzed.mark_current_input_unavailable();
                 } else if let Some(parts) = current_input {
-                    analyzed.select_current_input(parts, current_input_index, request, replay)?;
+                    analyzed.select_current_input(
+                        parts,
+                        current_input_position,
+                        request,
+                        replay,
+                    )?;
                 }
                 if user_origin_unverified {
                     analyzed.mark_user_origin_unverified();

@@ -54,6 +54,11 @@ OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) 
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)
 also feed the shared configured/drift status.
+Its ordinary [routing producer](../../assets/agents/opencode/hiroute-routing.mjs)
+freezes per-call purpose/session before a bounded optional SDK page; exact native
+page positions provide compression references while synthetic continuations keep
+unavailable-input semantics. The [OpenCode guide](../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md#ordinary-routing-metadata)
+separates hook regressions from native loader, recovery and Restore inference.
 Its [bounded Markdown reference reader](../../crates/integrations/src/agents/opencode_resources.rs)
 adds native user Agent/Mode selectors to the same settings dependency checks;
 removal requires complete references, while retaining selectors permits grant rotation.

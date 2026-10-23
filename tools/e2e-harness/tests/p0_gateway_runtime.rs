@@ -16,8 +16,12 @@ mod hermes_identity;
 mod history_bypass;
 #[path = "p0_gateway_runtime/instruction_history.rs"]
 mod instruction_history;
+#[path = "p0_gateway_runtime/native_existing_turn.rs"]
+mod native_existing_turn;
 #[path = "p0_gateway_runtime/native_history.rs"]
 mod native_history;
+#[path = "p0_gateway_runtime/native_input_window.rs"]
+mod native_input_window;
 #[path = "p0_gateway_runtime/native_peer_tasks.rs"]
 mod native_peer_tasks;
 #[path = "p0_gateway_runtime/native_routing_availability.rs"]

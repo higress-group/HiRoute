@@ -724,7 +724,7 @@ impl ProductionGatewayRuntime {
                         request: &canonical_request,
                         replay: &replay,
                         current_input: routing_view.current_input(),
-                        current_input_index: routing_view.current_input_index(),
+                        current_input_position: routing_view.current_input_position(),
                         current_input_unavailable: routing_view.current_input_unavailable(),
                     },
                 ) {

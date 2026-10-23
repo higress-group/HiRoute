@@ -215,6 +215,8 @@ the owning guides; branch convergence remains a separate integration responsibil
 
 1. Run `python3 scripts/test-plan.py --base <exact-base>`; use `--integration` for
    branch integration. Review affected consumers and explain semantic adjustments.
+   Observation port changes select the [current boundary golden check](../../tools/product-e2e/tests/local_observation.rs)
+   early; retained historical observations remain separate compatibility inputs.
 2. Follow the selected commands and [CI definitions](../github-actions-validation.md).
    Use `scripts/validation.py` for configured hosts, exact committed Rust candidates,
    feature plan, phase and related runs. Compile affected native consumers early;

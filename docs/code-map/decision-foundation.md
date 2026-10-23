@@ -114,8 +114,12 @@ known purpose independently from optional enrichment. Known auxiliary calls neve
 consume main history slots. The [v2 codec](../../crates/gateway/src/context_hold/routing/v2.rs)
 validates the optional native cursor and final-wire input window. The
 [current input view](../../crates/gateway/src/core_runtime/native_routing_view.rs)
-selects current content without changing any original message role. Legacy Hermes
-clean-text hints cannot choose a current input instance.
+selects current content without changing any original message role.
+Validated input windows also retain their canonical first/last positions through
+capture admission, so trailing native context cannot create a false missing turn.
+Earlier uncaptured input and output after the current window still fence or mark
+the affected stage partial; see the [window regressions](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
+Legacy Hermes clean-text hints cannot choose a current input instance.
 Codex [native metadata](../../crates/gateway/src/context_hold/routing/codex.rs)
 recognizes known auxiliary purpose before requiring turn identity; its
 [peer codec](../../crates/gateway/src/core_runtime/native_routing_view/codex.rs)
@@ -127,6 +131,10 @@ content vocabulary discloses them without disabling evaluation or changing the
 custom v1 schema. Unavailable known continuation input permits temporary fallback;
 subsequent actual A/B must recover within the same native session. Neither a
 compression link nor a native turn ID reconstructs discarded execution after restart.
+The v2 `existing_turn` input descriptor applies that request-local guard while
+retaining main execution output; a compression cursor alone does not apply it.
+The [listener recovery regression](../../tools/e2e-harness/tests/p0_gateway_runtime/native_existing_turn.rs)
+covers cold and previously captured sessions followed by actual A/B assessment.
 [Continuation regressions](../../crates/gateway/src/core_runtime/decision_history/native_tests.rs)
 keep summaries and unproved tool outcomes out of accepted history. The
 [listener availability cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_routing_availability.rs)

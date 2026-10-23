@@ -538,12 +538,17 @@ require separate evidence. A transient optional failure SHALL NOT latch routing
 off, and summary content SHALL NOT reconstruct prior accepted task execution.
 DSH relay/settlement envelopes after the latest actual input SHALL
 NOT acquire that input's proof merely by arriving in its active native turn.
-OpenCode binds new prompt IDs through `chat.message`; unobserved overflow copies
-and unbound synthetic child results remain observed. Known compaction followups
-use the producer's typed continuation marker and successful summary's parent
-compaction entry to select the old task, never a newer queued user. Missing old
-input retains the continuation guard; a later observed native prompt can recover.
-Lookup failure omits the optional envelope. These adapter facts
+OpenCode binds a bounded native message lookup to the current message ID, preserving
+native page order rather than deriving chronology from opaque IDs. A positively typed,
+synthetic-only compaction followup emits the `existing_turn` input guard with that
+current message ID; a successful summary's exact parent and checkpoint are advisory
+compression cursors, never authority to select an old or newer queued task. Without
+an independently captured boundary, the continuation temporarily falls back and
+captures its actual output with unavailable input. Later ordinary A/B requests SHALL
+recover classification, capture and cross-turn evaluation in the same session.
+Lookup failure retains minimal purpose/session evidence and observed-batch semantics;
+it SHALL NOT erase a known auxiliary purpose or invent a synthetic-input guard.
+Unbound synthetic child results remain observed with uncertainty. These adapter facts
 do not authenticate arbitrary third-party transformations of the final provider
 payload. Such unsupported composition MUST NOT be claimed as verified recovery.
 
@@ -573,7 +578,7 @@ Only the existing authenticated consumer/workspace/grant/route/protocol scope ma
 own captures. Unknown versions retain independently usable native identity and
 ordinary observed routing.
 
-`input` is either `observed_batch` with optional `event_id`, or `native_messages`
+`input` may be `observed_batch` with optional `event_id`, or `native_messages`
 with `event_id`, `coverage:"window"`, `messages:[{index,sha256}]` and `scope_digest`.
 The latter admits at most 32 strictly ordered unique positions among at most 128
 final User envelopes and 2 MiB supported text. Each message digest hashes the UTF-8
@@ -584,6 +589,37 @@ dropped. Valid proof selects only current input and never reclassifies unlisted
 Users as System or proves human authorship. Failure falls back to the full latest
 wire User envelope. Legacy v1 inputs remain readable through one ingress normalization;
 they cannot acquire stronger current-version semantics by adding unknown fields.
+
+`input:{kind:"existing_turn",event_id}` is a negative guard for positively identified
+synthetic continuation input on a `main` execution. Its bounded `event_id` SHALL
+equal the current `turn_id` and its session/family SHALL match independent native
+identity. It SHALL NOT replace that ID with a predecessor, prove human origin, grant
+ancestry or detach the actual output as auxiliary. Without independently captured
+input/decision continuity, this request temporarily falls back, retains actual output
+and marks its input `native_continuation_input` unavailable. Later ordinary input
+is independently eligible for classification and assessment. Compression cursors alone
+SHALL NOT apply this guard. Invalid guards retain observed routing. Matching current
+installed resources and Gateway are required for this additive v2 capability; an
+older reader may discard unknown enrichment and does not promise synthetic-input
+protection. The registered legacy v1 reader retains its existing semantics.
+
+Validated current-input windows SHALL preserve their canonical first/last positions
+through capture admission. Multiple input envelopes in that window and trailing
+native context SHALL NOT create a false uncaptured execution between completed A
+and new B. A window cannot span model/tool execution. Earlier uncaptured turns
+still fence the preceding assessment, and uncaptured output after the selected
+window still makes its captured suffix partial. Original roles, bytes, response
+boundaries and source uncertainty remain unchanged.
+
+#### Scenario: New input follows compaction and carries trailing context
+
+- **WHEN** A completes after shortened history and B has a valid input window followed by a native User-role context envelope
+- **THEN** B classifies its selected input and can assess A's actual completed stage, without capturing the summary or trailing context as A's execution or treating B as a missing earlier turn.
+
+#### Scenario: Synthetic continuation has a new native message ID
+
+- **WHEN** a main compaction continuation names a former turn but has no independently captured execution boundary, including after Gateway restart
+- **THEN** its synthetic input cannot be classified or captured as new task intent, its actual output remains captured with unavailable input, and subsequent A/B requests resume classification with B assessing A's actual execution without importing the summary.
 
 ### Requirement: Reversible Hermes profile connection and activation guidance
 
