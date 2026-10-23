@@ -52,6 +52,61 @@ fn unsigned_messages_thinking_boundary_survives_production_replay() {
                     capture.digest(),
                     "thinking {thinking:?}, signature {signature:?}, allowance {inline_limit}"
                 );
+                let mut profile = crate::server::core_runtime::profiles::CandidateProtocolProfile::exact_portable_path(
+                    IngressProtocol::Messages, IngressProtocol::Messages, "physical",
+                    crate::server::core_runtime::profiles::fixed_reasoning("fixed"),
+                );
+                profile.capability.native_provider_state =
+                    crate::server::core_runtime::profiles::NativeProviderStateEmission::Native;
+                profile.capability.request.provider_state =
+                    crate::server::core_runtime::profiles::Fidelity::Exact;
+                profile.capability.response.provider_state =
+                    crate::server::core_runtime::profiles::Fidelity::Exact;
+                let template =
+                    crate::server::core_runtime::adapters::project_candidate_request_template(
+                        &request, &profile,
+                    )
+                    .unwrap();
+                replay
+                    .prevalidate(&crate::content_ref::model_content_refs(&request))
+                    .unwrap();
+                let mut body = crate::server::core_runtime::adapters::sequential_attempt_body(
+                    template,
+                    replay.clone(),
+                    replay.budget(),
+                    127,
+                )
+                .unwrap();
+                let mut bytes = Vec::new();
+                while let Some(chunk) = body.next_chunk().unwrap() {
+                    bytes.extend_from_slice(chunk.bytes());
+                }
+                let sent: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                assert_eq!(sent["messages"], wire["messages"]);
+                if thinking.is_empty() {
+                    let mut empty_only = wire.clone();
+                    empty_only["messages"][0]["content"]
+                        .as_array_mut()
+                        .unwrap()
+                        .truncate(1);
+                    let empty_only = production_request(&empty_only, &replay, inline_limit);
+                    assert!(
+                        incoming_boundary(
+                            &empty_only,
+                            0,
+                            &replay,
+                            &mut FingerprintBudget::default()
+                        )
+                        .is_none()
+                    );
+                    let mut empty_capture = BoundaryCapture::default();
+                    empty_capture.accept(&ModelEvent::ReasoningFinished {
+                        index: 0,
+                        text: String::new(),
+                        status: ResponseItemStatus::Completed,
+                    });
+                    assert!(empty_capture.digest().is_none());
+                }
                 let mut changed = wire.clone();
                 changed["messages"][0]["content"][0]["thinking"] = json!("changed plaintext");
                 let request = production_request(&changed, &replay, inline_limit);

@@ -66,6 +66,7 @@ happy-path UI journey.
 
 Native reasoning replay is covered by the accepted-response
 [boundary regression](../../crates/gateway/src/agent_turn_history/boundary/reasoning_tests.rs)
+the [unsigned Messages tool-stage cases](../../crates/gateway/src/agent_turn_history/boundary/messages_tests.rs)
 and [current-window turn/continuation cases](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
 The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
 verify that explicit maintenance-purpose evidence excludes a user turn without

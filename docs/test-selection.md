@@ -177,7 +177,16 @@ when a driver needs those installed tools on its private PATH; ambient PATH is
 not inherited, and each exposed entry adds only its exact read-only file.
 Keep daily configuration/session directories outside dependency exceptions.
 
-Daily guards remain strict. If an existing controller needs exact baseline process
+Daily guards retain their original observations and every later delta. On a host
+being used concurrently, an unexplained change to a preexisting file or process
+remains `changed_unattributed`; it cannot establish which process caused it. A new
+isolated execution also takes an explicitly separate immediate before/after file
+observation, without replacing or relabeling the original record. Admission still
+requires the immutable launcher, exact owned-process authority and actual kernel
+denials of out-of-scope writes, daily configuration reads and unrelated signals.
+Violating those enforced boundaries stops execution. Global process survival and
+file changes remain separately reported, never silently waived or marked unchanged.
+If an existing controller needs exact baseline process
 identity, `ExactProcessObserver` in that module reads only requested PIDs through
 macOS libproc on the trusted controller. It launches no process and grants no
 signal authority. Do not send `/bin/ps` back into a sandboxed worker. Missing or

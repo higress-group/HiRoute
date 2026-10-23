@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 use crate::replay::{ReplayContentWriter, ReplayError, ReplayStore};
 use crate::server::core_runtime::model_ir::{
-    ContentPart, ImageSource, ModelRequestIRV1, ToolOutput,
+    ContentPart, ImageSource, ModelRequestIRV1, OpaqueProviderState, ToolOutput,
 };
 
 pub(crate) const MARKER_PREFIX: &str = "__hiroute_content_ref_v2_";
@@ -566,6 +566,26 @@ fn contains_replay_string_ref(value: &Value, replay: &ReplayStore) -> bool {
     }
 }
 
+/// Only this exact native envelope contains plaintext without opaque state.
+/// Share its shape between storage and optional accepted-output comparison.
+pub(crate) fn unsigned_messages_thinking_text(state: &OpaqueProviderState) -> Option<&str> {
+    if state.kind != "thinking" {
+        return None;
+    }
+    let fields = state.value.as_object()?;
+    if fields
+        .keys()
+        .any(|key| !matches!(key.as_str(), "type" | "thinking" | "signature"))
+        || fields.get("type")?.as_str()? != "thinking"
+        || fields
+            .get("signature")
+            .is_some_and(|value| value.as_str() != Some(""))
+    {
+        return None;
+    }
+    fields.get("thinking")?.as_str()
+}
+
 fn externalize_parts(
     parts: &mut [ContentPart],
     replay: &ReplayStore,
@@ -598,6 +618,17 @@ fn externalize_parts(
                 ..
             } => externalize_json(value, replay, pool, inline_remaining, true)?,
             ContentPart::ProviderState { state } => {
+                if unsigned_messages_thinking_text(state).is_some() {
+                    // Empty signature and tags are bounded grammar. Store the
+                    // plaintext as a string ref, not a JSON ref whose envelope
+                    // becomes unavailable to optional boundary comparison.
+                    replay.charge_metadata(2 * CONTENT_FIELD_METADATA_BYTES)?;
+                    let Some(Value::String(text)) = state.value.get_mut("thinking") else {
+                        unreachable!("validated unsigned thinking changed shape")
+                    };
+                    externalize_value(text, replay, pool, inline_remaining)?;
+                    continue;
+                }
                 // A native opaque block can already contain Replay-backed
                 // leaves. The sequential template expands them directly.
                 if matches!(state.kind.as_str(), "thinking" | "redacted_thinking") {

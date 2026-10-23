@@ -396,6 +396,12 @@ plaintext summary and subsequent output; they SHALL NOT rewrite forwarded native
 items or establish an edge on empty content alone. Opaque state, nonempty extra
 reasoning content, changed summaries and unknown native fields SHALL remain
 ineligible for this exact-boundary proof.
+Messages thinking with an absent or empty signature and no unknown fields SHALL
+compare only its bounded actually accepted plaintext. Replay storage SHALL preserve
+this comparison at every inline allowance without changing the native block.
+Empty thinking alone SHALL NOT establish a predecessor. Nonempty signatures and
+redacted thinking SHALL remain opaque and ineligible for this proof; reasoning
+SHALL NOT become visible execution or acquire quality credit.
 An uncertain request cannot overwrite or advance a stronger branch head. Without
 a validated predecessor it starts an independent branch, while a retained completed
 stage may remain an explicitly uncertain contextual evaluation target. Exact

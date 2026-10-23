@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 
 use sha2::{Digest, Sha256};
 
-use crate::content_ref::ContentValueExt;
+use crate::content_ref::{ContentValueExt, unsigned_messages_thinking_text};
 use crate::context_hold::fingerprint::FingerprintBudget;
 use crate::replay::{ReplayStore, write_canonical_json};
 use crate::server::core_runtime::model_ir::{
@@ -288,6 +288,15 @@ pub(super) fn incoming_boundary(
                         Some(replay),
                         budget,
                     )?);
+                }
+                ContentPart::ProviderState { state } => {
+                    let text = unsigned_messages_thinking_text(state)?;
+                    let digest = text_digest(text, Some(replay), budget)?;
+                    if text.is_empty() || text.content_ref().is_some_and(|r| r.byte_len() == 0) {
+                        continue;
+                    }
+                    hash.update(b"reasoning");
+                    hash.update(digest);
                 }
                 _ => return None,
             }
