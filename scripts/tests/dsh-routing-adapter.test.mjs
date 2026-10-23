@@ -29,7 +29,13 @@ async function fixture(run, options = {}) {
   let hook;
   const ctx = { sessions: { get: () => ({ get seq() { return events.length; },
     eventAt: index => events[index], header: { parentSession: "parent" } }) },
-    on: (_name, value) => { hook = value; } };
+    on: (_name, value, registration = {}) => {
+      // Cordis filters service events by the dispatching LLM's scope. Web
+      // session services may be isolated from the root that loads this plugin.
+      hook = options.isolatedLlm && !registration.global
+        ? (_request, next) => next()
+        : value;
+    } };
   apply(ctx);
   const request = (messages = [], extra = {}) => ({ provider: "hiroute-main-fixture", sessionId: "session", messages, ...extra });
   const send = async (native, wire, protocol = "responses", extra = {}) => {
@@ -45,6 +51,21 @@ async function fixture(run, options = {}) {
   try { await run({ ctx, events, hook, request, send, sent }); }
   finally { globalThis.fetch = original; delete globalThis[symbol]; }
 }
+
+test("DSH managed main and auxiliary calls retain metadata in an isolated LLM scope", async () => {
+  const current = user("current", "CURRENT");
+  await fixture(async ({ request, send }) => {
+    for (const purpose of [undefined, "session-title", "compaction"]) {
+      const context = await send(request([current], { purpose }), [{ role: "user", content: "CURRENT" }]);
+      assert.equal(context?.session_id, "session");
+      assert.equal(context?.purpose, purpose ?? "main");
+      if (purpose === undefined) assert.deepEqual(context.input.messages, [{ index: 0, sha256: hash(["CURRENT"]) }]);
+      else assert.equal(context.input, undefined);
+    }
+    assert.equal(await send(request([current], { provider: "foreign" }), [{ role: "user", content: "CURRENT" }]), undefined,
+      "an isolated foreign provider acquired managed routing evidence");
+  }, { isolatedLlm: true, events: [turn(1), event(current)] });
+});
 
 test("DSH v2 purpose/session survive every optional lookup and later recover", async () => {
   const current = user("current", "CURRENT");

@@ -177,6 +177,9 @@ function requestContext(ctx, options) {
 
 export function apply(ctx) {
   const storage = transport();
+  // Web sessions can own an isolated LLM service. Cordis otherwise filters this
+  // root-loaded listener before it can bind main or auxiliary call metadata.
+  // Request/provider and authenticated transport gates still limit the wrapper.
   ctx.on("llm/stream", (options, next) => {
     let context;
     try { context = requestContext(ctx, options); } catch { /* Unusable call identity stays observed. */ }
@@ -189,5 +192,5 @@ export function apply(ctx) {
       return(value) { return storage.run(context, () => iterator.return?.(value) ?? Promise.resolve({ done: true, value })); },
       throw(error) { return storage.run(context, () => iterator.throw ? iterator.throw(error) : Promise.reject(error)); },
     };
-  });
+  }, { global: true });
 }
