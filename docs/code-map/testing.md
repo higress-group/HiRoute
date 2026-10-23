@@ -259,6 +259,14 @@ Ordinary local/SSH totals and module reports share Cargo-target attribution in
 [runner regressions](../../scripts/test-remote-rust.py) exercise worker results and
 compact waits with nested child summaries, failed and unfinished parents, and multiple targets.
 
+Actual native Gateway obligations stay separate from backend and Worker success
+in [test selection](../test-selection.md#explicit-native-agent-product-gates).
+The shared [native command scope](../../scripts/native-agent-scope.py) prepares
+independent native roots and contains the complete acceptance driver; its exact-PID
+observer belongs to the trusted controller. Client drivers retain business oracles,
+port ownership and cleanup. [Offline regressions](../../scripts/test-native-agent-scope.py)
+do not establish native execution or DSH Web/Cordis scope coverage.
+
 Shared private filesystem behavior has one [platform contract suite](../../crates/platform/src/private_fs/tests.rs): exclusive creation, protected handle reads, permission preservation and identity-bound cleanup. Storage and Worker tests keep domain errors, recovery and lifecycle assertions; the native Windows cases additionally exercise ACLs and held handles.
 
 The [Windows iteration route](../validation-routing.md#windows-iteration-and-release-validation)

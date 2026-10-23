@@ -358,11 +358,15 @@ finally:
             self.process.kill()
             self.process.wait()
             raise
-        self.outputs.append(self.process.stderr.read())
-        for fd in (self.shutdown_r, self.cap_r, self.cap_w,
-                   self.cap_ack_r, self.cap_ack_w):
-            os.close(fd)
-        self.process = None
+        finally:
+            # A timed-out daemon may have the earliest useful error. Keep its
+            # actual stderr after owned termination, before propagating timeout.
+            if self.process.poll() is not None:
+                self.outputs.append(self.process.stderr.read())
+                for fd in (self.shutdown_r, self.cap_r, self.cap_w,
+                           self.cap_ack_r, self.cap_ack_w):
+                    os.close(fd)
+                self.process = None
         if not diagnostic_failure:
             assert status == (86 if crash else 0), ('daemon exit', status)
 
@@ -668,20 +672,46 @@ finally:
 
     def close(self):
         failed = sys.exc_info()[0] is not None
+        cleanup_failure = None
         try:
             self.stop(diagnostic_failure=failed)
             assert all(secret.encode() not in output for secret in self.secrets
                        for output in self.outputs), 'public secret leak'
+        except BaseException as error:
+            cleanup_failure = error
         finally:
-            self.listener_port_lease.close()
-            if failed and self.temporary is not None:
+            try:
+                self.listener_port_lease.close()
+            except BaseException as error:
+                cleanup_failure = cleanup_failure or error
+            if failed or cleanup_failure is not None:
                 # Keep failed frames, stderr and data private; do not replace the original
-                # assertion with a shutdown error or erase the evidence in finally.
-                evidence = self.root / 'harness-failure.bin'
-                evidence.write_bytes(b'\n'.join(self.outputs))
-                evidence.chmod(0o600)
-                self.temporary._finalizer.detach()
+                # assertion with a shutdown/export error. Explicit roots need the same
+                # raw evidence as temporary roots (including preflight CLI stderr).
+                try:
+                    self.preserve_outputs()
+                except BaseException as error:
+                    cleanup_failure = cleanup_failure or error
+                if self.temporary is not None:
+                    self.temporary._finalizer.detach()
                 print(json.dumps({'scenario': 'product-harness-failure',
-                                  'state': 'red', 'evidence_root': str(self.root)}), flush=True)
+                                  'state': 'red', 'evidence_root': str(self.root),
+                                  'cleanup_error_type': type(cleanup_failure).__name__ if cleanup_failure else None}), flush=True)
             elif self.temporary is not None:
                 self.temporary.cleanup()
+        if cleanup_failure is not None and not failed:
+            raise cleanup_failure
+
+    def preserve_outputs(self):
+        """Retain original output bytes and frame offsets without printing their bodies."""
+        offsets, cursor = [], 0
+        for index, output in enumerate(self.outputs):
+            assert isinstance(output, bytes), 'Product output must retain its original bytes'
+            offsets.append({'output_index': index, 'offset': cursor, 'length': len(output)})
+            cursor += len(output) + 1
+        for name, body in (
+                ('harness-failure.bin', b'\n'.join(self.outputs)),
+                ('harness-failure.json', (json.dumps({'frames': offsets}, indent=2) + '\n').encode())):
+            descriptor = os.open(self.root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(descriptor, 'wb') as stream:
+                stream.write(body)

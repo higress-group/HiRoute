@@ -2,6 +2,7 @@
 """Shared native product-fixture mechanics; no native Agent or product acceptance claim."""
 import os
 import json
+import io
 from copy import deepcopy
 import shutil
 from pathlib import Path
@@ -12,12 +13,14 @@ import threading
 import urllib.request
 from http.server import ThreadingHTTPServer
 from types import SimpleNamespace
+from types import MethodType
 import unittest
 from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'crates/daemon/tests/support'))
 from agent_product_support import apply_settings, run_native_command, expose_native_installation
+from publication_product import Product
 import standalone_headless_product as headless
 from dsh_native_context import DshModelSettings, read_patch, encode_patch
 from decision_services_product import DecisionEndpoint
@@ -485,6 +488,71 @@ class NativeProcessTests(unittest.TestCase):
         finally:
             neighbor.terminate()
             neighbor.wait(timeout=5)
+
+
+class ProductFailureEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.product = Product.__new__(Product)
+        self.product.root = Path(self.temporary.name)
+        self.product.outputs = [b'actual stdout\n', b'actual stderr\x00\n', b'']
+        self.product.secrets = set()
+        self.product.temporary = None
+        self.product.listener_port_lease = SimpleNamespace(close=lambda: None)
+        self.product.stop = lambda **kwargs: None
+
+    def test_explicit_root_retains_original_output_frames_on_early_failure(self):
+        try:
+            raise AssertionError('preflight failed')
+        except AssertionError:
+            self.product.close()
+        blob = (self.product.root / 'harness-failure.bin').read_bytes()
+        rows = json.loads((self.product.root / 'harness-failure.json').read_text())['frames']
+        self.assertEqual([blob[row['offset']:row['offset'] + row['length']] for row in rows], self.product.outputs)
+        self.assertEqual((self.product.root / 'harness-failure.bin').stat().st_mode & 0o777, 0o600)
+
+    def test_shutdown_and_export_errors_do_not_replace_the_business_failure(self):
+        def broken_stop(**kwargs):
+            raise RuntimeError('cleanup failed')
+        self.product.stop = broken_stop
+        self.product.preserve_outputs = lambda: (_ for _ in ()).throw(OSError('evidence unavailable'))
+        with self.assertRaisesRegex(AssertionError, '^original failure$'):
+            try:
+                raise AssertionError('original failure')
+            finally:
+                self.product.close()
+
+    def test_cleanup_failure_without_prior_error_stays_red_and_retains_output(self):
+        self.product.stop = lambda **kwargs: (_ for _ in ()).throw(RuntimeError('cleanup failed'))
+        with self.assertRaisesRegex(RuntimeError, '^cleanup failed$'):
+            self.product.close()
+        self.assertTrue((self.product.root / 'harness-failure.bin').is_file())
+
+    def test_existing_evidence_is_never_overwritten(self):
+        self.product.preserve_outputs()
+        self.product.outputs = [b'later output']
+        with self.assertRaises(FileExistsError):
+            self.product.preserve_outputs()
+        self.assertEqual((self.product.root / 'harness-failure.bin').read_bytes(),
+                         b'actual stdout\n\nactual stderr\x00\n\n')
+
+    def test_shutdown_timeout_retains_daemon_stderr_after_owned_stop(self):
+        from unittest.mock import Mock
+        process = SimpleNamespace(returncode=None, stderr=io.BytesIO(b'original daemon stderr'))
+        process.wait = Mock(side_effect=[subprocess.TimeoutExpired('owned daemon', 40), 0])
+        process.poll = lambda: process.returncode
+        process.kill = lambda: setattr(process, 'returncode', -9)
+        self.product.process = process
+        for name, fd in zip(('shutdown_r', 'shutdown_w', 'cap_r', 'cap_w', 'cap_ack_r', 'cap_ack_w'),
+                            (*os.pipe(), *os.pipe(), *os.pipe())):
+            setattr(self.product, name, fd)
+        self.product.stop = MethodType(Product.stop, self.product)
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.product.close()
+        self.assertIsNone(self.product.process)
+        self.assertEqual(self.product.outputs[-1], b'original daemon stderr')
+        self.assertIn(b'original daemon stderr', (self.product.root / 'harness-failure.bin').read_bytes())
 
 
 class RemovedRouteWitnessTests(unittest.TestCase):
