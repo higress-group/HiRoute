@@ -42,6 +42,7 @@ pub(super) struct CanonicalResponseTracker {
     chat_tool_projection: Option<ChatToolProjection>,
     decoder: Option<NativeResponseDecoder>,
     renderer: Option<IncrementalClientSseRenderer>,
+    client_profile: Option<ClientProtocolProfile>,
     projector: Option<Box<NativeResponseProjector>>,
     native_output: bool,
     pending: VecDeque<CanonicalWireUnit>,
@@ -103,6 +104,7 @@ impl CanonicalResponseTracker {
             chat_tool_projection,
             decoder: None,
             renderer: None,
+            client_profile: None,
             projector: None,
             pending: VecDeque::new(),
             pending_delivery: CanonicalFrameDelivery::default(),
@@ -228,6 +230,7 @@ impl CanonicalResponseTracker {
         );
         let client_profile = ClientProtocolProfile::for_candidate(&self.profile)
             .map_err(|_| "canonical_response_client_profile_unavailable")?;
+        self.client_profile = Some(client_profile.clone());
         self.renderer = (streaming && !self.native_output)
             .then(|| IncrementalClientSseRenderer::new(client_profile, self.alias.clone()))
             .transpose()
@@ -375,7 +378,14 @@ impl CanonicalResponseTracker {
             {
                 self.pending_delivery.merge_usage(usage);
             }
-            if captures_conversation_content(&event.event) {
+            // Projection decides what can reach this client. Empty rendered
+            // output is not omission: terminal snapshots can be deferred until
+            // a later wire unit. Native passthrough uses its actual wire as-is.
+            let retained = self.native_output
+                || self.client_profile.as_ref().is_some_and(|profile| {
+                    IncrementalClientSseRenderer::retains_event(profile, &event.event)
+                });
+            if retained && captures_accepted_evidence(&event.event) {
                 // Count without allocating a serialized copy. The native job
                 // covers decode temporaries; this charge survives until the
                 // exact projected wire unit is accepted and published.
@@ -493,12 +503,19 @@ impl std::io::Write for SerializedSize {
     }
 }
 
-fn captures_conversation_content(event: &ModelEvent) -> bool {
+// Internal evidence must see the accepted lifecycle before each consumer applies
+// its own projection. In particular, provider state is needed for exact replay
+// comparison but remains excluded by the retained-content policy in content.rs.
+fn captures_accepted_evidence(event: &ModelEvent) -> bool {
     matches!(
         event,
         ModelEvent::ContentBlockStarted { .. }
             | ModelEvent::TextDelta { .. }
             | ModelEvent::ReasoningDelta { .. }
+            | ModelEvent::ReasoningFinished { .. }
+            | ModelEvent::ProviderState { .. }
+            | ModelEvent::TextAnnotation { .. }
+            | ModelEvent::ResponseFailed { .. }
             | ModelEvent::RefusalDelta { .. }
             | ModelEvent::ToolCallStarted { .. }
             | ModelEvent::ToolArgumentsDelta { .. }

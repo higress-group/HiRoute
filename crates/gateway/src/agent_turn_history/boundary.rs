@@ -289,7 +289,7 @@ pub(super) fn incoming_evidence(
                     if state.kind != "encrypted_content" {
                         return None;
                     }
-                    Some(text_digest(state.value.as_str()?, Some(replay), budget)?)
+                    Some(json_text::digest(&state.value, replay, budget)?.0)
                 } else {
                     None
                 };

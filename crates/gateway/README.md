@@ -188,6 +188,12 @@ comparison, with bounded chunks and integrity checks instead of retaining intern
 locators. [Observation regressions](src/observation/content/request_json_replay_tests.rs)
 cover nested strings, tool JSON, literal-marker isolation and missing backing.
 Response ciphertext remains excluded from retained observation content.
+The response tracker retains accepted lifecycle evidence separately from that
+presentation policy. Converted responses use the protocol renderer's omission
+rules: upstream-only content cannot become an accepted client boundary, while
+deferred events are bound to the later accepted wire unit. Buffered conversion rejects a failure that would discard previously
+decoded content; it cannot certify that content as delivered.
+Native passthrough keeps the evidence of its actual accepted bytes.
 An admitted request keeps its capture ticket if publishing its frozen decision
 temporarily lacks history resources. The [request guard](src/core_runtime/decision_history/deferred_decision.rs)
 retries that publication once after downstream delivery, under the same store

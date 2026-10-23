@@ -228,6 +228,107 @@ fn assert_not_closed(fixture: &RuntimeFixture, count: usize) {
     );
 }
 
+fn assert_observed_retention(fixture: &RuntimeFixture, decisions: &[&Value], opaque: &str) {
+    use base64::Engine as _;
+
+    let path = fixture
+        .observation_root
+        .as_ref()
+        .unwrap()
+        .join("conversation-content.jsonl");
+    // Execution and content persistence have independent workers. Observe every
+    // response terminal before asserting absence, rather than an early snapshot.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let records = loop {
+        let records = std::fs::read_to_string(&path)
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        if decisions.iter().all(|decision| {
+            records.iter().any(|row| {
+                row["correlation"]["request_id"] == decision["correlation"]["request_id"]
+                    && row["direction"] == "response_delivered"
+                    && row["phase"] == "finish"
+            })
+        }) {
+            break records;
+        }
+        assert!(Instant::now() < deadline, "response content did not finish");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let mut response_parts = BTreeMap::<String, Vec<(u64, Vec<u8>)>>::new();
+    let mut a2_opaque_parts = BTreeMap::<String, Vec<(u64, Vec<u8>)>>::new();
+    for row in &records {
+        assert_ne!(row["phase"], "abort", "content capture aborted: {row}");
+        assert!(
+            row["loss_watermark"].is_null(),
+            "content capture lost records: {row}"
+        );
+        if row["direction"] == "response_delivered" {
+            assert_ne!(row["content_kind"], "provider_state");
+            assert!(!row.to_string().contains(opaque));
+        }
+        if row["phase"] != "append" {
+            continue;
+        }
+        let parts = if row["direction"] == "response_delivered" {
+            &mut response_parts
+        } else if row["direction"] == "request_input"
+            && row["correlation"]["request_id"] == decisions[1]["correlation"]["request_id"]
+            && row["content_kind"] == "provider_state"
+        {
+            assert_eq!(row["canonical_media_type"], "application/json");
+            &mut a2_opaque_parts
+        } else {
+            continue;
+        };
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(row["canonical_bytes_base64"].as_str().unwrap())
+            .unwrap();
+        parts
+            .entry(row["content_id"].as_str().unwrap().to_owned())
+            .or_default()
+            .push((row["chunk_ordinal"].as_u64().unwrap(), bytes));
+    }
+    let joined = |mut chunks: Vec<(u64, Vec<u8>)>| {
+        chunks.sort_by_key(|(ordinal, _)| *ordinal);
+        chunks
+            .into_iter()
+            .flat_map(|(_, bytes)| bytes)
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        !response_parts.is_empty(),
+        "response capture must actually be enabled"
+    );
+    for chunks in response_parts.into_values() {
+        let bytes = joined(chunks);
+        let text = std::str::from_utf8(&bytes).unwrap();
+        assert!(
+            !text.contains("provider_state")
+                && !text.contains("encrypted_content")
+                && !text.contains(opaque),
+            "accepted private evidence leaked into response content: {text}"
+        );
+    }
+    assert_eq!(
+        a2_opaque_parts.len(),
+        1,
+        "A2 must capture its actual replayed input state"
+    );
+    let bytes = joined(a2_opaque_parts.into_values().next().unwrap());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&bytes).unwrap(),
+        json!(opaque),
+        "request capture must resolve Replay bytes, not retain the locator"
+    );
+    assert!(records.iter().any(|row| row["direction"] == "request_input"
+        && row["correlation"]["request_id"] == decisions[1]["correlation"]["request_id"]
+        && row["phase"] == "finish"));
+}
+
 fn assert_encrypted_tool_retry(proved: bool) {
     let opaque = "synthetic-opaque-state-".repeat(121);
     let regular = NativeProvider::start(vec![
@@ -336,6 +437,7 @@ fn assert_encrypted_tool_retry(proved: bool) {
         .iter()
         .filter(|event| event["fact"]["kind"] == "route_decision")
         .collect::<Vec<_>>();
+    assert_observed_retention(&fixture, &decisions, &opaque);
     let sources = decisions
         .iter()
         .map(|event| {
@@ -486,3 +588,6 @@ fn assert_encrypted_tool_retry(proved: bool) {
     assert!(!assessed.to_string().contains(&opaque));
     assert!(!assessed.to_string().contains(TOOL_ERROR));
 }
+
+#[path = "cross_protocol_encrypted_continuation.rs"]
+mod cross_protocol_encrypted_continuation;

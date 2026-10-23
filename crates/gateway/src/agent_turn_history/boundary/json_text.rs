@@ -1,4 +1,4 @@
-//! Hash an already normalized canonical Chat string, including JSON-backed Replay.
+//! Hash a normalized string independently of inline, string or JSON Replay storage.
 //! Serde owns syntax; the visitor borrows its scratch instead of cloning the text.
 use super::*;
 use crate::content_ref::JsonValueExt;
@@ -32,7 +32,11 @@ pub(super) fn digest(
         Some(digest)
     } else {
         let text = value.as_str()?;
-        plain_digest(text, budget)
+        let nonempty = !text.is_empty()
+            && !text
+                .content_ref()
+                .is_some_and(|reference| reference.byte_len() == 0);
+        Some((text_digest(text, Some(replay), budget)?, nonempty))
     }
 }
 
@@ -46,7 +50,7 @@ impl<'de> DeserializeSeed<'de> for Seed<'_> {
 impl<'de> Visitor<'de> for Seed<'_> {
     type Value = ([u8; 32], bool);
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("canonical plaintext reasoning")
+        formatter.write_str("canonical string evidence")
     }
     fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Self::Value, E> {
         plain_digest(text, self.0).ok_or_else(|| E::custom("optional comparison budget exceeded"))

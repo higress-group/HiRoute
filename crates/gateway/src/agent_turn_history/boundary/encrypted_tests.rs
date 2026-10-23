@@ -98,7 +98,10 @@ fn encrypted_boundary_requires_the_actual_accepted_state_across_replay_layouts()
         let accepted = captured
             .evidence()
             .expect("known delivered ciphertext is comparable");
-        for inline_limit in [0, 8 * 1024, 64 * 1024] {
+        for (inline_limit, prefix_bytes) in [0, 8 * 1024, 64 * 1024]
+            .into_iter()
+            .flat_map(|limit| [0, 8 * 1024].map(|prefix| (limit, prefix)))
+        {
             for variant in ["same", "changed", "missing", "uncaptured"] {
                 let (_directory, replay) = replay();
                 let mut items = suffix(&cipher, summary);
@@ -111,7 +114,7 @@ fn encrypted_boundary_requires_the_actual_accepted_state_across_replay_layouts()
                         .remove("encrypted_content");
                 }
                 let wire =
-                    json!({"model":"route","instructions":"x".repeat(8 * 1024),"input":items});
+                    json!({"model":"route","instructions":"x".repeat(prefix_bytes),"input":items});
                 let request = reasoning_boundary::production_request_for(
                     IngressProtocol::Responses,
                     &wire,
@@ -134,7 +137,7 @@ fn encrypted_boundary_requires_the_actual_accepted_state_across_replay_layouts()
                 assert_eq!(
                     result,
                     (variant == "same").then_some(true),
-                    "{variant}, allowance {inline_limit}"
+                    "{variant}, allowance {inline_limit}, prefix {prefix_bytes}"
                 );
             }
         }

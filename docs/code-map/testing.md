@@ -77,6 +77,12 @@ The observation [timeline cases](../../crates/observation/src/store/tests/plan_q
 verify that explicit maintenance-purpose evidence excludes a user turn without
 removing the request, while unmarked retained records remain visible. These
 component assertions do not replace the real DSH Web/HiRoute acceptance.
+The [native encrypted listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_encrypted_continuation.rs)
+and [cross-protocol continuation cases](../../tools/e2e-harness/tests/p0_gateway_runtime/cross_protocol_encrypted_continuation.rs)
+exercise accepted-event delivery, repeated tool requests, complete assessment membership
+and retained-content policy through the production Gateway listener. Protocol-owned
+[projection tests](../../crates/gateway/src/adapters/response/client_projection_tests.rs)
+distinguish intentionally omitted content from deferred client output.
 
 Start with the representative cases in the [capability map](README.md). A file
 named `product`, a golden containing `green`, or a zero process exit does not prove

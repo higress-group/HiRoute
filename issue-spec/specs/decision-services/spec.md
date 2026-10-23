@@ -389,6 +389,13 @@ affinity. Missing, changed, uncaptured or unsupported opaque state cannot be
 discarded to manufacture a visible-only match. Representation as inline text or
 a Replay reference SHALL NOT change this comparison.
 
+Accepted history SHALL describe the actual client protocol projection. Internal
+response-boundary evidence SHALL NOT be filtered by the retained-content display
+policy. Conversely, content explicitly omitted by protocol conversion SHALL NOT
+be associated with later accepted bytes. Deferred events remain pending until
+their wire unit is accepted. A nonstream error that replaces the body SHALL NOT
+record discarded text or tools as delivered execution output.
+
 Capture admission SHALL be independent of optional ContextHold preparation/commit.
 Branch-scoped affinity uses stronger validity checks; missing/stale/busy affinity
 loses only the preference. Capacity/conflict/observation faults SHALL NOT block
