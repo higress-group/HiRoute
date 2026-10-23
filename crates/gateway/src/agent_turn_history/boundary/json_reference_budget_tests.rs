@@ -260,3 +260,219 @@ fn retained_raw_json_prefix_allows_a_complete_later_tool_stage_and_frozen_assess
     assert!(!visible.contains("old final") && !visible.contains("old receipt"));
     store.abort(&b);
 }
+
+#[test]
+fn released_canonicalization_capacity_recovers_after_raw_prefix_representation_changes() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::default();
+    let scope = store
+        .scope_key("workspace", "released-json-capacity")
+        .unwrap();
+    let mut body = retained_body();
+    body["input"][4]["content"] = json!("actual pressure request");
+    let pressured = parse_with_raw_old_argument(&body, &replay);
+    assert_no_canonical_proof(&pressured, &replay);
+    let raw_anchors =
+        crate::context_hold::branch_anchors(&pressured, &[29; 32], Some(&replay), &[]).unwrap();
+    assert!(raw_anchors.contextual);
+
+    let finish_text =
+        |ticket: &AgentTurnTicket, text: &str, id: &str, model: &str, profile: &str| {
+            store.commit_decision(ticket, decision("regular")).unwrap();
+            super::accepted_output::text_output(&store, ticket, text);
+            store
+                .finish_request(
+                    ticket,
+                    id.into(),
+                    AgentTurnStatus::Completed,
+                    vec![execution(model, profile, "regular", id)],
+                    true,
+                    Instant::now(),
+                )
+                .unwrap()
+                .unwrap()
+        };
+    let (pressure_ticket, initial_history) = new_turn(begin(&store, &scope, &pressured, &replay));
+    assert!(initial_history.assessment_target.is_none());
+    drop(initial_history);
+    finish_text(
+        &pressure_ticket,
+        "accepted pressure output",
+        "pressure-request",
+        "pressure-model",
+        "pressure-profile",
+    );
+
+    // The pressure helper released its real reservation. No manual mutation of
+    // Model IR, provenance or history is used for any following request.
+    let parse = |body: &serde_json::Value| {
+        super::reasoning_boundary::production_request_for(
+            IngressProtocol::Responses,
+            body,
+            &replay,
+            0,
+        )
+    };
+    let rejected_before = replay.budget().snapshot().unwrap().rejected;
+    let normal_same_input = parse(&body);
+    assert_eq!(
+        replay.budget().snapshot().unwrap().rejected,
+        rejected_before
+    );
+    let ContentPart::ToolCall { arguments, .. } = &normal_same_input.messages[1].content[0] else {
+        panic!("the old native JSON argument remains present")
+    };
+    assert!(replay.is_canonical_json(&arguments.content_ref().unwrap()));
+    let canonical_anchors =
+        crate::context_hold::branch_anchors(&normal_same_input, &[29; 32], Some(&replay), &[])
+            .unwrap();
+    assert!(!canonical_anchors.contextual);
+    assert_ne!(
+        raw_anchors.complete, canonical_anchors.complete,
+        "raw and canonical evidence are separate domains even for equal JSON meaning"
+    );
+    assert!(
+        crate::context_hold::visible_history_with_replay(
+            &normal_same_input,
+            &[29; 32],
+            Some(&replay),
+        )
+        .and_then(|history| history.measure(None))
+        .is_some()
+    );
+
+    body["input"].as_array_mut().unwrap().extend([
+        json!({"role":"assistant","content":"accepted pressure output"}),
+        json!({"role":"user","content":"actual transition request"}),
+    ]);
+    let transition = parse(&body);
+    let transition_anchors = crate::context_hold::branch_anchors(
+        &transition,
+        &[29; 32],
+        Some(&replay),
+        &[pressured.messages.len()],
+    )
+    .unwrap();
+    assert_eq!(transition_anchors.prefixes[0].1, canonical_anchors.complete);
+    assert_ne!(transition_anchors.prefixes[0].1, raw_anchors.complete);
+    let AgentTurnBegin::NewTurn {
+        ticket: transition_ticket,
+        history: transition_history,
+        inherited_decision,
+        ..
+    } = begin(&store, &scope, &transition, &replay)
+    else {
+        panic!("a changed representation cannot establish an exact continuation")
+    };
+    assert!(
+        inherited_decision.is_none(),
+        "the transition must make its own execution decision"
+    );
+    let transition_target = transition_history.assessment_target.as_ref().unwrap();
+    let transition_membership = transition_target.history_membership.as_ref().unwrap();
+    assert_eq!(transition_membership.request_ids, ["pressure-request"]);
+    assert_eq!(
+        transition_membership.relation,
+        hiroute_domain::HistoryRelationV1::Contextual
+    );
+    assert!(transition_membership.association_unverified);
+    assert!(
+        !transition_target.target_partial,
+        "the actual completed pressure request was captured"
+    );
+    drop(transition_history);
+    finish_text(
+        &transition_ticket,
+        "accepted transition output",
+        "transition-request",
+        "transition-model",
+        "transition-profile",
+    );
+
+    body["input"].as_array_mut().unwrap().extend([
+        json!({"role":"assistant","content":"accepted transition output"}),
+        json!({"role":"user","content":"actual recovered A"}),
+    ]);
+    let a_request = parse(&body);
+    let (a, a_history) = new_turn(begin(&store, &scope, &a_request, &replay));
+    drop(a_history);
+    let a_completed = finish_text(
+        &a,
+        "accepted recovered A output",
+        "recovered-a",
+        "recovered-model",
+        "recovered-profile",
+    );
+    body["input"].as_array_mut().unwrap().extend([
+        json!({"role":"assistant","content":"accepted recovered A output"}),
+        json!({"role":"user","content":"actual recovered B"}),
+    ]);
+    let b_request = parse(&body);
+    let (b, b_history) = new_turn(begin(&store, &scope, &b_request, &replay));
+    let target = b_history.assessment_target.as_ref().unwrap();
+    assert!(!target.target_partial);
+    let frozen_membership = target.history_membership.as_ref().unwrap().clone();
+    assert_eq!(frozen_membership.request_ids, ["recovered-a"]);
+    assert!(!frozen_membership.capture_partial && !frozen_membership.clipped);
+    assert!(matches!(&target.attribution, ExecutionAttribution::Single {
+        model_configuration_id, profile_digest, ..
+    } if model_configuration_id == "recovered-model" && profile_digest == "recovered-profile"));
+    let assessed = serde_json::to_string(
+        &b_history.visible_conversation[b_history.assessment_from.unwrap()..],
+    )
+    .unwrap();
+    assert!(
+        assessed.contains("actual recovered A") && assessed.contains("accepted recovered A output")
+    );
+    assert!(
+        !assessed.contains("accepted pressure output")
+            && !assessed.contains("accepted transition output")
+    );
+    let visible = serde_json::to_string(&b_history.visible_conversation).unwrap();
+    assert!(
+        !visible.contains("old final") && !visible.contains("old receipt"),
+        "old client history is never imported as captured execution"
+    );
+
+    // Extending the same recovered model's stage cannot broaden B's frozen
+    // target after the actual B request has finished.
+    let b_completed = finish_text(
+        &b,
+        "accepted recovered B output",
+        "recovered-b",
+        "recovered-model",
+        "recovered-profile",
+    );
+    assert_eq!(a_completed.segment_id, b_completed.segment_id);
+    assert_eq!(
+        b_history
+            .assessment_target
+            .as_ref()
+            .unwrap()
+            .history_membership
+            .as_ref(),
+        Some(&frozen_membership)
+    );
+    body["input"].as_array_mut().unwrap().extend([
+        json!({"role":"assistant","content":"accepted recovered B output"}),
+        json!({"role":"user","content":"next actual question"}),
+    ]);
+    let c_request = parse(&body);
+    let (c, c_history) = new_turn(begin(&store, &scope, &c_request, &replay));
+    let extended = c_history.assessment_target.as_ref().unwrap();
+    assert!(!extended.target_partial);
+    assert_eq!(
+        extended.history_membership.as_ref().unwrap().request_ids,
+        ["recovered-a", "recovered-b"]
+    );
+    assert_eq!(
+        b_history
+            .assessment_target
+            .as_ref()
+            .unwrap()
+            .history_membership
+            .as_ref(),
+        Some(&frozen_membership)
+    );
+    store.abort(&c);
+}
