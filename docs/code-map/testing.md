@@ -216,6 +216,15 @@ Hosted prerequisite installation belongs to
 [`test-ci-setup.py`](../../scripts/test-ci-setup.py) covers Ubuntu source selection
 and bounded failure handling; the real hosted matrix verifies package installation.
 
+Hosted shard inventory and harness policy belong to
+[ci-shards.py](../../scripts/ci-shards.py); [ci-run.py](../../scripts/ci-run.py)
+captures launch concurrency settings for the [shared report](../../scripts/validation-report.py).
+See [the hosted guide](../github-actions-validation.md#rust-test-concurrency) for
+the explicit process-target exception and unknown effective concurrency.
+The [host adapter](../../scripts/validation-host.py) derives admitted local/Desktop
+run help from the [local runner parser](../../scripts/local-rust.py), while retaining
+configured repository/jobs and Desktop origin-fetch admission.
+
 1. Run `python3 scripts/test-plan.py --base <exact-base>`; use `--integration` for
    branch integration. Review affected consumers and explain semantic adjustments.
 2. Follow the selected commands and [CI definitions](../github-actions-validation.md).
@@ -236,15 +245,6 @@ prepared product roles. [Smoke preparation](../../tools/product-e2e/src/smoke/pr
 and [Gateway preparation](../../tools/e2e-harness/src/p0/production/candidate.rs) bind
 the exact receipts consumed by admission; same-byte caches from another recipe do
 not replace them. Failed admission retains independent results and missing coverage.
-
-Hosted shard inventory and harness policy belong to
-[ci-shards.py](../../scripts/ci-shards.py); [ci-run.py](../../scripts/ci-run.py)
-captures launch concurrency settings for the [shared report](../../scripts/validation-report.py).
-See [the hosted guide](../github-actions-validation.md#rust-test-concurrency) for
-the explicit process-target exception and unknown effective concurrency.
-The [host adapter](../../scripts/validation-host.py) derives admitted local/Desktop
-run help from the [local runner parser](../../scripts/local-rust.py), while retaining
-configured repository/jobs and Desktop origin-fetch admission.
 
 Ordinary local/SSH totals and module reports share Cargo-target attribution in
 [validation-report.py](../../scripts/validation-report.py). The
