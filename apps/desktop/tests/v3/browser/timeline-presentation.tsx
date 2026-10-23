@@ -39,6 +39,6 @@ mockIPC((command, payload: any) => {
 });
 function Fixture() {
   const [requestId, select] = useState<string | null>(null);
-  return <PresentationRoot theme={params.get('theme') === 'dark' ? 'dark' : 'light'} textScale={1} language={language}><ProductPage title={language === 'zh' ? '会话' : 'Sessions'}><RoutingTimeline session="presentation-session" language={language} active displayed refreshVersion={0} requestId={requestId} onSelectRequest={request => select(request.request_id)} onOpenPerformance={() => {}} /></ProductPage></PresentationRoot>;
+  return <PresentationRoot theme={params.get('theme') === 'dark' ? 'dark' : 'light'} textScale={1} language={language}><ProductPage title={language === 'zh' ? '会话' : 'Sessions'}><div className="session-routing-and-conversation"><RoutingTimeline session="presentation-session" language={language} active displayed refreshVersion={0} requestId={requestId} onSelectRequest={request => select(request.request_id)} onOpenPerformance={() => {}} /></div></ProductPage></PresentationRoot>;
 }
 createRoot(document.getElementById('root')!).render(<Fixture />);

@@ -78,6 +78,7 @@ try {
     const stale = await evaluate(client, `({title:document.querySelector('.routing-detail-head > strong').textContent,status:document.querySelector('.routing-live').textContent,count:document.querySelectorAll('.routing-turn').length})`);
     assert.equal(stale.title, 'T14'); assert.equal(stale.count, 18);
     assert.ok(stale.status.includes('Update delayed'), stale.status);
+    await evaluate(client, `document.querySelector('.routing-live').scrollIntoView({block:'start'});true`);
     await shot('timeout-retained');
     await sleep(6500);
     await waitFor(client, `presentationFixture.reads.length>=4 && !document.querySelector('[data-error-code]')`);
