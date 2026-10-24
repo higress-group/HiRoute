@@ -232,7 +232,12 @@ fn complete_tool_stage(v2: bool, declared: bool, streaming: bool, nullable: bool
     );
     let upstream = classifier_body(&regular, 0);
     assert_eq!(upstream["tools"], expected_tools(v2, true));
-    assert_eq!(classifier_body(&regular, 1)["input"], json!(original_input));
+    if nullable {
+        // This producer replay omits encoding metadata; the ordinary cases below
+        // separately assert the existing consumption of an explicit [] declaration.
+        assert_eq!(classifier_body(&regular, 1)["input"], json!(original_input));
+        assert_eq!(classifier_body(&primary, 0)["input"], json!(input));
+    }
     assert_eq!(
         classifier_body(&regular, 1)["input"][tool_index + 2],
         json!({"type":"function_call_output","call_id":"call","output":"CONTROLLED_TOOL_RECEIPT"})
