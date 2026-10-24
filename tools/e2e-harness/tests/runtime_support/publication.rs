@@ -128,7 +128,7 @@ pub(super) fn snapshot(
         (
             AliasRequestOwnedRouteV1::Classified {
                 native_protocol: None,
-                judgment: Default::default(),
+                judgment: (!rest_classifier).then(Default::default),
                 // Retained legacy value has no effect on fresh group judgment
                 // or candidate continuity within the selected group.
                 reselect_on_user_message: true,
@@ -425,7 +425,7 @@ pub(super) fn use_builtin_branch_decision(
         routing.request_owned = AliasRequestOwnedRouteV1::Classified {
             native_protocol: None,
             classifier,
-            judgment: judgment(hiroute_domain::SMART_SAVING_SCOPE_ID),
+            judgment: Some(judgment(hiroute_domain::SMART_SAVING_SCOPE_ID)),
             reselect_on_user_message: false,
             simple_groups: vec![AliasGroupIdV1::Economy, AliasGroupIdV1::Primary],
             complex_groups: vec![AliasGroupIdV1::Primary],
@@ -461,7 +461,7 @@ pub(super) fn use_builtin_branch_decision(
                 condition: format!("Condition for {id}"),
                 group: AliasGroupIdV1::Branch(index as u16),
                 primary_group: (index == 0).then_some(AliasGroupIdV1::BranchPrimary(0)),
-                judgment: judgment(id),
+                judgment: Some(judgment(id)),
             })
             .collect(),
         default_branch_id: ids[1].into(),

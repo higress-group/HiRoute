@@ -320,6 +320,7 @@ impl ComplexityV1 {
         if !matched_user_phrase_ids.is_empty() {
             return Ok((
                 BranchDecisionV1 {
+                    extension_reason: None,
                     decision_protocol: Some(hiroute_domain::DecisionProtocolV1::LocalRules),
                     routing_observation: None,
                     policy: None,
@@ -382,6 +383,7 @@ impl ComplexityV1 {
         }
         Ok((
             BranchDecisionV1 {
+                extension_reason: None,
                 decision_protocol: Some(hiroute_domain::DecisionProtocolV1::LocalRules),
                 routing_observation: None,
                 policy: None,
@@ -436,6 +438,7 @@ fn strategy_digest(strategy: &CompiledComplexityStrategyV1) -> Result<String, Pl
 
 fn unresolved_decision(strategy: &CompiledComplexityStrategyV1) -> BranchDecisionV1 {
     BranchDecisionV1 {
+        extension_reason: None,
         decision_protocol: Some(hiroute_domain::DecisionProtocolV1::LocalRules),
         routing_observation: None,
         policy: None,
@@ -490,6 +493,7 @@ fn inherited_decision(
         )
     }));
     Ok(BranchDecisionV1 {
+        extension_reason: previous.extension_reason.clone(),
         policy: previous.policy.clone(),
         decision_protocol: previous.decision_protocol,
         routing_observation: previous.routing_observation.clone(),

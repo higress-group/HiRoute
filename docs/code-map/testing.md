@@ -104,6 +104,11 @@ outside the host's outbound ephemeral range; the parent keeps that lease through
 the isolated child's Gateway shutdown. On Unix it shares the publication fixture's
 per-user address-lock namespace across worktrees and runner temporary directories.
 
+The [Gateway runtime fixture](../../tools/e2e-harness/tests/runtime_support/listeners.rs)
+holds its product and optional control listeners together during preparation,
+then releases both immediately before starting the child. Releasing a `bind(0)`
+probe before choosing the other address can assign both roles the same port.
+
 The [shared product session](../../crates/product-session/src) owns confirmation,
 exact-digest authority and command orchestration tests. Its permit-drop and
 broker-abort cases verify that cancelled callers can retry, while stale permits
@@ -246,10 +251,21 @@ and [Gateway preparation](../../tools/e2e-harness/src/p0/production/candidate.rs
 the exact receipts consumed by admission; same-byte caches from another recipe do
 not replace them. Failed admission retains independent results and missing coverage.
 
+Local/SSH cache admission in [remote-rust.py](../../scripts/remote-rust.py) connects/starts
+sccache under the existing capacity lease and probes effective scratch with a
+unique cache-miss compilation; [local lifecycle coverage](../../scripts/test-local-rust.py)
+includes isolated real-cache cleanup and obsolete-server refusal.
+
 Ordinary local/SSH totals and module reports share Cargo-target attribution in
 [validation-report.py](../../scripts/validation-report.py). The
 [runner regressions](../../scripts/test-remote-rust.py) exercise worker results and
 compact waits with nested child summaries, failed and unfinished parents, and multiple targets.
+
+The [control-shell startup fixture](../../tools/product-e2e/tests/control_shell_support/startup.rs)
+retains bounded private failure evidence before temporary-root cleanup; its
+[regressions](../../tools/product-e2e/tests/control_shell_support/startup_tests.rs)
+cover timeout, early exit, normal readiness and incomplete diagnostics. Follow the
+[diagnostic guide](../diagnostic-troubleshooting.md) for retention and interpretation.
 
 Shared private filesystem behavior has one [platform contract suite](../../crates/platform/src/private_fs/tests.rs): exclusive creation, protected handle reads, permission preservation and identity-bound cleanup. Storage and Worker tests keep domain errors, recovery and lifecycle assertions; the native Windows cases additionally exercise ACLs and held handles.
 

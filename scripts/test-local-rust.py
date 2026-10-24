@@ -214,6 +214,10 @@ store=module.Store(sys.argv[2],sys.argv[3])
 store.ensure_space=lambda: None
 store.gc=lambda *a,**k: (_ for _ in ()).throw(AssertionError('GC must not run inside the acquired lock'))
 module.remote.stats=lambda *a,**k: {'cache_hits':1}
+def cache_admission(*args,**kwargs):
+ with Path(sys.argv[4]).with_name('cache-admitted').open('w') as out: out.write('entered')
+ return {'state':'ready'}
+module.remote.admit_cache_server=cache_admission
 module.shutil.disk_usage=lambda path: types.SimpleNamespace(free=int(Path(sys.argv[4]).read_text()))
 flock=module.remote.fcntl.flock
 first=True
@@ -286,6 +290,7 @@ print(json.dumps(result),flush=True)
         self.assertIn('temporarily unavailable', row['error'])
         self.assertNotIn('capacity_acquired_at', row)
         self.assertFalse(calls.exists())
+        self.assertFalse((self.base / 'cache-admitted').exists())
         self.assertIsNone(holder.poll(), 'the test must leave the competing owner active')
 
     def test_interrupted_waiting_run_has_no_execution_or_lock_leak(self):
@@ -554,6 +559,7 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
                                      source=source, jobs=jobs)
         with patch.dict(os.environ, {'PATH': str(binary) + os.pathsep + os.environ['PATH']}), \
              patch.object(m.remote, 'stats', return_value={'cache_hits': 1}), \
+             patch.object(m.remote, 'admit_cache_server', return_value={'state': 'ready'}), \
              patch.object(self.store, 'ensure_space'):
             result = m.run(self.store, args)
         if result.get('temporary_directory'):
@@ -639,6 +645,21 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
     @unittest.skipUnless(os.environ.get('HIROUTE_REAL_CARGO_TEST') == '1',
                          'Opt-in tiny platform-runner integration, not HiRoute product tests')
     def test_real_cargo_pushed_fixture_lifecycle(self):
+        # Own a short endpoint/scratch/cache: never touch the daily server. macOS
+        # daemon-start notification sockets also need room below Unix SUN_LEN.
+        endpoint = tempfile.TemporaryDirectory(prefix='h202-', dir='/tmp')
+        self.addCleanup(endpoint.cleanup)
+        self.store = m.Store(Path(endpoint.name) / 'state', m.HOST_LOCK)
+        if os.environ.get('HIROUTE_RUNNER_EVIDENCE'):
+            destination = Path(os.environ['HIROUTE_RUNNER_EVIDENCE'])
+            self.addCleanup(lambda: m.shutil.copytree(self.store.root / 'runs', destination))
+        server_env = dict(os.environ, SCCACHE_SERVER_UDS=str(Path(endpoint.name) / 's'),
+                          SCCACHE_DIR=str(self.base / 'cache'), SCCACHE_IDLE_TIMEOUT='0')
+        environment = patch.dict(os.environ, server_env)
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.addCleanup(lambda: subprocess.run(['sccache', '--stop-server'], env=server_env,
+                                              capture_output=True, timeout=30))
         (self.repo / 'Cargo.toml').write_text(
             '[package]\nname="retention-fixture"\nversion="0.1.0"\nedition="2021"\n')
         (self.repo / 'src').mkdir()
@@ -653,6 +674,7 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
         branch = m.git(self.repo, 'symbolic-ref', 'HEAD')
         m.git(self.repo, 'push', 'origin', branch)
         self.store.global_lock = m.HOST_LOCK
+        self.store.global_lock.parent.mkdir(parents=True, exist_ok=True)
         args = types.SimpleNamespace(repo=str(self.repo), ref=branch,
                                      sha=m.git(self.repo, 'rev-parse', 'HEAD'),
                                      command=['cargo', 'test', '--locked', '--offline'],
@@ -671,6 +693,30 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
             } for phase in ('cache_before', 'cache_after')}
             print(json.dumps(values))
         report(result)
+        self.assertFalse(Path(result['temporary_directory']['path']).exists())
+        second = m.run(self.store, args)
+        self.assertEqual(second['scenario'], 'green', second)
+        self.assertTrue(second['removed'])
+        self.assertEqual(second['cache_admission']['state'], 'ready')
+        self.assertGreater(second['cache_before']['stats']['compile_requests'],
+                           result['cache_after']['stats']['compile_requests'])  # Existing server retained.
+        report(second)
+        # An obsolete pre-existing server is refused, never silently restarted.
+        subprocess.run(['sccache', '--stop-server'], env=server_env, check=True, capture_output=True)
+        obsolete = Path(endpoint.name) / 'obsolete-scratch'
+        obsolete.mkdir()
+        obsolete_env = dict(server_env, TMPDIR=str(obsolete), TMP=str(obsolete), TEMP=str(obsolete))
+        subprocess.run(['sccache', '--start-server'], env=obsolete_env, check=True, capture_output=True)
+        obsolete.rmdir()
+        blocked = m.run(self.store, args)
+        self.assertEqual(blocked['scenario'], 'red', blocked)
+        self.assertIsNone(blocked['process_exit'])
+        evidence = self.store.record_path(blocked['id']).parent
+        self.assertEqual(json.loads((evidence / 'cache-admission.json').read_text())['state'], 'blocked')
+        self.assertTrue((evidence / 'cache-probe.log').stat().st_size)
+        self.assertFalse(obsolete.exists())
+        # Explicit owner recovery is only for this test's isolated, idle endpoint.
+        subprocess.run(['sccache', '--stop-server'], env=server_env, check=True, capture_output=True)
         (self.repo / 'src/lib.rs').write_text('#[test] fn intended_failure() { panic!("fixture"); }\n')
         m.git(self.repo, 'add', 'src/lib.rs')
         m.git(self.repo, 'commit', '-qm', 'intentional diagnostic retention fixture')

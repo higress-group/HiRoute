@@ -14,10 +14,10 @@ The list shows the latest revision, while an already saved historical revision r
 
 Difficulty routing defaults to the decision-model choice; users may explicitly choose heuristic rules or
 a custom extension. Regular and Primary groups retain the existing candidate picker, ordering and
-reasoning controls. Judgment settings start collapsed: simple probability defaults to 0.8, competence
+reasoning controls. For built-in connections, judgment settings start collapsed: simple probability defaults to 0.8, competence
 floor to 0.5, and both degree and assessment prompts are editable.
 
-Every new user message decides again. Regular requires this call's simple probability to meet
+Every new user message decides again. With built-in connections, Regular requires this call's simple probability to meet
 the threshold with no applicable complete low score. Complex or fresh low competence selects primary.
 Only a fresh complete score bound to the preceding actual stage, in the same category and compatible
 with the published configuration and assessment criteria, can trigger protection. Missing/partial
@@ -28,7 +28,7 @@ breaks continuity or prevents reuse triggers a fresh decision. Candidate hold st
 selected group. Availability relay never downgrades from primary or crosses task categories.
 
 Custom branches first classify task intent, then optionally judge degree within that category. Each branch
-has regular candidates and optional primary candidates, and follows plan judgment or copies the complete
+has regular candidates and optional primary candidates. Built-in connections follow plan judgment or copy the complete
 settings for independent editing. No primary means no degree question, while competence remains observable.
 Category conditions, degree criteria and assessment criteria are separate inputs.
 
@@ -41,7 +41,7 @@ continues unchanged until its next publication. Default assessments then resolve
 silently to the current default; custom instructions and every criterion remain
 byte-for-byte identical. Reset to default restores current text while preserving
 thresholds. Unsupported context references fail Preview with the scope and field.
-Local rules and custom extensions remain unchanged. Simple probability remains
+Local rules and custom extensions do not use native applicability. For built-in connections, the simple probability threshold remains
 0.8 and the competence floor remains 0.5 unless configured otherwise.
 
 The applicability protocol supplies separate `prior_context`, `assessment_stage`
@@ -75,11 +75,11 @@ routing behavior and do not claim accuracy or quality improvement.
 
 The CLI keeps `decision services list/apply/test` and the existing routing preview/apply workflow.
 Editor data uses `smart.judgment`, or `branch_routing.judgment` with branch `primary_candidates` and optional
-complete `judgment`. Custom extensions follow the supplied definition and rubric; their form provides
+complete `judgment`. Custom extensions own their decision policy and directly return category/group within the published route. Their optional prior-stage scores are observation only; HiRoute applies no thresholds or low-score protection. Custom routes hide judgment controls and keep parked source values for switching back to a built-in connection. Current custom execution projections omit judgment settings and reject the former present-judgment shape; no old custom data adapter is provided. Built-in released Plans and Operations keep their existing support. Their form provides
 examples and the single current OpenAPI. No separate Secret-management UI is needed.
 
 See [HiRoute extension API semantics](../decision-extensions/api/README.md), [optional self-hosted Jev deployment](../decision-extensions/extensions/jev-decider/README.md),
 [System One mapping](../decision-extensions/api/system-one-design.md) and [code owners](code-map/decision-foundation.md).
-Earlier development-only custom-extension shapes have no negotiation path; supported
-released HiRoute data uses the registered admission/recovery readers.
-Tool selection is documentation-only.
+Earlier custom-extension shapes have no compatibility path; supported built-in data and
+shared Observation history retain the registered admission/recovery readers.
+Custom extensions cannot select tools.

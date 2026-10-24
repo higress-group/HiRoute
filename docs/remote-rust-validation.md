@@ -40,8 +40,19 @@ locks used by older controllers. A separate repository does not add compiler slo
 runner does not restart a shared server or reset its statistics.
 
 Shared sccache scratch is an owner-only `sccache-tmp/` under that workbench root,
-not any run's disposable `TMPDIR`. Before invoking Cargo the runner queries/starts
-sccache with that stable directory and `SCCACHE_IDLE_TIMEOUT=0`; before/after stats
+not any run's disposable `TMPDIR`. Before invoking Cargo, under the capacity lease,
+the runner requires a unique cache-miss Rust compilation through sccache with
+that stable directory and `SCCACHE_IDLE_TIMEOUT=0`. This connects to the existing
+server or starts one using stable scratch, with a 30-second bound; statistics
+alone do not prove startup or scratch health. An
+existing server is never stopped automatically. Failed admission blocks Cargo and
+retains `cache-admission.json` and `cache-probe.log`.
+The command monitor retains capacity and checkout locks across a worker crash
+until the probe exits, without passing them to cache clients or servers. A
+timed-out probe's client process group is reaped before releasing capacity. Recovery
+requires all compiler owners idle, exclusive account-wide capacity locks, retained
+statistics and an explicit operator stop/start with stable scratch; never recreate
+a deleted run directory or clear cache objects. Before/after stats
 use the same server environment. Cargo and tests still receive their own short
 private temporary directory. Run cleanup never removes shared server scratch.
 An already-running server keeps its original environment: if it inherited a deleted

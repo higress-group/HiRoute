@@ -87,7 +87,8 @@ pub enum AliasRequestOwnedRouteV1 {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         native_protocol: Option<hiroute_domain::FrozenNativeProtocolV1>,
         classifier: AliasComplexityClassifierV1,
-        judgment: hiroute_domain::JudgmentSettingsV1,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        judgment: Option<hiroute_domain::JudgmentSettingsV1>,
         reselect_on_user_message: bool,
         simple_groups: Vec<AliasGroupIdV1>,
         complex_groups: Vec<AliasGroupIdV1>,

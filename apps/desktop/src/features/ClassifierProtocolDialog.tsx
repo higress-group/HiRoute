@@ -39,9 +39,9 @@ export function ClassifierProtocolDialog({
     footer={<button className="btn btn-primary" type="button" onClick={close}>{text('完成', 'Done')}</button>}
   >
     <div className="classifier-protocol">
-      <div className="callout"><UiIcon name="info" /><span>{text('扩展按传入的定义判断任务类别或程度，并按指定标准评价上一阶段。阈值比较和模型选择由 HiRoute 处理。', 'Follow the supplied category or degree definition and assess the prior stage using its supplied standard. HiRoute handles thresholds and model selection.')}</span></div>
+      <div className="callout"><UiIcon name="info" /><span>{text('扩展直接选择任务类别与常规或主力组，可选评分仅用于观察。HiRoute 在选定组中选择模型并执行。', 'Choose the category and regular or primary group directly. Optional prior-stage scores are observation only. HiRoute selects and executes a model within that group.')}</span></div>
       <section>
-        <div className="decision-methods" role="group" aria-label={text('协议示例', 'Protocol examples')}><button type="button" className="btn" aria-pressed={example === 'first'} onClick={() => { setExample('first'); setActionStatus('idle'); }}>{text('按难度分流 · 程度判断', 'Difficulty routing · degree')}</button><button type="button" className="btn" aria-pressed={example === 'assessment'} onClick={() => { setExample('assessment'); setActionStatus('idle'); }}>{text('自定义分支 · 分类并评分', 'Custom branches · choice and assessment')}</button></div>
+        <div className="decision-methods" role="group" aria-label={text('协议示例', 'Protocol examples')}><button type="button" className="btn" aria-pressed={example === 'first'} onClick={() => { setExample('first'); setActionStatus('idle'); }}>{text('按难度分流 · 选组', 'Difficulty routing · group')}</button><button type="button" className="btn" aria-pressed={example === 'assessment'} onClick={() => { setExample('assessment'); setActionStatus('idle'); }}>{text('自定义分支 · 分类并评分', 'Custom branches · choice and assessment')}</button></div>
         <h3>{text('请求示例', 'Request example')}</h3>
         <p>{text('将示例地址替换为你的服务地址；如已配置认证，HiRoute 会额外发送对应请求头。', 'Replace the example URL with your service endpoint. When authentication is configured, HiRoute also sends that header.')}</p>
         <pre><code>{curl}</code></pre>
@@ -71,8 +71,8 @@ export function ClassifierProtocolDialog({
       <section>
         <h3>{text('响应示例', 'Response example')}</h3>
         <pre><code>{JSON.stringify(protocolExamples[example].response, null, 2)}</code></pre>
-        <p>{example === 'first' ? text('首次请求的 assessment_target 为 null。ordinal 返回各程度的概率，合计为 1。', 'The first request has assessment_target: null. ordinal returns level probabilities summing to 1.') : text('categorical 选择本轮分支，refinement 返回该分支的程度概率。assessment_target.from 是历史中的零基起始下标；这里评分属于上一写稿阶段。', 'categorical chooses this turn’s branch; refinement gives its degree probabilities. assessment_target.from is a zero-based history index. Assessment belongs to the previous writing stage.')}</p>
-        <p>{text('choice 和概率的 ID 必须来自本次定义。score 为 0–1；partial 必填，目标证据不完整时为 true；reason 可选。返回 HTTP 200 和纯 JSON，不附加未知字段。', 'choice and probability IDs must match the definition. score is 0–1; partial is required and true for incomplete target evidence; reason is optional. Return HTTP 200 with strict JSON and no unknown fields.')}</p>
+        <p>{example === 'first' ? text('首次请求的 preceding_stage 为 null。扩展直接返回 regular 或 primary。', 'The first request has preceding_stage: null. Return regular or primary directly.') : text('category 选择已发布分支，group 选择模型组。preceding_stage.from 是历史中的零基起始下标；评分只属于同类别的前一实际阶段。', 'category selects a published branch and group selects its model group. preceding_stage.from is a zero-based history index; assessment belongs only to the actual preceding stage in the same category.')}</p>
+        <p>{text('category 必须来自已发布类别；双组范围返回 regular 或 primary。assessment 可选，其中 score 为 0–1，partial 必填且证据不完整时为 true。reason 可选。返回 HTTP 200 和纯 JSON，不附加未知字段。', 'category must match a published category; dual-group scopes return regular or primary. assessment is optional; within it, score is 0–1 and partial is required and true for incomplete evidence. reason is optional. Return HTTP 200 with strict JSON and no unknown fields.')}</p>
       </section>
     </div>
   </Dialog>;

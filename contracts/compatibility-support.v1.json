@@ -1958,6 +1958,18 @@
         "crates/domain/src/observation/execution_validation.rs",
         "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
       ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-extension decision digest sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained facts with their original threshold policy and canonical bytes. Prior digests cannot authenticate extension policy identity, missing competence floor, extension reason or direct-selection reason; live ingestion uses only the current digest.",
+      "removal_condition": "Retire only after supported stores and backups no longer contain these facts or a verified authenticated conversion preserves their evidence.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
+      ]
     }
   ]
 }

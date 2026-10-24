@@ -100,6 +100,8 @@ pub struct TrustTaskPopulationV1 {
 pub struct TrustCountsV1 {
     pub executed: u64,
     pub complete: u64,
+    #[serde(default)]
+    pub competence_eligible: u64,
     pub meets_floor: u64,
     pub partial: u64,
     pub awaiting_assessment: u64,
@@ -108,7 +110,8 @@ pub struct TrustCountsV1 {
 }
 impl TrustCountsV1 {
     pub fn competence_rate(&self) -> Option<f64> {
-        (self.complete > 0).then(|| self.meets_floor as f64 / self.complete as f64)
+        (self.competence_eligible > 0)
+            .then(|| self.meets_floor as f64 / self.competence_eligible as f64)
     }
     pub fn scoring_coverage(&self) -> Option<f64> {
         (self.executed > 0).then(|| self.complete as f64 / self.executed as f64)

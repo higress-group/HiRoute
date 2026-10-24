@@ -205,8 +205,9 @@ pub(super) fn project(
             .or_else(|| Some(selected_branch_id.clone()));
         turn.view.model_configuration_id = model_configuration_id.clone();
         turn.view.group = branch_execution.as_ref().map(|e| e.group);
-        turn.view.competence_floor_millis =
-            branch_execution.as_ref().map(|e| e.policy.floor_millis);
+        turn.view.competence_floor_millis = branch_execution
+            .as_ref()
+            .and_then(|e| e.policy.floor_millis);
         turn.view.status = serde_json::to_value(status)
             .map_err(|_| ObservationV2Error::Unavailable)?
             .as_str()
@@ -503,7 +504,7 @@ fn make_turn(members: &[&Request]) -> Result<Projected, ObservationV2Error> {
             group: selection.as_ref().map(|s| s.execution_group),
             competence_floor_millis: selection
                 .as_ref()
-                .and_then(|s| s.policy.as_ref().map(|p| p.floor_millis)),
+                .and_then(|s| s.policy.as_ref().and_then(|p| p.floor_millis)),
             selection,
             tool_continuations: members
                 .iter()

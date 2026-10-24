@@ -12,7 +12,7 @@ use std::{
 struct TracedStore {
     store: Arc<LocalObservationStore>,
     busy: mpsc::Sender<bool>,
-    pages: Option<Mutex<VecDeque<RoutingTimelinePageV1>>>,
+    pages: Option<Mutex<VecDeque<Result<RoutingTimelinePageV1, ObservationQueryError>>>>,
 }
 
 impl ObservationQueryPort for TracedStore {
@@ -24,19 +24,20 @@ impl ObservationQueryPort for TracedStore {
     ) -> Result<RoutingTimelinePageV1, ObservationQueryError> {
         // Controlled pages exercise the CLI consumer; storage projections have their own tests.
         let result = if let Some(pages) = &self.pages {
-            Ok(pages
-                .lock()
-                .unwrap()
-                .pop_front()
-                .unwrap_or(RoutingTimelinePageV1 {
+            pages.lock().unwrap().pop_front().unwrap_or_else(|| {
+                Ok(RoutingTimelinePageV1 {
                     turns: vec![],
                     watermark: "settled".into(),
                     complete: true,
-                }))
+                })
+            })
         } else {
             ObservationQueryPort::observed_routing_timeline(&*self.store, r, q, now)
         };
-        if matches!(&result, Err(ObservationQueryError::ReaderBusy)) {
+        if matches!(
+            &result,
+            Err(ObservationQueryError::ReaderBusy | ObservationQueryError::ReadTimeout)
+        ) {
             self.busy.send(true).unwrap();
         } else if result.is_ok() {
             self.busy.send(false).unwrap();
@@ -204,13 +205,13 @@ fn review_cli_follow_retries_real_busy_reads() {
 }
 
 #[test]
-fn follow_preserves_historical_protection_in_initial_and_changed_turns() {
+fn follow_recovers_timeout_and_preserves_historical_protection_in_changed_turns() {
     if std::env::var_os("HIROUTE_PROTECTION_TEST_CHILD").is_none() {
         let home = tempfile::tempdir().unwrap();
         let output = Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "follow_preserves_historical_protection_in_initial_and_changed_turns",
+                "follow_recovers_timeout_and_preserves_historical_protection_in_changed_turns",
                 "--nocapture",
             ])
             .env("HOME", home.path())
@@ -277,21 +278,25 @@ fn follow_preserves_historical_protection_in_initial_and_changed_turns() {
     changed.finished_at_ms = Some(2000);
     changed.content_digest = "later-completion".into();
     let pages = VecDeque::from([
-        RoutingTimelinePageV1 {
+        Ok(RoutingTimelinePageV1 {
             turns,
             watermark: "initial".into(),
             complete: true,
-        },
-        RoutingTimelinePageV1 {
+        }),
+        // Exercise the production Application error envelope and installed CLI
+        // retry after a successful page. The store deadline itself is covered
+        // by Observation tests; this controlled failure covers its consumer.
+        Err(ObservationQueryError::ReadTimeout),
+        Ok(RoutingTimelinePageV1 {
             turns: vec![changed.clone()],
             watermark: "changed".into(),
             complete: true,
-        },
-        RoutingTimelinePageV1 {
+        }),
+        Ok(RoutingTimelinePageV1 {
             turns: vec![changed],
             watermark: "same".into(),
             complete: true,
-        },
+        }),
     ]);
     let (busy, reads) = mpsc::channel();
     let mut ports = runtime.application_ports();
@@ -322,11 +327,12 @@ fn follow_preserves_historical_protection_in_initial_and_changed_turns() {
             .spawn()
             .unwrap(),
     ));
-    for _ in 0..4 {
-        assert!(
-            !reads
+    for failure in [false, true, false, false, false] {
+        assert_eq!(
+            reads
                 .recv_timeout(Duration::from_secs(8))
-                .expect("CLI did not consume the next page")
+                .expect("CLI did not recover from the timeout and consume the next page"),
+            failure,
         );
     }
     nix::sys::signal::kill(

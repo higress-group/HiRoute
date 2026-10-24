@@ -59,7 +59,7 @@ pub(super) fn assert_committed(product: &InstalledProduct, plan: &str, count: us
     let execution = scored.branch_execution.as_ref().unwrap();
     assert_eq!(execution.group, ExecutionGroupV1::Regular);
     assert_eq!(execution.candidate_index, 0);
-    assert_eq!(execution.policy.floor_millis, 500);
+    assert_eq!(execution.policy.floor_millis, Some(500));
     assert!(execution.policy.criteria_digest.is_some());
     let upgrade_source = quality
         .samples

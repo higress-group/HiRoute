@@ -114,7 +114,7 @@ pub(crate) fn materialize_agent_plan(
             (
                 RequestOwnedRouteV1::Classified {
                     native_protocol: None,
-                    judgment: Default::default(),
+                    judgment: Some(Default::default()),
                     classifier,
                     reselect_on_user_message: false,
                     simple_groups: vec![MaterializedGroupId::Economy, MaterializedGroupId::Primary],

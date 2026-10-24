@@ -28,8 +28,7 @@ class DecisionEndpoint(BaseHTTPRequestHandler):
                 if question['type'] == 'choice' else {'type': 'score', 'probabilities': {'0': 0.9, '1': 0.1}})
                 for key, question in body['questions'].items()}}
         else:
-            result = {'decision': {'kind': 'categorical', 'choice': body['decision']['options'][0]['id'],
-                'refinement': {'kind': 'ordinal', 'probabilities': {'simple': 0.9, 'complex': 0.1}}}}
+            result = {'category': body['route']['categories'][0]['id'], 'group': 'regular'}
         raw = encoded(result)
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
@@ -218,7 +217,7 @@ def scenario(repository, routed=False):
         tested = cli('decision services test', {'schema': 'hiroute.classifier-decision-test/v1',
             'classifier': {'kind': 'decision_service', 'service': custom}})
         assert tested['data']['outcome'] == 'passed', tested
-        assert set(DecisionEndpoint.requests[-1][1]) == {'decision', 'latest_user', 'visible_conversation', 'history_partial', 'assessment_target'}
+        assert set(DecisionEndpoint.requests[-1][1]) == {'route', 'latest_user', 'visible_conversation', 'history_partial', 'preceding_stage'}
         mutate({'id': custom['id'], 'expected_revision': 1, 'service': None}, 'custom-delete')
         assert cli('decision services list')['data']['services'] == [next_service]
         print(json.dumps({'scenario': 'decision-services-real-cli-crud-protocol-pinned-publication', 'state': 'green'}), flush=True)

@@ -18,6 +18,10 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_pre_extension = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069";
         let persisted_pre_opening = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
@@ -39,6 +43,7 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_digest.as_str()
                 == "sha256:80b4ff13af8abc79d7721fea42141300beade2acf1d2659983ceaafcdc6e4799";
         if !(current
+            || persisted_pre_extension
             || persisted_pre_opening
             || persisted_v1
             || persisted_pre_branch
@@ -66,7 +71,7 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidEnvelope);
         }
-        if !current
+        if !(current || persisted_pre_extension)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::AgentTurnFinished {
@@ -77,22 +82,48 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
+        if !current {
+            let extension_data = match &self.fact {
+                ExecutionFactV1::RouteDecision(route) => {
+                    route.complexity.as_ref().is_some_and(|decision| {
+                        decision.extension_reason.is_some()
+                            || matches!(
+                                decision.selection_reason,
+                                crate::ModelGroupReasonV1::ExtensionDecision
+                                    | crate::ModelGroupReasonV1::DecisionUnavailable
+                            )
+                            || decision.policy.as_ref().is_some_and(|policy| {
+                                policy.extension.is_some() || policy.floor_millis.is_none()
+                            })
+                    })
+                }
+                ExecutionFactV1::AgentTurnFinished {
+                    branch_execution, ..
+                } => branch_execution.as_ref().is_some_and(|execution| {
+                    execution.policy.extension.is_some() || execution.policy.floor_millis.is_none()
+                }),
+                _ => false,
+            };
+            if extension_data {
+                return Err(ExecutionFactError::InvalidFact);
+            }
+        }
         self.trust.validate()?;
         self.fact.validate()?;
-        if (current || persisted_pre_opening)
+        if (current || persisted_pre_extension || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
             if route.complexity.as_ref().is_some_and(|d| d.decision_protocol.is_none()
                 || (d.decision_protocol != Some(DecisionProtocolV1::SystemOneC) && d.routing_observation.is_some())))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_opening)
+        if !(current || persisted_pre_extension || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
                 if route.complexity.as_ref().is_some_and(|decision| decision.routing_observation.is_some()))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_opening || persisted_pre_c)
+        if !(current || persisted_pre_extension || persisted_pre_opening || persisted_pre_c)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::RouteDecision(route)
@@ -112,7 +143,11 @@ impl ExecutionFactEnvelopeV1 {
             return Err(ExecutionFactError::InvalidFact);
         }
         if let Some(pricing) = &self.pricing {
-            if !(current || persisted_pre_opening || persisted_function_only || persisted_pre_c)
+            if !(current
+                || persisted_pre_extension
+                || persisted_pre_opening
+                || persisted_function_only
+                || persisted_pre_c)
                 || !matches!(self.fact, ExecutionFactV1::AttemptStarted { .. })
             {
                 return Err(ExecutionFactError::InvalidFact);

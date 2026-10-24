@@ -2,15 +2,15 @@
 
 #[path = "../../../crates/daemon/tests/support/isolated_agent_environment.rs"]
 mod child_environment;
+#[path = "control_shell_support/startup.rs"]
+mod startup;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::FileTypeExt;
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
-use std::time::{Duration, Instant};
 
 use hiroute_application_api::{
     ClientHelloV1, LOCAL_CONTROL_SCHEMA_V2, LocalControlWireRequestV2, MACHINE_ENVELOPE_SCHEMA_V2,
@@ -92,6 +92,8 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
 
     let mut command = Command::new(&binaries.hirouted);
     child_environment::configure(&mut command, &agent_home);
+    let capture = startup::StartupCapture::new(temporary.path()).unwrap();
+    capture.configure(&mut command).unwrap();
     let daemon = command
         .args([
             "--role",
@@ -102,12 +104,16 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             runtime_root.to_str().unwrap(),
         ])
         .env("PATH", agent_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
         .spawn()
         .expect("launch production hirouted control role");
     let mut daemon = DaemonGuard(daemon);
-    wait_for_endpoint(&endpoint, &mut daemon.0);
+    capture
+        .wait_for_endpoint(
+            &endpoint,
+            &mut daemon.0,
+            &workspace.join("target/product-e2e-evidence"),
+        )
+        .unwrap_or_else(|failure| panic!("{failure}"));
 
     let mut stalled_peer = UnixStream::connect(&endpoint).expect("stalled Local Control peer");
     stalled_peer.write_all(b"{").unwrap();
@@ -498,27 +504,6 @@ fn durable_store_snapshot(storage_root: &Path) -> BTreeMap<String, String> {
     let mut snapshot = BTreeMap::new();
     visit(storage_root, storage_root, &mut snapshot);
     snapshot
-}
-
-fn wait_for_endpoint(endpoint: &Path, child: &mut Child) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if endpoint
-            .metadata()
-            .is_ok_and(|metadata| metadata.file_type().is_socket())
-        {
-            return;
-        }
-        if let Some(status) = child.try_wait().unwrap() {
-            let mut stderr = String::new();
-            if let Some(mut stream) = child.stderr.take() {
-                let _ = stream.read_to_string(&mut stderr);
-            }
-            panic!("hirouted exited before readiness: {status}; stderr: {stderr}");
-        }
-        assert!(Instant::now() < deadline, "hirouted readiness timed out");
-        std::thread::sleep(Duration::from_millis(25));
-    }
 }
 
 fn build_product_binaries(workspace: &Path) -> ProductBinaries {

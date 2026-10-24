@@ -36,19 +36,31 @@
             "null"
           ]
         },
+        "extension": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionExtensionIdentityV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "floor_millis": {
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "name": {
           "type": "string"
         }
       },
       "required": [
-        "name",
-        "floor_millis"
+        "name"
       ],
       "type": "object"
     },
@@ -116,6 +128,24 @@
       ],
       "type": "string"
     },
+    "DecisionExtensionIdentityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
     "DecisionProtocolV1": {
       "enum": [
         "system_one_legacy",
@@ -148,6 +178,8 @@
         "complex_task",
         "low_competence",
         "degree_unavailable",
+        "extension_decision",
+        "decision_unavailable",
         "single_group",
         "decision_fallback",
         "availability_relay",
@@ -390,6 +422,12 @@
     },
     "execution_group": {
       "$ref": "#/$defs/ExecutionGroupV1"
+    },
+    "extension_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "fallback_reason": {
       "anyOf": [

@@ -539,7 +539,7 @@ fn responses_chat_tools_snapshot(
                 request_owned: AliasRequestOwnedRouteV1::Classified {
                     native_protocol: None,
                     reselect_on_user_message: false,
-                    judgment: Default::default(),
+                    judgment: Some(Default::default()),
                     classifier: AliasComplexityClassifierV1 {
                         revision: "responses-chat-tools-complexity/v1".into(),
                         mode: hiroute_domain::ComplexityClassifierModeV1::LocalRules,

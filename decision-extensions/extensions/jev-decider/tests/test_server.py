@@ -39,16 +39,16 @@ class HttpFixture(unittest.IsolatedAsyncioTestCase):
     async def test_real_handler_forwards_exact_definition_once(self):
         response = await self.post()
         self.assertEqual(response.status, 200)
-        self.assertEqual((await response.json())['decision']['probabilities']['simple'], .8)
+        self.assertEqual((await response.json())['group'], 'regular')
         self.assertEqual(len(self.calls), 1)
         self.assertEqual(self.calls[0][0], 'Bearer fixture-key')
-        self.assertEqual(self.calls[0][1]['questions']['q0']['criteria'], [x['criterion'] for x in request()['decision']['levels']])
+        self.assertEqual(self.calls[0][1]['questions']['q0']['criteria'], __import__('jev_decider.decision', fromlist=['DEGREE']).DEGREE)
     async def test_assessment_and_category_use_one_call(self):
         self.reply = answers(True, 0)
         response = await self.post(request(1))
         body = await response.json()
         self.assertEqual(response.status, 200)
-        self.assertEqual(body['decision']['choice'], 'review')
+        self.assertEqual(body['category'], 'review')
         self.assertEqual(body['assessment']['score'], 0)
         self.assertEqual(len(self.calls), 1)
     async def test_authentication_and_old_contract_fail_before_upstream(self):

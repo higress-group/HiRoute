@@ -76,7 +76,7 @@ impl ProductionGatewayRuntime {
                             primary_group: o.refinement.as_ref().map(|_| {
                                 hiroute_domain::MaterializedGroupId::BranchPrimary(i as u16)
                             }),
-                            judgment: judgment_for(&protocol.scopes[&o.id])?,
+                            judgment: Some(judgment_for(&protocol.scopes[&o.id])?),
                         })
                     })
                     .collect::<Result<_, ClassifierDiagnosticError>>()?;

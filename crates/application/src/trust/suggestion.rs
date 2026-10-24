@@ -14,7 +14,9 @@ pub fn suggest(
     upward: &TrustCountsV1,
     previous_routing_available: bool,
 ) -> TrustSuggestionV1 {
-    if full.complete >= MIN_SCORED && full.meets_floor * 100 < full.complete * LOWER_PERCENT {
+    if full.competence_eligible >= MIN_SCORED
+        && full.meets_floor * 100 < full.competence_eligible * LOWER_PERCENT
+    {
         return match TrustLevelV1::step_down(threshold) {
             Some(level) => TrustSuggestionV1::StepDown {
                 threshold_millis: level.threshold_millis,
@@ -24,10 +26,12 @@ pub fn suggest(
         };
     }
     let mut missing = Vec::new();
-    if upward.complete < MIN_SCORED {
+    if upward.competence_eligible < MIN_SCORED {
         missing.push("complete_scores".into());
     }
-    if upward.executed == 0 || upward.complete * 100 < upward.executed * MIN_COVERAGE_PERCENT {
+    if upward.executed == 0
+        || upward.competence_eligible * 100 < upward.executed * MIN_COVERAGE_PERCENT
+    {
         missing.push("scoring_coverage".into());
     }
     if upward.sessions < MIN_SESSIONS {
@@ -36,7 +40,7 @@ pub fn suggest(
     if !missing.is_empty() {
         return TrustSuggestionV1::Keep { missing };
     }
-    if upward.meets_floor * 100 >= upward.complete * UPPER_PERCENT {
+    if upward.meets_floor * 100 >= upward.competence_eligible * UPPER_PERCENT {
         return match TrustLevelV1::step_up(threshold) {
             Some(level) => TrustSuggestionV1::StepUp {
                 threshold_millis: level.threshold_millis,
@@ -59,6 +63,7 @@ mod tests {
         TrustCountsV1 {
             executed,
             complete,
+            competence_eligible: complete,
             meets_floor,
             sessions,
             ..Default::default()
