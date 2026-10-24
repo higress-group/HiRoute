@@ -81,26 +81,36 @@ def anchor_main(control, events, native_stdin, command):
     signal.signal(signal.SIGINT, lambda *_: None)
     def report(value):
         os.write(events, (json.dumps(value) + '\n').encode())
-    # Spawn only after the guardian has retained the live anchor's birth identity.
-    if os.read(control, 1) != b'S':
-        return 125
-    child = subprocess.Popen(command, stdin=native_stdin, close_fds=True)
-    os.close(native_stdin)
-    report({'event': 'spawn', 'pid': child.pid})
-    reported = False
-    while True:
-        code = child.poll()
-        if code is not None and not reported:
-            report({'event': 'exit', 'code': code})
-            reported = True
-        ready, _, _ = select.select([control], [], [], 0.02)
-        if ready:
-            message = os.read(control, 1)
-            if message == b'R' and reported:
-                return 0
-            if not message:
-                # Guardian disappeared. This still-live anchor owns this group.
-                os.killpg(os.getpid(), signal.SIGKILL)
+    released = False
+    try:
+        # Spawn only after the guardian has retained the live anchor's birth identity.
+        if os.read(control, 1) != b'S':
+            return 125
+        child = subprocess.Popen(command, stdin=native_stdin, close_fds=True)
+        os.close(native_stdin)
+        report({'event': 'spawn', 'pid': child.pid})
+        reported = False
+        while True:
+            code = child.poll()
+            if code is not None and not reported:
+                report({'event': 'exit', 'code': code})
+                reported = True
+            ready, _, _ = select.select([control], [], [], 0.02)
+            if ready:
+                message = os.read(control, 1)
+                if message == b'R' and reported:
+                    released = True
+                    return 0
+                if not message:
+                    return 125
+    finally:
+        # Only the guardian's validated release permits this session anchor to
+        # leave normally. EOF, spawn failure and a broken event pipe must all
+        # revoke the same lease, including failures before the next control read.
+        # This still-live session leader cannot be reused; signal only its group.
+        # Descendants that leave that group remain explicitly unsupported.
+        if not released:
+            os.killpg(os.getpid(), signal.SIGKILL)
 
 
 def supervise(command, evidence, seconds):
