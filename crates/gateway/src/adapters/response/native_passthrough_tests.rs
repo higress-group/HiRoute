@@ -8,6 +8,9 @@ use crate::server::core_runtime::adapters::ToolIdProjection;
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 use crate::server::request_plan::IngressProtocol;
 
+#[path = "native_tool_metadata_tests.rs"]
+mod tool_metadata;
+
 fn profile(protocol: IngressProtocol) -> CandidateProtocolProfile {
     CandidateProtocolProfile::exact_portable_path(
         protocol,
