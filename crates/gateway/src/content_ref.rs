@@ -14,6 +14,7 @@ const JSON_MARKER_KEY: &str = "__hiroute_json_content_ref_v2";
 const CONTENT_FIELD_METADATA_BYTES: usize = 192;
 
 mod ingress;
+mod schema;
 
 #[cfg(test)]
 pub(crate) use ingress::compact_ingress_document;
@@ -245,10 +246,10 @@ pub fn externalize_model_request(
         if let Some(description) = &mut tool.description {
             externalize_value(description, replay, &mut pool, &mut inline_remaining)?;
         }
-        for value in [&mut tool.input_schema, &mut tool.format]
-            .into_iter()
-            .flatten()
-        {
+        if let Some(value) = &mut tool.input_schema {
+            schema::externalize_tool_schema(value, replay, &mut pool, &mut inline_remaining)?;
+        }
+        if let Some(value) = &mut tool.format {
             externalize_json(value, replay, &mut pool, &mut inline_remaining)?;
         }
     }
@@ -260,10 +261,10 @@ pub fn externalize_model_request(
             if let Some(description) = &mut tool.description {
                 externalize_value(description, replay, &mut pool, &mut inline_remaining)?;
             }
-            for value in [&mut tool.input_schema, &mut tool.format]
-                .into_iter()
-                .flatten()
-            {
+            if let Some(value) = &mut tool.input_schema {
+                schema::externalize_tool_schema(value, replay, &mut pool, &mut inline_remaining)?;
+            }
+            if let Some(value) = &mut tool.format {
                 externalize_json(value, replay, &mut pool, &mut inline_remaining)?;
             }
         }
@@ -327,7 +328,7 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
             collect_string_content_ref(description, &mut refs);
         }
         if let Some(value) = &tool.input_schema {
-            collect_json_content_ref(value, &mut refs);
+            collect_nested_content_refs(value, &mut refs);
         }
         if let Some(value) = &tool.format {
             collect_json_content_ref(value, &mut refs);
@@ -342,7 +343,7 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
                 collect_string_content_ref(description, &mut refs);
             }
             if let Some(value) = &tool.input_schema {
-                collect_json_content_ref(value, &mut refs);
+                collect_nested_content_refs(value, &mut refs);
             }
             if let Some(value) = &tool.format {
                 collect_json_content_ref(value, &mut refs);
@@ -380,9 +381,15 @@ fn externalize_native_leaves(
             }
         }
         Value::Object(values) => {
+            let item_type = values
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
             for (key, value) in values {
                 replay.charge_metadata(key.capacity() + std::mem::size_of::<String>() + 32)?;
-                if !matches!(key.as_str(), "type" | "role") {
+                if !matches!(key.as_str(), "type" | "role")
+                    && !schema::peer_identity(item_type.as_deref(), key, value)
+                {
                     externalize_native_leaves(value, replay, pool, remaining)?;
                 } else {
                     replay.charge_metadata(std::mem::size_of::<Value>())?;

@@ -10,6 +10,7 @@ use crate::replay::{ReplayContentWriter, ReplayError, ReplayReader, ReplayStore}
 use crate::server::request_plan::IngressProtocol;
 
 use super::MARKER_PREFIX;
+mod schema;
 
 const MAX_JSON_DEPTH: usize = 128;
 const INLINE_CONTENT_BYTES: usize = 8 * 1024;
@@ -632,6 +633,9 @@ impl Compactor<'_> {
             return Err(ReplayError::StructureLimit);
         }
         if field.is_some_and(|field| whole_json_field(self.protocol, field, depth, value)) {
+            if matches!(field, Some("parameters" | "input_schema")) {
+                return self.schema(value, depth);
+            }
             return self.externalize_json(value);
         }
         match value {

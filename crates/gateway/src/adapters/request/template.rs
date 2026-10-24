@@ -421,7 +421,7 @@ fn request_content_refs(
     for tool in &request.tools {
         collect_string_ref(tool.description.as_deref(), &mut refs);
         if let Some(schema) = &tool.input_schema {
-            collect_json_ref(schema, ReplacementEncoding::RawJson, &mut refs);
+            collect_nested_json_refs(schema, &mut refs);
         }
         if let Some(format) = &tool.format {
             collect_json_ref(format, ReplacementEncoding::RawJson, &mut refs);
@@ -434,7 +434,7 @@ fn request_content_refs(
         for tool in &namespace.tools {
             collect_string_ref(tool.description.as_deref(), &mut refs);
             if let Some(schema) = &tool.input_schema {
-                collect_json_ref(schema, ReplacementEncoding::RawJson, &mut refs);
+                collect_nested_json_refs(schema, &mut refs);
             }
             if let Some(format) = &tool.format {
                 collect_json_ref(format, ReplacementEncoding::RawJson, &mut refs);

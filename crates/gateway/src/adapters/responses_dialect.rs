@@ -1,5 +1,7 @@
 //! The explicit standard-Responses JSON dialect owns both directions of negotiation.
 //! Native Responses is deliberately not an alias for this contract.
+use super::schema_encoding::project_schema as schema_node;
+use crate::content_ref::MARKER_PREFIX;
 use serde_json::{Map, Value, json};
 
 use super::{ModelIrError, ProtocolAdapterError};
@@ -138,72 +140,6 @@ fn project_tool(tool: &mut Value) -> Result<bool, ModelIrError> {
     Ok(negotiated)
 }
 
-fn schema_node(value: &mut Value) -> Result<bool, ModelIrError> {
-    if value.is_boolean() {
-        return Ok(false);
-    }
-    let schema = value
-        .as_object_mut()
-        .ok_or(ModelIrError::InvalidField("function.parameters schema"))?;
-    if schema.get("encrypted").is_some_and(|v| !v.is_boolean()) {
-        return Err(ModelIrError::InvalidField("schema.encrypted"));
-    }
-    let mut negotiated = schema.remove("encrypted").is_some();
-    // Visit schema positions, never example/default data or a property named "encrypted".
-    for key in [
-        "properties",
-        "patternProperties",
-        "$defs",
-        "definitions",
-        "dependentSchemas",
-    ] {
-        if let Some(children) = schema.get_mut(key) {
-            for child in children
-                .as_object_mut()
-                .ok_or(ModelIrError::InvalidField("schema map"))?
-                .values_mut()
-            {
-                negotiated |= schema_node(child)?;
-            }
-        }
-    }
-    for key in ["allOf", "anyOf", "oneOf", "prefixItems"] {
-        if let Some(children) = schema.get_mut(key) {
-            for child in children
-                .as_array_mut()
-                .ok_or(ModelIrError::InvalidField("schema array"))?
-            {
-                negotiated |= schema_node(child)?;
-            }
-        }
-    }
-    for key in [
-        "items",
-        "contains",
-        "additionalProperties",
-        "additionalItems",
-        "contentSchema",
-        "unevaluatedProperties",
-        "unevaluatedItems",
-        "not",
-        "if",
-        "then",
-        "else",
-        "propertyNames",
-    ] {
-        if let Some(child) = schema.get_mut(key) {
-            if let Some(children) = child.as_array_mut() {
-                for child in children {
-                    negotiated |= schema_node(child)?;
-                }
-            } else {
-                negotiated |= schema_node(child)?;
-            }
-        }
-    }
-    Ok(negotiated)
-}
-
 fn project_peer(item: &mut Value) -> Result<(), ModelIrError> {
     let peer = item
         .as_object()
@@ -217,6 +153,21 @@ fn project_peer(item: &mut Value) -> Result<(), ModelIrError> {
         return Err(ModelIrError::UnsupportedField(
             "agent_message extension on standard Responses".into(),
         ));
+    }
+    // Metadata is encoded into one text block below. Native identity strings are
+    // budgeted inline by the request owner; never embed a Replay marker as text.
+    // Reserved marker literals remain portable on native passthrough, but this
+    // metadata-text representation cannot consume their backed identity safely.
+    for key in ["author", "recipient", "id"] {
+        if let Some(value) = peer.get(key)
+            && value
+                .as_str()
+                .is_none_or(|text| text.is_empty() || text.contains(MARKER_PREFIX))
+        {
+            return Err(ModelIrError::UnsupportedField(
+                "agent_message identity representation".into(),
+            ));
+        }
     }
     let author = peer
         .get("author")

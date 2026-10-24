@@ -29,13 +29,7 @@ fn dialect(fixture: &RuntimeFixture, primary_standard: bool) {
     fixture.publish(&mut publication);
 }
 
-fn send(
-    fixture: &RuntimeFixture,
-    v2: bool,
-    turn: &str,
-    input: &[Value],
-    streaming: bool,
-) -> Vec<Value> {
+fn original_body(v2: bool) -> Value {
     let mut body: Value = if v2 {
         serde_json::from_str(include_str!(
             "../../../../crates/gateway/src/adapters/fixtures/codex-v2-request.json"
@@ -44,6 +38,40 @@ fn send(
     } else {
         json!({"tools":[{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object","properties":{"message":{"type":"string"}}}}]}]})
     };
+    // These are business data, not schema encoding declarations.
+    let schema = &mut body["tools"][0];
+    let schema = if v2 {
+        &mut schema["parameters"]
+    } else {
+        &mut schema["tools"][0]["parameters"]
+    };
+    schema["properties"]["encrypted"] = json!({"type":"boolean", "default":true});
+    schema["default"] = json!({"encrypted":true, "parameters":{"encrypted":true}});
+    schema["examples"] = json!([{"encrypted":true}]);
+    body
+}
+
+fn expected_tools(v2: bool, standard: bool) -> Value {
+    let mut body = original_body(v2);
+    if v2 && standard {
+        for i in [0, 3, 4] {
+            body["tools"][5]["tools"][i]["parameters"]["properties"]["message"]
+                .as_object_mut()
+                .unwrap()
+                .remove("encrypted");
+        }
+    }
+    body["tools"].clone()
+}
+
+fn send(
+    fixture: &RuntimeFixture,
+    v2: bool,
+    turn: &str,
+    input: &[Value],
+    streaming: bool,
+) -> Vec<Value> {
+    let mut body = original_body(v2);
     body["model"] = json!(MODEL);
     body["stream"] = json!(streaming);
     // Also exercise production Replay without changing the tool/schema contract.
@@ -159,11 +187,12 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
                 (2, 1, 2)
             );
             let upstream = classifier_body(&regular, 0);
-            assert!(!upstream["tools"].to_string().contains("\"encrypted\":true"));
+            assert_eq!(upstream["tools"], expected_tools(v2, true));
             assert_eq!(
-                classifier_body(&regular, 1)["input"][2]["output"],
-                "CONTROLLED_TOOL_RECEIPT"
+                classifier_body(&regular, 1)["input"][2],
+                json!({"type":"function_call_output","call_id":"call","output":"CONTROLLED_TOOL_RECEIPT"})
             );
+            assert_eq!(classifier_body(&regular, 1)["input"][1]["call_id"], "call");
             assert!(
                 classifier_body(&regular, 1)["input"][1]
                     .get("encrypted_function_args")
@@ -172,15 +201,18 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
             let judged = classifier_body(&classifier, 1);
             assert_eq!(judged["preceding_stage"]["complete"], true, "{judged}");
             let from = judged["preceding_stage"]["from"].as_u64().unwrap() as usize;
-            let assessed =
-                json!(&judged["visible_conversation"].as_array().unwrap()[from..]).to_string();
-            assert!(
-                assessed.contains("A_READ_FIXTURE")
-                    && assessed.contains("CONTROLLED_TOOL_RECEIPT")
-                    && assessed.contains("ok"),
-                "{assessed}"
+            let assessed = json!(&judged["visible_conversation"].as_array().unwrap()[from..]);
+            // Decision API deliberately excludes raw tool-result bodies. Its status
+            // follows the native result's declared status, absent in this fixture.
+            assert_eq!(
+                assessed,
+                json!([{
+                    "user":[{"kind":"text","text":"A_READ_FIXTURE"}],
+                    "status":"completed",
+                    "steps":[[{"kind":"tool_activity","tool":"collaboration.spawn_agent","status":"unknown"}],
+                             [{"kind":"text","text":"ok"}]]
+                }])
             );
-            assert!(!assessed.contains("B_INDEPENDENT_TASK"));
             let facts = wait_execution_facts(&fixture, 3);
             let routes = facts
                 .iter()
@@ -198,6 +230,7 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
                 .find(|e| e["fact"]["kind"] == "branch_assessment_recorded")
                 .unwrap();
             assert_eq!(score["fact"]["score"], 0.75);
+            assert_eq!(score["fact"]["partial"], false);
             assert_eq!(
                 score["fact"]["history_membership"]["request_ids"],
                 json!(members)
@@ -252,15 +285,13 @@ fn real_listener_codex_v2_retry_uses_successful_attempt_encoding_contract() {
         output[0].get("encrypted_function_args").is_none(),
         "native fallback must not inherit a failed standard attempt's plaintext declaration"
     );
-    assert!(
-        !classifier_body(&regular, 0)["tools"]
-            .to_string()
-            .contains("\"encrypted\":true")
+    assert_eq!(
+        classifier_body(&regular, 0)["tools"],
+        expected_tools(true, true)
     );
-    assert!(
-        classifier_body(&primary, 0)["tools"]
-            .to_string()
-            .contains("\"encrypted\":true")
+    assert_eq!(
+        classifier_body(&primary, 0)["tools"],
+        expected_tools(true, false)
     );
     let facts = wait_execution_facts(&fixture, 1);
     assert_eq!(

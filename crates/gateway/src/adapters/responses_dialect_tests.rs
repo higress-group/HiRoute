@@ -416,62 +416,8 @@ fn codex_v2_plaintext_chat_and_messages_producers_negotiate_real_json_arguments(
     }
 }
 
-#[test]
-fn codex_v2_standard_peer_and_schema_replay_is_byte_equivalent_to_inline() {
-    use crate::content_ref::{compact_ingress_document, externalize_model_request};
-    use crate::replay::{ReplayConfig, ReplayManager};
-    use hiroute_gateway_core::runtime::body::BudgetTree;
-    struct OwnedDir(std::path::PathBuf);
-    impl Drop for OwnedDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-    let root = OwnedDir(std::env::temp_dir().join(format!(
-            "hiroute-v2-replay-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        )));
-    std::fs::create_dir(&root.0).unwrap();
-    let manager = ReplayManager::open(ReplayConfig {
-        root: root.0.join("replay"),
-        memory_threshold_bytes: 128,
-        record_bytes: 31,
-        orphan_ttl: std::time::Duration::from_secs(60),
-    })
-    .unwrap();
-    let budget = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024)
-        .unwrap()
-        .stream(8 * 1024 * 1024)
-        .unwrap();
-    let store = manager.begin_request(budget.clone()).unwrap();
-    let mut body = fixture();
-    body["input"].as_array_mut().unwrap().push(json!({"type":"agent_message","author":"parent","recipient":"child","content":[{"type":"input_text","text":"actual quoted \"peer\" 中\n".repeat(3000)}]}));
-    let expected = project_candidate_request(
-        &decode_ingress_request(IngressProtocol::Responses, &body).unwrap(),
-        &profile(true),
-    )
-    .unwrap()
-    .bytes;
-    compact_ingress_document(IngressProtocol::Responses, &mut body, &store).unwrap();
-    let mut request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
-    externalize_model_request(&mut request, &store, 16).unwrap();
-    assert!(project_candidate_request(&request, &profile(true)).is_err());
-    let template = project_candidate_request_template(&request, &profile(true)).unwrap();
-    let mut reader = sequential_attempt_body(template, store.clone(), &budget, 37).unwrap();
-    let mut actual = Vec::new();
-    while let Some(chunk) = reader.next_chunk().unwrap() {
-        actual.extend_from_slice(chunk.bytes());
-    }
-    reader.release();
-    assert_eq!(actual, expected);
-    drop(store);
-    drop(manager);
-    assert_eq!(budget.snapshot().unwrap().live, 0);
-}
+#[path = "responses_dialect_replay_tests.rs"]
+mod replay;
 
 #[test]
 fn codex_v2_plain_standard_response_client_continues_without_codex_extension() {

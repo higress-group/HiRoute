@@ -70,6 +70,18 @@ Native Codex subscriptions and old saved sources keep
 their original dialect. It consumes boolean `encrypted` annotations only at JSON Schema
 nodes, retains the complete tool declarations, and projects all-plaintext `agent_message`
 content into assistant blocks carrying the original author/recipient and ordered text.
+The [schema-position owner](src/adapters/schema_encoding.rs) is shared with
+[ingress compaction](src/content_ref/ingress/schema.rs): schema nodes retain their protocol structure
+for encoding negotiation and shape validation, while large descriptions, defaults and examples
+remain Replay content. Business keys with the same names are not annotations. The canonical
+IR and all request templates collect nested content references; the request memory budget
+still charges retained nodes, keys and strings. Peer author/recipient/item identities stay
+budgeted inline, and peer body text remains independently backed. Reserved Replay-marker
+literals in those identities are preserved on native passthrough but rejected by this
+metadata-text projection, which cannot embed a backed identity safely.
+[Production-path Replay controls](src/adapters/responses_dialect_replay_tests.rs) compare
+scan/parse/compact/IR/template output with inline bytes across native Responses, standard
+Responses and portable Chat/Messages tools, including large data and budget refusal.
 Original ingress history/source evidence is untouched. Cipher/mixed peer content and
 historical function calls without an explicit plaintext declaration in a request which
 negotiates the Codex encoding extension cannot cross this boundary. Ordinary standard
