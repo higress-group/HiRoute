@@ -39,6 +39,11 @@ pub async fn agent_snapshot(
         &ClientEmptyRequestV1 {},
     )
     .await?;
+    // Window expiry can advance the epoch without taking the Session mutex.
+    // Recheck after the last await; no later suspension may publish stale facts.
+    if state.2.load(Ordering::SeqCst) != epoch {
+        return Err("CONFIRMATION_STALE".into());
+    }
     let current_native = session.authority.native_connection();
     if before.revisions != after.revisions
         || before.active_publication != after.active_publication
