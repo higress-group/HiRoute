@@ -84,6 +84,20 @@ fn send(
         turn,
         "checkpoint",
     );
+    if v2 {
+        // Sanitized fixture IDs must describe this actual synthetic session.
+        // Competing body/header identities correctly remain request-scoped.
+        body["client_metadata"]["thread_id"] = json!("encoding-session");
+        body["client_metadata"]["session_id"] = json!("encoding-session");
+        body["client_metadata"]["turn_id"] = json!(turn);
+        body["client_metadata"]["x-codex-window-id"] = json!("encoding-session:0");
+        body["client_metadata"]["x-codex-turn-metadata"] = json!(
+            h.iter()
+                .find(|(name, _)| name == "x-codex-turn-metadata")
+                .unwrap()
+                .1
+        );
+    }
     let response = request(
         fixture.address,
         "POST",
@@ -184,7 +198,7 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
             assert_eq!(
                 classifier.calls(),
                 1,
-                "tool continuation opened a new decision"
+                "v2={v2}, declared={declared}, streaming={streaming}: tool continuation opened a new decision"
             );
             input.push(json!({"role":"user","content":"B_INDEPENDENT_TASK"}));
             send(&fixture, v2, "b", &input, streaming);
@@ -299,10 +313,13 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
 #[test]
 fn real_listener_codex_v2_missing_stream_item_identity_cannot_claim_complete_history() {
     let malformed: Value = serde_json::from_slice(RESPONSES_OK).unwrap();
-    let regular = NativeProvider::start(vec![super::native_encrypted_continuation::streamed(
-        "missing-item-id",
-        malformed["output"].as_array().unwrap().clone(),
-    )]);
+    let regular = NativeProvider::start(vec![
+        provider_reply(true, true, false),
+        super::native_encrypted_continuation::streamed(
+            "missing-item-id",
+            malformed["output"].as_array().unwrap().clone(),
+        ),
+    ]);
     let primary = NativeProvider::start(vec![provider_reply(true, false, false)]);
     let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_PRIMARY)]);
     let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
@@ -312,16 +329,20 @@ fn real_listener_codex_v2_missing_stream_item_identity_cannot_claim_complete_his
     dialect(&fixture, true);
     let mut input = vec![json!({"role":"user","content":"A_READ_FIXTURE"})];
     input.extend(send(&fixture, true, "a", &input, true));
+    input.push(
+        json!({"type":"function_call_output","call_id":"call","output":"CONTROLLED_TOOL_RECEIPT"}),
+    );
+    input.extend(send(&fixture, true, "a", &input, true));
     input.push(json!({"role":"user","content":"B_INDEPENDENT_TASK"}));
     send(&fixture, true, "b", &input, true);
     assert_eq!(
         (regular.calls(), primary.calls(), classifier.calls()),
-        (1, 1, 2)
+        (2, 1, 2)
     );
     let judged = classifier_body(&classifier, 1);
     assert_eq!(judged["history_partial"], true);
     assert_eq!(judged["preceding_stage"]["complete"], false);
-    let facts = wait_execution_facts(&fixture, 2);
+    let facts = wait_execution_facts(&fixture, 3);
     let score = facts
         .iter()
         .find(|e| e["fact"]["kind"] == "branch_assessment_recorded")
