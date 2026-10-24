@@ -1,5 +1,11 @@
 # Tests as product documentation
 
+Native acceptance uses [isolated scopes](../../scripts/native-agent-scope.py) and
+the [macOS session supervisor](../../scripts/native-agent-supervisor.py). Its live
+anchor preserves ownership after a client exits, and its private lease closes on
+guardian death. Native exit and cleanup outcomes remain separate. It covers the
+anchored session; detached sessions are not an inferred cleanup authority.
+
 [Code map](README.md) · [Desktop scenarios](../../apps/desktop/tests/README.md) ·
 [Agent/Worker scenarios](worker-context.md#representative-scenarios)
 

@@ -13,6 +13,7 @@ mod cpa_control;
 mod cpa_model_discovery;
 mod model;
 mod native_completion;
+mod native_routing;
 mod observation;
 mod protected_channel;
 mod startup;
@@ -31,6 +32,7 @@ pub use cpa_control::*;
 pub use cpa_model_discovery::*;
 pub use model::*;
 pub use native_completion::*;
+pub use native_routing::*;
 pub use observation::*;
 pub use protected_channel::*;
 pub use startup::*;
@@ -71,6 +73,7 @@ pub enum DiagnosticEvent {
     ReasoningCleanup(ReasoningCleanup),
     ResponseFailure(ResponseFailure),
     NativeCompletionUnknown(NativeCompletionUnknown),
+    NativeRoutingEvidence(NativeRoutingEvidence),
     Fallback(Fallback),
     SemanticCommit(SemanticCommit),
     RequestCancel(RequestCancel),
@@ -183,6 +186,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::ReasoningCleanup(_) => Warn,
             DiagnosticEvent::ResponseFailure(_) => Warn,
             DiagnosticEvent::NativeCompletionUnknown(_) => Warn,
+            DiagnosticEvent::NativeRoutingEvidence(_) => Debug,
             DiagnosticEvent::ContentCaptureEnd(end) => match end.outcome {
                 CaptureOutcome::Success => Info,
                 CaptureOutcome::Abort => Warn,
@@ -271,6 +275,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::ReasoningCleanup(_) => "reasoning_cleanup",
             DiagnosticEvent::ResponseFailure(_) => "response_failure",
             DiagnosticEvent::NativeCompletionUnknown(_) => "native_completion_unknown",
+            DiagnosticEvent::NativeRoutingEvidence(_) => "native_routing_evidence",
             DiagnosticEvent::Fallback(_) => "fallback",
             DiagnosticEvent::SemanticCommit(_) => "semantic_commit",
             DiagnosticEvent::RequestCancel(_) => "request_cancel",

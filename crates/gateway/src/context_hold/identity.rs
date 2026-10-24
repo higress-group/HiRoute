@@ -1,4 +1,5 @@
 mod claude;
+mod diagnostic;
 
 use hmac::{Hmac, Mac};
 use http::HeaderMap;

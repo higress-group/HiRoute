@@ -38,6 +38,7 @@ pub(crate) struct NativeCheckpoint {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct RoutingFacts {
+    pub(super) adapter: Option<hiroute_diagnostics::event::NativeAdapterEvidence>,
     pub(super) track: bool,
     pub(super) native: NativeCheckpoint,
     pub(super) root: Option<String>,
@@ -49,6 +50,7 @@ pub(super) struct RoutingFacts {
 impl Default for RoutingFacts {
     fn default() -> Self {
         Self {
+            adapter: None,
             track: true,
             native: NativeCheckpoint::default(),
             root: None,

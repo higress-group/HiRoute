@@ -35,7 +35,8 @@ DIAGNOSTIC_CONTRACTS = (
     "crates/diagnostics/src/identity.rs", "crates/diagnostics/src/error.rs",
 )
 SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py"}
-NATIVE_SCOPE_TOOLING = {"scripts/native-agent-scope.py", "scripts/test-native-agent-scope.py"}
+NATIVE_SCOPE_TOOLING = {"scripts/native-agent-scope.py", "scripts/test-native-agent-scope.py",
+                        "scripts/native-agent-supervisor.py", "scripts/test-native-agent-supervisor.py"}
 PILOT_CONSUMER_INPUTS = SELECTION_TOOLING | {
     "scripts/pilot-builds.py", "scripts/test-pilot-builds.py",
     "apps/desktop/src-tauri/build.rs", "apps/desktop/src-tauri/src/development_cpa.rs",
@@ -602,6 +603,7 @@ def select(paths, full=False):
         commands.append(["python3", "scripts/test-ci-setup.py"])
     if full or NATIVE_SCOPE_TOOLING.intersection(paths):
         commands.append(["python3", "scripts/test-native-agent-scope.py"])
+        commands.append(["python3", "scripts/test-native-agent-supervisor.py"])
     if full or windows_validation_tooling:
         commands.append(["python3", "scripts/test-windows-ci-report.py"])
         commands.append(["python3", "scripts/test-windows-native-artifacts.py"])

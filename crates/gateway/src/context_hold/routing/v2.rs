@@ -160,15 +160,46 @@ pub(super) fn routing_facts(
     worker: bool,
 ) -> Option<RoutingFacts> {
     let context = parsed(headers)?;
+    use hiroute_diagnostics::event::{
+        NativeAdapterDisposition as D, NativeAdapterEvidence, NativeRoutingAgent as A,
+        NativeRoutingPurpose as P,
+    };
+    let evidence = NativeAdapterEvidence {
+        version: 2,
+        agent: match context.agent.as_str() {
+            "pi" => A::Pi,
+            "dsh" => A::Dsh,
+            "opencode" => A::OpenCode,
+            "hermes" => A::Hermes,
+            _ => A::Other,
+        },
+        purpose: match context.purpose.as_str() {
+            "main" => P::Main,
+            "unknown" => P::Unknown,
+            "title" => P::Title,
+            "summary" => P::Summary,
+            "compaction" => P::Compaction,
+            _ => P::Other,
+        },
+        disposition: D::Applied,
+    };
+    // Keep the verdict from the actual consumer, not a second diagnostic parser.
+    let observed = |mut facts: RoutingFacts, disposition| {
+        facts.adapter = Some(NativeAdapterEvidence {
+            disposition,
+            ..evidence
+        });
+        Some(facts)
+    };
     if context.agent != agent || native_session_header(agent).is_none() {
-        return Some(RoutingFacts::uncertain());
+        return observed(RoutingFacts::uncertain(), D::AgentMismatch);
     }
     if known_auxiliary(&context.purpose) {
-        return Some(RoutingFacts::detached());
+        return observed(RoutingFacts::detached(), D::Auxiliary);
     }
     // Unknown purpose is usable observed traffic, never a reason to disable routing.
     if !matches!(context.purpose.as_str(), "main" | "unknown") {
-        return Some(RoutingFacts::uncertain());
+        return observed(RoutingFacts::uncertain(), D::UnsupportedPurpose);
     }
     let session = context
         .session_id
@@ -176,7 +207,7 @@ pub(super) fn routing_facts(
         .and_then(|v| serde_json::from_str::<String>(v.get()).ok())
         .filter(|s| id(s));
     let Some(session) = session else {
-        return Some(RoutingFacts::uncertain());
+        return observed(RoutingFacts::uncertain(), D::InvalidSession);
     };
     let consistent = if worker {
         matches!(header_value(headers, native_session_header(agent)?), Field::Value(value) if value == session)
@@ -193,7 +224,7 @@ pub(super) fn routing_facts(
         })
     };
     if !consistent {
-        return Some(RoutingFacts::uncertain());
+        return observed(RoutingFacts::uncertain(), D::SessionMismatch);
     }
     // A positive native synthetic-input marker limits only this request. It
     // grants no ancestry: a named predecessor/checkpoint cannot recover input
@@ -222,18 +253,21 @@ pub(super) fn routing_facts(
     // Producer request IDs are advisory correlation only. Never use one as a
     // key for admission, deduplication or a claim about a completed execution.
     let _request_id = optional_id(&context.request_id);
-    Some(RoutingFacts {
-        native: NativeCheckpoint {
-            turn: optional_id(&context.turn_id),
-            checkpoint: optional_id(&context.checkpoint),
-            compacted: continuation.is_some_and(|c| c.kind == "compression"),
-            branch_leaf: branch.as_ref().map(|b| digest(&b.leaf_id)),
-            branch_path: branch.as_ref().map(|b| digest(&b.path_digest)),
-            user_origin,
+    observed(
+        RoutingFacts {
+            native: NativeCheckpoint {
+                turn: optional_id(&context.turn_id),
+                checkpoint: optional_id(&context.checkpoint),
+                compacted: continuation.is_some_and(|c| c.kind == "compression"),
+                branch_leaf: branch.as_ref().map(|b| digest(&b.leaf_id)),
+                branch_path: branch.as_ref().map(|b| digest(&b.path_digest)),
+                user_origin,
+                ..Default::default()
+            },
             ..Default::default()
         },
-        ..Default::default()
-    })
+        D::Applied,
+    )
 }
 
 fn sha256(value: &str) -> bool {

@@ -533,6 +533,25 @@ impl GatewayObservation {
             &[request_id.as_bytes()],
         );
         if let Some(headers) = headers {
+            let context = self.diagnostic_context();
+            let mut evidence = identity.routing_evidence(headers);
+            evidence.request_token = context.token(
+                hiroute_diagnostics::correlation::CorrelationDomain::ModelRequest,
+                &request_id,
+            );
+            if evidence.header == hiroute_diagnostics::event::NativeRoutingHeader::Present {
+                evidence.context_token = headers
+                    .get("x-hiroute-routing-context")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|value| {
+                        context.token(
+                        hiroute_diagnostics::correlation::CorrelationDomain::NativeRoutingHeader,
+                        value,
+                    )
+                    });
+            }
+            context
+                .emit(hiroute_diagnostics::event::DiagnosticEvent::NativeRoutingEvidence(evidence));
             self.observe_native_continuation(
                 authorized,
                 ingress,
