@@ -79,7 +79,8 @@ impl AgentHistoryRow {
     }
     fn fingerprint(&self, connection: &Connection) -> PortResult<([u8; 32], usize)> {
         let mut hash = Sha256::new();
-        hash.update(b"hiroute.verified-agent-history/v1\0");
+        // Internal, process-local hash domain; no serialized/public schema.
+        hash.update(b"verified-agent-history-cache\0");
         let mut bytes = 0usize;
         for field in self.fields() {
             frame(&mut hash, field.as_bytes());
