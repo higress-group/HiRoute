@@ -145,7 +145,7 @@ pub(super) fn validate_message_shapes(
                 && let ContentPart::ToolCall { logical_id, .. }
                 | ContentPart::ToolResult { logical_id, .. } = part
             {
-                let target_id = super::continuation::project_tool_id(
+                let target_id = super::super::continuation::project_tool_id(
                     logical_id,
                     request.ingress_protocol,
                     target,
