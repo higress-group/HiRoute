@@ -235,6 +235,11 @@ impl BoundaryCapture {
         for (index, block) in &self.blocks {
             match block {
                 Block::Text {
+                    nonempty: false,
+                    reasoning: true,
+                    ..
+                } => hash.empty_reasoning(),
+                Block::Text {
                     nonempty: false, ..
                 } => {}
                 Block::Text {
@@ -344,7 +349,11 @@ pub(super) fn incoming_evidence(
                 let digest = text_digest(text, Some(replay), budget)?;
                 if !text.is_empty() && !text.content_ref().is_some_and(|r| r.byte_len() == 0) {
                     hash.part(b"reasoning", digest);
+                } else {
+                    hash.empty_reasoning();
                 }
+            } else {
+                hash.empty_reasoning();
             }
             if let Some(digest) = encrypted {
                 hash.part(b"encrypted_content", digest);
@@ -416,6 +425,8 @@ pub(super) fn incoming_evidence(
                         let (digest, nonempty) = json_text::digest(&state.value, replay, budget)?;
                         if nonempty {
                             hash.part(b"reasoning", digest);
+                        } else {
+                            hash.empty_reasoning();
                         }
                     } else {
                         let text = unsigned_messages_thinking_text(state)?;
@@ -424,6 +435,8 @@ pub(super) fn incoming_evidence(
                             && !text.content_ref().is_some_and(|r| r.byte_len() == 0)
                         {
                             hash.part(b"reasoning", digest);
+                        } else {
+                            hash.empty_reasoning();
                         }
                     }
                 }
@@ -457,8 +470,7 @@ impl BoundaryEvidence {
             Some(self.encrypted || incoming.encrypted || incoming.contextual)
         } else if !self.encrypted
             && !incoming.encrypted
-            && (self.reasoning == incoming.reasoning
-                && self.plaintext_full == incoming.plaintext_full
+            && (self.plaintext_full == incoming.plaintext_full
                 || self.reasoning
                     && !incoming.reasoning
                     && self.visible.is_some()
@@ -496,6 +508,13 @@ impl Default for BoundaryHasher {
 }
 
 impl BoundaryHasher {
+    fn empty_reasoning(&mut self) {
+        // Only the new proof retains empty reasoning positions. Original full
+        // and visible hashes deliberately keep their existing zero-content fold.
+        self.plaintext_full.update(b"reasoning");
+        self.plaintext_full.update(Sha256::digest(b""));
+    }
+
     fn part(&mut self, kind: &[u8], digest: [u8; 32]) {
         self.part_with_plaintext(kind, digest, digest);
     }
