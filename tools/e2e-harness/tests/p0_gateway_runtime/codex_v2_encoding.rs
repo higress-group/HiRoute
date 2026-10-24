@@ -342,6 +342,12 @@ fn complete_tool_stage(v2: bool, declared: bool, streaming: bool, nullable: bool
         false
     );
     assert_eq!(score["fact"]["history_membership"]["source_unverified"], v2);
+    if nullable {
+        assert_eq!(
+            score["fact"]["history_membership"]["association_unverified"],
+            true
+        );
+    }
     let admissions = facts
         .iter()
         .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")

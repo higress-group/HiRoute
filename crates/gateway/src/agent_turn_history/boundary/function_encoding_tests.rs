@@ -6,6 +6,9 @@ use crate::server::core_runtime::adapters::{
 };
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
+#[path = "function_encoding_compat_tests.rs"]
+mod compat;
+
 #[test]
 fn codex_v2_native_encoding_three_states_bind_accepted_output_and_replay_exactly() {
     let (_dir, replay) = replay();

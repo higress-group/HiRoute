@@ -13,15 +13,25 @@ fn real_listener_nullable_reasoning_tool_receipt_and_next_input_keep_complete_as
 
 #[test]
 fn real_listener_opaque_reasoning_excludes_only_standard_and_executes_native_owner() {
-    opaque_boundary(false);
+    opaque_boundary(false, false);
 }
 
 #[test]
 fn real_listener_opaque_reasoning_standard_only_reports_no_eligible_candidate() {
-    opaque_boundary(true);
+    opaque_boundary(true, false);
 }
 
-fn opaque_boundary(standard_only: bool) {
+#[test]
+fn real_listener_encrypted_function_excludes_only_standard_and_executes_native_owner() {
+    opaque_boundary(false, true);
+}
+
+#[test]
+fn real_listener_encrypted_function_standard_only_reports_no_eligible_candidate() {
+    opaque_boundary(true, true);
+}
+
+fn opaque_boundary(standard_only: bool, encrypted_tool: bool) {
     let standard = NativeProvider::start(vec![]);
     let native = NativeProvider::start(vec![reply(RESPONSES_OK)]);
     let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
@@ -36,13 +46,22 @@ fn opaque_boundary(standard_only: bool) {
     super::super::native_encrypted_continuation::configure_native_provider_state(&mut publication);
     publication.publication_revision += 1;
     fixture.publish(&mut publication);
+    let mut input = vec![json!({"role":"user","content":"A_SYNTHETIC_HISTORY"})];
+    if encrypted_tool {
+        input.extend([
+            json!({"type":"function_call","id":"fc","call_id":"call","name":"exec_command",
+                "arguments":"{\"cmd\":\"synthetic opaque argument\"}","encrypted_function_args":["cmd"]}),
+            json!({"type":"function_call_output","call_id":"call","output":"CONTROLLED_TOOL_RECEIPT"}),
+        ]);
+    } else {
+        input.push(json!({"type":"reasoning","id":"rs_opaque_synthetic",
+            "summary":[{"type":"summary_text","text":"Synthetic summary."}],
+            "content":null,"encrypted_content":"synthetic opaque state"}));
+    }
+    input.push(json!({"role":"user","content":"B_INDEPENDENT_SYNTHETIC_INPUT"}));
     let body = json!({"model":MODEL,"stream":false,
         "instructions":"synthetic instruction ".repeat(4096),
-        "input":[{"role":"user","content":"A_SYNTHETIC_HISTORY"},
-            {"type":"reasoning","id":"rs_opaque_synthetic",
-             "summary":[{"type":"summary_text","text":"Synthetic summary."}],
-             "content":null,"encrypted_content":"synthetic opaque state"},
-            {"role":"user","content":"B_INDEPENDENT_SYNTHETIC_INPUT"}]});
+        "input":input});
     let response = request(
         fixture.address,
         "POST",
