@@ -27,7 +27,7 @@ fn complete(control: &ControlStore, key: &str, payload: &str) -> OperationV1 {
     for step in &mut operation.steps {
         step.status = hiroute_domain::OperationStepStatus::Applied;
     }
-    control.save_operation(&mut operation).unwrap();
+    control.finish_operation(&mut operation).unwrap();
     operation
 }
 fn open(directory: &std::path::Path) -> ControlStore {
