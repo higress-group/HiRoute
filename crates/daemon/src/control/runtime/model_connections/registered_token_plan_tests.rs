@@ -1,5 +1,6 @@
 //! Registered endpoint identity with real source-local model declarations and durable save.
 use super::*;
+use hiroute_application::compiler::CandidateFactAuthorityV1;
 use hiroute_application::compute_management::{
     ComputeManagementCredentialCompilationV2, ComputeManagementEligibilityV2,
     compile_compute_management_source,
@@ -11,8 +12,8 @@ use hiroute_application_api::{
     NativeUserFactBasisV1, NativeUserFactValueV1, NativeUserModelDeclarationV1,
 };
 use hiroute_domain::{
-    CandidateFactAuthorityV1, GatewayAuthenticationSemanticsV1, NativeReasoningCapabilityV1,
-    OperationState, ProtectedSecret, UpstreamProtocol, WorkspaceId,
+    GatewayAuthenticationSemanticsV1, NativeReasoningCapabilityV1, OperationState, ProtectedSecret,
+    UpstreamProtocol, WorkspaceId,
 };
 
 const OPTION: &str = "bailian.token-plan.cn.v1";
@@ -188,7 +189,7 @@ fn codex_v2_registered_user_models_save_reopen_and_keep_legacy_native_credential
     for fact in &facts {
         assert_eq!(
             fact.eligibility,
-            ComputeManagementEligibilityV2::UserConfirmed
+            ComputeManagementEligibilityV2::RuntimeQualified
         );
         assert!(fact.catalog_configuration_id.is_none());
         let candidate =
@@ -199,7 +200,7 @@ fn codex_v2_registered_user_models_save_reopen_and_keep_legacy_native_credential
             .unwrap();
         assert_eq!(
             candidate.authority,
-            CandidateFactAuthorityV1::SourceLocalUser
+            CandidateFactAuthorityV1::RuntimeFallback
         );
         assert_eq!(candidate.connection_option_id, OPTION);
         let profile = candidate
