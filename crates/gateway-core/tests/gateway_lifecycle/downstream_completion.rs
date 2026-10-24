@@ -3,7 +3,10 @@ use crate::fixture::*;
 const PREFIX: &[u8] =
     b"data: {\"choices\":[{\"delta\":{\"content\":\"unfinished\"},\"finish_reason\":null}]}\n\n";
 
-struct StreamingLifecycle;
+#[derive(Default)]
+struct StreamingLifecycle {
+    failed_prefix_observed: Option<Arc<tokio::sync::Notify>>,
+}
 
 #[async_trait]
 impl GatewayLifecycle for StreamingLifecycle {
@@ -27,6 +30,12 @@ impl GatewayLifecycle for StreamingLifecycle {
         if request.path_and_query.as_ref() == "/length" {
             headers.insert(CONTENT_LENGTH, HeaderValue::from(PREFIX.len() as u64));
         }
+        if request.path_and_query.as_ref() == "/chunked" {
+            headers.insert(
+                http::header::TRANSFER_ENCODING,
+                HeaderValue::from_static("chunked"),
+            );
+        }
         session
             .write_response_head(GatewayResponseHead { status, headers })
             .await?;
@@ -38,6 +47,9 @@ impl GatewayLifecycle for StreamingLifecycle {
                 .write_response_body(Bytes::from_static(PREFIX), !failed)
                 .await?;
             if failed {
+                if let Some(observed) = &self.failed_prefix_observed {
+                    observed.notified().await;
+                }
                 return Err(TransportError::DeadlineExceeded);
             }
         }
@@ -49,7 +61,11 @@ async fn exchange_h1(method: &str, path: &str, version: &str) -> Result<Vec<u8>,
     let port = reserve_tcp_port()?;
     let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let task = start_pingora_service(port, GatewayHttpApp::new(StreamingLifecycle), shutdown_rx);
+    let task = start_pingora_service(
+        port,
+        GatewayHttpApp::new(StreamingLifecycle::default()),
+        shutdown_rx,
+    );
     wait_until_listening(address).await?;
     let result = async {
         let mut client = tokio::net::TcpStream::connect(address).await?;
@@ -129,6 +145,15 @@ async fn framing_preserves_known_length_no_body_and_http10_boundaries() -> Resul
     );
     assert!(!head.to_ascii_lowercase().contains("transfer-encoding"));
     assert_eq!(body, PREFIX);
+    let response = exchange_h1("POST", "/chunked", "HTTP/1.1").await?;
+    let (head, body) = split_response(&response);
+    assert_eq!(
+        head.to_ascii_lowercase()
+            .matches("transfer-encoding:")
+            .count(),
+        1
+    );
+    assert!(body.ends_with(b"0\r\n\r\n"));
     for (method, path) in [("HEAD", "/ok"), ("GET", "/204"), ("GET", "/304")] {
         let response = exchange_h1(method, path, "HTTP/1.1").await?;
         let (head, body) = split_response(&response);
@@ -139,5 +164,63 @@ async fn framing_preserves_known_length_no_body_and_http10_boundaries() -> Resul
     let (head, body) = split_response(&response);
     assert!(!head.to_ascii_lowercase().contains("transfer-encoding"));
     assert_eq!(body, PREFIX);
+    Ok(())
+}
+
+#[tokio::test]
+async fn http2_postcommit_failure_resets_without_successful_end_stream() -> Result<(), TestError> {
+    let _network_guard = NETWORK_TEST_LOCK.lock().await;
+    let port = reserve_tcp_port()?;
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let observed = Arc::new(tokio::sync::Notify::new());
+    let task = start_pingora_service(
+        port,
+        GatewayHttpApp::new(StreamingLifecycle {
+            failed_prefix_observed: Some(observed.clone()),
+        }),
+        shutdown_rx,
+    );
+    wait_until_listening(address).await?;
+    let socket = tokio::net::TcpStream::connect(address).await?;
+    let (mut sender, connection) = client::handshake(socket).await?;
+    let driver = tokio::spawn(connection);
+    let request = http::Request::builder()
+        .method(Method::POST)
+        .uri(format!("http://gateway.test:{port}/timeout"))
+        .body(())?;
+    let (response, _) = sender.send_request(request, true)?;
+    let result = tokio::time::timeout(Duration::from_secs(2), async {
+        let response = response.await?;
+        assert!(
+            !response
+                .headers()
+                .contains_key(http::header::TRANSFER_ENCODING)
+        );
+        let mut body = response.into_body();
+        let mut prefix = Vec::new();
+        while let Some(chunk) = body.data().await {
+            match chunk {
+                Ok(bytes) => {
+                    prefix.extend_from_slice(&bytes);
+                    body.flow_control().release_capacity(bytes.len())?;
+                    if prefix == PREFIX {
+                        observed.notify_one();
+                    }
+                }
+                Err(error) => return Ok::<_, TestError>(prefix == PREFIX && error.is_reset()),
+            }
+        }
+        Ok(false)
+    })
+    .await;
+    drop(sender);
+    driver.abort();
+    let _ = driver.await;
+    stop_pingora_service(shutdown_tx, task).await?;
+    assert!(
+        result??,
+        "HTTP/2 must reset the failed response instead of normal EOS"
+    );
     Ok(())
 }

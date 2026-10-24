@@ -353,6 +353,8 @@ pub(super) struct WireResponse {
     #[allow(dead_code)]
     pub(super) headers: BTreeMap<String, String>,
     pub(super) body: Vec<u8>,
+    #[allow(dead_code)]
+    pub(super) http_entity_complete: bool,
 }
 
 fn fragmented_request(address: SocketAddr, path: &str, body: &[u8]) -> WireResponse {
@@ -463,6 +465,7 @@ pub(super) fn parse_response(wire: Vec<u8>) -> WireResponse {
             status: 0,
             headers: BTreeMap::new(),
             body: wire,
+            http_entity_complete: false,
         };
     };
     let mut lines = std::str::from_utf8(&wire[..split]).unwrap().split("\r\n");
@@ -478,47 +481,20 @@ pub(super) fn parse_response(wire: Vec<u8>) -> WireResponse {
         .map(|line| line.split_once(':').unwrap())
         .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().into()))
         .collect();
-    let body = if headers
+    let (body, http_entity_complete) = if headers
         .get("transfer-encoding")
         .is_some_and(|value: &String| value.eq_ignore_ascii_case("chunked"))
     {
-        decode_chunked(&wire[split + 4..])
+        hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[split + 4..]).unwrap()
     } else {
-        wire[split + 4..].to_vec()
+        (wire[split + 4..].to_vec(), true)
     };
     WireResponse {
         status,
         headers,
         body,
+        http_entity_complete,
     }
-}
-
-fn decode_chunked(wire: &[u8]) -> Vec<u8> {
-    let mut output = Vec::new();
-    let mut offset = 0;
-    loop {
-        let line_end = wire[offset..]
-            .windows(2)
-            .position(|window| window == b"\r\n")
-            .map(|relative| offset + relative)
-            .expect("chunk size line");
-        let size = std::str::from_utf8(&wire[offset..line_end])
-            .unwrap()
-            .split(';')
-            .next()
-            .unwrap()
-            .trim();
-        let size = usize::from_str_radix(size, 16).unwrap();
-        offset = line_end + 2;
-        if size == 0 {
-            break;
-        }
-        output.extend_from_slice(&wire[offset..offset + size]);
-        offset += size;
-        assert_eq!(&wire[offset..offset + 2], b"\r\n");
-        offset += 2;
-    }
-    output
 }
 
 pub(super) struct Hirouted {

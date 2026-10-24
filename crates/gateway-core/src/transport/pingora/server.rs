@@ -1,4 +1,6 @@
 use super::*;
+use http::header::{CONTENT_LENGTH, TRANSFER_ENCODING};
+use http::{HeaderValue, Method, StatusCode, Version};
 
 pub struct GatewayHttpApp<L> {
     lifecycle: L,
@@ -133,8 +135,25 @@ impl GatewaySession for PingoraServerSession<'_> {
 
     async fn write_response_head(
         &mut self,
-        head: GatewayResponseHead,
+        mut head: GatewayResponseHead,
     ) -> Result<(), TransportError> {
+        let request = self.session.req_header();
+        let body_allowed = request.method != Method::HEAD
+            && !head.status.is_informational()
+            && head.status != StatusCode::NO_CONTENT
+            && head.status != StatusCode::NOT_MODIFIED
+            && !(request.method == Method::CONNECT && head.status.is_success());
+        if request.version == Version::HTTP_11
+            && body_allowed
+            && !head.headers.contains_key(CONTENT_LENGTH)
+            && !head.headers.contains_key(TRANSFER_ENCODING)
+        {
+            // Close-delimited EOF cannot distinguish successful completion from
+            // a failed lifecycle after headers/output were committed. Let the
+            // codec emit the final chunk only on an explicit end_stream write.
+            head.headers
+                .insert(TRANSFER_ENCODING, HeaderValue::from_static("chunked"));
+        }
         let mut response = ResponseHeader::build(head.status.as_u16(), Some(head.headers.len()))
             .map_err(|error| TransportError::InvalidMetadata(error.to_string().into()))?;
         for (name, value) in &head.headers {

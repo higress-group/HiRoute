@@ -818,17 +818,33 @@ fn read_wire_response(mut stream: TcpStream) -> WireResponse {
             .get("content-length")
             .and_then(|value| value.parse::<usize>().ok())
             .is_some_and(|length| length == wire.len() - split - 4)
-            || (status == 304 && wire.len() == split + 4);
+            || (status == 304 && wire.len() == split + 4)
+            || (headers
+                .get("transfer-encoding")
+                .is_some_and(|value| value.eq_ignore_ascii_case("chunked"))
+                && hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[split + 4..])
+                    .is_ok_and(|(_, complete)| complete));
         assert!(
             error.kind() == std::io::ErrorKind::ConnectionReset && complete,
             "incomplete HTTP response ended with {error}: {}",
             String::from_utf8_lossy(&wire)
         );
     }
+    let body = if headers
+        .get("transfer-encoding")
+        .is_some_and(|value| value.eq_ignore_ascii_case("chunked"))
+    {
+        let (body, complete) =
+            hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[split + 4..]).unwrap();
+        assert!(complete, "authority reply must have complete HTTP framing");
+        body
+    } else {
+        wire[split + 4..].to_vec()
+    };
     WireResponse {
         status,
         headers,
-        body: wire[split + 4..].to_vec(),
+        body,
     }
 }
 

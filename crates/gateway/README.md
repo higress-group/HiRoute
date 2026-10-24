@@ -517,6 +517,17 @@ cover both immediate recovery and concurrent main completion.
 
 ## Response failure evidence
 
+The [Pingora response adapter](../gateway-core/src/transport/pingora/server.rs)
+selects chunked framing for an unknown-length HTTP/1.1 body, including when the
+client requests connection close. A post-commit deadline or failure closes the
+incomplete entity; only an actual end-stream write emits its final chunk. This
+lets native SDKs detect truncation instead of accepting ordinary close-delimited
+EOF. Known lengths, body-forbidden responses, HTTP/1.0 and HTTP/2 retain their
+protocol boundaries. Model-terminal proof and partial history remain independent
+of HTTP entity completion. The [socket regressions](../gateway-core/tests/gateway_lifecycle/downstream_completion.rs)
+and [full listener cases](../../tools/e2e-harness/tests/p0_gateway_commit_boundary.rs)
+cover completion, deadline and disconnect delivery without another attempt.
+
 ### Candidate preparation errors
 
 A published plan freezes candidate selection, while the exact credential authority

@@ -74,6 +74,16 @@ may set exact Content-Length; a prefix/readiness gate cannot prove final length 
 uses H1 chunked/H2 streaming with no invented length. Headers already committed cannot
 be replaced with a second status/header block.
 
+For an HTTP/1.1 response whose body is allowed and has neither Content-Length nor
+Transfer-Encoding, the transport MUST select chunked framing even when the body
+plan is pass-through or the connection will close. Only an actual end_stream
+write may complete that entity. A failure after response commit MUST leave the
+entity incomplete; normal connection EOF cannot stand in for successful delivery.
+Known lengths and existing framing remain authoritative. HEAD, body-forbidden
+statuses and successful CONNECT responses do not gain a chunked body. HTTP/2
+retains stream reset semantics, and HTTP/1.0 retains close-delimited compatibility;
+its callers still require model-terminal evidence to establish semantic completion.
+
 ### Requirement: Body modes and budgets are scope- and direction-specific
 
 Request, Attempt request, Attempt precommit response, and accepted-response body

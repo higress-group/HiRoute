@@ -93,6 +93,10 @@ fn fixed_postcommit_disconnect_never_retries_keys_or_enters_another_plan() {
         fixture.request_body(br#"{"model":"runtime-model","input":"hello","stream":true}"#);
 
     assert_eq!(response.status, 200);
+    assert!(
+        !response.http_entity_complete,
+        "post-commit failure must remain an incomplete HTTP entity"
+    );
     let body = String::from_utf8_lossy(&response.body);
     assert!(body.contains("fixed-prefix"));
     assert!(!body.contains("forbidden-"));
@@ -127,6 +131,10 @@ fn real_listener_postcommit_disconnect_never_creates_another_attempt() {
 
     assert_eq!(response.status, 200);
     assert!(
+        !response.http_entity_complete,
+        "provider disconnect must reach the downstream HTTP boundary"
+    );
+    assert!(
         response
             .body
             .windows(b"semantic-prefix".len())
@@ -138,4 +146,27 @@ fn real_listener_postcommit_disconnect_never_creates_another_attempt() {
         0,
         "downstream semantic commit must permanently close fallback"
     );
+}
+
+#[test]
+fn real_listener_postcommit_deadline_preserves_prefix_without_successful_eof() {
+    let prefix = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"deadline-prefix\",\"model\":\"runtime-native\"}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"deadline-prefix\"}\n\n";
+    let first = NativeProvider::start(vec![ProviderReply::StreamDrip {
+        status: 200,
+        chunks: vec![prefix.to_vec(), b": still waiting\n\n".to_vec()],
+        interval: Duration::from_millis(1_500),
+    }]);
+    let second = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: br#"{"id":"forbidden-after-deadline"}"#,
+    }]);
+    let fixture = RuntimeFixture::launch_with_replay_timeout(&[&first, &second], 2, 64 * 1024, 800);
+    let response = fixture
+        .request_body(br#"{"model":"runtime-model","input":"deadline check","stream":true}"#);
+    assert_eq!(response.status, 200);
+    assert!(!response.http_entity_complete);
+    assert!(String::from_utf8_lossy(&response.body).contains("deadline-prefix"));
+    assert!(!String::from_utf8_lossy(&response.body).contains("response.completed"));
+    assert_eq!((first.calls(), second.calls()), (1, 0));
 }
