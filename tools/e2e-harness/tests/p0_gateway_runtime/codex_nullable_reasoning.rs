@@ -29,8 +29,13 @@ fn opaque_boundary(standard_only: bool) {
         &[&standard, &native, &classifier],
         2,
     );
-    dialect(&fixture, standard_only);
-    super::super::native_encrypted_continuation::enable_native_provider_state(&fixture);
+    // Compose both capability changes into one publication transaction. The test
+    // control's active revision advances without rewriting its startup file.
+    let mut publication = fixture.publication();
+    configure_dialect(&mut publication, standard_only);
+    super::super::native_encrypted_continuation::configure_native_provider_state(&mut publication);
+    publication.publication_revision += 1;
+    fixture.publish(&mut publication);
     let body = json!({"model":MODEL,"stream":false,
         "instructions":"synthetic instruction ".repeat(4096),
         "input":[{"role":"user","content":"A_SYNTHETIC_HISTORY"},
@@ -56,7 +61,7 @@ fn opaque_boundary(standard_only: bool) {
     );
     let received: Value = serde_json::from_slice(&response.body).unwrap();
     if standard_only {
-        assert_eq!(received["error"]["code"], "NO_ELIGIBLE_CANDIDATE");
+        assert_eq!(received["code"], "NO_ELIGIBLE_CANDIDATE");
         assert_eq!(native.calls(), 0);
     } else {
         assert_eq!(received["status"], "completed");

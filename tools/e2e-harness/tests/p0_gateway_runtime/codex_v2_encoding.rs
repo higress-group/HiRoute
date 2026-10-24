@@ -3,6 +3,7 @@
 use super::native_history::{classifier_body, headers, reply};
 use super::*;
 use hiroute_domain::UpstreamProtocol;
+use hiroute_gateway::server::publication::GatewayPublicationSnapshotV3;
 use serde_json::{Value, json};
 
 #[path = "codex_nullable_reasoning.rs"]
@@ -15,6 +16,12 @@ const TOOL_DECLARED: &[u8] = br#"{"id":"tool","model":"runtime-native","status":
 
 fn dialect(fixture: &RuntimeFixture, primary_standard: bool) {
     let mut publication = fixture.publication();
+    configure_dialect(&mut publication, primary_standard);
+    publication.publication_revision += 1;
+    fixture.publish(&mut publication);
+}
+
+fn configure_dialect(publication: &mut GatewayPublicationSnapshotV3, primary_standard: bool) {
     for (index, candidate) in publication.aliases[0].candidates.iter_mut().enumerate() {
         if index == 1 && !primary_standard {
             continue;
@@ -28,8 +35,6 @@ fn dialect(fixture: &RuntimeFixture, primary_standard: bool) {
         candidate.protocol_profile_digest =
             hiroute_domain::CanonicalDigest::of(&candidate.protocol_profiles).unwrap();
     }
-    publication.publication_revision += 1;
-    fixture.publish(&mut publication);
 }
 
 fn original_body(v2: bool) -> Value {

@@ -4,6 +4,7 @@ use super::*;
 use hiroute_gateway::server::core_runtime::profiles::{
     CandidateProtocolProfile, Fidelity, NativeProviderStateEmission,
 };
+use hiroute_gateway::server::publication::GatewayPublicationSnapshotV3;
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -101,8 +102,14 @@ pub(super) fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
     }
 }
 
-pub(super) fn enable_native_provider_state(fixture: &RuntimeFixture) {
+fn enable_native_provider_state(fixture: &RuntimeFixture) {
     let mut publication = fixture.publication();
+    configure_native_provider_state(&mut publication);
+    publication.publication_revision += 1;
+    fixture.publish(&mut publication);
+}
+
+pub(super) fn configure_native_provider_state(publication: &mut GatewayPublicationSnapshotV3) {
     for candidate in &mut publication.aliases[0].candidates {
         for profile in &mut candidate.protocol_profiles {
             let mut native: CandidateProtocolProfile =
@@ -117,8 +124,6 @@ pub(super) fn enable_native_provider_state(fixture: &RuntimeFixture) {
         candidate.protocol_profile_digest =
             hiroute_domain::CanonicalDigest::of(&candidate.protocol_profiles).unwrap();
     }
-    publication.publication_revision += 1;
-    fixture.publish(&mut publication);
 }
 
 fn send(fixture: &RuntimeFixture, input: &[Value], turn: &str, proved: bool) -> Vec<Value> {
