@@ -31,6 +31,11 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  if(command==='model_feed_settings_apply') {if(payload.input.retrieval_enabled!==undefined) feedStatus.retrieval_enabled=payload.input.retrieval_enabled; if(payload.input.acknowledge_disclosure) feedStatus.disclosure_acknowledged=true; return structuredClone(feedStatus);}
  if(command==='agent_snapshot') return structuredClone(agents);
  if(command==='decision_services') return {services:[params.has('native')?{...decision,connection:{kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:10000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}}}:decision]};
+ if(command==='plan_editor_options') {
+  const value = await mockProductInvoke(command,payload,'ready');
+  if (!('quickStartAuthoringJudgment' in window)) Object.assign(window, { quickStartAuthoringJudgment: structuredClone((value as any).authoring.editor.smart.judgment) });
+  return value;
+ }
  if(command==='observe_operation') return observed;
  if(command==='preview_plan_editor') {
   const i=payload.input;
