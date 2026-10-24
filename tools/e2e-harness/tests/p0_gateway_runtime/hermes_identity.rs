@@ -223,7 +223,8 @@ fn hermes_context_fault_then_recovery_keeps_independent_lineage_and_exact_assess
         let from = judged["preceding_stage"]["from"].as_u64().unwrap() as usize;
         assert_eq!(
             json!(&judged["visible_conversation"].as_array().unwrap()[from..]),
-            json!([{"user":[{"kind":"text","text":"A_ACTUAL_FAULT_EXECUTION"}],
+            json!([{"user":[{"kind":"text","text":"A_ACTUAL_FAULT_EXECUTION"},
+                {"kind":"unavailable","source_kind":"unverified_request_user_origin"}],
                 "status":"completed","steps":[[{"kind":"text","text":"ok"}]]}])
         );
         let facts = wait_execution_facts(&fixture, 2);

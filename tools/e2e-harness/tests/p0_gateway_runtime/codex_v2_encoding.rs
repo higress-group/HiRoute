@@ -227,10 +227,16 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
             let assessed = json!(&judged["visible_conversation"].as_array().unwrap()[from..]);
             // Decision API deliberately excludes raw tool-result bodies. Its status
             // follows the native result's declared status, absent in this fixture.
+            let mut assessed_user = vec![json!({"kind":"text","text":"A_READ_FIXTURE"})];
+            if v2 {
+                assessed_user.push(
+                    json!({"kind":"unavailable","source_kind":"unverified_request_user_origin"}),
+                );
+            }
             assert_eq!(
                 assessed,
                 json!([{
-                    "user":[{"kind":"text","text":"A_READ_FIXTURE"}],
+                    "user":assessed_user,
                     "status":"completed",
                     "steps":[[{"kind":"tool_activity","tool":"collaboration.spawn_agent","status":"unknown"}],
                              [{"kind":"text","text":"ok"}]]
@@ -293,6 +299,7 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
                 score["fact"]["history_membership"]["capture_partial"],
                 false
             );
+            assert_eq!(score["fact"]["history_membership"]["source_unverified"], v2);
             let admissions = facts
                 .iter()
                 .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")
