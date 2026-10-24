@@ -190,6 +190,26 @@ impl ControlStore {
         workspace: &WorkspaceId,
         kinds: &[&str],
     ) -> PortResult<Vec<Arc<SucceededAgentOperationV1>>> {
+        self.read_verified_agent_history(workspace, kinds, true)
+    }
+
+    /// Discovery still visits every accepted operation through its own strict
+    /// immutable-input reader. Missing provenance cannot turn a path hint into
+    /// authority, nor make an otherwise readable journal block startup.
+    pub(super) fn verified_agent_history_for_discovery(
+        &self,
+        workspace: &WorkspaceId,
+        kinds: &[&str],
+    ) -> PortResult<Vec<Arc<SucceededAgentOperationV1>>> {
+        self.read_verified_agent_history(workspace, kinds, false)
+    }
+
+    fn read_verified_agent_history(
+        &self,
+        workspace: &WorkspaceId,
+        kinds: &[&str],
+        require_complete_provenance: bool,
+    ) -> PortResult<Vec<Arc<SucceededAgentOperationV1>>> {
         super::agent_read::validate_kinds(kinds)?;
         let connection = self.connection.borrow();
         // An existing caller transaction already supplies the snapshot. Never
@@ -242,7 +262,15 @@ impl ControlStore {
         for row in rows {
             let row = row.map_err(|_| corrupt())?;
             members.insert(row.operation_id.clone());
-            facts.push(cache.read(&connection, &row)?);
+            match cache.read(&connection, &row) {
+                Ok(fact) => facts.push(fact),
+                Err(error)
+                    if !require_complete_provenance && error.code == PortErrorCode::Corrupt =>
+                {
+                    // No unverified fact is returned or cached as a proof.
+                }
+                Err(error) => return Err(error),
+            }
         }
         // Retire entries deleted or moved out of this query, without displacing
         // valid members during repeated sequential scans of an oversized history.

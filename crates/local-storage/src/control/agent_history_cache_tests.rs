@@ -349,11 +349,13 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
         2
     );
     control.connection.borrow().execute_batch("UPDATE operation_steps SET state='pending' WHERE step_no=5 AND operation_id != (SELECT operation_id FROM operations ORDER BY rowid DESC LIMIT 1)").unwrap();
+    // Discovery is a path hint. It retains readable immutable inputs when
+    // provenance is missing; the independent authority reader stays strict.
     assert_eq!(
         control
             .agent_settings_native_targets(&WorkspaceId::default())
-            .unwrap_err()
-            .code,
-        PortErrorCode::Corrupt
+            .unwrap(),
+        targets
     );
+    assert_eq!(read(&control).unwrap_err().code, PortErrorCode::Corrupt);
 }
