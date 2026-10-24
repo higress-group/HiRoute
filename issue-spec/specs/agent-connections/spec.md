@@ -136,6 +136,15 @@ Preview/Apply does not re-run `claude --version`. An unknown native provider in 
 cannot make a valid executable/resource disappear when switching to an authorized plan.
 Only the action requiring an unproven capability is unavailable.
 
+Explicit Claude authentication and collaboration checks MUST replace inherited
+HOME, native configuration and temporary-directory selectors with disposable
+probe-owned roots. Both the generic temporary directory and Claude's dedicated
+`CLAUDE_CODE_TMPDIR` MUST use the probe workspace, so native startup cannot fall
+back to a shared user temporary directory. The check MUST stop its owned process
+scope before removing those roots. An authenticated loopback Messages request
+and successful native completion remain necessary authentication evidence;
+isolated environment setup alone does not establish that capability.
+
 Hermes connection admission SHALL depend on actual plugin/configuration interfaces and required transport/header delivery. Older version labels or missing optional reasoning replay SHALL NOT alone block a connection. CLI/management and Desktop guidance SHALL recommend a release with the upstream reasoning-replay fix and explain that older versions may omit reasoning content on tool continuations. Missing required integration interfaces still reject before native writes with actionable guidance, without automatically upgrading Hermes. Passive scan, independent management-Skill preparation, owned restore and accepted-operation recovery retain their action-specific capability and ownership checks.
 
 #### Scenario: Reject incompatible Hermes integration without blocking owned restore

@@ -168,6 +168,7 @@ impl ClaudeNativeIngressProbe {
             .env("HOME", &home)
             .env("CLAUDE_CONFIG_DIR", &config)
             .env("TMPDIR", &workspace)
+            .env("CLAUDE_CODE_TMPDIR", &workspace)
             .env("PATH", super::native_ingress_probe::native_probe_path())
             .current_dir(&workspace);
         #[cfg(unix)]
