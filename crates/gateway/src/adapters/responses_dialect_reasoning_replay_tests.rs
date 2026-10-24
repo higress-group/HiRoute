@@ -1,6 +1,7 @@
 //! Retained typed reasoning state must govern the production Replay projection.
 use super::super::reasoning::{prefix_request, producer_request};
 use super::*;
+use crate::server::core_runtime::model_ir::ContentPart;
 
 #[test]
 fn nullable_reasoning_production_replay_matches_inline_at_each_inline_budget() {
