@@ -88,6 +88,7 @@ fn run_failure(events: Vec<Value>) -> (Value, String) {
             profile,
             ToolIdProjection::new(IngressProtocol::Responses),
             None,
+            Default::default(),
             true,
             "alias".into(),
         )

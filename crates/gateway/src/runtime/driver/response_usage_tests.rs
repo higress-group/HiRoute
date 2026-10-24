@@ -108,6 +108,7 @@ async fn attempt_state(ingress: IngressProtocol) -> ProductionAttemptState {
         native_output,
         omit_thinking: false,
         chat_tool_projection: None,
+        function_encoding_projection: Default::default(),
         chat_tool_projection_budget: None,
         decoder,
         renderer: None,

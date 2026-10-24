@@ -606,6 +606,43 @@ mod responses_dialect_storage_tests {
             .clone()
     }
     #[test]
+    fn codex_v2_complete_stored_plan_rebuilds_encoding_choice_after_reopen() {
+        let input: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+        ))
+        .unwrap();
+        let plan: CompiledAgentPlanV1 = serde_json::from_value(input["plans"][0].clone()).unwrap();
+        let mut stored = StoredPlanV1::freeze(&plan).unwrap();
+        for choice in stored
+            .groups
+            .iter_mut()
+            .flat_map(|g| &mut g.candidates)
+            .flat_map(|c| &mut c.protocols)
+        {
+            assert!(choice.native_target.is_none());
+            choice.responses_dialect = Some(ResponsesDialectV1::StandardJson);
+        }
+        let bytes = serde_json::to_vec(&stored).unwrap();
+        drop(stored);
+        let reopened: StoredPlanV1 = serde_json::from_slice(&bytes).unwrap();
+        let executable = reopened.build().unwrap();
+        executable.validate().unwrap();
+        for p in executable
+            .body
+            .materialized
+            .attempt_owned
+            .groups
+            .iter()
+            .flat_map(|g| &g.candidates)
+            .flat_map(|c| &c.protocol_profiles)
+        {
+            assert_eq!(p.adapter_revision, STANDARD_RESPONSES_JSON_ADAPTER_V1);
+        }
+        let current = StoredPlanV1::freeze(&executable).unwrap();
+        assert_eq!(serde_json::to_vec(&current).unwrap(), bytes);
+    }
+
+    #[test]
     fn codex_v2_standard_dialect_survives_storage_and_native_missing_stays_native() {
         let mut p = profile();
         p.native_target = None;

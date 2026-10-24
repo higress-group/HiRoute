@@ -67,14 +67,18 @@ their original dialect. It consumes boolean `encrypted` annotations only at JSON
 nodes, retains the complete tool declarations, and projects all-plaintext `agent_message`
 content into assistant blocks carrying the original author/recipient and ordered text.
 Original ingress history/source evidence is untouched. Cipher/mixed peer content and
-historical function calls without an explicit plaintext declaration cannot cross this
-boundary. A fresh native session, or native compaction which actually removes those
+historical function calls without an explicit plaintext declaration in a request which
+negotiates the Codex encoding extension cannot cross this boundary. Ordinary standard
+Responses clients may omit that extension on their ordinary function-call replay. A fresh native session, or native compaction which actually removes those
 items, is required before choosing the new source for such a conversation; no history is
 rewritten and compaction itself may require a call through the old source.
 
-The selected translator declares `encrypted_function_args: []` only on its own standard
-JSON responses. Chat/Message JSON tool producers also declare plaintext when mapped to
-Responses. Native Responses preserves missing, empty and nonempty declarations; malformed
+The selected translator declares `encrypted_function_args: []` only when this actual
+request negotiated the encoding extension. Chat/Message JSON tool producers use the same
+request-bound result when mapped to Responses. Ordinary Responses clients receive no new
+encoding field, so dropping unknown extensions cannot create an artificial history break.
+The prepared request passes the same projection to the successful attempt, native/JSON
+renderers and observation tracker; retry and fallback attempts derive their own result. Native Responses preserves missing, empty and nonempty declarations; malformed
 or contradictory declarations fail without a successful terminal claim. Input replay and
 accepted-boundary digests retain those distinctions. [Encoding tests](src/adapters/responses_dialect_tests.rs)
 cover the full Codex V2 declaration shape, complete SSE lifecycle, buffered JSON, peer

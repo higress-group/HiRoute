@@ -6,6 +6,8 @@ mod auxiliary_failure_isolation;
 mod bearer_auth;
 #[path = "p0_gateway_runtime/cancelled_tool_stage.rs"]
 mod cancelled_tool_stage;
+#[path = "p0_gateway_runtime/codex_v2_encoding.rs"]
+mod codex_v2_encoding;
 #[path = "p0_gateway_runtime/context_overflow.rs"]
 mod context_overflow;
 #[path = "p0_gateway_runtime/decision_branches.rs"]

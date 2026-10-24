@@ -222,8 +222,13 @@ confirmed source/Plan.
 
 Missing `encrypted_function_args`, explicit `[]`, and a nonempty array SHALL remain
 three distinct native/replay states. The standard translator may emit `[]` only after
-selecting the JSON argument contract and consuming supported boolean encryption schema
-annotations at schema nodes. It SHALL NOT delete a business property/example named
+selecting the JSON argument contract and consuming the actual request encoding
+declaration (supported schema annotations, explicit encoding replay, or a native peer
+item). Ordinary standard Responses requests without that declaration SHALL retain ordinary
+missing-field tool replay and SHALL NOT acquire the extension in their responses. The
+prepared request, successful attempt, native/JSON response and observation capture SHALL
+share the same per-attempt projection, never a preceding attempt's negotiation. Schema
+annotations SHALL be consumed only at schema nodes. It SHALL NOT delete a business property/example named
 `encrypted`, discard tools/native options, or accept a contradictory encrypted return.
 Chat function arguments and Messages tool input are intrinsic JSON producers for their
 representable conversions; they do not prove arbitrary native Responses plaintext.
@@ -231,7 +236,8 @@ representable conversions; they do not prove arbitrary native Responses plaintex
 A native plaintext `agent_message` SHALL preserve its author, recipient, content order
 and bytes in an assistant representation. It SHALL NOT become a user message or acquire
 an invented tool identity. Ciphertext, mixed/unknown peer content, and historical function
-calls lacking explicit plaintext evidence SHALL fail that dialect candidate without
+calls lacking explicit plaintext evidence inside a request negotiating the Codex encoding
+extension SHALL fail that dialect candidate without
 rewriting original history or disabling independent classification/capture/evaluation.
 An incompatible existing conversation requires native compaction that actually removes
 the unrepresentable items, or a fresh native session. A compaction retaining those items
