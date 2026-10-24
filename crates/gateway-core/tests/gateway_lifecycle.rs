@@ -6,6 +6,8 @@ mod body_and_framing;
 mod configuration;
 #[path = "gateway_lifecycle/deadlines_and_cancel.rs"]
 mod deadlines_and_cancel;
+#[path = "gateway_lifecycle/downstream_completion.rs"]
+mod downstream_completion;
 #[path = "gateway_lifecycle/fallback_and_selection.rs"]
 mod fallback_and_selection;
 #[path = "gateway_lifecycle/fixture/mod.rs"]
