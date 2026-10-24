@@ -193,7 +193,7 @@ fn assert_codex_replay_wire(additional_tools: bool, cleanup: Option<usize>) {
             for item in expected.as_array_mut().unwrap() {
                 if item["type"] == "reasoning"
                     && (item["status"] == "completed"
-                        || item.get("status").is_some_and(Value::is_null))
+                        || item.get("status").is_some_and(serde_json::Value::is_null))
                 {
                     item.as_object_mut().unwrap().remove("status");
                 }
