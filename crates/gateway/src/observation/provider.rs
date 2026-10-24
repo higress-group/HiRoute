@@ -119,7 +119,7 @@ impl ProviderRuntimePort for ObservedProductionProvider {
         // Both credential paths now have the exact staged attempt. Report only
         // facts returned by successful authoritative request materialization.
         if let Some(observation) = &observation {
-            inner.report_request_reasoning_projection(observation);
+            inner.report_request_projection(observation, &stable_binding_id);
         }
         // The unauthenticated profile has no credential-read staging hook.
         // Bind only after authoritative materialization and its None staging.

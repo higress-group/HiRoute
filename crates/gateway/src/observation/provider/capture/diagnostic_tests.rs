@@ -90,7 +90,6 @@ fn run_failure(events: Vec<Value>) -> (Value, String) {
             None,
             Default::default(),
             true,
-            "alias".into(),
         )
         .unwrap();
     // A later request-local attempt must not capture this worker's diagnostic.

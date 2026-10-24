@@ -80,6 +80,7 @@ async fn attempt_state(ingress: IngressProtocol) -> ProductionAttemptState {
     ProductionAttemptState {
         managed_cpa: false,
         request_reasoning_projection: None,
+        request_projection_loss: Default::default(),
         #[cfg(all(unix, debug_assertions))]
         capture: None,
         response_status: Some(StatusCode::OK),

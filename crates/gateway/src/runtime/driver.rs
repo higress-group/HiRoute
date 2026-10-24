@@ -172,6 +172,7 @@ impl ProductionReplaySeedEnvelope {
 pub struct ProductionAttemptState {
     managed_cpa: bool,
     request_reasoning_projection: Option<RequestReasoningProjection>,
+    request_projection_loss: adapters::RequestProjectionLoss,
     #[cfg(all(unix, debug_assertions))]
     capture: Option<super::stream_capture::Capture>,
     response_status: Option<http::StatusCode>,
@@ -211,15 +212,41 @@ impl ProductionAttemptState {
         self.managed_cpa
     }
 
-    pub(crate) fn report_request_reasoning_projection(
+    pub(crate) fn report_request_projection(
         &self,
         request: &crate::server::core_runtime::observation::RequestObservation,
+        stable_binding_id: &str,
     ) {
         if let Some(projection) = &self.request_reasoning_projection {
             request.reasoning_cleanup(
                 projection.reason,
                 projection.fields_removed,
                 projection.cleaned_prefix_len,
+            );
+        }
+        if self.request_projection_loss.message_phases_omitted > 0 {
+            use hiroute_diagnostics::event::{
+                IngressProtocol as Protocol, RequestProjection, RequestProjectionOutcome,
+                RequestProjectionReason, RequestProjectionStage,
+            };
+            request.request_projection(
+                stable_binding_id,
+                RequestProjection {
+                    request_token: None,
+                    binding_token: None,
+                    ingress_protocol: Protocol::Unknown,
+                    upstream_protocol: Protocol::OpenAiChat,
+                    stage: RequestProjectionStage::AttemptMaterialization,
+                    outcome: RequestProjectionOutcome::DeclaredLoss,
+                    reason: RequestProjectionReason::MessagePhaseOmitted,
+                    first_message_index: self
+                        .request_projection_loss
+                        .first_message_index
+                        .map(|index| index as u64),
+                    affected_items: Some(
+                        self.request_projection_loss.message_phases_omitted as u64,
+                    ),
+                },
             );
         }
     }

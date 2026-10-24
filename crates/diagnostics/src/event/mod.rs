@@ -16,6 +16,7 @@ mod native_completion;
 mod native_routing;
 mod observation;
 mod protected_channel;
+mod request_projection;
 mod startup;
 mod system;
 mod worker;
@@ -35,6 +36,7 @@ pub use native_completion::*;
 pub use native_routing::*;
 pub use observation::*;
 pub use protected_channel::*;
+pub use request_projection::*;
 pub use startup::*;
 pub use system::*;
 pub use worker::*;
@@ -71,6 +73,7 @@ pub enum DiagnosticEvent {
     AttemptEnd(AttemptEnd),
     UpstreamWire(UpstreamWire),
     ReasoningCleanup(ReasoningCleanup),
+    RequestProjection(RequestProjection),
     ResponseFailure(ResponseFailure),
     NativeCompletionUnknown(NativeCompletionUnknown),
     NativeRoutingEvidence(NativeRoutingEvidence),
@@ -184,6 +187,7 @@ impl DiagnosticEvent {
                 _ => Debug,
             },
             DiagnosticEvent::ReasoningCleanup(_) => Warn,
+            DiagnosticEvent::RequestProjection(_) => Warn,
             DiagnosticEvent::ResponseFailure(_) => Warn,
             DiagnosticEvent::NativeCompletionUnknown(_) => Warn,
             DiagnosticEvent::NativeRoutingEvidence(_) => Debug,
@@ -273,6 +277,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::AttemptEnd(_) => "attempt_end",
             DiagnosticEvent::UpstreamWire(_) => "upstream_wire",
             DiagnosticEvent::ReasoningCleanup(_) => "reasoning_cleanup",
+            DiagnosticEvent::RequestProjection(_) => "request_projection",
             DiagnosticEvent::ResponseFailure(_) => "response_failure",
             DiagnosticEvent::NativeCompletionUnknown(_) => "native_completion_unknown",
             DiagnosticEvent::NativeRoutingEvidence(_) => "native_routing_evidence",

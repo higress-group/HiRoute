@@ -31,6 +31,7 @@ pub struct PreparedNativeTemplate {
     pub reasoning_profile_id: String,
     pub(crate) chat_tool_projection: Option<ChatToolProjection>,
     pub(crate) function_encoding_projection: super::super::FunctionEncodingProjection,
+    pub(crate) request_projection_loss: super::RequestProjectionLoss,
 }
 
 /// Structural JSON plus replay-backed substitutions shared by provider and
@@ -79,6 +80,7 @@ impl PreparedNativeTemplate {
                 None => 0,
             },
             4 * std::mem::size_of::<usize>(),
+            std::mem::size_of::<super::RequestProjectionLoss>(),
         ]
         .into_iter()
         .try_fold(0_usize, usize::checked_add)
@@ -119,9 +121,11 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
     let reasoning = profile.validate(&requirements)?;
     let native = request.native_body.is_some()
         && request.ingress_protocol == profile.capability.upstream_protocol;
-    if !native {
-        validate_message_shapes(request, profile.capability.upstream_protocol)?;
-    }
+    let request_projection_loss = if native {
+        super::RequestProjectionLoss::default()
+    } else {
+        validate_message_shapes(request, profile.capability.upstream_protocol)?
+    };
     let chat_tool_projection =
         if !native && profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
             Some(ChatToolProjection::for_request(request)?)
@@ -206,6 +210,7 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         reasoning_profile_id: reasoning.profile_id.clone(),
         chat_tool_projection,
         function_encoding_projection,
+        request_projection_loss,
     })
 }
 

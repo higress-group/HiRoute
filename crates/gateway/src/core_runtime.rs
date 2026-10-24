@@ -835,10 +835,12 @@ impl ProductionGatewayRuntime {
                 None
             };
             drop(routing_view);
-            let mut planner_input = match self
-                .planner_inputs
-                .build_input(*canonical_request, &authorized)
-                .map(Box::new)
+            let mut planner_input = match with_active_request(request_observation.clone(), async {
+                self.planner_inputs
+                    .build_input(*canonical_request, &authorized)
+                    .map(Box::new)
+            })
+            .await
             {
                 Ok(input) => input,
                 Err(crate::server::composition::PortError::InvalidReasoningControl) => {

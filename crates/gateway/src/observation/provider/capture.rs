@@ -179,7 +179,6 @@ impl CanonicalCaptureProducer {
         chat_tool_projection: Option<&crate::server::core_runtime::adapters::ChatToolProjection>,
         function_encoding_projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
         streaming: bool,
-        alias: String,
     ) -> Option<CanonicalCaptureHandle> {
         let shared = Arc::clone(self.shared.get_or_init(|| self.start_worker()).as_ref()?);
         let projection_bytes = match chat_tool_projection {
@@ -200,6 +199,7 @@ impl CanonicalCaptureProducer {
                 reason: Mutex::new(None),
             }),
         };
+        let alias = request.metadata().served_model_id.clone();
         let job = CaptureJob::Begin {
             id: handle.id,
             failure_context: Box::new(request.capture_response_failure_context()),
@@ -583,7 +583,6 @@ impl RequestObservation {
             chat_tool_projection,
             function_encoding_projection,
             streaming,
-            self.metadata().served_model_id.clone(),
         )
     }
 

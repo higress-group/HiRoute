@@ -1,4 +1,4 @@
-//! A completed assistant answer has the same channel on every supported protocol.
+//! Historical phase projection is separate from live output termination semantics.
 use super::*;
 use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use serde_json::Value;
@@ -66,23 +66,151 @@ fn final_answer_request_history_projects_to_messages() {
 }
 
 #[test]
-fn non_answer_request_phases_remain_unrepresentable_cross_protocol() {
-    for phase in ["commentary", "analysis", "future_phase", ""] {
+fn unknown_request_phases_remain_unrepresentable_cross_protocol() {
+    for phase in ["analysis", "future_phase", ""] {
         let request = decode_ingress_request(IngressProtocol::Responses, &document(phase)).unwrap();
         for target in [IngressProtocol::ChatCompletions, IngressProtocol::Messages] {
             let profile = exact_state_profile(IngressProtocol::Responses, target);
             assert!(
                 matches!(
                     project_candidate_request(&request, &profile),
-                    Err(ProtocolAdapterError::ClientUnrepresentable(_))
+                    Err(ProtocolAdapterError::RequestUnrepresentable { .. })
                 ),
                 "{phase:?} must not become an ordinary assistant answer"
             );
             assert!(matches!(
                 project_candidate_request_template(&request, &profile),
-                Err(ProtocolAdapterError::ClientUnrepresentable(_))
+                Err(ProtocolAdapterError::RequestUnrepresentable { .. })
             ));
         }
+    }
+}
+
+#[test]
+fn completed_commentary_history_projects_to_chat_with_explicit_phase_loss() {
+    for status in [None, Some("completed")] {
+        let mut original = document("commentary");
+        original["input"][0]["id"] = json!("native-commentary");
+        if let Some(status) = status {
+            original["input"][0]["status"] = json!(status);
+        }
+        let request = decode_ingress_request(IngressProtocol::Responses, &original).unwrap();
+        let profile =
+            exact_state_profile(IngressProtocol::Responses, IngressProtocol::ChatCompletions);
+        let direct = project_candidate_request(&request, &profile).unwrap();
+        let template = project_candidate_request_template(&request, &profile).unwrap();
+        assert_eq!(
+            direct.body["messages"],
+            json!([
+                {"role":"assistant","content":"previous answer"},
+                {"role":"user","content":"next question"}
+            ])
+        );
+        assert_eq!(
+            direct.request_projection_loss,
+            template.request_projection_loss
+        );
+        assert_eq!(direct.request_projection_loss.message_phases_omitted, 1);
+        assert_eq!(direct.request_projection_loss.first_message_index, Some(0));
+        assert_eq!(request.native_body.as_ref(), Some(&original));
+        assert_eq!(
+            super::super::reasoning_loss::request_loss(
+                &request,
+                IngressProtocol::ChatCompletions,
+                None
+            ),
+            0
+        );
+        let messages = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Messages);
+        assert!(matches!(
+            project_candidate_request_template(&request, &messages),
+            Err(ProtocolAdapterError::RequestUnrepresentable {
+                reason:
+                    hiroute_diagnostics::event::RequestProjectionReason::MessagePhaseUnsupported,
+                message_index: Some(0),
+            })
+        ));
+    }
+}
+
+#[test]
+fn unfinished_commentary_and_unknown_controls_have_closed_rejection_positions() {
+    use hiroute_diagnostics::event::RequestProjectionReason;
+    for (field, value, reason, message_index) in [
+        (
+            "status",
+            json!("in_progress"),
+            RequestProjectionReason::ItemLifecycleUnsupported,
+            Some(0),
+        ),
+        (
+            "phase",
+            json!("future_phase"),
+            RequestProjectionReason::NativeSemanticsUnsupported,
+            None,
+        ),
+        (
+            "control_extension",
+            json!({"resume":"private-control-value"}),
+            RequestProjectionReason::NativeSemanticsUnsupported,
+            None,
+        ),
+    ] {
+        let mut original = document("commentary");
+        original["input"][0][field] = value;
+        original["input"]
+            .as_array_mut()
+            .unwrap()
+            .insert(0, json!({"type":"additional_tools","tools":[]}));
+        let request = decode_ingress_request(IngressProtocol::Responses, &original).unwrap();
+        let profile =
+            exact_state_profile(IngressProtocol::Responses, IngressProtocol::ChatCompletions);
+        for error in [
+            project_candidate_request(&request, &profile).unwrap_err(),
+            project_candidate_request_template(&request, &profile).unwrap_err(),
+        ] {
+            assert_eq!(
+                error,
+                ProtocolAdapterError::RequestUnrepresentable {
+                    reason,
+                    message_index
+                }
+            );
+            assert!(!error.to_string().contains("private-control-value"));
+        }
+    }
+}
+
+#[test]
+fn phase_lifecycle_validation_preserves_supported_reasoning_history_projection() {
+    for status in [None, Some(json!(null)), Some(json!("completed"))] {
+        let mut original = document("commentary");
+        let mut reasoning = json!({"type":"reasoning","id":"rs-prior","summary":[
+            {"type":"summary_text","text":"prior thought"}
+        ],"encrypted_content":null});
+        if let Some(status) = status {
+            reasoning["status"] = status;
+        }
+        original["input"]
+            .as_array_mut()
+            .unwrap()
+            .insert(0, reasoning);
+        let request = decode_ingress_request(IngressProtocol::Responses, &original).unwrap();
+        let profile =
+            exact_state_profile(IngressProtocol::Responses, IngressProtocol::ChatCompletions);
+        let direct = project_candidate_request(&request, &profile).unwrap();
+        let template = project_candidate_request_template(&request, &profile).unwrap();
+        assert_eq!(
+            direct.body["messages"][0],
+            json!({"role":"assistant","reasoning_content":"prior thought"})
+        );
+        assert_eq!(direct.body["messages"][1]["content"], "previous answer");
+        assert_eq!(direct.request_projection_loss.first_message_index, Some(1));
+        assert_eq!(
+            direct.request_projection_loss,
+            template.request_projection_loss
+        );
+        assert_eq!(request.native_body.as_ref(), Some(&original));
     }
 }
 

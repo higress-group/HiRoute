@@ -48,6 +48,16 @@ The snapshot explains the last observed startup boundary, not the cause of a tim
 
 For upstream authentication or gateway rejection, correlate Debug `upstream_wire` by `request_token` and `attempt_index`. Request events record whether Bearer / x-api-key is present, Authorization byte length, Content-Length, the actual `native_model` with bounded length/characters, and reasoning effort, Messages thinking type/budget and boolean switches read from the final serialized template. Unknown tiers are `other`; absence and an unavailable projection remain distinct. These facts describe prepared parameters, not delivery or the provider's internal computation. Response and attempt terminal events record HTTP status, actual H1/H2, Content-Type, safe `provider_error` and HMAC correlation of the upstream request ID, without retaining header values, addresses, bodies or raw provider error text. `request_kind=decision_service` uses the same safe channel for actual decision-service calls; `completed`/`failure` denotes the parsed terminal result. Combine upstream request and downstream headers/body facts in `attempt_end.commits` with the next attempt/binding in `fallback` to determine why retries or budget exhaustion occurred before body delivery, or why delivery ended in failure after it began. Missing optional fields in old records mean unknown. If request events are absent, first check levels, diagnostic loss and candidate-preparation failures; absence does not prove another upstream rejection.
 
+For cross-protocol candidate exclusion, `request_projection` retains the first closed
+cause from the actual adapter with a zero-based `request.messages` coordinate, when
+known. This is a canonical coordinate, not a native `input` array index. An
+`unsupported` candidate-preflight event does not start an attempt. A `declared_loss`
+attempt-materialization event reports the number of historical commentary phase
+labels omitted from that candidate's actual Chat projection; it does not claim an
+upstream execution, change `reasoning_cleanup`, or replace original history/score
+facts. Unknown affected-item counts remain null. The event contains no source text,
+IDs or control values; correlation uses the existing request/binding HMAC tokens.
+
 ## Gateway listener fixture failures
 
 The black-box `RuntimeFixture` retains its private temporary root after an unexpected assertion panic and prints its location. Its child is still stopped and reaped. Use `launch_rest_classified_with_diagnostics` when current boot and request diagnostics are needed; inspect the publication, native daemon output and applied diagnostic level before retrying. A successful rerun does not explain the original failure.

@@ -125,6 +125,14 @@ renderers omit foreign reasoning without inventing signatures. The
 [production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
 covers the listener boundary, including tool continuation.
 
+[Historical request projection](src/adapters/request/history.rs) separates completed
+Responses commentary replay to Chat from the live response renderer's phase rules.
+The adapter returns candidate-local phase loss; actual materialization and rejected
+candidate diagnostics use the closed `request_projection` event without rewriting
+native history or assessment facts. The [mixed-protocol return scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches/responses_chat_history.rs)
+checks that a later Regular Chat execution remains possible after Primary Responses
+commentary, tools and a final answer.
+
 Response-side [moderation notifications](src/adapters/response/responses_sideband.rs)
 are validated separately from model output. The known `response.metadata` moderation
 shape keeps its exact native wire and does not add canonical content or change a
