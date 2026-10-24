@@ -37,6 +37,15 @@ routing evidence by its exact digest. Opening an existing store creates the inde
 without changing its schema marker, immutable events or serialized contracts.
 The shared query deadline and retention/deletion filters still apply.
 
+Quality summaries count a score as covering the current stage only when its
+retained membership is complete and covered by the frozen assessment. Explicit
+clipping or partial capture defeats that coverage even if all retained IDs were
+assessed before the stage grew. The original score and assessment membership
+remain stored unchanged. Missing legacy membership retains its existing reader
+behavior; source or association uncertainty alone does not exclude a complete
+stage. [Store-ingest regressions](../store/tests/plan_quality/history_membership.rs)
+cover the 128-member boundary and reopening without a later successful assessment.
+
 Routing summaries stream through the covering safe-route index in unique
 request/digest order, so both the decision limit and the reader's safe-byte
 limit can stop work before scanning the remaining matching routes. A truncated

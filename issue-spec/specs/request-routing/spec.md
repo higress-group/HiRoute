@@ -449,6 +449,13 @@ completion, concurrent requests, compaction or index repair SHALL NOT change tha
 membership. Origin uncertainty and association uncertainty SHALL remain separate
 from execution completeness and eligibility for evaluation.
 
+A retained score may remain valid for its frozen members without covering the
+current enlarged stage. Explicitly clipped or incomplete current membership SHALL
+NOT count as fully assessed in quality summaries merely because all retained IDs
+appear in an older assessment. Derived coverage SHALL NOT overwrite the original
+score or its frozen membership. Source or association uncertainty alone SHALL NOT
+exclude complete execution from evaluation or reliable-score aggregation.
+
 Protocol adapters own wire interpretation. Forwarding, accepted-output capture and
 history comparison SHALL agree on tool identity, reasoning content and terminal
 semantics; a provider-specific dialect remains scoped to its verified interface.

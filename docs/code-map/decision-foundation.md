@@ -200,7 +200,10 @@ cover pending branches, reopen, conflicts and request termination. The
 feeds actual Gateway envelopes through the production adapter, persistence and
 reopened timeline query; encrypted tool retries and cancellation exercise it.
 [Interleaved membership regressions](../../crates/observation/src/store/tests/plan_quality/history_membership.rs)
-check reopen and prohibit a late execution from extending a frozen score.
+check reopen and prohibit a late execution from extending a frozen score,
+including clipped or incomplete current membership whose retained IDs still
+match the older assessment. The [quality reader](../../crates/observation/src/query_v2/plan_quality.rs)
+derives current coverage without overwriting the frozen score.
 The [ingress adapters](../../crates/gateway/src/adapters/ingress.rs) normalize
 supported protocol history into the same representation before prefix checks;
 Chat reasoning aliases share one state while their native fields remain intact.
