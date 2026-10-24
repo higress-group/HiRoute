@@ -344,18 +344,11 @@ fn saved_subscription_without_runtime_does_not_become_missing_authentication() {
                 .subscription_maintenance_presentation(&source.source_id)
                 .is_none()
         );
-        let Fixture {
-            runtime,
-            runtimes,
-            root,
-        } = fixture;
-        runtimes.shutdown().unwrap();
-        drop(runtime);
-        drop(runtimes);
-        // Reopen actual saved state without a bundled CPA, as when package admission fails.
-        // The isolated child still owns every HOME and native selector.
+        fixture.runtimes.shutdown().unwrap();
+        // Open the same durable facts with no CPA handle. The original composition is
+        // quiescent and retains the fixture's process/temp-directory cleanup ownership.
         let runtime = ProductionControlRuntime::open_inner_with_cpa(
-            &root.path().join("storage"),
+            &fixture.root.path().join("storage"),
             crate::release_catalog::fixture_catalog(),
             None,
             None,
@@ -384,6 +377,24 @@ fn saved_subscription_without_runtime_does_not_become_missing_authentication() {
         assert_eq!(
             before, after,
             "runtime loss must not rewrite saved source or models"
+        );
+        drop(runtime);
+        fixture
+            .adapter()
+            .scan_subscription_maintenance(30_000)
+            .unwrap();
+        assert!(
+            fixture
+                .adapter()
+                .subscription_maintenance_presentation(&source.source_id)
+                .is_none()
+        );
+        assert!(
+            !fixture
+                .runtimes
+                .discover_registered_sources()
+                .unwrap()
+                .is_empty()
         );
     }
 }
