@@ -356,8 +356,18 @@ fn complete_tool_stage(v2: bool, declared: bool, streaming: bool, nullable: bool
                 })
                 .unwrap();
             assert_eq!(attempt["fact"]["provider_model_event"], "response_complete");
+            assert!(attempt["attempt_id"].as_str().is_some());
+            let started = facts
+                .iter()
+                .find(|event| {
+                    event["fact"]["kind"] == "attempt_started"
+                        && event["correlation"]["request_id"] == *member
+                        && event["attempt_id"] == attempt["attempt_id"]
+                })
+                .unwrap();
             for field in ["model_configuration_id", "profile_digest"] {
-                assert_eq!(score["fact"][field], attempt["fact"][field]);
+                assert!(!started["fact"][field].is_null());
+                assert_eq!(score["fact"][field], started["fact"][field]);
             }
             assert!(facts.iter().any(|event| {
                 event["fact"]["kind"] == "request_finished"
