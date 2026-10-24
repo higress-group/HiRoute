@@ -24,7 +24,7 @@ const EMPTY_SUMMARY: QualitySummary = { models: [], scored_stage_count: 0, unrat
 
 export function PlanQuality({
   planId, sessionId, planRevision, currentModels = [], language, compact = false,
-  active = true, refreshVersion = 0, onOpenEvidence, onThreshold, onDivision, onOpenAgent,
+  active = true, refreshVersion = 0, onOpenEvidence, onThreshold, onDivision, divisionBranches, onOpenAgent,
 }: {
   planId?: string | null;
   sessionId?: string | null;
@@ -36,6 +36,7 @@ export function PlanQuality({
   refreshVersion?: number;
   onThreshold?: (branch: string, threshold: number) => void;
   onDivision?: (branch: string) => void; onOpenAgent?: (agent: string) => void;
+  divisionBranches?: readonly string[];
   onOpenEvidence?: (sessionId: string, requestId: string) => void;
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
@@ -140,6 +141,7 @@ export function PlanQuality({
   const trustScope = !compact && Boolean(planId) && !sessionId;
   const trust = usePlanTrust({ planId: trustScope ? planId : null, revision: version === 'current' ? 'active' : version === 'all' ? 'all' : Number(version), fromMs: window.from, toMs: window.to, active, groupBy, reload });
   const report = trust.report;
+  const manualDivisionBranches = divisionBranches ?? report?.branches.map(branch => branch.branch_id) ?? [];
   const percent = (value: number | null | undefined) => value == null ? '—' : `${Math.round(value * 100)}%`;
   const seconds = (ms: number | null | undefined) => ms == null ? '—' : text(`${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} 秒`, `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`);
   const groupOf = (row: QualityModelRow) => row.summary?.execution.group ?? row.configured?.group ?? null;
@@ -256,7 +258,7 @@ export function PlanQuality({
     </div>}
     {report && groupBy === 'executor' && <ExecutorOutcomes report={report} language={language} />}
     {report && <TrustSessions report={report} language={language} onOpenSession={onOpenEvidence ? session => onOpenEvidence(session, '') : undefined} />}
-    {report && onDivision && report.branches.length > 0 && <div className="quality-footer-links"><span>{text('想直接分工？', 'Want to divide work directly?')}</span>{report.branches.map(branch => <button key={branch.branch_id} type="button" className="btn btn-quiet" onClick={() => onDivision(branch.branch_id)}>{text('创建分工草稿', 'Create a division draft')}{report.branches.length > 1 ? ` · ${branch.branch_id}` : ''}</button>)}<span>{text('打开草稿不代表已有证据支持扩大试用范围。', 'Opening a draft does not mean the evidence supports wider use.')}</span></div>}
+    {onDivision && manualDivisionBranches.length > 0 && <div className="quality-footer-links"><span>{text('想直接分工？', 'Want to divide work directly?')}</span>{manualDivisionBranches.map(branch => <button key={branch} type="button" className="btn btn-quiet" onClick={() => onDivision(branch)}>{text('创建分工草稿', 'Create a division draft')}{manualDivisionBranches.length > 1 ? ` · ${branch}` : ''}</button>)}<span>{text('打开草稿不代表已有证据支持扩大试用范围。', 'Opening a draft does not mean the evidence supports wider use.')}</span></div>}
   </div>;
 }
 

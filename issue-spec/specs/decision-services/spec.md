@@ -337,7 +337,8 @@ Model performance MAY open separate editable unpublished division drafts without
 saving, publishing, changing Agent mappings or starting a Worker. A branch draft
 uses the former Primary for design/planning and the trial model for implementation,
 with editable conditions and an optional Primary group for implementation. It
-copies the trial's decision and competence policy.
+copies the trial's decision connection and applicable assessment settings. Custom
+extension judgment inputs remain parked editor values, not routing policy.
 
 A delegated draft requires explicit executor selection, shows dependency results
 and orders DeepSeek Harness first for DeepSeek models without preselection. Both
@@ -348,14 +349,26 @@ an upgrade group. Parent models and other executors do not rescue that Worker.
 Completed tasks are not competence results. Evidence from previously routed trial
 stages does not validate work that only Primary handled.
 
-Two-group protection explanations follow the copied judgment settings. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Other decision services retain unconditional low-score protection. Published routing follows its frozen settings; editor explanations describe the next publication.
+Two-group protection explanations apply to built-in judgment settings. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Published routing follows its frozen settings; editor explanations describe the next publication.
+
+Custom extension drafts MUST explain direct extension group selection and optional,
+observation-only scores, without HiRoute threshold or low-score protection promises.
+A single-group category has no automatic upgrade. The manual division entry uses
+the published route's eligible Regular/Primary categories, independently of built-in
+trust suggestions. A category without both groups MUST NOT offer that entry.
 
 #### Scenario: Keep Primary for implementation
 
-- **WHEN** the user enables Primary protection for the implementation category
+- **WHEN** the user enables Primary protection for a built-in implementation category
 - **THEN** the draft contains that two-group category and its publication summary
   describes next-turn protection; an unchecked single-group category states that
   low scores are recorded without an upgrade.
+
+#### Scenario: Divide a custom extension route manually
+
+- **WHEN** a published custom extension route has Regular and Primary groups but no built-in trust suggestion
+- **THEN** model performance offers a separate editable division draft; retaining Primary makes it available for extension selection, with optional scores used only for observation.
+- **AND** opening the draft MUST NOT save, publish, change Agent mappings or imply evidence for work previously handled only by Primary.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235189421
