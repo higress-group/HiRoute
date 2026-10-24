@@ -242,7 +242,13 @@ that the conflicting native setting would otherwise be consumed.
 
 [Codex subscription replay](../../crates/gateway/src/adapters/tests/codex_replay.rs)
 checks endpoint-specific output-status normalization while preserving the original
-history and public API fields. [Response lifecycle tests](../../crates/gateway/src/adapters/response/client_stream_tests.rs)
+history and public API fields, including nullable reasoning states and Replay.
+[Completed commentary history](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches/responses_chat_history.rs)
+exercises candidate-local [history projection](../../crates/gateway/src/adapters/request/history.rs),
+independent live rendering, model-group changes, concurrent requests and restart
+assessment through the listener. [Projection diagnostics](../../crates/diagnostics/src/event/request_projection.rs)
+describe preflight or materialization without claiming provider execution.
+[Response lifecycle tests](../../crates/gateway/src/adapters/response/client_stream_tests.rs)
 check response-scoped synthetic IDs across incremental, buffered and terminal output.
 Protocol changes reuse saved-route and native-context journeys across Responses
 and Messages. Assert actual request paths, trusted receipt identity, rotation and
