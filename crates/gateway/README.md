@@ -51,9 +51,10 @@ An accepted Attempt means its output was delivered. A later native model failure
 or truncation retains that identity and its failed model event; the Request and
 history stage remain failed, allowing the receipt to preserve actual execution.
 
-The registered Codex subscription request dialect omits the redundant completed
-reasoning-item status that its input parser rejects; public Responses paths keep
-that field. [Native request projection](src/adapters/request/native.rs) applies
+The registered Codex subscription request dialect omits redundant completed or
+explicit-null reasoning-item status that its input parser rejects; null conveys
+no completion proof. Public Responses paths keep the field, and unfinished states
+are never normalized into completed history. [Native request projection](src/adapters/request/native.rs) applies
 this normalization per candidate without changing the original request, reasoning
 payload or other item metadata. Cross-protocol Responses output uses one shared,
 response-scoped synthetic item identity across incremental and buffered renderers;
