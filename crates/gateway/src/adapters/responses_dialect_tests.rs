@@ -290,9 +290,8 @@ fn codex_v2_custom_provider_replays_plaintext_source_without_vendor_metadata() {
     ] {
         let mut body = replay.clone();
         body["input"][1]["encrypted_function_args"] = invalid;
-        match decode_ingress_request(IngressProtocol::Responses, &body) {
-            Ok(request) => assert!(project_candidate_request(&request, &p).is_err()),
-            Err(_) => {}
+        if let Ok(request) = decode_ingress_request(IngressProtocol::Responses, &body) {
+            assert!(project_candidate_request(&request, &p).is_err());
         }
     }
 }
