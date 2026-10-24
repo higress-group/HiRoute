@@ -489,6 +489,10 @@ pub(super) fn parse_response(wire: Vec<u8>) -> WireResponse {
     } else {
         (wire[split + 4..].to_vec(), true)
     };
+    assert!(
+        http_entity_complete,
+        "protocol success reader must reject an unfinished HTTP entity"
+    );
     WireResponse {
         status,
         headers,
