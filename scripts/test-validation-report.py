@@ -304,6 +304,27 @@ class Storage(unittest.TestCase):
                 report.preserve_evidence(run, record)
             self.assertEqual(outside.read_text(), 'borrowed bytes')
 
+    def test_previous_custom_profiles_stay_disposable_when_the_command_changes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            checkout = root / 'checkout'
+            for profile in ('ci', 'private_json_target/ci'):
+                directory = checkout / 'target' / profile
+                directory.mkdir(parents=True)
+                (directory / '.cargo-lock').touch()
+                (directory / 'binary').write_bytes(b'rebuildable custom compiler output')
+            evidence = checkout / 'target/e2e/debug/details.json'
+            evidence.parent.mkdir(parents=True)
+            evidence.write_text('unique runtime evidence')
+            for index, command in enumerate((['cargo', 'check', '--profile', 'ci'], ['cargo', 'check'])):
+                run = root / str(index)
+                run.mkdir()
+                report.preserve_evidence(run, dict(checkout=str(checkout), command=command))
+                manifest = json.loads((run / 'evidence.json').read_text())
+                self.assertEqual(set(manifest['files']), {'target/e2e/debug/details.json'})
+                self.assertFalse((run / 'artifacts/ci').exists())
+                self.assertFalse((run / 'artifacts/private_json_target/ci').exists())
+
     def test_report_survives_checkout_removal_and_never_changes_verdict(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

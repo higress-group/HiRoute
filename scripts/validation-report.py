@@ -56,9 +56,9 @@ def preserve_evidence(run, record):
         parts = relative.parts
         # Cargo profiles can also be under target/<target-triple>/PROFILE.
         if target_tree and stat.S_ISDIR(info.st_mode):
-            profile = source.name in profiles and (len(parts) == 2 or len(parts) == 3 and (
-                parts[1] in targets or re.fullmatch(r"\w+(?:-[\w.]+){2,}|wasm\d+-[\w.-]+", parts[1])
-                or (source / ".cargo-lock").is_file()))
+            profile = len(parts) in (2, 3) and ((source / ".cargo-lock").is_file()
+                or source.name in profiles and (len(parts) == 2 or parts[1] in targets
+                    or re.fullmatch(r"\w+(?:-[\w.]+){2,}|wasm\d+-[\w.-]+", parts[1])))
             if profile or parts == ("target", "validation-schedule"):
                 excluded.append(relative.as_posix())
                 return

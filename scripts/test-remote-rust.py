@@ -189,6 +189,69 @@ sys.exit(101 if bad else 0)
                     self.assertNotIn(key, subprocess.check_output(
                         ['git', '--git-dir', str(root / 'repository.git'), 'worktree', 'list', '--porcelain'], text=True))
 
+    def test_reusing_a_retained_checkout_with_another_command_does_not_export_previous_profiles(self):
+        # Two production worker calls and real Git/leases; compiler outputs are fixtures.
+        with tempfile.TemporaryDirectory(dir='/tmp') as directory:
+            base = Path(directory).resolve()
+            source, root, home = base / 'source', base / 'state', base / 'home'
+            subprocess.run(['git', 'init', '-q', str(source)], check=True)
+            (source / '.gitignore').write_text('target/\n')
+            git = ['git', '-C', str(source)]
+            subprocess.run([*git, 'add', '.'], check=True)
+            subprocess.run([*git, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture'], check=True)
+            sha = subprocess.check_output([*git, 'rev-parse', 'HEAD'], text=True).strip()
+            ref = subprocess.check_output([*git, 'symbolic-ref', 'HEAD'], text=True).strip()
+            binary = home / '.cargo/bin'
+            binary.mkdir(parents=True)
+            compiler = '''import json,pathlib,sys
+if '--version' in sys.argv:
+ print('fixture compiler');sys.exit(0)
+p=pathlib.Path.cwd()/'target'
+if 'metadata' in sys.argv:
+ print(json.dumps({'target_directory':str(p)}));sys.exit(0)
+profile=sys.argv[sys.argv.index('--profile')+1] if '--profile' in sys.argv else 'debug'
+folder=p/profile
+folder.mkdir(parents=True,exist_ok=True)
+(folder/'.cargo-lock').touch()
+(folder/'binary').write_bytes(b'rebuildable custom compiler output')
+(p/'e2e/debug').mkdir(parents=True,exist_ok=True)
+(p/'e2e/debug/diagnostic.log').write_text('unique runtime evidence')
+'''
+            for name in ('cargo', 'rustc'):
+                path = binary / name
+                path.write_text('#!' + sys.executable + '\n' + compiler)
+                path.chmod(0o700)
+            first = '20261024-190001-abcdef01'
+            with patch.object(runner.Path, 'home', return_value=home), patch.dict(os.environ, {}, clear=False), \
+                 patch.object(runner.sys, 'platform', 'linux'), \
+                 patch.object(runner.tempfile, 'gettempdir', return_value=str(base)), \
+                 patch.object(runner, 'MIN_FREE_BYTES', 0), \
+                 patch.object(runner, 'admit_cache_server', return_value={'state': 'ready'}), \
+                 patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}), \
+                 patch.object(runner, 'worker_alive', return_value=False):
+                for index, command in enumerate((['cargo', 'check', '--profile', 'ci'], ['cargo', 'check'])):
+                    key = first if index == 0 else '20261024-190002-abcdef02'
+                    run = root / 'runs' / key
+                    run.mkdir(parents=True)
+                    request = dict(id=key, ref=ref, sha=sha, executor_sha=sha, origin=str(source),
+                                   retention='always' if index == 0 else 'never', command=command,
+                                   timeout=10, exclusive=False, ssh_host='fixture-host')
+                    if index:
+                        request['reuse_checkout'] = first
+                    runner.save(run / 'request.json', request)
+                    runner.worker(run / 'request.json')
+                    result = json.loads((run / 'result.json').read_text())
+                    self.assertEqual((result['status'], result['process_exit']), ('completed', 0), result.get('error'))
+                    self.assertEqual(result['checkout_owner'], first)
+                    self.assertFalse((run / 'artifacts/ci').exists())
+                    self.assertFalse((run / 'artifacts/debug').exists())
+                    self.assertEqual((run / 'artifacts/e2e/debug/diagnostic.log').read_text(), 'unique runtime evidence')
+                    self.assertTrue((root / 'worktrees' / first / 'target/ci/binary').is_file())
+                    if index:
+                        self.assertEqual(result['cleanup']['checkout']['state'], 'retained')
+                        self.assertFalse(Path(result['temporary_directory']['path']).exists())
+
     def test_separate_workbench_submission_readback_and_maintenance_keep_the_selected_root(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'remote-rust.json'

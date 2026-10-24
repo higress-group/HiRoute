@@ -82,7 +82,7 @@ file hash, including smoke build receipts with complete recipes.
 Debug/release/custom Cargo profiles, cross-target profiles, generated documentation,
 package outputs, smoke binaries and `target/validation-schedule` executable snapshots
 are rebuildable and are not copied. Inherited Cargo targets are recorded; Cargo's
-profile lock also identifies configured custom-target profiles. Keep unique evidence outside compiler profiles; use
+profile lock also identifies configured and previously used custom profiles. Keep unique evidence outside compiler profiles; use
 `--keep` when arbitrary debug files or built binaries are still needed.
 
 `--cargo-only` asserts a pure Cargo/component check with no separate product

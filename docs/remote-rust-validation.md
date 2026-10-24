@@ -209,7 +209,7 @@ Smoke build receipts preserve complete recipes; adjacent binaries and scheduler
 executable snapshots remain rebuildable cache and are not copied. Cargo
 debug/release/custom profiles, cross-target profiles, generated documentation and
 package outputs are also excluded. Inherited Cargo targets are recorded and Cargo
-profile locks identify configured custom-target profiles. Put unique evidence outside compiler profiles;
+profile locks identify configured and previously used custom profiles. Put unique evidence outside compiler profiles;
 select explicit retention for binaries or arbitrary compiler-profile files needed
 later. Report/export failure retains the originals and records the cleanup reason;
 cleanup does not change the command's exit or scenario verdict.
