@@ -87,10 +87,14 @@ pub(super) fn project_request(
                         .as_object_mut()
                         .ok_or(ModelIrError::InvalidField("function_call"))?;
                     let declared = encoding(call)?;
-                    if declared.as_ref().is_some_and(|paths| !paths.is_empty())
-                        || (negotiated && declared.is_none())
-                    {
-                        return Err(ModelIrError::UnsupportedField("function replay lacks explicit plaintext encoding for standard Responses".into()).into());
+                    // Codex's custom-provider request builder drops this optional
+                    // vendor metadata even when its recorded response carried [].
+                    // Schema negotiation does not change standard JSON history.
+                    if declared.as_ref().is_some_and(|paths| !paths.is_empty()) {
+                        return Err(ModelIrError::UnsupportedField(
+                            "encrypted function replay on standard Responses".into(),
+                        )
+                        .into());
                     }
                     // Consume the negotiated extension; ordinary standard replay stays ordinary.
                     call.remove("encrypted_function_args");

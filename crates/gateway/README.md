@@ -88,9 +88,12 @@ metadata-text projection, which cannot embed a backed identity safely.
 scan/parse/compact/IR/template output with inline bytes across native Responses, standard
 Responses and portable Chat/Messages tools, including large data and budget refusal.
 Original ingress history/source evidence is untouched. Cipher/mixed peer content and
-historical function calls without an explicit plaintext declaration in a request which
-negotiates the Codex encoding extension cannot cross this boundary. Ordinary standard
-Responses clients may omit that extension on their ordinary function-call replay. A fresh native session, or native compaction which actually removes those
+historical function calls explicitly declaring encrypted paths cannot cross this boundary.
+Standard Responses function-call replay may omit vendor encoding metadata even when
+schema annotations negotiated the response extension. Codex 0.147's
+[custom-provider request builder](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/core/src/client.rs#L837)
+intentionally removes this optional field from its outgoing history. That omission
+does not rewrite the native record or supply trusted origin evidence. A fresh native session, or native compaction which actually removes unsupported
 items, is required before choosing the new source for such a conversation; no history is
 rewritten and compaction itself may require a call through the old source.
 

@@ -223,7 +223,12 @@ confirmed source/Plan.
 Missing `encrypted_function_args`, explicit `[]`, and a nonempty array SHALL remain
 three distinct native/replay states. An explicit nonempty declaration SHALL remain
 native-only; exact replay equality is contextual and SHALL NOT grant candidate affinity
-or cleanup/portability authority. The standard translator may emit `[]` only after
+or cleanup/portability authority. For an explicitly selected standard Responses JSON
+target, an absent historical declaration SHALL remain a legal standard function-call
+replay even when tool-schema annotations negotiated the response extension. Negotiation
+SHALL NOT require every historical call to carry vendor-specific metadata, rewrite
+the native record from absent to `[]`, or establish trusted origin/assessment evidence.
+Null and malformed declarations remain invalid. The standard translator may emit `[]` only after
 selecting the JSON argument contract and consuming the actual request encoding
 declaration (supported schema annotations, explicit encoding replay, or a native peer
 item). Ordinary standard Responses requests without that declaration SHALL retain ordinary
@@ -238,8 +243,7 @@ representable conversions; they do not prove arbitrary native Responses plaintex
 A native plaintext `agent_message` SHALL preserve its author, recipient, content order
 and bytes in an assistant representation. It SHALL NOT become a user message or acquire
 an invented tool identity. Ciphertext, mixed/unknown peer content, and historical function
-calls lacking explicit plaintext evidence inside a request negotiating the Codex encoding
-extension SHALL fail that dialect candidate without
+calls explicitly declaring nonempty encrypted paths SHALL fail that dialect candidate without
 rewriting original history or disabling independent classification/capture/evaluation.
 An incompatible existing conversation requires native compaction that actually removes
 the unrepresentable items, or a fresh native session. A compaction retaining those items
