@@ -582,6 +582,7 @@ pub(super) async fn materialize_attempt(
         },
         ProductionAttemptState {
             request_reasoning_projection,
+            request_projection_loss: prepared.request_projection_loss,
             managed_cpa: execution.connector_runtime
                 == hiroute_domain::ConnectorRuntimeKind::CpaBridge
                 && !resolved_target.addresses.is_empty()

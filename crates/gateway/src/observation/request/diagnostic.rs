@@ -5,6 +5,22 @@ use crate::server::core_runtime::observation::wire_diagnostic;
 use hiroute_diagnostics::{correlation::CorrelationDomain, event::DiagnosticEvent};
 
 impl RequestObservation {
+    /// The producer supplies only closed projection facts. Correlation and ingress
+    /// are bound here; diagnostics never become captured conversation/score facts.
+    pub(crate) fn request_projection(
+        &self,
+        stable_binding_id: &str,
+        mut event: hiroute_diagnostics::event::RequestProjection,
+    ) {
+        event.request_token = self.inner.request_token;
+        event.binding_token = self
+            .inner
+            .context
+            .token(CorrelationDomain::Binding, stable_binding_id);
+        event.ingress_protocol = self.ingress_protocol();
+        self.emit_diagnostic(DiagnosticEvent::RequestProjection(event));
+    }
+
     /// Main native projection evidence, not optional canonical capture status.
     pub(crate) fn native_completion_unknown(
         &self,

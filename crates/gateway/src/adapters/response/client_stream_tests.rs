@@ -168,6 +168,37 @@ fn only_the_default_responses_answer_phase_is_portable_to_messages() {
 }
 
 #[test]
+fn commentary_history_support_does_not_relax_buffered_or_incremental_live_output() {
+    let candidate = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::Responses,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
+    let document = json!({"id":"r","model":"physical","status":"completed","output":[
+        {"type":"message","id":"m","role":"assistant","phase":"commentary","status":"completed",
+            "content":[{"type":"output_text","text":"intermediate response"}]}
+    ]});
+    let mut decoder = NativeResponseDecoder::new(&candidate, 200, false).unwrap();
+    decoder
+        .feed(&serde_json::to_vec(&document).unwrap(), true)
+        .unwrap();
+    let events = decoder.take_events();
+    let decoded = decoder.finish().unwrap();
+    assert!(
+        ClientResponseRenderer::render_nonstream_with_profile(&profile, "route", &decoded.response)
+            .is_err()
+    );
+    assert!(
+        ClientResponseRenderer::render_stream_with_profile(&profile, "route", &decoded.response)
+            .is_err()
+    );
+    let mut renderer = IncrementalClientSseRenderer::new(profile, "route").unwrap();
+    assert!(events.iter().any(|event| renderer.push(event).is_err()));
+}
+
+#[test]
 fn every_native_upstream_renders_correlated_messages_for_responses_clients() {
     for (upstream, document) in [
         (

@@ -68,8 +68,8 @@ pub struct ModelRequestIRV1 {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_item_statuses: std::collections::BTreeMap<usize, String>,
     /// Responses message phases are native input-item semantics. They are indexed by the
-    /// canonical message produced from that exact input item and may only be replayed to a
-    /// Responses upstream.
+    /// canonical message produced from that exact input item. Native Responses replay
+    /// preserves them; supported candidate-local history projections declare any loss.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_message_phases: std::collections::BTreeMap<usize, ResponsesMessagePhaseV1>,
     /// Bounded Codex transport metadata carried by Responses history items. This is neither

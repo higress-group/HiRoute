@@ -59,7 +59,7 @@ use crate::server::core_runtime::profiles::NativeProviderStateEmission;
 use crate::server::request_plan::IngressProtocol;
 
 use super::{
-    ProtocolAdapterError, can_represent_message_phase as client_can_represent_message_phase,
+    ProtocolAdapterError, can_represent_live_message_phase as client_can_represent_message_phase,
 };
 
 struct ResponsesTerminalProjection {

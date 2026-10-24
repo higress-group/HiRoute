@@ -98,6 +98,26 @@ judgment history, never by inspecting output text. Other supported history items
 accept only their legal lifecycle values. Empty native generated-call names use the
 narrow native-only exception in the request contract; declarations remain strict.
 
+Completed historical Responses assistant `commentary` messages (including an omitted
+status where the protocol permits it) MAY project to ordered Chat assistant content.
+This projection preserves the body, order and tool call/result identities, and declares
+loss of the structured phase label. It SHALL NOT rewrite commentary as `final_answer`,
+add invented prose, or replace original phase/item identity/status in native replay,
+captured input, accepted execution history or assessment. Adjacent tool calls retain
+their existing Chat grouping; intervening user content and tool results are never
+globally reordered. Same-protocol Responses replay remains exact. Unknown phases,
+unfinished items, unknown control extensions and Messages targets retain their strict
+conversion boundaries. Historical projection support SHALL NOT authorize live
+commentary rendering to a client without its native phase/termination semantics.
+
+Preflight and materialization SHALL consume the same adapter result. Declared phase
+loss emits a closed, payload-free `request_projection` diagnostic only after actual
+candidate materialization, without claiming upstream execution or altering reasoning
+cleanup counts. Candidate rejection retains its existing public exclusion code and
+may report the first closed cause and zero-based canonical message coordinate; an
+unknown affected-item count stays unknown. These diagnostics are not history or
+quality facts.
+
 Known Responses `agent_message` history preserves its author, recipient, ordered
 plaintext/encrypted content and native metadata on same-protocol requests. Its peer
 role has no declared portable mapping: cross-protocol candidates are excluded.

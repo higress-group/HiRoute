@@ -3,6 +3,7 @@
 mod listeners;
 mod publication;
 mod publication_update;
+mod restart;
 mod wire;
 
 use std::collections::{BTreeMap, VecDeque};
@@ -488,6 +489,7 @@ pub struct RuntimeFixture {
     pub observation_root: Option<PathBuf>,
     pub diagnostics_root: Option<PathBuf>,
     runtime_state_control: Option<(SocketAddr, String)>,
+    launch_options: RuntimeLaunchOptions,
     _serial: std::sync::MutexGuard<'static, ()>,
     _directory: tempfile::TempDir,
 }
@@ -590,6 +592,21 @@ pub struct PublicationCandidate {
 
 impl RuntimeFixture {
     pub fn launch_builtin_branches(providers: &[&NativeProvider], smart: bool) -> Self {
+        Self::launch_builtin_branches_at_level(providers, smart, None)
+    }
+
+    pub fn launch_builtin_branches_with_diagnostics(
+        providers: &[&NativeProvider],
+        smart: bool,
+    ) -> Self {
+        Self::launch_builtin_branches_at_level(providers, smart, Some("debug"))
+    }
+
+    fn launch_builtin_branches_at_level(
+        providers: &[&NativeProvider],
+        smart: bool,
+        diagnostic_level: Option<&'static str>,
+    ) -> Self {
         Self::launch_configured(
             providers,
             2,
@@ -602,6 +619,7 @@ impl RuntimeFixture {
                 decision_branch_preset: Some(smart),
                 observation: Some(ObservationFaults::healthy()),
                 test_control: true,
+                diagnostic_level,
                 ..Default::default()
             },
         )
@@ -1367,6 +1385,7 @@ impl RuntimeFixture {
             observation_root,
             diagnostics_root,
             runtime_state_control: control.map(|(control, _)| control),
+            launch_options: options,
             _serial: serial,
         }
     }

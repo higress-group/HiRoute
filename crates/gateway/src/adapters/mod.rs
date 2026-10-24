@@ -45,9 +45,18 @@ use crate::server::request_plan::IngressProtocol;
 
 /// Responses labels its ordinary assistant answer with `final_answer`. Messages and Chat
 /// Completions have only that assistant-output channel, so the label is losslessly implicit in
-/// those protocols. Every other named phase remains Responses-only and must fail closed.
-fn can_represent_message_phase(protocol: IngressProtocol, phase: Option<&str>) -> bool {
+/// those protocols. Live non-final output still needs its native phase/termination semantics.
+fn can_represent_live_message_phase(protocol: IngressProtocol, phase: Option<&str>) -> bool {
     phase.is_none() || protocol == IngressProtocol::Responses || phase == Some("final_answer")
+}
+
+/// Bounded facts returned by the actual historical-message projection. These are
+/// derived per candidate and never replace the original request or scoring history.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct RequestProjectionLoss {
+    pub message_phases_omitted: usize,
+    /// Zero-based canonical request.messages coordinate, never a native item index.
+    pub first_message_index: Option<usize>,
 }
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
@@ -62,6 +71,11 @@ pub enum ProtocolAdapterError {
     Serialization(String),
     #[error("client renderer cannot express canonical semantics: {0}")]
     ClientUnrepresentable(String),
+    #[error("request projection is unsupported: {reason:?}, canonical message {message_index:?}")]
+    RequestUnrepresentable {
+        reason: hiroute_diagnostics::event::RequestProjectionReason,
+        message_index: Option<usize>,
+    },
 }
 
 impl ProtocolAdapterError {
@@ -92,7 +106,9 @@ impl ProtocolAdapterError {
             | Self::Context(ContextProjectionError::UnknownEstimator) => "CONTEXT_LIMIT_UNKNOWN",
             Self::Context(ContextProjectionError::ArithmeticOverflow) => "CONTEXT_LIMIT_UNKNOWN",
             Self::Serialization(_) => "PROTOCOL_SERIALIZATION_FAILED",
-            Self::ClientUnrepresentable(_) => "CLIENT_PROTOCOL_UNREPRESENTABLE",
+            Self::ClientUnrepresentable(_) | Self::RequestUnrepresentable { .. } => {
+                "CLIENT_PROTOCOL_UNREPRESENTABLE"
+            }
         }
     }
 }
