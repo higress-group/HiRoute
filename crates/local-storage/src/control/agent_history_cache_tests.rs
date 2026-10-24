@@ -239,10 +239,31 @@ fn target_operation(root: &str, key: &str, restore: bool) -> OperationV1 {
         &json!({"revision":1,"payload":"p".repeat(512 * 1024)}),
     )
     .unwrap();
-    agent_operation(
-        TransactionPlanV1::from_agent_connection_planner(spec, control, vec![]).unwrap(),
+    let workspace = WorkspaceId::default();
+    let scope = IdempotencyScopeV1::new(
+        "interactive-user",
+        if restore {
+            "ApplyAgentConnectionRestore"
+        } else {
+            "ApplyAgentConnectionChange"
+        },
         key,
     )
+    .unwrap();
+    let request = CanonicalDigest::of_bytes(format!("agent-request-{key}").as_bytes());
+    OperationV1::new(
+        OperationId::derive(&workspace, &scope, &request),
+        workspace,
+        scope,
+        request,
+        CanonicalDigest::of_bytes(b"agent-change"),
+        RevisionSetV1 {
+            target: 0,
+            dependencies: BTreeMap::new(),
+        },
+        TransactionPlanV1::from_agent_connection_planner(spec, control, vec![]).unwrap(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -254,11 +275,7 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
     let pending_path = directory.path().join("hermes-pending");
     let pending_root = pending_path.to_str().unwrap();
     for index in 0..21 {
-        let mut operation = target_operation(
-            main_root,
-            &format!("target-{index}"),
-            index % 2 == 0,
-        );
+        let mut operation = target_operation(main_root, &format!("target-{index}"), index % 2 == 0);
         persist(&control, &mut operation);
     }
     let targets = control
