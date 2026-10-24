@@ -77,11 +77,40 @@ fn large_history_validates_once_then_shares_facts_without_scan_thrash() {
         .succeeded_agent_operations_for_kinds(&WorkspaceId::default(), KINDS)
         .unwrap();
     assert_eq!(format!("{cold:?}"), format!("{strict:?}"));
+    eprintln!(
+        "agent_history: raw_bytes={size}, entries=21, cold_decodes=21, warm_scans=21, additional_warm_decodes=0; Arc identity retained"
+    );
     drop(control);
     let reopened = open(directory.path());
     assert_eq!(reopened.agent_history_cache.borrow().decodes, 0);
     assert_eq!(read(&reopened).unwrap().len(), 21);
     assert_eq!(reopened.agent_history_cache.borrow().decodes, 21);
+}
+
+#[test]
+fn cache_capacity_and_oversized_entries_fall_back_without_eviction_thrash() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    complete(&control, "first", "");
+    complete(&control, "second", "");
+    // The same admission logic with tiny test-only limits avoids allocating
+    // hundreds of megabytes merely to test the fallback boundary.
+    control.agent_history_cache.borrow_mut().budget_override = Some((1, usize::MAX));
+    let first = read(&control).unwrap();
+    for _ in 0..3 {
+        let next = read(&control).unwrap();
+        assert_eq!(next.len(), 2);
+        assert!(Arc::ptr_eq(&first[0], &next[0]));
+        assert!(!Arc::ptr_eq(&first[1], &next[1]));
+    }
+    assert_eq!(control.agent_history_cache.borrow().decodes, 5);
+    *control.agent_history_cache.borrow_mut() = Default::default();
+    control.agent_history_cache.borrow_mut().budget_override = Some((128, 1));
+    let first = read(&control).unwrap();
+    let second = read(&control).unwrap();
+    assert_eq!(first.len(), 2);
+    assert!(first.iter().zip(second).all(|(a, b)| !Arc::ptr_eq(a, &b)));
+    assert_eq!(control.agent_history_cache.borrow().decodes, 4);
 }
 
 #[test]

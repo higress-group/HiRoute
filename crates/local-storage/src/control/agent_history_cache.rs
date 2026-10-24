@@ -15,6 +15,8 @@ pub(super) struct AgentHistoryCache {
     store_identity: Option<(String, i64)>,
     #[cfg(test)]
     pub(super) decodes: usize,
+    #[cfg(test)]
+    pub(super) budget_override: Option<(usize, usize)>,
 }
 struct Entry {
     fingerprint: [u8; 32],
@@ -156,9 +158,13 @@ impl AgentHistoryCache {
             &row.encoded,
             Some(row),
         )?);
-        if self.entries.len() < MAX_ENTRIES
-            && bytes <= MAX_ACCOUNTED_BYTES.saturating_sub(self.bytes)
-        {
+        #[cfg(not(test))]
+        let (max_entries, max_bytes) = (MAX_ENTRIES, MAX_ACCOUNTED_BYTES);
+        #[cfg(test)]
+        let (max_entries, max_bytes) = self
+            .budget_override
+            .unwrap_or((MAX_ENTRIES, MAX_ACCOUNTED_BYTES));
+        if self.entries.len() < max_entries && bytes <= max_bytes.saturating_sub(self.bytes) {
             self.entries.insert(
                 row.operation_id.clone(),
                 Entry {
