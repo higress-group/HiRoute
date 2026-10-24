@@ -249,9 +249,13 @@ fn target_operation(root: &str, key: &str, restore: bool) -> OperationV1 {
 fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());
+    let main_path = directory.path().join("hermes-main");
+    let main_root = main_path.to_str().unwrap();
+    let pending_path = directory.path().join("hermes-pending");
+    let pending_root = pending_path.to_str().unwrap();
     for index in 0..21 {
         let mut operation = target_operation(
-            "/synthetic/hermes/main",
+            main_root,
             &format!("target-{index}"),
             index % 2 == 0,
         );
@@ -261,7 +265,7 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
         .agent_settings_native_targets(&WorkspaceId::default())
         .unwrap();
     assert_eq!(targets.len(), 1);
-    assert_eq!(targets[0].config_root(), "/synthetic/hermes/main");
+    assert_eq!(targets[0].config_root(), main_root);
     assert_eq!(control.agent_history_cache.borrow().decodes, 21);
     for _ in 0..3 {
         assert_eq!(
@@ -273,7 +277,7 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
     }
     assert_eq!(control.agent_history_cache.borrow().decodes, 21);
 
-    let pending = target_operation("/synthetic/hermes/pending", "pending-target", false);
+    let pending = target_operation(pending_root, "pending-target", false);
     let token = "capability-pending-target";
     control
         .grant_apply_capability(token, &pending, i64::MAX)
@@ -296,7 +300,7 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
     assert!(
         targets
             .iter()
-            .any(|target| target.config_root() == "/synthetic/hermes/pending")
+            .any(|target| target.config_root() == pending_root)
     );
     // An existing read transaction is supported; no nested BEGIN or cached tail.
     control.connection.borrow().execute_batch("BEGIN").unwrap();
