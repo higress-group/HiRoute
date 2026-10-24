@@ -65,15 +65,11 @@ pub(super) fn project_request(body: &mut Value) -> Result<(), ProtocolAdapterErr
                         .ok_or(ModelIrError::InvalidField("function_call"))?;
                     if encoding(call)?
                         .as_ref()
-                        .is_some_and(|paths| !paths.is_empty())
+                        .is_none_or(|paths| !paths.is_empty())
                     {
-                        return Err(ModelIrError::UnsupportedField(
-                            "encrypted function replay on standard JSON endpoint".into(),
-                        )
-                        .into());
+                        return Err(ModelIrError::UnsupportedField("function replay lacks explicit plaintext encoding for standard Responses".into()).into());
                     }
-                    // Consume only an explicit plaintext declaration. Missing is never filled
-                    // in historical input, nor interpreted as permission to decrypt anything.
+                    // Only an explicit plaintext declaration may cross this dialect boundary.
                     call.remove("encrypted_function_args");
                 }
                 Some("reasoning") if item.get("encrypted_content").is_some() => {

@@ -267,7 +267,9 @@ fn serialize_responses(
                     if let Some(namespace) = namespace {
                         item["namespace"] = Value::String(namespace.clone());
                     }
-                    if let Some(encoding) = encrypted_function_args { item["encrypted_function_args"] = json!(encoding); }
+                    if let Some(encoding) = encrypted_function_args { item["encrypted_function_args"] = json!(encoding); } else if request.ingress_protocol != IngressProtocol::Responses && *tool_kind == ToolKindV1::Function {
+                        item["encrypted_function_args"] = json!([]);
+                    }
                     input.push(with_responses_item_fields(
                         request,
                         message_index,

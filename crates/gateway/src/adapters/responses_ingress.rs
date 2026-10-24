@@ -72,12 +72,6 @@ pub(super) fn decode_responses_input(
                 ],
                 "responses function_call",
             )?;
-            if super::responses_dialect::encoding(object)?
-                .as_ref()
-                .is_some_and(|paths| !paths.is_empty())
-            {
-                context.mark_native_only();
-            }
             let (arguments, raw_arguments) =
                 parse_tool_arguments(content_string(object, "arguments")?);
             messages.push(CanonicalMessage {

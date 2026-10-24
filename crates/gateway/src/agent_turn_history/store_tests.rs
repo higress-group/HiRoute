@@ -41,6 +41,9 @@ mod coverage_boundary;
 #[path = "boundary/json_reference_tests.rs"]
 mod json_reference_boundary;
 
+#[path = "boundary/function_encoding_tests.rs"]
+mod function_encoding_boundary;
+
 #[path = "boundary/json_reference_budget_tests.rs"]
 mod json_reference_budget_boundary;
 

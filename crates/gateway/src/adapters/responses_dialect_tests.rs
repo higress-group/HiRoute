@@ -354,3 +354,106 @@ fn codex_v2_late_cipher_declaration_cannot_be_laundered_by_terminal_success() {
         assert!(projector.feed(&wire(&events), true).is_err());
     }
 }
+
+#[test]
+fn codex_v2_plaintext_chat_and_messages_producers_negotiate_real_json_arguments() {
+    for upstream in [IngressProtocol::ChatCompletions, IngressProtocol::Messages] {
+        let p = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            upstream,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        let request=decode_ingress_request(IngressProtocol::Responses,&json!({"model":"alias","input":"read","max_output_tokens":128,"tools":[{"type":"function","name":"read","parameters":{"type":"object","properties":{"message":{"type":"string","encrypted":true}}}}]})).unwrap();
+        let prepared = project_candidate_request(&request, &p).unwrap();
+        let schema = if upstream == IngressProtocol::ChatCompletions {
+            &prepared.body["tools"][0]["function"]["parameters"]
+        } else {
+            &prepared.body["tools"][0]["input_schema"]
+        };
+        assert!(schema["properties"]["message"].get("encrypted").is_none());
+        let body = if upstream == IngressProtocol::ChatCompletions {
+            json!({"id":"r","model":"physical","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"function","function":{"name":"read","arguments":"{\"message\":\"read fixture\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1}})
+        } else {
+            json!({"id":"r","type":"message","model":"physical","role":"assistant","content":[{"type":"tool_use","id":"c","name":"read","input":{"message":"read fixture"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}})
+        };
+        let mut decoder = NativeResponseDecoder::new_for_observation(
+            &p,
+            200,
+            false,
+            ToolIdProjection::new(IngressProtocol::Responses),
+            prepared.chat_tool_projection,
+        )
+        .unwrap();
+        decoder
+            .feed(&serde_json::to_vec(&body).unwrap(), true)
+            .unwrap();
+        let decoded = decoder.finish().unwrap();
+        let output = json_output(&p, &decoded);
+        assert_eq!(output["output"][0]["encrypted_function_args"], json!([]));
+        assert_eq!(
+            serde_json::from_str::<Value>(output["output"][0]["arguments"].as_str().unwrap())
+                .unwrap(),
+            json!({"message":"read fixture"})
+        );
+    }
+}
+
+#[test]
+fn codex_v2_standard_peer_and_schema_replay_is_byte_equivalent_to_inline() {
+    use crate::content_ref::{compact_ingress_document, externalize_model_request};
+    use crate::replay::{ReplayConfig, ReplayManager};
+    use hiroute_gateway_core::runtime::body::BudgetTree;
+    struct OwnedDir(std::path::PathBuf);
+    impl Drop for OwnedDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let root = OwnedDir(
+        std::env::temp_dir().join(format!(
+            "hiroute-v2-replay-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )),
+    );
+    std::fs::create_dir(&root.0).unwrap();
+    let manager = ReplayManager::open(ReplayConfig {
+        root: root.0.join("replay"),
+        memory_threshold_bytes: 128,
+        record_bytes: 31,
+        orphan_ttl: std::time::Duration::from_secs(60),
+    })
+    .unwrap();
+    let budget = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024)
+        .unwrap()
+        .stream(8 * 1024 * 1024)
+        .unwrap();
+    let store = manager.begin_request(budget.clone()).unwrap();
+    let mut body = fixture();
+    body["input"].as_array_mut().unwrap().push(json!({"type":"agent_message","author":"parent","recipient":"child","content":[{"type":"input_text","text":"actual quoted \"peer\" 中\n".repeat(3000)}]}));
+    let expected = project_candidate_request(
+        &decode_ingress_request(IngressProtocol::Responses, &body).unwrap(),
+        &profile(true),
+    )
+    .unwrap()
+    .bytes;
+    compact_ingress_document(IngressProtocol::Responses, &mut body, &store).unwrap();
+    let mut request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+    externalize_model_request(&mut request, &store, 16).unwrap();
+    assert!(project_candidate_request(&request, &profile(true)).is_err());
+    let template = project_candidate_request_template(&request, &profile(true)).unwrap();
+    let mut reader = sequential_attempt_body(template, store.clone(), &budget, 37).unwrap();
+    let mut actual = Vec::new();
+    while let Some(chunk) = reader.next_chunk().unwrap() {
+        actual.extend_from_slice(chunk.bytes());
+    }
+    reader.release();
+    assert_eq!(actual, expected);
+    drop(store);
+    drop(manager);
+    assert_eq!(budget.snapshot().unwrap().live, 0);
+}
