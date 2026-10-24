@@ -114,6 +114,7 @@ fn native_reasoning_replay_keeps_new_input_and_tool_steps_in_their_actual_turns(
             ModelStreamEventV1::new(
                 2,
                 ModelEvent::ToolCallFinished {
+                    encrypted_function_args: None,
                     index: 1,
                     logical_id: "tool-1".into(),
                     status: ResponseItemStatus::Completed,

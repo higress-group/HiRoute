@@ -206,9 +206,11 @@ pub(super) fn nonstream_item(
                     "name",
                     payload_field,
                     "status",
+                    "encrypted_function_args",
                 ],
             )?;
             register_item(core, native_index, item)?;
+            core.observe_function_encoding(native_index, item, true)?;
             let call_id = required_str(item, "call_id")?.to_owned();
             let namespace = optional_str(item, "namespace")?.map(str::to_owned);
             let name = required_str(item, "name")?.to_owned();
@@ -471,8 +473,10 @@ fn finish_tool_item(
             "name",
             payload_field,
             "status",
+            "encrypted_function_args",
         ],
     )?;
+    core.observe_function_encoding(native_index, item, true)?;
     let call_id = required_str(item, "call_id")?.to_owned();
     let namespace = optional_str(item, "namespace")?.map(str::to_owned);
     let name = required_str(item, "name")?.to_owned();

@@ -299,6 +299,9 @@ pub enum ContentPart {
         namespace: Option<ContentValue>,
         name: ContentValue,
         arguments: Value,
+        /// Responses distinguishes an absent encoding declaration from explicit plaintext [].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        encrypted_function_args: Option<Vec<String>>,
         /// Native Responses/Chat can carry model-generated, non-JSON argument text.
         /// When present, this is the sole argument value; `arguments` is null.
         #[serde(default, skip_serializing_if = "Option::is_none")]

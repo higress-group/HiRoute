@@ -65,12 +65,19 @@ pub(super) fn decode_responses_input(
                     "namespace",
                     "name",
                     "arguments",
+                    "encrypted_function_args",
                     "id",
                     "status",
                     "internal_chat_message_metadata_passthrough",
                 ],
                 "responses function_call",
             )?;
+            if super::responses_dialect::encoding(object)?
+                .as_ref()
+                .is_some_and(|paths| !paths.is_empty())
+            {
+                context.mark_native_only();
+            }
             let (arguments, raw_arguments) =
                 parse_tool_arguments(content_string(object, "arguments")?);
             messages.push(CanonicalMessage {
@@ -82,6 +89,7 @@ pub(super) fn decode_responses_input(
                     name: historical_tool_name(context, object)?,
                     arguments,
                     raw_arguments,
+                    encrypted_function_args: super::responses_dialect::encoding(object)?,
                 }],
                 name: None,
             });
@@ -142,6 +150,7 @@ pub(super) fn decode_responses_input(
             messages.push(CanonicalMessage {
                 role: MessageRole::Assistant,
                 content: vec![ContentPart::ToolCall {
+                    encrypted_function_args: None,
                     logical_id: required_string(object, "call_id")?,
                     tool_kind: ToolKindV1::Custom,
                     namespace: optional_string(object, "namespace")?,

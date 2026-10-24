@@ -41,6 +41,7 @@ fn actual_stage_continuity_and_strict_candidate_affinity_have_separate_authority
                 ModelStreamEventV1::new(
                     2,
                     ModelEvent::ToolCallFinished {
+                        encrypted_function_args: None,
                         index: 1,
                         logical_id: "tool-1".into(),
                         tool_kind: ToolKindV1::Function,

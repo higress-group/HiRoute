@@ -124,6 +124,7 @@ fn chat_reasoning_alias_tool_boundary_survives_inline_and_json_replay() {
                 item_id: None,
             });
             capture.accept(&ModelEvent::ToolCallFinished {
+                encrypted_function_args: None,
                 index: 1,
                 logical_id: "call".into(),
                 tool_kind: ToolKindV1::Function,
@@ -478,6 +479,7 @@ fn chat_omitted_reasoning_tool_stage_freezes_both_actual_requests_for_b() {
                 ModelStreamEventV1::new(
                     2,
                     ModelEvent::ToolCallFinished {
+                        encrypted_function_args: None,
                         index: 1,
                         logical_id: "call".into(),
                         tool_kind: ToolKindV1::Function,

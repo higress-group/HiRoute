@@ -807,6 +807,16 @@ fn validate_projection(
     response: &ModelResponseIRV1,
     streaming: bool,
 ) -> Result<(), ProtocolAdapterError> {
+    if protocol != IngressProtocol::Responses
+        && response.blocks.iter().any(|block| {
+            matches!(block,
+        ResponseBlock::ToolCall { encrypted_function_args: Some(paths), .. } if !paths.is_empty())
+        })
+    {
+        return Err(ProtocolAdapterError::ClientUnrepresentable(
+            "encrypted function arguments require native Responses".into(),
+        ));
+    }
     if response.completed != response.error.is_none() {
         return Err(ProtocolAdapterError::ClientUnrepresentable(
             "canonical terminal state is inconsistent".into(),

@@ -130,6 +130,7 @@ impl BoundaryCapture {
                 namespace,
                 name,
                 arguments,
+                encrypted_function_args,
                 ..
             } => {
                 if let Some(Block::Tool { logical_id, digest }) = self.blocks.get_mut(index) {
@@ -142,6 +143,13 @@ impl BoundaryCapture {
                         None,
                         &mut self.budget,
                     );
+                    *digest = digest.and_then(|value| {
+                        function_encoding_digest(
+                            value,
+                            encrypted_function_args.as_deref(),
+                            &mut self.budget,
+                        )
+                    });
                     self.unavailable = digest.is_none();
                 } else {
                     self.unavailable = true;
@@ -340,6 +348,7 @@ pub(super) fn incoming_evidence(
                     hash.part(b"text", digest);
                 }
                 ContentPart::ToolCall {
+                    encrypted_function_args,
                     logical_id,
                     tool_kind,
                     namespace,
@@ -349,13 +358,17 @@ pub(super) fn incoming_evidence(
                 } => {
                     hash.part(
                         b"tool",
-                        tool_digest(
-                            logical_id,
-                            *tool_kind,
-                            namespace.as_deref(),
-                            name,
-                            arguments,
-                            Some(replay),
+                        function_encoding_digest(
+                            tool_digest(
+                                logical_id,
+                                *tool_kind,
+                                namespace.as_deref(),
+                                name,
+                                arguments,
+                                Some(replay),
+                                budget,
+                            )?,
+                            encrypted_function_args.as_deref(),
                             budget,
                         )?,
                     );
@@ -489,6 +502,23 @@ fn text_digest(
     } else {
         budget.bytes(text.len())?;
         hash.update(text.as_bytes());
+    }
+    Some(hash.finalize().into())
+}
+
+fn function_encoding_digest(
+    base: [u8; 32],
+    encoding: Option<&[String]>,
+    budget: &mut FingerprintBudget,
+) -> Option<[u8; 32]> {
+    let Some(paths) = encoding else {
+        return Some(base);
+    };
+    let mut hash = Sha256::new_with_prefix(b"tool-function-encoding/v1");
+    hash.update(base);
+    hash.update((paths.len() as u64).to_be_bytes());
+    for path in paths {
+        hash.update(text_digest(path, None, budget)?);
     }
     Some(hash.finalize().into())
 }

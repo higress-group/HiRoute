@@ -226,6 +226,7 @@ fn refused_native_layout_charge_keeps_capture_and_recovers_complete_tool_stage()
             ModelStreamEventV1::new(
                 1,
                 ModelEvent::ToolCallFinished {
+                    encrypted_function_args: None,
                     index: 0,
                     logical_id: "tool-1".into(),
                     status: model_ir::ResponseItemStatus::Completed,

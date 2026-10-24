@@ -135,6 +135,7 @@ fn tool_call(id: &str, name: &str) -> CanonicalMessage {
     CanonicalMessage {
         role: MessageRole::Assistant,
         content: vec![ContentPart::ToolCall {
+            encrypted_function_args: None,
             logical_id: id.into(),
             tool_kind: ToolKindV1::Function,
             namespace: Some("functions".into()),

@@ -225,6 +225,7 @@ fn serialize_responses(
                     "image_url": render_image_url(source),
                 }))),
                 ContentPart::ToolCall {
+                    encrypted_function_args,
                     logical_id,
                     tool_kind,
                     namespace,
@@ -266,6 +267,7 @@ fn serialize_responses(
                     if let Some(namespace) = namespace {
                         item["namespace"] = Value::String(namespace.clone());
                     }
+                    if let Some(encoding) = encrypted_function_args { item["encrypted_function_args"] = json!(encoding); }
                     input.push(with_responses_item_fields(
                         request,
                         message_index,
@@ -524,6 +526,7 @@ fn serialize_chat(
                     "image_url": {"url": render_image_url(source)},
                 })),
                 ContentPart::ToolCall {
+                    encrypted_function_args,
                     logical_id,
                     tool_kind,
                     namespace,
@@ -531,6 +534,12 @@ fn serialize_chat(
                     arguments,
                     raw_arguments,
                 } => {
+                    if encrypted_function_args
+                        .as_ref()
+                        .is_some_and(|paths| !paths.is_empty())
+                    {
+                        return Err(ModelIrError::ProviderStateNotPortable.into());
+                    }
                     let emitted_name =
                         tool_projection.emitted_for(*tool_kind, namespace.as_deref(), name)?;
                     let identity = tool_projection
@@ -719,6 +728,7 @@ fn serialize_messages(
                     }),
                 }),
                 ContentPart::ToolCall {
+                    encrypted_function_args,
                     logical_id,
                     tool_kind,
                     namespace,
@@ -731,6 +741,7 @@ fn serialize_messages(
                             "Messages cannot express custom tool calls".into(),
                         ));
                     }
+                    if encrypted_function_args.as_ref().is_some_and(|paths| !paths.is_empty()) { return Err(ModelIrError::ProviderStateNotPortable.into()); }
                     reject_namespace(namespace, IngressProtocol::Messages)?;
                     if raw_arguments.is_some() {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(

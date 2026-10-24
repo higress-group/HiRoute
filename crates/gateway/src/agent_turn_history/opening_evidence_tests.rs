@@ -291,6 +291,7 @@ fn changed_native_id_without_new_input_keeps_exact_tool_stage_until_real_new_inp
         &[ModelStreamEventV1::new(
             1,
             ModelEvent::ToolCallFinished {
+                encrypted_function_args: None,
                 index: 1,
                 logical_id: "call-1".into(),
                 tool_kind: ToolKindV1::Function,
@@ -449,6 +450,7 @@ fn finish_tool_step(store: &AgentTurnHistoryStore, ticket: &AgentTurnTicket, id:
         &[ModelStreamEventV1::new(
             1,
             ModelEvent::ToolCallFinished {
+                encrypted_function_args: None,
                 index: 1,
                 logical_id: id.into(),
                 tool_kind: ToolKindV1::Function,

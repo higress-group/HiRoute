@@ -538,6 +538,7 @@ impl<'a> Encoder<'a> {
                     self.string(data);
                 }
                 ContentPart::ToolCall {
+                    encrypted_function_args,
                     logical_id,
                     tool_kind,
                     namespace,
@@ -553,6 +554,10 @@ impl<'a> Encoder<'a> {
                     self.bytes(logical_id.as_bytes());
                     self.optional_string(namespace.as_deref());
                     self.string(name);
+                    if let Some(paths) = encrypted_function_args {
+                        self.tag(b"encrypted-function-args");
+                        self.json(&serde_json::json!(paths))?;
+                    }
                     if let Some(raw) = raw_arguments {
                         self.tag(b"raw-arguments");
                         self.string(raw);
@@ -1353,6 +1358,7 @@ mod tests {
         let tool_message = |arguments| CanonicalMessage {
             role: MessageRole::Assistant,
             content: vec![ContentPart::ToolCall {
+                encrypted_function_args: None,
                 logical_id: "call".into(),
                 tool_kind: ToolKindV1::Function,
                 namespace: None,

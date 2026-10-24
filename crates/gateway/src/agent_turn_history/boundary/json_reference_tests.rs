@@ -22,6 +22,7 @@ fn captured_tool() -> BoundaryCapture {
         item_id: None,
     });
     capture.accept(&ModelEvent::ToolCallFinished {
+        encrypted_function_args: None,
         index: 0,
         logical_id: "call".into(),
         tool_kind: ToolKindV1::Function,

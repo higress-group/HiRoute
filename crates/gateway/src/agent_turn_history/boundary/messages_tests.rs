@@ -213,6 +213,7 @@ fn unsigned_messages_thinking_tool_continuation_keeps_full_frozen_stage() {
                 ModelStreamEventV1::new(
                     2,
                     ModelEvent::ToolCallFinished {
+                        encrypted_function_args: None,
                         index: 1,
                         logical_id: "call-1".into(),
                         tool_kind: ToolKindV1::Function,

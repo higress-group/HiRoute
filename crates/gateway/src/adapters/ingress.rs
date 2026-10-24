@@ -473,6 +473,7 @@ fn decode_chat_message(
             let (arguments, raw_arguments) =
                 parse_tool_arguments(content_string(function, "arguments")?);
             content.push(ContentPart::ToolCall {
+                encrypted_function_args: None,
                 logical_id: required_string(call, "id")?,
                 tool_kind: ToolKindV1::Function,
                 namespace: None,
@@ -741,6 +742,7 @@ fn decode_messages_content(
             }
             validate_messages_cache_control(context, object.get("cache_control"))?;
             Ok(ContentPart::ToolCall {
+                encrypted_function_args: None,
                 logical_id: required_string(object, "id")?,
                 tool_kind: ToolKindV1::Function,
                 namespace: None,

@@ -170,6 +170,8 @@ impl NativeResponseProjector {
             budget: budget.clone(),
             framer,
             state: ProjectionState {
+                standard_responses_json: super::super::responses_dialect::standard_json(profile),
+                function_encodings: BTreeMap::new(),
                 omit_thinking: false,
                 protocol: profile.capability.upstream_protocol,
                 alias: served_model_alias,
@@ -304,6 +306,8 @@ struct ResponseItemEvidence {
 }
 
 pub(super) struct ProjectionState {
+    standard_responses_json: bool,
+    function_encodings: BTreeMap<u32, Option<[u8; 32]>>,
     omit_thinking: bool,
     pub(super) protocol: IngressProtocol,
     alias: String,
@@ -929,6 +933,37 @@ impl ProjectionState {
                 } else {
                     ToolKindV1::Custom
                 };
+                if kind == ToolKindV1::Function {
+                    let encoding = super::super::responses_dialect::response_encoding(
+                        item,
+                        self.standard_responses_json,
+                    )?;
+                    use sha2::{Digest, Sha256};
+                    let digest = encoding.as_ref().map(|paths| {
+                        Sha256::digest(serde_json::to_vec(paths).expect("strings serialize")).into()
+                    });
+                    if self
+                        .function_encodings
+                        .get(&index)
+                        .is_some_and(|known| known.is_some() && known != &digest)
+                    {
+                        return Err(ModelIrError::InvalidResponseLifecycle(
+                            "function argument encoding changed".into(),
+                        )
+                        .into());
+                    }
+                    if !self.function_encodings.contains_key(&index) {
+                        self.retained.push(
+                            self.budget
+                                .reserve(MemoryRole::SemanticState, 64)
+                                .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?,
+                        );
+                    }
+                    self.function_encodings.insert(index, digest);
+                    if let Some(value) = encoding {
+                        item.insert("encrypted_function_args".into(), serde_json::json!(value));
+                    }
+                }
                 let native_id = string_field(item, "call_id")?.to_owned();
                 let name = string_field(item, "name")?.to_owned();
                 let namespace = item

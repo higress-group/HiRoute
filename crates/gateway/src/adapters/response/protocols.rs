@@ -233,8 +233,10 @@ fn decode_responses_sse(
                             "name",
                             payload_field,
                             "status",
+                            "encrypted_function_args",
                         ],
                     )?;
+                    core.observe_function_encoding(native_index, item, false)?;
                     let identity = ResponsesToolIdentity {
                         native_id: required_str(item, "call_id")?.into(),
                         kind,

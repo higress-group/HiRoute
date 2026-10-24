@@ -174,6 +174,7 @@ fn retained_raw_json_prefix_allows_a_complete_later_tool_stage_and_frozen_assess
             ModelStreamEventV1::new(
                 1,
                 ModelEvent::ToolCallFinished {
+                    encrypted_function_args: None,
                     index: 0,
                     logical_id: "new-call".into(),
                     tool_kind: ToolKindV1::Function,

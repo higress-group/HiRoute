@@ -268,6 +268,7 @@ fn complete_new_tool_stage_with_capture(old_item: Value, capture_prior: bool) {
             ModelStreamEventV1::new(
                 1,
                 ModelEvent::ToolCallFinished {
+                    encrypted_function_args: None,
                     index: 0,
                     logical_id: "tool-1".into(),
                     status: model_ir::ResponseItemStatus::Completed,

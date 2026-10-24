@@ -411,6 +411,7 @@ impl IncrementalClientSseRenderer {
                 self.named(&mut output, event, json!({"type":event,"sequence_number":self.native_sequence,"item_id":item_id,"output_index":index,"delta":delta}));
             }
             ModelEvent::ToolCallFinished {
+                encrypted_function_args,
                 index,
                 logical_id,
                 tool_kind,
@@ -445,6 +446,9 @@ impl IncrementalClientSseRenderer {
                 self.named(&mut output, done_event, done);
                 let mut item = json!({"type":item_type,"id":item_id,"call_id":logical_id,"name":name,"status":status.as_str()});
                 item[payload_field] = Value::String(arguments);
+                if let Some(encoding) = encrypted_function_args {
+                    item["encrypted_function_args"] = json!(encoding);
+                }
                 if let Some(namespace) = namespace {
                     item["namespace"] = Value::String(namespace.clone());
                 }
@@ -708,6 +712,14 @@ impl IncrementalClientSseRenderer {
     }
 
     fn validate_event_capability(&self, event: &ModelEvent) -> Result<(), ProtocolAdapterError> {
+        if self.profile.protocol != IngressProtocol::Responses
+            && matches!(event,
+            ModelEvent::ToolCallFinished { encrypted_function_args: Some(paths), .. } if !paths.is_empty())
+        {
+            return Err(unrepresentable(
+                "encrypted function arguments require native Responses",
+            ));
+        }
         let response = &self.profile.response;
         let exact = Fidelity::Exact;
         let supported = match event {

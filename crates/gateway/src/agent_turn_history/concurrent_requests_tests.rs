@@ -503,6 +503,7 @@ fn captured_tool_boundary_inherits_matching_output_independently_of_model_setup(
             &[ModelStreamEventV1::new(
                 1,
                 ModelEvent::ToolCallFinished {
+                    encrypted_function_args: None,
                     index: 1,
                     logical_id: "call".into(),
                     tool_kind: ToolKindV1::Function,
@@ -543,6 +544,7 @@ fn captured_tool_boundary_inherits_matching_output_independently_of_model_setup(
                 role: MessageRole::Assistant,
                 name: None,
                 content: vec![ContentPart::ToolCall {
+                    encrypted_function_args: None,
                     logical_id: "call".into(),
                     tool_kind: ToolKindV1::Function,
                     namespace: Some("functions".into()),

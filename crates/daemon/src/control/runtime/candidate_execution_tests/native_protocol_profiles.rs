@@ -225,3 +225,91 @@ fn native_messages_only_preserves_explicit_responses_conversion() {
     assert_eq!(responses.connector.request_path, endpoint.request_path);
     assert!(responses.path_id.starts_with("responses-to-messages-"));
 }
+
+#[test]
+fn codex_v2_registered_token_plan_selects_persistable_standard_dialect_without_upgrading_old_sources()
+ {
+    let catalog = crate::release_catalog::current_fixture_catalog();
+    let model = catalog
+        .model_data()
+        .model_endpoint_capabilities
+        .iter()
+        .find(|c| c.endpoint_profile_id == "endpoint.bailian.token-plan.cn.v1")
+        .unwrap()
+        .model_configuration_id
+        .clone();
+    let fact = registered_fact(&catalog, "bailian.token-plan.cn.v1", &model);
+    let candidate = materialize_registered_management_candidate(&fact, &catalog).unwrap();
+    let p = candidate
+        .protocol_profiles
+        .iter()
+        .find(|p| p.ingress_protocol == UpstreamProtocol::Responses)
+        .unwrap();
+    assert_eq!(
+        p.adapter_revision,
+        hiroute_domain::STANDARD_RESPONSES_JSON_ADAPTER_V1
+    );
+    assert_eq!(
+        p.native_target.as_ref().unwrap().operational_target.uri(),
+        "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/responses"
+    );
+    assert!(p.native_target.as_ref().unwrap().validate_for(p));
+    let mut legacy = fact.clone();
+    let old = legacy
+        .additional_native_endpoints
+        .iter_mut()
+        .find(|e| e.target.upstream_protocol == UpstreamProtocol::Responses)
+        .unwrap();
+    old.target.protocol_profile_id = "adapter.openai-responses.v1".into();
+    let legacy_target = old.target.credential_destination().unwrap();
+    // Existing credential authority is bound to the retained old destination.
+    if let ComputeManagementCredentialCompilationV2::Native { ordered } = &mut legacy.credential {
+        *ordered = vec![hiroute_domain::ComputeCredentialSelectionV2::Credential {
+            credential_ref: hiroute_domain::CredentialRefV1::new(
+                "credential/legacy",
+                "source/legacy",
+                "hirouted",
+                "provider-auth",
+                std::iter::once(legacy.target.credential_destination().unwrap()).chain(
+                    legacy
+                        .additional_native_endpoints
+                        .iter()
+                        .map(|e| e.target.credential_destination().unwrap()),
+                ),
+                1,
+            )
+            .unwrap(),
+        }];
+    }
+    let candidate = materialize_registered_management_candidate(&legacy, &catalog).unwrap();
+    let p = candidate
+        .protocol_profiles
+        .iter()
+        .find(|p| p.ingress_protocol == UpstreamProtocol::Responses)
+        .unwrap();
+    assert_eq!(p.adapter_revision, "adapter.openai-responses.v1@1");
+    assert_eq!(
+        p.native_target.as_ref().unwrap().credential_destination_ref,
+        legacy_target
+    );
+    assert!(p.native_target.as_ref().unwrap().validate_for(p));
+    let mut loopback = fact;
+    loopback
+        .additional_native_endpoints
+        .iter_mut()
+        .find(|e| e.target.upstream_protocol == UpstreamProtocol::Responses)
+        .unwrap()
+        .target
+        .authority = "127.0.0.1".into();
+    assert!(materialize_registered_management_candidate(&loopback, &catalog).is_none());
+    let subscription = catalog
+        .resolve_connection_option("codex.subscription.global.v1")
+        .unwrap();
+    assert!(
+        subscription
+            .endpoint_profile
+            .protocol_endpoints
+            .iter()
+            .all(|e| e.adapter_ref != "adapter.standard-responses-json.v1")
+    );
+}

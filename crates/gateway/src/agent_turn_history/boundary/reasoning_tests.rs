@@ -215,6 +215,7 @@ fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membersh
             &[ModelStreamEventV1::new(
                 2,
                 ModelEvent::ToolCallFinished {
+                    encrypted_function_args: None,
                     index: 1,
                     logical_id: "call-1".into(),
                     tool_kind: ToolKindV1::Function,

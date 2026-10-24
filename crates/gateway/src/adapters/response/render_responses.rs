@@ -366,6 +366,7 @@ pub(super) fn render_responses_block(
             item
         }
         ResponseBlock::ToolCall {
+            encrypted_function_args,
             index,
             item_id,
             logical_id,
@@ -399,6 +400,9 @@ pub(super) fn render_responses_block(
             };
             let mut item = json!({"type":item_type,"id":response_item_id(response_id, item_id, prefix, *index),"call_id":logical_id,"name":name,"status":status.as_str()});
             item[payload_field] = Value::String(payload);
+            if let Some(encoding) = encrypted_function_args {
+                item["encrypted_function_args"] = json!(encoding);
+            }
             if let Some(namespace) = namespace {
                 item["namespace"] = Value::String(namespace.clone());
             }

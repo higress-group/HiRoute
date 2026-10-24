@@ -180,6 +180,9 @@ impl NativeResponseDecoder {
             chat_tool_projection,
         );
         state.core_mut().retention = super::body_buffer::Retention::new(budget.clone());
+        state.core_mut().standard_responses_json =
+            super::super::responses_dialect::standard_json(profile);
+        state.core_mut().responses_client = profile.ingress_protocol == IngressProtocol::Responses;
         if let ProtocolState::Messages { state, .. } = &mut state {
             state.retention = super::body_buffer::Retention::new(budget.clone());
         }

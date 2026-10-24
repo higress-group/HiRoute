@@ -39,18 +39,24 @@ pub(super) fn project(
             ));
         }
         let mut canonical = canonical;
+        if request.ingress_protocol == IngressProtocol::Responses {
+            super::super::responses_dialect::project_portable_tools(
+                &mut canonical,
+                profile.capability.upstream_protocol,
+            )?;
+        }
         super::super::structured_output::project_messages_format(
             request,
             profile.capability.upstream_protocol,
             &mut canonical,
         );
         normalize_codex_replay(&mut canonical, profile, request);
-        return Ok(canonical);
+        return project_dialect(canonical, profile);
     }
     let Some(original) = &request.native_body else {
         let mut canonical = canonical;
         normalize_codex_replay(&mut canonical, profile, request);
-        return Ok(canonical);
+        return project_dialect(canonical, profile);
     };
     let mut body = original.clone();
     let object = body.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
@@ -156,6 +162,16 @@ pub(super) fn project(
             ));
         }
         clean_prefix(&mut body, request.ingress_protocol, end);
+    }
+    project_dialect(body, profile)
+}
+
+fn project_dialect(
+    mut body: Value,
+    profile: &CandidateProtocolProfile,
+) -> Result<Value, ProtocolAdapterError> {
+    if super::super::responses_dialect::standard_json(profile) {
+        super::super::responses_dialect::project_request(&mut body)?;
     }
     Ok(body)
 }

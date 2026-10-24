@@ -5,6 +5,9 @@ mod ingress;
 pub(crate) mod reasoning_loss;
 mod request;
 mod response;
+mod responses_dialect;
+#[cfg(test)]
+mod responses_dialect_tests;
 mod structured_output;
 mod tool_projection;
 

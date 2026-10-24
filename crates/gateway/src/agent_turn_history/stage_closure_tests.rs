@@ -39,6 +39,7 @@ fn accepted_tool(store: &AgentTurnHistoryStore, ticket: &AgentTurnTicket, id: &s
         &[ModelStreamEventV1::new(
             1,
             ModelEvent::ToolCallFinished {
+                encrypted_function_args: None,
                 index: 1,
                 logical_id: id.into(),
                 tool_kind: ToolKindV1::Function,

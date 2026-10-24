@@ -4,6 +4,7 @@ mod body_buffer;
 mod client_stream;
 mod completion;
 mod decoder;
+mod function_encoding;
 mod messages;
 mod native_passthrough;
 mod native_passthrough_sse;
@@ -106,6 +107,9 @@ enum NativeBlockKind {
 
 #[derive(Clone, Debug)]
 struct DecoderCore {
+    standard_responses_json: bool,
+    responses_client: bool,
+    function_encodings: BTreeMap<u32, (Option<Vec<String>>, bool)>,
     owner: ExactProviderPathV1,
     tool_id_projection: Option<super::continuation::ToolIdProjection>,
     provider_state_emission: NativeProviderStateEmission,
@@ -131,6 +135,9 @@ impl DecoderCore {
         tool_id_projection: Option<super::continuation::ToolIdProjection>,
     ) -> Self {
         Self {
+            standard_responses_json: false,
+            responses_client: false,
+            function_encodings: BTreeMap::new(),
             owner,
             tool_id_projection,
             provider_state_emission,
@@ -415,8 +422,13 @@ impl DecoderCore {
                 .as_ref()
                 .map_or(0, String::len)
                 .saturating_add(error.message.as_ref().map_or(0, String::len)),
+            ModelEvent::ToolCallFinished {
+                encrypted_function_args,
+                ..
+            } => encrypted_function_args
+                .as_ref()
+                .map_or(0, |paths| paths.iter().map(|path| 24 + path.len()).sum()),
             ModelEvent::ContentBlockStarted { .. }
-            | ModelEvent::ToolCallFinished { .. }
             | ModelEvent::UsageUpdated { .. }
             | ModelEvent::FinishReason { .. }
             | ModelEvent::ResponseCompleted { .. } => 0,
@@ -617,6 +629,7 @@ impl DecoderCore {
                     return Err(ModelIrError::MissingToolIdentity(logical_id.clone()).into());
                 }
                 let block = MutableResponseBlock::ToolCall {
+                    encrypted_function_args: None,
                     logical_id: logical_id.clone(),
                     native_id: native_id.clone(),
                     tool_kind: *tool_kind,
@@ -648,6 +661,7 @@ impl DecoderCore {
                 _ => return Err(invalid_block(*index, "tool argument delta")),
             },
             ModelEvent::ToolCallFinished {
+                encrypted_function_args,
                 index,
                 logical_id,
                 tool_kind,
@@ -663,6 +677,7 @@ impl DecoderCore {
                         namespace: current_namespace,
                         name: current_name,
                         arguments: current_arguments,
+                        encrypted_function_args: current_encoding,
                         finished,
                         ..
                     }) if current_id == logical_id
@@ -680,6 +695,7 @@ impl DecoderCore {
                             .into());
                         }
                         *finished = true;
+                        *current_encoding = encrypted_function_args.clone();
                     }
                     _ => return Err(invalid_block(*index, "tool completion")),
                 }
@@ -1180,6 +1196,18 @@ impl DecoderCore {
         }
         self.emit(
             ModelEvent::ToolCallFinished {
+                encrypted_function_args: if kind == ToolKindV1::Function {
+                    self.function_encodings
+                        .get(&native_index)
+                        .and_then(|(value, _)| value.clone())
+                        .or_else(|| {
+                            (self.responses_client
+                                && self.owner.upstream_protocol != IngressProtocol::Responses)
+                                .then(Vec::new)
+                        })
+                } else {
+                    None
+                },
                 index,
                 logical_id,
                 tool_kind: kind,
