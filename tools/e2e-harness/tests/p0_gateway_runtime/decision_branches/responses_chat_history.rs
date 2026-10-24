@@ -29,16 +29,23 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
     assert_eq!(replay["network_calls"], 0);
     assert_eq!(replay["replay_degraded"], 0);
     let replay_items = replay["input"].as_array().unwrap();
-    let regular = NativeProvider::start(vec![provider_reply(CHAT_OK, stream, true); 2]);
+    let regular = NativeProvider::start(vec![
+        provider_reply(CHAT_OK, stream, true);
+        if restart { 3 } else { 2 }
+    ]);
     let primary = NativeProvider::start(vec![
         provider_reply(PRIMARY_TOOLS, stream, false),
         provider_reply(PRIMARY_FINAL, stream, false),
     ]);
-    let decider = NativeProvider::start(vec![
+    let mut decisions = vec![
         reply(SIMPLE),
         reply(COMPLEX_WITH_ASSESSMENT),
         reply(SIMPLE_WITH_ASSESSMENT),
-    ]);
+    ];
+    if restart {
+        decisions.push(reply(SIMPLE));
+    }
+    let decider = NativeProvider::start(decisions);
     let mut fixture = RuntimeFixture::launch_builtin_branches_with_diagnostics(
         &[&regular, &primary, &decider],
         true,
@@ -46,7 +53,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
     let mut publication = chat_candidate_publication(&fixture, &regular);
     enable_c_in_publication(&mut publication);
     fixture.publish(&mut publication);
-    let send = |fixture: &RuntimeFixture, input: &[Value]| {
+    let send = |fixture: &RuntimeFixture, input: &[Value], prior_stage_known: bool| {
         let response = request(
             fixture.address,
             "POST",
@@ -60,11 +67,13 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
             .unwrap(),
         );
         let final_user = input.last().and_then(|item| item.get("content"));
-        if final_user.is_some_and(|content| {
-            content.as_str() == Some("Now answer a simple question.")
-                || content.pointer("/0/text").and_then(Value::as_str)
-                    == Some("Now answer a simple question.")
-        }) {
+        if prior_stage_known
+            && final_user.is_some_and(|content| {
+                content.as_str() == Some("Now answer a simple question.")
+                    || content.pointer("/0/text").and_then(Value::as_str)
+                        == Some("Now answer a simple question.")
+            })
+        {
             let facts = wait_execution_facts(fixture, 4);
             let decision = facts
                 .iter()
@@ -117,14 +126,14 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
     // Exceeds the production Replay memory threshold, forcing external strings.
     let first_user = "starting context ".repeat(8192);
     let mut input = vec![json!({"role":"user","content":first_user})];
-    let first = send(&fixture, &input);
+    let first = send(&fixture, &input, true);
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
         (1, 0, 1)
     );
     input.extend(first["output"].as_array().unwrap().iter().cloned());
     input.push(replay_items[0].clone());
-    let tools = send(&fixture, &input);
+    let tools = send(&fixture, &input, true);
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
         (1, 1, 2)
@@ -147,7 +156,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
         }
     }
     input.extend(replay_items[1..6].iter().cloned());
-    let final_answer = send(&fixture, &input);
+    let final_answer = send(&fixture, &input, true);
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
         (1, 2, 2)
@@ -166,11 +175,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
     );
     input.extend(replay_items[6..].iter().cloned());
     let original = input.clone();
-    if restart {
-        wait_execution_facts(&fixture, 3);
-        fixture.restart_with_publication(&publication);
-    }
-    let last = send(&fixture, &input);
+    let last = send(&fixture, &input, true);
     assert_eq!(last["output"][0]["content"][0]["text"], "regular answer");
     assert_eq!(
         (regular.calls(), primary.calls(), decider.calls()),
@@ -236,7 +241,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
     );
     assert_eq!(assessment["fact"]["partial"], false);
     let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
+    let original_projection_token = loop {
         let log = std::fs::read_to_string(
             fixture
                 .diagnostics_root
@@ -265,13 +270,69 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
             assert!(!projection["binding_token"].is_null());
             assert!(!log.contains("I will check the record."));
             assert!(!log.contains("message_phase_omitted\",\"fields_removed"));
-            break;
+            break projection["request_token"].clone();
         }
         assert!(
             Instant::now() < deadline,
             "actual projection diagnostic missing"
         );
         std::thread::sleep(Duration::from_millis(10));
+    };
+    if restart {
+        fixture.restart_with_publication(&publication);
+        let resumed = send(&fixture, &input, false);
+        assert_eq!(resumed["output"][0]["content"][0]["text"], "regular answer");
+        assert_eq!(
+            (regular.calls(), primary.calls(), decider.calls()),
+            (3, 2, 4)
+        );
+        let repeated: Value = serde_json::from_slice(http_body(&regular.requests()[2])).unwrap();
+        assert_eq!(
+            repeated, chat,
+            "restarted projection uses the same supplied history and tool identities"
+        );
+        let facts = wait_execution_facts(&fixture, 5);
+        let decision = facts
+            .iter()
+            .filter(|event| event["fact"]["kind"] == "route_decision")
+            .last()
+            .unwrap();
+        assert_eq!(decision["fact"]["complexity"]["execution_group"], "regular");
+        assert_eq!(decision["fact"]["complexity"]["fallback_used"], false);
+        assert_eq!(
+            decision["fact"]["complexity"]["decision_source"],
+            "external_classifier"
+        );
+        // The standalone process has no persisted accepted-stage store. Visible client
+        // replay remains portable, without fabricating a recovered assessment target.
+        assert!(decision["fact"]["complexity"]["routing_observation"]["score"].is_null());
+        assert!(!facts.iter().any(
+            |event| event["fact"]["kind"] == "branch_assessment_recorded"
+                && event["correlation"]["request_id"] == decision["correlation"]["request_id"]
+        ));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let log = std::fs::read_to_string(
+                fixture
+                    .diagnostics_root
+                    .as_ref()
+                    .unwrap()
+                    .join("daemon/current.jsonl"),
+            )
+            .unwrap();
+            if projection_records(&log).iter().any(|event| {
+                event["request_token"] != original_projection_token
+                    && event["stage"] == "attempt_materialization"
+                    && event["reason"] == "message_phase_omitted"
+            }) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "restarted materialization diagnostic missing"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 }
 
