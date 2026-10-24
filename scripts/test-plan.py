@@ -39,6 +39,7 @@ NATIVE_SCOPE_TOOLING = {"scripts/native-agent-scope.py", "scripts/test-native-ag
 PILOT_CONSUMER_INPUTS = SELECTION_TOOLING | {
     "scripts/pilot-builds.py", "scripts/test-pilot-builds.py",
     "apps/desktop/src-tauri/build.rs", "apps/desktop/src-tauri/src/development_cpa.rs",
+    "apps/desktop/src-tauri/src/cpa_manifest.rs",
     "apps/desktop/src-tauri/development-cpa-artifacts.v1.json",
 }
 LOCAL_GC_TOOLING = {"scripts/local-rust-gc.py", "scripts/test-local-rust-gc.py"}

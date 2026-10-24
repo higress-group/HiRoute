@@ -170,6 +170,19 @@ impl LocalControlAdapter {
             let Some(kind) = CpaAccountKind::from_candidate(&source.last_candidate_ref) else {
                 continue;
             };
+            if self
+                .cpa_runtime
+                .as_ref()
+                .and_then(|runtimes| runtimes.for_kind(kind))
+                .is_none()
+            {
+                self.set_subscription_maintenance_status(
+                    &source.source_id,
+                    SubscriptionMaintenancePresentation::RuntimeUnavailable,
+                    None,
+                )?;
+                continue;
+            }
             let native_source =
                 match self.subscription_source_for_candidate(&source.last_candidate_ref) {
                     Ok(Some(native)) => native,

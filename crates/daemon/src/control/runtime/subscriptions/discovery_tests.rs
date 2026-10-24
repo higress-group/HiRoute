@@ -307,6 +307,76 @@ fn a_known_cpa_option_without_a_runtime_is_unavailable_at_both_consumers() {
 }
 
 #[test]
+fn saved_subscription_without_runtime_does_not_become_missing_authentication() {
+    if isolated_discovery(
+        "saved_subscription_without_runtime_does_not_become_missing_authentication",
+    ) {
+        return;
+    }
+    for provider in [
+        SubscriptionLoginProviderV1::Codex,
+        SubscriptionLoginProviderV1::Claude,
+    ] {
+        let fixture = Fixture::new();
+        save_login(&fixture, provider);
+        let before = fixture
+            .adapter()
+            .stores_lock()
+            .unwrap()
+            .control()
+            .compute_management_snapshot(&WorkspaceId::default())
+            .unwrap();
+        let source = before
+            .sources
+            .iter()
+            .find(|source| source.state == MaterializationState::Ready)
+            .unwrap()
+            .clone();
+        let Fixture {
+            runtime,
+            runtimes,
+            root,
+        } = fixture;
+        runtimes.shutdown().unwrap();
+        drop(runtime);
+        drop(runtimes);
+        // Reopen actual saved state without a bundled CPA, as when package admission fails.
+        // The isolated child still owns every HOME and native selector.
+        let runtime = ProductionControlRuntime::open_inner_with_cpa(
+            &root.path().join("storage"),
+            crate::release_catalog::fixture_catalog(),
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+        runtime.adapter.enable_subscription_maintenance();
+        for now in [10_000, 20_000] {
+            runtime.adapter.scan_subscription_maintenance(now).unwrap();
+            assert!(matches!(
+                runtime.adapter.subscription_maintenance_presentation(&source.source_id),
+                Some(super::super::maintenance::SubscriptionMaintenancePresentation::RuntimeUnavailable)
+            ));
+            assert_eq!(
+                runtime.adapter.subscription_routing_unavailability(&source),
+                hiroute_application_api::PlanCandidateUnavailableReasonV1::RuntimeUnavailable
+            );
+        }
+        let after = runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .control()
+            .compute_management_snapshot(&WorkspaceId::default())
+            .unwrap();
+        assert_eq!(
+            before, after,
+            "runtime loss must not rewrite saved source or models"
+        );
+    }
+}
+
+#[test]
 fn public_decision_service_list_reads_saved_state_without_contacting_failed_cpa() {
     if isolated_discovery(
         "public_decision_service_list_reads_saved_state_without_contacting_failed_cpa",

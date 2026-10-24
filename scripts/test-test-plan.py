@@ -377,6 +377,7 @@ class SelectionTests(unittest.TestCase):
                   'scripts/test-plan.py', 'scripts/test-test-plan.py',
                   'apps/desktop/src-tauri/build.rs',
                   'apps/desktop/src-tauri/src/development_cpa.rs',
+                  'apps/desktop/src-tauri/src/cpa_manifest.rs',
                   'apps/desktop/src-tauri/development-cpa-artifacts.v1.json')
         with mock.patch.dict(plan.os.environ, {'GITHUB_ACTIONS': 'false'}):
             for path in inputs:
