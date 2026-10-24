@@ -93,7 +93,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const trialCandidates = candidates(trialId), primaryCandidates = candidates(primaryId);
   const selectedTrial = trialCandidates.find(c => c.binding_id === trialBinding) ?? (trialCandidates.length === 1 ? trialCandidates[0] : undefined);
   const selectedPrimary = primaryCandidates.find(c => c.binding_id === primaryBinding) ?? (primaryCandidates.length === 1 ? primaryCandidates[0] : undefined);
-  const ready = !!data?.options.authoring && !!selectedTrial && !!selectedPrimary && trialId !== primaryId && classifier.kind === 'decision_service' && !!classifier.service.name && !!mapping.agentId && mapping.presets.length > 0 && !loading && !error;
+  const ready = !!data?.options.authoring && !!selectedTrial && !!selectedPrimary && trialId !== primaryId && classifier.kind === 'decision_service' && !!classifier.service.name && !!mapping.agentId && (agentEcosystem(mapping.agentId) !== 'claude' || mapping.presets.length > 0) && !loading && !error;
   // The inline connection form owns protected input; its guard confirms, then releases and closes it.
   const releaseConnection = async () => !connect || await requestEditorReplacement('models');
   const leave = () => void (async () => { if (persistencePending || (await releaseConnection() && await requestEditorReplacement('routing'))) onClose(); })();
