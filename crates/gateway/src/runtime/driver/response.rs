@@ -100,6 +100,7 @@ pub(super) fn classify_precommit(
                         state.budget.clone(),
                     )
                     .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+                    .with_function_encoding(state.function_encoding_projection)
                     .with_omitted_thinking(state.omit_thinking),
                 ));
             } else {
@@ -111,7 +112,8 @@ pub(super) fn classify_precommit(
                         state.chat_tool_projection.take(),
                         state.budget.clone(),
                     )
-                    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
+                    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+                    .with_function_encoding(state.function_encoding_projection),
                 );
             }
             Ok(PrecommitClassification::pending())

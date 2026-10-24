@@ -40,6 +40,7 @@ pub(super) struct CanonicalResponseTracker {
     streaming: bool,
     tool_id_projection: ToolIdProjection,
     chat_tool_projection: Option<ChatToolProjection>,
+    function_encoding_projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
     decoder: Option<NativeResponseDecoder>,
     renderer: Option<IncrementalClientSseRenderer>,
     client_profile: Option<ClientProtocolProfile>,
@@ -62,6 +63,14 @@ struct CanonicalWireUnit {
 }
 
 impl CanonicalResponseTracker {
+    pub(super) fn with_function_encoding(
+        mut self,
+        projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
+    ) -> Self {
+        self.function_encoding_projection = projection;
+        self
+    }
+
     #[cfg(test)]
     pub(super) fn new(
         profile: Arc<CandidateProtocolProfile>,
@@ -102,6 +111,7 @@ impl CanonicalResponseTracker {
             streaming,
             tool_id_projection,
             chat_tool_projection,
+            function_encoding_projection: Default::default(),
             decoder: None,
             renderer: None,
             client_profile: None,
@@ -214,7 +224,8 @@ impl CanonicalResponseTracker {
                     self.tool_id_projection.clone(),
                     self.budget.clone(),
                 )
-                .map_err(|_| "native_response_projector_unavailable")?,
+                .map_err(|_| "native_response_projector_unavailable")?
+                .with_function_encoding(self.function_encoding_projection),
             ));
         }
         self.decoder = Some(
@@ -226,7 +237,8 @@ impl CanonicalResponseTracker {
                 self.chat_tool_projection.take(),
                 self.budget.clone(),
             )
-            .map_err(|_| "canonical_response_decoder_unavailable")?,
+            .map_err(|_| "canonical_response_decoder_unavailable")?
+            .with_function_encoding(self.function_encoding_projection),
         );
         let client_profile = ClientProtocolProfile::for_candidate(&self.profile)
             .map_err(|_| "canonical_response_client_profile_unavailable")?;

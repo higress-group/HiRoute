@@ -62,6 +62,14 @@ pub(crate) struct NativeResponseProjector {
 }
 
 impl NativeResponseProjector {
+    pub(crate) fn with_function_encoding(
+        mut self,
+        projection: super::super::FunctionEncodingProjection,
+    ) -> Self {
+        self.state.function_encoding_projection = projection;
+        self
+    }
+
     pub(crate) fn with_omitted_thinking(mut self, omitted: bool) -> Self {
         self.state.omit_thinking = omitted && self.state.protocol == IngressProtocol::Messages;
         self
@@ -172,6 +180,7 @@ impl NativeResponseProjector {
             state: ProjectionState {
                 standard_responses_json: super::super::responses_dialect::standard_json(profile),
                 function_encodings: BTreeMap::new(),
+                function_encoding_projection: Default::default(),
                 omit_thinking: false,
                 protocol: profile.capability.upstream_protocol,
                 alias: served_model_alias,
@@ -307,6 +316,7 @@ struct ResponseItemEvidence {
 
 pub(super) struct ProjectionState {
     standard_responses_json: bool,
+    function_encoding_projection: super::super::FunctionEncodingProjection,
     function_encodings: BTreeMap<u32, Option<[u8; 32]>>,
     omit_thinking: bool,
     pub(super) protocol: IngressProtocol,
@@ -937,6 +947,7 @@ impl ProjectionState {
                     let encoding = super::super::responses_dialect::response_encoding(
                         item,
                         self.standard_responses_json,
+                        self.function_encoding_projection,
                     )?;
                     use sha2::{Digest, Sha256};
                     let digest = encoding.as_ref().map(|paths| {
@@ -962,6 +973,8 @@ impl ProjectionState {
                     self.function_encodings.insert(index, digest);
                     if let Some(value) = encoding {
                         item.insert("encrypted_function_args".into(), serde_json::json!(value));
+                    } else {
+                        item.remove("encrypted_function_args");
                     }
                 }
                 let native_id = string_field(item, "call_id")?.to_owned();

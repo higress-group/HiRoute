@@ -54,6 +54,14 @@ struct DecodeDiagnostic {
 }
 
 impl NativeResponseDecoder {
+    pub(crate) fn with_function_encoding(
+        mut self,
+        projection: super::super::FunctionEncodingProjection,
+    ) -> Self {
+        self.state.core_mut().function_encoding_projection = projection;
+        self
+    }
+
     pub fn new(
         profile: &CandidateProtocolProfile,
         status: u16,

@@ -83,7 +83,7 @@ pub(super) fn decode_responses_input(
                     name: historical_tool_name(context, object)?,
                     arguments,
                     raw_arguments,
-                    encrypted_function_args: super::responses_dialect::encoding(object)?,
+                    encrypted_function_args: super::super::responses_dialect::encoding(object)?,
                 }],
                 name: None,
             });

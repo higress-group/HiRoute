@@ -108,6 +108,8 @@ impl DecoderCore {
                 |(index, logical_id, tool_kind, namespace, name, arguments)| {
                     Ok(ModelEvent::ToolCallFinished {
                         encrypted_function_args: (tool_kind == ToolKindV1::Function
+                            && self.function_encoding_projection
+                                == super::super::FunctionEncodingProjection::Plaintext
                             && self.responses_client
                             && self.owner.upstream_protocol != IngressProtocol::Responses)
                             .then(Vec::new),

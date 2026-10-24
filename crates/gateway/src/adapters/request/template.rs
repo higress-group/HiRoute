@@ -30,6 +30,7 @@ pub struct PreparedNativeTemplate {
     pub decoder_revision: String,
     pub reasoning_profile_id: String,
     pub(crate) chat_tool_projection: Option<ChatToolProjection>,
+    pub(crate) function_encoding_projection: super::super::FunctionEncodingProjection,
 }
 
 /// Structural JSON plus replay-backed substitutions shared by provider and
@@ -148,7 +149,8 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
             }
         }
     };
-    let body = super::native::project(request, profile, body, omit_reasoning_prefix)?;
+    let (body, function_encoding_projection) =
+        super::native::project(request, profile, body, omit_reasoning_prefix)?;
     let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
     {
@@ -203,6 +205,7 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         decoder_revision: profile.decoder_revision.clone(),
         reasoning_profile_id: reasoning.profile_id.clone(),
         chat_tool_projection,
+        function_encoding_projection,
     })
 }
 

@@ -39,6 +39,8 @@ struct Context {
     session: Session,
     profile: CandidateProtocolProfile,
     chat_tools: Option<adapters::ChatToolProjection>,
+    #[serde(default)]
+    function_encoding_projection: adapters::FunctionEncodingProjection,
     request_bytes: u64,
     streaming: bool,
     correlation: serde_json::Value,
@@ -119,11 +121,20 @@ impl Capture {
     pub(crate) fn begin(
         profile: &CandidateProtocolProfile,
         chat_tools: Option<&adapters::ChatToolProjection>,
+        function_encoding_projection: adapters::FunctionEncodingProjection,
         request_bytes: usize,
         streaming: bool,
     ) -> Option<Self> {
         let root = PathBuf::from(std::env::var_os("HIROUTE_PRIVATE_STREAM_CAPTURE")?);
-        Self::open(&root, profile, chat_tools, request_bytes, streaming).ok()
+        Self::open(
+            &root,
+            profile,
+            chat_tools,
+            function_encoding_projection,
+            request_bytes,
+            streaming,
+        )
+        .ok()
     }
 
     pub(crate) fn register(
@@ -137,6 +148,7 @@ impl Capture {
         root: &Path,
         profile: &CandidateProtocolProfile,
         chat_tools: Option<&adapters::ChatToolProjection>,
+        function_encoding_projection: adapters::FunctionEncodingProjection,
         request_bytes: usize,
         streaming: bool,
     ) -> io::Result<Self> {
@@ -188,6 +200,7 @@ impl Capture {
             session,
             profile,
             chat_tools,
+            function_encoding_projection,
             request_bytes,
             streaming,
         )
@@ -199,6 +212,7 @@ impl Capture {
         session: Session,
         profile: &CandidateProtocolProfile,
         chat_tools: Option<&adapters::ChatToolProjection>,
+        function_encoding_projection: adapters::FunctionEncodingProjection,
         request_bytes: usize,
         streaming: bool,
     ) -> io::Result<Self> {
@@ -230,6 +244,7 @@ impl Capture {
             session,
             profile,
             chat_tools: chat_tools.cloned(),
+            function_encoding_projection,
             request_bytes: request_bytes as u64,
             streaming,
             correlation: correlation(),

@@ -18,6 +18,12 @@ fn profile(standard: bool) -> CandidateProtocolProfile {
     }
     p
 }
+fn negotiation(p: &CandidateProtocolProfile) -> FunctionEncodingProjection {
+    let request = decode_ingress_request(IngressProtocol::Responses, &fixture()).unwrap();
+    project_candidate_request(&request, p)
+        .unwrap()
+        .function_encoding_projection
+}
 fn fixture() -> Value {
     serde_json::from_str(include_str!("fixtures/codex-v2-request.json")).unwrap()
 }
@@ -41,7 +47,8 @@ fn decode(
         false,
         ToolIdProjection::new(IngressProtocol::Responses),
         None,
-    )?;
+    )?
+    .with_function_encoding(negotiation(p));
     d.feed(&serde_json::to_vec(body).unwrap(), true)?;
     d.finish()
 }
@@ -264,11 +271,13 @@ fn codex_v2_complete_sse_matches_json_and_native_projection_at_all_fragmentation
                     ToolIdProjection::new(IngressProtocol::Responses),
                     None,
                 )
-                .unwrap();
+                .unwrap()
+                .with_function_encoding(negotiation(&p));
                 let mut renderer = IncrementalClientSseRenderer::new(
                     ClientProtocolProfile::for_candidate(&p).unwrap(),
                     "alias",
-                );
+                )
+                .unwrap();
                 let mut projector = NativeResponseProjector::new_for_observation(
                     &p,
                     true,
@@ -276,7 +285,8 @@ fn codex_v2_complete_sse_matches_json_and_native_projection_at_all_fragmentation
                     None,
                     ToolIdProjection::new(IngressProtocol::Responses),
                 )
-                .unwrap();
+                .unwrap()
+                .with_function_encoding(negotiation(&p));
                 let mut rendered = Vec::new();
                 let mut projected = Vec::new();
                 for part in bytes.chunks(chunk) {
@@ -384,7 +394,8 @@ fn codex_v2_plaintext_chat_and_messages_producers_negotiate_real_json_arguments(
             ToolIdProjection::new(IngressProtocol::Responses),
             prepared.chat_tool_projection,
         )
-        .unwrap();
+        .unwrap()
+        .with_function_encoding(prepared.function_encoding_projection);
         decoder
             .feed(&serde_json::to_vec(&body).unwrap(), true)
             .unwrap();
@@ -410,16 +421,14 @@ fn codex_v2_standard_peer_and_schema_replay_is_byte_equivalent_to_inline() {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
-    let root = OwnedDir(
-        std::env::temp_dir().join(format!(
+    let root = OwnedDir(std::env::temp_dir().join(format!(
             "hiroute-v2-replay-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
-        )),
-    );
+        )));
     std::fs::create_dir(&root.0).unwrap();
     let manager = ReplayManager::open(ReplayConfig {
         root: root.0.join("replay"),
@@ -456,4 +465,112 @@ fn codex_v2_standard_peer_and_schema_replay_is_byte_equivalent_to_inline() {
     drop(store);
     drop(manager);
     assert_eq!(budget.snapshot().unwrap().live, 0);
+}
+
+#[test]
+fn codex_v2_plain_standard_response_client_continues_without_codex_extension() {
+    let p = profile(true);
+    let original = json!({"model":"alias","input":[{"role":"user","content":"read"}],"tools":[{"type":"function","name":"read","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}]});
+    let request = decode_ingress_request(IngressProtocol::Responses, &original).unwrap();
+    let prepared = project_candidate_request(&request, &p).unwrap();
+    assert_eq!(
+        prepared.function_encoding_projection,
+        FunctionEncodingProjection::Preserve
+    );
+    let mut response = item(None, "completed", r#"{"path":"fixture"}"#);
+    response["name"] = json!("read");
+    response.as_object_mut().unwrap().remove("namespace");
+    let bytes = serde_json::to_vec(&envelope(response)).unwrap();
+    let mut decoder = NativeResponseDecoder::new_for_observation(
+        &p,
+        200,
+        false,
+        ToolIdProjection::new(IngressProtocol::Responses),
+        None,
+    )
+    .unwrap()
+    .with_function_encoding(prepared.function_encoding_projection);
+    decoder.feed(&bytes, true).unwrap();
+    let out = json_output(&p, &decoder.finish().unwrap());
+    assert!(out["output"][0].get("encrypted_function_args").is_none());
+    let mut replay = original;
+    replay["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(out["output"][0].clone());
+    replay["input"].as_array_mut().unwrap().push(
+        json!({"type":"function_call_output","call_id":"call_native","output":"fixture contents"}),
+    );
+    let request = decode_ingress_request(IngressProtocol::Responses, &replay).unwrap();
+    let next = project_candidate_request(&request, &p).unwrap();
+    assert_eq!(
+        next.function_encoding_projection,
+        FunctionEncodingProjection::Preserve
+    );
+    assert_eq!(next.body["input"], replay["input"]);
+
+    // The same missing field is not plaintext proof in an explicitly encrypted dialect.
+    let mut v2 = fixture();
+    v2["input"]
+        .as_array_mut()
+        .unwrap()
+        .extend(replay["input"].as_array().unwrap()[1..].iter().cloned());
+    let request = decode_ingress_request(IngressProtocol::Responses, &v2).unwrap();
+    assert!(project_candidate_request(&request, &p).is_err());
+    assert!(project_candidate_request(&request, &profile(false)).is_ok());
+}
+
+#[test]
+fn codex_v2_request_bound_projection_does_not_leak_to_retries_or_other_requests() {
+    let request = decode_ingress_request(IngressProtocol::Responses, &fixture()).unwrap();
+    let standard = project_candidate_request(&request, &profile(true)).unwrap();
+    let native = project_candidate_request(&request, &profile(false)).unwrap();
+    let ordinary = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"alias","input":"next"}),
+    )
+    .unwrap();
+    let ordinary = project_candidate_request(&ordinary, &profile(true)).unwrap();
+    for (p, projection, expected) in [
+        (
+            profile(true),
+            standard.function_encoding_projection,
+            Some(json!([])),
+        ),
+        (profile(false), native.function_encoding_projection, None),
+        (profile(true), ordinary.function_encoding_projection, None),
+        (
+            profile(true),
+            standard.function_encoding_projection,
+            Some(json!([])),
+        ),
+    ] {
+        let bytes = serde_json::to_vec(&envelope(item(None, "completed", "{}"))).unwrap();
+        let mut projector = NativeResponseProjector::new_for_observation(
+            &p,
+            false,
+            "alias".into(),
+            None,
+            ToolIdProjection::new(IngressProtocol::Responses),
+        )
+        .unwrap()
+        .with_function_encoding(projection);
+        let units = projector.feed(&bytes, true).unwrap();
+        let rendered: Value = serde_json::from_slice(
+            &units
+                .iter()
+                .flat_map(|u| u.bytes.iter().copied())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        assert_eq!(
+            rendered["output"][0].get("encrypted_function_args"),
+            expected.as_ref()
+        );
+        assert_eq!(
+            units.last().unwrap().terminal,
+            Some(NativeTerminalOutcome::Complete)
+        );
+    }
+    assert_eq!(request.native_body.as_ref().unwrap(), &fixture());
 }

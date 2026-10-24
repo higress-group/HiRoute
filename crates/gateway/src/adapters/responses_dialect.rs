@@ -6,6 +6,15 @@ use super::{ModelIrError, ProtocolAdapterError};
 use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 use crate::server::request_plan::IngressProtocol;
 
+/// Per-attempt result of consuming an explicit client encoding declaration.
+/// This is not a provider capability or a client-name heuristic.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum FunctionEncodingProjection {
+    #[default]
+    Preserve,
+    Plaintext,
+}
+
 pub(super) fn standard_json(profile: &CandidateProtocolProfile) -> bool {
     profile.capability.upstream_protocol == IngressProtocol::Responses
         && profile.adapter_revision == hiroute_domain::STANDARD_RESPONSES_JSON_ADAPTER_V1
@@ -31,6 +40,7 @@ pub(super) fn encoding(item: &Map<String, Value>) -> Result<Option<Vec<String>>,
 pub(super) fn response_encoding(
     item: &Map<String, Value>,
     standard: bool,
+    projection: FunctionEncodingProjection,
 ) -> Result<Option<Vec<String>>, ModelIrError> {
     let encoding = encoding(item)?;
     if standard {
@@ -39,21 +49,32 @@ pub(super) fn response_encoding(
                 "standard JSON endpoint returned encrypted function arguments".into(),
             ));
         }
-        Ok(Some(Vec::new()))
+        Ok((projection == FunctionEncodingProjection::Plaintext).then(Vec::new))
     } else {
         Ok(encoding)
     }
 }
 
-pub(super) fn project_request(body: &mut Value) -> Result<(), ProtocolAdapterError> {
+pub(super) fn project_request(
+    body: &mut Value,
+) -> Result<FunctionEncodingProjection, ProtocolAdapterError> {
     let object = body.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
+    let mut negotiated = false;
     if let Some(tools) = object.get_mut("tools") {
         for tool in tools
             .as_array_mut()
             .ok_or(ModelIrError::InvalidField("tools"))?
         {
-            project_tool(tool)?;
+            negotiated |= project_tool(tool)?;
         }
+    }
+    // Native peer items and the encoding extension are explicit dialect declarations.
+    // Ordinary standard Responses history legitimately omits this Codex-only field.
+    if let Some(input) = object.get("input").and_then(Value::as_array) {
+        negotiated |= input.iter().any(|item| {
+            item.get("type").and_then(Value::as_str) == Some("agent_message")
+                || item.get("encrypted_function_args").is_some()
+        });
     }
     if let Some(input) = object.get_mut("input").and_then(Value::as_array_mut) {
         for item in input {
@@ -63,13 +84,13 @@ pub(super) fn project_request(body: &mut Value) -> Result<(), ProtocolAdapterErr
                     let call = item
                         .as_object_mut()
                         .ok_or(ModelIrError::InvalidField("function_call"))?;
-                    if encoding(call)?
-                        .as_ref()
-                        .is_none_or(|paths| !paths.is_empty())
+                    let declared = encoding(call)?;
+                    if declared.as_ref().is_some_and(|paths| !paths.is_empty())
+                        || (negotiated && declared.is_none())
                     {
                         return Err(ModelIrError::UnsupportedField("function replay lacks explicit plaintext encoding for standard Responses".into()).into());
                     }
-                    // Only an explicit plaintext declaration may cross this dialect boundary.
+                    // Consume the negotiated extension; ordinary standard replay stays ordinary.
                     call.remove("encrypted_function_args");
                 }
                 Some("reasoning") if item.get("encrypted_content").is_some() => {
@@ -79,17 +100,22 @@ pub(super) fn project_request(body: &mut Value) -> Result<(), ProtocolAdapterErr
             }
         }
     }
-    Ok(())
+    Ok(if negotiated {
+        FunctionEncodingProjection::Plaintext
+    } else {
+        FunctionEncodingProjection::Preserve
+    })
 }
 
-fn project_tool(tool: &mut Value) -> Result<(), ModelIrError> {
+fn project_tool(tool: &mut Value) -> Result<bool, ModelIrError> {
     let object = tool
         .as_object_mut()
         .ok_or(ModelIrError::InvalidField("tools[]"))?;
+    let mut negotiated = false;
     match object.get("type").and_then(Value::as_str) {
         Some("function") => {
             if let Some(schema) = object.get_mut("parameters") {
-                schema_node(schema)?;
+                negotiated |= schema_node(schema)?;
             }
         }
         Some("namespace") => {
@@ -98,7 +124,7 @@ fn project_tool(tool: &mut Value) -> Result<(), ModelIrError> {
                 .and_then(Value::as_array_mut)
                 .ok_or(ModelIrError::InvalidField("namespace.tools"))?
             {
-                project_tool(tool)?;
+                negotiated |= project_tool(tool)?;
             }
         }
         // These declarations retain their complete original native shape.
@@ -109,12 +135,12 @@ fn project_tool(tool: &mut Value) -> Result<(), ModelIrError> {
             ));
         }
     }
-    Ok(())
+    Ok(negotiated)
 }
 
-fn schema_node(value: &mut Value) -> Result<(), ModelIrError> {
+fn schema_node(value: &mut Value) -> Result<bool, ModelIrError> {
     if value.is_boolean() {
-        return Ok(());
+        return Ok(false);
     }
     let schema = value
         .as_object_mut()
@@ -122,7 +148,7 @@ fn schema_node(value: &mut Value) -> Result<(), ModelIrError> {
     if schema.get("encrypted").is_some_and(|v| !v.is_boolean()) {
         return Err(ModelIrError::InvalidField("schema.encrypted"));
     }
-    schema.remove("encrypted");
+    let mut negotiated = schema.remove("encrypted").is_some();
     // Visit schema positions, never example/default data or a property named "encrypted".
     for key in [
         "properties",
@@ -137,7 +163,7 @@ fn schema_node(value: &mut Value) -> Result<(), ModelIrError> {
                 .ok_or(ModelIrError::InvalidField("schema map"))?
                 .values_mut()
             {
-                schema_node(child)?;
+                negotiated |= schema_node(child)?;
             }
         }
     }
@@ -147,7 +173,7 @@ fn schema_node(value: &mut Value) -> Result<(), ModelIrError> {
                 .as_array_mut()
                 .ok_or(ModelIrError::InvalidField("schema array"))?
             {
-                schema_node(child)?;
+                negotiated |= schema_node(child)?;
             }
         }
     }
@@ -166,14 +192,14 @@ fn schema_node(value: &mut Value) -> Result<(), ModelIrError> {
         if let Some(child) = schema.get_mut(key) {
             if let Some(children) = child.as_array_mut() {
                 for child in children {
-                    schema_node(child)?;
+                    negotiated |= schema_node(child)?;
                 }
             } else {
-                schema_node(child)?;
+                negotiated |= schema_node(child)?;
             }
         }
     }
-    Ok(())
+    Ok(negotiated)
 }
 
 fn project_peer(item: &mut Value) -> Result<(), ModelIrError> {
@@ -235,7 +261,8 @@ fn project_peer(item: &mut Value) -> Result<(), ModelIrError> {
 pub(super) fn project_portable_tools(
     body: &mut Value,
     protocol: IngressProtocol,
-) -> Result<(), ModelIrError> {
+) -> Result<bool, ModelIrError> {
+    let mut negotiated = false;
     if let Some(tools) = body.get_mut("tools").and_then(Value::as_array_mut) {
         for tool in tools {
             let schema = match protocol {
@@ -246,9 +273,9 @@ pub(super) fn project_portable_tools(
                 IngressProtocol::Responses => None,
             };
             if let Some(schema) = schema {
-                schema_node(schema)?;
+                negotiated |= schema_node(schema)?;
             }
         }
     }
-    Ok(())
+    Ok(negotiated)
 }

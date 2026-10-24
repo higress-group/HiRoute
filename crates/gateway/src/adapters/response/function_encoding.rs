@@ -19,8 +19,11 @@ impl DecoderCore {
             }
             return Ok(());
         }
-        let mut value =
-            super::super::responses_dialect::response_encoding(item, self.standard_responses_json)?;
+        let mut value = super::super::responses_dialect::response_encoding(
+            item,
+            self.standard_responses_json,
+            self.function_encoding_projection,
+        )?;
         if !self.responses_client {
             if value.as_ref().is_some_and(|paths| !paths.is_empty()) {
                 return Err(ModelIrError::UnsupportedField(

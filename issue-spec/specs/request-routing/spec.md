@@ -209,6 +209,35 @@ candidates do not need the conversion proof. A projection failure excludes only
 that candidate, not all legal alternatives. Named function/custom identity is
 preserved through the [execution-fact boundary](../p0-gateway-execution-plane/spec.md).
 
+### Requirement: Responses function encoding is negotiated in both directions
+
+An explicitly selected standard Responses JSON adapter SHALL own outbound tool-schema
+negotiation, plaintext peer projection, and returned function-argument encoding together
+for the actual request and attempt. The persisted Plan SHALL retain that semantic dialect
+choice after restart. Native Responses and Codex subscription paths SHALL NOT acquire this
+choice from provider branding, endpoint non-membership, a readable argument, or a missing
+response field. New registered sources select the current adapter; retained sources keep
+their original adapter and credential destination until explicitly replaced by a newly
+confirmed source/Plan.
+
+Missing `encrypted_function_args`, explicit `[]`, and a nonempty array SHALL remain
+three distinct native/replay states. The standard translator may emit `[]` only after
+selecting the JSON argument contract and consuming supported boolean encryption schema
+annotations at schema nodes. It SHALL NOT delete a business property/example named
+`encrypted`, discard tools/native options, or accept a contradictory encrypted return.
+Chat function arguments and Messages tool input are intrinsic JSON producers for their
+representable conversions; they do not prove arbitrary native Responses plaintext.
+
+A native plaintext `agent_message` SHALL preserve its author, recipient, content order
+and bytes in an assistant representation. It SHALL NOT become a user message or acquire
+an invented tool identity. Ciphertext, mixed/unknown peer content, and historical function
+calls lacking explicit plaintext evidence SHALL fail that dialect candidate without
+rewriting original history or disabling independent classification/capture/evaluation.
+An incompatible existing conversation requires native compaction that actually removes
+the unrepresentable items, or a fresh native session. A compaction retaining those items
+is not a migration. JSON, full SSE lifecycle, bounded Replay, and accepted history boundaries
+SHALL enforce the same encoding contract; later terminal success cannot erase a contradiction.
+
 ### Requirement: Judgment is frozen before the pure planner
 
 Smart-saving/custom routes MUST obtain one validated decision before Planner when

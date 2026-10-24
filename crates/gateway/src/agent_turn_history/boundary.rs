@@ -514,6 +514,7 @@ fn function_encoding_digest(
     let Some(paths) = encoding else {
         return Some(base);
     };
+    budget.items(paths.len())?;
     let mut hash = Sha256::new_with_prefix(b"tool-function-encoding/v1");
     hash.update(base);
     hash.update((paths.len() as u64).to_be_bytes());

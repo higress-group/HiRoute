@@ -479,10 +479,12 @@ pub(super) async fn materialize_attempt(
     let capture = crate::runtime::stream_capture::Capture::begin(
         profile,
         prepared.chat_tool_projection.as_ref(),
+        prepared.function_encoding_projection,
         prepared.wire_len,
         streaming,
     );
     let chat_tool_projection = prepared.chat_tool_projection.take();
+    let function_encoding_projection = prepared.function_encoding_projection;
     let body = adapters::sequential_attempt_body(
         prepared.clone(),
         logical.replay.clone(),
@@ -600,6 +602,7 @@ pub(super) async fn materialize_attempt(
             native_output,
             omit_thinking: ir.requested_reasoning.messages_omit_thinking,
             chat_tool_projection,
+            function_encoding_projection,
             chat_tool_projection_budget,
             decoder: None,
             renderer,

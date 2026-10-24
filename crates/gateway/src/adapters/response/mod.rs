@@ -108,6 +108,7 @@ enum NativeBlockKind {
 #[derive(Clone, Debug)]
 struct DecoderCore {
     standard_responses_json: bool,
+    function_encoding_projection: super::FunctionEncodingProjection,
     responses_client: bool,
     function_encodings: BTreeMap<u32, (Option<Vec<String>>, bool)>,
     owner: ExactProviderPathV1,
@@ -136,6 +137,7 @@ impl DecoderCore {
     ) -> Self {
         Self {
             standard_responses_json: false,
+            function_encoding_projection: Default::default(),
             responses_client: false,
             function_encodings: BTreeMap::new(),
             owner,
@@ -1201,7 +1203,9 @@ impl DecoderCore {
                         .get(&native_index)
                         .and_then(|(value, _)| value.clone())
                         .or_else(|| {
-                            (self.responses_client
+                            (self.function_encoding_projection
+                                == super::FunctionEncodingProjection::Plaintext
+                                && self.responses_client
                                 && self.owner.upstream_protocol != IngressProtocol::Responses)
                                 .then(Vec::new)
                         })

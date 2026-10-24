@@ -73,6 +73,8 @@ enum CaptureJob {
         profile: Arc<CandidateProtocolProfile>,
         tool_id_projection: crate::server::core_runtime::adapters::ToolIdProjection,
         chat_tool_projection: Option<crate::server::core_runtime::adapters::ChatToolProjection>,
+        function_encoding_projection:
+            crate::server::core_runtime::adapters::FunctionEncodingProjection,
         streaming: bool,
         alias: String,
         status: Arc<CaptureStatus>,
@@ -175,6 +177,7 @@ impl CanonicalCaptureProducer {
         profile: Arc<CandidateProtocolProfile>,
         tool_id_projection: crate::server::core_runtime::adapters::ToolIdProjection,
         chat_tool_projection: Option<&crate::server::core_runtime::adapters::ChatToolProjection>,
+        function_encoding_projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
         streaming: bool,
         alias: String,
     ) -> Option<CanonicalCaptureHandle> {
@@ -204,6 +207,7 @@ impl CanonicalCaptureProducer {
             profile,
             tool_id_projection,
             chat_tool_projection,
+            function_encoding_projection,
             streaming,
             alias,
             status: Arc::clone(&handle.status),
@@ -421,6 +425,7 @@ fn process_job(
             profile,
             tool_id_projection,
             chat_tool_projection,
+            function_encoding_projection,
             streaming,
             alias,
             status,
@@ -443,6 +448,7 @@ fn process_job(
                         alias,
                         budget.clone(),
                     )
+                    .with_function_encoding(function_encoding_projection)
                     .with_failure_context(*failure_context),
                     status,
                     _reservation: reservation,
@@ -559,6 +565,7 @@ impl RequestObservation {
         &self,
         stable_binding_id: &str,
         chat_tool_projection: Option<&crate::server::core_runtime::adapters::ChatToolProjection>,
+        function_encoding_projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
     ) -> Option<CanonicalCaptureHandle> {
         let (profile, tool_id_projection, streaming) = {
             let state = self.lock_state();
@@ -574,6 +581,7 @@ impl RequestObservation {
             profile,
             tool_id_projection,
             chat_tool_projection,
+            function_encoding_projection,
             streaming,
             self.metadata().served_model_id.clone(),
         )

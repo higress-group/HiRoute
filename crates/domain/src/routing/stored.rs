@@ -39,6 +39,11 @@ pub struct StoredConnectorFactsV1 {
 
 impl StoredProtocolChoiceV1 {
     fn freeze(profile: &GatewayCandidateProtocolProfileV1) -> Result<Self, CompiledPlanError> {
+        if profile.adapter_revision == STANDARD_RESPONSES_JSON_ADAPTER_V1
+            && profile.connector.upstream_protocol != UpstreamProtocol::Responses
+        {
+            return Err(CompiledPlanError::InvalidCandidate);
+        }
         let headers = profile
             .connector
             .headers
@@ -71,6 +76,12 @@ impl StoredProtocolChoiceV1 {
 
     fn build(&self) -> Result<GatewayCandidateProtocolProfileV1, CompiledPlanError> {
         if self.native_target.is_some() != self.credential_profile_identity.is_some() {
+            return Err(CompiledPlanError::InvalidCandidate);
+        }
+        if self.responses_dialect.is_none()
+            && self.credential_profile_identity.as_deref()
+                == Some(STANDARD_RESPONSES_JSON_ADAPTER_V1)
+        {
             return Err(CompiledPlanError::InvalidCandidate);
         }
         let c = &self.connector;

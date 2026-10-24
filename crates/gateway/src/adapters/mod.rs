@@ -6,6 +6,7 @@ pub(crate) mod reasoning_loss;
 mod request;
 mod response;
 mod responses_dialect;
+pub(crate) use responses_dialect::FunctionEncodingProjection;
 #[cfg(test)]
 mod responses_dialect_tests;
 mod structured_output;

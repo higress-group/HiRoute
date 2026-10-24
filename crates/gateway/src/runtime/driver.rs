@@ -185,6 +185,7 @@ pub struct ProductionAttemptState {
     native_output: bool,
     omit_thinking: bool,
     chat_tool_projection: Option<adapters::ChatToolProjection>,
+    function_encoding_projection: adapters::FunctionEncodingProjection,
     chat_tool_projection_budget: Option<Reservation>,
     decoder: Option<adapters::NativeResponseDecoder>,
     renderer: Option<adapters::IncrementalClientSseRenderer>,
@@ -231,6 +232,12 @@ impl ProductionAttemptState {
         if let Some(capture) = &self.capture {
             capture.register(request);
         }
+    }
+
+    pub(crate) fn function_encoding_projection_for_observation(
+        &self,
+    ) -> adapters::FunctionEncodingProjection {
+        self.function_encoding_projection
     }
 
     pub(crate) fn chat_tool_projection_for_observation(

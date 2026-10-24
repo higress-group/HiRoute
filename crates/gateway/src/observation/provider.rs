@@ -131,6 +131,7 @@ impl ProviderRuntimePort for ObservedProductionProvider {
             observation.begin_response_capture(
                 &stable_binding_id,
                 inner.chat_tool_projection_for_observation(),
+                inner.function_encoding_projection_for_observation(),
             )
         });
         Ok((

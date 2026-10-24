@@ -1,4 +1,5 @@
 //! Preserve native payloads; only routing and configured controls belong to us.
+use super::super::FunctionEncodingProjection;
 use super::*;
 
 pub(super) fn controls(
@@ -31,7 +32,7 @@ pub(super) fn project(
     profile: &CandidateProtocolProfile,
     canonical: Value,
     omit_prefix: Option<usize>,
-) -> Result<Value, ProtocolAdapterError> {
+) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
     if request.ingress_protocol != profile.capability.upstream_protocol {
         if request.native_only {
             return Err(ProtocolAdapterError::ClientUnrepresentable(
@@ -39,24 +40,34 @@ pub(super) fn project(
             ));
         }
         let mut canonical = canonical;
-        if request.ingress_protocol == IngressProtocol::Responses {
+        let negotiated = if request.ingress_protocol == IngressProtocol::Responses {
             super::super::responses_dialect::project_portable_tools(
                 &mut canonical,
                 profile.capability.upstream_protocol,
-            )?;
-        }
+            )?
+        } else {
+            false
+        };
         super::super::structured_output::project_messages_format(
             request,
             profile.capability.upstream_protocol,
             &mut canonical,
         );
         normalize_codex_replay(&mut canonical, profile, request);
-        return project_dialect(canonical, profile);
+        return project_dialect(
+            canonical,
+            profile,
+            if negotiated {
+                FunctionEncodingProjection::Plaintext
+            } else {
+                FunctionEncodingProjection::Preserve
+            },
+        );
     }
     let Some(original) = &request.native_body else {
         let mut canonical = canonical;
         normalize_codex_replay(&mut canonical, profile, request);
-        return project_dialect(canonical, profile);
+        return project_dialect(canonical, profile, FunctionEncodingProjection::Preserve);
     };
     let mut body = original.clone();
     let object = body.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
@@ -163,17 +174,18 @@ pub(super) fn project(
         }
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
-    project_dialect(body, profile)
+    project_dialect(body, profile, FunctionEncodingProjection::Preserve)
 }
 
 fn project_dialect(
     mut body: Value,
     profile: &CandidateProtocolProfile,
-) -> Result<Value, ProtocolAdapterError> {
+    mut projection: FunctionEncodingProjection,
+) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
     if super::super::responses_dialect::standard_json(profile) {
-        super::super::responses_dialect::project_request(&mut body)?;
+        projection = super::super::responses_dialect::project_request(&mut body)?;
     }
-    Ok(body)
+    Ok((body, projection))
 }
 
 /// Codex subscription input does not accept the output-only completed status on

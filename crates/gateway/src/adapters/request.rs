@@ -39,6 +39,7 @@ pub struct PreparedNativeRequest {
     pub decoder_revision: String,
     pub reasoning_profile_id: String,
     pub(crate) chat_tool_projection: Option<ChatToolProjection>,
+    pub(crate) function_encoding_projection: super::FunctionEncodingProjection,
 }
 
 /// Validates every critical profile fact and serializes one candidate without
@@ -82,7 +83,7 @@ pub fn project_candidate_request(
             IngressProtocol::Messages => serialize_messages(request, profile, reasoning, None)?,
         }
     };
-    let body = native::project(request, profile, body, None)?;
+    let (body, function_encoding_projection) = native::project(request, profile, body, None)?;
     let bytes = serde_json::to_vec(&body)
         .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
     let context = ContextProjector::project(
@@ -106,6 +107,7 @@ pub fn project_candidate_request(
         decoder_revision: profile.decoder_revision.clone(),
         reasoning_profile_id: reasoning.profile_id.clone(),
         chat_tool_projection,
+        function_encoding_projection,
     })
 }
 
@@ -267,9 +269,7 @@ fn serialize_responses(
                     if let Some(namespace) = namespace {
                         item["namespace"] = Value::String(namespace.clone());
                     }
-                    if let Some(encoding) = encrypted_function_args { item["encrypted_function_args"] = json!(encoding); } else if request.ingress_protocol != IngressProtocol::Responses && *tool_kind == ToolKindV1::Function {
-                        item["encrypted_function_args"] = json!([]);
-                    }
+                    if let Some(encoding) = encrypted_function_args { item["encrypted_function_args"] = json!(encoding); }
                     input.push(with_responses_item_fields(
                         request,
                         message_index,
