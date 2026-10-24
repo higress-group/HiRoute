@@ -51,12 +51,18 @@ def preserve_evidence(run, record):
             targets.add(Path(arg.split("=", 1)[1]).stem)
     files, excluded = {}, []
 
+    def cargo_profile_marker(directory):
+        try:
+            return stat.S_ISREG((directory / ".cargo-lock").lstat().st_mode)
+        except FileNotFoundError:
+            return False
+
     def copy(source, relative, target_tree=False):
         info = source.lstat()
         parts = relative.parts
         # Cargo profiles can also be under target/<target-triple>/PROFILE.
         if target_tree and stat.S_ISDIR(info.st_mode):
-            profile = len(parts) in (2, 3) and ((source / ".cargo-lock").is_file()
+            profile = len(parts) in (2, 3) and (cargo_profile_marker(source)
                 or source.name in profiles and (len(parts) == 2 or parts[1] in targets
                     or re.fullmatch(r"\w+(?:-[\w.]+){2,}|wasm\d+-[\w.-]+", parts[1])))
             if profile or parts == ("target", "validation-schedule"):

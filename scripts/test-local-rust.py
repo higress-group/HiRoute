@@ -528,7 +528,7 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
                              os.pathsep.join([str(loaded), str(fallback)]))
 
     def run_fixture(self, exit_code=0, cargo_only=True, delay=0, source="origin", jobs=2, command=None,
-                    keep=False, profile='debug', cache_error=None, no_target=False):
+                    keep=False, profile='debug', cache_error=None, no_target=False, prepare=None):
         # Real git origin/worktree and subprocess lifecycle; fake compiler means NO Rust proof.
         m.git(self.repo, 'remote', 'add', 'origin', str(self.base / 'unpublished') if source == 'local' else str(self.repo))
         branch = m.git(self.repo, 'symbolic-ref', 'HEAD')
@@ -570,7 +570,7 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
              patch.object(m.remote, 'stats', return_value={'cache_hits': 1}), \
              patch.object(m.remote, 'admit_cache_server', side_effect=cache_error, return_value={'state': 'ready'}), \
              patch.object(self.store, 'ensure_space'):
-            result = m.run(self.store, args)
+            result = m.run(self.store, args, prepare=prepare)
         if result.get('temporary_directory'):
             self.addCleanup(m.remote.cleanup_temp_directory, result['temporary_directory'])
         return result
@@ -741,6 +741,22 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
         self.assertFalse(result['evidence_saved'])
         self.assertEqual(result['cleanup']['state'], 'retained')
         self.assertIn('fixture export failed', result['cleanup']['reason'])
+
+    def test_link_profile_marker_retains_the_checkout_instead_of_losing_unique_evidence(self):
+        def prepare(checkout, *_args):
+            evidence = checkout / 'target/unique-evidence'
+            evidence.mkdir(parents=True)
+            (evidence / 'diagnostic.json').write_text('unique runtime evidence')
+            (evidence / '.cargo-lock').symlink_to(self.repo / 'source')
+        result = self.run_fixture(command=['cargo', 'check'], prepare=prepare)
+        self.assertEqual((result['scenario'], result['process_exit']), ('green', 0))
+        self.assertEqual(result['cleanup']['state'], 'retained')
+        self.assertEqual(result['evidence_export']['state'], 'failed')
+        self.assertIn('link or special file', result['evidence_export']['error'])
+        self.assertTrue(Path(result['temporary_directory']['path']).is_dir())
+        self.assertEqual((Path(result['checkout']) / 'target/unique-evidence/diagnostic.json').read_text(),
+                         'unique runtime evidence')
+        self.assertEqual((self.repo / 'source').read_text(), 'preserve source')
 
     def test_release_only_target_is_reclaimed_without_copying_compiler_outputs(self):
         result = self.run_fixture(profile='release', command=['cargo', 'build', '--release'])

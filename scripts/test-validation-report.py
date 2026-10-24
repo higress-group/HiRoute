@@ -4,6 +4,7 @@ import importlib.util
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import types
@@ -324,6 +325,30 @@ class Storage(unittest.TestCase):
                 self.assertEqual(set(manifest['files']), {'target/e2e/debug/details.json'})
                 self.assertFalse((run / 'artifacts/ci').exists())
                 self.assertFalse((run / 'artifacts/private_json_target/ci').exists())
+
+    def test_link_and_special_profile_markers_cannot_hide_unique_evidence(self):
+        for kind in ('link', 'dangling-link', *(['fifo'] if hasattr(os, 'mkfifo') else [])):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                checkout, run = root / 'checkout', root / 'run'
+                evidence = checkout / 'target/unique-evidence'
+                evidence.mkdir(parents=True)
+                (evidence / 'diagnostic.json').write_text('unique runtime evidence')
+                outside = root / 'outside'
+                if kind == 'link':
+                    outside.write_text('external bytes')
+                marker = evidence / '.cargo-lock'
+                if kind == 'fifo':
+                    os.mkfifo(marker)
+                else:
+                    marker.symlink_to(outside)
+                run.mkdir()
+                with self.assertRaisesRegex(ValueError, 'link or special file'):
+                    report.preserve_evidence(run, dict(checkout=str(checkout), command=['cargo', 'check']))
+                self.assertEqual((evidence / 'diagnostic.json').read_text(), 'unique runtime evidence')
+                self.assertFalse((run / 'evidence.json').exists())
+                if kind == 'link':
+                    self.assertEqual(outside.read_text(), 'external bytes')
 
     def test_report_survives_checkout_removal_and_never_changes_verdict(self):
         with tempfile.TemporaryDirectory() as folder:
