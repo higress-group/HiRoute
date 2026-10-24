@@ -5,6 +5,8 @@
 //! Gateway implementation DTO and contain no telemetry mapping. Observation is evidence-only:
 //! none of these ports may mutate routing/runtime state.
 
+mod agent_turn_admission;
+pub use agent_turn_admission::*;
 mod analysis;
 mod analysis_results;
 mod envelope;

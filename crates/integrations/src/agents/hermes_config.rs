@@ -548,7 +548,7 @@ auxiliary:
     #[test]
     fn selected_transport_uses_native_sdk_base_and_restores_exact_original() {
         use hiroute_domain::AgentIngressProtocolV1::*;
-        let original = b"user_note: preserve\n";
+        let original = b"user_note: preserve\nplugins:\n  enabled: [foreign]\n  entries:\n    foreign: {user_setting: retained}\n";
         for (protocol, transport, base) in [
             (Responses, "codex_responses", "http://127.0.0.1:8317/v1"),
             (Messages, "anthropic_messages", "http://127.0.0.1:8317"),
@@ -577,8 +577,24 @@ auxiliary:
             let provider = doc.value["model"]["provider"].as_str().unwrap();
             assert_eq!(doc.value["providers"][provider]["transport"], transport);
             assert_eq!(doc.value["providers"][provider]["api"], base);
+            assert_eq!(
+                doc.value["plugins"]["enabled"],
+                json!(["foreign", "hiroute"])
+            );
+            assert_eq!(
+                doc.value["plugins"]["entries"]["hiroute"],
+                json!({
+                    "provider_id":provider,"model":model.alias,"base_url":base,"api_mode":transport
+                })
+            );
+            assert_eq!(
+                doc.value["plugins"]["entries"]["foreign"]["user_setting"],
+                "retained"
+            );
             assert_eq!(doc.value["user_note"], "preserve");
-            assert_eq!(record.restore(&managed).unwrap().as_slice(), original);
+            let reopened = HermesConfigRestoreV1::decode(&record.encode().unwrap()).unwrap();
+            assert!(reopened.applied(&managed).unwrap());
+            assert_eq!(reopened.restore(&managed).unwrap().as_slice(), original);
         }
     }
 

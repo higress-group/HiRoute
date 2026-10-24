@@ -2,6 +2,7 @@ import type { Agent } from '../../agents';
 import type { SubscriptionCandidate } from '../subscriptions/types';
 import { BrandIcon, UiIcon } from '../../ui';
 import { agentBrandFromId } from '../../ui/BrandIcon';
+import { agentDisplayName as agentName } from '../agents/ecosystems';
 
 export type ComputeScanItem = {
   agent_id: string;
@@ -27,16 +28,6 @@ export type ComputeScanResult = {
   connections: ComputeScanItem[];
   diagnostics: { agent_id: string; reason: string; native_provider_id?: string; model_id?: string }[];
 };
-
-function agentName(agentId: string, language: 'zh' | 'en') {
-  if (agentId.includes('claude')) return 'Claude Code';
-  if (agentId.includes('codex')) return 'Codex';
-  if (agentId === 'agent_dsh_default') return 'DeepSeek Harness';
-  if (agentId === 'agent_pi_default') return 'Pi';
-  if (agentId === 'agent_hermes_default') return 'Hermes';
-  if (agentId.includes('qoder')) return 'Qoder';
-  return language === 'zh' ? '本机 Agent' : 'Local agent';
-}
 
 function connectionName(optionId: string | undefined, language: 'zh' | 'en') {
   if (!optionId) return language === 'zh' ? '本机模型配置' : 'Local model configuration';

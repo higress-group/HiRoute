@@ -845,8 +845,16 @@ fn apply(
     } else {
         "ApplyAgentConnectionChange"
     };
+    let diagnostics = crate::control::runtime::settings_facts::diagnostics::Scope::begin(key);
+    diagnostics.operation(preview_operation);
     let preview = service.dispatch_wire(request(preview_operation, json!({"spec":spec}), None));
-    assert!(preview.error.is_none(), "{preview:?}");
+    if preview.error.is_some() {
+        diagnostics.print_failure();
+    }
+    assert!(
+        preview.error.is_none(),
+        "{key} {preview_operation}: {preview:?}"
+    );
     let preview = preview.data.unwrap();
     assert_eq!(preview["applicable"], true, "{preview}");
     let mut payload = json!({"spec":spec,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],
@@ -867,8 +875,15 @@ fn apply(
             api::ErrorCode::CapabilityDenied
         );
     }
+    diagnostics.operation(apply_operation);
     let response = service.dispatch_wire(request(apply_operation, payload.clone(), None));
-    assert!(response.error.is_none(), "{response:?}");
+    if response.error.is_some() {
+        diagnostics.print_failure();
+    }
+    assert!(
+        response.error.is_none(),
+        "{key} {apply_operation}: {response:?}"
+    );
     let reference = response
         .operation
         .as_ref()
@@ -1145,6 +1160,7 @@ fn record_attributed_session(
     };
     let request_id = LogicalRequestId::parse(format!("request-{suffix}")).unwrap();
     let fact = ExecutionFactV1::AgentTurnFinished {
+        history_membership: None,
         opening_cause: Some(AgentTurnOpeningCauseV1::NoComparableHistory),
         branch_execution: None,
         agent_turn_id: format!("agent-turn-{suffix}"),

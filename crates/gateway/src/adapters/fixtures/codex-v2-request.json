@@ -1,0 +1,464 @@
+{
+  "model": "alias",
+  "instructions": "Fixture system instructions.",
+  "input": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Use the native child to read the fixture file."
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "name": "exec_command",
+      "description": "Fixture description retained.",
+      "strict": false,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "cmd": {
+            "description": "Fixture description retained.",
+            "type": "string"
+          },
+          "justification": {
+            "description": "Fixture description retained.",
+            "type": "string"
+          },
+          "login": {
+            "description": "Fixture description retained.",
+            "type": "boolean"
+          },
+          "max_output_tokens": {
+            "description": "Fixture description retained.",
+            "type": "number"
+          },
+          "prefix_rule": {
+            "description": "Fixture description retained.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sandbox_permissions": {
+            "description": "Fixture description retained.",
+            "enum": [
+              "use_default",
+              "require_escalated"
+            ],
+            "type": "string"
+          },
+          "shell": {
+            "description": "Fixture description retained.",
+            "type": "string"
+          },
+          "tty": {
+            "description": "Fixture description retained.",
+            "type": "boolean"
+          },
+          "workdir": {
+            "description": "Fixture description retained.",
+            "type": "string"
+          },
+          "yield_time_ms": {
+            "description": "Fixture description retained.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cmd"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "type": "function",
+      "name": "write_stdin",
+      "description": "Fixture description retained.",
+      "strict": false,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "chars": {
+            "description": "Fixture description retained.",
+            "type": "string"
+          },
+          "max_output_tokens": {
+            "description": "Fixture description retained.",
+            "type": "number"
+          },
+          "session_id": {
+            "description": "Fixture description retained.",
+            "type": "number"
+          },
+          "yield_time_ms": {
+            "description": "Fixture description retained.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "type": "function",
+      "name": "update_plan",
+      "description": "Fixture description retained.",
+      "strict": false,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "explanation": {
+            "description": "Fixture description retained.",
+            "type": "string"
+          },
+          "plan": {
+            "description": "Fixture description retained.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "description": "Fixture description retained.",
+                  "enum": [
+                    "pending",
+                    "in_progress",
+                    "completed"
+                  ],
+                  "type": "string"
+                },
+                "step": {
+                  "description": "Fixture description retained.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "step",
+                "status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "plan"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "type": "function",
+      "name": "request_user_input",
+      "description": "Fixture description retained.",
+      "strict": false,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "questions": {
+            "description": "Fixture description retained.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "header": {
+                  "description": "Fixture description retained.",
+                  "type": "string"
+                },
+                "id": {
+                  "description": "Fixture description retained.",
+                  "type": "string"
+                },
+                "options": {
+                  "description": "Fixture description retained.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "description": "Fixture description retained.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "Fixture description retained.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "description"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "question": {
+                  "description": "Fixture description retained.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "header",
+                "question",
+                "options"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "type": "function",
+      "name": "view_image",
+      "description": "Fixture description retained.",
+      "strict": false,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Fixture description retained.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "type": "namespace",
+      "name": "collaboration",
+      "description": "Fixture description retained.",
+      "tools": [
+        {
+          "type": "function",
+          "name": "followup_task",
+          "description": "Fixture description retained.",
+          "strict": false,
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "description": "Fixture description retained.",
+                "encrypted": true,
+                "type": "string"
+              },
+              "target": {
+                "description": "Fixture description retained.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "type": "function",
+          "name": "interrupt_agent",
+          "description": "Fixture description retained.",
+          "strict": false,
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "target": {
+                "description": "Fixture description retained.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "target"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "type": "function",
+          "name": "list_agents",
+          "description": "Fixture description retained.",
+          "strict": false,
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "path_prefix": {
+                "description": "Fixture description retained.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        {
+          "type": "function",
+          "name": "send_message",
+          "description": "Fixture description retained.",
+          "strict": false,
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "description": "Fixture description retained.",
+                "encrypted": true,
+                "type": "string"
+              },
+              "target": {
+                "description": "Fixture description retained.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "type": "function",
+          "name": "spawn_agent",
+          "description": "Fixture description retained.",
+          "strict": false,
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "fork_turns": {
+                "description": "Fixture description retained.",
+                "type": "string"
+              },
+              "message": {
+                "description": "Fixture description retained.",
+                "encrypted": true,
+                "type": "string"
+              },
+              "model": {
+                "description": "Fixture description retained.",
+                "type": "string"
+              },
+              "reasoning_effort": {
+                "description": "Fixture description retained.",
+                "type": "string"
+              },
+              "task_name": {
+                "description": "Fixture description retained.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "task_name",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "type": "function",
+          "name": "wait_agent",
+          "description": "Fixture description retained.",
+          "strict": false,
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "timeout_ms": {
+                "description": "Fixture description retained.",
+                "type": "number"
+              }
+            },
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "get_goal",
+      "description": "Fixture description retained.",
+      "strict": false,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      }
+    },
+    {
+      "type": "function",
+      "name": "create_goal",
+      "description": "Fixture description retained.",
+      "strict": false,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "objective": {
+            "description": "Fixture description retained.",
+            "type": "string"
+          },
+          "token_budget": {
+            "description": "Fixture description retained.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "objective"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "type": "function",
+      "name": "update_goal",
+      "description": "Fixture description retained.",
+      "strict": false,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "description": "Fixture description retained.",
+            "enum": [
+              "complete",
+              "blocked"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "type": "web_search",
+      "external_web_access": true
+    }
+  ],
+  "tool_choice": "auto",
+  "parallel_tool_calls": false,
+  "max_output_tokens": 4096,
+  "store": false,
+  "stream": true,
+  "include": [
+    "reasoning.encrypted_content"
+  ],
+  "prompt_cache_key": "fixture-session",
+  "client_metadata": {
+    "x-codex-turn-metadata": "fixture",
+    "thread_id": "fixture",
+    "turn_id": "fixture",
+    "x-codex-installation-id": "fixture",
+    "session_id": "fixture",
+    "x-codex-window-id": "fixture"
+  }
+}

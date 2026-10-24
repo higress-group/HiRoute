@@ -1,4 +1,5 @@
 """The packaged callback must preserve native SDK kwargs and affect only its owned route."""
+import json
 import importlib.util
 import pathlib
 import unittest
@@ -44,7 +45,8 @@ class HermesAdapterTests(unittest.TestCase):
                 self.assertIs(result["request"]["stream"], True)
                 self.assertEqual(result["request"]["extra_headers"], {
                     "X-Preserve": "yes", "X-Hermes-Session-Id": "native-session",
-                    "X-HiRoute-Token": "synthetic-local-token"})
+                    "X-HiRoute-Token": "synthetic-local-token", "X-HiRoute-Agent": "hermes",
+                    "X-HiRoute-Routing-Context": json.dumps({"version":2,"agent":"hermes","session_id":"native-session","purpose":"main","input":{"kind":"observed_batch"}}, separators=(",", ":"))})
                 self.assertEqual(request["extra_headers"]["x-hermes-session-id"], "old")
                 self.assertEqual(result["source"], "hiroute")
 
@@ -55,7 +57,7 @@ class HermesAdapterTests(unittest.TestCase):
                 result = adapter({"extra_headers": {"X-HERMES-SESSION-ID": "must-remove"}},
                                  provider="custom", model="plan-alias", base_url="http://127.0.0.1:5837/v1",
                                  api_mode="codex_responses", session_id=identity)
-                self.assertEqual(result["request"]["extra_headers"], {"X-HiRoute-Token": "synthetic-local-token"})
+                self.assertEqual(result["request"]["extra_headers"], {"X-HiRoute-Token": "synthetic-local-token", "X-HiRoute-Agent": "hermes"})
 
     def test_each_foreign_route_dimension_is_unchanged(self):
         adapter = plugin._adapter(configuration())

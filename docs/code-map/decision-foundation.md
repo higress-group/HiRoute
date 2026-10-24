@@ -22,8 +22,14 @@ with no current runtime or product entry.
 | Judge the current task and preceding actual stage | [Call lifetime](../../crates/gateway/src/core_runtime/classification.rs), [safe transport diagnostics](../../crates/gateway/src/core_runtime/classification/diagnostic.rs), [System One adapter](../../crates/gateway/src/core_runtime/classification/system_one.rs), [custom codec](../../crates/gateway/src/core_runtime/classification/extension.rs) | [Provider mapping](../../crates/gateway/src/core_runtime/classification/system_one_tests.rs), [protocol/replay tests](../../crates/gateway/src/core_runtime/classification/protocol_tests.rs) |
 | Select a group and execute candidates | [Group policy](../../crates/gateway/src/core_runtime/classification/group_policy.rs), [planner](../../crates/gateway/src/planner.rs), [history](../../crates/gateway/src/agent_turn_history/store.rs) | [Threshold/score isolation](../../crates/gateway/src/core_runtime/classification/group_policy_tests.rs), [group boundaries](../../crates/gateway/src/planning/branch_tests.rs), [multi-turn listener journey](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches.rs) |
 | Inspect actual execution and competence | [Quality query](../../crates/observation/src/query_v2/plan_quality.rs), [PlanQuality](../../apps/desktop/src/features/PlanQuality.tsx), [stage detail](../../apps/desktop/src/features/PlanQualityStage.tsx) | [Real C execution and retained query](../../crates/daemon/tests/support/c_protocol_product.py), [stage summaries](../../crates/observation/src/store/tests/plan_quality/summary.rs), [UI identities](../../apps/desktop/tests/plan-quality-state.test.mjs), [C counts and coverage UI](../../apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs) |
+| Start a model trial or divide a published route | [TrialQuickStart](../../apps/desktop/src/features/trial/TrialQuickStart.tsx), [Plan editor](../../apps/desktop/src/plan-editor.tsx), [division source and draft](../../apps/desktop/src/features/trust/division-draft.ts), [draft disclosure](../../apps/desktop/src/features/trust/DivisionDraftDialog.tsx) | [Trial scenarios](../../apps/desktop/tests/v3/visual/new-model-trial-active.mjs) distinguish built-in protection from custom group selection; the manual division entry depends on published model groups, not threshold suggestions |
 
 ## Frozen configuration
+
+The [execution and association contract](../../issue-spec/specs/request-routing/spec.md#requirement-execution-facts-and-history-association-have-separate-authority)
+separates request-owned actual facts, bounded history projections, shared protocol
+meaning and native evidence. Use it when changing any of the owners below; a cache
+miss, unknown source or missing predecessor must not become a global routing switch.
 
 The [publication projection](../../crates/domain/src/publication/projection.rs)
 keeps branch/reasoning execution keys distinct from source binding identities.
@@ -74,6 +80,10 @@ interrupted/unknown turns stay in the continuous background suffix; execution
 status and target-score eligibility are separate. The shared immutable
 [native category v1 template](../../crates/domain/src/routing/fixtures/native_category_v1.json)
 feeds native compilation; transport consumes the frozen decision.
+The [core termination boundary](../../crates/gateway-core/src/runtime/driver/error.rs)
+preserves typed cancellation before and after attempt creation. Product completion
+keeps cancellation, accepted executions and captured history separate; a complete
+capture is not proof that an interrupted stage completed.
 Freeze records default/custom assessment intent for every scope before hashing. Legacy native wording
 has [its own current definition](../../crates/domain/src/routing/legacy_category.rs), independent of the C fixture. C applicability
 only gates an otherwise eligible low-score protection opportunity. Invalid or
@@ -87,15 +97,114 @@ returns to regular. Missing/partial scores remain unrated. Recognized tool
 continuations reuse the frozen decision only while history and authority permit.
 [ContextHold](../../crates/gateway/src/context_hold/store.rs) binds exact route,
 version, protocol, authorization and session; unrelated plan publication does not
-invalidate that route, and each request still reauthorizes. Message-prefix continuity is
-separate from system-instruction validity: [history entry](../../crates/gateway/src/context_hold/store.rs)
-distinguishes continuing, shortened, otherwise rewritten and unavailable checkpoints. [Turn history](../../crates/gateway/src/agent_turn_history/store.rs)
-records the opening cause on completion; [timeline projection](../../crates/observation/src/query_v2/routing_timeline/projection.rs)
-prefers it over legacy ledger inference. [Boundary regressions](../../crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs)
-cover persistence, unknown evidence and old canonical bytes.
+invalidate that route, and each request still reauthorizes.
+[Optional history admission](../../crates/gateway/src/core_runtime/decision_history.rs)
+derives execution scope from request authority independently of ContextHold.
+[Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
+uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+[Opening evidence](../../crates/gateway/src/agent_turn_history/store/opening.rs)
+compares the full old request separately from that response edge. Both reused
+and independent branches require an actually appended input to establish a new
+activation; a native identifier change alone cannot close a tool stage. Its
+[regressions](../../crates/gateway/src/agent_turn_history/opening_evidence_tests.rs)
+cover interrupted output, concurrent retries, input windows and missing measurements.
+They also vary input and identifier independently: repeated IDs cannot hide new
+input, while explicit continuation evidence makes current input unavailable;
+a new-message cause does not authorize predecessor reuse or repair the old score.
+Request-local model setup remains in strict ContextHold, outside execution-prefix
+identity. A unique visible response projection can retain actual stage capture
+when retained native history is only partially modeled: [ingress coverage](../../crates/gateway/src/model_ir/native_history.rs)
+binds unknown prior items in full and checks only the accepted-output suffix.
+The [coverage regressions](../../crates/gateway/src/agent_turn_history/boundary/coverage_tests.rs)
+separate old unknown content, new unknown output and new User input across protocols.
+A unique visible response projection also retains actual stage capture
+when plaintext reasoning is omitted, with sticky association uncertainty and no
+affinity hint; [projection regressions](../../crates/gateway/src/agent_turn_history/boundary/projection_tests.rs)
+cover competing branches, old-prefix changes and frozen membership.
+The same boundary owner has a separate full ordered plaintext-encoding proof for
+missing versus empty function encoding, with contextual uncertainty and unchanged
+exact digests. [Encoding comparisons](../../crates/gateway/src/agent_turn_history/boundary/function_encoding_compat_tests.rs)
+and [concurrent controls](../../crates/gateway/src/agent_turn_history/concurrent_encoding_tests.rs)
+bind complete tool identity/arguments, reasoning and ordering without changing branch ranking.
+Optional content comparisons use the shared [fingerprint budget](../../crates/gateway/src/context_hold/fingerprint.rs)
+before Replay reads and JSON key sorting; exhausting it loses evidence, not routing.
+The [Replay range owner](../../crates/gateway/src/replay.rs) records canonical JSON
+provenance. [JSON boundary cases](../../crates/gateway/src/agent_turn_history/boundary/json_reference_budget_tests.rs)
+cover raw-byte prefix association after normalization refusal, without granting
+canonical output equivalence or preventing later tool-stage recovery.
+The [layout capacity regression](../../crates/gateway/src/core_runtime/decision_history/layout_budget_tests.rs)
+refuses actual optional allocation, preserves captured execution and verifies a
+complete later tool stage after capacity recovers.
+Matching input text alone never deduplicates requests or proves a predecessor.
+Concurrent requests receive separate tickets; frozen snapshots retain their own
+accounted payload and exact target membership. A busy or stale affinity cache loses
+only the hint. Unknown association permits disclosed contextual assessment of actual
+same-scope execution, without advancing a verified branch or importing client output.
+[Concurrency regressions](../../crates/gateway/src/agent_turn_history/concurrent_requests_tests.rs)
+cover different actual outputs, overlap, frozen targets and capacity recovery;
+[runtime admission regressions](../../crates/gateway/src/core_runtime/decision_history/tests.rs)
+exercise optional cache faults. [Gap bookkeeping](../../crates/gateway/src/agent_turn_history/store/gap.rs)
+uses bounded scope-hash stripes; a collision is conservative and recoverable.
+
+[Native normalization](../../crates/gateway/src/context_hold/routing.rs) admits
+known purpose independently from optional enrichment. Known auxiliary calls never
+consume main history slots. The [DSH emitter](../../assets/agents/dsh/hiroute-routing.mjs)
+also follows isolated LLM services while retaining its managed transport gate.
+The [v2 codec](../../crates/gateway/src/context_hold/routing/v2.rs)
+validates the optional native cursor and final-wire input window. The
+[current input view](../../crates/gateway/src/core_runtime/native_routing_view.rs)
+selects current content without changing any original message role.
+Validated input windows also retain their canonical first/last positions through
+capture admission, so trailing native context cannot create a false missing turn.
+Earlier uncaptured input and output after the current window still fence or mark
+the affected stage partial; see the [window regressions](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
+Legacy Hermes clean-text hints cannot choose a current input instance.
+Codex [native metadata](../../crates/gateway/src/context_hold/routing/codex.rs)
+recognizes known auxiliary purpose before requiring turn identity; its
+[peer codec](../../crates/gateway/src/core_runtime/native_routing_view/codex.rs)
+projects a readable native trigger at its actual canonical position while keeping
+typed original peer bytes for evidence. [Codex regressions](../../crates/gateway/src/core_runtime/native_routing_view/codex_tests.rs)
+cover peer-only, multiple-peer, opaque and shifted native positions. Source uncertainty,
+association uncertainty and missing capture remain distinct; the existing classifier
+content vocabulary discloses them without disabling evaluation or changing the
+custom v1 schema. Unavailable known continuation input permits temporary fallback;
+subsequent actual A/B must recover within the same native session. Neither a
+compression link nor a native turn ID reconstructs discarded execution after restart.
+The v2 `existing_turn` input descriptor applies that request-local guard while
+retaining main execution output; a compression cursor alone does not apply it.
+The [listener recovery regression](../../tools/e2e-harness/tests/p0_gateway_runtime/native_existing_turn.rs)
+covers cold and previously captured sessions followed by actual A/B assessment.
+[Continuation regressions](../../crates/gateway/src/core_runtime/decision_history/native_tests.rs)
+keep summaries and unproved tool outcomes out of accepted history. The
+[listener availability cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_routing_availability.rs)
+and [fault cases](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
+exercise the production boundary. Real client loading remains a separate gate.
+
+[Sealed records](../../crates/gateway/src/agent_turn_history/store/records.rs) retain
+actual model/profile/rubric attribution. New input may recover from an old partial
+stage; retries cannot repair missing output. A routing activation or delivered
+response is not proof of logical task completion. Observation
+[turn projection](../../crates/observation/src/analysis/turns.rs),
+[timeline](../../crates/observation/src/query_v2/routing_timeline/projection.rs) and
+[quality receipts](../../crates/observation/src/receipt/plan_quality.rs) consume exact
+versioned request membership for new facts and retain the old reader for old bytes.
+[Admission identity](../../crates/gateway/src/agent_turn_history/store.rs)
+is emitted before classification and independently of affinity; the
+[pending-stage projection](../../crates/observation/src/query_v2/routing_timeline/admission.rs)
+groups interleaved requests by actual Gateway stage and producer epoch.
+Admission never supplies completion or assessment membership. A later admission
+reopens the view without changing the frozen target; delayed closure revisions
+cannot roll it back. [Admission regressions](../../crates/observation/src/store/tests/plan_quality/stage_admission.rs)
+cover pending branches, reopen, conflicts and request termination. The
+[listener-to-observation bridge](../../tools/e2e-harness/tests/p0_gateway_runtime/observed_history.rs)
+feeds actual Gateway envelopes through the production adapter, persistence and
+reopened timeline query; encrypted tool retries and cancellation exercise it.
+[Interleaved membership regressions](../../crates/observation/src/store/tests/plan_quality/history_membership.rs)
+check reopen and prohibit a late execution from extending a frozen score.
 The [ingress adapters](../../crates/gateway/src/adapters/ingress.rs) normalize
 supported protocol history into the same representation before prefix checks;
 Chat reasoning aliases share one state while their native fields remain intact.
+
 
 The planner always prefers a valid held candidate within the newly selected group,
 including an in-group backup; retired follow-up fields survive only at serialized

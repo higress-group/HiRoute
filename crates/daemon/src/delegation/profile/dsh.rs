@@ -21,11 +21,16 @@ pub(super) fn render(
     .map(|(api, endpoint)| (api, endpoint.to_owned()))
     .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
     let state = input.session_root.path().join("native-dsh");
+    let routing_uri = hiroute_integrations::native_routing_adapter_uri(
+        &input.private_root.join("hiroute-routing.mjs"),
+    )
+    .ok_or(DelegationErrorV1::InvalidArguments)?;
     // JSON is a YAML subset. Only public stock-composition IDs are overridden;
     // secret values are referenced by name, never persisted in this overlay.
     let mut patch = vec![
+        json!({"insert":[{"id":"hiroute-routing","name":routing_uri}]}),
         json!({"id":"llm-pi-ai","config":{"providers":{provider:{
-            "apiKeyEnv":"HIROUTE_RUN_TOKEN","api":api,"baseURL":endpoint,
+            "apiKeyEnv":"HIROUTE_RUN_TOKEN","api":api,"baseURL":endpoint,"headers":{"X-HiRoute-Agent":"dsh"},
             "models":[{"id":input.alias,"contextWindow":context,"maxTokens":output,"input":["text"]}]
         }}}}),
         json!({"id":"acp","config":{"provider":provider,"model":input.alias}}),
@@ -62,13 +67,24 @@ pub(super) fn render(
             "--patch".into(),
             input.private_root.join(&relative),
         ],
-        files: vec![RunMaterialFile {
-            relative_path: relative,
-            contents: Zeroizing::new(
-                serde_json::to_vec(&patch).map_err(|_| DelegationErrorV1::InvalidArguments)?,
-            ),
-            executable: false,
-        }],
+        files: vec![
+            RunMaterialFile {
+                relative_path: "hiroute-routing.mjs".into(),
+                contents: Zeroizing::new(
+                    hiroute_integrations::DSH_ROUTING_ADAPTER
+                        .as_bytes()
+                        .to_vec(),
+                ),
+                executable: false,
+            },
+            RunMaterialFile {
+                relative_path: relative,
+                contents: Zeroizing::new(
+                    serde_json::to_vec(&patch).map_err(|_| DelegationErrorV1::InvalidArguments)?,
+                ),
+                executable: false,
+            },
+        ],
         ..Default::default()
     };
     for (name, value) in [

@@ -11,7 +11,6 @@ use super::protocol::{
 use super::{CallFailure, ClassifierAssessment, ClassifierResponse, PreparedDecisionRequest};
 use crate::agent_turn_history::AgentTurnHistorySnapshot;
 use crate::server::core_runtime::adapters::prepare_replay_json_template;
-use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 
 // A bounded wire allocation, not a tokenizer or a business-model context limit.
@@ -26,24 +25,32 @@ pub(super) struct Bindings {
     pub(super) applicability: Option<String>,
 }
 
-pub(super) fn request_template(
+pub(super) fn request_template<'a>(
     authority: &RestBranchClassifierAuthorityV1,
-    request: &ModelRequestIRV1,
+    request: impl Into<super::DecisionInput<'a>>,
     history: &AgentTurnHistorySnapshot,
+    current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, CallFailure> {
+    let request = request.into();
     if authority.native_protocol.is_some() {
-        return super::c_request::request_template(authority, request, history);
+        return super::c_request::request_template(
+            authority,
+            request,
+            history,
+            current_input_origin_unverified,
+        );
     }
     let mut refs = Vec::new();
-    let latest =
-        latest_user_wire_value(request, &mut refs).map_err(|_| CallFailure::RejectedInput)?;
+    let mut latest = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)
+        .map_err(|_| CallFailure::RejectedInput)?;
+    super::protocol::disclose_history_evidence(&mut latest, history);
     let mut target = assessment_definition(history, authority);
     let (mut questions, mut bindings) = base_questions(authority);
     if let Some(target) = &target {
         let id = question_id(&questions);
         questions.insert(id.clone(), json!({
             "type":"score",
-            "instructions":format!("Evaluate only the completed stage from state.visible_conversation[state.assessment_from] through the end. state.latest_user may supply explicit feedback, but is not yet executed. {}", target.instructions),
+            "instructions":format!("Evaluate only the captured execution stage from state.visible_conversation[state.assessment_from] through the end. A completed response does not prove the logical task is complete; assess observed progress without treating absent final results alone as failure. state.latest_user may supply feedback but is not yet executed. {}", target.instructions),
             "criteria":target.criteria.iter().map(|c| &c.criterion).collect::<Vec<_>>(),
         }));
         bindings.assessment = Some(id);

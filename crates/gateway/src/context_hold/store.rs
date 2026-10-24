@@ -5,12 +5,13 @@ use std::time::{Duration, Instant};
 
 use hiroute_gateway_core::core::execution_plan::ResolvedTargetBindingId;
 use hmac::{Hmac, Mac};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use sha2::Sha256;
 
 use crate::server::core_runtime::profiles::HoldPreferenceV1;
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
+use super::history::HistoryDigests;
 use super::{ContextIdentityFacts, HistoryEvidence};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -22,36 +23,94 @@ pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
 pub(crate) struct ContextHoldKey([u8; 32]);
 
 impl ContextHoldKey {
+    fn on_branch(&self, branch: &[u8; 32]) -> Option<Self> {
+        let mut mac = HmacSha256::new_from_slice(&self.0).ok()?;
+        mac.update(b"context-hold-execution-branch/v2");
+        mac.update(branch);
+        Some(Self(mac.finalize().into_bytes().into()))
+    }
+    #[cfg(test)]
+    pub(crate) fn for_runtime_test(value: u8) -> Self {
+        Self([value; 32])
+    }
+
     pub(crate) fn from_request(
         authorized: &AuthorizedRequestPlan,
         ingress_protocol: IngressProtocol,
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
     ) -> Option<Self> {
+        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, false)
+    }
+
+    pub(crate) fn routing_history(
+        authorized: &AuthorizedRequestPlan,
+        ingress_protocol: IngressProtocol,
+        identity: &ContextIdentityFacts,
+        digest_key: &[u8; 32],
+    ) -> Option<Self> {
+        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, true)
+    }
+
+    pub(crate) fn scope_id(&self) -> String {
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    fn scoped_key(
+        authorized: &AuthorizedRequestPlan,
+        ingress_protocol: IngressProtocol,
+        identity: &ContextIdentityFacts,
+        digest_key: &[u8; 32],
+        history: bool,
+    ) -> Option<Self> {
         let (identity_kind, identity_parts) = identity.hold_identity()?;
         let receipt = authorized.receipt();
         let mut mac = HmacSha256::new_from_slice(digest_key).ok()?;
-        frame(&mut mac, b"domain", b"context-hold/v1");
+        frame(
+            &mut mac,
+            b"domain",
+            if history {
+                b"routing-history/v1"
+            } else {
+                b"context-hold/v1"
+            },
+        );
         frame(&mut mac, b"workspace_id", receipt.workspace_id.as_bytes());
         frame(&mut mac, b"authority_id", receipt.authority_id.as_bytes());
         frame_u64(&mut mac, b"authority_epoch", receipt.authority_epoch);
         frame(&mut mac, b"grant_id", receipt.grant_id.as_bytes());
         frame_u64(&mut mac, b"grant_generation", receipt.grant_generation);
-        frame(
-            &mut mac,
-            b"route_identity",
-            &serde_json::to_vec(&authorized.planner_policy().identity).ok()?,
-        );
+        if history {
+            // Accepted execution remains visible when this Plan is revised;
+            // PlanSnapshot separately prevents inheriting an obsolete decision.
+            match &authorized.planner_policy().identity {
+                crate::server::core_runtime::profiles::PlannerRouteIdentityV2::Plan {
+                    plan_id,
+                    ..
+                } => frame(&mut mac, b"plan_id", plan_id.as_bytes()),
+                crate::server::core_runtime::profiles::PlannerRouteIdentityV2::Fixed {
+                    binding_digest,
+                } => frame(&mut mac, b"binding", binding_digest.as_str().as_bytes()),
+            }
+        } else {
+            frame(
+                &mut mac,
+                b"route_identity",
+                &serde_json::to_vec(&authorized.planner_policy().identity).ok()?,
+            );
+        }
         frame(
             &mut mac,
             b"served_model_id",
             receipt.served_model_id.as_bytes(),
         );
-        frame(
-            &mut mac,
-            b"route_provenance",
-            &serde_json::to_vec(&receipt.route).ok()?,
-        );
+        if !history {
+            frame(
+                &mut mac,
+                b"route_provenance",
+                &serde_json::to_vec(&receipt.route).ok()?,
+            );
+        }
         // The aggregate revision also changes for unrelated plans. Continuity
         // belongs to this authorized route/version; current authorization and
         // the exact held candidate/profile are still checked on every request.
@@ -61,6 +120,11 @@ impl ContextHoldKey {
             ingress_label(ingress_protocol),
         );
         frame(&mut mac, b"identity_kind", identity_kind.as_bytes());
+        if !history && identity.observed_routing_lane() {
+            // A failed native adapter cannot overwrite the verified lane.
+            // Unknown-origin requests still have their own reusable history.
+            frame(&mut mac, b"input_origin", b"observed-unverified/v1");
+        }
         frame_u64(
             &mut mac,
             b"identity_parts_len",
@@ -99,6 +163,29 @@ pub(crate) enum HistoryContinuity {
     Shortened,
     Rewritten,
     NoCheckpoint,
+    NativeSameTurn,
+    NativeContinuation,
+    NativeNewTurn,
+}
+
+impl HistoryContinuity {
+    pub(crate) fn semantic_continuity(self) -> bool {
+        matches!(
+            self,
+            Self::Continuing
+                | Self::NativeSameTurn
+                | Self::NativeContinuation
+                | Self::NativeNewTurn
+        )
+    }
+
+    pub(crate) fn uses_saved_user(self) -> bool {
+        matches!(self, Self::NativeSameTurn | Self::NativeContinuation)
+    }
+
+    pub(crate) fn retains_message_prefix(self) -> bool {
+        matches!(self, Self::Continuing | Self::NativeSameTurn)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -115,6 +202,61 @@ pub(crate) struct HoldTicket {
     pub(crate) previous_success: Option<HoldPreferenceV1>,
     pub(crate) cleaned_prefix_len: Option<usize>,
 }
+
+/// A read-only continuity scan. It cannot invalidate a live request's checkpoint.
+pub(crate) struct PreparedHold {
+    key: ContextHoldKey,
+    snapshot: Option<BeginSnapshot>,
+    history_key: Option<ContextHoldKey>,
+    instruction_digest: [u8; 32],
+    measured: HistoryDigests,
+    native: super::routing::NativeCheckpoint,
+}
+
+/// A validated checkpoint write. Its lock keeps the CAS and capacity reservation
+/// valid until history admission succeeds; dropping it leaves this scope unchanged.
+pub(crate) struct HoldCommit<'a> {
+    inner: MutexGuard<'a, StoreInner>,
+    entry: HoldEntry,
+    ticket: HoldTicket,
+}
+
+impl HoldCommit<'_> {
+    pub(crate) fn commit(mut self) -> HoldTicket {
+        let key = self.ticket.key.clone();
+        let dynamic = self.entry.dynamic_bytes();
+        let record = LruRecord {
+            last_access: self.entry.last_access,
+            access_order: self.entry.access_order,
+            key: key.clone(),
+        };
+        if let Some(previous) = self.inner.entries.insert(key.clone(), self.entry) {
+            self.inner.lru.remove(&LruRecord {
+                last_access: previous.last_access,
+                access_order: previous.access_order,
+                key,
+            });
+            self.inner.dynamic_bytes = self
+                .inner
+                .dynamic_bytes
+                .saturating_sub(previous.dynamic_bytes());
+        }
+        self.inner.dynamic_bytes = self.inner.dynamic_bytes.saturating_add(dynamic);
+        self.inner.lru.insert(record);
+        self.inner.peak_accounted_bytes = self
+            .inner
+            .peak_accounted_bytes
+            .max(self.inner.accounted_bytes());
+        self.ticket
+    }
+}
+
+#[path = "continuity.rs"]
+mod continuity;
+
+#[cfg(test)]
+#[path = "continuity_tests.rs"]
+mod continuity_tests;
 
 #[derive(Clone, Debug)]
 pub(crate) struct HoldCompletion {
@@ -168,6 +310,8 @@ struct HoldEntry {
     instruction_digest: [u8; 32],
     message_count: usize,
     history_digest: [u8; 32],
+    semantic_history_digest: [u8; 32],
+    native: super::routing::NativeCheckpoint,
     preference: Option<HoldPreferenceV1>,
     hint_valid: bool,
     cleaned_prefix_len: Option<usize>,
@@ -190,6 +334,8 @@ struct BeginSnapshot {
     instruction_digest: [u8; 32],
     message_count: usize,
     history_digest: [u8; 32],
+    semantic_history_digest: [u8; 32],
+    native: super::routing::NativeCheckpoint,
 }
 
 const MAINTENANCE_BATCH: usize = 16;
@@ -204,6 +350,11 @@ impl Default for ContextHoldStore {
 }
 
 impl ContextHoldStore {
+    #[cfg(test)]
+    pub(crate) fn lock_for_runtime_test(&self) -> impl Drop + '_ {
+        self.inner.lock()
+    }
+
     pub(crate) fn new(max_memory_bytes: usize, idle_ttl: Duration) -> Self {
         let mut key = [0_u8; 32];
         let key = getrandom::fill(&mut key).ok().map(|()| key);
@@ -228,25 +379,46 @@ impl ContextHoldStore {
         self.key
     }
 
+    #[cfg(test)]
     pub(crate) fn begin(
         &self,
         key: ContextHoldKey,
         history: &HistoryEvidence<'_>,
         now: Instant,
     ) -> Option<HoldTicket> {
-        self.begin_with_measure(key, history, now, |prefix| history.measure(prefix))
+        self.commit(self.prepare(key, history, now)?, now)
     }
 
+    #[cfg(test)]
     fn begin_with_measure(
         &self,
         key: ContextHoldKey,
         history: &HistoryEvidence<'_>,
         now: Instant,
-        measure: impl FnOnce(Option<usize>) -> Option<super::history::HistoryDigests>,
+        measure: impl FnOnce(Option<usize>) -> Option<HistoryDigests>,
     ) -> Option<HoldTicket> {
+        self.commit(self.prepare_with_measure(key, history, now, measure)?, now)
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        key: ContextHoldKey,
+        history: &HistoryEvidence<'_>,
+        now: Instant,
+    ) -> Option<PreparedHold> {
+        self.prepare_with_measure(key, history, now, |prefix| history.measure(prefix))
+    }
+
+    fn prepare_with_measure(
+        &self,
+        key: ContextHoldKey,
+        history: &HistoryEvidence<'_>,
+        now: Instant,
+        measure: impl FnOnce(Option<usize>) -> Option<HistoryDigests>,
+    ) -> Option<PreparedHold> {
         self.key?;
         let snapshot = {
-            let mut inner = self.inner.lock();
+            let mut inner = self.inner.try_lock()?;
             inner.purge_expired_bounded(now, self.idle_ttl);
             inner.remove_if_expired(&key, now, self.idle_ttl);
             inner.entries.get(&key).map(BeginSnapshot::from)
@@ -255,7 +427,51 @@ impl ContextHoldStore {
         // Scan visible history outside the mutex, retaining only the stored
         // prefix checkpoint and the final digest.
         let measured = measure(snapshot.map(|entry| entry.message_count))?;
-        let mut inner = self.inner.lock();
+        Some(PreparedHold {
+            key,
+            snapshot,
+            history_key: None,
+            instruction_digest: history.instruction_digest,
+            measured,
+            native: Default::default(),
+        })
+    }
+
+    pub(crate) fn commit(&self, prepared: PreparedHold, now: Instant) -> Option<HoldTicket> {
+        self.reserve_commit(prepared, now).map(HoldCommit::commit)
+    }
+
+    pub(crate) fn commit_on_branch(
+        &self,
+        prepared: PreparedHold,
+        branch: &[u8; 32],
+        request: &crate::server::core_runtime::model_ir::ModelRequestIRV1,
+        replay: &crate::replay::ReplayStore,
+        now: Instant,
+    ) -> Option<HoldTicket> {
+        let digest_key = self.digest_key()?;
+        let evidence = super::observed_history_with_replay(request, &digest_key, Some(replay))?;
+        let mut scoped = self.prepare(prepared.key.on_branch(branch)?, &evidence, now)?;
+        scoped.native = prepared.native;
+        scoped.history_key = prepared.history_key;
+        self.commit(scoped, now)
+    }
+
+    pub(crate) fn reserve_commit(
+        &self,
+        prepared: PreparedHold,
+        now: Instant,
+    ) -> Option<HoldCommit<'_>> {
+        let history_continuity = prepared.history_continuity();
+        let PreparedHold {
+            key,
+            snapshot,
+            history_key: _,
+            instruction_digest,
+            measured,
+            native,
+        } = prepared;
+        let mut inner = self.inner.try_lock()?;
         inner.remove_if_expired(&key, now, self.idle_ttl);
         if let Some(snapshot) = snapshot {
             let (current_cycle, current_value_version) = {
@@ -269,8 +485,8 @@ impl ContextHoldStore {
             };
             let message_history_continues = measured.message_count >= snapshot.message_count
                 && measured.prefix_digest == Some(snapshot.history_digest);
-            let continues = snapshot.instruction_digest == history.instruction_digest
-                && message_history_continues;
+            let continues =
+                snapshot.instruction_digest == instruction_digest && message_history_continues;
             let checkpoint_revision = snapshot.checkpoint_revision.checked_add(1)?;
             let cycle = if continues {
                 current_cycle
@@ -283,8 +499,8 @@ impl ContextHoldStore {
                 current_value_version.checked_add(1)?
             };
             let access_order = inner.allocate_access_order()?;
-            let (hint, previous_success, cleaned_prefix_len, removed_dynamic) = {
-                let entry = inner.entries.get_mut(&key)?;
+            let (hint, previous_success, cleaned_prefix_len, entry) = {
+                let entry = inner.entries.get(&key)?;
                 let previous_success = entry.preference.clone();
                 let hint = (continues && entry.hint_valid)
                     .then(|| entry.preference.clone())
@@ -292,39 +508,40 @@ impl ContextHoldStore {
                 let cleaned_prefix_len = message_history_continues
                     .then_some(entry.cleaned_prefix_len)
                     .flatten();
-                let removed_dynamic = if message_history_continues {
-                    0
-                } else {
-                    entry.preference.take().as_ref().map_or(0, preference_bytes)
+                let replacement = HoldEntry {
+                    entry_token: entry.entry_token,
+                    cycle,
+                    checkpoint_revision,
+                    value_version,
+                    instruction_digest,
+                    message_count: measured.message_count,
+                    history_digest: measured.complete_digest,
+                    semantic_history_digest: measured.semantic_complete_digest,
+                    native,
+                    preference: message_history_continues
+                        .then(|| entry.preference.clone())
+                        .flatten(),
+                    hint_valid: entry.hint_valid && continues,
+                    cleaned_prefix_len,
+                    last_access: now,
+                    access_order,
                 };
-                entry.cycle = cycle;
-                entry.checkpoint_revision = checkpoint_revision;
-                entry.value_version = value_version;
-                entry.instruction_digest = history.instruction_digest;
-                entry.message_count = measured.message_count;
-                entry.history_digest = measured.complete_digest;
-                entry.hint_valid &= continues;
-                entry.cleaned_prefix_len = cleaned_prefix_len;
-                (hint, previous_success, cleaned_prefix_len, removed_dynamic)
+                (hint, previous_success, cleaned_prefix_len, replacement)
             };
-            inner.dynamic_bytes = inner.dynamic_bytes.saturating_sub(removed_dynamic);
-            inner.touch(&key, now, access_order);
-            return Some(HoldTicket {
-                key,
-                entry_token: snapshot.entry_token,
-                cycle,
-                value_version,
-                checkpoint_revision,
-                history_continuity: if message_history_continues {
-                    HistoryContinuity::Continuing
-                } else if measured.message_count < snapshot.message_count {
-                    HistoryContinuity::Shortened
-                } else {
-                    HistoryContinuity::Rewritten
+            return Some(HoldCommit {
+                inner,
+                entry,
+                ticket: HoldTicket {
+                    key,
+                    entry_token: snapshot.entry_token,
+                    cycle,
+                    value_version,
+                    checkpoint_revision,
+                    history_continuity,
+                    hint,
+                    previous_success,
+                    cleaned_prefix_len,
                 },
-                hint,
-                previous_success,
-                cleaned_prefix_len,
             });
         }
 
@@ -340,9 +557,11 @@ impl ContextHoldStore {
             cycle: 1,
             checkpoint_revision: 1,
             value_version: 0,
-            instruction_digest: history.instruction_digest,
+            instruction_digest,
             message_count: measured.message_count,
             history_digest: measured.complete_digest,
+            semantic_history_digest: measured.semantic_complete_digest,
+            native,
             preference: None,
             hint_valid: false,
             cleaned_prefix_len: None,
@@ -352,28 +571,20 @@ impl ContextHoldStore {
         if !inner.make_room_for_insert(&entry, self.max_memory_bytes) {
             return None;
         }
-        inner.entries.insert(key.clone(), entry);
-        inner.lru.insert(LruRecord {
-            last_access: now,
-            access_order,
-            key: key.clone(),
-        });
-        let accounted = inner.accounted_bytes();
-        inner.peak_accounted_bytes = inner.peak_accounted_bytes.max(accounted);
-        if accounted > self.max_memory_bytes {
-            inner.remove_entry(&key);
-            return None;
-        }
-        Some(HoldTicket {
-            key,
-            entry_token,
-            cycle: 1,
-            value_version: 0,
-            checkpoint_revision: 1,
-            history_continuity: HistoryContinuity::NoCheckpoint,
-            hint: None,
-            previous_success: None,
-            cleaned_prefix_len: None,
+        Some(HoldCommit {
+            inner,
+            entry,
+            ticket: HoldTicket {
+                key,
+                entry_token,
+                cycle: 1,
+                value_version: 0,
+                checkpoint_revision: 1,
+                history_continuity: HistoryContinuity::NoCheckpoint,
+                hint: None,
+                previous_success: None,
+                cleaned_prefix_len: None,
+            },
         })
     }
 
@@ -394,7 +605,9 @@ impl ContextHoldStore {
         cleaned_prefix_len: Option<usize>,
         now: Instant,
     ) -> HoldCompleteOutcome {
-        let mut inner = self.inner.lock();
+        let Some(mut inner) = self.inner.try_lock() else {
+            return HoldCompleteOutcome::CapacityMiss;
+        };
         inner.purge_expired_bounded(now, self.idle_ttl);
         let key = &ticket.key;
         inner.remove_if_expired(key, now, self.idle_ttl);
@@ -559,24 +772,6 @@ impl StoreInner {
         Some(self.access_clock)
     }
 
-    fn touch(&mut self, key: &ContextHoldKey, now: Instant, access_order: u64) {
-        let Some(entry) = self.entries.get_mut(key) else {
-            return;
-        };
-        self.lru.remove(&LruRecord {
-            last_access: entry.last_access,
-            access_order: entry.access_order,
-            key: key.clone(),
-        });
-        entry.last_access = now;
-        entry.access_order = access_order;
-        self.lru.insert(LruRecord {
-            last_access: now,
-            access_order,
-            key: key.clone(),
-        });
-    }
-
     fn remove_entry(&mut self, key: &ContextHoldKey) -> bool {
         let Some(entry) = self.entries.remove(key) else {
             return false;
@@ -599,6 +794,7 @@ impl BeginSnapshot {
             && entry.instruction_digest == self.instruction_digest
             && entry.message_count == self.message_count
             && entry.history_digest == self.history_digest
+            && entry.semantic_history_digest == self.semantic_history_digest
     }
 }
 
@@ -611,6 +807,8 @@ impl From<&HoldEntry> for BeginSnapshot {
             instruction_digest: entry.instruction_digest,
             message_count: entry.message_count,
             history_digest: entry.history_digest,
+            semantic_history_digest: entry.semantic_history_digest,
+            native: entry.native,
         }
     }
 }

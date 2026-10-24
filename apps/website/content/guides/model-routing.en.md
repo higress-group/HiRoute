@@ -76,11 +76,24 @@ In Difficulty routing and Custom branches, a task with two model groups selects 
 
 Protection requires a fresh, complete, valid assessment returned by this decision, bound to the preceding actual execution stage and compatible with the current category, published configuration, and assessment criteria. Missing, partial, cross-category, or unattributable scores cannot trigger protection. Unrated is not zero, and an old low score is not repeatedly applied.
 
-A new user turn chooses again, so an earlier upgrade does not lock subsequent turns to primary. The next turn still uses its degree result and applicable score; it does not reset to regular unconditionally. Prefer the current model applies only within the group selected for this turn. Tool continuations and replay inherit the choice when HiRoute can identify the same turn, history is continuous, and the frozen decision remains reusable. If compaction or history reconstruction breaks continuity or prevents reuse, HiRoute judges again.
+A new usable request can choose again. An earlier primary selection does not lock later turns to primary. Tool continuations inherit a reusable captured decision when native evidence identifies the same task. Known summaries and auxiliary calls stay outside main task history.
+
+Smart routing does not require perfect proof that a wire User came from a human. If origin is uncertain, HiRoute classifies observed input, records the actual accepted result with an explicit source-uncertainty marker, and retains cross-turn evaluation. Such requests use separate history from verified adapter input. Classification failure can temporarily fall back under the existing plan rules; it does not disable later requests in the session.
+
+Gateway restart loses its in-memory execution history. The next usable request starts capture again in the same native session, including a compressed Codex thread. Earlier summaries are not imported as accepted execution. A following question can evaluate newly captured output; older uncaptured context remains partial.
+
+Source and scoring limits remain distinct from routing availability:
+
+- Claude Code and Hermes may expose synthetic notifications as User input. These are observed requests, not verified human tasks. Task association and scoring can be inaccurate even while routing and evaluation continue.
+- Qoder cannot reliably distinguish main, child and background calls sharing its identity. Classification, selection, history and evaluation remain enabled with that association limitation.
+- Pi, DeepSeek Harness and OpenCode use their native adapters for stronger task boundaries. Missing or failed optional provenance permits observed-input routing; reapplying the connection installs the current owned adapter. Explicitly identified synthetic continuations still cannot replace a missing original task.
+- Opaque peer context and unsupported native producer versions do not prove input origin or provider-cache affinity. They do not permanently disable routing on usable input.
+
+A real A-to-B acceptance must show valid decisions and captured history on both requests, evaluation of A's actual execution on B, and actual selection of different model groups. Successful output or empty history alone is insufficient. This availability check does not establish scoring accuracy.
 
 Candidate order provides failure relay. Exhausted regular candidates continue to the primary group in the same task branch; exhausted primary candidates fail explicitly. A direct primary selection tries only primary candidates, without downgrading to regular or crossing task branches. A branch with one group fails when that group is exhausted. A failed candidate call is not a competence judgment and produces no zero score.
 
-If a two-group branch's category is valid but its degree result is unavailable, use that branch's primary group and record a degree judgment failure. If the whole decision fails, Difficulty routing uses heuristic rules; Custom branches uses the default branch's primary group, or regular when it has one group only.
+When usable input is available, a two-group branch with a valid category but unavailable degree result uses that branch's primary group and records a degree judgment failure. If the whole decision fails, Difficulty routing uses heuristic rules; Custom branches uses the default branch's primary group, or regular when it has one group only. Known summary calls without an independent task do not acquire human provenance through heuristic rules.
 
 All candidates must satisfy the request's text, image, tool, and context requirements. Once response delivery begins, HiRoute does not silently switch models within that response.
 

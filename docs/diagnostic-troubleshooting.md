@@ -48,9 +48,36 @@ The snapshot explains the last observed startup boundary, not the cause of a tim
 
 For upstream authentication or gateway rejection, correlate Debug `upstream_wire` by `request_token` and `attempt_index`. Request events record whether Bearer / x-api-key is present, Authorization byte length, Content-Length, the actual `native_model` with bounded length/characters, and reasoning effort, Messages thinking type/budget and boolean switches read from the final serialized template. Unknown tiers are `other`; absence and an unavailable projection remain distinct. These facts describe prepared parameters, not delivery or the provider's internal computation. Response and attempt terminal events record HTTP status, actual H1/H2, Content-Type, safe `provider_error` and HMAC correlation of the upstream request ID, without retaining header values, addresses, bodies or raw provider error text. `request_kind=decision_service` uses the same safe channel for actual decision-service calls; `completed`/`failure` denotes the parsed terminal result. Combine upstream request and downstream headers/body facts in `attempt_end.commits` with the next attempt/binding in `fallback` to determine why retries or budget exhaustion occurred before body delivery, or why delivery ended in failure after it began. Missing optional fields in old records mean unknown. If request events are absent, first check levels, diagnostic loss and candidate-preparation failures; absence does not prove another upstream rejection.
 
+For cross-protocol candidate exclusion, `request_projection` retains the first closed
+cause from the actual adapter with a zero-based `request.messages` coordinate, when
+known. This is a canonical coordinate, not a native `input` array index. An
+`unsupported` candidate-preflight event does not start an attempt. A `declared_loss`
+attempt-materialization event reports the number of historical commentary phase
+labels omitted from that candidate's actual Chat projection; it does not claim an
+upstream execution, change `reasoning_cleanup`, or replace original history/score
+facts. Unknown affected-item counts remain null. The event contains no source text,
+IDs or control values; correlation uses the existing request/binding HMAC tokens.
+
+## Gateway listener fixture failures
+
+The black-box `RuntimeFixture` retains its private temporary root after an unexpected assertion panic and prints its location. Its child is still stopped and reaped. Use `launch_rest_classified_with_diagnostics` when current boot and request diagnostics are needed; inspect the publication, native daemon output and applied diagnostic level before retrying. A successful rerun does not explain the original failure.
+
+Export the needed evidence into ignored task artifacts before owner cleanup removes the runner's temporary directory. The fixture contains raw test credentials and request data: keep it private, publish only sanitized conclusions, and retire the stopped fixture after evidence export. Successful fixtures keep their normal automatic cleanup.
+
 ## Stream decoding failures and private replay
 
 `response_failure` uses closed `reason` and `field` enums. Unknown fields are recorded only as `unknown`, without provider text or tool names. `frame_index` is the SSE frame number visited by the decoder, including the failed frame. `received_bytes` is the cumulative byte count submitted to the decoder. When one read contains several frames, it is an upper bound rather than an exact error-character offset. Correlate the production terminal result by request token and attempt token/index.
+
+When native delivery finishes with `provider_model_event=response_unknown`, correlate
+`native_completion_unknown` by the same request and attempt tokens/index. It records
+the projector's first loss of completion proof: a closed reason, one-based SSE frame
+index (including transport-only frames), and an optional closed event shape with
+numeric positions. Snapshot, identity, delta/final-content, evidence-budget and
+post-terminal causes remain distinct. It contains no response text, native IDs,
+hashes or dynamic field names. The event is emitted once when the native projector
+certifies Unknown; optional canonical-capture failures do not produce it. A `generic`
+cause without frame/shape means that protocol has no finer cause instrumentation.
+Missing diagnostic delivery is not evidence of a particular cause.
 
 Unix Debug builds offer private capture, disabled by default. Run `scripts/private-stream-capture.py run` around an isolated candidate daemon, specifying exact `--source-sha`, `--client`, a new `--root` and the candidate executable. Python must support `os.waitid`/`os.WNOWAIT` without reaping the child: Linux supports this; macOS requires Python 3.13+ ([platform reference](https://docs.python.org/3.13/library/os.html#os.waitid)). Check capability before creating a session. Use managed validation artifacts and verify their SHA. The script records source identity and binary digest; it does not replace build evidence. It sends no model requests. The client must still use isolated API-key configuration, while the main auth/config bytes, permissions and mtime are audited. Start with one minimal tool task and at most three model requests. Stop immediately if capture fails; do not let the client retry or continue looping. Supervisor polling is not an atomic network-request quota gate.
 

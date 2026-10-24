@@ -91,7 +91,7 @@ export type QoderModelSelection = {
 };
 export type PiModelSelection = { mode: 'pi_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
 export type DshModelSelection = { mode: 'dsh_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
-export type OpenCodeModelSelection = { mode: 'opencode_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
+export type OpenCodeModelSelection = { mode: 'opencode_additional'; routing_metadata?: boolean; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
 export type AgentNativeTarget = { kind: 'hermes'; config_root: string };
 export type HermesModelSelection = { mode: 'hermes_default'; plan_id: string; protocol: 'chat_completions' | 'responses' | 'messages' };
 export type SkillResourceStatus = {

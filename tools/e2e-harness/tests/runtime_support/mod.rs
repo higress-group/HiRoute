@@ -3,6 +3,7 @@
 mod listeners;
 mod publication;
 mod publication_update;
+mod restart;
 mod wire;
 
 use std::collections::{BTreeMap, VecDeque};
@@ -488,9 +489,25 @@ pub struct RuntimeFixture {
     pub observation_root: Option<PathBuf>,
     pub diagnostics_root: Option<PathBuf>,
     runtime_state_control: Option<(SocketAddr, String)>,
+    launch_options: RuntimeLaunchOptions,
     _serial: std::sync::MutexGuard<'static, ()>,
     _directory: tempfile::TempDir,
 }
+
+impl Drop for RuntimeFixture {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            // Keep the publication, private credentials and native daemon logs
+            // available after an unexpected listener assertion fails.
+            self._directory.disable_cleanup(true);
+            eprintln!(
+                "retained Gateway fixture evidence: {}",
+                self._directory.path().display()
+            );
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct RuntimeLaunchOptions {
     replay_threshold: usize,
@@ -504,11 +521,13 @@ struct RuntimeLaunchOptions {
     test_control: bool,
     classified_route: bool,
     rest_classifier: bool,
+    all_ingress_protocols: bool,
     decision_branch_preset: Option<bool>,
     fixed_route: bool,
     reasoning_choices: bool,
     isolated_fixed_grants: bool,
     attempt_timeout_ms: Option<u64>,
+    history_max_bytes: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -553,11 +572,13 @@ impl Default for RuntimeLaunchOptions {
             test_control: false,
             classified_route: false,
             rest_classifier: false,
+            all_ingress_protocols: false,
             decision_branch_preset: None,
             fixed_route: false,
             reasoning_choices: false,
             isolated_fixed_grants: false,
             attempt_timeout_ms: None,
+            history_max_bytes: None,
         }
     }
 }
@@ -571,6 +592,21 @@ pub struct PublicationCandidate {
 
 impl RuntimeFixture {
     pub fn launch_builtin_branches(providers: &[&NativeProvider], smart: bool) -> Self {
+        Self::launch_builtin_branches_at_level(providers, smart, None)
+    }
+
+    pub fn launch_builtin_branches_with_diagnostics(
+        providers: &[&NativeProvider],
+        smart: bool,
+    ) -> Self {
+        Self::launch_builtin_branches_at_level(providers, smart, Some("debug"))
+    }
+
+    fn launch_builtin_branches_at_level(
+        providers: &[&NativeProvider],
+        smart: bool,
+        diagnostic_level: Option<&'static str>,
+    ) -> Self {
         Self::launch_configured(
             providers,
             2,
@@ -583,6 +619,7 @@ impl RuntimeFixture {
                 decision_branch_preset: Some(smart),
                 observation: Some(ObservationFaults::healthy()),
                 test_control: true,
+                diagnostic_level,
                 ..Default::default()
             },
         )
@@ -788,6 +825,45 @@ impl RuntimeFixture {
         )
     }
 
+    pub fn launch_rest_classified_with_diagnostics(
+        providers: &[&NativeProvider],
+        max_attempts: u32,
+    ) -> Self {
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                classified_route: true,
+                rest_classifier: true,
+                diagnostic_level: Some("debug"),
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
+    pub fn launch_rest_classified_with_native_control(
+        providers: &[&NativeProvider],
+        max_attempts: u32,
+    ) -> Self {
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                test_control: true,
+                observation: Some(ObservationFaults::healthy()),
+                classified_route: true,
+                rest_classifier: true,
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
     pub fn launch_rest_classified_with_classifier_timeout(
         providers: &[&NativeProvider],
         max_attempts: u32,
@@ -925,6 +1001,27 @@ impl RuntimeFixture {
         )
     }
 
+    pub fn launch_rest_classified_with_history_capacity(
+        providers: &[&NativeProvider],
+        history_max_bytes: usize,
+    ) -> Self {
+        assert_eq!(providers.len(), 3);
+        Self::launch_configured(
+            providers,
+            1,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                observation: Some(ObservationFaults::healthy()),
+                classified_route: true,
+                rest_classifier: true,
+                history_max_bytes: Some(history_max_bytes),
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
     pub fn launch_classified_with_publication_candidates(
         providers: &[&NativeProvider],
         max_attempts: u32,
@@ -1051,6 +1148,7 @@ impl RuntimeFixture {
             None,
             RuntimeLaunchOptions {
                 observation: Some(faults),
+                all_ingress_protocols: true,
                 ..RuntimeLaunchOptions::default()
             },
         )
@@ -1151,6 +1249,9 @@ impl RuntimeFixture {
             ((listeners.control_address().unwrap(), nonce), path)
         });
         let route_mode = match (options.classified_route, options.rest_classifier) {
+            (false, false) if options.all_ingress_protocols => {
+                PublicationRouteMode::OrderedAllProtocols
+            }
             (false, false) => PublicationRouteMode::Ordered,
             (true, false) => PublicationRouteMode::ClassifiedLocal,
             (true, true) => PublicationRouteMode::ClassifiedRest {
@@ -1284,6 +1385,7 @@ impl RuntimeFixture {
             observation_root,
             diagnostics_root,
             runtime_state_control: control.map(|(control, _)| control),
+            launch_options: options,
             _serial: serial,
         }
     }
@@ -1433,6 +1535,9 @@ impl Hirouted {
         }
         if let Some(attempt_timeout_ms) = options.attempt_timeout_ms {
             command.env(E2E_ATTEMPT_TIMEOUT_MS_ENV, attempt_timeout_ms.to_string());
+        }
+        if let Some(bytes) = options.history_max_bytes {
+            command.env("HIROUTE_AGENT_TURN_HISTORY_MAX_BYTES", bytes.to_string());
         }
         if let Some((address, nonce_file)) = test_control {
             command

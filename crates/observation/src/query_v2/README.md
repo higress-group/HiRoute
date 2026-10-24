@@ -6,6 +6,19 @@ preserves released strict fields, authorization encoding and cursor bindings.
 Opt-in adds bounded routing evidence; it does not add a read permission, SQL table
 or query version.
 
+Request/timeline views may include `native_auxiliary:true` only when a retained
+original route-decision carrier authenticates that native purpose. The optional
+field is absent for unclassified requests, including legacy, deleted, conflicting
+or out-of-budget evidence. Absence does not establish human origin. This view
+adds no persisted state or safe-fact field. Purpose lookup keeps the existing
+reader scope, transaction and cursor boundaries, checks at most two indexed
+route rows per returned request, reads no more than 64 KiB per carrier and 1 MiB
+across a page, and degrades optional purpose evidence to unknown at its bounds.
+It does not remove requests, receipts or monetary accounting. Session preview
+titles skip only the affirmative marker; direct request and hit reads remain
+available under their existing content authorization. Title-only absence and
+loading never establish content deletion.
+
 Statistics cover all retained matching decisions in the authorized scope,
 independently of stage pagination and model/score filters. Each current classifier
 decision records C, native legacy, custom-extension v1 or local rules. Known non-C

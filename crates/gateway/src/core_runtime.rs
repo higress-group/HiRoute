@@ -8,8 +8,12 @@ pub use classification::{
     CClassifierDiagnosticOutcome, CLASSIFIER_DIAGNOSTIC_LATEST_USER, ClassifierDiagnosticError,
     ClassifierDiagnosticOutcome,
 };
+#[path = "core_runtime/decision_history.rs"]
+mod decision_history;
 #[path = "model_ir/mod.rs"]
 pub mod model_ir;
+#[path = "core_runtime/native_routing_view.rs"]
+mod native_routing_view;
 #[path = "observation.rs"]
 pub mod observation;
 #[path = "profiles/mod.rs"]
@@ -45,7 +49,7 @@ use crate::content_ref::{
     ContentRef, compact_ingress_document_with_markers, externalize_model_request,
     model_content_refs, parse_ingress_document, scan_ingress_document,
 };
-use crate::context_hold::{ContextHoldStore, ContextRequest, HoldCompletion, begin_context};
+use crate::context_hold::{ContextHoldStore, ContextRequest, HoldCompletion, prepare_context};
 use crate::replay::{ReplayError, ReplayManager, ReplayReader, ReplayStore};
 #[path = "core_runtime/credentials.rs"]
 mod credentials;
@@ -127,7 +131,9 @@ impl ProductionGatewayRuntime {
         let execution = Arc::new(
             ProductionExecution::new_bound(
                 ObservedProductionSelection::default(),
-                ObservedProductionProvider::new(ProductionProvider::new(&ports)),
+                ObservedProductionProvider::new(ProductionProvider::for_gateway_model_execution(
+                    &ports,
+                )),
                 NoopGatewayFilterManager,
                 connector.clone(),
                 GatewayCoreLifecycleLimits {
@@ -575,22 +581,6 @@ impl ProductionGatewayRuntime {
                 }
             };
             let parse_elapsed = parse_started.elapsed();
-            let (identity, hold_ticket) = begin_context(
-                &self.context_holds,
-                &self.observation.correlation_key(),
-                &authorized,
-                ContextRequest {
-                    ingress: protocol,
-                    headers: &request.headers,
-                    document: &document,
-                    request: &canonical_request,
-                    replay: &replay,
-                },
-                Instant::now(),
-            );
-            let hold_ticket = hold_ticket.map(Box::new);
-            drop(document);
-            drop(ingress_workspace);
             if canonical_request.web_search.is_some() && !authorized.web_search_allowed() {
                 return write_typed_error_phase(
                     session,
@@ -631,6 +621,35 @@ impl ProductionGatewayRuntime {
                 .await;
             }
             let externalize_elapsed = externalize_started.elapsed();
+            let routing_view = native_routing_view::NativeRoutingView::prepare(
+                &request.headers,
+                &canonical_request,
+                &replay,
+                &budget,
+            );
+            let routing_request = routing_view.request(&canonical_request);
+            let (identity, prepared_hold, native_user_unavailable) = prepare_context(
+                &self.context_holds,
+                &self.observation.correlation_key(),
+                &authorized,
+                ContextRequest {
+                    ingress: protocol,
+                    headers: &request.headers,
+                    document: &document,
+                    request: &canonical_request,
+                    semantic_request: Some(routing_request),
+                    user_origin_unverified: routing_view.origin_unverified()
+                        || request
+                            .path_and_query
+                            .starts_with(hiroute_domain::QODER_MODEL_BASE_PATH),
+                    replay: &replay,
+                },
+                Instant::now(),
+            );
+            let current_input_origin_unverified = routing_view.origin_unverified()
+                || identity.input_origin_unverified(prepared_hold.as_ref());
+            drop(document);
+            drop(ingress_workspace);
             let prevalidate_started = Instant::now();
             let mut replay_references = model_content_refs(&canonical_request);
             replay_references.push(raw_body.clone());
@@ -649,7 +668,7 @@ impl ProductionGatewayRuntime {
                 protocol,
                 &identity,
                 self.capture_observation_content,
-                Some(&request.headers),
+                Some((&request.headers, routing_view.projection())),
             );
             let _observation_guard = ObservationRequestGuard(request_observation.clone());
             request_observation.record_pipeline_stages(
@@ -658,6 +677,7 @@ impl ProductionGatewayRuntime {
                 prevalidate_elapsed,
             );
             request_observation.capture_request(&canonical_request, &replay);
+            let mut hold_ticket;
             let mut agent_turn_guard = None;
             let mut correlated_branch = None;
             let mut classification_context = None;
@@ -683,111 +703,33 @@ impl ProductionGatewayRuntime {
                     )
                     .await;
                 };
-                let turn_key = match self.agent_turn_history.scope_key(
-                    &request_observation.metadata().workspace_id,
-                    &request_observation.metadata().conversation_id,
-                ) {
-                    Ok(key) => key,
-                    Err(_) => {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "AGENT_TURN_SCOPE_UNAVAILABLE",
-                            "agent_turn",
-                        )
-                        .await;
-                    }
-                };
-                let decision_inputs = crate::agent_turn_history::TurnDecisionInputs {
-                    history_continuity: hold_ticket.as_ref().map_or(
-                        crate::context_hold::HistoryContinuity::NoCheckpoint,
-                        |ticket| ticket.history_continuity,
-                    ),
-                    // Every new user turn decides again. Candidate continuity stays in Planner.
-                    reselect_on_user_message: true,
-                };
-                let turn_begin = self.agent_turn_history.begin_with_context(
-                    turn_key,
+                let capture_scope = self.context_holds.digest_key().and_then(|key| {
+                    decision_history::CaptureScope::authorized(
+                        &authorized,
+                        protocol,
+                        &identity,
+                        &key,
+                        prepared_hold.as_ref(),
+                    )
+                });
+                let tracking = match self.begin_authorized_decision_history(
+                    &request_observation,
                     PlanSnapshot {
                         plan_id: plan_id.clone(),
                         plan_revision: *revision,
                     },
-                    &canonical_request,
-                    &replay,
-                    decision_inputs,
-                    Instant::now(),
-                );
-                let (turn_ticket, turn_history, completed_turn) = match turn_begin {
-                    Ok(AgentTurnBegin::NewTurn {
-                        ticket,
-                        history,
-                        completed,
-                        inherited_decision,
-                    }) => {
-                        if let Some(decision) = inherited_decision {
-                            correlated_branch =
-                                Some(Box::new(profiles::CorrelatedBranchDecisionV1 {
-                                    kind: profiles::ContinuationKindV1::TaskRoot,
-                                    decision,
-                                }));
-                        }
-                        (ticket, history, completed)
-                    }
-                    Ok(AgentTurnBegin::Continuation { ticket, decision }) => {
-                        let kind = if canonical_request.messages.iter().any(|message| {
-                            message.content.iter().any(|part| {
-                                matches!(part, model_ir::ContentPart::ToolResult { .. })
-                            })
-                        }) {
-                            profiles::ContinuationKindV1::ToolContinuation
-                        } else {
-                            profiles::ContinuationKindV1::TaskRoot
-                        };
-                        correlated_branch = Some(Box::new(profiles::CorrelatedBranchDecisionV1 {
-                            kind,
-                            decision,
-                        }));
-                        (
-                            ticket,
-                            Box::new(crate::agent_turn_history::AgentTurnHistorySnapshot {
-                                previous_decision: None,
-                                visible_conversation: Vec::new(),
-                                history_partial: true,
-                                assessment_from: None,
-                                assessment_target: None,
-                                _pin: None,
-                            }),
-                            None,
-                        )
-                    }
-                    Err(AgentTurnHistoryError::TurnContextUnavailable) => {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::CONFLICT,
-                            "TURN_CONTEXT_UNAVAILABLE",
-                            "agent_turn",
-                        )
-                        .await;
-                    }
-                    Err(AgentTurnHistoryError::SessionTurnConflict) => {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::CONFLICT,
-                            "SESSION_TURN_CONFLICT",
-                            "agent_turn",
-                        )
-                        .await;
-                    }
-                    Err(AgentTurnHistoryError::Resource) => {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "AGENT_TURN_HISTORY_UNAVAILABLE",
-                            "agent_turn",
-                        )
-                        .await;
-                    }
-                    Err(AgentTurnHistoryError::Integrity) => {
+                    capture_scope,
+                    prepared_hold,
+                    decision_history::HistoryInput {
+                        request: &canonical_request,
+                        replay: &replay,
+                        current_input: routing_view.current_input(),
+                        current_input_position: routing_view.current_input_position(),
+                        current_input_unavailable: routing_view.current_input_unavailable(),
+                    },
+                ) {
+                    Ok(tracking) => tracking,
+                    Err(_) => {
                         return write_typed_error_phase(
                             session,
                             StatusCode::BAD_REQUEST,
@@ -797,21 +739,18 @@ impl ProductionGatewayRuntime {
                         .await;
                     }
                 };
-                if let Some(completed) = completed_turn {
-                    request_observation.agent_turn_finished(&completed);
-                }
-                agent_turn_guard = Some(AgentTurnRequestGuard::new(
-                    Arc::clone(&self.agent_turn_history),
-                    turn_ticket.clone(),
-                ));
-                request_observation.bind_agent_turn_output(
-                    Arc::clone(&self.agent_turn_history),
-                    turn_ticket.clone(),
-                );
+                agent_turn_guard = tracking.guard;
+                correlated_branch = tracking.correlated;
+                hold_ticket = tracking.hold_ticket;
+                let turn_history = tracking.history;
                 let mut classification = Box::pin(self.classify_for_planner(
                     &strategy,
                     classification::ClassificationRequest {
-                        request: &canonical_request,
+                        request: routing_request,
+                        current_input: routing_view.current_input(),
+                        native_user_unavailable: native_user_unavailable
+                            || routing_view.current_input_unavailable(),
+                        current_input_origin_unverified,
                         replay: &replay,
                         classifier: authorized.classifier(),
                         history: &turn_history,
@@ -845,7 +784,18 @@ impl ProductionGatewayRuntime {
                             Some(_) => P::CustomExtensionV1,
                             None => P::LocalRules,
                         });
-                        classification_context = Some((turn_ticket, turn_history));
+                        if agent_turn_guard.is_none()
+                            && !result
+                                .decision
+                                .reason_codes
+                                .contains(&profiles::ComplexityReasonCodeV1::TaskContextUnresolved)
+                        {
+                            result
+                                .decision
+                                .reason_codes
+                                .push(profiles::ComplexityReasonCodeV1::TaskContextUnresolved);
+                        }
+                        classification_context = Some(turn_history);
                         Some(result)
                     }
                     Err(classification::ClassificationError::Deadline) => {
@@ -856,9 +806,8 @@ impl ProductionGatewayRuntime {
                         .await;
                     }
                     Err(classification::ClassificationError::Cancelled) => {
-                        return Err(TransportError::Io(
-                            "request cancelled during classification".into(),
-                        ));
+                        request_observation.finish("cancelled");
+                        return Err(TransportError::Cancelled);
                     }
                     Err(classification::ClassificationError::Integrity) => {
                         return write_typed_error_phase(
@@ -880,12 +829,18 @@ impl ProductionGatewayRuntime {
                     }
                 }
             } else {
+                hold_ticket = prepared_hold
+                    .and_then(|prepared| self.context_holds.commit(prepared, Instant::now()))
+                    .map(Box::new);
                 None
             };
-            let mut planner_input = match self
-                .planner_inputs
-                .build_input(*canonical_request, &authorized)
-                .map(Box::new)
+            drop(routing_view);
+            let mut planner_input = match with_active_request(request_observation.clone(), async {
+                self.planner_inputs
+                    .build_input(*canonical_request, &authorized)
+                    .map(Box::new)
+            })
+            .await
             {
                 Ok(input) => input,
                 Err(crate::server::composition::PortError::InvalidReasoningControl) => {
@@ -928,22 +883,37 @@ impl ProductionGatewayRuntime {
             planner_input.correlated_branch = correlated_branch.map(|decision| *decision);
             let mut assessment = None;
             if let Some(mut outcome) = classification_outcome {
-                if let Some((ticket, history)) = classification_context {
+                if let Some(history) = classification_context {
                     classification::apply_group_policy(&planner_input, &history, &mut outcome);
-                    if ticket.new_turn
-                        && self
-                            .agent_turn_history
-                            .commit_decision(&ticket, outcome.decision.clone())
-                            .is_err()
+                    if let Some(guard) = agent_turn_guard.as_mut()
+                        && guard.ticket().new_turn
+                        && guard.commit_decision_or_defer(&outcome.decision).is_err()
                     {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::CONFLICT,
-                            "TURN_CONTEXT_UNAVAILABLE",
-                            "agent_turn",
-                        )
-                        .await;
+                        // History writes are optional. Keep this request's validated
+                        // decision, but relinquish all shared history write authority.
+                        agent_turn_guard = None;
+                        hold_ticket = None;
+                        planner_input.context_hold = None;
+                        planner_input.previous_success_candidate_id = None;
+                        planner_input.correlated_branch = None;
+                        if !outcome
+                            .decision
+                            .reason_codes
+                            .contains(&profiles::ComplexityReasonCodeV1::TaskContextUnresolved)
+                        {
+                            outcome
+                                .decision
+                                .reason_codes
+                                .push(profiles::ComplexityReasonCodeV1::TaskContextUnresolved);
+                        }
                     }
+                }
+                if let Some(guard) = agent_turn_guard.as_ref() {
+                    guard.withhold_pending_affinity(&mut hold_ticket, &mut planner_input);
+                    request_observation.bind_agent_turn_output(
+                        Arc::clone(&self.agent_turn_history),
+                        guard.ticket().clone(),
+                    );
                 }
                 planner_input.classification_decision = Some(outcome.decision);
                 planner_input.classification_facts = Some(outcome.facts);
@@ -966,7 +936,11 @@ impl ProductionGatewayRuntime {
                 }
             };
             request_observation.record_plan_stage(plan_started.elapsed());
-            request_observation.record_planner(&planner_input, &planner_output);
+            request_observation.record_planner(
+                &planner_input,
+                &planner_output,
+                identity.native_auxiliary(),
+            );
             // The planner establishes the trusted Plan identity used by every execution fact.
             if let Some(assessment) = &assessment {
                 request_observation.branch_assessment_recorded(assessment);
@@ -1334,6 +1308,8 @@ impl ProductionGatewayRuntime {
             drop(core_session);
             let runtime_state_authority_failed =
                 !response_started && runtime_state_authority.failed();
+            let request_cancelled = request_observation.accepted_attempt_cancelled()
+                || matches!(&result, Err(TransportError::Cancelled));
             let model_failed = result.is_ok() && request_observation.accepted_attempt_failed();
             let observation_outcome = if model_failed {
                 "failed"
@@ -1341,7 +1317,7 @@ impl ProductionGatewayRuntime {
                 classify_request_observation_outcome(
                     request_observation.has_accepted_attempt(),
                     result.is_ok(),
-                    request_observation.accepted_attempt_cancelled(),
+                    request_cancelled,
                 )
             };
             if let Some(mut guard) = agent_turn_guard.take() {
@@ -1368,6 +1344,7 @@ impl ProductionGatewayRuntime {
                     })
                     .unwrap_or_default();
                 let status = match (request_observation.has_accepted_attempt(), result.is_ok()) {
+                    (_, _) if request_cancelled => AgentTurnStatus::Interrupted,
                     (true, true) if model_failed => AgentTurnStatus::Failed,
                     (true, true) if request_observation.accepted_attempt_unknown() => {
                         AgentTurnStatus::Unknown
@@ -1376,14 +1353,24 @@ impl ProductionGatewayRuntime {
                     (true, false) => AgentTurnStatus::Interrupted,
                     (false, _) => AgentTurnStatus::Failed,
                 };
-                if let Ok(completed) = self.agent_turn_history.finish_request(
-                    guard.ticket(),
-                    request_observation.metadata().request_id.clone(),
-                    status,
-                    executions,
-                    response_delivery.accepted_count() == 0,
-                    Instant::now(),
-                ) {
+                if guard
+                    .finish_deferred_decision(planner_input.classification_decision.as_ref())
+                    .is_ok()
+                    && let Ok(completed) = self.agent_turn_history.finish_request(
+                        guard.ticket(),
+                        request_observation.metadata().request_id.clone(),
+                        status,
+                        executions,
+                        // Delivered tools keep a successful stage open for the
+                        // client's continuation. They cannot keep a cancelled
+                        // or failed request alive indefinitely.
+                        matches!(
+                            status,
+                            AgentTurnStatus::Interrupted | AgentTurnStatus::Failed
+                        ) || response_delivery.accepted_count() == 0,
+                        Instant::now(),
+                    )
+                {
                     if let Some(completed) = completed {
                         request_observation.agent_turn_finished(&completed);
                     }
@@ -1391,7 +1378,7 @@ impl ProductionGatewayRuntime {
                 }
             }
             request_observation.finish(observation_outcome);
-            if runtime_state_authority_failed {
+            if runtime_state_authority_failed && !request_cancelled {
                 write_typed_error_phase(
                     session,
                     StatusCode::SERVICE_UNAVAILABLE,
@@ -1409,10 +1396,10 @@ impl ProductionGatewayRuntime {
 fn classify_request_observation_outcome(
     accepted: bool,
     completed: bool,
-    accepted_attempt_cancelled: bool,
+    request_cancelled: bool,
 ) -> &'static str {
-    match (accepted, completed, accepted_attempt_cancelled) {
-        (true, _, true) => "cancelled",
+    match (accepted, completed, request_cancelled) {
+        (_, _, true) => "cancelled",
         (true, true, false) => "accepted",
         (true, false, false) => "postcommit_transport_failed",
         (false, _, _) => "failed",
@@ -1529,22 +1516,24 @@ fn inbound_authorization<'a>(
         }
         return Some(std::borrow::Cow::Owned(format!("Bearer {token}")));
     }
-    // Native Anthropic clients may send a run credential through x-api-key.
-    // Only the issued run-model namespace uses this carrier; ordinary native keys,
-    // model grants and control credentials still cannot authenticate this way.
+    // Native Anthropic clients also use x-api-key for model-grant credentials,
+    // including auxiliary calls that do not load an Agent's request middleware.
+    // Higher-priority carriers remain authoritative, even when they are invalid.
     if path == "/v1/messages" && !headers.contains_key(AUTHORIZATION) {
         if headers.get_all("x-api-key").iter().count() != 1 {
             return None;
         }
         let token = headers.get("x-api-key")?.to_str().ok()?;
-        if !token.starts_with("hr_run_model_")
+        if token.is_empty()
+            || (token.starts_with("hr_run_") && !token.starts_with("hr_run_model_"))
             || token
                 .bytes()
                 .any(|byte| byte.is_ascii_whitespace() || byte == b',')
         {
             return None;
         }
-        // The run authority must still verify the signed token, live run and frozen protocol.
+        // Extraction grants no authority: current publication/run verification
+        // still resolves the exact issued token, protocol and model aliases.
         return Some(std::borrow::Cow::Owned(format!("Bearer {token}")));
     }
     if headers.get_all(AUTHORIZATION).iter().count() != 1 {
@@ -1575,6 +1564,7 @@ impl Drop for ObservationRequestGuard {
 struct AgentTurnRequestGuard {
     store: Arc<AgentTurnHistoryStore>,
     ticket: Option<AgentTurnTicket>,
+    decision_deferred: bool,
 }
 
 impl AgentTurnRequestGuard {
@@ -1582,6 +1572,7 @@ impl AgentTurnRequestGuard {
         Self {
             store,
             ticket: Some(ticket),
+            decision_deferred: false,
         }
     }
 
@@ -1593,6 +1584,9 @@ impl AgentTurnRequestGuard {
         self.ticket = None;
     }
 }
+
+#[path = "core_runtime/decision_history/deferred_decision.rs"]
+mod deferred_decision;
 
 impl Drop for AgentTurnRequestGuard {
     fn drop(&mut self) {

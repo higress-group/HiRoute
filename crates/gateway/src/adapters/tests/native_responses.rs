@@ -1,6 +1,63 @@
 use super::*;
 
 #[test]
+fn native_codex_peer_messages_preserve_wire_without_fabricating_user_history() {
+    for content in [
+        json!([{"type":"input_text","text":"peer completion"}]),
+        json!([
+            {"type":"input_text","text":"delegated task"},
+            {"type":"encrypted_content","encrypted_content":"opaque-peer-state"}
+        ]),
+    ] {
+        let body = json!({"model":"alias","input":[
+            {"type":"message","role":"user","content":"actual user task"},
+            {"type":"agent_message","id":"amsg-peer","author":"parent",
+             "recipient":"child","content":content,
+             "internal_chat_message_metadata_passthrough":{"turn_id":"turn"}},
+            {"type":"message","role":"assistant","content":"continuing"}
+        ]});
+        let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+        assert!(request.native_only);
+        assert!(crate::context_hold::visible_history(&request, &[0; 32]).is_none());
+        assert_eq!(request.messages.len(), 3);
+        assert!(request.messages[1].content.is_empty());
+        assert_ne!(request.messages[1].role, MessageRole::User);
+        let native = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+        assert_eq!(
+            project_candidate_request(&request, &native).unwrap().body["input"],
+            body["input"]
+        );
+        for protocol in [IngressProtocol::Messages, IngressProtocol::ChatCompletions] {
+            assert!(
+                project_candidate_request(
+                    &request,
+                    &exact_state_profile(IngressProtocol::Responses, protocol)
+                )
+                .is_err()
+            );
+        }
+        for invalid in [
+            json!({"type":"agent_message","author":"parent","content":[]}),
+            json!({"type":"agent_message","author":"parent","recipient":"child","content":null}),
+            json!({"type":"agent_message","author":"parent","recipient":"child",
+                   "content":[{"type":"input_text","text":null}]}),
+            json!({"type":"agent_message","author":"parent","recipient":"child",
+                   "content":[{"type":"encrypted_content","encrypted_content":3}]}),
+            json!({"type":"agent_message","author":"parent","recipient":"child",
+                   "content":[{"type":"unknown","text":"unproven"}]}),
+        ] {
+            assert!(
+                decode_ingress_request(
+                    IngressProtocol::Responses,
+                    &json!({"model":"alias","input":[invalid]})
+                )
+                .is_err()
+            );
+        }
+    }
+}
+
+#[test]
 fn responses_easy_input_messages_preserve_the_same_context_as_explicit_messages() {
     let input = json!([
         {"role":"system","content":"routing rules"},
@@ -218,7 +275,7 @@ fn responses_replayed_plain_reasoning_uses_the_existing_bounded_body_path() {
     let native = json!({"model":"alias","input":[{
         "type":"reasoning","id":"reasoning-item","summary":[],
         "content":[{"type":"reasoning_text","text":"plain reasoning ".repeat(4096)}],
-        "provider_extension":{"version":1},"encrypted_content":null
+        "encrypted_content":null
     }]});
     let mut request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
     let profile = CandidateProtocolProfile::exact_portable_path(

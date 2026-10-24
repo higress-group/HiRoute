@@ -11,7 +11,7 @@ use hiroute_gateway_core::runtime::body::{
 };
 
 use super::secure_path;
-use super::{ReplayConfig, ReplayError, ReplayStore};
+use super::{ReplayConfig, ReplayError, ReplayRange, ReplayStore};
 
 pub(super) struct ReplayStreamBuilder {
     directory: Arc<secure_path::SecureDirectory>,
@@ -47,7 +47,7 @@ struct ProvisionalDisk {
 
 pub(super) struct ReplayStream {
     pub(super) reference: ContentRef,
-    ranges: Arc<[ContentRef]>,
+    ranges: Arc<[ReplayRange]>,
     role: MemoryRole,
     read_buffer_bytes: usize,
     directory: Arc<secure_path::SecureDirectory>,
@@ -57,7 +57,18 @@ pub(super) struct ReplayStream {
 
 impl ReplayStream {
     pub(super) fn contains(&self, reference: &ContentRef) -> bool {
-        *reference == self.reference || self.ranges.binary_search(reference).is_ok()
+        *reference == self.reference
+            || self
+                .ranges
+                .binary_search_by(|range| range.reference.cmp(reference))
+                .is_ok()
+    }
+
+    pub(super) fn is_canonical_json(&self, reference: &ContentRef) -> bool {
+        self.ranges
+            .binary_search_by(|range| range.reference.cmp(reference))
+            .ok()
+            .is_some_and(|index| self.ranges[index].canonical_json)
     }
 
     #[cfg(test)]
@@ -275,15 +286,9 @@ impl ReplayStreamBuilder {
     pub(super) fn append_json_range(
         &mut self,
         value: &serde_json::Value,
-        canonical: bool,
     ) -> Result<ContentRef, ReplayError> {
         let mut range = ReplayRangeSink::new(self);
-        let result = if canonical {
-            write_canonical_json(&mut range, value)
-        } else {
-            serde_json::to_writer(&mut range, value)
-                .map_err(|error| std::io::Error::other(error.to_string()))
-        };
+        let result = write_canonical_json(&mut range, value);
         if result.is_err() {
             return Err(range.error.take().unwrap_or(ReplayError::InvalidJson));
         }
@@ -292,15 +297,19 @@ impl ReplayStreamBuilder {
 
     pub(super) fn seal(
         self,
-        mut ranges: Vec<ContentRef>,
+        mut ranges: Vec<ReplayRange>,
     ) -> Result<(Arc<ReplayStream>, bool), ReplayError> {
         let reference = ContentRef::new(self.ordinal, 0, self.total_len, self.json_escaped_len);
         if ranges.is_empty() {
-            ranges.push(reference.clone());
+            ranges.push(ReplayRange {
+                reference: reference.clone(),
+                canonical_json: false,
+            });
         }
-        ranges.sort();
+        ranges.sort_by(|a, b| a.reference.cmp(&b.reference));
         let mut previous_end = 0_u64;
         for range in &ranges {
+            let range = &range.reference;
             let end = range
                 .byte_offset()
                 .checked_add(range.byte_len())
@@ -790,24 +799,29 @@ pub(crate) fn write_canonical_json(
             }
             writer.write_all(b"]")
         }
-        serde_json::Value::Object(object) => {
-            writer.write_all(b"{")?;
-            let mut keys = object.keys().collect::<Vec<_>>();
-            keys.sort_unstable();
-            for (index, key) in keys.into_iter().enumerate() {
-                if index != 0 {
-                    writer.write_all(b",")?;
-                }
-                serde_json::to_writer(&mut *writer, key)
-                    .map_err(|error| std::io::Error::other(error.to_string()))?;
-                writer.write_all(b":")?;
-                write_canonical_json(writer, &object[key])?;
-            }
-            writer.write_all(b"}")
-        }
+        serde_json::Value::Object(object) => write_canonical_object(writer, object),
         value => serde_json::to_writer(writer, value)
             .map_err(|error| std::io::Error::other(error.to_string())),
     }
+}
+
+pub(crate) fn write_canonical_object(
+    writer: &mut impl Write,
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> std::io::Result<()> {
+    writer.write_all(b"{")?;
+    let mut keys = object.keys().collect::<Vec<_>>();
+    keys.sort_unstable();
+    for (index, key) in keys.into_iter().enumerate() {
+        if index != 0 {
+            writer.write_all(b",")?;
+        }
+        serde_json::to_writer(&mut *writer, key)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        writer.write_all(b":")?;
+        write_canonical_json(writer, &object[key])?;
+    }
+    writer.write_all(b"}")
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

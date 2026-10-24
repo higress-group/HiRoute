@@ -63,6 +63,7 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.routing.recovered-mapping-session',
   'desktop.connection.unowned-service',
   'desktop.connection.loss-retry-recovery',
   'desktop.connection.pending-and-failed-recovery',

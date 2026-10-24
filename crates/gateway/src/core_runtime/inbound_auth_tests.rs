@@ -62,10 +62,14 @@ fn qoder_model_entry_is_explicit_and_never_adopts_worker_or_mixed_credentials() 
 }
 
 #[test]
-fn ordinary_x_api_key_never_authenticates_and_bearer_wins_when_both_are_present() {
+fn messages_api_key_is_only_a_carrier_and_bearer_wins_when_both_are_present() {
     let mut headers = HeaderMap::new();
     headers.insert("x-api-key", HeaderValue::from_static("not-an-agent-grant"));
-    assert_eq!(inbound_authorization("/v1/messages", &headers), None);
+    // The listener's current-grant verifier, not extraction, rejects this value.
+    assert_eq!(
+        inbound_authorization("/v1/messages", &headers).as_deref(),
+        Some("Bearer not-an-agent-grant")
+    );
 
     headers.insert(
         AUTHORIZATION,
@@ -78,11 +82,13 @@ fn ordinary_x_api_key_never_authenticates_and_bearer_wins_when_both_are_present(
 }
 
 #[test]
-fn native_messages_api_key_carrier_is_limited_to_run_model_authority() {
+fn native_messages_api_key_carrier_preserves_run_model_and_rejects_malformed_values() {
     let mut headers = HeaderMap::new();
     for token in [
-        "native-key",
-        "local-model-grant",
+        "",
+        "first,second",
+        "first second",
+        "hr_run_unknown",
         "hr_run_control_fixture",
         "hr_run_model_first,second",
         "hr_run_model_first second",
@@ -143,7 +149,10 @@ fn ordinary_model_entries_share_the_standard_bearer_carrier() {
     }
     headers.remove(AUTHORIZATION);
     headers.insert("x-api-key", HeaderValue::from_static("local-model-grant"));
-    assert!(inbound_authorization("/v1/messages", &headers).is_none());
+    assert_eq!(
+        inbound_authorization("/v1/messages", &headers).as_deref(),
+        Some("Bearer local-model-grant")
+    );
 }
 
 #[test]

@@ -17,16 +17,18 @@ import { routingEditorEntries } from '../routing-editor-entries';
 
 export type RoutingEditorIntent = { key: string; plan?: Plan; draft?: Draft; staleDraft?: boolean; initialBindingId?: string; initialContent?: Editor; editingMemory?: PlanEditorMemory; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string };
 
-export function RoutingPage({ language, active = true, refreshVersion = 0, snapshot, agentSnapshot, operation, loading, busy, suggestionPlanIds = [], initialEditor = null, notice, onRefresh, onOperation, onOpenAgent, onOpenSession, onOpenServices, onTryModel }: {
+export function RoutingPage({ language, active = true, refreshVersion = 0, snapshot, agentSnapshot, operation, loading, busy, suggestionPlanIds = [], initialEditor = null, notice, onRefresh, onOperation, onOpenAgent, onOpenSession, onOpenSessions, onOpenServices, onTryModel }: {
   language: 'zh' | 'en'; snapshot: DesktopSnapshot | null; agentSnapshot?: AgentSnapshot | null; loading: boolean; busy: boolean;
   active?: boolean; refreshVersion?: number; suggestionPlanIds?: string[];
   operation?: DesktopOperation | null;
   initialEditor?: RoutingEditorIntent | null; notice?: string; onRefresh(): Promise<void>;
   onTryModel?(): void; onOperation(operation: DesktopOperation | null): void; onOpenAgent?(agentId: string): void; onOpenSession?(sessionId: string, requestId: string): void; onOpenServices?: OpenDecisionConnection;
+  onOpenSessions?(sessionId?: string): void;
 }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const [editor, setEditor] = useState<RoutingEditorIntent | null>(() => initialEditor ? { ...initialEditor, editingMemory: {} } : null);
   const [mappingPlan, setMappingPlan] = useState<Plan | null>(null);
+  useEffect(() => { if (!active) setMappingPlan(null); }, [active]);
   const [dirty, setDirty] = useState(false);
   const [showList, setShowList] = useState(false);
   const [localBusy, setLocalBusy] = useState(false);
@@ -165,7 +167,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
     {!!snapshot?.catalog_error && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{text('暂时无法刷新路由，当前编辑仍会保留。', 'Unable to refresh routes. Your edits remain available.')}</span><button className="btn" type="button" onClick={() => void onRefresh()}>{text('重试', 'Retry')}</button></div>}
     {!mutable && snapshot && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('路由可以查看，暂时不能修改', 'Routes are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，请刷新状态后保存。', 'The local service is not ready. Refresh its status before saving.')}</p></div></div>}
     {onTryModel && <div className="actions"><button className="btn" disabled={pageLocked} onClick={() => void (async () => { if (!dirty || await requestEditorReplacement('routing')) onTryModel(); })()}>{text('试用新模型', 'Try a new model')}</button>{editor?.plan?.head.status === 'enabled' && <button className="btn" disabled={pageLocked} onClick={() => setMappingPlan(editor.plan!)}>{text('映射 Agent', 'Map an Agent')}</button>}</div>}
-    {mappingPlan && <Dialog open title={text('映射 Agent', 'Map an Agent')} closeLabel={text('关闭', 'Close')} onClose={() => setMappingPlan(null)}><TrialAgentMapping plan={mappingPlan} language={language} mutable={mutable} onOperation={value => onOperation({ ...value, safe_error_code: null })} onChanged={() => void onRefresh()} onOpenAgent={onOpenAgent} /></Dialog>}
+    {mappingPlan && <Dialog open title={text('映射 Agent', 'Map an Agent')} closeLabel={text('关闭', 'Close')} onClose={() => setMappingPlan(null)}><TrialAgentMapping plan={mappingPlan} language={language} mutable={mutable} onOperation={value => onOperation({ ...value, safe_error_code: null })} onChanged={() => void onRefresh()} onOpenAgent={onOpenAgent} onOpenSessions={onOpenSessions} /></Dialog>}
     {creating ? <div className="new-plan-workspace">{editorView}</div> : !loading && !entries.length && !editor ? <div className="empty-state routing-empty"><div><span className="empty-icon"><UiIcon name="route" /></span><h3>{text('还没有智能路由', 'No smart routing yet')}</h3><p>{text('创建一份配置，决定 Agent 怎样使用你的模型。', 'Create a plan that determines how Agents use your models.')}</p><button className="btn btn-primary" disabled={busy || localBusy || !mutable} onClick={event => void newRoute(event.currentTarget)}><UiIcon name="plus" />{text('新建智能路由', 'Create smart routing')}</button></div></div> : <div className={`split-view${showList || !editor ? ' show-list' : ''}`}>
       <aside className="master-pane"><nav className="master-list native-list" aria-label={text('路由列表', 'Routing list')}>
         {entries.map(item => {

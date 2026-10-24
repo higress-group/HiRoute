@@ -38,6 +38,8 @@ nix = { workspace = true, features = ["signal", "user"] }
 hiroute-desktop-host-effects = { path = "../../../crates/desktop-host-effects" }
 
 [build-dependencies]
+serde.workspace = true
+serde_json.workspace = true
 tauri-build = { version = "2.6", optional = true }
 
 [dev-dependencies]

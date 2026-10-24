@@ -112,6 +112,7 @@ export type HomeSession = {
   sessionId: string | null;
   requestId?: string;
   title: string;
+  agentId?: string;
   agentName?: string;
   modelLabel?: string;
   occurredAtMs?: number;

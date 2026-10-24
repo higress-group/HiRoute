@@ -337,7 +337,8 @@ Model performance MAY open separate editable unpublished division drafts without
 saving, publishing, changing Agent mappings or starting a Worker. A branch draft
 uses the former Primary for design/planning and the trial model for implementation,
 with editable conditions and an optional Primary group for implementation. It
-copies the trial's decision and competence policy.
+copies the trial's decision connection and applicable assessment settings. Custom
+extension judgment inputs remain parked editor values, not routing policy.
 
 A delegated draft requires explicit executor selection, shows dependency results
 and orders DeepSeek Harness first for DeepSeek models without preselection. Both
@@ -348,14 +349,26 @@ an upgrade group. Parent models and other executors do not rescue that Worker.
 Completed tasks are not competence results. Evidence from previously routed trial
 stages does not validate work that only Primary handled.
 
-Two-group protection explanations follow the copied judgment settings. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Other decision services retain unconditional low-score protection. Published routing follows its frozen settings; editor explanations describe the next publication.
+Two-group protection explanations apply to built-in judgment settings. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Published routing follows its frozen settings; editor explanations describe the next publication.
+
+Custom extension drafts MUST explain direct extension group selection and optional,
+observation-only scores, without HiRoute threshold or low-score protection promises.
+A single-group category has no automatic upgrade. The manual division entry uses
+the published route's eligible Regular/Primary categories, independently of built-in
+trust suggestions. A category without both groups MUST NOT offer that entry.
 
 #### Scenario: Keep Primary for implementation
 
-- **WHEN** the user enables Primary protection for the implementation category
+- **WHEN** the user enables Primary protection for a built-in implementation category
 - **THEN** the draft contains that two-group category and its publication summary
   describes next-turn protection; an unchecked single-group category states that
   low scores are recorded without an upgrade.
+
+#### Scenario: Divide a custom extension route manually
+
+- **WHEN** a published custom extension route has Regular and Primary groups but no built-in trust suggestion
+- **THEN** model performance offers a separate editable division draft; retaining Primary makes it available for extension selection, with optional scores used only for observation.
+- **AND** opening the draft MUST NOT save, publish, change Agent mappings or imply evidence for work previously handled only by Primary.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235189421
@@ -424,3 +437,121 @@ Source SPEC comments:
   [policy scenarios](../../../crates/gateway/src/core_runtime/classification/group_policy_tests.rs).
 - [Current API/OpenAPI](../../../decision-extensions/api/README.md) and
   [Desktop connection owner](../../../apps/desktop/src/features/decision-services/DecisionServicesPage.tsx).
+
+### Requirement: Concurrent executions own independent history and assessment snapshots
+
+An authorized native session is a scope, not a single in-flight slot. Overlapping
+requests SHALL receive distinct Gateway execution identities and independent
+capture tickets. Native request IDs, equal input, shared transcript prefixes and
+response completion order SHALL NOT deduplicate executions or identify a unique
+logical task. Routing resolution SHALL inspect at most 32 retained heads in the
+same authenticated workspace/consumer/authority epoch/grant generation/served
+alias/protocol/Plan namespace. Evidence from another scope is ineligible.
+
+Optional fingerprint work SHALL have independent content and structural budgets.
+Each instruction/history digest admits at most 16 MiB of content and framing,
+65,536 structural items and JSON depth 64. Inline JSON strings are charged at
+their worst-case escaped length; Replay references are checked before reading.
+Response-boundary comparisons share one such budget across the candidate heads.
+Captured response-boundary hashing also stops at its budget. Exceeding these
+limits loses comparable evidence, never forwarding, current-input classification
+or actual-output capture. Contextual evaluation remains available with association
+uncertainty, and later bounded requests can regain strong continuity in the same
+scope. No truncated fingerprint may establish an edge.
+
+A strong edge requires a comparable typed request prefix and the captured actual
+response boundary, with native cursor/turn agreement where available. Only this
+response-boundary comparison ignores zero-byte text placeholders that clients may
+add when replaying a tool-only response. Replay references still require complete
+integrity verification; nonempty whitespace/text, tool identity and typed arguments,
+roles and supported metadata retain their existing comparisons and bounds. Empty
+text alone cannot establish an edge or erase a previously accepted nonempty delta.
+Missing and explicit-empty function encoding MAY support contextual association only
+through a separate bounded full-boundary proof. It SHALL retain the entire ordered
+accepted reasoning/text, tool kind/namespace/name/logical call ID and canonical JSON
+arguments. Original full and visible digests SHALL keep their exact three-state encoding
+distinction and existing zero-content folding. The separate compatibility proof retains
+the number and ordered positions of empty reasoning summaries. Nonempty encoding or
+opaque reasoning/provider state on either side disables
+this compatibility proof. Unknown fields, unsupported content and exhausted fingerprint
+budgets lose the edge. The proof reuses measured tool digests without additional Replay
+reads or larger budgets; it does not combine encoding changes with reasoning omission.
+It SHALL NOT grant exact ancestry, human origin or provider affinity. Multiple compatible
+predecessors remain ambiguous under the existing pending-request and branch-ranking rules.
+Original forwarding, capture and strict request fingerprints remain unchanged. Unavailable
+or ambiguous evidence starts an independent branch. A completed actual same-scope
+stage MAY remain a contextual assessment candidate with association uncertainty
+explicitly disclosed. It SHALL NOT become a claimed unique predecessor or grant
+provider-prefix affinity. Uncertain executions cannot overwrite a verified head.
+Every classifier invocation freezes at most one target, its exact request members,
+revision, actual model/profile and rubric before calling the decision service.
+Late output, retry, fallback or another branch's completion cannot change that
+snapshot, assessment object or already selected route.
+
+Known encrypted reasoning content MAY establish contextual continuity only when
+its bounded, integrity-verified replay bytes exactly match the encrypted content
+actually accepted downstream, together with the supported visible response
+boundary. Equality SHALL NOT imply decryption, semantic understanding or provider
+affinity. Missing, changed, uncaptured or unsupported opaque state cannot be
+discarded to manufacture a visible-only match. Representation as inline text or
+a Replay reference SHALL NOT change this comparison.
+
+Accepted history SHALL describe the actual client protocol projection. Internal
+response-boundary evidence SHALL NOT be filtered by the retained-content display
+policy. Conversely, content explicitly omitted by protocol conversion SHALL NOT
+be associated with later accepted bytes. Deferred events remain pending until
+their wire unit is accepted. A nonstream error that replaces the body SHALL NOT
+record discarded text or tools as delivered execution output.
+
+Capture admission SHALL be independent of optional ContextHold preparation/commit.
+Branch-scoped affinity uses stronger validity checks; missing/stale/busy affinity
+loses only the preference. Capacity/conflict/observation faults SHALL NOT block
+otherwise valid model output. Known auxiliary calls consume no main history heads,
+capture slots or gap epochs. Invalid or absent purpose evidence retains observed
+routing; it SHALL NOT globally disable classification, capture or cross-turn quality
+evaluation or permanently select Primary.
+
+Source uncertainty, association uncertainty and incomplete captured execution SHALL
+be separate evidence dimensions. Missing preceding context does not make a newly
+captured independent execution incomplete. Summary/peer/client transcript content
+SHALL NOT be imported as accepted model output. A routing activation or completed
+HTTP delivery does not prove logical task completion. A known continuation with no
+usable input may temporarily fall back, but later genuine A and B in the same
+session SHALL classify and capture, and B SHALL assess A's actual execution where
+retained. Retry IDs cannot heal a missing old execution. No additional model call,
+sidecar, disk history or session lock held across network execution is introduced.
+
+Assessment completeness SHALL require both complete captured membership and proven
+closure of every included execution stage. Freezing a revision after association
+loss is not closure proof. Actual provider outcomes SHALL remain distinct from a
+stage waiting for tool continuation: a known successful tool response may belong
+to an open stage, while an unknown provider outcome remains unresolved even after
+a new activation, configuration change or later final response. A new activation
+can delimit an otherwise known stage without asserting that its logical task
+succeeded. Partial targets remain assessable as partial; later independently
+complete stages SHALL recover complete evaluation. Reopening a proven same-stage
+continuation may extend its actual membership but cannot mutate a prior snapshot
+or invent a missing earlier provider outcome.
+
+The store SHALL bound total history to its configured budget (default 500,000,000
+bytes), including branch indexes and pinned snapshots, with default one-hour idle
+expiry, 32 live captures/heads and 128 terminal records per scope. Pinned payloads
+cannot be silently uncharged. Optional overflow retains explicit incomplete evidence
+where possible and otherwise uses bounded scope-hash gap bookkeeping. Collisions
+are conservative and recoverable; new complete A/B must recover after pressure or
+faults clear. ContextHold retains its independent 50,000,000-byte budget.
+
+#### Scenario: Concurrent responses have the same input prefix
+
+- **WHEN** two requests start from one prefix, select different models and finish out of order
+- **THEN** both accepted outputs remain attributable to their actual executions; a later request carrying one captured output selects that eligible branch, while an unproved/ambiguous relation stays explicit.
+
+#### Scenario: Optional affinity fails while the main model succeeds
+
+- **WHEN** ContextHold is contended, stale or full
+- **THEN** the request can still classify, capture accepted output and supply a later assessment target; optional failure cannot cause a 409 or replace the model result.
+
+#### Scenario: Compressed session survives Gateway restart
+
+- **WHEN** the Gateway loses its memory while the native client retains a compressed session
+- **THEN** summaries do not recreate old execution; genuine new A/B recover classification, capture, selectable groups and assessment without requiring a new native session.

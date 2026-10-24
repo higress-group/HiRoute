@@ -48,6 +48,34 @@ const emptySummary = { models: [], scored_stage_count: 0, unrated_stage_count: 0
 const openQuality = () => { const disclosure = document.querySelector('.session-model-performance summary'); if (disclosure && !disclosure.parentElement.open) disclosure.click(); };
 
 const scenarios = [
+  ['supported Agent names appear in both the session list and selected heading', async () => {
+    const agents = [
+      ['codex', 'Codex'], ['claude', 'Claude Code'], ['dsh', 'DeepSeek Harness'],
+      ['pi', 'Pi'], ['qoder', 'Qoder'], ['hermes', 'Hermes'], ['opencode', 'OpenCode'],
+      ['unknown', null], [null, null],
+    ];
+    for (const language of ['zh', 'en']) for (const [family, name] of agents) {
+      const expected = name ?? (family
+        ? language === 'zh' ? '本机 Agent' : 'Local Agent'
+        : language === 'zh' ? '未关联 Agent' : 'Unlinked Agent');
+      await fresh(control => {
+        control.language = language;
+        seedSimple(control);
+        control.views.sessions = query => {
+          const page = control.defaultRead('sessions', query);
+          return { ...page, sessions: page.sessions.map(row => ({ ...row,
+            agent_id: family ? `agent_${family}_default` : '',
+          })) };
+        };
+      });
+      await until(() => rows().length === 1, `${language} ${family} session row`);
+      assert(rows()[0].textContent.includes(expected), `${language} ${family} list lacks ${expected}`);
+      rows()[0].click();
+      await until(() => document.querySelector('.transcript-head p'), 'selected session heading');
+      assert(document.querySelector('.transcript-head p').textContent.includes(expected),
+        `${language} ${family} heading lacks ${expected}`);
+    }
+  }],
   ['replayed history keeps attribution while reading skips hidden response pages', async () => {
     await fresh(control => {
       seedSimple(control, Date.now() - 60_000, { final_native_model: 'glm-5.3', within_request_fallback: true });
@@ -637,6 +665,109 @@ const scenarios = [
     const latest = queryOf(reads('sessions').at(-1));
     assert(latest.only_model_switch === true, 'Filter was not applied by the query');
     assert(!text().includes('没有匹配的会话'), 'Filter was reported as an empty search');
+  }],
+  ['request excerpt distinguishes pending reads from missing or deleted content', async () => {
+    const id = 'request/quote-loading';
+    const pending = deferred();
+    await fresh(control => {
+      seedSimple(control);
+      control.views.catalog = query => query.request_id === id ? pending.promise : control.defaultRead('catalog', query);
+      control.texts['quote-body'] = '后来读取到的真实消息';
+    });
+    c().showRequestExcerpt(id);
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('正在读取消息'), 'pending quote is not missing or cleared');
+    assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Pending quote claimed deletion');
+    pending.resolve({ contents: [{ content_id: 'quote-body', role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' }], roots_partial: false, next_cursor: null });
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('后来读取到的真实消息'), 'loaded quote replaces pending state');
+  }],
+  ['request excerpt requires explicit deletion evidence for a cleared label', async () => {
+    for (const state of ['empty', 'failed', 'deleted']) {
+      const id = `request/quote-${state}`;
+      await fresh(control => {
+        seedSimple(control);
+        control.views.catalog = query => {
+          if (query.request_id !== id) return control.defaultRead('catalog', query);
+          if (state === 'failed') throw { code: 'DAEMON_UNAVAILABLE' };
+          return { contents: state === 'deleted' ? [{ content_id: 'deleted-quote', role: 'user', kind: 'text', state: 'deleted', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' }] : [], roots_partial: false, next_cursor: null };
+        };
+      });
+      c().showRequestExcerpt(id);
+      await until(() => document.querySelector('.routing-quote')?.textContent.includes(state === 'deleted' ? '正文已清理' : '这一轮的消息暂不可用'), `quote ${state} state`);
+      if (state !== 'deleted') assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Unavailability claimed deletion');
+    }
+  }],
+  ['session title skips proven auxiliary requests before selecting main title and model', async () => {
+    await fresh(control => {
+      const id = 'observation-session/aux-title';
+      const at = Date.now() - 60_000;
+      const auxiliary = control.makeRequest(id, 0, at, { native_auxiliary: true, final_native_model: 'auxiliary-model' });
+      const main = control.makeRequest(id, 1, at + 1, { final_native_model: 'main-model' });
+      auxiliary.routing_context.display_name = '辅助路由';
+      main.routing_context.display_name = '主任务路由';
+      control.requests[id] = [auxiliary, main];
+      seedUserText(control, auxiliary, 'Generate a session title from this auxiliary prompt');
+      seedUserText(control, main, '修复真实任务的路由');
+    });
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent.includes('修复真实任务的路由'), 'main title after auxiliary');
+    assert(rows()[0].textContent.includes('main-model') && rows()[0].textContent.includes('主任务路由'), 'Auxiliary model or route replaced main request metadata');
+    assert(!rows()[0].textContent.includes('auxiliary-model'), 'Auxiliary model labelled the session');
+  }],
+  ['auxiliary-only session has a neutral title and its original request is readable', async () => {
+    const prompt = 'Auxiliary title prompt must remain in request details';
+    await fresh(control => {
+      const id = 'observation-session/only-aux';
+      const request = control.makeRequest(id, 0, Date.now() - 60_000, { native_auxiliary: true });
+      control.requests[id] = [request];
+      seedUserText(control, request, prompt);
+    });
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent === '会话记录', 'neutral auxiliary-only title');
+    assert(!rows()[0].textContent.includes('正文已清理'), 'Auxiliary filtering was misreported as content cleanup');
+    rows()[0].click();
+    await until(() => [...document.querySelectorAll('.message-content')].some(node => node.textContent.includes(prompt)), 'original auxiliary request details');
+    assert(rows()[0].querySelector('.session-item-title').textContent === '会话记录', 'The auxiliary detail prompt became the session title after loading');
+  }],
+  ['session title skips an auxiliary-only first page without changing the timeline window', async () => {
+    const id = 'observation-session/aux-title-paged';
+    await fresh(control => {
+      const at = Date.now() - 120_000;
+      control.requests[id] = Array.from({ length: 51 }, (_, index) => {
+        const request = control.makeRequest(id, index, at + index, index < 50 ? { native_auxiliary: true } : {});
+        seedUserText(control, request, index < 50 ? 'Auxiliary prompt' : '跨页后的主任务输入');
+        return request;
+      });
+    });
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent.includes('跨页后的主任务输入'), 'main title beyond auxiliary page');
+    const pages = reads('timeline').filter(call => queryOf(call).session_id === id);
+    const second = pages.findIndex(call => queryOf(call).cursor);
+    assert(second > 0, 'Title scan did not follow the raw timeline cursor');
+    const first = pages.slice(0, second).findLast(call => !queryOf(call).cursor && queryOf(call).to_ms === queryOf(pages[second]).to_ms);
+    assert(first && queryOf(first).to_ms === queryOf(pages[second]).to_ms, 'Auxiliary filtering changed the cursor-bound window');
+  }],
+  ['missing purpose keeps legacy title-like user text visible', async () => {
+    const prompt = 'Generate a session title is my actual task';
+    await fresh(control => {
+      seedSimple(control);
+      seedUserText(control, control.requests['observation-session/simple'][0], prompt);
+    });
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent.includes(prompt), 'unmarked request remains visible');
+  }],
+  ['auxiliary filtering never calls missing or still loading main content cleared', async () => {
+    const id = 'observation-session/aux-main-loading';
+    const pending = deferred();
+    await fresh(control => {
+      const at = Date.now() - 60_000;
+      const auxiliary = control.makeRequest(id, 0, at, { native_auxiliary: true });
+      const main = control.makeRequest(id, 1, at + 1);
+      control.requests[id] = [auxiliary, main];
+      seedUserText(control, auxiliary, 'Auxiliary title prompt');
+      control.views.catalog = query => query.request_id === main.request_id ? pending.promise : control.defaultRead('catalog', query);
+    });
+    await until(() => rows().length === 1 && reads('catalog').some(call => queryOf(call).request_id.endsWith('/1')), 'main catalog loading');
+    assert(!rows()[0].textContent.includes('正文已清理'), 'Loading was reported as cleanup');
+    pending.resolve({ contents: [], roots_partial: true, next_cursor: null });
+    await tick();
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent === '会话记录', 'neutral missing-main title');
+    assert(!rows()[0].textContent.includes('正文已清理'), 'Missing main content was reported as cleanup');
   }],
   ['session title skips an injected environment block and uses later real input', async () => {
     await fresh(control => {

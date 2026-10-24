@@ -29,8 +29,11 @@ fn real_listener_precommit_disconnect_reaches_next_frozen_candidate() {
 }
 
 #[test]
-fn real_listener_persists_mechanical_failure_before_next_request() {
-    let first = NativeProvider::start(vec![ProviderReply::CloseBeforeSemantic]);
+fn real_listener_keeps_mechanical_failure_local_to_each_request() {
+    let first = NativeProvider::start(vec![
+        ProviderReply::CloseBeforeSemantic,
+        ProviderReply::CloseBeforeSemantic,
+    ]);
     let second = NativeProvider::start(vec![
         ProviderReply::Complete {
             status: 200,
@@ -40,24 +43,27 @@ fn real_listener_persists_mechanical_failure_before_next_request() {
         ProviderReply::Complete {
             status: 200,
             error_kind: None,
-            body: br#"{"id":"skipped-cooled-binding","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"second"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#,
+            body: br#"{"id":"fallback-after-second-disconnect","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"second"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#,
         },
     ]);
     let fixture = RuntimeFixture::launch(&[&first, &second], 2);
 
     let first_response = fixture.request();
-    let second_response = fixture.request();
+    // A different first user also excludes the generic API's inferred hold
+    // preference; this assertion measures health rather than same-turn affinity.
+    let second_response = fixture
+        .request_body(br#"{"model":"runtime-model","input":"independent request","stream":false}"#);
 
     assert_eq!(first_response.status, 200);
     assert_eq!(second_response.status, 200);
     assert_eq!(
         first.calls(),
-        1,
-        "the disconnected binding must be cooling down"
+        2,
+        "the independent request must try its first frozen candidate again"
     );
     assert_eq!(second.calls(), 2);
     let document: serde_json::Value = serde_json::from_slice(&second_response.body).unwrap();
-    assert_eq!(document["id"], "skipped-cooled-binding");
+    assert_eq!(document["id"], "fallback-after-second-disconnect");
 }
 
 #[test]

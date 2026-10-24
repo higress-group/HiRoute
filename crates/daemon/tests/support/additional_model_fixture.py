@@ -24,7 +24,11 @@ def select_model_context(product, harness="qoder"):
     product.additional_harness = harness
     if harness == "opencode":
         from opencode_native_context import select_context
-        return select_context(product)
+        config = select_context(product)
+        # Ordinary saved-model clients must discover their user plugins. The
+        # Worker profile still chooses its separate native pure mode explicitly.
+        product.env.pop('OPENCODE_PURE', None)
+        return config
     if harness == "pi":
         config = Path(product.env["HOME"]) / ".pi/agent"
         config.mkdir(mode=0o700, parents=True)
@@ -205,7 +209,7 @@ def native_command(product, binary, selector, prompt):
     if getattr(product, 'additional_harness', 'qoder') == 'pi':
         provider, model = selector.split('/',1)
         return [os.environ['HIROUTE_WORKER_NODE'], str(binary), '--provider', provider, '--model', model,
-                '--mode', 'json', '--print', '--no-session', '--no-extensions', '--offline', '--tools', 'read', prompt]
+                '--mode', 'json', '--print', '--no-session', '--offline', '--tools', 'read', prompt]
     return [str(binary), '--cwd', str(product.project), '--config-dir', product.env['QODER_CONFIG_DIR'],
             '--model', selector, '--print', '--no-session-persistence', '--output-format', 'stream-json',
             '--tools', 'Read', '--permission-mode', 'dont_ask', '--max-model-request-retries', '0',

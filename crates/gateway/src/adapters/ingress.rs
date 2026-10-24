@@ -19,7 +19,29 @@ mod chat_reasoning;
 #[derive(Default)]
 struct DecodeContext<'a> {
     native_only: std::cell::Cell<bool>,
+    unknown_generation: std::cell::Cell<usize>,
     replay: Option<&'a ReplayStore>,
+}
+
+impl DecodeContext<'_> {
+    // A fully modeled opaque wire value can have an exact replay digest without
+    // granting portability or cleanup authority.
+    fn mark_modeled_native_only(&self) {
+        self.native_only.set(true);
+    }
+
+    fn mark_native_only(&self) {
+        self.native_only.set(true);
+        self.unknown_generation
+            .set(self.unknown_generation.get().saturating_add(1));
+    }
+
+    fn history_item(&self, native_index: Option<usize>, before: usize) -> NativeHistoryItem {
+        NativeHistoryItem {
+            native_index,
+            modeled: before == self.unknown_generation.get(),
+        }
+    }
 }
 
 pub fn decode_ingress_request(
@@ -122,6 +144,7 @@ fn decode_responses(
         .into_iter()
         .collect();
     let mut messages = Vec::new();
+    let mut native_history = Vec::new();
     let mut additional_tools = Vec::new();
     let mut responses_search_history = std::collections::BTreeMap::new();
     let mut responses_item_statuses = std::collections::BTreeMap::new();
@@ -129,13 +152,16 @@ fn decode_responses(
     let mut responses_internal_chat_message_metadata = std::collections::BTreeMap::new();
     let mut responses_reasoning_history = std::collections::BTreeMap::new();
     match object.get("input") {
-        Some(Value::String(text)) => messages.push(CanonicalMessage {
-            role: MessageRole::User,
-            content: vec![ContentPart::Text { text: text.clone() }],
-            name: None,
-        }),
+        Some(Value::String(text)) => {
+            messages.push(CanonicalMessage {
+                role: MessageRole::User,
+                content: vec![ContentPart::Text { text: text.clone() }],
+                name: None,
+            });
+            native_history.push(context.history_item(None, context.unknown_generation.get()));
+        }
         Some(Value::Array(items)) => {
-            for item in items {
+            for (native_index, item) in items.iter().enumerate() {
                 if item.get("type").and_then(Value::as_str) == Some("additional_tools") {
                     let additional =
                         checked_object(context, item, &["type", "tools"], "additional_tools")?;
@@ -147,6 +173,7 @@ fn decode_responses(
                     continue;
                 }
                 let message_index = messages.len();
+                let before = context.unknown_generation.get();
                 let internal_metadata =
                     responses_options::internal_chat_message_metadata(context, item)?;
                 let item_type = item.get("type").and_then(Value::as_str);
@@ -184,7 +211,7 @@ fn decode_responses(
                         && !(item_type == Some("function_call_output")
                             && matches!(status, "incomplete" | "in_progress"))
                     {
-                        context.native_only.set(true);
+                        context.mark_native_only();
                     }
                     decode_responses_input(context, item, &mut messages, item_status)?;
                     if let Some(status) = item_status {
@@ -200,9 +227,12 @@ fn decode_responses(
                     responses_message_phases.insert(message_index, phase);
                 }
                 if item_type == Some("reasoning") {
-                    responses_reasoning_history
-                        .insert(message_index, responses_options::reasoning_history(item)?);
+                    responses_reasoning_history.insert(
+                        message_index,
+                        responses_options::reasoning_history(context, item)?,
+                    );
                 }
+                native_history.push(context.history_item(Some(native_index), before));
             }
         }
         Some(_) => return Err(ModelIrError::InvalidField("input")),
@@ -219,6 +249,7 @@ fn decode_responses(
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
         responses_options: responses_options::decode(context, object)?,
@@ -275,13 +306,19 @@ fn decode_chat(context: &DecodeContext, body: &Value) -> Result<ModelRequestIRV1
             "stream_options",
         )?;
         if optional_bool(options, "include_usage")? == Some(false) {
-            context.native_only.set(true);
+            context.mark_native_only();
         }
     }
     let mut instructions = Vec::new();
     let mut messages = Vec::new();
-    for value in required_array(object, "messages")? {
+    let mut native_history = Vec::new();
+    for (native_index, value) in required_array(object, "messages")?.iter().enumerate() {
+        let before = context.unknown_generation.get();
+        let position = messages.len();
         decode_chat_message(context, value, &mut instructions, &mut messages)?;
+        if messages.len() > position {
+            native_history.push(context.history_item(Some(native_index), before));
+        }
     }
     let requested_reasoning = object
         .get("reasoning_effort")
@@ -291,6 +328,7 @@ fn decode_chat(context: &DecodeContext, body: &Value) -> Result<ModelRequestIRV1
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::ChatCompletions,
         responses_options: None,
@@ -441,6 +479,7 @@ fn decode_chat_message(
             let (arguments, raw_arguments) =
                 parse_tool_arguments(content_string(function, "arguments")?);
             content.push(ContentPart::ToolCall {
+                encrypted_function_args: None,
                 logical_id: required_string(call, "id")?,
                 tool_kind: ToolKindV1::Function,
                 namespace: None,
@@ -537,12 +576,12 @@ fn decode_messages(
         body.pointer("/thinking/display").and_then(Value::as_str) == Some("omitted");
     if body.pointer("/thinking/display").is_some() && !omit_thinking {
         // Only omitted has a defined cross-protocol return-content mapping.
-        context.native_only.set(true);
+        context.mark_native_only();
     }
     if body.pointer("/output_config/format").is_some()
         && super::structured_output::messages_schema_format(body).is_none()
     {
-        context.native_only.set(true);
+        context.mark_native_only();
     }
     let mut instructions = object
         .get("system")
@@ -551,7 +590,9 @@ fn decode_messages(
         .into_iter()
         .collect::<Vec<_>>();
     let mut messages = Vec::new();
-    for value in required_array(object, "messages")? {
+    let mut native_history = Vec::new();
+    for (native_index, value) in required_array(object, "messages")?.iter().enumerate() {
+        let before = context.unknown_generation.get();
         let message = decode_messages_message(context, value)?;
         match message.role {
             // Claude Code 2.1.231 emits an instruction reminder as a `system` message even though
@@ -569,7 +610,10 @@ fn decode_messages(
                     content: message.content,
                 });
             }
-            MessageRole::User | MessageRole::Assistant => messages.push(message),
+            MessageRole::User | MessageRole::Assistant => {
+                messages.push(message);
+                native_history.push(context.history_item(Some(native_index), before));
+            }
         }
     }
     let mut requested_reasoning = match (object.get("thinking"), object.get("output_config")) {
@@ -583,6 +627,7 @@ fn decode_messages(
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Messages,
         responses_options: None,
@@ -703,6 +748,7 @@ fn decode_messages_content(
             }
             validate_messages_cache_control(context, object.get("cache_control"))?;
             Ok(ContentPart::ToolCall {
+                encrypted_function_args: None,
                 logical_id: required_string(object, "id")?,
                 tool_kind: ToolKindV1::Function,
                 namespace: None,
@@ -836,7 +882,7 @@ fn validate_messages_metadata(
         Ok(())
     })();
     if portable.is_err() {
-        context.native_only.set(true);
+        context.mark_native_only();
     }
     Ok(())
 }
@@ -879,7 +925,7 @@ fn validate_messages_context_management(
         Ok(())
     })();
     if portable.is_err() {
-        context.native_only.set(true);
+        context.mark_native_only();
     }
     Ok(())
 }
@@ -907,7 +953,7 @@ fn validate_messages_cache_control(
         Ok(())
     })();
     if portable.is_err() {
-        context.native_only.set(true);
+        context.mark_native_only();
     }
     Ok(())
 }
@@ -1135,7 +1181,7 @@ fn decode_http_image_url(context: &DecodeContext, value: String) -> Result<Strin
     }
     // The provider fetches/interprets this reference, not the gateway. Unknown
     // encodings are native-only, so conversion cannot reinterpret their meaning.
-    context.native_only.set(true);
+    context.mark_native_only();
     Ok(value)
 }
 
@@ -1206,7 +1252,7 @@ fn ensure_keys(
         {
             return Err(ModelIrError::UnsupportedField(format!("{label}.{key}")));
         }
-        context.native_only.set(true);
+        context.mark_native_only();
     }
     Ok(())
 }

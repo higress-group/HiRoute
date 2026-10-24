@@ -11,7 +11,7 @@ use crate::ports::{
     ProbeLeaseOutcome, RuntimeStateEntry, RuntimeStateKey,
 };
 use crate::server::core_runtime::adapters;
-use crate::server::core_runtime::model_ir::ModelRequestIRV1;
+use crate::server::core_runtime::model_ir::{ModelIrError, ModelRequestIRV1};
 use crate::server::core_runtime::profiles::{
     CandidateProtocolProfile, CapabilityError, CostClassV1, ExclusionReasonCodeV1,
     PLANNER_INPUT_SCHEMA, PlannerCandidateFactsV1, PlannerInputV1,
@@ -211,6 +211,32 @@ fn build_planner_input(
             .for_request_reasoning(&request)
             .map_err(|_| PortError::InvalidReasoningControl)?;
         let projection = project_candidate_facts(&request, &profile)?;
+        if let Some((reason, message_index)) = projection.rejection
+            && let Some(observation) = crate::server::core_runtime::observation::active_request()
+        {
+            use hiroute_diagnostics::event::{
+                IngressProtocol as Protocol, RequestProjection, RequestProjectionOutcome,
+                RequestProjectionStage,
+            };
+            observation.request_projection(
+                &candidate.stable_target_key,
+                RequestProjection {
+                    request_token: None,
+                    binding_token: None,
+                    ingress_protocol: Protocol::Unknown,
+                    upstream_protocol: match profile.capability.upstream_protocol {
+                        IngressProtocol::Responses => Protocol::OpenAiResponses,
+                        IngressProtocol::ChatCompletions => Protocol::OpenAiChat,
+                        IngressProtocol::Messages => Protocol::AnthropicMessages,
+                    },
+                    stage: RequestProjectionStage::CandidatePreflight,
+                    outcome: RequestProjectionOutcome::Unsupported,
+                    reason,
+                    first_message_index: message_index.map(|index| index as u64),
+                    affected_items: message_index.map(|_| 1),
+                },
+            );
+        }
         let mut candidate = PlannerCandidateFactsV1::seal(
             candidate.stable_target_key.clone(),
             candidate.stable_target_key,
@@ -258,6 +284,10 @@ fn domain_protocol(protocol: IngressProtocol) -> hiroute_domain::UpstreamProtoco
 struct CandidateProjectionFacts {
     target_serialized_bytes: u64,
     exclusion: Option<ExclusionReasonCodeV1>,
+    rejection: Option<(
+        hiroute_diagnostics::event::RequestProjectionReason,
+        Option<usize>,
+    )>,
 }
 
 fn project_candidate_facts(
@@ -291,6 +321,7 @@ fn project_candidate_facts(
             // Planner consumes the typed exclusion before context sizing.
             target_serialized_bytes: 1,
             exclusion: Some(ExclusionReasonCodeV1::ToolInterfaceUnsupported),
+            rejection: None,
         });
     }
 
@@ -299,6 +330,15 @@ fn project_candidate_facts(
             target_serialized_bytes: u64::try_from(projected.wire_len)
                 .map_err(|_| PortError::Rejected)?,
             exclusion: None,
+            rejection: None,
+        }),
+        Err(adapters::ProtocolAdapterError::RequestUnrepresentable {
+            reason,
+            message_index,
+        }) => Ok(CandidateProjectionFacts {
+            target_serialized_bytes: 1,
+            exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
+            rejection: Some((reason, message_index)),
         }),
         Err(
             adapters::ProtocolAdapterError::ClientUnrepresentable(_)
@@ -313,18 +353,24 @@ fn project_candidate_facts(
                 // the typed exclusion and can select a later plan member.
                 target_serialized_bytes: 1,
                 exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
+                rejection: None,
             })
         }
-        Err(adapters::ProtocolAdapterError::Capability(
-            CapabilityError::ProviderStateUnsupported
-            | CapabilityError::NativeProviderStateUnrepresentable,
-        )) => Ok(CandidateProjectionFacts {
+        Err(
+            adapters::ProtocolAdapterError::Capability(
+                CapabilityError::ProviderStateUnsupported
+                | CapabilityError::NativeProviderStateUnrepresentable,
+            )
+            | adapters::ProtocolAdapterError::ModelIr(ModelIrError::ProviderStateNotPortable),
+        ) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: 1,
             exclusion: Some(ExclusionReasonCodeV1::OpaqueStateUnportable),
+            rejection: None,
         }),
         Err(adapters::ProtocolAdapterError::Capability(_)) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: 1,
             exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
+            rejection: None,
         }),
         Err(_) => Err(PortError::Rejected),
     }

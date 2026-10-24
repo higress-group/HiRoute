@@ -43,6 +43,7 @@ pub struct ProductionDecisionSession {
     earliest_retry_at: Option<Instant>,
     non_temporary_block_seen: bool,
     upstream_attempted: bool,
+    last_context_overflow: bool,
     preparation_failure: Option<PreparationFailure>,
 }
 
@@ -97,6 +98,9 @@ impl DecisionSessionPort for ProductionDecisionSession {
 
     fn exhaustion_local_reply(&mut self, now: Instant) -> Result<Option<LocalReply>, Arc<str>> {
         if self.upstream_attempted {
+            if self.last_context_overflow && now < self.overall_deadline {
+                return Ok(Some(super::context_overflow::local_reply()));
+            }
             return Ok(None);
         }
         if !self.temporary_block_seen || self.non_temporary_block_seen {
@@ -140,6 +144,11 @@ impl DecisionSessionPort for ProductionDecisionSession {
         _transport: &hiroute_gateway_core::runtime::attempt::AttemptTransportFacts,
     ) -> Result<Disposition, Arc<str>> {
         self.upstream_attempted |= selected.attempt_id.0 != 0;
+        self.last_context_overflow = selected.attempt_id.0 != 0
+            && facts
+                .error_class
+                .as_ref()
+                .is_some_and(|class| class.as_str() == "context_length");
         if facts
             .error_class
             .as_ref()
@@ -195,6 +204,9 @@ impl DecisionSessionPort for ProductionDecisionSession {
         failure: &hiroute_gateway_core::runtime::driver::AttemptFailureFacts,
     ) -> Result<Disposition, Arc<str>> {
         self.upstream_attempted |= selected.attempt_id.0 != 0;
+        // A later transport, authorization or preparation failure supersedes
+        // an earlier response cause; never instruct compaction for that failure.
+        self.last_context_overflow = false;
         let error_class = failure
             .provider
             .as_ref()
@@ -367,6 +379,7 @@ impl SelectionPublicationPort<ProductionRouteContext> for ProductionSelection {
             earliest_retry_at: None,
             non_temporary_block_seen: route_context.admission_preparation_failure.is_some(),
             upstream_attempted: false,
+            last_context_overflow: false,
             preparation_failure: route_context.admission_preparation_failure,
         })
     }

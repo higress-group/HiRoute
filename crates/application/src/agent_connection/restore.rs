@@ -366,6 +366,7 @@ fn fingerprint_for(
         // The login item is a settings-transaction host effect and never rides a V1
         // connect/restore plan, so no V1 fingerprint slot exists for it.
         AgentConnectionEffectRoleV1::LoginItem
+        | AgentConnectionEffectRoleV1::NativeRoutingAdapter
         | AgentConnectionEffectRoleV1::HermesPluginModule
         | AgentConnectionEffectRoleV1::HermesPluginManifest
         | AgentConnectionEffectRoleV1::ManagementSkill

@@ -30,6 +30,7 @@ import {
 } from '../features/device-scan/DeviceScanList';
 import { PriceEditor } from '../features/model-reference/PriceEditor';
 import { HermesRootFields } from '../features/agents/HermesRootFields';
+import { agentDisplayName as discoveredAgentName } from '../features/agents/ecosystems';
 import type { AgentNativeTarget } from '../features/agents/types';
 import type { PriceContext, PriceOutcome } from '../features/model-reference/types';
 import { agentBrandFromId, BrandIcon, Dialog, Disclosure, ProductPage, UiIcon } from '../ui';
@@ -113,13 +114,6 @@ function discoveryFailureMessage(code: string, language: 'zh' | 'en'): string {
     default:
       return zh ? '这项配置暂时无法接入，请重试。' : 'This configuration could not be connected. Try again.';
   }
-}
-
-function discoveredAgentName(agentId: string, language: 'zh' | 'en') {
-  if (agentId.toLocaleLowerCase().includes('hermes')) return 'Hermes';
-  if (agentId.toLocaleLowerCase().includes('claude')) return 'Claude Code';
-  if (agentId.toLocaleLowerCase().includes('codex')) return 'Codex';
-  return language === 'zh' ? '本机 Agent' : 'Local agent';
 }
 
 export { newModelConnectionDraft } from '../features/model-connections/new-draft';

@@ -59,12 +59,14 @@ fn project_prefix(
     bytes: &[u8],
     end_stream: bool,
 ) -> Result<Option<ModelError>, Arc<str>> {
-    let units = state
+    let projector = state
         .projector
         .as_mut()
-        .ok_or_else(|| Arc::from("native stream projector is unavailable"))?
+        .ok_or_else(|| Arc::from("native stream projector is unavailable"))?;
+    let units = projector
         .feed(bytes, end_stream)
         .map_err(|error| response_diagnostics::adapter(FailureStage::NativeProjection, error))?;
+    response_diagnostics::native_completion(projector);
     for unit in units {
         state.semantic_seen |= unit.semantic;
         if let Some(outcome) = unit.terminal {

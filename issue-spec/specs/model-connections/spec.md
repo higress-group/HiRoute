@@ -376,6 +376,13 @@ identity; missing, changed, or nonexecutable CPA affects subscriptions only and
 cannot silently use a user's different CPA. Native API and control remain usable.
 Provider failures are isolated from each other.
 
+Release Desktop builds MUST reject development-only, invalid or wrong-target CPA
+manifests before producing an executable, using the same manifest policy as native
+launch. Optional launch-time rejection MUST retain a closed diagnostic cause.
+An absent CPA runtime SHALL remain runtime-unavailable in maintenance, model
+management and routing rather than claiming that authentication failed. These
+failures SHALL NOT rewrite saved source/model choices or block unrelated sources.
+
 Credential/profile/file/Keychain/management-HTTP/process I/O MUST NOT synchronously
 block Gateway async workers or hold their blocking locks. Bounded executors limit
 running and queued work using the original absolute deadline/cancellation. Cancel

@@ -2,6 +2,9 @@
 //! A Windows descriptor is not represented as an invented POSIX mode.
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_os = "macos")]
+pub mod macos;
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WindowsPermissions {

@@ -160,6 +160,13 @@ are callback-lifetime views: they cannot enter context, cross await, or be given
 an asynchronous writer. Explicit OwnedSseEvent/encoded units charge retained capacity.
 Unmodified native forwarding may transfer Bytes with output/transport accounting.
 
+At EOF, a remaining tail containing only comments and empty lines has no pending
+event description, even without a final line ending or empty separator. The shared
+framer MUST deliver its exact bytes through the normal bounded visitor path,
+including NeedDrain retries with the same charged owner. This rule supplies no
+model-terminal evidence. Strict EOF MUST still reject unfinished data, event, id,
+retry and unknown control fields, including fields mixed with comments.
+
 Complete single-buffer events should avoid payload copies. Fragmented input retains
 only needed tail; small retained views must copy out or charge the full backing.
 Byte-by-byte input remains O(n). max_event_bytes applies to complete single-chunk
@@ -194,6 +201,15 @@ socket/session/config guards, synchronous locks, and SSE borrowed views cannot c
 those boundaries. Cancel/deadline while paused unwinds filter continuations, writer,
 connection/body/output children and blocks new connects. A native callback panic
 becomes current scope/stream failure, not process/worker failure.
+
+Request cancellation MUST remain a typed result across the core-to-product
+transport boundary, including before any upstream Attempt starts or is accepted.
+Ordinary preparation failures remain failures. A final cancellation-token state
+or an error message is not proof of the termination cause: deadlines and cleanup
+also cancel child work. A late cancellation SHALL NOT rewrite an already completed
+delivery. Product request/stage outcomes consume this typed cause independently
+of accepted-execution membership and capture completeness; no Attempt or missing
+capture may be invented to represent a cancelled request.
 
 ### Requirement: Publication installation is independent of configuration sources
 

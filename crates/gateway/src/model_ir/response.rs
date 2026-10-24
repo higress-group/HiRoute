@@ -128,6 +128,8 @@ pub enum ModelEvent {
         namespace: Option<String>,
         name: String,
         arguments: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        encrypted_function_args: Option<Vec<String>>,
         status: ResponseItemStatus,
     },
     ProviderState {
@@ -271,6 +273,8 @@ pub enum ResponseBlock {
         namespace: Option<String>,
         name: String,
         arguments: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        encrypted_function_args: Option<Vec<String>>,
         status: ResponseItemStatus,
     },
 }
@@ -406,6 +410,7 @@ pub(crate) enum MutableResponseBlock {
         name: String,
         owner: Box<ExactProviderPathV1>,
         arguments: String,
+        encrypted_function_args: Option<Vec<String>>,
         finished: bool,
     },
 }
@@ -495,6 +500,7 @@ impl ResponseAccumulator {
                     name,
                     owner,
                     arguments,
+                    encrypted_function_args,
                     finished,
                 } => {
                     if !finished {
@@ -523,6 +529,7 @@ impl ResponseAccumulator {
                         namespace,
                         name,
                         arguments,
+                        encrypted_function_args,
                         status: self.item_statuses.remove(&index).ok_or_else(|| {
                             ModelIrError::InvalidResponseLifecycle(format!(
                                 "tool block {index} lacks an item status"

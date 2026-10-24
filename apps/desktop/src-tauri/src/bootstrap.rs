@@ -363,9 +363,24 @@ impl Resident {
                 .arg("--diagnostic-level-override")
                 .arg(level.as_str());
         }
-        if let Some((cpa, expected_sha256)) =
-            crate::development_cpa::adjacent_to(&binary).unwrap_or(None)
-        {
+        let cpa_started = Instant::now();
+        let cpa = crate::development_cpa::adjacent_to(&binary).unwrap_or_else(|_| {
+            use hiroute_diagnostics::event::{
+                CpaFailureCode, CpaStage, CpaStageKind, CpaStageOutcome,
+            };
+            stages
+                .handle()
+                .try_emit(DiagnosticEvent::CpaStage(CpaStage {
+                    stage: CpaStageKind::ArtifactValidate,
+                    elapsed_ms: cpa_started.elapsed().as_millis() as u64,
+                    restart_generation: 0,
+                    outcome: CpaStageOutcome::Failed {
+                        code: CpaFailureCode::ArtifactRejected,
+                    },
+                }));
+            None
+        });
+        if let Some((cpa, expected_sha256)) = cpa {
             // Keep optional CPA failures inside the subscription boundary. The managed
             // locator verifies the final signed bytes before execution.
             command

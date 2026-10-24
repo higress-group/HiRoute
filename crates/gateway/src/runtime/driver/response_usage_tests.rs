@@ -79,6 +79,8 @@ async fn attempt_state(ingress: IngressProtocol) -> ProductionAttemptState {
         ChargedBodyQueue::new(&budget, MemoryRole::ResponsePrefix, &plan, 256 * 1024, 64).unwrap();
     ProductionAttemptState {
         managed_cpa: false,
+        request_reasoning_projection: None,
+        request_projection_loss: Default::default(),
         #[cfg(all(unix, debug_assertions))]
         capture: None,
         response_status: Some(StatusCode::OK),
@@ -107,6 +109,7 @@ async fn attempt_state(ingress: IngressProtocol) -> ProductionAttemptState {
         native_output,
         omit_thinking: false,
         chat_tool_projection: None,
+        function_encoding_projection: Default::default(),
         chat_tool_projection_budget: None,
         decoder,
         renderer: None,

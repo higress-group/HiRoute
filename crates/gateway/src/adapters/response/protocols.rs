@@ -79,6 +79,7 @@ impl ProtocolState {
         event_type: Option<&str>,
         data: &[u8],
         output: &mut VecDeque<ModelStreamEventV1>,
+        diagnostic_shape: &mut Option<hiroute_diagnostics::event::ResponseEventShape>,
     ) -> Result<(), ProtocolAdapterError> {
         match self {
             Self::Responses {
@@ -96,7 +97,8 @@ impl ProtocolState {
                     *done_seen = true;
                     return Ok(());
                 }
-                decode_responses_sse(core, tools, event_type, data, output)
+                *diagnostic_shape = Some(super::diagnostic_shape::shape(event_type, None));
+                decode_responses_sse(core, tools, event_type, data, output, diagnostic_shape)
             }
             Self::Chat {
                 core,
@@ -170,8 +172,10 @@ fn decode_responses_sse(
     event_type: Option<&str>,
     data: &[u8],
     output: &mut VecDeque<ModelStreamEventV1>,
+    diagnostic_shape: &mut Option<hiroute_diagnostics::event::ResponseEventShape>,
 ) -> Result<(), ProtocolAdapterError> {
     let value = parse_data(data)?;
+    *diagnostic_shape = Some(super::diagnostic_shape::shape(event_type, Some(&value)));
     let object = checked_object(&value)?;
     let native_type = required_str(object, "type")?;
     if let Some(sse_type) = event_type
@@ -183,6 +187,10 @@ fn decode_responses_sse(
         .into());
     }
     match native_type {
+        "response.metadata" => super::responses_sideband::moderation_notification(
+            object,
+            core.accumulator.response_id.as_deref(),
+        )?,
         "response.created" | "response.in_progress" => {
             allow(object, &["type", "sequence_number", "response"])?;
             let response = object_field(object, "response")?;
@@ -225,8 +233,10 @@ fn decode_responses_sse(
                             "name",
                             payload_field,
                             "status",
+                            "encrypted_function_args",
                         ],
                     )?;
+                    core.observe_function_encoding(native_index, item, false)?;
                     let identity = ResponsesToolIdentity {
                         native_id: required_str(item, "call_id")?.into(),
                         kind,
@@ -827,9 +837,28 @@ fn decode_chat_sse(
                 let native_index = required_u32(call, "index")?;
                 let function = object_field(call, "function")?;
                 allow(function, &["name", "arguments"])?;
-                let tool = if let (Some(id), Some(name)) =
-                    (optional_str(call, "id")?, optional_str(function, "name")?)
-                {
+                let id = optional_str(call, "id")?.filter(|id| !id.is_empty());
+                let name = optional_str(function, "name")?;
+                let tool = if let Some(previous) = tools.get(&native_index) {
+                    // Identity fields may be omitted independently on argument
+                    // deltas. Empty ids are placeholders, but any supplied
+                    // nonempty id or name must still match this bound index.
+                    if id.is_some_and(|id| id != previous.native_id)
+                        || name.is_some_and(|name| name != previous.identity.emitted_name)
+                    {
+                        return Err(ModelIrError::InvalidResponseLifecycle(
+                            "Chat tool identity changed".into(),
+                        )
+                        .into());
+                    }
+                    previous.clone()
+                } else {
+                    let id = id.ok_or_else(|| {
+                        ModelIrError::MissingToolIdentity(format!("chat index {native_index}"))
+                    })?;
+                    let name = name.ok_or_else(|| {
+                        ModelIrError::MissingToolIdentity(format!("chat index {native_index}"))
+                    })?;
                     let identity = resolve_chat_tool_identity(projection, name)?;
                     let candidate = ChatToolCallState {
                         native_id: id.into(),
@@ -837,26 +866,8 @@ fn decode_chat_sse(
                         wire_arguments: String::new(),
                         finished: false,
                     };
-                    if let Some(previous) = tools.get(&native_index) {
-                        if previous.native_id != candidate.native_id
-                            || previous.identity != candidate.identity
-                        {
-                            return Err(ModelIrError::InvalidResponseLifecycle(
-                                "Chat tool identity changed".into(),
-                            )
-                            .into());
-                        }
-                    } else {
-                        tools.insert(native_index, candidate);
-                    }
-                    tools
-                        .get(&native_index)
-                        .cloned()
-                        .expect("Chat tool identity was inserted")
-                } else {
-                    tools.get(&native_index).cloned().ok_or_else(|| {
-                        ModelIrError::MissingToolIdentity(format!("chat index {native_index}"))
-                    })?
+                    tools.insert(native_index, candidate.clone());
+                    candidate
                 };
                 if tool.finished {
                     return Err(ModelIrError::InvalidResponseLifecycle(

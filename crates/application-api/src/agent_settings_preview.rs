@@ -33,6 +33,10 @@ pub struct AgentSettingsBlock {
 pub enum SettingsBlockReason {
     QoderDefaultInUse,
     AdditionalDefaultInUse,
+    /// Restore the owned metadata resource before applying the explicit OpenCode fallback.
+    NativeRoutingAdapterRestoreRequired,
+    /// A borrowed/native resource cannot be removed by this settings operation.
+    NativeRoutingAdapterExternalResource,
     QoderModelFileConflict,
     HermesModelFileConflict,
     CodexContextOverride,

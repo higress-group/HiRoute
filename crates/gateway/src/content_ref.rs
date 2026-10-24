@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 use crate::replay::{ReplayContentWriter, ReplayError, ReplayStore};
 use crate::server::core_runtime::model_ir::{
-    ContentPart, ImageSource, ModelRequestIRV1, ToolOutput,
+    ContentPart, ImageSource, ModelRequestIRV1, OpaqueProviderState, ToolOutput,
 };
 
 pub(crate) const MARKER_PREFIX: &str = "__hiroute_content_ref_v2_";
@@ -14,6 +14,7 @@ const JSON_MARKER_KEY: &str = "__hiroute_json_content_ref_v2";
 const CONTENT_FIELD_METADATA_BYTES: usize = 192;
 
 mod ingress;
+mod schema;
 
 #[cfg(test)]
 pub(crate) use ingress::compact_ingress_document;
@@ -196,6 +197,12 @@ pub fn externalize_model_request(
     }
     for history in request.responses_reasoning_history.values_mut() {
         for (key, value) in &mut history.native_fields {
+            // Empty control fields remain inspectable at every inline budget.
+            // Their null shape adds no text or provider state to the boundary.
+            if value.is_null() && matches!(key.as_str(), "content" | "status") {
+                replay.charge_metadata(std::mem::size_of::<Value>())?;
+                continue;
+            }
             // Cross-protocol projections still need the plaintext leaves. Keep
             // their small structural envelope, not a raw-JSON ref to the array.
             if matches!(key.as_str(), "summary" | "content")
@@ -203,15 +210,23 @@ pub fn externalize_model_request(
             {
                 for part in parts {
                     if let Some(fields) = part.as_object_mut() {
-                        for value in fields.values_mut() {
-                            if !contains_replay_string_ref(value, replay) {
-                                externalize_json(
-                                    value,
-                                    replay,
-                                    &mut pool,
-                                    &mut inline_remaining,
-                                    false,
-                                )?;
+                        for (field, value) in fields {
+                            // Known tags are bounded grammar, just like native
+                            // body type/role. Plaintext leaves use the same
+                            // string refs as ingress, so optional comparison
+                            // and projection never depend on the inline budget.
+                            if field == "type"
+                                && matches!(value.as_str(), Some("summary_text" | "reasoning_text"))
+                                || contains_replay_string_ref(value, replay)
+                            {
+                                continue;
+                            }
+                            if field == "text"
+                                && let Value::String(text) = value
+                            {
+                                externalize_value(text, replay, &mut pool, &mut inline_remaining)?;
+                            } else {
+                                externalize_json(value, replay, &mut pool, &mut inline_remaining)?;
                             }
                         }
                     }
@@ -219,7 +234,7 @@ pub fn externalize_model_request(
                 continue;
             }
             if !contains_replay_string_ref(value, replay) {
-                externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
+                externalize_json(value, replay, &mut pool, &mut inline_remaining)?;
             }
         }
     }
@@ -231,11 +246,11 @@ pub fn externalize_model_request(
         if let Some(description) = &mut tool.description {
             externalize_value(description, replay, &mut pool, &mut inline_remaining)?;
         }
-        for value in [&mut tool.input_schema, &mut tool.format]
-            .into_iter()
-            .flatten()
-        {
-            externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
+        if let Some(value) = &mut tool.input_schema {
+            schema::externalize_tool_schema(value, replay, &mut pool, &mut inline_remaining)?;
+        }
+        if let Some(value) = &mut tool.format {
+            externalize_json(value, replay, &mut pool, &mut inline_remaining)?;
         }
     }
     for namespace in &mut request.tool_namespaces {
@@ -246,26 +261,20 @@ pub fn externalize_model_request(
             if let Some(description) = &mut tool.description {
                 externalize_value(description, replay, &mut pool, &mut inline_remaining)?;
             }
-            for value in [&mut tool.input_schema, &mut tool.format]
-                .into_iter()
-                .flatten()
-            {
-                externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
+            if let Some(value) = &mut tool.input_schema {
+                schema::externalize_tool_schema(value, replay, &mut pool, &mut inline_remaining)?;
+            }
+            if let Some(value) = &mut tool.format {
+                externalize_json(value, replay, &mut pool, &mut inline_remaining)?;
             }
         }
     }
     if let Some(value) = &mut request.requested_reasoning.native_value {
-        externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
+        externalize_json(value, replay, &mut pool, &mut inline_remaining)?;
     }
     for state in &mut request.provider_state {
         if !contains_replay_string_ref(&state.value, replay) {
-            externalize_json(
-                &mut state.value,
-                replay,
-                &mut pool,
-                &mut inline_remaining,
-                false,
-            )?;
+            externalize_json(&mut state.value, replay, &mut pool, &mut inline_remaining)?;
         }
     }
     if let Some(body) = &mut request.native_body {
@@ -273,6 +282,20 @@ pub fn externalize_model_request(
     }
     if let Some(pool) = pool {
         pool.seal()?;
+    }
+    if let Some(layout) = &request.native_history {
+        let charged = layout
+            .capacity()
+            .checked_mul(std::mem::size_of::<
+                crate::server::core_runtime::model_ir::NativeHistoryItem,
+            >())
+            .is_some_and(|bytes| replay.charge_metadata(bytes).is_ok());
+        if !charged {
+            // A capacity refusal discards only optional association metadata.
+            // Without ingress coverage native-only requests keep capture but
+            // cannot establish a successor boundary.
+            request.native_history = None;
+        }
     }
     Ok(())
 }
@@ -305,7 +328,7 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
             collect_string_content_ref(description, &mut refs);
         }
         if let Some(value) = &tool.input_schema {
-            collect_json_content_ref(value, &mut refs);
+            collect_nested_content_refs(value, &mut refs);
         }
         if let Some(value) = &tool.format {
             collect_json_content_ref(value, &mut refs);
@@ -320,7 +343,7 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
                 collect_string_content_ref(description, &mut refs);
             }
             if let Some(value) = &tool.input_schema {
-                collect_json_content_ref(value, &mut refs);
+                collect_nested_content_refs(value, &mut refs);
             }
             if let Some(value) = &tool.format {
                 collect_json_content_ref(value, &mut refs);
@@ -358,9 +381,16 @@ fn externalize_native_leaves(
             }
         }
         Value::Object(values) => {
+            let item_type = values
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
             for (key, value) in values {
                 replay.charge_metadata(key.capacity() + std::mem::size_of::<String>() + 32)?;
-                if !matches!(key.as_str(), "type" | "role") {
+                let inline_identity = (value.is_string()
+                    && matches!(key.as_str(), "type" | "role"))
+                    || schema::peer_identity(item_type.as_deref(), key, value);
+                if !inline_identity {
                     externalize_native_leaves(value, replay, pool, remaining)?;
                 } else {
                     replay.charge_metadata(std::mem::size_of::<Value>())?;
@@ -546,6 +576,26 @@ fn contains_replay_string_ref(value: &Value, replay: &ReplayStore) -> bool {
     }
 }
 
+/// Only this exact native envelope contains plaintext without opaque state.
+/// Share its shape between storage and optional accepted-output comparison.
+pub(crate) fn unsigned_messages_thinking_text(state: &OpaqueProviderState) -> Option<&str> {
+    if state.kind != "thinking" {
+        return None;
+    }
+    let fields = state.value.as_object()?;
+    if fields
+        .keys()
+        .any(|key| !matches!(key.as_str(), "type" | "thinking" | "signature"))
+        || fields.get("type")?.as_str()? != "thinking"
+        || fields
+            .get("signature")
+            .is_some_and(|value| value.as_str() != Some(""))
+    {
+        return None;
+    }
+    fields.get("thinking")?.as_str()
+}
+
 fn externalize_parts(
     parts: &mut [ContentPart],
     replay: &ReplayStore,
@@ -567,7 +617,7 @@ fn externalize_parts(
                 ..
             } => match raw_arguments {
                 Some(raw) => externalize_value(raw, replay, pool, inline_remaining)?,
-                None => externalize_json(arguments, replay, pool, inline_remaining, false)?,
+                None => externalize_json(arguments, replay, pool, inline_remaining)?,
             },
             ContentPart::ToolResult {
                 output: ToolOutput::Text(value),
@@ -576,20 +626,31 @@ fn externalize_parts(
             ContentPart::ToolResult {
                 output: ToolOutput::Json(value),
                 ..
-            } => externalize_json(value, replay, pool, inline_remaining, true)?,
+            } => externalize_json(value, replay, pool, inline_remaining)?,
             ContentPart::ProviderState { state } => {
+                if unsigned_messages_thinking_text(state).is_some() {
+                    // Empty signature and tags are bounded grammar. Store the
+                    // plaintext as a string ref, not a JSON ref whose envelope
+                    // becomes unavailable to optional boundary comparison.
+                    replay.charge_metadata(2 * CONTENT_FIELD_METADATA_BYTES)?;
+                    let Some(Value::String(text)) = state.value.get_mut("thinking") else {
+                        unreachable!("validated unsigned thinking changed shape")
+                    };
+                    externalize_value(text, replay, pool, inline_remaining)?;
+                    continue;
+                }
                 // A native opaque block can already contain Replay-backed
                 // leaves. The sequential template expands them directly.
                 if matches!(state.kind.as_str(), "thinking" | "redacted_thinking") {
                     if let Some(object) = state.value.as_object_mut() {
                         for (key, value) in object {
                             if key != "type" && !contains_replay_string_ref(value, replay) {
-                                externalize_json(value, replay, pool, inline_remaining, false)?;
+                                externalize_json(value, replay, pool, inline_remaining)?;
                             }
                         }
                     }
                 } else if !contains_replay_string_ref(&state.value, replay) {
-                    externalize_json(&mut state.value, replay, pool, inline_remaining, false)?;
+                    externalize_json(&mut state.value, replay, pool, inline_remaining)?;
                 }
             }
         }
@@ -626,7 +687,6 @@ fn externalize_json(
     replay: &ReplayStore,
     pool: &mut Option<ReplayContentWriter>,
     inline_remaining: &mut usize,
-    canonical: bool,
 ) -> Result<(), ReplayError> {
     if value
         .content_ref()
@@ -635,6 +695,9 @@ fn externalize_json(
     {
         return Ok(());
     }
+    // All semantic JSON ranges use the same canonical writer. A raw range is
+    // still forwardable JSON, but never proves canonical comparison merely
+    // because its locator appears inside a JSON marker.
     // JSON-bearing fields can be arbitrarily large. Serialize them directly
     // into the aggregate replay stream instead of first building an ordered
     // clone and a second full Vec. Scalar JSON stays inline while the shared
@@ -658,7 +721,7 @@ fn externalize_json(
     let reference = pool
         .as_mut()
         .ok_or(ReplayError::Integrity)?
-        .append_json(value, canonical)?;
+        .append_canonical_json(value)?;
     *value = reference.json_marker();
     Ok(())
 }

@@ -61,6 +61,22 @@ real-account, Desktop, or installation adapters must be `not_executed`, never `e
 `Report::verify` checks structural consistency and cannot authenticate foreign JSON as
 production evidence.
 
+Each control case first records `control_storage_prepare`: the verified candidate daemon
+initializes a fresh private storage set, reaches its real control endpoint and is stopped.
+This prerequisite has a separate 45-second bound, matching the existing publication
+fixture's cold-start allowance. Its failure remains red and prevents all ordinary control
+and CLI steps. After storage and synthetic inputs are prepared, the ordinary scenario keeps
+its 30-second budget and every step keeps its 10-second budget. These are validation
+watchdogs, not a published cold-start SLA. The separate real-process `control_shell` and
+`publication_process` tests continue to start from empty storage.
+
+`execution_ms` remains all non-build case wall time, including preparation, cleanup and
+integrity checks; `timing_complete` does not label that aggregate as pure business latency.
+The private `control-storage-prepare.json` records preparation outcome, reason, elapsed time,
+bound and executable digest, bound to the step's evidence digest. No preparation time is
+charged to `build_ms`, subtracted from execution, or hidden on failure. Failed storage and
+the initialization process evidence remain available for diagnosis.
+
 Subprocesses use only the current isolated directory. The control discovery script uses
 synthetic input and never calls an everyday Codex/Claude account. A production Agent adapter
 is not connected here; existing component contracts require all configuration layers to be

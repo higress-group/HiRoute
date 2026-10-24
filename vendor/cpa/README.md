@@ -147,13 +147,24 @@ is not part of this contract; configure HTTPS_PROXY for subscription endpoints.
 
 The checked-in `development-cpa-artifacts.v1.json` identifies a historical
 `.1` binary; its hash is retained as measured, not relabeled as the current
-`.3` build. Do not stage that old binary with the current daemon.
+pinned build. Do not stage that old binary with the current daemon.
 
 On macOS, `python3 scripts/package-desktop.py build --cpa-source-repo /absolute/CPA-checkout`
 generates the current patched CPA and a measured `cpa-artifacts.json` in its
-candidate output directory. For a Debug Desktop build, set
+candidate output directory. To prepare only that component, without rebuilding
+Desktop or claiming installation acceptance, use the same producer:
+
+```sh
+python3 scripts/package-desktop.py prepare-cpa \
+  --cpa-source-repo /absolute/CPA-checkout \
+  --output /absolute/new-component-output
+```
+
+This builds the pinned source and patch, signs and probes the actual binary,
+and measures its architecture, dependencies and digest. It never promotes an
+existing development manifest by changing its flag. For either Debug or Release, set
 `HIROUTE_CPA_MANIFEST=/absolute/candidate-output/cpa-artifacts.json` and use that
-same output's `HiRoute.app/Contents/MacOS/cliproxyapi` beside the Debug `hirouted`:
+same output's `HiRoute.app/Contents/MacOS/cliproxyapi` beside `hirouted`:
 
 ```sh
 python3 scripts/stage-desktop-cpa.py \
@@ -166,6 +177,11 @@ Use the default ad-hoc package identity for this development staging path.
 The staging tool rejects stale versions before copying; it still verifies the
 exact digest, architecture, signature, dependencies and version of the binary.
 A Linux backend test does not validate this native macOS build/install path.
+Release Desktop rejects development-only, invalid or wrong-target manifests in
+its build script, using the same parser as native launch. An optional launch-time
+artifact rejection emits the closed CPA `artifact_validate` failure rather than
+silently disappearing. A missing subscription runtime remains unavailable in
+management and routing; it does not establish that native authentication failed.
 
 ## Managed OAuth authentication recovery and execution evidence
 

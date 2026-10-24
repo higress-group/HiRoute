@@ -88,7 +88,18 @@ pub(super) fn project(
 ) -> Result<Vec<Arc<Projected>>, ObservationV2Error> {
     let old: BTreeMap<_, _> = old.iter().map(|t| (t.view.turn_id.as_str(), t)).collect();
     let mut next_bases = BTreeMap::new();
-    let mut ordered: Vec<_> = requests.values().collect();
+    // Keep maintenance request receipts and accounting intact, but do not
+    // manufacture pending user turns for known title/compaction calls. Missing
+    // historical purpose evidence never licenses hiding a request.
+    let mut ordered: Vec<_> = requests
+        .values()
+        .filter(|request| {
+            !request
+                .decision
+                .as_ref()
+                .is_some_and(|d| d.native_auxiliary)
+        })
+        .collect();
     ordered.sort_by_key(|r| (r.first_fact, &r.view.request_id));
     let positions: BTreeMap<_, _> = ordered
         .iter()
@@ -102,15 +113,35 @@ pub(super) fn project(
     let mut ordinals = BTreeMap::new();
     let mut opening_causes = BTreeMap::new();
     let mut identities = BTreeMap::new();
-    let mut finished = BTreeMap::new();
+    let mut finished = BTreeMap::<_, (u64, &Fact)>::new();
+    let admissions = admission::collect(facts)?;
+    let mut admitted_stages = BTreeMap::<_, Vec<_>>::new();
+    for (id, admission) in &admissions {
+        admitted_stages
+            .entry((admission.epoch, admission.value.agent_turn_id.as_str()))
+            .or_default()
+            .push((*id, *admission));
+    }
     for fact in facts {
-        if let ExecutionFactV1::AgentTurnFinished { agent_turn_id, .. } = &fact.value {
-            finished.insert(agent_turn_id, fact);
+        if let ExecutionFactV1::AgentTurnFinished {
+            agent_turn_id,
+            history_membership,
+            ..
+        } = &fact.value
+        {
+            let revision = history_membership.as_ref().map_or(0, |m| m.revision);
+            let entry = finished
+                .entry((&fact.producer_epoch, agent_turn_id))
+                .or_insert((revision, fact));
+            if revision >= entry.0 {
+                *entry = (revision, fact);
+            }
         }
     }
-    for fact in finished.into_values() {
+    for (_, fact) in finished.into_values() {
         let ExecutionFactV1::AgentTurnFinished {
             agent_turn_id,
+            history_membership,
             opening_cause,
             segment_id,
             ordinal,
@@ -131,34 +162,96 @@ pub(super) fn project(
         else {
             continue;
         };
-        let Some((first, last)) = first_request_id
-            .as_ref()
-            .zip(last_request_id.as_ref())
-            .and_then(|(first, last)| {
-                positions
-                    .get(first.as_str())
-                    .zip(positions.get(last.as_str()))
-            })
-        else {
-            continue;
+        // A previously finished stage may admit another actual continuation.
+        // Its old frozen membership and score remain immutable, but cannot
+        // close or assess the newly admitted request.
+        let admitted = admitted_stages
+            .get(&(fact.producer_epoch.as_str(), agent_turn_id.as_str()))
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        if !admitted.is_empty() {
+            let Some(membership) = history_membership else {
+                return Err(ObservationV2Error::Unavailable);
+            };
+            if admitted.iter().any(|(_, a)| {
+                a.value.branch_id != membership.branch_id
+                    || a.value.ordinal != *ordinal
+                    || opening_cause.is_some_and(|cause| cause != a.value.opening_cause)
+            }) {
+                return Err(ObservationV2Error::Unavailable);
+            }
+            if admitted
+                .iter()
+                .any(|(_, a)| a.value.revision > membership.revision)
+            {
+                continue;
+            }
+        }
+        let mut members = if let Some(membership) = history_membership {
+            membership
+                .request_ids
+                .iter()
+                .filter_map(|id| requests.get(id))
+                .collect::<Vec<_>>()
+        } else {
+            let Some((first, last)) = first_request_id
+                .as_ref()
+                .zip(last_request_id.as_ref())
+                .and_then(|(first, last)| {
+                    positions
+                        .get(first.as_str())
+                        .zip(positions.get(last.as_str()))
+                })
+            else {
+                continue;
+            };
+            if first > last {
+                return Err(ObservationV2Error::Unavailable);
+            }
+            let opening = ordered[*first];
+            let closing = ordered[*last];
+            // Use the same endpoint/time rule as retained analysis. Timestamp ties
+            // outside the recorded endpoints remain unassigned in both readers.
+            let start =
+                by_time.partition_point(|r| r.view.started_at_ms <= opening.view.started_at_ms);
+            let end =
+                by_time.partition_point(|r| r.view.started_at_ms < closing.view.started_at_ms);
+            let mut legacy_members = if start < end {
+                by_time[start..end].to_vec()
+            } else {
+                Vec::new()
+            };
+            legacy_members.push(opening);
+            if opening.view.request_id != closing.view.request_id {
+                legacy_members.push(closing);
+            }
+            legacy_members
         };
-        if first > last {
+        if members.iter().any(|r| {
+            admissions.get(r.view.request_id.as_str()).is_some_and(|a| {
+                a.epoch != fact.producer_epoch || a.value.agent_turn_id != *agent_turn_id
+            })
+        }) {
             return Err(ObservationV2Error::Unavailable);
         }
-        let opening = ordered[*first];
-        let closing = ordered[*last];
-        // Use the same endpoint/time rule as retained analysis. Timestamp ties
-        // outside the recorded endpoints remain unassigned in both readers.
-        let start = by_time.partition_point(|r| r.view.started_at_ms <= opening.view.started_at_ms);
-        let end = by_time.partition_point(|r| r.view.started_at_ms < closing.view.started_at_ms);
-        let mut members = if start < end {
-            by_time[start..end].to_vec()
-        } else {
-            Vec::new()
-        };
-        members.push(opening);
-        if opening.view.request_id != closing.view.request_id {
-            members.push(closing);
+        let missing_members = history_membership
+            .as_ref()
+            .is_some_and(|m| m.clipped || m.request_ids.len() != members.len());
+        // Admission can preserve exact identity even when bounded membership
+        // storage clipped. This improves display only; frozen score membership
+        // below still has to cover every displayed request.
+        for (id, _) in admitted {
+            if let Some(request) = requests.get(*id)
+                && !members.iter().any(|r| r.view.request_id == *id)
+            {
+                if history_membership.as_ref().is_none_or(|m| !m.clipped) {
+                    return Err(ObservationV2Error::Unavailable);
+                }
+                members.push(request);
+            }
+        }
+        if members.is_empty() {
+            continue;
         }
         members.sort_by_key(|r| (r.first_fact, &r.view.request_id));
         let members = members.as_slice();
@@ -213,30 +306,29 @@ pub(super) fn project(
             .as_str()
             .ok_or(ObservationV2Error::Unavailable)?
             .into();
-        turn.view.evidence_partial |= *history_partial;
+        turn.view.evidence_partial |= *history_partial || missing_members;
         ordinals.insert(turn.view.turn_id.clone(), *ordinal);
         let turn = Arc::new(turn);
         next_bases.insert(turn.view.turn_id.clone(), turn.clone());
         result.push(turn);
     }
-    // Requests arrive before AgentTurnFinished. Keep their opening-request ID stable.
-    let mut pending = Vec::new();
-    for request in &ordered {
-        if covered.contains(request.view.request_id.as_str()) {
-            if !pending.is_empty() {
-                result.push(base_turn(&pending, previous, bases, &mut next_bases)?);
-                pending.clear();
+    for pending in admission::pending(&ordered, &covered, &admissions) {
+        let mut turn = base_turn(&pending, previous, bases, &mut next_bases)?;
+        if let Some(admission) = admissions.get(pending[0].view.request_id.as_str()) {
+            let id = turn.view.turn_id.clone();
+            if turn.view.agent_turn_id.as_ref() != Some(&admission.value.agent_turn_id) {
+                let view = &mut Arc::make_mut(&mut turn).view;
+                view.agent_turn_id = Some(admission.value.agent_turn_id.clone());
             }
-            continue;
+            ordinals.insert(id.clone(), admission.value.ordinal);
+            opening_causes.insert(id.clone(), admission.value.opening_cause);
+            identities.insert(
+                id.clone(),
+                (admission.value.ordinal, admission.epoch.to_owned()),
+            );
+            next_bases.insert(id, turn.clone());
         }
-        if !pending.is_empty() && !held(request, LedgerReasonCodeV1::ContextHoldApplied) {
-            result.push(base_turn(&pending, previous, bases, &mut next_bases)?);
-            pending.clear();
-        }
-        pending.push(*request);
-    }
-    if !pending.is_empty() {
-        result.push(base_turn(&pending, previous, bases, &mut next_bases)?);
+        result.push(turn);
     }
     result.sort_by(|a, b| {
         (a.view.started_at_ms, &a.view.turn_id).cmp(&(b.view.started_at_ms, &b.view.turn_id))
@@ -287,6 +379,7 @@ pub(super) fn project(
                 let ExecutionFactV1::BranchAssessmentRecorded {
                     plan_id,
                     plan_revision,
+                    history_membership,
                     model_configuration_id,
                     target_from_ordinal,
                     target_through_ordinal,
@@ -298,9 +391,26 @@ pub(super) fn project(
                 base.view.plan_id.as_deref() == Some(plan_id.as_str())
                     && base.view.plan_revision == Some(*plan_revision)
                     && base.view.model_configuration_id.as_ref() == Some(model_configuration_id)
-                    && ordinals
-                        .get(&base.view.turn_id)
-                        .is_some_and(|n| n >= target_from_ordinal && n <= target_through_ordinal)
+                    && history_membership.as_ref().map_or_else(
+                        || {
+                            !base
+                                .view
+                                .requests
+                                .iter()
+                                .any(|r| admissions.contains_key(r.request_id.as_str()))
+                                && ordinals.get(&base.view.turn_id).is_some_and(|n| {
+                                    n >= target_from_ordinal && n <= target_through_ordinal
+                                })
+                        },
+                        |membership| {
+                            !membership.clipped
+                                && base
+                                    .view
+                                    .requests
+                                    .iter()
+                                    .all(|r| membership.request_ids.contains(&r.request_id))
+                        },
+                    )
             })
             .max_by_key(|fact| match &fact.value {
                 ExecutionFactV1::BranchAssessmentRecorded { assessed_at_ms, .. } => {
@@ -508,14 +618,34 @@ fn make_turn(members: &[&Request]) -> Result<Projected, ObservationV2Error> {
             selection,
             tool_continuations: members
                 .iter()
-                .filter(|r| held(r, LedgerReasonCodeV1::ContextHoldApplied))
+                .filter(|r| {
+                    held(r, LedgerReasonCodeV1::ContextHoldApplied)
+                        || r.decision
+                            .as_ref()
+                            .and_then(|d| d.complexity.as_ref())
+                            .is_some_and(|d| {
+                                d.reason_codes
+                                    .contains(&ComplexityReasonCodeV1::InheritedToolContinuation)
+                            })
+                })
                 .count() as u64,
             relays,
             transitions: Vec::new(),
             assessment_state: "pending".into(),
             assessment: None,
             protected_turn_ids: Vec::new(),
-            status: "running".into(),
+            // Request completion does not prove stage completion. Missing a
+            // stage-closing fact must not manufacture perpetual activity either.
+            status: if members.iter().any(|r| r.view.outcome.is_none()) {
+                "running"
+            } else {
+                match members.last().and_then(|r| r.view.outcome.as_deref()) {
+                    Some("cancelled" | "postcommit_transport_failed") => "interrupted",
+                    Some("failed") => "failed",
+                    _ => "unknown",
+                }
+            }
+            .into(),
             requests: members.iter().map(|r| r.view.clone()).collect(),
             cost_by_model: costs.into_values().collect(),
             evidence_partial: members.iter().any(|r| r.partial),

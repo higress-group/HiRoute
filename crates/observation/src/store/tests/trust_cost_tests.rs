@@ -42,6 +42,7 @@ fn trial_request_with(
 fn trial_turn(f: &Fixture, revision: u64, group: ExecutionGroupV1) -> ExecutionFactV1 {
     let suffix = f.request.as_str();
     ExecutionFactV1::AgentTurnFinished {
+        history_membership: None,
         opening_cause: None,
         branch_execution: Some(BranchExecutionV1 {
             policy: BranchExecutionPolicyV1 {

@@ -44,10 +44,24 @@ pub struct NativeResponseDecoder {
     ended: bool,
     end_stream_pending: bool,
     received_bytes: u64,
+    diagnostic: DecodeDiagnostic,
+}
+
+#[derive(Default)]
+struct DecodeDiagnostic {
     frame_index: u64,
+    shape: Option<hiroute_diagnostics::event::ResponseEventShape>,
 }
 
 impl NativeResponseDecoder {
+    pub(crate) fn with_function_encoding(
+        mut self,
+        projection: super::super::FunctionEncodingProjection,
+    ) -> Self {
+        self.state.core_mut().function_encoding_projection = projection;
+        self
+    }
+
     pub fn new(
         profile: &CandidateProtocolProfile,
         status: u16,
@@ -174,6 +188,9 @@ impl NativeResponseDecoder {
             chat_tool_projection,
         );
         state.core_mut().retention = super::body_buffer::Retention::new(budget.clone());
+        state.core_mut().standard_responses_json =
+            super::super::responses_dialect::standard_json(profile);
+        state.core_mut().responses_client = profile.ingress_protocol == IngressProtocol::Responses;
         if let ProtocolState::Messages { state, .. } = &mut state {
             state.retention = super::body_buffer::Retention::new(budget.clone());
         }
@@ -189,7 +206,7 @@ impl NativeResponseDecoder {
             ended: false,
             end_stream_pending: false,
             received_bytes: 0,
-            frame_index: 0,
+            diagnostic: DecodeDiagnostic::default(),
         })
     }
 
@@ -265,7 +282,7 @@ impl NativeResponseDecoder {
             &self.budget,
             &mut self.state,
             &mut self.events,
-            &mut self.frame_index,
+            &mut self.diagnostic,
         )?;
         if matches!(outcome, SseFeedOutcome::Complete) && self.end_stream_pending {
             self.finish_stream_eof()?;
@@ -285,7 +302,13 @@ impl NativeResponseDecoder {
 
     /// Safe failure position; received bytes are an upper bound for a multi-event read.
     pub fn diagnostic_position(&self) -> (u64, u64) {
-        (self.frame_index, self.received_bytes)
+        (self.diagnostic.frame_index, self.received_bytes)
+    }
+
+    pub(crate) fn diagnostic_shape(
+        &self,
+    ) -> Option<hiroute_diagnostics::event::ResponseEventShape> {
+        self.diagnostic.shape
     }
 
     pub fn sse_complexity(&self) -> Option<SseComplexity> {
@@ -328,7 +351,7 @@ impl NativeResponseDecoder {
             &self.budget,
             &mut self.state,
             &mut self.events,
-            &mut self.frame_index,
+            &mut self.diagnostic,
         )?;
         Ok(outcome)
     }
@@ -349,14 +372,14 @@ fn run_sse(
     budget: &StreamBudget,
     state: &mut ProtocolState,
     output: &mut VecDeque<ModelStreamEventV1>,
-    frame_index: &mut u64,
+    diagnostic: &mut DecodeDiagnostic,
 ) -> Result<SseFeedOutcome, ProtocolAdapterError> {
     let mut visitor = NativeVisitor {
         budget,
         state,
         output,
         protocol_error: None,
-        frame_index,
+        diagnostic,
     };
     let mut sink = DiscardOutput;
     let framed = match input {
@@ -383,7 +406,7 @@ struct NativeVisitor<'a> {
     state: &'a mut ProtocolState,
     output: &'a mut VecDeque<ModelStreamEventV1>,
     protocol_error: Option<ProtocolAdapterError>,
-    frame_index: &'a mut u64,
+    diagnostic: &'a mut DecodeDiagnostic,
 }
 
 impl SseVisitor for NativeVisitor<'_> {
@@ -395,7 +418,8 @@ impl SseVisitor for NativeVisitor<'_> {
         if self.output.len() >= MAX_QUEUED_EVENTS {
             return Err(SseError::NeedDrain);
         }
-        *self.frame_index = self.frame_index.saturating_add(1);
+        self.diagnostic.frame_index = self.diagnostic.frame_index.saturating_add(1);
+        self.diagnostic.shape = None;
         if event
             .fields()
             .any(|field| !field.comment && field.name.starts_with(b"data") && field.name != b"data")
@@ -418,10 +442,12 @@ impl SseVisitor for NativeVisitor<'_> {
             },
             None => None,
         };
-        if let Err(error) = self
-            .state
-            .decode_sse(event_type, data.as_ref(), self.output)
-        {
+        if let Err(error) = self.state.decode_sse(
+            event_type,
+            data.as_ref(),
+            self.output,
+            &mut self.diagnostic.shape,
+        ) {
             self.protocol_error = Some(error);
             return Err(SseError::FramerFailed);
         }

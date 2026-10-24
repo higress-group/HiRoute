@@ -53,7 +53,7 @@ fn cpa_snapshot_revalidation_does_not_block_native_grant_registration() {
                         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64 + 60,
                     ).unwrap();
                     fixture
-                        .runtime
+                        .runtime()
                         .register_apply_capability(registration)
                         .unwrap();
                 }

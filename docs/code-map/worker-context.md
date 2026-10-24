@@ -24,6 +24,35 @@ report the actual installed consumers; [safe conflict facts](../../crates/domain
 retain rejection identity through compensation and client observation.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
+[Native routing resources](../../crates/integrations/src/agents/routing_adapters.rs)
+use the same protected artifact journal as model settings. The
+[request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
+main/child history and detaches known auxiliary calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
+cover interleaving and semantic compaction independently of provider affinity.
+Pi's [provider adapter](../../assets/agents/pi/hiroute-routing.mjs) binds native
+compaction/tree-summary signals at the public provider seam and retains branch
+cursors as observed evidence. Its [native guide](../../tools/product-e2e/tests/PI_INTEGRATION.md#ordinary-routing-metadata)
+separates installed SDK fixtures, actual CLI acceptance and Restore inference.
+Claude's native [identity leaf](../../crates/gateway/src/context_hold/identity/claude.rs)
+keeps session/agent scope separate from its [request-class and prompt leaf](../../crates/gateway/src/context_hold/routing/claude.rs);
+known auxiliary classes survive optional enrichment failure, while unknown classes
+retain complete observed input and normal routing.
+The [native continuity owner](../../crates/gateway/src/context_hold/continuity.rs)
+separates known continuations from usable observed input. Missing origin proof
+retains classification, actual capture and evaluation in an uncertain lane without
+replacing verified task history. Native identities remain scoped independently;
+Qoder's shared main/child identity has an accepted association limit. Follow the
+[routing contract](../../issue-spec/specs/request-routing/spec.md#requirement-native-routing-remains-available-without-perfect-input-provenance)
+for recovery limits rather than equating successful output with full adaptation.
+
+The [v2 input consumer](../../crates/gateway/src/context_hold/routing/v2.rs) keeps
+an omitted optional input descriptor distinct from an invalid declaration.
+[Input projection](../../crates/gateway/src/core_runtime/native_routing_view.rs)
+reports the former as correlation only without selecting a human window. DSH's
+late model-selection notification is covered by the
+[producer controls](../../scripts/tests/dsh-routing-adapter.test.mjs) and
+[projection controls](../../crates/gateway/src/core_runtime/native_routing_view/dsh_tests.rs);
+the unchanged wire request remains available to normal routing and capture.
 
 Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
 explains native provider-scoped session discovery before enabling routing. Default
@@ -34,6 +63,18 @@ OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) 
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)
 also feed the shared configured/drift status.
+Its ordinary [routing producer](../../assets/agents/opencode/hiroute-routing.mjs)
+freezes per-call purpose/session before a bounded optional SDK page; exact native
+page positions provide compression references while synthetic continuations keep
+unavailable-input semantics. The [OpenCode guide](../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md#ordinary-routing-metadata)
+separates hook regressions from native dependency initialization, recovery and
+Restore inference; a hook deadline cannot bound the native loader that precedes it.
+The persisted OpenCode metadata fallback is decided by
+[additional-model facts](../../crates/daemon/src/control/runtime/settings_facts/additional_model.rs)
+before writes and uses the existing model Restore/Apply journal. Its
+[settings regressions](../../crates/daemon/src/control/runtime/settings_entry_opencode_metadata_tests.rs)
+cover restart, re-enablement, borrowed resources and stale previews; it changes
+metadata precision without changing model authorization or Gateway routing.
 Its [bounded Markdown reference reader](../../crates/integrations/src/agents/opencode_resources.rs)
 adds native user Agent/Mode selectors to the same settings dependency checks;
 removal requires complete references, while retaining selectors permits grant rotation.
@@ -48,8 +89,14 @@ its native host resolves the caller's existing default profile and its details c
 select another through the same target-read flow before settings become available.
 The common [discovery preference](../../apps/desktop/src/features/agents/discovery.ts)
 remembers explicit targets as hints, with backend revalidation and per-profile failure isolation.
-Its bundled native middleware carries the real
-session into trusted Gateway correlation. The managed provider also uses the same
+Its [native request middleware](../../assets/agents/hermes/__init__.py) carries the real
+session into trusted Gateway correlation and emits observed batch context
+independently from optional bounded read-only compression evidence;
+clean callback text and retained legacy hints cannot select an input instance.
+Gateway [routing evidence](../../crates/gateway/src/context_hold/routing.rs) validates
+compression scope independently of task-envelope parsing, so an adapter fault and
+recovery cannot strand otherwise comparable captured history.
+The managed provider also uses the same
 scoped model grant as its native API key for auxiliary Chat requests; global model
 headers are not a credential carrier. All six supported Agents have independent management and collaboration Skills;
 [shared Skill facts](../../crates/daemon/src/control/runtime/settings_facts/skills.rs)

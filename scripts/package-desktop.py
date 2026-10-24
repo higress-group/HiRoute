@@ -251,6 +251,54 @@ def sign_and_probe_cpa(path, identity):
                    env={"HOME": home, "PATH": "/usr/bin:/bin", "TMPDIR": home}, timeout=60)
 
 
+def prepare_cpa_artifact(architecture, source_repo, output, macos, resources, identity):
+    upstream = acquire_cpa(architecture, source_repo, output, macos, resources)
+    text = sign_and_probe_cpa(macos / "cliproxyapi", identity)
+    match = re.search(r"CLIProxyAPI Version: ([^,]+), Commit: ([0-9a-f]{7,40}), BuiltAt: ([^\r\n]+)", text)
+    if not match or match[1] != CPA_VERSION or not CPA_COMMIT.startswith(match[2]):
+        raise ValueError("CPA release version/commit mismatch")
+    measured = inspect_binary(macos / "cliproxyapi", architecture)
+    text = signature(macos / "cliproxyapi")
+    teams = [line.split("=", 1)[1] for line in text.splitlines() if line.startswith("TeamIdentifier=")]
+    if identity != "-" and (len(teams) != 1 or teams[0] == "not set"):
+        raise ValueError("Developer ID team missing")
+    artifact = {"target": TARGETS[architecture], "os": "macos", "arch": TARGETS[architecture].split("-")[0],
+                "binary_name": "cliproxyapi", "version": CPA_VERSION, "commit": CPA_COMMIT,
+                "built_at": match[3], "sha256": measured["sha256"], "size": measured["size"],
+                "file_description": run("/usr/bin/file", "-b", str(macos / "cliproxyapi")),
+                "dynamic_dependencies": measured["dynamic_dependencies"],
+                "signature": {"kind": "adhoc" if identity == "-" else "developer-id",
+                              "team_identifier": None if identity == "-" else teams[0]}}
+    manifest = {"schema": "hiroute.desktop.cpa-artifacts/v1", "development_only": False,
+                "artifacts": [artifact]}
+    manifest_path = output / "cpa-artifacts.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return upstream, manifest, manifest_path
+
+
+def prepare_cpa(args):
+    if sys.platform != "darwin":
+        raise ValueError("CPA Desktop preparation requires macOS")
+    if run("git", "status", "--porcelain", "--untracked-files=normal"):
+        raise ValueError("CPA preparation requires a clean committed candidate")
+    architecture = args.arch or run("/usr/bin/uname", "-m")
+    output = args.output.expanduser().absolute()
+    # Never adopt or overwrite a prior candidate, including after a failed preparation.
+    output.mkdir()
+    macos = output / "HiRoute.app/Contents/MacOS"
+    resources = output / "HiRoute.app/Contents/Resources"
+    macos.mkdir(parents=True)
+    resources.mkdir()
+    upstream, manifest, path = prepare_cpa_artifact(
+        architecture, args.cpa_source_repo, output, macos, resources, "-")
+    result = {"kind": "desktop-cpa-component", "revision": run("git", "rev-parse", "HEAD"),
+              "manifest": str(path), "manifest_sha256": digest(path), "cpa": manifest,
+              "cpa_source_provenance": upstream,
+              "installation_scenarios": "not_executed", "timings": BUILD_TIMINGS}
+    (output / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+    return result
+
+
 def build(args):
     global BUILD_LOG
     if sys.platform != "darwin":
@@ -279,27 +327,8 @@ def build(args):
             "CFBundleShortVersionString": config["version"], "CFBundleVersion": config["version"],
             "LSMinimumSystemVersion": MINIMUM_MACOS, "NSHighResolutionCapable": True}
     (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info, sort_keys=True))
-    upstream = acquire_cpa(architecture, args.cpa_source_repo, output, macos, resources)
-    text = sign_and_probe_cpa(macos / "cliproxyapi", args.identity)
-    match = re.search(r"CLIProxyAPI Version: ([^,]+), Commit: ([0-9a-f]{7,40}), BuiltAt: ([^\r\n]+)", text)
-    if not match or match[1] != CPA_VERSION or not CPA_COMMIT.startswith(match[2]):
-        raise ValueError("CPA release version/commit mismatch")
-    measured = inspect_binary(macos / "cliproxyapi", architecture)
-    text = signature(macos / "cliproxyapi")
-    teams = [line.split("=", 1)[1] for line in text.splitlines() if line.startswith("TeamIdentifier=")]
-    if args.identity != "-" and (len(teams) != 1 or teams[0] == "not set"):
-        raise ValueError("Developer ID team missing")
-    artifact = {"target": target, "os": "macos", "arch": target.split("-")[0],
-                "binary_name": "cliproxyapi", "version": CPA_VERSION, "commit": CPA_COMMIT,
-                "built_at": match[3], "sha256": measured["sha256"], "size": measured["size"],
-                "file_description": run("/usr/bin/file", "-b", str(macos / "cliproxyapi")),
-                "dynamic_dependencies": measured["dynamic_dependencies"],
-                "signature": {"kind": "adhoc" if args.identity == "-" else "developer-id",
-                              "team_identifier": None if args.identity == "-" else teams[0]}}
-    manifest = {"schema": "hiroute.desktop.cpa-artifacts/v1", "development_only": False,
-                "artifacts": [artifact]}
-    manifest_path = output / "cpa-artifacts.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    upstream, manifest, manifest_path = prepare_cpa_artifact(
+        architecture, args.cpa_source_repo, output, macos, resources, args.identity)
     environment = os.environ.copy()
     environment["RUSTC_WRAPPER"] = "sccache"
     environment["CARGO_INCREMENTAL"] = "0"
@@ -399,20 +428,27 @@ def main():
     create.add_argument("--cpa-source-repo", type=Path, required=True, help="checkout containing the exact pinned CPA source commit")
     create.add_argument("--identity", default="-", help="Developer ID identity; '-' is controlled trial only")
     create.add_argument("--notary-profile")
+    cpa = commands.add_parser("prepare-cpa", help="build and measure the pinned CPA without a Desktop build")
+    cpa.add_argument("--arch", choices=tuple(TARGETS), help="defaults to host architecture")
+    cpa.add_argument("--cpa-source-repo", type=Path, required=True)
+    cpa.add_argument("--output", type=Path, required=True, help="new component output directory")
     check = commands.add_parser("verify")
     check.add_argument("app", type=Path)
     image_check = commands.add_parser("verify-dmg")
     image_check.add_argument("dmg", type=Path)
     args = parser.parse_args()
     try:
-        if args.command == "build":
+        if args.command in ("build", "prepare-cpa"):
             # Share the existing host lock with all managed Desktop builds and cleanup.
             # Start the cache server before children inherit the shared lock FDs.
             ensure_sccache_server()
             local = module("desktop_package_local_rust", "local-rust.py")
             with local.Store().locked(REPO):
-                result = build(args)
-                (Path(result["app"]).parent / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+                if args.command == "build":
+                    result = build(args)
+                    (Path(result["app"]).parent / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+                else:
+                    result = prepare_cpa(args)
         elif args.command == "verify-dmg":
             result = verify_dmg(args.dmg.resolve())
         else:

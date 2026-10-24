@@ -2434,6 +2434,8 @@ dependencies = [
  "getrandom 0.3.4",
  "hiroute-domain",
  "hiroute-gateway",
+ "hiroute-integrations",
+ "hiroute-observation",
  "http",
  "libc",
  "serde",

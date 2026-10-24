@@ -20,9 +20,44 @@ mod branch_context;
 
 #[path = "opening_cause_tests.rs"]
 mod opening_cause;
+#[path = "opening_evidence_tests.rs"]
+mod opening_evidence;
+
+#[path = "boundary/reasoning_tests.rs"]
+mod reasoning_boundary;
+
+#[path = "boundary/encrypted_tests.rs"]
+mod encrypted_boundary;
+
+#[path = "boundary/messages_tests.rs"]
+mod messages_boundary;
+
+#[path = "boundary/projection_tests.rs"]
+mod projection_boundary;
+
+#[path = "boundary/coverage_tests.rs"]
+mod coverage_boundary;
+
+#[path = "boundary/json_reference_tests.rs"]
+mod json_reference_boundary;
+
+#[path = "boundary/function_encoding_tests.rs"]
+mod function_encoding_boundary;
+
+#[path = "boundary/json_reference_budget_tests.rs"]
+mod json_reference_budget_boundary;
 
 #[path = "accepted_output_tests.rs"]
 mod accepted_output;
+
+#[path = "capture_gap_tests.rs"]
+mod capture_gap;
+
+#[path = "concurrent_requests_tests.rs"]
+mod concurrent_requests;
+
+#[path = "stage_closure_tests.rs"]
+mod stage_closure;
 
 struct TestRoot(PathBuf);
 
@@ -64,6 +99,7 @@ fn request(messages: Vec<CanonicalMessage>) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: None,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
         served_model_id: "agent/test".into(),
@@ -102,6 +138,7 @@ fn tool_call(id: &str, name: &str) -> CanonicalMessage {
     CanonicalMessage {
         role: MessageRole::Assistant,
         content: vec![ContentPart::ToolCall {
+            encrypted_function_args: None,
             logical_id: id.into(),
             tool_kind: ToolKindV1::Function,
             namespace: Some("functions".into()),
@@ -187,6 +224,45 @@ fn close_turn(
 }
 
 #[test]
+fn trailing_instructions_do_not_invent_missing_execution_before_first_capture() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let cases = [
+        (text(MessageRole::System, "native runtime policy"), false),
+        (text(MessageRole::Developer, "native runtime policy"), false),
+        (
+            CanonicalMessage {
+                role: MessageRole::Assistant,
+                content: Vec::new(),
+                name: None,
+            },
+            false,
+        ),
+        (text(MessageRole::Assistant, "uncaptured answer"), true),
+        (tool_call("call", "lookup"), true),
+        (tool_result("call", false), true),
+    ];
+    for (index, (trailing, missing_output)) in cases.into_iter().enumerate() {
+        let key = store
+            .scope_key("workspace", &format!("trailing-{index}"))
+            .unwrap();
+        let (ticket, history) = new_turn(
+            store
+                .begin(
+                    key,
+                    plan(1),
+                    &request(vec![text(MessageRole::User, "real task"), trailing]),
+                    &replay,
+                    Instant::now(),
+                )
+                .unwrap(),
+        );
+        assert_eq!(history.history_partial, missing_output);
+        store.abort(&ticket);
+    }
+}
+
+#[test]
 fn appended_users_keep_distinct_history_when_reselection_is_off() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
@@ -243,6 +319,7 @@ fn appended_users_keep_distinct_history_when_reselection_is_off() {
             &request(messages.clone()),
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: false,
             },
@@ -288,6 +365,7 @@ fn appended_users_keep_distinct_history_when_reselection_is_off() {
             &request(third_messages),
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
@@ -660,6 +738,7 @@ fn rebuilt_context_does_not_attribute_shifted_old_result_to_reused_id() {
                 &request(rebuilt),
                 &replay,
                 TurnDecisionInputs {
+                    native_turn: None,
                     history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
@@ -730,6 +809,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
             &request(rebuilt_messages.clone()),
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                 reselect_on_user_message: true,
             },
@@ -760,7 +840,10 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
         }]]
     );
     assert_eq!(history.assessment_from, Some(0));
-    assert!(!history.history_partial);
+    assert!(
+        history.history_partial,
+        "rewritten input has unproved surrounding context"
+    );
     drop(history);
     let cancelled_turn_id = ticket.agent_turn_id.clone();
     store.abort(&ticket);
@@ -772,6 +855,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
             &request(rebuilt_messages),
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
@@ -792,9 +876,14 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
         "the old round must not close twice"
     );
     assert_eq!(retry_history.visible_conversation.len(), 1);
-    assert!(!retry_history.history_partial);
+    assert!(retry_history.history_partial);
+    assert!(retry_history.assessment_from.is_none());
+    assert!(retry_history.assessment_target.is_none());
     assert_ne!(retry_ticket.agent_turn_id, cancelled_turn_id);
-    assert_eq!(store.inner.lock().entries[&key].active.ordinal, 2);
+    assert_eq!(
+        store.inner.lock().entries[&retry_ticket.key].active.ordinal,
+        2
+    );
     drop(retry_history);
     store.abort(&retry_ticket);
 }
@@ -844,6 +933,7 @@ fn missing_candidate_preference_does_not_reselect_when_messages_continue() {
             &follow_up,
             &replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: false,
             },
@@ -861,7 +951,7 @@ fn missing_candidate_preference_does_not_reselect_when_messages_continue() {
         panic!("a missing candidate hint must not force cross-branch reselection")
     };
     assert_eq!(inherited_decision.branch_id, "smart_saving_simple");
-    assert_eq!(completed.unwrap().status, AgentTurnStatus::Interrupted);
+    assert_eq!(completed.unwrap().status, AgentTurnStatus::Unknown);
     assert!(history.visible_conversation.is_empty());
     drop(history);
     store.abort(&ticket);
@@ -989,7 +1079,36 @@ fn segment_extends_only_for_the_same_executed_identity() {
 }
 
 #[test]
-fn pending_request_conflicts_and_stale_ticket_cannot_commit() {
+fn busy_history_admission_and_decision_write_return_without_waiting() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(64 * 1024, Duration::from_secs(60));
+    let key = store.scope_key("workspace", "busy").unwrap();
+    let now = Instant::now();
+    let request = request(vec![text(MessageRole::User, "hello")]);
+    {
+        let _lock = store.inner.lock();
+        assert!(matches!(
+            store.begin(key.clone(), plan(1), &request, &replay, now),
+            Err(AgentTurnHistoryError::Resource)
+        ));
+    }
+    let (ticket, history) = new_turn(store.begin(key, plan(1), &request, &replay, now).unwrap());
+    {
+        let _lock = store.inner.lock();
+        assert_eq!(
+            store.commit_decision(&ticket, decision("smart_saving_simple")),
+            Err(AgentTurnHistoryError::Resource)
+        );
+    }
+    drop(history);
+    store
+        .commit_decision(&ticket, decision("smart_saving_simple"))
+        .unwrap();
+    store.abort(&ticket);
+}
+
+#[test]
+fn pending_requests_have_independent_leases_and_stale_ticket_cannot_commit() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(64 * 1024, Duration::from_secs(60));
     let key = store.scope_key("workspace", "conflict").unwrap();
@@ -1001,10 +1120,15 @@ fn pending_request_conflicts_and_stale_ticket_cannot_commit() {
             .unwrap(),
     );
     drop(history);
-    assert!(matches!(
-        store.begin(key.clone(), plan(1), &request, &replay, now),
-        Err(AgentTurnHistoryError::SessionTurnConflict)
-    ));
+    let (parallel, parallel_history) = new_turn(
+        store
+            .begin(key.clone(), plan(1), &request, &replay, now)
+            .unwrap(),
+    );
+    assert_ne!(first.request_token, parallel.request_token);
+    assert_ne!(first.key, parallel.key);
+    drop(parallel_history);
+    store.abort(&parallel);
     store.abort(&first);
     let (replacement, history) =
         new_turn(store.begin(key, plan(1), &request, &replay, now).unwrap());
@@ -1130,7 +1254,9 @@ fn pinned_snapshot_prevents_lru_eviction_until_the_request_releases_it() {
     let probe = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
     let probe_key = probe.scope_key("workspace", "pinned").unwrap();
     let probe_history = pinned_entry_bytes(&probe, &probe_replay, &probe_key, Instant::now());
-    let pinned_bytes = probe.inner.lock().entries[&probe_key].accounted_bytes;
+    // Aborting the empty new turn invalidates its assessment segment and frees
+    // memory. Budget for the complete transition before that cleanup as well.
+    let pinned_bytes = probe.inner.lock().peak_accounted_bytes - store_fixed_bytes();
     drop(probe_history);
 
     let other_probe = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
@@ -1156,6 +1282,8 @@ fn pinned_snapshot_prevents_lru_eviction_until_the_request_releases_it() {
     let pinned_key = store.scope_key("workspace", "pinned").unwrap();
     let other_key = store.scope_key("workspace", "other").unwrap();
     let history = pinned_entry_bytes(&store, &replay, &pinned_key, Instant::now());
+    assert_eq!(history.visible_conversation.len(), 1);
+    assert_eq!(store.inner.lock().entries[&pinned_key].snapshot_pins, 1);
     let other_request = request(vec![text(MessageRole::User, "y".repeat(4_000))]);
     assert!(matches!(
         store.begin(
@@ -1183,7 +1311,14 @@ fn pinned_snapshot_prevents_lru_eviction_until_the_request_releases_it() {
     );
     drop(other_history);
     let inner = store.inner.lock();
-    assert!(!inner.entries.contains_key(&pinned_key));
+    // Releasing the separately charged snapshot may make both entries fit.
+    assert_eq!(
+        inner
+            .entries
+            .get(&pinned_key)
+            .map_or(0, |e| e.snapshot_pins),
+        0
+    );
     assert!(inner.entries.contains_key(&other_key));
     assert!(inner.accounted_bytes <= budget);
     drop(inner);
@@ -1214,6 +1349,7 @@ fn completed_turn_preserves_its_opening_cause() {
                     &request(vec![first_message.clone()]),
                     &replay,
                     TurnDecisionInputs {
+                        native_turn: None,
                         history_continuity: NoCheckpoint,
                         reselect_on_user_message: true,
                     },
@@ -1240,6 +1376,7 @@ fn completed_turn_preserves_its_opening_cause() {
                     &request(vec![first_message, text(MessageRole::User, "next")]),
                     &replay,
                     TurnDecisionInputs {
+                        native_turn: None,
                         history_continuity: continuity,
                         reselect_on_user_message: true,
                     },

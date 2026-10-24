@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 
+use hiroute_diagnostics::event::NativeCompletionReason as CompletionReason;
 #[cfg(test)]
 use hiroute_gateway_core::runtime::body::BudgetTree;
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
@@ -21,10 +22,13 @@ use crate::server::request_plan::IngressProtocol;
 
 use super::super::continuation::{ToolIdProjection, project_delivered_tool_id};
 use super::super::{ChatToolIdentity, ChatToolProjection, ProtocolAdapterError};
+use super::wire::optional_str;
 
 #[path = "native_passthrough_helpers.rs"]
 mod helpers;
 use helpers::*;
+#[path = "native_passthrough_diagnostic.rs"]
+mod diagnostic;
 #[path = "native_passthrough_evidence.rs"]
 mod evidence;
 
@@ -58,6 +62,14 @@ pub(crate) struct NativeResponseProjector {
 }
 
 impl NativeResponseProjector {
+    pub(crate) fn with_function_encoding(
+        mut self,
+        projection: super::super::FunctionEncodingProjection,
+    ) -> Self {
+        self.state.function_encoding_projection = projection;
+        self
+    }
+
     pub(crate) fn with_omitted_thinking(mut self, omitted: bool) -> Self {
         self.state.omit_thinking = omitted && self.state.protocol == IngressProtocol::Messages;
         self
@@ -166,6 +178,9 @@ impl NativeResponseProjector {
             budget: budget.clone(),
             framer,
             state: ProjectionState {
+                standard_responses_json: super::super::responses_dialect::standard_json(profile),
+                function_encodings: BTreeMap::new(),
+                function_encoding_projection: Default::default(),
                 omit_thinking: false,
                 protocol: profile.capability.upstream_protocol,
                 alias: served_model_alias,
@@ -179,6 +194,7 @@ impl NativeResponseProjector {
                 response_items: BTreeMap::new(),
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
+                completion_diagnostic: diagnostic::CompletionDiagnostic::default(),
                 responses_done_seen: false,
                 usage: ModelUsage::default(),
                 usage_input_overflow: false,
@@ -299,6 +315,9 @@ struct ResponseItemEvidence {
 }
 
 pub(super) struct ProjectionState {
+    standard_responses_json: bool,
+    function_encoding_projection: super::super::FunctionEncodingProjection,
+    function_encodings: BTreeMap<u32, Option<[u8; 32]>>,
     omit_thinking: bool,
     pub(super) protocol: IngressProtocol,
     alias: String,
@@ -312,6 +331,7 @@ pub(super) struct ProjectionState {
     response_items: BTreeMap<u32, ResponseItemEvidence>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
+    completion_diagnostic: diagnostic::CompletionDiagnostic,
     responses_done_seen: bool,
     usage: ModelUsage,
     usage_input_overflow: bool,
@@ -339,6 +359,7 @@ impl ProjectionState {
         &mut self,
         value: &mut Value,
     ) -> Result<ProjectionMetadata, ProtocolAdapterError> {
+        self.completion_diagnostic.shape = Some(super::diagnostic_shape::shape(None, Some(value)));
         let object = value.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
         let metadata = match self.protocol {
             IngressProtocol::Responses => self.project_responses_nonstream(object),
@@ -367,10 +388,35 @@ impl ProjectionState {
             self.responses_done_seen = true;
             return Ok((None, ProjectionMetadata::opaque()));
         }
+        let parsed = serde_json::from_slice(data);
+        self.completion_diagnostic.shape = Some(super::diagnostic_shape::shape(
+            event_type,
+            parsed.as_ref().ok(),
+        ));
+        if self.protocol == IngressProtocol::Responses
+            && event_type.is_none_or(|event| event == "response.metadata")
+            && let Ok(Value::Object(object)) = &parsed
+            && object.get("type").and_then(Value::as_str) == Some("response.metadata")
+            && super::responses_sideband::moderation_notification(
+                object,
+                self.response_id.as_deref(),
+            )
+            .is_ok()
+        {
+            // The same semantic admission as canonical capture. A notification
+            // cannot replace an earlier terminal, including at the stream tail.
+            return Ok((None, ProjectionMetadata::opaque()));
+        }
         let after_terminal = self.terminal.take().is_some();
         if after_terminal {
             // Reuse the same owned identity projection, but a second provider
             // description can no longer certify one unambiguous completion.
+            if self.protocol == IngressProtocol::Responses {
+                self.completion_diagnostic
+                    .note(CompletionReason::PostTerminal);
+            } else {
+                self.completion_diagnostic.generic();
+            }
             self.mark_unowned_uncertain();
         }
         if self.protocol == IngressProtocol::ChatCompletions && data == b"[DONE]" {
@@ -390,7 +436,7 @@ impl ProjectionState {
                 },
             ));
         }
-        let mut value: Value = match serde_json::from_slice(data) {
+        let mut value: Value = match parsed {
             Ok(Value::Object(object)) => Value::Object(object),
             Ok(_) | Err(_)
                 if event_type.is_some_and(|event| unowned_extension(self.protocol, event)) =>
@@ -443,10 +489,14 @@ impl ProjectionState {
             .map(str::to_owned)
         else {
             self.response_items_uncertain = true;
+            self.completion_diagnostic
+                .note(CompletionReason::EventTypeMissing);
             return Ok(ProjectionMetadata::opaque());
         };
         if event_type.is_some_and(|event| event != native_type) {
             self.response_items_uncertain = true;
+            self.completion_diagnostic
+                .note(CompletionReason::EventTypeMismatch);
         }
         let mut terminal = None;
         let mut failure = None;
@@ -471,6 +521,8 @@ impl ProjectionState {
                 let native_id = string_field(object, "item_id")?.to_owned();
                 if !self.tools.contains_key(&index) {
                     self.response_items_uncertain = true;
+                    self.completion_diagnostic
+                        .note(CompletionReason::UntrackedToolItem);
                     return Ok(ProjectionMetadata::opaque());
                 }
                 let logical =
@@ -495,6 +547,10 @@ impl ProjectionState {
                     && (self.response_items_uncertain
                         || response.get("status").and_then(Value::as_str) != Some(expected.0))
                 {
+                    if response.get("status").and_then(Value::as_str) != Some(expected.0) {
+                        self.completion_diagnostic
+                            .note(CompletionReason::TerminalStatus);
+                    }
                     NativeTerminalOutcome::Unknown
                 } else {
                     expected.1
@@ -720,7 +776,11 @@ impl ProjectionState {
             "completed" => NativeTerminalOutcome::Complete,
             "incomplete" => NativeTerminalOutcome::Incomplete,
             "failed" => NativeTerminalOutcome::Failed,
-            _ => NativeTerminalOutcome::Unknown,
+            _ => {
+                self.completion_diagnostic
+                    .note(CompletionReason::TerminalStatus);
+                NativeTerminalOutcome::Unknown
+            }
         };
         self.set_terminal(terminal)?;
         Ok(ProjectionMetadata {
@@ -883,6 +943,40 @@ impl ProjectionState {
                 } else {
                     ToolKindV1::Custom
                 };
+                if kind == ToolKindV1::Function {
+                    let encoding = super::super::responses_dialect::response_encoding(
+                        item,
+                        self.standard_responses_json,
+                        self.function_encoding_projection,
+                    )?;
+                    use sha2::{Digest, Sha256};
+                    let digest = encoding.as_ref().map(|paths| {
+                        Sha256::digest(serde_json::to_vec(paths).expect("strings serialize")).into()
+                    });
+                    if self
+                        .function_encodings
+                        .get(&index)
+                        .is_some_and(|known| known.is_some() && known != &digest)
+                    {
+                        return Err(ModelIrError::InvalidResponseLifecycle(
+                            "function argument encoding changed".into(),
+                        )
+                        .into());
+                    }
+                    if !self.function_encodings.contains_key(&index) {
+                        self.retained.push(
+                            self.budget
+                                .reserve(MemoryRole::SemanticState, 64)
+                                .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?,
+                        );
+                    }
+                    self.function_encodings.insert(index, digest);
+                    if let Some(value) = encoding {
+                        item.insert("encrypted_function_args".into(), serde_json::json!(value));
+                    } else {
+                        item.remove("encrypted_function_args");
+                    }
+                }
                 let native_id = string_field(item, "call_id")?.to_owned();
                 let name = string_field(item, "name")?.to_owned();
                 let namespace = item
@@ -941,17 +1035,20 @@ impl ProjectionState {
                 None => u32_field(call, "index")?,
             };
             let existing = self.tools.get(&index).cloned();
-            let native_id = call
-                .get("id")
-                .and_then(Value::as_str)
+            let native_id = optional_str(call, "id")?
+                // Chat argument deltas can retain an explicit empty id. It
+                // supplies no replacement identity; only an already bound
+                // index can provide the original tool id in that case.
+                .filter(|id| !id.is_empty())
                 .map(str::to_owned)
                 .or_else(|| existing.as_ref().map(|tool| tool.native_id.clone()))
                 .ok_or_else(|| ModelIrError::MissingToolIdentity(format!("chat index {index}")))?;
             let emitted_name = call
                 .get("function")
                 .and_then(Value::as_object)
-                .and_then(|function| function.get("name"))
-                .and_then(Value::as_str)
+                .map(|function| optional_str(function, "name"))
+                .transpose()?
+                .flatten()
                 .map(str::to_owned);
             let identity = match emitted_name {
                 Some(emitted_name) => self.chat_identity(&emitted_name)?,

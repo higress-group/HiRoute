@@ -9,8 +9,8 @@ impl ExecutionFactEnvelopeV1 {
         self.validate_contract(false)
     }
 
-    /// Authenticates immutable observation rows written before Product v2. This is a storage
-    /// recovery seam, not an ingestion compatibility path.
+    /// Authenticates immutable observation rows written under supported older
+    /// contracts. This is a storage recovery seam, not an ingestion path.
     pub fn validate_persisted_contract(&self) -> Result<(), ExecutionFactError> {
         self.validate_contract(true)
     }
@@ -18,7 +18,23 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
-        let persisted_pre_extension = allow_persisted_v1
+        let persisted_history = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:857e4f2b42278ac3877e34f2188eeecc7c1d188832316b23f577f3bc0b82b1ac";
+        let persisted_extension = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:5f42929cdb812799e4e4a10885324debb21e6489bde5e935599de57b54b8ab23";
+        let persisted_pre_admission = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:57592f8645e74ed2c13a968d8b782bde1819f5f1aa8729b2b5fefa9f5f8d20e6";
+        let persisted_pre_auxiliary = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:3cb9b100385c1f05a92097c2f28eb5c47d61ca495d32d41a8528b7227c81a465";
+        let persisted_pre_membership = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
                 == "sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069";
@@ -43,7 +59,11 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_digest.as_str()
                 == "sha256:80b4ff13af8abc79d7721fea42141300beade2acf1d2659983ceaafcdc6e4799";
         if !(current
-            || persisted_pre_extension
+            || persisted_history
+            || persisted_extension
+            || persisted_pre_admission
+            || persisted_pre_auxiliary
+            || persisted_pre_membership
             || persisted_pre_opening
             || persisted_v1
             || persisted_pre_branch
@@ -71,7 +91,17 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidEnvelope);
         }
-        if !(current || persisted_pre_extension)
+        if !(current || persisted_history)
+            && matches!(&self.fact, ExecutionFactV1::AgentTurnAdmitted(_))
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
+        if !(current
+            || persisted_history
+            || persisted_extension
+            || persisted_pre_admission
+            || persisted_pre_auxiliary
+            || persisted_pre_membership)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::AgentTurnFinished {
@@ -82,7 +112,26 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !current {
+        if !(current || persisted_history || persisted_pre_admission || persisted_pre_auxiliary)
+            && matches!(
+                &self.fact,
+                ExecutionFactV1::AgentTurnFinished {
+                    history_membership: Some(_),
+                    ..
+                } | ExecutionFactV1::BranchAssessmentRecorded {
+                    history_membership: Some(_),
+                    ..
+                }
+            )
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
+        if !(current || persisted_history || persisted_pre_admission)
+            && matches!(&self.fact, ExecutionFactV1::RouteDecision(route) if route.native_auxiliary)
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
+        if !(current || persisted_extension) {
             let extension_data = match &self.fact {
                 ExecutionFactV1::RouteDecision(route) => {
                     route.complexity.as_ref().is_some_and(|decision| {
@@ -110,20 +159,39 @@ impl ExecutionFactEnvelopeV1 {
         }
         self.trust.validate()?;
         self.fact.validate()?;
-        if (current || persisted_pre_extension || persisted_pre_opening)
+        if (current
+            || persisted_history
+            || persisted_extension
+            || persisted_pre_admission
+            || persisted_pre_auxiliary
+            || persisted_pre_membership
+            || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
             if route.complexity.as_ref().is_some_and(|d| d.decision_protocol.is_none()
                 || (d.decision_protocol != Some(DecisionProtocolV1::SystemOneC) && d.routing_observation.is_some())))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_extension || persisted_pre_opening)
+        if !(current
+            || persisted_history
+            || persisted_extension
+            || persisted_pre_admission
+            || persisted_pre_auxiliary
+            || persisted_pre_membership
+            || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
                 if route.complexity.as_ref().is_some_and(|decision| decision.routing_observation.is_some()))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_extension || persisted_pre_opening || persisted_pre_c)
+        if !(current
+            || persisted_history
+            || persisted_extension
+            || persisted_pre_admission
+            || persisted_pre_auxiliary
+            || persisted_pre_membership
+            || persisted_pre_opening
+            || persisted_pre_c)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::RouteDecision(route)
@@ -144,7 +212,11 @@ impl ExecutionFactEnvelopeV1 {
         }
         if let Some(pricing) = &self.pricing {
             if !(current
-                || persisted_pre_extension
+                || persisted_history
+                || persisted_extension
+                || persisted_pre_admission
+                || persisted_pre_auxiliary
+                || persisted_pre_membership
                 || persisted_pre_opening
                 || persisted_function_only
                 || persisted_pre_c)
@@ -235,6 +307,7 @@ impl FrozenExecutionTrustV1 {
 impl ExecutionFactV1 {
     pub fn validate(&self) -> Result<(), ExecutionFactError> {
         match self {
+            Self::AgentTurnAdmitted(admission) => admission.validate(),
             Self::RouteDecision(route) => route.validate(),
             Self::CandidateDecision(candidate) => candidate.validate(),
             Self::CredentialLease {
@@ -335,6 +408,7 @@ impl ExecutionFactV1 {
                 }
             }
             Self::AgentTurnFinished {
+                history_membership,
                 branch_execution,
                 agent_turn_id,
                 segment_id,
@@ -351,6 +425,9 @@ impl ExecutionFactV1 {
                 last_request_id,
                 ..
             } => {
+                if let Some(membership) = history_membership {
+                    membership.validate()?;
+                }
                 nonempty([agent_turn_id, segment_id, selected_branch_id])?;
                 if *ordinal == 0
                     || branch_execution.as_ref().is_some_and(|execution| {
@@ -394,6 +471,7 @@ impl ExecutionFactV1 {
                 }
             }
             Self::BranchAssessmentRecorded {
+                history_membership,
                 segment_id,
                 model_configuration_id,
                 profile_digest,
@@ -405,6 +483,9 @@ impl ExecutionFactV1 {
                 reason,
                 ..
             } => {
+                if let Some(membership) = history_membership {
+                    membership.validate()?;
+                }
                 nonempty([segment_id, model_configuration_id])?;
                 if *plan_revision == 0
                     || *target_from_ordinal == 0

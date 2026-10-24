@@ -9,7 +9,7 @@ import { mockIPC } from './host-mock';
 import { Sessions } from '../../../src/features/Sessions';
 import type { TimelineTurn } from '../../../src/features/RoutingTimeline';
 import { Models } from '../../../src/features/models/Models';
-import { PlanEditor } from '../../../src/plan-editor';
+import { PlanEditor, type Editor } from '../../../src/plan-editor';
 import { PresentationRoot, ProductPage } from '../../../src/ui';
 import { readyManagement, dailyPlan, fixturePlanAuthoring, mockProductInvoke } from './product-fixtures';
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
@@ -127,6 +127,11 @@ mockIPC(async (command, payload: any) => {
       value.from_ms=params.get('release-evidence')==='retention'?Math.max(q.from_ms??0,Date.now()-7*86_400_000+10):q.from_ms??0;
       value.to_ms=q.to_ms;value.revision=q.revision;
     }
+    // Custom extensions have observations, but no built-in threshold policies or suggestions.
+    if (params.has('custom')) {
+      value.branches=[];
+      value.rows.forEach(row => { row.protections=[]; row.competence_rate=null; row.counts.competence_eligible=0; row.counts.meets_floor=0; });
+    }
     if (payload.request.intent.query.group_by === 'executor') value.rows.forEach(row => row.executor='deepseek_harness');
     return value;
   }
@@ -189,11 +194,21 @@ plan.desired.delegation_enabled=false;
 plan.desired.strategy.judgment!.degree.simple_threshold_millis=720;
 plan.desired.strategy.classifier={kind:'decision_service',service:{id:'decision/test',revision:1,name:'Decision model',connection:{kind:'custom',endpoint:'https://decision.example.test',timeout_ms:1000,auth_header:null}}};
 if(params.has('native')) plan.desired.strategy.classifier.service.connection={kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:1000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}};
+if(params.has('single-group')) plan.desired.strategy.primary=[];
+function EditorFixture() {
+  const [draft, setDraft] = useState<Editor | null>(null);
+  return <PlanEditor key={draft ? 'division' : 'published'} plan={draft ? undefined : plan} initialContent={draft ?? undefined} creating={!!draft} language={language} onCreateDraft={async editor => {
+    Object.assign(window, { divisionDraft: editor });
+    if (!params.has('review-created-draft')) return false;
+    setDraft(editor);
+    return true;
+  }} onDone={async () => {}} onClose={() => {}} />;
+}
 function TimelineFixture() {
   const [version, setVersion] = useState(0), [active, setActive] = useState(true);
   Object.assign(window, { refreshTrialTimeline: () => setVersion(v => v + 1), hideTrialTimeline: (hidden: boolean) => setActive(!hidden) });
   return <Sessions language={language} initialSession="timeline-session" initialRequest={params.get('initial-request')} refreshVersion={version} active={active} />;
 }
 createRoot(document.getElementById('root')!).render(<PresentationRoot language={language} theme={params.get('theme') === 'dark' ? 'dark' : 'light'} textScale={1}>
-  {params.get('view')==='feed-home' ? <NewModels language={language} active plans={[]} refreshVersion={0} onTry={()=>{}} /> : params.get('view')==='home' ? <ProductPage title={language==='zh'?'首页':'Home'} subtitle={language==='zh'?'近期使用与需要你处理的事':'Recent work and things that need your attention'}><div className="home-wrap v3-home"><NewModels language={language} active plans={[dailyPlan]} refreshVersion={0} onTry={modelId=>trace.push({command:'try-model',payload:{modelId},at:performance.now()})} onOpenPlan={planId=>trace.push({command:'open-plan',payload:{planId},at:performance.now()})} /><TrustAttention language={language} names={{[dailyPlan.agent_plan_id]:language==='zh'?'日常编码':'Daily coding','plan/orders':language==='zh'?'订单服务维护':'Order service upkeep'}} read={{status:'ready',plans:homeSuggestions,unavailable:[],error:'',refresh:()=>{}}} onAct={(planId,branchId)=>trace.push({command:'review-trust-action',payload:{planId,branchId},at:performance.now()})} onOpen={planId=>trace.push({command:'review-trust',payload:{planId},at:performance.now()})} /></div></ProductPage> : readCost ? <ReadCostFixture language={language} view={params.get('view')!} /> : params.get('view') === 'quickstart' ? <TrialFixture language={language} /> : params.get('view') === 'attention' ? <ProductPage title="Home"><TrustAttention language={language} names={{[dailyPlan.agent_plan_id]:'My daily route'}} read={{status:params.has('error')?'error':'ready',plans:params.has('empty')?[]:[{...report,branches:report.branches.map(b=>({...b,protection_count:0,identity_stabilities:['rolling-alias']}))}],unavailable:params.has('partial-error')?[{plan_id:'plan/too-large',reason:'scope_too_large'}]:[],error:'OBSERVATION_UNAVAILABLE',refresh:()=>trace.push({command:'retry-suggestions',payload:{},at:performance.now()})}} onAct={(planId,branchId)=>trace.push({command:'review-trust-action',payload:{planId,branchId},at:performance.now()})} onOpen={planId=>trace.push({command:'review-trust',payload:{planId},at:performance.now()})} /></ProductPage> : params.get('view') === 'timeline' ? <TimelineFixture /> : params.get('view') === 'editor' ? <ProductPage title="Routing"><PlanEditor plan={plan} language={language} onCreateDraft={async editor=>{ Object.assign(window,{divisionDraft:editor}); return false; }} onDone={async()=>{}} onClose={()=>{}} /></ProductPage> : <ProductPage title="Models" flush className="hr-models-page"><Models language={language} snapshot={readyManagement} mutable onRefresh={async()=>{}} onPrepareKeyInput={async()=>{throw Error('outside scenario')}} onPreview={async()=>{throw Error('outside scenario')}} onApply={async()=>'saved'} onDiscardProtectedInputs={()=>{}} /></ProductPage>}
+  {params.get('view')==='feed-home' ? <NewModels language={language} active plans={[]} refreshVersion={0} onTry={()=>{}} /> : params.get('view')==='home' ? <ProductPage title={language==='zh'?'首页':'Home'} subtitle={language==='zh'?'近期使用与需要你处理的事':'Recent work and things that need your attention'}><div className="home-wrap v3-home"><NewModels language={language} active plans={[dailyPlan]} refreshVersion={0} onTry={modelId=>trace.push({command:'try-model',payload:{modelId},at:performance.now()})} onOpenPlan={planId=>trace.push({command:'open-plan',payload:{planId},at:performance.now()})} /><TrustAttention language={language} names={{[dailyPlan.agent_plan_id]:language==='zh'?'日常编码':'Daily coding','plan/orders':language==='zh'?'订单服务维护':'Order service upkeep'}} read={{status:'ready',plans:homeSuggestions,unavailable:[],error:'',refresh:()=>{}}} onAct={(planId,branchId)=>trace.push({command:'review-trust-action',payload:{planId,branchId},at:performance.now()})} onOpen={planId=>trace.push({command:'review-trust',payload:{planId},at:performance.now()})} /></div></ProductPage> : readCost ? <ReadCostFixture language={language} view={params.get('view')!} /> : params.get('view') === 'quickstart' ? <TrialFixture language={language} /> : params.get('view') === 'attention' ? <ProductPage title="Home"><TrustAttention language={language} names={{[dailyPlan.agent_plan_id]:'My daily route'}} read={{status:params.has('error')?'error':'ready',plans:params.has('empty')?[]:[{...report,branches:report.branches.map(b=>({...b,protection_count:0,identity_stabilities:['rolling-alias']}))}],unavailable:params.has('partial-error')?[{plan_id:'plan/too-large',reason:'scope_too_large'}]:[],error:'OBSERVATION_UNAVAILABLE',refresh:()=>trace.push({command:'retry-suggestions',payload:{},at:performance.now()})}} onAct={(planId,branchId)=>trace.push({command:'review-trust-action',payload:{planId,branchId},at:performance.now()})} onOpen={planId=>trace.push({command:'review-trust',payload:{planId},at:performance.now()})} /></ProductPage> : params.get('view') === 'timeline' ? <TimelineFixture /> : params.get('view') === 'editor' ? <ProductPage title="Routing"><EditorFixture /></ProductPage> : <ProductPage title="Models" flush className="hr-models-page"><Models language={language} snapshot={readyManagement} mutable onRefresh={async()=>{}} onPrepareKeyInput={async()=>{throw Error('outside scenario')}} onPreview={async()=>{throw Error('outside scenario')}} onApply={async()=>'saved'} onDiscardProtectedInputs={()=>{}} /></ProductPage>}
 </PresentationRoot>);

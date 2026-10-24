@@ -34,6 +34,7 @@ pub enum CorrelationDomain {
     Binding,
     ContentStream,
     ExternalRequest,
+    NativeRoutingHeader,
 }
 
 impl CorrelationDomain {
@@ -51,6 +52,7 @@ impl CorrelationDomain {
             CorrelationDomain::Binding => b"binding",
             CorrelationDomain::ContentStream => b"content_stream",
             CorrelationDomain::ExternalRequest => b"external_request",
+            CorrelationDomain::NativeRoutingHeader => b"native_routing_header",
         }
     }
 }

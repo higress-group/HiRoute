@@ -1,5 +1,14 @@
 # Tests as product documentation
 
+Native acceptance uses [isolated scopes](../../scripts/native-agent-scope.py) and
+the [macOS session supervisor](../../scripts/native-agent-supervisor.py). Its live
+anchor preserves ownership after a client exits, and its private lease closes on
+guardian death. Native exit and cleanup outcomes remain separate. It covers the
+anchored session; detached sessions are not an inferred cleanup authority.
+An optional private command pipe dispatches native SIGINT through the live anchor;
+its EOF revokes the session. Dispatch is separate from native Stop acknowledgement
+and Gateway cancellation evidence. Interrupting the guardian requests cleanup only.
+
 [Code map](README.md) · [Desktop scenarios](../../apps/desktop/tests/README.md) ·
 [Agent/Worker scenarios](worker-context.md#representative-scenarios)
 
@@ -73,6 +82,26 @@ happy-path UI journey.
 | Native Desktop / installed Agent / live provider | The selected real integration path and independently observed outcome | Bound to its exact environment, revision and executed scenarios |
 | Frozen compatibility / expected-red / oracle fixture | A historical reader, intended rejection or test oracle | Not current product completion |
 
+Native reasoning replay is covered by the accepted-response
+[boundary regression](../../crates/gateway/src/agent_turn_history/boundary/reasoning_tests.rs),
+the [encrypted replay cases](../../crates/gateway/src/agent_turn_history/boundary/encrypted_tests.rs),
+the [unsigned Messages tool-stage cases](../../crates/gateway/src/agent_turn_history/boundary/messages_tests.rs)
+and [current-window turn/continuation cases](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
+[Stage closure cases](../../crates/gateway/src/agent_turn_history/stage_closure_tests.rs)
+distinguish captured membership, provider outcomes and closure proof; the
+[request JSON observation cases](../../crates/gateway/src/observation/content/request_json_replay_tests.rs)
+verify Replay expansion, integrity and bounded storage without leaking locators.
+The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
+verify that explicit maintenance-purpose evidence excludes a user turn without
+removing the request, while unmarked retained records remain visible. These
+component assertions do not replace the real DSH Web/HiRoute acceptance.
+The [native encrypted listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_encrypted_continuation.rs)
+and [cross-protocol continuation cases](../../tools/e2e-harness/tests/p0_gateway_runtime/cross_protocol_encrypted_continuation.rs)
+exercise accepted-event delivery, repeated tool requests, complete assessment membership
+and retained-content policy through the production Gateway listener. Protocol-owned
+[projection tests](../../crates/gateway/src/adapters/response/client_projection_tests.rs)
+distinguish intentionally omitted content from deferred client output.
+
 Start with the representative cases in the [capability map](README.md). A file
 named `product`, a golden containing `green`, or a zero process exit does not prove
 execution. In `tools/product-e2e`, [transaction recovery](../../tools/product-e2e/tests/transaction_recovery.rs)
@@ -91,17 +120,24 @@ trust root or transport override. The test does not establish live production si
 
 | Need | Reuse / preserve |
 | --- | --- |
+| Prepare bounded control smoke prerequisites | [Control storage preparation](../../tools/product-e2e/src/smoke/control_preparation.rs) runs the same verified daemon on fresh storage before ordinary control/CLI watchdogs; [clock boundary tests](../../tools/product-e2e/src/smoke/control_preparation_tests.rs) cover admission and timing, while [smoke CLI](../../tools/product-e2e/tests/smoke_cli.rs) checks actual initialization and business steps |
+| Diagnose a real Gateway listener assertion | [RuntimeFixture](../../tools/e2e-harness/tests/runtime_support/mod.rs): use the diagnostics-enabled REST-classified variant when boot/request evidence is needed; the Gateway's [test-control feature](../../crates/gateway/Cargo.toml) binds the separate SUT to the shipped daemon's JSON map-order feature. Unexpected panics retain the private fixture root for [failure diagnosis](../diagnostic-troubleshooting.md#gateway-listener-fixture-failures) |
+| Check provider-state cleanup authority | [ContextHold cleanup](../../tools/e2e-harness/tests/p0_gateway_context_hold/cleanup.rs): free-first successful/failed cleanup and bounded prefix reuse; a classified contextual history cannot authorize deleting opaque state, while later accepted execution permits ordinary routing recovery |
 | Prepare a daemon's current sources, grants and plans | [Publication Product](../../crates/daemon/tests/support/publication_product.py): its `Product.cli` is internal Local Control notation, not the standalone CLI; protected input belongs to that fixture's daemon |
 | Save an explicit HTTP model source or correct its target | [Custom HTTP journey](../../crates/daemon/tests/support/custom_http_product.py): real control/save/restart/recheck with synthetic literal/hostname targets and no directory; [connection form browser checks](../../apps/desktop/tests/v3/visual/connection-flow-active.mjs) separately cover plaintext notices, localized errors and retained input |
 | Configure a real native Agent | [Agent product support](../../crates/daemon/tests/support/agent_product_support.py): shared Preview → Apply → status and bounded process capture; native argv/ownership/result interpretation remain in the leaf |
 | Prove saved model configuration | [Additional-model journey](../../crates/daemon/tests/support/additional_model_product.py), [Windows Pi/DSH journey](../../crates/daemon/tests/support/windows_user_models.rs), [Windows Qoder account journey](../../crates/daemon/tests/support/windows_qoder_user_models.rs): ordinary native startup reads saved settings without provider/endpoint/credential overrides; `agent-user-models` and protected `account-qoder-user-models` remain separate from Worker profiles |
+| Prove ordinary plugin activation and optional history | [Native history journey](../../crates/daemon/tests/support/additional_native_history_product.py): Pi/OpenCode auto-discovery, real multi-turn decision history, missing-plugin output, capture gaps, Gateway restart and restored native startup; Worker pure-mode success cannot replace these assertions |
 | Observe native routing and rejected attempts | [NativeContextUpstream](../../crates/daemon/tests/support/native_context_fixture.py): count every model POST, including rejected endpoints/models/credentials; keep the ledger for positive route/history assertions |
 | Prove exact Continue, concurrent routes and cancellation | [Native context](../../crates/daemon/tests/support/native_context_product.py), [boundary journey](../../crates/daemon/tests/support/native_context_boundaries.py), [boundary oracle guide](../../crates/daemon/tests/support/NATIVE_CONTEXT_BOUNDARIES.md) |
 | Prove restoration of old durable state | [Frozen producer fixtures](../../crates/local-storage/src/migrations/fixtures/README.md), [crash-boundary tests](../../crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs): old bytes through the current consumer, not a new serializer pretending to be history |
 | Upgrade connected Agents from a released package | [Released grant upgrade](../../crates/daemon/tests/support/released_grant_upgrade.py): pass the repository and checksum-pinned v0.3.1 Linux archive, with current binaries in `HIROUTE_VALIDATION_PRODUCT_BIN_DIR`; released transactions create both connections, current startup preserves grants/native files, and real requests plus public session queries prove attribution across restart. Native probes and the upstream are bounded fixtures. |
 | Recover interrupted Agent settings before the service receipt | [Publication process](../../crates/daemon/tests/publication_process.rs) runs [Agent recovery](../../crates/daemon/tests/support/publication_agent_recovery.py) at `after_target` and `after_active`; startup completes the journal before Apply replay, authenticated requests acquire the Agent, user native files remain byte-identical, and the recovered managed profile is stable across restart. |
+| Keep session reads responsive during Agent discovery | [Product-session transport barriers](../../crates/product-session/src/commands/agent_snapshot/tests.rs) prove observation reads and cursor updates proceed before a delayed Agent scan completes. The old locked path is a negative control; replaced Session/epoch, changed revisions/publication/recovery/authority and cancellation retain separate assertions. |
+| Reuse verified Agent status history | [History cache regressions](../../crates/local-storage/src/control/agent_history_cache_tests.rs) exercise large cold/warm histories, exact selected-row identity, both journal copies, external writes, rollback, generation changes and reopened stores. Native response latency remains a separate measurement. |
 | Locate recovery material while the service is down | [Shared presentation](../../apps/desktop/tests/storage-recovery.test.mjs), [production-style geometry](../../apps/desktop/tests/v3/visual/storage-recovery-scenarios.mjs), [offline CLI formatter](../../crates/cli/src/service.rs): verified batch and source location, platform folder route and guide names; unsafe/absent locations remain unverified. Native opening/restoration needs its own installed evidence. |
 | Preserve native probe failure classification | [Pi probe tests](../../crates/integrations/src/agents/pi_runtime_tests.rs), [immutable launcher](../../crates/integrations/tests/fixtures/pi-node-launcher.sh): mutable test bodies are interpreter inputs; executable availability and version/output failures have separate assertions |
+| Keep Claude authentication checks inside owned roots | [Native probe](../../crates/integrations/src/agents/native_claude_ingress_probe.rs), [launch environment regression](../../crates/integrations/src/agents/native_claude_probe_environment_tests.rs): the actual child receives owned HOME/configuration/workspace/temporary selectors; ambient overrides, unauthenticated completion and failed native exit cannot prove authentication |
 | Exercise actual Desktop controls | [Browser scenario map](../../apps/desktop/tests/README.md) and native acceptance: select stable scenario IDs and require every declared outcome |
 
 The publication fixture leases its listener address across daemon restarts; do
@@ -186,6 +222,9 @@ for explicit inputs, writable roots, required outcomes and cleanup. Report a
 preparation/cleanup failure separately while retaining the first product failure.
 Process exit, successful setup or the model's success text cannot replace a
 Gateway receipt and an independent tool artifact.
+The [native preparation and recovery contract](../test-selection.md#native-preparation-and-recovery-evidence)
+keeps actual preparation before model admission, cancellation causality, uncertain
+Apply recovery and independent cleanup results explicit.
 
 ## Keep assertions independent of implementation layout
 
@@ -213,6 +252,16 @@ cases even when happy paths overlap. For a broken gate, demonstrate that a reali
 bad case fails. For managed native overrides, retain a positive control showing
 that the conflicting native setting would otherwise be consumed.
 
+[Codex subscription replay](../../crates/gateway/src/adapters/tests/codex_replay.rs)
+checks endpoint-specific output-status normalization while preserving the original
+history and public API fields, including nullable reasoning states and Replay.
+[Completed commentary history](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches/responses_chat_history.rs)
+exercises candidate-local [history projection](../../crates/gateway/src/adapters/request/history.rs),
+independent live rendering, model-group changes, concurrent requests and restart
+assessment through the listener. [Projection diagnostics](../../crates/diagnostics/src/event/request_projection.rs)
+describe preflight or materialization without claiming provider execution.
+[Response lifecycle tests](../../crates/gateway/src/adapters/response/client_stream_tests.rs)
+check response-scoped synthetic IDs across incremental, buffered and terminal output.
 Protocol changes reuse saved-route and native-context journeys across Responses
 and Messages. Assert actual request paths, trusted receipt identity, rotation and
 independent restore. A removed-route witness uses its previously working protocol
@@ -241,6 +290,8 @@ configured repository/jobs and Desktop origin-fetch admission.
 
 1. Run `python3 scripts/test-plan.py --base <exact-base>`; use `--integration` for
    branch integration. Review affected consumers and explain semantic adjustments.
+   Observation port changes select the [current boundary golden check](../../tools/product-e2e/tests/local_observation.rs)
+   early; retained historical observations remain separate compatibility inputs.
 2. Follow the selected commands and [CI definitions](../github-actions-validation.md).
    Use `scripts/validation.py` for configured hosts, exact committed Rust candidates,
    feature plan, phase and related runs. Compile affected native consumers early;
@@ -270,6 +321,13 @@ Ordinary local/SSH totals and module reports share Cargo-target attribution in
 [runner regressions](../../scripts/test-remote-rust.py) exercise worker results and
 compact waits with nested child summaries, failed and unfinished parents, and multiple targets.
 
+Actual native Gateway obligations stay separate from backend and Worker success
+in [test selection](../test-selection.md#explicit-native-agent-product-gates).
+The shared [native command scope](../../scripts/native-agent-scope.py) prepares
+independent native roots and contains the complete acceptance driver; its exact-PID
+observer belongs to the trusted controller. Client drivers retain business oracles,
+port ownership and cleanup. [Offline regressions](../../scripts/test-native-agent-scope.py)
+do not establish native execution or DSH Web/Cordis scope coverage.
 The [control-shell startup fixture](../../tools/product-e2e/tests/control_shell_support/startup.rs)
 retains bounded private failure evidence before temporary-root cleanup; its
 [regressions](../../tools/product-e2e/tests/control_shell_support/startup_tests.rs)
