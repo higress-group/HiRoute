@@ -8,9 +8,14 @@ fn complete(control: &ControlStore, key: &str, payload: &str) -> OperationV1 {
         agent_transaction_plan_payload(AgentConnectionTransactionKindV1::Apply, None, payload),
         key,
     );
+    persist(control, &mut operation);
+    operation
+}
+fn persist(control: &ControlStore, operation: &mut OperationV1) {
+    let key = &operation.idempotency.key;
     let token = format!("capability-{key}");
     control
-        .grant_apply_capability(&token, &operation, i64::MAX)
+        .grant_apply_capability(&token, operation, i64::MAX)
         .unwrap();
     let authorization = control
         .verify_apply_authorization(
@@ -22,13 +27,12 @@ fn complete(control: &ControlStore, key: &str, payload: &str) -> OperationV1 {
             &operation.expected_revisions,
         )
         .unwrap();
-    control.begin_operation(&operation, &authorization).unwrap();
+    control.begin_operation(operation, &authorization).unwrap();
     operation.state = hiroute_domain::OperationState::Succeeded;
     for step in &mut operation.steps {
         step.status = hiroute_domain::OperationStepStatus::Applied;
     }
-    control.finish_operation(&mut operation).unwrap();
-    operation
+    control.finish_operation(operation).unwrap();
 }
 fn open(directory: &std::path::Path) -> ControlStore {
     ControlStore::open(
@@ -201,4 +205,133 @@ fn history_membership_and_valid_same_connection_writes_are_not_cached() {
         )
         .unwrap();
     assert_eq!(read(&control).unwrap().len(), 1);
+}
+
+fn target_operation(root: &str, key: &str, restore: bool) -> OperationV1 {
+    let context = format!(
+        "agent-context/hermes/{}",
+        CanonicalDigest::of_bytes(root.as_bytes()).as_str()
+    );
+    let spec = hiroute_domain::ChangeSpecV1 {
+        schema_version: hiroute_domain::CHANGE_SPEC_SCHEMA_V1,
+        command_id: "agents.settings.apply".into(),
+        resource_id: Some(context.clone()),
+        desired_state: json!({
+            "schema_version":{"major":2,"minor":0}, "context_id":context,
+            "native_target":{"kind":"hermes","config_root":root},
+            "management_skill": if restore {
+                json!({"intent":"restore","restore_point_ref":"restore.fixture"})
+            } else { json!({"intent":"configure","settings":{}}) }
+        }),
+    };
+    let subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+        "agent.hermes",
+        "default",
+        "hermes.profile.v1",
+    )
+    .unwrap();
+    // A settings Skill reference can legitimately require no file effect.
+    let control = AgentConnectionControlIntentV1::from_settings_planner(
+        subject,
+        &spec,
+        false,
+        &json!({"revision":1,"payload":"p".repeat(512 * 1024)}),
+    )
+    .unwrap();
+    agent_operation(
+        TransactionPlanV1::from_agent_connection_planner(spec, control, vec![]).unwrap(),
+        key,
+    )
+}
+
+#[test]
+fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    for index in 0..21 {
+        let mut operation = target_operation(
+            "/synthetic/hermes/main",
+            &format!("target-{index}"),
+            index % 2 == 0,
+        );
+        persist(&control, &mut operation);
+    }
+    let targets = control
+        .agent_settings_native_targets(&WorkspaceId::default())
+        .unwrap();
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].config_root(), "/synthetic/hermes/main");
+    assert_eq!(control.agent_history_cache.borrow().decodes, 21);
+    for _ in 0..3 {
+        assert_eq!(
+            control
+                .agent_settings_native_targets(&WorkspaceId::default())
+                .unwrap(),
+            targets
+        );
+    }
+    assert_eq!(control.agent_history_cache.borrow().decodes, 21);
+
+    let pending = target_operation("/synthetic/hermes/pending", "pending-target", false);
+    let token = "capability-pending-target";
+    control
+        .grant_apply_capability(token, &pending, i64::MAX)
+        .unwrap();
+    let authorization = control
+        .verify_apply_authorization(
+            &ProtectedApplyCapability::new(token).unwrap(),
+            &pending.workspace_id,
+            &pending.idempotency.principal,
+            &pending.idempotency.operation_kind,
+            &pending.accepted_digest,
+            &pending.expected_revisions,
+        )
+        .unwrap();
+    control.begin_operation(&pending, &authorization).unwrap();
+    let targets = control
+        .agent_settings_native_targets(&WorkspaceId::default())
+        .unwrap();
+    assert_eq!(targets.len(), 2);
+    assert!(
+        targets
+            .iter()
+            .any(|target| target.config_root() == "/synthetic/hermes/pending")
+    );
+    // An existing read transaction is supported; no nested BEGIN or cached tail.
+    control.connection.borrow().execute_batch("BEGIN").unwrap();
+    control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE operations SET operation_json='invalid' WHERE operation_id=?1",
+            [pending.operation_id.as_str()],
+        )
+        .unwrap();
+    assert_eq!(
+        control
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .unwrap_err()
+            .code,
+        PortErrorCode::Corrupt
+    );
+    control
+        .connection
+        .borrow()
+        .execute_batch("ROLLBACK")
+        .unwrap();
+    assert_eq!(
+        control
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .unwrap()
+            .len(),
+        2
+    );
+    control.connection.borrow().execute_batch("UPDATE operation_steps SET state='pending' WHERE step_no=5 AND operation_id != (SELECT operation_id FROM operations ORDER BY rowid DESC LIMIT 1)").unwrap();
+    assert_eq!(
+        control
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .unwrap_err()
+            .code,
+        PortErrorCode::Corrupt
+    );
 }

@@ -417,4 +417,91 @@ mod routing_publication_storage_tests {
         assert_eq!(error.code, PortErrorCode::Conflict);
         assert!(store.prepared_publication(&workspace).unwrap().is_none());
     }
+    #[test]
+    fn active_publication_shares_only_a_fresh_exact_row_and_rejects_warmed_tampering() {
+        let directory = tempdir().unwrap();
+        owner_only(directory.path());
+        let store = ControlStore::open(
+            &crate::test_storage_authority(),
+            directory.path().join("control.db"),
+            directory.path().join("backups"),
+        )
+        .unwrap();
+        let workspace = WorkspaceId::default();
+        let first = record(&workspace, 1);
+        store.prepare_publication(&first, None).unwrap();
+        store
+            .mark_publication_active(&workspace, first.publication_revision, &first.digest)
+            .unwrap();
+        let cold = store.active_publication(&workspace).unwrap().unwrap();
+        for _ in 0..20 {
+            let warm = store.active_publication(&workspace).unwrap().unwrap();
+            assert!(std::sync::Arc::ptr_eq(&cold.bytes, &warm.bytes));
+            assert_eq!(warm, first);
+        }
+        for sql in [
+            "UPDATE gateway_publications SET publication_revision=99 WHERE state='active'",
+            "UPDATE gateway_publications SET digest='sha256:0000000000000000000000000000000000000000000000000000000000000000' WHERE state='active'",
+        ] {
+            store.connection.borrow().execute_batch("BEGIN").unwrap();
+            store.connection.borrow().execute_batch(sql).unwrap();
+            assert_eq!(
+                store.active_publication(&workspace).unwrap_err().code,
+                PortErrorCode::Corrupt
+            );
+            store.connection.borrow().execute_batch("ROLLBACK").unwrap();
+            assert_eq!(
+                store.active_publication(&workspace).unwrap(),
+                Some(first.clone())
+            );
+        }
+        let external = rusqlite::Connection::open(directory.path().join("control.db")).unwrap();
+        let mut wrong = first.bytes.as_ref().clone();
+        wrong.push(b' ');
+        external.execute_batch("BEGIN").unwrap();
+        external
+            .execute(
+                "UPDATE gateway_publications SET publication_bytes=?1 WHERE state='active'",
+                [&wrong],
+            )
+            .unwrap();
+        assert_eq!(
+            store.active_publication(&workspace).unwrap(),
+            Some(first.clone())
+        );
+        external.execute_batch("COMMIT").unwrap();
+        assert_eq!(
+            store.active_publication(&workspace).unwrap_err().code,
+            PortErrorCode::Corrupt
+        );
+        external
+            .execute(
+                "UPDATE gateway_publications SET publication_bytes=?1 WHERE state='active'",
+                [first.bytes.as_slice()],
+            )
+            .unwrap();
+        assert_eq!(
+            store.active_publication(&workspace).unwrap(),
+            Some(first.clone())
+        );
+        let second = record(&workspace, 2);
+        store
+            .prepare_publication(&second, Some(first.publication_revision))
+            .unwrap();
+        store
+            .mark_publication_active(&workspace, second.publication_revision, &second.digest)
+            .unwrap();
+        assert_eq!(
+            store.active_publication(&workspace).unwrap(),
+            Some(second.clone())
+        );
+        assert_eq!(
+            store.last_known_good_publication(&workspace).unwrap(),
+            Some(first)
+        );
+        external
+            .execute("DELETE FROM gateway_publications WHERE state='active'", [])
+            .unwrap();
+        assert!(store.active_publication(&workspace).unwrap().is_none());
+    }
 }
