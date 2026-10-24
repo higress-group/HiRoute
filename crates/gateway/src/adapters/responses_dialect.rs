@@ -99,9 +99,6 @@ pub(super) fn project_request(
                     // Consume the negotiated extension; ordinary standard replay stays ordinary.
                     call.remove("encrypted_function_args");
                 }
-                Some("reasoning") if item.get("encrypted_content").is_some() => {
-                    return Err(ModelIrError::ProviderStateNotPortable.into());
-                }
                 _ => {}
             }
         }
