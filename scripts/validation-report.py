@@ -22,7 +22,7 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 def preserve_evidence(run, record):
     """Export private run evidence before deleting a disposable build or TMPDIR.
 
-    Compiler profiles and smoke build caches are reproducible. Other target
+    Compiler profiles and executable snapshots are reproducible. Other target
     artifacts and surviving test scratch may contain unique failure evidence.
     Unknown links/special files or failed copies retain the original resource.
     """
@@ -35,6 +35,8 @@ def preserve_evidence(run, record):
     destination.mkdir(exist_ok=True, mode=0o700)
     profiles = {"debug", "release", "doc", "package"}
     targets = set()
+    if record.get("cargo_build_target"):
+        targets.add(Path(record["cargo_build_target"]).stem)
     args = record.get("command", [])
     args = args[:args.index("--")] if "--" in args else args
     for index, arg in enumerate(args):
@@ -53,15 +55,25 @@ def preserve_evidence(run, record):
         info = source.lstat()
         parts = relative.parts
         # Cargo profiles can also be under target/<target-triple>/PROFILE.
-        if target_tree and stat.S_ISDIR(info.st_mode) and (((len(parts) == 2 or len(parts) == 3 and
-                              (parts[1] in targets or re.fullmatch(r"\w+(?:-[\w.]+){2,}", parts[1])))
-                             and source.name in profiles)
-                            or parts == ("target", "smoke", "builds")):
-            excluded.append(relative.as_posix())
-            return
+        if target_tree and stat.S_ISDIR(info.st_mode):
+            profile = source.name in profiles and (len(parts) == 2 or len(parts) == 3 and (
+                parts[1] in targets or re.fullmatch(r"\w+(?:-[\w.]+){2,}|wasm\d+-[\w.-]+", parts[1])
+                or (source / ".cargo-lock").is_file()))
+            if profile or parts == ("target", "validation-schedule"):
+                excluded.append(relative.as_posix())
+                return
         if stat.S_ISLNK(info.st_mode) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
             raise ValueError("Evidence contains a link or special file: " + relative.as_posix())
-        output = destination / relative
+        # Smoke preparation binds these small receipts by path/hash. Keep the
+        # complete recipe, but not the adjacent executable snapshots.
+        if (target_tree and parts[:3] == ("target", "smoke", "builds") and len(parts) > 3
+                and not (len(parts) in (4, 5) and stat.S_ISDIR(info.st_mode)
+                         or len(parts) == 6 and parts[-1] == "receipt.json")):
+            excluded.append(relative.as_posix())
+            return
+        # Keep local/Pilot's existing target-artifact consumer paths. Runtime
+        # and checkout artifacts have a separate namespace to prevent collisions.
+        output = run / "artifacts" / Path(*parts[1:]) if parts[0] == "target" else destination / relative
         if output.is_symlink():
             raise ValueError("Evidence destination contains a link")
         if stat.S_ISDIR(info.st_mode):
@@ -95,7 +107,8 @@ def preserve_evidence(run, record):
                     os.replace(temporary, output)
             finally:
                 temporary.unlink(missing_ok=True)
-        files[relative.as_posix()] = dict(bytes=info.st_size, sha256=digest.hexdigest())
+        files[relative.as_posix()] = dict(path=output.relative_to(run).as_posix(),
+                                         bytes=info.st_size, sha256=digest.hexdigest())
 
     checkout = Path(record["checkout"]) if record.get("checkout") else None
     if checkout is not None and checkout.exists():

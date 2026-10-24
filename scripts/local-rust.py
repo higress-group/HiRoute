@@ -129,20 +129,20 @@ class Store:
         if row["kind"] == "managed":
             if checkout.parent != self.root / "checkouts" or checkout.name != row["id"]:
                 raise ValueError("Not a managed checkout")
-            if git(checkout, "status", "--porcelain", "--untracked-files=all"):
-                raise ValueError("Source changes/untracked files retained")
-            ignored = git(checkout, "ls-files", "--others", "--ignored", "--exclude-standard")
-            allowed = ("target/", "artifacts/", "apps/desktop/node_modules/",
-                       "apps/desktop/dist/", "apps/desktop/src-tauri/gen/") if "retention" in row else ("target/",)
-            if any(not p.startswith(allowed) and not ("retention" in row and "__pycache__" in Path(p).parts)
-                   for p in ignored.splitlines()):
-                raise ValueError("Ignored files outside target retained")
+            if "retention" in row:
+                remote.verify_disposable_source(checkout)
+            else:
+                if git(checkout, "status", "--porcelain", "--untracked-files=all"):
+                    raise ValueError("Source changes/untracked files retained")
+                ignored = git(checkout, "ls-files", "--others", "--ignored", "--exclude-standard")
+                if any(not p.startswith("target/") for p in ignored.splitlines()):
+                    raise ValueError("Ignored files outside target retained")
         target = checkout / "target"
-        # Lock admission can fail before Cargo creates a target. Only a managed,
-        # never-started run without recorded target identities may use this path.
+        # Some commands never create a target, including failed package selection
+        # and cargo fmt. New managed records attest that absence at completion.
         # A later-created target (including a dangling link) still fails closed.
-        if (row["kind"] == "managed" and row.get("process_exit") is None
-                and not row.get("command_started_at")
+        if (row["kind"] == "managed" and ("retention" in row or
+                row.get("process_exit") is None and not row.get("command_started_at"))
                 and "target_identity" not in row and "debug_identity" not in row
                 and not os.path.lexists(target)):
             if git(checkout, "ls-files", "target"):
@@ -205,8 +205,8 @@ class Store:
             if token != current:
                 raise ValueError("Candidate changed; preview again")
             if row["kind"] == "managed":
-                # Preserve all non-debug target artifacts before removing this disposable tree.
-                if os.path.lexists(checkout / "target"):
+                # New records export runtime evidence even without a target tree.
+                if "retention" in row or os.path.lexists(checkout / "target"):
                     self.export_target(row)
                 remote.command(["git", "-C", row["repo"], "worktree", "remove", "--force", str(checkout)])
             else:
@@ -220,7 +220,7 @@ class Store:
             return {"id": key, "state": "removed", "bytes": size}
 
     def export_target(self, row):
-        if row.get("retention") == "never":
+        if "retention" in row:
             row["evidence_export"] = remote.reporting().preserve_evidence(self.record_path(row["id"]).parent, row)
             return
         target = Path(row["checkout"]) / "target"
@@ -308,6 +308,7 @@ def run(store, args, prepare=None, on_record=None):
                retention="always" if args.keep else "never",
                process_exit=None, scenario="unassessed", candidate_source=source,
                build_jobs=jobs, wait_for_lock=getattr(args, "wait_for_lock", False),
+               cargo_build_target=os.environ.get("CARGO_BUILD_TARGET"),
                platform=sys.platform, architecture=platform.machine(),
                submitted_at=time.time(), **feedback)
     row["executor_sha256"] = {

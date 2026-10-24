@@ -222,7 +222,12 @@ failure, timeout or preparation block. Before reclamation, they MUST save the ex
 source/command, actual process exit, tests/scenario verdict, logs and required
 private artifact/runtime evidence outside the disposable checkout. Default cleanup
 MUST NOT copy rebuildable compiler profiles or smoke build caches wholesale into
-the evidence store. Evidence export and deletion MUST remain protected by ownership
+the evidence store. Selected smoke build receipts MUST preserve complete build
+recipes, while scheduler executable snapshots remain disposable. New explicitly
+retained runs MUST use the same evidence export when their owner releases them.
+Commands that never create a target directory MUST still reclaim their resources
+when no recorded target identity or unknown material prevents cleanup.
+Evidence export and deletion MUST remain protected by ownership
 and execution leases; an export failure, active use, changed identity or unknown
 material MUST preserve the affected original resources with an actionable reason.
 Cleanup MUST NOT turn an unassessed/failed run into successful product acceptance.

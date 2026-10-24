@@ -196,24 +196,30 @@ required for normal incremental development.
 
 | Policy | Completed run | Failed or blocked run | Appropriate use |
 | --- | --- | --- | --- |
-| `on-failure` | Automatically removes checkout, private target, private TMPDIR and validation ref after evidence is written | Retains them for diagnosis | Normal focused development |
+| `on-failure` | Automatically removes checkout, private target, private TMPDIR and validation ref after evidence is written | Retains them for diagnosis | Explicit failure diagnosis |
 | `always` | Retains them | Retains them | E2E artifacts, benchmark investigation or an intentional inspection checkpoint |
 | `never` (default) | Automatically removes them | Automatically removes them | Ordinary builds and tests |
 
 Run logs, result JSON, cache statistics and worker diagnostics are retained in the
 run record. Before automatic cleanup, the worker holds its checkout lease while
-exporting non-compiler target artifacts, checkout `artifacts/` and surviving private
-TMPDIR contents to `runs/ID/evidence/`, with source revision and file hashes in
-`evidence.json`. Cargo debug/release/custom profiles, cross-target profiles,
-generated documentation, package outputs and `target/smoke/builds` remain
-rebuildable cache and are not copied. Put unique evidence outside compiler profiles;
+exporting non-compiler target artifacts to `runs/ID/artifacts/`, and checkout
+`artifacts/` and surviving private TMPDIR contents to `runs/ID/evidence/`. The
+`evidence.json` manifest records the source revision, saved paths and file hashes.
+Smoke build receipts preserve complete recipes; adjacent binaries and scheduler
+executable snapshots remain rebuildable cache and are not copied. Cargo
+debug/release/custom profiles, cross-target profiles, generated documentation and
+package outputs are also excluded. Inherited Cargo targets are recorded and Cargo
+profile locks identify configured custom-target profiles. Put unique evidence outside compiler profiles;
 select explicit retention for binaries or arbitrary compiler-profile files needed
 later. Report/export failure retains the originals and records the cleanup reason;
 cleanup does not change the command's exit or scenario verdict.
 Automatic cleanup first verifies a terminal result, the recorded worker lifecycle, the
-direct managed-worktree path and Git registration. If a generated test checkout has
-untracked artifacts such as Python `__pycache__`, the runner may use Git's force
-removal **only after** those ownership checks. It never force-removes an arbitrary
+direct managed-worktree path and Git registration. New records also reject modified
+source and unknown untracked/ignored files, preserving the checkout and TMPDIR until
+the owner saves or removes that material. Explicit cleanup re-exports evidence under
+the checkout lease. Known generated roots such as target, exported artifacts and
+Python `__pycache__` may use Git's force removal **only after** those checks.
+It never force-removes an arbitrary
 path, an active run, a shared cache or a user checkout.
 
 Inspect and explicitly reclaim one completed run when its retained artifacts are no

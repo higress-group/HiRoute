@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Cleanup safety tests: real temporary Git worktrees, no Rust compilation."""
 import importlib.util
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -30,7 +32,7 @@ class Cleanup(unittest.TestCase):
         m.git(self.repo, "config", "user.name", "Fixture")
         m.git(self.repo, "config", "user.email", "fixture@example.invalid")
         (self.repo / "source").write_text("preserve source")
-        (self.repo / ".gitignore").write_text("target/\n")
+        (self.repo / ".gitignore").write_text("target/\nartifacts/\n")
         m.git(self.repo, "add", ".")
         m.git(self.repo, "commit", "-qm", "fixture")
         self.store = m.Store(self.base / "state", self.base / "global.lock")
@@ -526,7 +528,7 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
                              os.pathsep.join([str(loaded), str(fallback)]))
 
     def run_fixture(self, exit_code=0, cargo_only=True, delay=0, source="origin", jobs=2, command=None,
-                    keep=False, profile='debug', cache_error=None):
+                    keep=False, profile='debug', cache_error=None, no_target=False):
         # Real git origin/worktree and subprocess lifecycle; fake compiler means NO Rust proof.
         m.git(self.repo, 'remote', 'add', 'origin', str(self.base / 'unpublished') if source == 'local' else str(self.repo))
         branch = m.git(self.repo, 'symbolic-ref', 'HEAD')
@@ -541,10 +543,13 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
                          'elif sys.argv[1]=="--version":\n'
                          ' print("cargo fixture")\n'
                          'else:\n'
+                         + ('' if no_target else
                          ' (p/' + repr(profile) + ').mkdir(parents=True)\n'
                          ' (p/' + repr(profile) + '/"binary").write_text("rebuildable fixture")\n'
                          ' (p/"e2e").mkdir()\n'
-                         ' (p/"e2e/result.json").write_text(\'{"observed":"fixture"}\')\n'
+                         ' (p/"e2e/result.json").write_text(\'{"observed":"fixture"}\')\n') +
+                         ' (pathlib.Path.cwd()/"artifacts").mkdir()\n'
+                         ' (pathlib.Path.cwd()/"artifacts/unique.json").write_text("checkout evidence")\n'
                          ' (pathlib.Path(os.environ["TMPDIR"])/"diagnostic.log").write_text("private runtime evidence")\n'
                          ' import time; time.sleep(' + str(delay) + ')\n'
                          ' print("Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)")\n'
@@ -623,9 +628,9 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
         self.assertFalse(Path(result['checkout']).exists())
         self.assertFalse(Path(result['temporary_directory']['path']).exists())
         run = self.store.record_path(result['id']).parent
-        self.assertEqual((run / 'evidence/target/e2e/result.json').read_text(), '{"observed":"fixture"}')
+        self.assertEqual((run / 'artifacts/e2e/result.json').read_text(), '{"observed":"fixture"}')
         self.assertEqual((run / 'evidence/temporary/diagnostic.log').read_text(), 'private runtime evidence')
-        self.assertFalse((run / 'evidence/target/debug').exists())
+        self.assertFalse((run / 'artifacts/debug').exists())
         self.assertEqual(json.loads((run / 'validation-report.json').read_text())['process_exit'], 4)
         self.assertEqual(result['evidence_export']['state'], 'saved')
 
@@ -652,6 +657,55 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
         self.assertEqual((result['scenario'], result['process_exit']), ('red', 101))
         self.assertTrue(Path(result['checkout']).exists())
         self.assertTrue(Path(result['temporary_directory']['path']).exists())
+
+    def test_kept_release_run_exports_all_evidence_when_the_owner_finishes_and_releases(self):
+        result = self.run_fixture(exit_code=101, keep=True, profile='release',
+                                  command=['cargo', 'test', '--release'])
+        for arguments in (['finish', result['id'], '--verdict', 'expected_red', '--evidence-saved'],
+                          ['release', result['id']]):
+            with patch.object(m.sys, 'argv', ['local-rust.py', *arguments]), \
+                 patch.object(m, 'Store', return_value=self.store), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main(), 0)
+        row = self.store.load(result['id'])
+        candidate = self.store.preview_one(row)
+        self.assertEqual(candidate['state'], 'candidate', candidate)
+        self.store.apply(row['id'], candidate['token'])
+        saved = self.store.load(row['id'])
+        run = self.store.record_path(row['id']).parent
+        self.assertEqual((saved['scenario'], saved['process_exit']), ('expected_red', 101))
+        self.assertFalse(Path(row['checkout']).exists())
+        self.assertFalse(Path(row['temporary_directory']['path']).exists())
+        self.assertEqual(saved.get('evidence_export', {}).get('state'), 'saved')
+        self.assertTrue((run / 'evidence.json').is_file())
+        self.assertEqual((run / 'artifacts/e2e/result.json').read_text(), '{"observed":"fixture"}')
+        self.assertEqual((run / 'evidence/artifacts/unique.json').read_text(), 'checkout evidence')
+        self.assertEqual((run / 'evidence/temporary/diagnostic.log').read_text(), 'private runtime evidence')
+        self.assertFalse((run / 'artifacts/release').exists())
+
+    def assert_targetless_cleanup(self, command, exit_code):
+        result = self.run_fixture(command=command, exit_code=exit_code, no_target=True)
+        self.assertEqual(result['process_exit'], exit_code)
+        self.assertIn('command_started_at', result)
+        self.assertTrue(result.get('removed', False), result.get('cleanup'))
+        self.assertFalse(Path(result['checkout']).exists())
+        self.assertFalse(Path(result['temporary_directory']['path']).exists())
+        run = self.store.record_path(result['id']).parent
+        self.assertEqual((run / 'evidence/temporary/diagnostic.log').read_text(), 'private runtime evidence')
+
+    def test_targetless_format_check_is_reclaimed(self):
+        self.assert_targetless_cleanup(['cargo', 'fmt', '--check'], 0)
+
+    def test_targetless_package_selection_failure_is_reclaimed(self):
+        self.assert_targetless_cleanup(['cargo', 'test', '-p', 'no-such-package'], 101)
+
+    def test_inherited_wasi_target_is_recorded_and_compiler_output_is_reclaimed(self):
+        with patch.dict(os.environ, CARGO_BUILD_TARGET='wasm32-wasip1'):
+            result = self.run_fixture(profile='wasm32-wasip1/debug', command=['cargo', 'check'])
+        self.assertEqual(result.get('cargo_build_target'), 'wasm32-wasip1')
+        self.assertTrue(result.get('removed', False))
+        run = self.store.record_path(result['id']).parent
+        self.assertFalse((run / 'artifacts/wasm32-wasip1/debug').exists())
+        self.assertTrue((run / 'artifacts/e2e/result.json').is_file())
 
     def test_report_and_cleanup_finish_before_releasing_the_original_compiler_lease(self):
         reporter = m.remote.reporting()
@@ -693,9 +747,9 @@ print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
         self.assertEqual(result['process_exit'], 0)
         self.assertTrue(result.get('removed', False))
         self.assertFalse(Path(result['checkout']).exists())
-        evidence = self.store.record_path(result['id']).parent / 'evidence'
-        self.assertFalse((evidence / 'target/release').exists())
-        self.assertTrue((evidence / 'target/e2e/result.json').is_file())
+        artifacts = self.store.record_path(result['id']).parent / 'artifacts'
+        self.assertFalse((artifacts / 'release').exists())
+        self.assertTrue((artifacts / 'e2e/result.json').is_file())
 
     def test_short_canonical_temporary_directory(self):
         info = m.private_temp()

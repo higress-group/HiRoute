@@ -457,6 +457,24 @@ def cleanup_temp_directory(info):
         return {"state": "retained", "path": str(directory), "error": str(error)}
 
 
+def verify_disposable_source(checkout):
+    """Keep unknown source/material; only registered generated roots are disposable."""
+    allowed = ("target/", "artifacts/", "apps/desktop/node_modules/",
+               "apps/desktop/dist/", "apps/desktop/src-tauri/gen/")
+
+    def generated(path):
+        return path.startswith(allowed) or "__pycache__" in Path(path).parts
+
+    changes = subprocess.check_output(
+        ["git", "-C", str(checkout), "status", "--porcelain", "-z", "--untracked-files=all"], text=True)
+    if any(entry and (entry[:2] != "??" or not generated(entry[3:])) for entry in changes.split("\0")):
+        raise ValueError("Source changes/untracked files retained; save or remove them before cleanup")
+    ignored = subprocess.check_output(
+        ["git", "-C", str(checkout), "ls-files", "--others", "--ignored", "--exclude-standard", "-z"], text=True)
+    if any(path and not generated(path) for path in ignored.split("\0")):
+        raise ValueError("Unknown ignored files retained; save or remove them before cleanup")
+
+
 def cleanup_checkout(root, result):
     """Remove one terminal, generated checkout without ever accepting an arbitrary path."""
     checkout_text = result.get("checkout")
@@ -482,9 +500,10 @@ def cleanup_checkout(root, result):
             raise RuntimeError("checkout is not this run's managed direct child")
         if resolved not in worktree_paths(repo):
             raise RuntimeError("checkout is not registered by the managed bare repository")
-        if result.get("evidence_export", {}).get("state") == "failed":
+        if "evidence_export" in result:
             try:
-                # Explicit cleanup can retry a failed export after its cause is fixed.
+                verify_disposable_source(resolved)
+                # Re-export under the lease, including later evidence from retained runs.
                 # A retained owner may have advanced; bind exported bytes to its actual source.
                 revision = command(["git", "-C", str(resolved), "rev-parse", "HEAD"])
                 result["evidence_export"] = reporting().preserve_evidence(
@@ -755,6 +774,7 @@ def worker(request_path):
             check_target(checkout, metadata["target_directory"])
             result["rustc"] = command(["rustc", "--version"], checkout)
             result["cargo"] = command(["cargo", "--version"], checkout)
+            result["cargo_build_target"] = os.environ.get("CARGO_BUILD_TARGET")
             result["build_jobs"] = int(os.environ["CARGO_BUILD_JOBS"])
             save(result_path, result)
             with (run / "command.log").open("w") as output:

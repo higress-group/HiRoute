@@ -75,11 +75,14 @@ Every ordinary run defaults to immediate reclamation after execution, including
 failed commands, timeouts, interrupted waits and preparation blocks. The runner
 keeps its acquired compiler/checkout leases through report publication, evidence
 export and cleanup. It saves results, logs and cache diagnostics in the run record,
-exports non-compiler target artifacts, checkout `artifacts/` and surviving private
-TMPDIR contents to `runs/ID/evidence/`, and writes file hashes in `evidence.json`.
+exports non-compiler target artifacts to `runs/ID/artifacts/`, preserving Pilot's
+existing consumer paths. Checkout `artifacts/` and surviving private TMPDIR contents
+go to `runs/ID/evidence/`. The `evidence.json` manifest records each saved path and
+file hash, including smoke build receipts with complete recipes.
 Debug/release/custom Cargo profiles, cross-target profiles, generated documentation,
-package outputs and `target/smoke/builds` are rebuildable and are not copied into
-that evidence directory. Keep unique evidence outside compiler profiles; use
+package outputs, smoke binaries and `target/validation-schedule` executable snapshots
+are rebuildable and are not copied. Inherited Cargo targets are recorded; Cargo's
+profile lock also identifies configured custom-target profiles. Keep unique evidence outside compiler profiles; use
 `--keep` when arbitrary debug files or built binaries are still needed.
 
 `--cargo-only` asserts a pure Cargo/component check with no separate product
@@ -99,6 +102,11 @@ python3 scripts/local-rust.py release RUN_ID
 python3 scripts/local-rust.py preview
 python3 scripts/local-rust.py apply RUN_ID --token TOKEN_FROM_PREVIEW
 ```
+
+Final cleanup of new explicitly kept runs uses the same evidence exporter before
+removing the checkout and TMPDIR. Unknown source/untracked/ignored material or an
+export failure retains the originals with a reason; save or remove the material
+and retry cleanup. Existing records keep their earlier evidence-confirmation rules.
 
 Use `red` or `expected_red` honestly; neither proves product completion. `finish`
 records assessment but does not itself delete anything. Failed report/export,

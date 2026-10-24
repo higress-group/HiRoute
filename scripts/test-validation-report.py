@@ -224,9 +224,11 @@ class Storage(unittest.TestCase):
             expected = {'target/e2e/result.json': 'actual failure',
                         'target/smoke/run-a/private/diagnostic.log': 'private evidence',
                         'target/e2e/debug/details.json': 'nested evidence, not a Cargo profile',
-                        'artifacts/screenshot.png': 'captured pixels'}
+                        'artifacts/screenshot.png': 'captured pixels',
+                        'target/smoke/builds/' + 'a' * 64 + '/hiroute-cli/receipt.json': '{"recipe":"selected"}'}
             skipped = ('target/debug', 'target/release', 'target/custom',
-                       'target/x86_64-pc-windows-msvc/debug', 'target/wasm32-wasip1/debug', 'target/smoke/builds')
+                       'target/x86_64-pc-windows-msvc/debug', 'target/wasm32-wasip1/debug',
+                       'target/validation-schedule', 'target/smoke/builds/' + 'a' * 64 + '/hiroute-cli/binary')
             for name, value in expected.items():
                 path = checkout / name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -245,13 +247,36 @@ class Storage(unittest.TestCase):
             self.assertEqual(manifest['source_revision'], record['sha'])
             self.assertEqual(set(manifest['files']), set(expected))
             for name, value in expected.items():
-                self.assertEqual((run / 'evidence' / name).read_text(), value)
+                self.assertEqual((run / manifest['files'][name]['path']).read_text(), value)
             for name in skipped:
-                self.assertFalse((run / 'evidence' / name).exists())
+                self.assertFalse((run / 'artifacts' / Path(name).relative_to('target')).exists())
             (checkout / 'target/e2e/result.json').write_text('changed evidence')
             with self.assertRaisesRegex(ValueError, 'Previously exported evidence differs'):
                 report.preserve_evidence(run, record)
-            self.assertEqual((run / 'evidence/target/e2e/result.json').read_text(), 'actual failure')
+            self.assertEqual((run / 'artifacts/e2e/result.json').read_text(), 'actual failure')
+
+    def test_inherited_and_configured_cargo_targets_do_not_export_compiler_profiles(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            checkout, run = root / 'checkout', root / 'run'
+            run.mkdir()
+            for target in ('wasm32-wasip1', 'private_json_target'):
+                profile = checkout / 'target' / target / 'debug'
+                profile.mkdir(parents=True)
+                (profile / 'binary').write_bytes(b'rebuildable compiler output')
+                if target == 'private_json_target':
+                    (profile / '.cargo-lock').touch()
+            nested = checkout / 'target/e2e/debug/details.json'
+            nested.parent.mkdir(parents=True)
+            nested.write_text('unique runtime evidence')
+            record = dict(checkout=str(checkout), command=['cargo', 'check'],
+                          cargo_build_target='wasm32-wasip1')
+            report.preserve_evidence(run, record)
+            manifest = json.loads((run / 'evidence.json').read_text())
+            self.assertEqual(set(manifest['files']), {'target/e2e/debug/details.json'})
+            self.assertEqual((run / 'artifacts/e2e/debug/details.json').read_text(), 'unique runtime evidence')
+            self.assertFalse((run / 'artifacts/wasm32-wasip1/debug').exists())
+            self.assertFalse((run / 'artifacts/private_json_target/debug').exists())
 
     def test_evidence_export_refuses_links_and_missing_reports_before_any_resource_deletion(self):
         with tempfile.TemporaryDirectory() as folder:

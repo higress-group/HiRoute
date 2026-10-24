@@ -69,12 +69,15 @@ class Contract(unittest.TestCase):
         # Real worktrees, checkout leases and command processes; no Rust compilation.
         for mode, retention in (('success', 'never'), ('failure', 'never'), ('blocked', 'never'),
                                 ('timeout', 'never'), ('export-failure', 'never'),
+                                ('unknown-untracked', 'never'), ('unknown-modified', 'never'),
+                                ('unknown-ignored', 'never'), ('unknown-ignored-space', 'never'),
                                 ('success', 'always'), ('failure', 'on-failure')):
             with self.subTest(mode=mode, retention=retention), tempfile.TemporaryDirectory(dir='/tmp') as directory:
                 base = Path(directory).resolve()
                 source, root, home = base / 'source', base / 'workbench', base / 'home'
                 subprocess.run(['git', 'init', '-q', str(source)], check=True)
-                (source / '.gitignore').write_text('target/\n')
+                (source / '.gitignore').write_text('target/\n*.private\n')
+                (source / 'source.txt').write_text('tracked source')
                 git = ['git', '-C', str(source)]
                 subprocess.run([*git, 'add', '.'], check=True)
                 subprocess.run([*git, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -96,9 +99,14 @@ for profile in ('debug','release','x86_64-pc-windows-msvc/debug','smoke/builds')
 (p/'e2e/report.json').write_text('{"observed":"fixture"}')
 if MODE=='export-failure':
  (p/'e2e/link').symlink_to(pathlib.Path.cwd()/'.gitignore')
+if MODE.startswith('unknown-'):
+ name={'unknown-untracked':'unknown-diagnostic.txt','unknown-modified':'source.txt','unknown-ignored':'unknown.private',
+       'unknown-ignored-space':' target/unique.private'}[MODE]
+ (pathlib.Path.cwd()/name).parent.mkdir(parents=True,exist_ok=True)
+ (pathlib.Path.cwd()/name).write_text('unique material')
 (pathlib.Path(os.environ['TMPDIR'])/'diagnostic.log').write_text('private runtime evidence')
 time.sleep(30 if MODE=='timeout' else 0)
-bad=MODE in ('failure','export-failure')
+bad=MODE in ('failure','export-failure') or MODE.startswith('unknown-')
 print('Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)')
 print('running 1 test')
 print('test component ... '+('FAILED' if bad else 'ok'))
@@ -126,9 +134,23 @@ sys.exit(101 if bad else 0)
                     runner.worker(run / 'request.json')
                 result = json.loads((run / 'result.json').read_text())
                 self.assertEqual(result['status'], {'success': 'completed', 'failure': 'failed',
-                                 'timeout': 'failed', 'blocked': 'blocked', 'export-failure': 'failed'}[mode], result.get('error'))
+                                 'timeout': 'failed', 'blocked': 'blocked', 'export-failure': 'failed',
+                                 'unknown-untracked': 'failed', 'unknown-modified': 'failed', 'unknown-ignored': 'failed',
+                                 'unknown-ignored-space': 'failed'}[mode], result.get('error'))
                 self.assertEqual(result['process_exit'], {'success': 0, 'failure': 101,
-                                 'timeout': -9, 'blocked': None, 'export-failure': 101}[mode])
+                                 'timeout': -9, 'blocked': None, 'export-failure': 101,
+                                 'unknown-untracked': 101, 'unknown-modified': 101, 'unknown-ignored': 101,
+                                 'unknown-ignored-space': 101}[mode])
+                if mode.startswith('unknown-'):
+                    name = {'unknown-untracked': 'unknown-diagnostic.txt', 'unknown-modified': 'source.txt',
+                            'unknown-ignored': 'unknown.private', 'unknown-ignored-space': ' target/unique.private'}[mode]
+                    self.assertTrue(Path(result['checkout']).is_dir(), result.get('cleanup'))
+                    self.assertEqual((Path(result['checkout']) / name).read_text(), 'unique material')
+                    self.assertEqual(result['cleanup']['checkout']['state'], 'retained')
+                    self.assertIn('retained', result['cleanup']['checkout']['error'])
+                    self.assertTrue(Path(result['temporary_directory']['path']).is_dir())
+                    self.assertEqual(result['cleanup']['validation_ref']['state'], 'retained')
+                    continue
                 if mode == 'export-failure':
                     self.assertEqual(result['evidence_export']['state'], 'failed')
                     self.assertIn('link', result['evidence_export']['error'])
@@ -143,10 +165,10 @@ sys.exit(101 if bad else 0)
                     saved = json.loads((run / 'result.json').read_text())
                     self.assertEqual((saved['status'], saved['process_exit']), ('failed', 101))
                     self.assertEqual(saved['evidence_export']['state'], 'saved')
-                    self.assertEqual((run / 'evidence/target/e2e/report.json').read_text(), '{"observed":"fixture"}')
+                    self.assertEqual((run / 'artifacts/e2e/report.json').read_text(), '{"observed":"fixture"}')
                     continue
                 if mode != 'blocked':
-                    self.assertTrue((run / 'evidence/target/e2e/report.json').is_file())
+                    self.assertTrue((run / 'artifacts/e2e/report.json').is_file())
                 self.assertEqual(result['evidence_export']['state'], 'saved')
                 self.assertEqual(Path(result['checkout']).exists(), retention != 'never')
                 self.assertTrue((run / 'validation-report.json').is_file())
@@ -158,10 +180,10 @@ sys.exit(101 if bad else 0)
                     self.assertNotIn('--reuse-checkout', recovery)
                 else:
                     self.assertEqual(Path(result['temporary_directory']['path']).exists(), retention != 'never')
-                    self.assertEqual((run / 'evidence/target/e2e/report.json').read_text(), '{"observed":"fixture"}')
+                    self.assertEqual((run / 'artifacts/e2e/report.json').read_text(), '{"observed":"fixture"}')
                     self.assertEqual((run / 'evidence/temporary/diagnostic.log').read_text(), 'private runtime evidence')
-                    for path in ('debug', 'release', 'x86_64-pc-windows-msvc/debug', 'smoke/builds'):
-                        self.assertFalse((run / 'evidence/target' / path).exists())
+                    for path in ('debug', 'release', 'x86_64-pc-windows-msvc/debug', 'smoke/builds/binary'):
+                        self.assertFalse((run / 'artifacts' / path).exists())
                 if retention == 'never':
                     self.assertEqual(result['cleanup']['checkout']['state'], 'removed')
                     self.assertNotIn(key, subprocess.check_output(
