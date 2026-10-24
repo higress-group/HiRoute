@@ -847,7 +847,8 @@ def require_dag_report(result):
 BOOTSTRAP = '''import hashlib,json,os,pathlib,re,subprocess,sys,uuid
 os.umask(0o077)
 p=json.load(sys.stdin)
-relative=p.pop("workbench",".local/share/hiroute-rust")
+relative=p.get("workbench",".local/share/hiroute-rust")
+p["workbench"]=relative
 parts=relative.split("/")
 if not re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*",relative) or any(part in (".","..") for part in parts): raise RuntimeError("invalid workbench path")
 r=pathlib.Path.home()/relative

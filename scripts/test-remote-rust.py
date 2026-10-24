@@ -125,7 +125,9 @@ class Contract(unittest.TestCase):
                  patch('os.umask'), patch('subprocess.Popen'):
                 exec(runner.BOOTSTRAP, {})
             run = Path(directory) / payload['workbench'] / 'runs/run-1'
-            self.assertEqual(json.loads((run / 'request.json').read_text())['frontend_dist'], '~/remote-only/dist')
+            saved = json.loads((run / 'request.json').read_text())
+            self.assertEqual(saved['frontend_dist'], '~/remote-only/dist')
+            self.assertEqual(saved['workbench'], payload['workbench'])
             self.assertFalse((run / 'console-assets.json').exists())
             self.assertFalse((Path(directory) / runner.ROOT / 'runs').exists())
 
