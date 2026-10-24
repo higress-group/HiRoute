@@ -20,7 +20,7 @@ fn persist(control: &ControlStore, operation: &mut OperationV1) {
         .unwrap();
     let authorization = control
         .verify_apply_authorization(
-            &ProtectedApplyCapability::new(token.to_owned()).unwrap(),
+            &ProtectedApplyCapability::new(token).unwrap(),
             &operation.workspace_id,
             &operation.idempotency.principal,
             &operation.idempotency.operation_kind,
@@ -301,7 +301,7 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
         .unwrap();
     let authorization = control
         .verify_apply_authorization(
-            &ProtectedApplyCapability::new(token).unwrap(),
+            &ProtectedApplyCapability::new(token.to_owned()).unwrap(),
             &pending.workspace_id,
             &pending.idempotency.principal,
             &pending.idempotency.operation_kind,
