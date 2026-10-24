@@ -183,7 +183,8 @@ needs the appropriate platform.
 
 For local macOS/platform checks, use the separate [local runner and cleanup
 commands](local-rust-validation.md). They preserve the same default-target boundary;
-the HOME configuration selects the execution location and this workbench's retention is unchanged.
+the HOME configuration selects the execution location. Both runners reclaim ordinary
+terminal runs after saving evidence; explicit retention supports subsequent use.
 
 Every run has an isolated default `target/`; it is deliberately never shared with a
 different checkout. sccache reuses compiler objects safely, but Cargo must still write
@@ -191,15 +192,24 @@ link outputs, test binaries, fingerprints and build-script products into that ru
 own target. Keeping every successful target therefore consumes disk without being
 required for normal incremental development.
 
-`run` defaults to `--retention on-failure`:
+`run` defaults to `--retention never`:
 
 | Policy | Completed run | Failed or blocked run | Appropriate use |
 | --- | --- | --- | --- |
-| `on-failure` (default) | Automatically removes checkout, private target, private TMPDIR and validation ref after evidence is written | Retains them for diagnosis | Normal focused development |
+| `on-failure` | Automatically removes checkout, private target, private TMPDIR and validation ref after evidence is written | Retains them for diagnosis | Normal focused development |
 | `always` | Retains them | Retains them | E2E artifacts, benchmark investigation or an intentional inspection checkpoint |
-| `never` | Automatically removes them | Automatically removes them | Fully disposable repeatable checks |
+| `never` (default) | Automatically removes them | Automatically removes them | Ordinary builds and tests |
 
-Run logs, result JSON, cache statistics and worker diagnostics are always retained.
+Run logs, result JSON, cache statistics and worker diagnostics are retained in the
+run record. Before automatic cleanup, the worker holds its checkout lease while
+exporting non-compiler target artifacts, checkout `artifacts/` and surviving private
+TMPDIR contents to `runs/ID/evidence/`, with source revision and file hashes in
+`evidence.json`. Cargo debug/release/custom profiles, cross-target profiles,
+generated documentation, package outputs and `target/smoke/builds` remain
+rebuildable cache and are not copied. Put unique evidence outside compiler profiles;
+select explicit retention for binaries or arbitrary compiler-profile files needed
+later. Report/export failure retains the originals and records the cleanup reason;
+cleanup does not change the command's exit or scenario verdict.
 Automatic cleanup first verifies a terminal result, the recorded worker lifecycle, the
 direct managed-worktree path and Git registration. If a generated test checkout has
 untracked artifacts such as Python `__pycache__`, the runner may use Git's force

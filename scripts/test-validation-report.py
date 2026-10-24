@@ -216,6 +216,69 @@ class Feedback(unittest.TestCase):
 
 
 class Storage(unittest.TestCase):
+    def test_evidence_export_preserves_reports_and_runtime_without_copying_compiler_caches(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            checkout, run = root / 'checkout', root / 'run'
+            run.mkdir()
+            expected = {'target/e2e/result.json': 'actual failure',
+                        'target/smoke/run-a/private/diagnostic.log': 'private evidence',
+                        'target/e2e/debug/details.json': 'nested evidence, not a Cargo profile',
+                        'artifacts/screenshot.png': 'captured pixels'}
+            skipped = ('target/debug', 'target/release', 'target/custom',
+                       'target/x86_64-pc-windows-msvc/debug', 'target/wasm32-wasip1/debug', 'target/smoke/builds')
+            for name, value in expected.items():
+                path = checkout / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(value)
+            for name in skipped:
+                path = checkout / name / 'large-binary'
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('rebuildable')
+            record = dict(checkout=str(checkout), sha='a' * 40,
+                          command=['cargo', 'test', '--profile=custom', '--target=wasm32-wasip1'],
+                          process_exit=101, scenario='red')
+            first = report.preserve_evidence(run, record)
+            self.assertEqual(first, report.preserve_evidence(run, record))
+            self.assertEqual((record['process_exit'], record['scenario']), (101, 'red'))
+            manifest = json.loads(Path(first['manifest']).read_text())
+            self.assertEqual(manifest['source_revision'], record['sha'])
+            self.assertEqual(set(manifest['files']), set(expected))
+            for name, value in expected.items():
+                self.assertEqual((run / 'evidence' / name).read_text(), value)
+            for name in skipped:
+                self.assertFalse((run / 'evidence' / name).exists())
+            (checkout / 'target/e2e/result.json').write_text('changed evidence')
+            with self.assertRaisesRegex(ValueError, 'Previously exported evidence differs'):
+                report.preserve_evidence(run, record)
+            self.assertEqual((run / 'evidence/target/e2e/result.json').read_text(), 'actual failure')
+
+    def test_evidence_export_refuses_links_and_missing_reports_before_any_resource_deletion(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            checkout, run = root / 'checkout', root / 'run'
+            (checkout / 'target/e2e').mkdir(parents=True)
+            run.mkdir()
+            outside = root / 'outside'
+            outside.write_text('borrowed bytes')
+            link = checkout / 'target/e2e/link'
+            link.symlink_to(outside)
+            record = dict(checkout=str(checkout), command=['cargo', 'test'])
+            with self.assertRaisesRegex(ValueError, 'link or special file'):
+                report.preserve_evidence(run, record)
+            self.assertEqual(outside.read_text(), 'borrowed bytes')
+            self.assertTrue(link.is_symlink())
+            link.unlink()
+            record['validation_report'] = dict(error='fixture report write failure')
+            with self.assertRaisesRegex(ValueError, 'report was not saved'):
+                report.preserve_evidence(run, record)
+            self.assertTrue(checkout.is_dir())
+            record.pop('validation_report')
+            (run / 'evidence.json').symlink_to(outside)
+            with self.assertRaisesRegex(ValueError, 'manifest is a link'):
+                report.preserve_evidence(run, record)
+            self.assertEqual(outside.read_text(), 'borrowed bytes')
+
     def test_report_survives_checkout_removal_and_never_changes_verdict(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

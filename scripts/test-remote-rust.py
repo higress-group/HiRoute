@@ -65,6 +65,108 @@ class Contract(unittest.TestCase):
         self.assertEqual(argv[argv.index('--') + 1:], row['command'])
         self.assertEqual(argv.count(key), 1)
 
+    def test_terminal_workers_export_evidence_before_default_cleanup_and_honor_explicit_retention(self):
+        # Real worktrees, checkout leases and command processes; no Rust compilation.
+        for mode, retention in (('success', 'never'), ('failure', 'never'), ('blocked', 'never'),
+                                ('timeout', 'never'), ('export-failure', 'never'),
+                                ('success', 'always'), ('failure', 'on-failure')):
+            with self.subTest(mode=mode, retention=retention), tempfile.TemporaryDirectory(dir='/tmp') as directory:
+                base = Path(directory).resolve()
+                source, root, home = base / 'source', base / 'workbench', base / 'home'
+                subprocess.run(['git', 'init', '-q', str(source)], check=True)
+                (source / '.gitignore').write_text('target/\n')
+                git = ['git', '-C', str(source)]
+                subprocess.run([*git, 'add', '.'], check=True)
+                subprocess.run([*git, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                                '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture'], check=True)
+                sha = subprocess.check_output([*git, 'rev-parse', 'HEAD'], text=True).strip()
+                ref = subprocess.check_output([*git, 'symbolic-ref', 'HEAD'], text=True).strip()
+                binary = home / '.cargo/bin'
+                binary.mkdir(parents=True)
+                compiler = '''import json,os,pathlib,sys,time
+if '--version' in sys.argv:
+ print('fixture compiler');sys.exit(0)
+p=pathlib.Path.cwd()/'target'
+if 'metadata' in sys.argv:
+ print(json.dumps({'target_directory':str(p)}));sys.exit(0)
+for profile in ('debug','release','x86_64-pc-windows-msvc/debug','smoke/builds'):
+ (p/profile).mkdir(parents=True,exist_ok=True)
+ (p/profile/'binary').write_bytes(b'rebuildable compiler fixture')
+(p/'e2e').mkdir()
+(p/'e2e/report.json').write_text('{"observed":"fixture"}')
+if MODE=='export-failure':
+ (p/'e2e/link').symlink_to(pathlib.Path.cwd()/'.gitignore')
+(pathlib.Path(os.environ['TMPDIR'])/'diagnostic.log').write_text('private runtime evidence')
+time.sleep(30 if MODE=='timeout' else 0)
+bad=MODE in ('failure','export-failure')
+print('Running tests/fixture.rs (target/debug/deps/fixture-abcdef0123456789)')
+print('running 1 test')
+print('test component ... '+('FAILED' if bad else 'ok'))
+print('test result: '+('FAILED' if bad else 'ok')+'. '+str(int(not bad))+' passed; '+str(int(bad))+' failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s')
+sys.exit(101 if bad else 0)
+'''
+                for name in ('cargo', 'rustc'):
+                    path = binary / name
+                    path.write_text('#!' + sys.executable + '\nMODE=' + repr(mode) + '\n' + compiler)
+                    path.chmod(0o700)
+                key = '20261024-050001-abcdef12'
+                run = root / 'runs' / key
+                run.mkdir(parents=True)
+                request = dict(id=key, ref=ref, sha=sha, executor_sha=sha, origin=str(source), retention=retention,
+                               command=['cargo', 'test', '--test', 'publication_process', 'installed_'] if mode == 'blocked'
+                               else ['cargo', 'test', '--lib'], timeout=1 if mode == 'timeout' else 10,
+                               exclusive=False, ssh_host='fixture-host')
+                runner.save(run / 'request.json', request)
+                with patch.object(runner.Path, 'home', return_value=home), patch.dict(os.environ, {}, clear=False), \
+                     patch.object(runner.sys, 'platform', 'linux'), \
+                     patch.object(runner.tempfile, 'gettempdir', return_value=str(base)), \
+                     patch.object(runner, 'MIN_FREE_BYTES', 0), \
+                     patch.object(runner, 'admit_cache_server', return_value={'state': 'ready'}), \
+                     patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}):
+                    runner.worker(run / 'request.json')
+                result = json.loads((run / 'result.json').read_text())
+                self.assertEqual(result['status'], {'success': 'completed', 'failure': 'failed',
+                                 'timeout': 'failed', 'blocked': 'blocked', 'export-failure': 'failed'}[mode], result.get('error'))
+                self.assertEqual(result['process_exit'], {'success': 0, 'failure': 101,
+                                 'timeout': -9, 'blocked': None, 'export-failure': 101}[mode])
+                if mode == 'export-failure':
+                    self.assertEqual(result['evidence_export']['state'], 'failed')
+                    self.assertIn('link', result['evidence_export']['error'])
+                    self.assertTrue(Path(result['checkout']).is_dir())
+                    self.assertTrue(Path(result['temporary_directory']['path']).is_dir())
+                    self.assertTrue((source / '.gitignore').is_file())
+                    (Path(result['checkout']) / 'target/e2e/link').unlink()
+                    with patch.object(runner, 'worker_alive', return_value=False):
+                        cleanup = runner.cleanup_terminal_run(root, key)
+                    self.assertEqual(cleanup['checkout']['state'], 'removed')
+                    self.assertFalse(Path(result['temporary_directory']['path']).exists())
+                    saved = json.loads((run / 'result.json').read_text())
+                    self.assertEqual((saved['status'], saved['process_exit']), ('failed', 101))
+                    self.assertEqual(saved['evidence_export']['state'], 'saved')
+                    self.assertEqual((run / 'evidence/target/e2e/report.json').read_text(), '{"observed":"fixture"}')
+                    continue
+                if mode != 'blocked':
+                    self.assertTrue((run / 'evidence/target/e2e/report.json').is_file())
+                self.assertEqual(result['evidence_export']['state'], 'saved')
+                self.assertEqual(Path(result['checkout']).exists(), retention != 'never')
+                self.assertTrue((run / 'validation-report.json').is_file())
+                self.assertTrue(source.is_dir())
+                if mode == 'blocked':
+                    self.assertNotIn('command_started_at', result)
+                    recovery = result['console_assets']['preparation'][-1]
+                    self.assertIn('--retention never', recovery)
+                    self.assertNotIn('--reuse-checkout', recovery)
+                else:
+                    self.assertEqual(Path(result['temporary_directory']['path']).exists(), retention != 'never')
+                    self.assertEqual((run / 'evidence/target/e2e/report.json').read_text(), '{"observed":"fixture"}')
+                    self.assertEqual((run / 'evidence/temporary/diagnostic.log').read_text(), 'private runtime evidence')
+                    for path in ('debug', 'release', 'x86_64-pc-windows-msvc/debug', 'smoke/builds'):
+                        self.assertFalse((run / 'evidence/target' / path).exists())
+                if retention == 'never':
+                    self.assertEqual(result['cleanup']['checkout']['state'], 'removed')
+                    self.assertNotIn(key, subprocess.check_output(
+                        ['git', '--git-dir', str(root / 'repository.git'), 'worktree', 'list', '--porcelain'], text=True))
+
     def test_separate_workbench_submission_readback_and_maintenance_keep_the_selected_root(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'remote-rust.json'
@@ -332,6 +434,7 @@ sys.exit(101 if bad else 0)
                 payload = json.loads(submit.call_args.kwargs['input'])
             self.assertEqual(payload['command'], command)
             self.assertTrue(payload['exclusive'])
+            self.assertEqual(payload['retention'], 'never')
 
     def test_bootstrap_preserves_report_helper_for_immutable_worker(self):
         with tempfile.TemporaryDirectory() as directory:
