@@ -66,6 +66,7 @@ enum Change {
     Recovery,
     Authority,
     Cancel,
+    FinalEpoch,
 }
 
 #[tokio::test]
@@ -98,6 +99,11 @@ async fn cancelled_agent_scan_releases_its_read_without_mutating_session() {
     exercise(Change::Cancel).await;
 }
 
+#[tokio::test]
+async fn epoch_expiry_during_final_service_read_rejects_the_snapshot() {
+    exercise(Change::FinalEpoch).await;
+}
+
 async fn exercise(change: Change) {
     let root = tempfile::Builder::new()
         .prefix("hragents-")
@@ -121,6 +127,11 @@ async fn exercise(change: Change) {
     ))));
     let started = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
+    let final_status_started = Arc::new(Notify::new());
+    let final_status_release = Arc::new(Notify::new());
+    let (final_started_server, final_release_server) =
+        (final_status_started.clone(), final_status_release.clone());
+    let status_reads = Arc::new(AtomicU64::new(0));
     let (started_server, release_server, changed_server) =
         (started.clone(), release.clone(), changed.clone());
     let server = tokio::spawn(async move {
@@ -130,6 +141,11 @@ async fn exercise(change: Change) {
                 started_server.clone(),
                 release_server.clone(),
                 changed_server.clone(),
+            );
+            let (final_started, final_release, status_reads) = (
+                final_started_server.clone(),
+                final_release_server.clone(),
+                status_reads.clone(),
             );
             tokio::spawn(async move {
                 let mut stream = BufReader::new(stream);
@@ -148,6 +164,13 @@ async fn exercise(change: Change) {
                 if request.operation_id == "ListAgents" {
                     started.notify_one();
                     release.notified().await;
+                }
+                if request.operation_id == "GetClientServiceStatus"
+                    && change == Change::FinalEpoch
+                    && status_reads.fetch_add(1, Ordering::SeqCst) == 1
+                {
+                    final_started.notify_one();
+                    final_release.notified().await;
                 }
                 let altered = changed.load(Ordering::SeqCst);
                 let data = match request.operation_id.as_str() {
@@ -197,6 +220,27 @@ async fn exercise(change: Change) {
             agent_snapshot(&context, &state, None).await
         }
     });
+    if change == Change::FinalEpoch {
+        let expire = async {
+            started.notified().await;
+            release.notify_one();
+            final_status_started.notified().await;
+            assert!(
+                sessions.try_lock().is_err(),
+                "final status must hold the Session lock"
+            );
+            // Window expiry advances this atomic without taking Session's lock.
+            epoch.fetch_add(1, Ordering::SeqCst);
+            final_status_release.notify_one();
+        };
+        let (result, _) = tokio::join!(snapshot, expire);
+        assert!(
+            matches!(result, Err(DesktopFailure::Native { ref code }) if code == "CONFIRMATION_STALE"),
+            "epoch expiry during the final await must reject the snapshot"
+        );
+        server.abort();
+        return;
+    }
     if change == Change::Cancel {
         tokio::select! {
             _ = started.notified() => {}
