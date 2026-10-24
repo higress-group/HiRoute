@@ -171,3 +171,95 @@ fn assert_native_identity(chat: bool) {
             && !rendered.contains("native-conversation-two")
     );
 }
+
+#[test]
+fn hermes_context_fault_then_recovery_keeps_independent_lineage_and_exact_assessment() {
+    use super::native_history::{accepted, classifier_body, native_fixture, reply, send};
+    const ASSESSED: &[u8] = br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#;
+    for fault in [
+        None,
+        Some("not-json"),
+        Some(r#"{"version":99,"agent":"hermes","session_id":"child","purpose":"main"}"#),
+    ] {
+        let regular = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+        let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED)]);
+        let fixture = native_fixture("hermes", &[&regular, &primary, &classifier]);
+        let stamp = json!({"observer_id":"observer","sequence":1,"observed_at_ms":1000,"age_ms":0});
+        let lineage = json!({"version":1,"ids":["ancestor","child"],"complete":true,
+            "proof_observation":stamp,"current_state":{"value":"open","observation":stamp}});
+        let mut h = vec![
+            ("X-HiRoute-Token".into(), TOKEN.into()),
+            ("x-hiroute-agent".into(), "hermes".into()),
+            ("x-hermes-session-id".into(), "child".into()),
+            ("x-hermes-compression-lineage".into(), lineage.to_string()),
+        ];
+        if let Some(fault) = fault {
+            h.push(("x-hiroute-routing-context".into(), fault.into()));
+        }
+        let mut input = vec![json!({"role":"user","content":"A_ACTUAL_FAULT_EXECUTION"})];
+        let a = send(fixture.address, &h, json!(input));
+        accepted(&a);
+        let a: Value = serde_json::from_slice(&a.body).unwrap();
+        input.extend(a["output"].as_array().unwrap().iter().cloned());
+        input.push(json!({"role":"user","content":"B_NEW_INDEPENDENT_TASK"}));
+        h.retain(|(name, _)| name != "x-hiroute-routing-context");
+        h.push((
+            "x-hiroute-routing-context".into(),
+            json!({"version":2,"agent":"hermes","session_id":"child","purpose":"main",
+                "turn_id":"B","request_id":"B:1","input":{"kind":"observed_batch","event_id":"B"}})
+            .to_string(),
+        ));
+        accepted(&send(fixture.address, &h, json!(input)));
+        assert_eq!(
+            (regular.calls(), primary.calls(), classifier.calls()),
+            (1, 1, 2)
+        );
+        let judged = classifier_body(&classifier, 1);
+        assert_eq!(
+            judged["preceding_stage"]["complete"], true,
+            "{fault:?}: {judged}"
+        );
+        let from = judged["preceding_stage"]["from"].as_u64().unwrap() as usize;
+        assert_eq!(
+            json!(&judged["visible_conversation"].as_array().unwrap()[from..]),
+            json!([{"user":[{"kind":"text","text":"A_ACTUAL_FAULT_EXECUTION"}],
+                "status":"completed","steps":[[{"kind":"text","text":"ok"}]]}])
+        );
+        let facts = wait_execution_facts(&fixture, 2);
+        let routes = facts
+            .iter()
+            .filter(|e| e["fact"]["kind"] == "route_decision")
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 2);
+        for (route, group) in routes.iter().zip(["regular", "primary"]) {
+            assert_eq!(
+                route["fact"]["complexity"]["decision_source"],
+                "external_classifier"
+            );
+            assert_eq!(route["fact"]["complexity"]["execution_group"], group);
+            assert_eq!(route["fact"]["complexity"]["fallback_used"], false);
+        }
+        assert_eq!(
+            routes[0]["correlation"]["conversation_id"],
+            routes[1]["correlation"]["conversation_id"]
+        );
+        let score = facts
+            .iter()
+            .find(|e| e["fact"]["kind"] == "branch_assessment_recorded")
+            .unwrap();
+        assert_eq!(score["fact"]["score"], 0.75);
+        assert_eq!(
+            score["fact"]["history_membership"]["request_ids"],
+            json!([routes[0]["correlation"]["request_id"]])
+        );
+        assert_eq!(
+            score["fact"]["history_membership"]["capture_partial"],
+            false
+        );
+        assert_eq!(
+            score["fact"]["history_membership"]["source_unverified"],
+            true
+        );
+    }
+}

@@ -334,6 +334,13 @@ covers Claude main/subagent/workflow, Hermes, Qoder and cold compressed Codex;
 unknown provenance cannot permanently pin an Agent to Primary. Qoder's shared
 main/child identity remains an accepted association limit. Hermes compression roots
 still require complete native lineage and fresh current-state evidence.
+That lineage is validated independently of the optional routing-context envelope.
+A missing, malformed or unsupported envelope preserves an independently valid
+compression root while leaving task/input origin unverified; it cannot move the
+captured request to a different scope merely because the adapter recovers.
+Conflicting native identities, invalid lineage and known auxiliary purposes keep
+their existing isolation. The [Hermes listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/hermes_identity.rs)
+verify exact assessment membership across context failure and recovery.
 The [continuity guard](src/context_hold/continuity.rs) retains saved native tasks for
 known continuations without granting provider/KV affinity. A known summary with no
 captured original input uses the temporary unavailable-input route; subsequent real

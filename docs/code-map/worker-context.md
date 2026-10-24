@@ -84,6 +84,9 @@ Its [native request middleware](../../assets/agents/hermes/__init__.py) carries 
 session into trusted Gateway correlation and emits observed batch context
 independently from optional bounded read-only compression evidence;
 clean callback text and retained legacy hints cannot select an input instance.
+Gateway [routing evidence](../../crates/gateway/src/context_hold/routing.rs) validates
+compression scope independently of task-envelope parsing, so an adapter fault and
+recovery cannot strand otherwise comparable captured history.
 The managed provider also uses the same
 scoped model grant as its native API key for auxiliary Chat requests; global model
 headers are not a credential carrier. All six supported Agents have independent management and collaboration Skills;

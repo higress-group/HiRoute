@@ -100,6 +100,55 @@ fn v2_hermes_auxiliary_lineage_never_reenables_main_history() {
 }
 
 #[test]
+fn hermes_lineage_scope_is_independent_of_optional_context_failure() {
+    for context in [
+        None,
+        Some("not-json"),
+        Some(r#"{"version":99,"agent":"hermes","session_id":"child","purpose":"main"}"#),
+        Some(r#"{"version":2,"version":2,"agent":"hermes","session_id":"child","purpose":"main"}"#),
+        Some(
+            r#"{"version":2,"agent":"hermes","session_id":"child","purpose":"main","input":{"kind":"unknown"}}"#,
+        ),
+    ] {
+        for valid_lineage in [false, true] {
+            let mut h = headers("main");
+            h.remove("x-hiroute-routing-context");
+            if let Some(context) = context {
+                h.insert("x-hiroute-routing-context", context.parse().unwrap());
+            }
+            let mut proof = lineage();
+            if !valid_lineage {
+                proof["current_state"]["observation"]["age_ms"] = json!(1001);
+            }
+            h.insert(
+                "x-hermes-compression-lineage",
+                proof.to_string().parse().unwrap(),
+            );
+            let actual = facts(&h);
+            assert_eq!(actual.observation_identity().unwrap().1, &["child"]);
+            assert_eq!(
+                actual.hold_identity().unwrap().1,
+                &[if valid_lineage { "root" } else { "child" }]
+            );
+            assert_eq!(
+                actual.native_checkpoint().user_origin,
+                NativeUserOrigin::Observed
+            );
+            assert!(actual.native_checkpoint().turn.is_none());
+            assert_eq!(
+                actual.native_checkpoint().checkpoint,
+                valid_lineage.then(|| digest("child"))
+            );
+            // The independent proof cannot rescue conflicting native identities.
+            h.insert("session-id", "competing-family".parse().unwrap());
+            let conflicting = facts(&h);
+            assert!(conflicting.hold_identity().is_none());
+            assert!(conflicting.native_checkpoint().checkpoint.is_none());
+        }
+    }
+}
+
+#[test]
 fn legacy_hermes_context_and_hint_require_objects_and_keep_duplicate_rejection() {
     let mut headers = headers("main");
     let context =

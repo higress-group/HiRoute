@@ -199,6 +199,29 @@ pub(super) fn facts(
     worker: Option<&str>,
     hermes: bool,
 ) -> RoutingFacts {
+    let result = context_facts(identity, headers, document, worker, hermes);
+    // Compression lineage has its own bounded, versioned proof. Its validity
+    // must not depend on decoding the optional task/input envelope: otherwise
+    // an adapter fault moves a request to another history scope and recovery
+    // strands the execution it just captured. Neither proof grants user origin.
+    let native_identity = identity.observation_identity();
+    if result.track
+        && !result.identity_conflict
+        && matches!(native_identity, Some(("hermes_session", _)))
+    {
+        hermes_root(headers, native_identity, result)
+    } else {
+        result
+    }
+}
+
+fn context_facts(
+    identity: &ContextIdentityFacts,
+    headers: &HeaderMap,
+    document: &Value,
+    worker: Option<&str>,
+    hermes: bool,
+) -> RoutingFacts {
     let worker = worker.map(|id| match id {
         "codex_cli" => "codex",
         "claude_code" => "claude",
@@ -302,11 +325,7 @@ pub(super) fn facts(
         }
     }
     if let Some(result) = v2::routing_facts(headers, agent, native_identity, worker.is_some()) {
-        return if agent == "hermes" && result.track {
-            hermes_root(headers, native_identity, result)
-        } else {
-            result
-        };
+        return result;
     }
     let context = match single_header(headers, "x-hiroute-routing-context", 4096) {
         Field::Value(value) => native_context(&value),
@@ -316,7 +335,7 @@ pub(super) fn facts(
             let mut result = RoutingFacts::default();
             result.native.requires_checkpoint = true;
             result.native.user_origin = NativeUserOrigin::Observed;
-            return hermes_root(headers, native_identity, result);
+            return result;
         }
         Field::Absent | Field::Invalid => None,
     };
@@ -367,7 +386,7 @@ pub(super) fn facts(
     if agent == "dsh" && !valid_user_turns(&context) {
         return RoutingFacts::uncertain();
     }
-    let result = RoutingFacts {
+    RoutingFacts {
         native: NativeCheckpoint {
             turn: context.turn_id.as_deref().map(digest),
             checkpoint: context.checkpoint.as_deref().map(digest),
@@ -391,11 +410,6 @@ pub(super) fn facts(
             branch_path: None,
         },
         ..RoutingFacts::default()
-    };
-    if agent == "hermes" {
-        hermes_root(headers, native_identity, result)
-    } else {
-        result
     }
 }
 
