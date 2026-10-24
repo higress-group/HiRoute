@@ -360,7 +360,6 @@ fn codex_v2_invalid_schema_shape_is_not_hidden_by_replay() {
 
 #[test]
 fn codex_v2_retained_schema_structure_cannot_bypass_the_request_memory_budget() {
-    let mut body = portable_request();
     let properties = (0..16_000)
         .map(|i| {
             (
@@ -369,21 +368,28 @@ fn codex_v2_retained_schema_structure_cannot_bypass_the_request_memory_budget() 
             )
         })
         .collect::<serde_json::Map<String, Value>>();
-    body["tools"][0]["parameters"] = json!({"type":"object","properties":properties});
-    let mut request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
-    let backing = Backing::new();
-    let error = externalize_model_request(&mut request, &backing.store, 0).unwrap_err();
-    assert!(
-        matches!(
-            error,
-            crate::replay::ReplayError::Body(
-                hiroute_gateway_core::runtime::body::BodyError::BudgetExceeded
-            )
-        ),
-        "{error:?}"
-    );
-    drop(request);
-    backing.release();
+    // This isolates retained metadata accounting; it does not claim such a large
+    // document passed the production parser's independent initial workspace limit.
+    for wrapper in ["wrap", "type", "role"] {
+        let mut body = portable_request();
+        body["tools"][0]["parameters"] = json!({"type":"object","properties":{
+            wrapper:{"type":"object","properties":properties.clone()}
+        }});
+        let mut request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+        let backing = Backing::new();
+        let error = externalize_model_request(&mut request, &backing.store, 0).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                crate::replay::ReplayError::Body(
+                    hiroute_gateway_core::runtime::body::BodyError::BudgetExceeded
+                )
+            ),
+            "{wrapper}: {error:?}"
+        );
+        drop(request);
+        backing.release();
+    }
 }
 
 #[test]
@@ -404,6 +410,117 @@ fn codex_v2_schema_literal_replay_marker_shape_does_not_alias_backing() {
         expected["tools"][0]["parameters"]["properties"]["literal"] = literal.clone();
         expected["tools"][0]["parameters"]["default"] = literal.clone();
         assert_eq!(serde_json::from_slice::<Value>(&actual).unwrap(), expected);
+    }
+    drop(request);
+    backing.release();
+}
+
+#[test]
+fn codex_v2_schema_type_and_role_containers_have_equal_retained_replay_accounting() {
+    let mut retained = Vec::new();
+    for wrapper in ["wrap", "type", "role"] {
+        let properties = (0..128)
+            .map(|i| {
+                (
+                    format!("field_{i}"),
+                    json!({"type":"string", "description":"leaf"}),
+                )
+            })
+            .collect::<serde_json::Map<String, Value>>();
+        let mut body = portable_request();
+        body["tools"][0]["parameters"] = json!({"type":"object","properties":{
+            wrapper:{"type":"object","properties":properties}
+        }});
+        let backing = Backing::new();
+        // request() executes scan/parse/compact/IR and drops its ingress workspace
+        // before returning. Compare only live retained request ownership here.
+        let request = backing.request(&body);
+        retained.push(backing.budget.snapshot().unwrap().live);
+        for p in [profile(false), profile(true)] {
+            let expected = project_candidate_request(
+                &decode_ingress_request(IngressProtocol::Responses, &body).unwrap(),
+                &p,
+            )
+            .unwrap();
+            assert_eq!(backing.project(&request, &p).0, expected.bytes);
+        }
+        drop(request);
+        backing.release();
+    }
+    // Equal-length wrapper names deliberately avoid a string-size discrepancy.
+    assert!(retained[0] > 0);
+    assert_eq!(
+        retained[1], retained[0],
+        "type subtree was not fully charged"
+    );
+    assert_eq!(
+        retained[2], retained[0],
+        "role subtree was not fully charged"
+    );
+}
+
+#[test]
+fn codex_v2_literal_schema_keys_survive_all_protocols_and_keep_real_replay_values() {
+    let keys = [
+        "__hiroute_content_ref_v2_99_0_4_4__".to_owned(),
+        "before___hiroute_content_ref_v2_99_0_4_4___after".to_owned(),
+        "literal___hiroute_content_ref_v2_not-a-reference".to_owned(),
+        "__hiroute_content_ref_v2_99_0_4_4__-__hiroute_content_ref_v2_99_0_4_4__".to_owned(),
+    ];
+    let mut body = portable_request();
+    for position in ["properties", "patternProperties", "$defs"] {
+        let mut children = serde_json::Map::new();
+        for key in &keys {
+            children.insert(
+                key.clone(),
+                json!({"type":"string", "encrypted":true,
+                "description":"real backed content with quotes \" 中\n".repeat(1000)}),
+            );
+        }
+        body["tools"][0]["parameters"][position] = Value::Object(children);
+    }
+    // Data objects remain one canonical raw JSON range. Their literal keys must
+    // keep the same wire bytes as keys in retained schema structure.
+    body["tools"][0]["parameters"]["default"] = json!({keys[0].clone(): "default value"});
+    body["tools"][0]["parameters"]["examples"] = json!([{keys[1].clone(): "example value"}]);
+    let inline = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+    let backing = Backing::new();
+    let request = backing.request(&body);
+    let mut profiles = vec![profile(false), profile(true)];
+    profiles.extend(
+        [IngressProtocol::ChatCompletions, IngressProtocol::Messages].map(|upstream| {
+            CandidateProtocolProfile::exact_portable_path(
+                IngressProtocol::Responses,
+                upstream,
+                "physical",
+                fixed_reasoning("fixed"),
+            )
+        }),
+    );
+    for p in profiles {
+        let expected = project_candidate_request(&inline, &p).unwrap();
+        let (actual, encoding) = backing.project(&request, &p);
+        assert_eq!(actual, expected.bytes);
+        assert_eq!(encoding, expected.function_encoding_projection);
+        let actual: Value = serde_json::from_slice(&actual).unwrap();
+        let schema = match p.capability.upstream_protocol {
+            IngressProtocol::Responses => &actual["tools"][0]["parameters"],
+            IngressProtocol::ChatCompletions => &actual["tools"][0]["function"]["parameters"],
+            IngressProtocol::Messages => &actual["tools"][0]["input_schema"],
+        };
+        for position in ["properties", "patternProperties", "$defs"] {
+            for key in &keys {
+                assert_eq!(
+                    schema[position][key]["description"],
+                    body["tools"][0]["parameters"][position][key]["description"]
+                );
+                assert_eq!(schema[position][key]["type"], "string");
+                assert_eq!(
+                    schema[position][key].get("encrypted").cloned(),
+                    (encoding == FunctionEncodingProjection::Preserve).then(|| json!(true))
+                );
+            }
+        }
     }
     drop(request);
     backing.release();

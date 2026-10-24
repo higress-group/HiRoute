@@ -237,67 +237,76 @@ pub(crate) fn prepare_replay_json_template(
         }
     }
     let mut replacements = Vec::with_capacity(expected.len());
-    let mut cursor = 0_usize;
-    while let Some(relative) = find_subslice(&bytes[cursor..], MARKER_PREFIX.as_bytes()) {
-        let marker_start = cursor + relative;
-        let suffix_start = marker_start + MARKER_PREFIX.len();
-        let suffix = find_subslice(&bytes[suffix_start..], b"__").ok_or_else(|| {
-            ProtocolAdapterError::Serialization("ContentRef marker is not terminated".into())
-        })?;
-        let marker_end = suffix_start + suffix + 2;
-        let marker = std::str::from_utf8(&bytes[marker_start..marker_end]).map_err(|_| {
-            ProtocolAdapterError::Serialization("ContentRef marker is not ASCII".into())
-        })?;
-        let content = ContentRef::from_wire_marker(marker).ok_or_else(|| {
-            ProtocolAdapterError::Serialization("ContentRef marker is malformed".into())
-        })?;
-        let (encoding, count) = expected.get_mut(&content).ok_or_else(|| {
-            ProtocolAdapterError::Serialization(
-                "ContentRef marker collides with inline content".into(),
-            )
-        })?;
-        if *count == 0 {
-            return Err(ProtocolAdapterError::Serialization(
-                "ContentRef marker occurs more often than requested".into(),
-            ));
-        }
-        *count -= 1;
-        let encoding = *encoding;
-        let (start, end) = match encoding {
-            ReplacementEncoding::JsonString => (marker_start, marker_end),
-            ReplacementEncoding::RawJson => {
-                if marker_start == 0
-                    || marker_end >= bytes.len()
-                    || bytes[marker_start - 1] != b'"'
-                    || bytes[marker_end] != b'"'
-                {
-                    return Err(ProtocolAdapterError::Serialization(
-                        "raw ContentRef is not a complete JSON string placeholder".into(),
-                    ));
-                }
-                (marker_start - 1, marker_end + 1)
+    // serde owns the JSON bytes. Only value strings may contain references;
+    // object keys are literal structure even when they equal a registered marker.
+    for value in super::template_json::value_strings(&bytes) {
+        let mut cursor = value.start;
+        while let Some(relative) =
+            find_subslice(&bytes[cursor..value.end], MARKER_PREFIX.as_bytes())
+        {
+            let marker_start = cursor + relative;
+            let suffix_start = marker_start + MARKER_PREFIX.len();
+            let suffix =
+                find_subslice(&bytes[suffix_start..value.end], b"__").ok_or_else(|| {
+                    ProtocolAdapterError::Serialization(
+                        "ContentRef marker is not terminated".into(),
+                    )
+                })?;
+            let marker_end = suffix_start + suffix + 2;
+            let marker = std::str::from_utf8(&bytes[marker_start..marker_end]).map_err(|_| {
+                ProtocolAdapterError::Serialization("ContentRef marker is not ASCII".into())
+            })?;
+            let content = ContentRef::from_wire_marker(marker).ok_or_else(|| {
+                ProtocolAdapterError::Serialization("ContentRef marker is malformed".into())
+            })?;
+            let (encoding, count) = expected.get_mut(&content).ok_or_else(|| {
+                ProtocolAdapterError::Serialization(
+                    "ContentRef marker collides with inline content".into(),
+                )
+            })?;
+            if *count == 0 {
+                return Err(ProtocolAdapterError::Serialization(
+                    "ContentRef marker occurs more often than requested".into(),
+                ));
             }
-            ReplacementEncoding::RawJsonInJsonString => {
-                if marker_start < 2
-                    || marker_end + 1 >= bytes.len()
-                    || &bytes[marker_start - 2..marker_start] != b"\\\""
-                    || &bytes[marker_end..marker_end + 2] != b"\\\""
-                {
-                    return Err(ProtocolAdapterError::Serialization(
+            *count -= 1;
+            let encoding = *encoding;
+            let (start, end) = match encoding {
+                ReplacementEncoding::JsonString => (marker_start, marker_end),
+                ReplacementEncoding::RawJson => {
+                    if marker_start == 0
+                        || marker_end >= bytes.len()
+                        || bytes[marker_start - 1] != b'"'
+                        || bytes[marker_end] != b'"'
+                    {
+                        return Err(ProtocolAdapterError::Serialization(
+                            "raw ContentRef is not a complete JSON string placeholder".into(),
+                        ));
+                    }
+                    (marker_start - 1, marker_end + 1)
+                }
+                ReplacementEncoding::RawJsonInJsonString => {
+                    if marker_start < 2
+                        || marker_end + 1 >= bytes.len()
+                        || &bytes[marker_start - 2..marker_start] != b"\\\""
+                        || &bytes[marker_end..marker_end + 2] != b"\\\""
+                    {
+                        return Err(ProtocolAdapterError::Serialization(
                         "nested raw ContentRef is not a complete escaped JSON string placeholder"
                             .into(),
                     ));
+                    }
+                    (marker_start - 2, marker_end + 2)
                 }
-                (marker_start - 2, marker_end + 2)
-            }
-        };
-        replacements.push(TemplateReplacement {
-            start,
-            end,
-            content,
-            encoding,
-        });
-        cursor = end;
+            };
+            replacements.push(TemplateReplacement {
+                start,
+                end,
+                content,
+                encoding,
+            });
+            cursor = marker_end;
+        }
     }
     if expected.values().any(|(_, count)| *count != 0) {
         return Err(ProtocolAdapterError::Serialization(

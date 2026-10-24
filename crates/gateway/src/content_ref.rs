@@ -387,9 +387,10 @@ fn externalize_native_leaves(
                 .map(str::to_owned);
             for (key, value) in values {
                 replay.charge_metadata(key.capacity() + std::mem::size_of::<String>() + 32)?;
-                if !matches!(key.as_str(), "type" | "role")
-                    && !schema::peer_identity(item_type.as_deref(), key, value)
-                {
+                let inline_identity = (value.is_string()
+                    && matches!(key.as_str(), "type" | "role"))
+                    || schema::peer_identity(item_type.as_deref(), key, value);
+                if !inline_identity {
                     externalize_native_leaves(value, replay, pool, remaining)?;
                 } else {
                     replay.charge_metadata(std::mem::size_of::<Value>())?;

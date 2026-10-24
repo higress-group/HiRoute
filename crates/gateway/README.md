@@ -75,8 +75,13 @@ The [schema-position owner](src/adapters/schema_encoding.rs) is shared with
 for encoding negotiation and shape validation, while large descriptions, defaults and examples
 remain Replay content. Business keys with the same names are not annotations. The canonical
 IR and all request templates collect nested content references; the request memory budget
-still charges retained nodes, keys and strings. Peer author/recipient/item identities stay
-budgeted inline, and peer body text remains independently backed. Reserved Replay-marker
+still charges retained nodes, keys and strings, including schema containers named `type` or
+`role`; only string tags use the inline identity path. The shared
+[template JSON value locator](src/adapters/request/template_json.rs) excludes literal object
+keys from reference substitution without changing serde's wire bytes. Retained structure and
+Replay-backed data keep equivalent output; value-reference counts and encoding validation
+remain strict.
+Peer author/recipient/item identities stay budgeted inline, and peer body text remains independently backed. Reserved Replay-marker
 literals in those identities are preserved on native passthrough but rejected by this
 metadata-text projection, which cannot embed a backed identity safely.
 [Production-path Replay controls](src/adapters/responses_dialect_replay_tests.rs) compare

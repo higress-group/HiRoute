@@ -15,6 +15,7 @@ mod reader;
 mod reasoning;
 use reasoning::render_reasoning;
 mod template;
+mod template_json;
 mod tools;
 pub use reader::sequential_attempt_body;
 pub(crate) use reader::sequential_replay_body;
