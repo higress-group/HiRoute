@@ -147,7 +147,7 @@ is not part of this contract; configure HTTPS_PROXY for subscription endpoints.
 
 The checked-in `development-cpa-artifacts.v1.json` identifies a historical
 `.1` binary; its hash is retained as measured, not relabeled as the current
-`.3` build. Do not stage that old binary with the current daemon.
+pinned build. Do not stage that old binary with the current daemon.
 
 On macOS, `python3 scripts/package-desktop.py build --cpa-source-repo /absolute/CPA-checkout`
 generates the current patched CPA and a measured `cpa-artifacts.json` in its
