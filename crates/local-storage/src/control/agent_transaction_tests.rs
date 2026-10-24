@@ -209,6 +209,14 @@ fn agent_transaction_plan(
     transaction: AgentConnectionTransactionKindV1,
     before: Option<CanonicalDigest>,
 ) -> TransactionPlanV1 {
+    agent_transaction_plan_payload(transaction, before, "")
+}
+
+fn agent_transaction_plan_payload(
+    transaction: AgentConnectionTransactionKindV1,
+    before: Option<CanonicalDigest>,
+    payload: &str,
+) -> TransactionPlanV1 {
     let spec = ChangeSpecV1 {
         schema_version: hiroute_domain::CHANGE_SPEC_SCHEMA_V1,
         command_id: transaction.command_id().to_owned(),
@@ -256,7 +264,7 @@ fn agent_transaction_plan(
             } else {
                 None
             },
-            &json!({"role": format!("{role:?}"), "content_digest": "sha256:fixture"}),
+            &json!({"role": format!("{role:?}"), "content_digest": "sha256:fixture", "payload": payload}),
             if role == AgentConnectionEffectRoleV1::ManagedConfiguration {
                 0o640
             } else {
@@ -628,3 +636,6 @@ mod plan_references_tests;
 
 #[path = "delegation_tests.rs"]
 mod delegation_tests;
+
+#[path = "agent_history_cache_tests.rs"]
+mod history_cache;

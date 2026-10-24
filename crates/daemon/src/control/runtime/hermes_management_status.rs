@@ -117,13 +117,13 @@ impl LocalControlAdapter {
         let mut selected = None;
         for operation in stores
             .control()
-            .succeeded_agent_operations_for_kinds(
+            .verified_agent_history_for_kinds(
                 &WorkspaceId::default(),
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
             )
             .map_err(super::map_port)?
         {
-            if belongs(&operation)? {
+            if belongs(operation.as_ref())? {
                 selected = Some(operation);
                 break;
             }

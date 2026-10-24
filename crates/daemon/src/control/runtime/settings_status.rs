@@ -235,16 +235,19 @@ impl LocalControlAdapter {
         }
         let operations = stores
             .control()
-            .succeeded_agent_operations_for_kinds(
+            .verified_agent_history_for_kinds(
                 &WorkspaceId::default(),
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
             )
             .map_err(super::map_port)?;
-        let Some(operation) = operations.into_iter().find(|operation| belongs(operation)) else {
+        let Some(operation) = operations
+            .into_iter()
+            .find(|operation| belongs(operation.as_ref()))
+        else {
             return Ok((status, None, None));
         };
-        let intent = model_intent(class, &operation).ok_or(ControlReadError::Corrupt)?;
-        let action = model_action(class, &operation, intent).map_err(super::map_port)?;
+        let intent = model_intent(class, operation.as_ref()).ok_or(ControlReadError::Corrupt)?;
+        let action = model_action(class, operation.as_ref(), intent).map_err(super::map_port)?;
         let current = stores
             .secrets()
             .inspect_agent_access_grant(
@@ -280,7 +283,7 @@ impl LocalControlAdapter {
                         .filter(|i| i.effect_id() == "agent-connection-native-routing-adapter")
                     {
                         hiroute_application::agent_connection::settings_native_plugin_file_for_operation(
-                            &operation, plugin,
+                            operation.as_ref(), plugin,
                         ).map_err(super::map_port)?;
                         adapter_applied &= hiroute_integrations::native_plugin_is_applied(
                             &self.artifacts,
@@ -291,7 +294,7 @@ impl LocalControlAdapter {
                     }
                     model_applied && adapter_applied
                 } else if class == SettingsAgentClass::Hermes {
-                    self.hermes_operation_files_applied(&operation, intent)
+                    self.hermes_operation_files_applied(operation.as_ref(), intent)
                         .map_err(super::map_port)?
                 } else if class == SettingsAgentClass::Claude {
                     let policy =
@@ -397,7 +400,7 @@ impl LocalControlAdapter {
                     let runtime = runtime.as_ref().ok_or(ControlReadError::Unavailable)?;
                     model_endpoint_matches_runtime(
                         class,
-                        &operation,
+                        operation.as_ref(),
                         intent,
                         &runtime.gateway_base_url,
                     )
@@ -405,7 +408,7 @@ impl LocalControlAdapter {
                 };
                 if class == SettingsAgentClass::Hermes {
                     let resources_installed = self
-                        .hermes_operation_plugin_files_applied(&operation)
+                        .hermes_operation_plugin_files_applied(operation.as_ref())
                         .map_err(super::map_port)?;
                     status.native_adapter = Some(
                         hiroute_application_api::AgentNativeAdapterStatusV1 {

@@ -42,6 +42,7 @@ mod windows_artifacts_tests;
 mod windows_native_reader_tests;
 
 mod agent_check;
+mod agent_history_cache;
 mod agent_read;
 mod native_targets;
 pub use agent_read::SucceededAgentOperationV1;
@@ -84,6 +85,7 @@ pub use compute::{
 };
 
 pub struct ControlStore {
+    agent_history_cache: RefCell<agent_history_cache::AgentHistoryCache>,
     diagnostics: RefCell<hiroute_diagnostics::DiagnosticsPort>,
     pub(crate) connection: RefCell<Connection>,
     pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
@@ -249,6 +251,7 @@ impl ControlStore {
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
+            agent_history_cache: RefCell::new(Default::default()),
             startup_lock: None,
             connection: RefCell::new(open_database(
                 _authority,
@@ -268,6 +271,7 @@ impl ControlStore {
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
+            agent_history_cache: RefCell::new(Default::default()),
             startup_lock: None,
             connection: RefCell::new(open_database_from_set(
                 authority,
