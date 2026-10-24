@@ -21,43 +21,54 @@ impl ControlStore {
         };
         let ids = {
             let mut statement=connection.prepare(
-                "SELECT operation_id,state FROM operations WHERE workspace_id=?1 AND operation_kind IN ('ApplyAgentConnectionChange','ApplyAgentConnectionRestore') ORDER BY rowid DESC"
+                "SELECT operation_id,state,generation FROM operations WHERE workspace_id=?1 AND operation_kind IN ('ApplyAgentConnectionChange','ApplyAgentConnectionRestore') ORDER BY rowid DESC"
             ).map_err(|_|port(PortErrorCode::Unavailable,"control.native-targets.query"))?;
             let rows = statement
                 .query_map([workspace.as_str()], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, u64>(2)?,
+                    ))
                 })
                 .map_err(|_| port(PortErrorCode::Unavailable, "control.native-targets.query"))?;
             rows.collect::<Result<Vec<_>, _>>()
                 .map_err(|_| port(PortErrorCode::Corrupt, "control.native-targets.rows"))?
         };
         let succeeded: std::collections::BTreeMap<_, _> = self
-            .verified_agent_history_for_kinds(
+            .verified_agent_history_for_discovery(
                 workspace,
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
-            )?
+            )
+            // This cache is optional for discovery. The immutable-input reader
+            // below remains responsible for every row without a verified proof.
+            .unwrap_or_default()
             .into_iter()
             .map(|operation| (operation.operation_id.to_string(), operation))
             .collect();
         let mut targets = std::collections::BTreeMap::new();
-        for (raw, state) in ids {
+        for (raw, state, generation) in ids {
             let id = OperationId::parse(raw)
                 .map_err(|_| port(PortErrorCode::Corrupt, "control.native-targets.identity"))?;
             let tail;
-            let plan = if state == "succeeded" {
-                succeeded
-                    .get(id.as_str())
-                    .ok_or_else(|| {
-                        port(PortErrorCode::Corrupt, "control.native-targets.operation")
-                    })?
-                    .plan
-                    .spec()
+            let plan = if let Some(proven) = succeeded.get(id.as_str()) {
+                proven.plan.spec()
             } else {
-                // Pending/failed/restored operations remain visible to discovery;
-                // recovery continues to use its original strict journal reader.
+                // Unfinished tails and successful inputs lacking provenance
+                // remain discovery hints, never verified execution authority.
                 tail = self.load_operation(&id)?.ok_or_else(|| {
                     port(PortErrorCode::Corrupt, "control.native-targets.operation")
                 })?;
+                if tail.operation_id != id
+                    || tail.workspace_id != *workspace
+                    || tail.state.as_str() != state
+                    || tail.generation != generation
+                {
+                    return Err(port(
+                        PortErrorCode::Corrupt,
+                        "control.native-targets.identity",
+                    ));
+                }
                 tail.plan.spec()
             };
             if plan.command_id != "agents.settings.apply" {
