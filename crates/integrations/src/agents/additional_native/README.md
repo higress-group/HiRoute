@@ -19,6 +19,24 @@ bundled routing adapter. It preserves native defaults, MCP and unrelated Skills.
 Worker uses a different transient profile with one frozen route and exact budgets.
 A native provider name alone never grants ownership of an existing user entry.
 
+Native protocol selection and the upstream binding are separate contracts.
+`plan_protocols[plan_id]` selects the native Responses or Messages provider through
+the ordinary settings transaction. Changing only an upstream binding cannot make
+native controls portable: for example, Responses
+`include: ["reasoning.encrypted_content"]` cannot be expressed by a Chat Completions
+target. The [request adapter](../../../../gateway/src/adapters/request.rs) rejects
+that conversion before dispatch. A supported native Messages selection can produce
+a different, representable request; it must retain the original session and actual
+history, preserve the saved default, and pass complete Restore and native inference.
+Do not remove requested controls or edit retained history to obtain compatibility.
+
+A provider's remote MCP result does not establish execution of a declared local
+function tool, even when its response says completed. Keep each protocol's actual
+call/result identity and native execution evidence. Do not rename remote calls into
+local functions, synthesize tool results, or retry an already delivered response
+automatically. Verify the chosen model and protocol with actual native tool
+continuation; successful text-only inference does not establish this capability.
+
 [Routing adapters](../routing_adapters.rs) use protected file effects with exact
 content ownership, borrowing, rollback and restore. Pi auto-loads
 `extensions/hiroute-routing.js`; its native directory discovery skips `.mjs` files.
