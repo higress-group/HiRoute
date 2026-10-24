@@ -45,6 +45,15 @@ Qoder's shared main/child identity has an accepted association limit. Follow the
 [routing contract](../../issue-spec/specs/request-routing/spec.md#requirement-native-routing-remains-available-without-perfect-input-provenance)
 for recovery limits rather than equating successful output with full adaptation.
 
+The [v2 input consumer](../../crates/gateway/src/context_hold/routing/v2.rs) keeps
+an omitted optional input descriptor distinct from an invalid declaration.
+[Input projection](../../crates/gateway/src/core_runtime/native_routing_view.rs)
+reports the former as correlation only without selecting a human window. DSH's
+late model-selection notification is covered by the
+[producer controls](../../scripts/tests/dsh-routing-adapter.test.mjs) and
+[projection controls](../../crates/gateway/src/core_runtime/native_routing_view/dsh_tests.rs);
+the unchanged wire request remains available to normal routing and capture.
+
 Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
 explains native provider-scoped session discovery before enabling routing. Default
 on-demand access preserves the ordinary entry for earlier sessions; advanced default

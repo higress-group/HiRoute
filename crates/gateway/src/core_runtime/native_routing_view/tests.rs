@@ -12,6 +12,9 @@ mod hermes;
 #[path = "codex_tests.rs"]
 mod codex;
 
+#[path = "dsh_tests.rs"]
+mod dsh;
+
 struct Fixture {
     root: std::path::PathBuf,
     _manager: ReplayManager,

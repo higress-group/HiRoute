@@ -19,7 +19,7 @@ struct Envelope {
     checkpoint: Option<Box<RawValue>>,
     #[serde(default)]
     branch: Option<Box<RawValue>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present_input")]
     input: Option<Box<RawValue>>,
     #[serde(default)]
     continuation: Option<Box<RawValue>>,
@@ -66,6 +66,15 @@ fn object_json<T: serde::de::DeserializeOwned>(value: &str) -> Option<T> {
         return None;
     }
     serde_json::from_str(value).ok()
+}
+
+fn present_input<'de, D>(deserializer: D) -> Result<Option<Box<RawValue>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // Absent enrichment is correlation only. An explicit null is still an
+    // invalid declaration, not evidence that the producer omitted the field.
+    Box::<RawValue>::deserialize(deserializer).map(Some)
 }
 
 fn message_objects<'de, D>(deserializer: D) -> Result<Vec<NativeUserMessage>, D::Error>
@@ -231,7 +240,7 @@ pub(super) fn routing_facts(
     // or a decision without an independently captured execution boundary.
     let user_origin = if matches!(
         native_input(headers),
-        Some(Ok(NativeInput::ExistingTurn { .. }))
+        Some(Ok(Some(NativeInput::ExistingTurn { .. })))
     ) {
         NativeUserOrigin::ExistingTurn
     } else {
@@ -279,7 +288,9 @@ fn sha256(value: &str) -> bool {
 
 /// Shape validation only. The final wire envelope digest is checked by the
 /// input projection owner before any position is admitted as current input.
-pub(crate) fn native_input(headers: &HeaderMap) -> Option<Result<NativeInput, ()>> {
+/// A valid envelope may omit input enrichment; `Ok(None)` preserves that
+/// distinction from both an absent envelope and an invalid input declaration.
+pub(crate) fn native_input(headers: &HeaderMap) -> Option<Result<Option<NativeInput>, ()>> {
     let context = parsed(headers)?;
     let brand = match header_value(headers, "x-hiroute-agent") {
         Field::Value(value) => value,
@@ -302,7 +313,10 @@ pub(crate) fn native_input(headers: &HeaderMap) -> Option<Result<NativeInput, ()
         return Some(Err(()));
     }
     let turn = optional_id(&context.turn_id);
-    let input: NativeInput = match context.input.and_then(|value| object_json(value.get())) {
+    let Some(input) = context.input else {
+        return Some(Ok(None));
+    };
+    let input: NativeInput = match object_json(input.get()) {
         Some(input) => input,
         None => return Some(Err(())),
     };
@@ -325,7 +339,7 @@ pub(crate) fn native_input(headers: &HeaderMap) -> Option<Result<NativeInput, ()
                     .all(|pair| pair[0].index < pair[1].index)
         }
     };
-    Some(if valid { Ok(input) } else { Err(()) })
+    Some(if valid { Ok(Some(input)) } else { Err(()) })
 }
 
 #[cfg(test)]
@@ -407,7 +421,7 @@ mod tests {
         valid.insert("x-session-affinity", "session".parse().unwrap());
         assert!(matches!(
             native_input(&valid),
-            Some(Ok(NativeInput::NativeMessages(_)))
+            Some(Ok(Some(NativeInput::NativeMessages(_))))
         ));
         for message in [
             format!(r#"[0,"{}"]"#, "a".repeat(64)),
@@ -478,6 +492,35 @@ mod tests {
                 .turn,
             Some(digest("turn"))
         );
+    }
+
+    #[test]
+    fn absent_input_is_distinct_from_explicit_null_and_duplicate_declarations() {
+        for (agent, native_header) in [
+            ("pi", "x-session-affinity"),
+            ("dsh", "x-deepseek-harness-session-id"),
+            ("opencode", "x-opencode-session-id"),
+            ("hermes", "x-hermes-session-id"),
+        ] {
+            let base = json!({"version":2,"agent":agent,"purpose":"main",
+                "session_id":"session","turn_id":"turn"});
+            let mut h = headers(base.clone());
+            h.insert("x-hiroute-agent", agent.parse().unwrap());
+            h.insert(native_header, "session".parse().unwrap());
+            assert!(matches!(native_input(&h), Some(Ok(None))));
+            let mut null = base.clone();
+            null["input"] = Value::Null;
+            h.insert(
+                "x-hiroute-routing-context",
+                null.to_string().parse().unwrap(),
+            );
+            assert!(matches!(native_input(&h), Some(Err(()))));
+            let mut duplicate = base.to_string();
+            duplicate.pop();
+            duplicate.push_str(r#", "input":null,"input":{"kind":"observed_batch"}}"#);
+            h.insert("x-hiroute-routing-context", duplicate.parse().unwrap());
+            assert!(parsed(&h).is_none());
+        }
     }
 
     #[test]

@@ -43,7 +43,7 @@ impl NativeRoutingView {
         }
         if let Some(input) = crate::context_hold::native_input(headers) {
             let (selected, projection) = match input {
-                Ok(crate::context_hold::NativeInput::NativeMessages(window)) => {
+                Ok(Some(crate::context_hold::NativeInput::NativeMessages(window))) => {
                     let selected = window_input(request, replay, budget, &window);
                     let verdict = if selected.is_some() {
                         NativeInputProjection::WindowApplied

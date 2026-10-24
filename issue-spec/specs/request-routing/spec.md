@@ -587,6 +587,16 @@ verified semantic projection retain these protections. Missing or failed origin
 adapters may use the separate observed-input lane. Native identity never proves a
 byte prefix or supplies missing tool outcomes.
 
+A valid main-purpose v2 adapter envelope may omit the optional input descriptor
+when the producer cannot bind a current message window. The input consumer SHALL report
+correlation-only evidence without selecting human content or a position; an
+explicit malformed declaration, including null, remains invalid. A later DSH
+model-selection notification SHALL NOT be relabelled as human input to obtain a
+window. The original request remains available to observed routing and capture,
+and a later independently valid window may recover. Neither omission nor an
+explicit observed batch supplies accepted execution, task completion or an
+assessment target.
+
 Codex persistent window counters and Claude's one-call compaction flag remain
 negative provenance evidence. Cold compacted Codex sessions can nevertheless start
 observed-input capture from their current usable request. Gateway restart discards

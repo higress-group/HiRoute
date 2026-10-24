@@ -173,11 +173,11 @@ test("DSH recent window recovers beyond sixteen turns and 512 native events with
   }, { events });
 });
 
-test("DSH leaves late peers, settlement and unknown input observed, then a fresh turn recovers", async () => {
+test("DSH leaves model selection, late peers, settlement and unknown input observed, then a fresh turn recovers", async () => {
   const old = user("old", "OLD");
   const fresh = user("fresh", "NEW");
   await fixture(async ({ request, send, events }) => {
-    for (const kind of ["agent-message", "subagent-settled", "future-source", undefined]) {
+    for (const kind of ["model-selection", "agent-message", "subagent-settled", "future-source", undefined]) {
       const notice = { ...user("notice", "LATE-OLD-TASK", kind), source: kind ? { kind, senderSessionId: "reused-child" } : undefined };
       const messages = [old, fresh, notice];
       const wire = messages.map(message => ({ role: message.role, content: message.content }));
