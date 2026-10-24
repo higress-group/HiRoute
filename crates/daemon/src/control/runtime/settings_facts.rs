@@ -34,6 +34,8 @@ mod additional_model;
 mod codex_association;
 #[path = "settings_facts/codex_models.rs"]
 mod codex_models;
+#[cfg(test)]
+pub(crate) mod diagnostics;
 mod hermes;
 mod hermes_model;
 mod qoder;

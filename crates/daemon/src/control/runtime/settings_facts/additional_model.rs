@@ -358,12 +358,16 @@ impl LocalControlAdapter {
             } else {
                 None
             };
-        let dependency_digest = CanonicalDigest::of(&serde_json::json!({
+        let dependency_facts = serde_json::json!({
             "schema":"qoder-model-facts/v1", "routing_adapter":routing_adapter.as_ref().map(|r| (&r.expected_content, &r.before_fingerprint, CanonicalDigest::of_bytes(r.content.as_bytes()))), "collaboration":input.facts.dependency_digest,
             "content":expected_content,"fingerprint":before_fingerprint,"publication":publication.digest,
             "grant":current_grant,"token":token_input_fingerprint,"provider":provider_id,"endpoint":endpoint,
             "conflict":qoder_model_conflict,"models":models,"additional_dependencies":additional_dependencies,"kind":kind,"pi_settings":pi_settings,"previous":previous.as_ref().map(|(op,_)| &op.operation_id),"restore":restore,
-        })).map_err(|_| ControlReadError::Corrupt)?;
+        });
+        #[cfg(test)]
+        diagnostics::record("additional_model", &dependency_facts);
+        let dependency_digest =
+            CanonicalDigest::of(&dependency_facts).map_err(|_| ControlReadError::Corrupt)?;
         let old_digest = input.facts.dependency_digest.clone();
         let mut capabilities = [
             AgentCapability::EffectiveConfiguration,
