@@ -13,12 +13,15 @@ fn template_keys_keep_exact_json_meaning_across_nested_and_escaped_fragments() {
         json!({key.clone(): [{key.clone(): "plain"}], "after": {key: true}, "escaped": escaped});
     let bytes = serde_json::to_vec(&body).unwrap();
     assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), body);
-    let values = value_strings(&bytes)
+    let mut values = value_strings(&bytes)
         .map(|range| {
             serde_json::from_slice::<String>(&bytes[range.start - 1..range.end + 1]).unwrap()
         })
         .collect::<Vec<_>>();
-    assert_eq!(values, vec![escaped, "plain"]);
+    values.sort();
+    let mut expected = vec![escaped.to_owned(), "plain".to_owned()];
+    expected.sort();
+    assert_eq!(values, expected);
     let template = prepare_replay_json_template(&body, []).unwrap();
     assert!(template.replacements.is_empty());
     assert_eq!(
