@@ -787,6 +787,7 @@ export function DesktopApp() {
             onRefresh={async () => { setObserving(true); await home.refreshDesktop(); setRefreshVersion(v => v + 1); }}
             onOpenAgent={agentId => { void (async () => { if (!await allowPageChange('agents')) return; setAgentIntent({ key: `agents/${randomId()}`, agentId }); openPage('agents'); })(); }}
             onOpenSession={(sessionId, requestId) => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId, requestId, returnToQuality: true }); openPage('sessions'); })(); }}
+            onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }}
             onOperation={value => acceptOperation(value, { kind: 'routing' })}
           /></div>}
         {visited.has('agents') && <div hidden={trialOpen || page !== 'agents'}><Agents

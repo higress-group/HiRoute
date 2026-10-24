@@ -61,6 +61,42 @@ const scenarios = [
   ...nativeConnectionScenarios({ fresh, click, until, text, calls, control: c }),
   ...cProtocolScenarios({ fresh, routing, click, until, all, text, calls, setInput, control: c }),
   ...presentationScenarios,
+  scenario('desktop.routing.recovered-mapping-session', ['routing-editor', 'sessions'], 'A resumed Agent mapping opens the observed session through the shell and releases its dialog', async () => {
+    const sessionId = 'session/recovered-mapping';
+    for (const action of ['watch', 'list', 'dirty-watch']) {
+    await fresh(() => {
+      c().handlers.preview_agent_settings = ({ input }) => {
+        const agent = c().agents.agents.find(item => item.context_id === input.spec.context_id);
+        agent.settings = { ...agent.settings, state: 'configured', current_selection: structuredClone(input.spec.model.settings), operation_id: 'operation/map', operation_state: 'succeeded' };
+        return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: operation('succeeded', 'operation/map') } };
+      };
+      c().handlers.observation_read = payload => {
+        const intent = payload.request.intent;
+        if (intent.view === 'sessions' && intent.query.plan_id) return { sessions: [{ session_id: sessionId }], next_cursor: null };
+        return c().fixtureResponse('observation_read', payload);
+      };
+    });
+    await routing();
+    if (action === 'dirty-watch') { setInput(document.querySelector('.plan-identity-fields input'), 'Retained route draft'); await pause(40); }
+    await click('映射 Agent'); await click('检查并映射 Agent'); await click('刷新结果');
+    await until(() => text().includes('发现映射确认后使用此路由的会话'), 'verified mapping and observed activity');
+    assert(button('观察此会话'), 'Recovered mapping has no Watch this session action');
+    await click(action === 'list' ? '查看会话时间线' : '观察此会话');
+    if (action === 'dirty-watch') {
+      await until(() => all('dialog[open]').length, 'unsaved route guard');
+      await click('继续编辑');
+      assert(button('观察此会话') && document.querySelector('.plan-identity-fields input').value === 'Retained route draft', 'Cancelled navigation lost the mapping or route draft');
+      assert(!calls('observation_read').some(call => call.payload.request.intent.view === 'timeline' && call.payload.request.intent.query.session_id === sessionId), 'Cancelled navigation opened the session');
+      await click('观察此会话'); await click('不保存');
+    }
+    await until(() => calls('observation_read').some(call => call.payload.request.intent.view === 'timeline' && (action === 'list' || call.payload.request.intent.query.session_id === sessionId)), 'requested session view opened');
+    assert(!all('[role="dialog"]').length, 'Mapping dialog remained over Sessions');
+    assert(!document.querySelector('.sidebar')?.inert && document.body.style.overflow !== 'hidden', 'Mapping dialog kept navigation inert or scroll locked');
+    await click('智能路由');
+    assert(!all('.trial-mapping').length, 'Returning to Routing resurrected the mapping dialog');
+    assert(calls('preview_agent_settings').length === 1, 'Watching activity submitted the mapping twice');
+    }
+  }),
   scenario('desktop.routing.two-context-conflict', ['routing-editor'], 'A rival context revision refuses stale publication and preserves the current draft', async () => {
     await fresh(); await routing();
     const name = document.querySelector('.plan-identity-fields input');
