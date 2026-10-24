@@ -2,7 +2,7 @@
 //! this does not claim a native client executed the tool or a model understood peers.
 use super::native_history::{classifier_body, headers, reply};
 use super::*;
-use hiroute_gateway::server::request_plan::IngressProtocol;
+use hiroute_domain::UpstreamProtocol;
 use serde_json::{Value, json};
 
 const ASSESSED_PRIMARY: &[u8] =
@@ -17,7 +17,7 @@ fn dialect(fixture: &RuntimeFixture, primary_standard: bool) {
             continue;
         }
         for profile in &mut candidate.protocol_profiles {
-            if profile.ingress_protocol == IngressProtocol::Responses {
+            if profile.ingress_protocol == UpstreamProtocol::Responses {
                 profile.adapter_revision =
                     hiroute_domain::STANDARD_RESPONSES_JSON_ADAPTER_V1.into();
             }
@@ -135,8 +135,8 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
             let mut input = vec![json!({"role":"user","content":"A_READ_FIXTURE"})];
             let mut output = send(&fixture, v2, "a", &input, streaming);
             assert_eq!(
-                output[0].get("encrypted_function_args"),
-                if v2 { Some(&json!([])) } else { None }
+                output[0].get("encrypted_function_args").cloned(),
+                if v2 { Some(json!([])) } else { None }
             );
             let call = output[0]["call_id"].clone();
             if !v2 {
