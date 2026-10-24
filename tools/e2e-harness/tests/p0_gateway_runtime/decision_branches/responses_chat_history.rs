@@ -69,7 +69,7 @@ fn completed_responses_commentary_returns_to_regular_chat_with_tools_and_assessm
     let final_answer = send(&input);
     assert_eq!((regular.calls(), primary.calls(), decider.calls()), (1, 2, 2));
     let primary_request: Value = serde_json::from_slice(http_body(&primary.requests()[1])).unwrap();
-    assert_eq!(primary_request["input"], input, "native replay keeps phases and identities");
+    assert_eq!(primary_request["input"], json!(input), "native replay keeps phases and identities");
     input.extend(final_answer["output"].as_array().unwrap().iter().cloned());
     input.push(json!({"role":"user","content":"Now answer a simple question."}));
     let original = input.clone();
