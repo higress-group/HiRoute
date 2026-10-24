@@ -478,6 +478,8 @@ fn codex_v2_plaintext_chat_and_messages_producers_negotiate_real_json_arguments(
     }
 }
 
+#[path = "responses_dialect_reasoning_tests.rs"]
+mod reasoning;
 #[path = "responses_dialect_replay_tests.rs"]
 mod replay;
 

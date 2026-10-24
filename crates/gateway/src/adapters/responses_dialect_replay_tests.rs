@@ -48,6 +48,13 @@ impl Backing {
         }
     }
     fn request(&self, original: &Value) -> ModelRequestIRV1 {
+        self.request_with_budget(original, 0).unwrap()
+    }
+    fn request_with_budget(
+        &self,
+        original: &Value,
+        inline_budget: usize,
+    ) -> Result<ModelRequestIRV1, ModelIrError> {
         let bytes = serde_json::to_vec(original).unwrap();
         let mut writer = self.store.begin_raw().unwrap();
         for bytes in bytes.chunks(1024) {
@@ -68,9 +75,8 @@ impl Backing {
             IngressProtocol::Responses,
             &document,
             Some(&self.store),
-        )
-        .unwrap();
-        externalize_model_request(&mut request, &self.store, 0).unwrap();
+        )?;
+        externalize_model_request(&mut request, &self.store, inline_budget).unwrap();
         assert!(self.store.snapshot().disk_backed);
         let mut references = model_content_refs(&request);
         assert!(!references.is_empty());
@@ -78,7 +84,7 @@ impl Backing {
         drop(document);
         drop(workspace);
         self.store.prevalidate(&references).unwrap();
-        request
+        Ok(request)
     }
     fn project(
         &self,
@@ -103,6 +109,9 @@ impl Backing {
         assert_eq!(budget.snapshot().unwrap().live, 0);
     }
 }
+
+#[path = "responses_dialect_reasoning_replay_tests.rs"]
+mod reasoning;
 
 fn business_schema() -> Value {
     json!({
