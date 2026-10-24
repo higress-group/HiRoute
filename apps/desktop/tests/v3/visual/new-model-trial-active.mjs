@@ -21,7 +21,7 @@ const timelineReadsExpr=`trialTrace.filter(x=>x.command==='observation_read'&&x.
 const timelineReads=()=>evaluate(client,timelineReadsExpr);
 const setVisibility=state=>evaluate(client,`(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>${JSON.stringify(state)}});document.dispatchEvent(new Event('visibilitychange'));return true;})()`);
 const typeInto=(selector,value)=>evaluate(client,`(()=>{const input=document.querySelector(${JSON.stringify(selector)});if(!input)throw Error('Missing input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
-async function geometry(){return evaluate(client,`(()=>{const nodes=[...document.querySelectorAll('.model-feed-panel,.trust-control,.plan-quality,.trust-suggestion,.modal,.trial-wizard')].filter(e=>e.getClientRects().length);return nodes.map(e=>({class:e.className,width:e.clientWidth,scroll:e.scrollWidth,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right}));})()`);}
+async function geometry(selector='.model-feed-panel,.trust-control,.plan-quality,.trust-suggestion,.modal,.trial-wizard'){return evaluate(client,`(()=>{const nodes=[...document.querySelectorAll(${JSON.stringify(selector)})].filter(e=>e.getClientRects().length);return nodes.map(e=>({class:e.className,width:e.clientWidth,scroll:e.scrollWidth,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right}));})()`);}
 async function timelineFocusChecks() {
  const enter=async()=>{for(const type of ['keyDown','keyUp'])await client.send('Input.dispatchKeyEvent',{type,key:'Enter',code:'Enter',windowsVirtualKeyCode:13});};
  for(const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',1200,813]]) {
@@ -174,7 +174,7 @@ try {
    assert.deepEqual(saved.smart.judgment,await evaluate(client,`quickStartAuthoringJudgment`),'custom quick start preserves parked judgment instead of installing a native trial threshold or rubric');
    noCustomPromises(saved.purpose);
   }
-  for(const node of await geometry()) assert.ok(node.scroll<=node.width+1,`horizontal overflow: ${JSON.stringify(node)}`);
+  for(const node of await geometry('.division-protection-summary,.division-protection,.trial-rule,.trial-card')) assert.ok(node.scroll<=node.width+1,`horizontal overflow: ${JSON.stringify(node)}`);
   results.push({id:`protection.${native?'native-three-outcomes':'custom-observation-only'}.${lang}.${width}.${theme}`,status:'passed'});
  }
  for(const lang of ['en','zh']) {
