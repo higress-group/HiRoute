@@ -10,6 +10,9 @@ The [console artifact owner](../../scripts/console-assets.py) checks selected SS
 installed-package prerequisites before Rust execution and verifies the same-candidate
 frontend from an execution-host staging directory under the runner's checkout lease.
 Standard file tools supply that directory; the runner does not transport frontend bytes.
+The [SSH checkout owner](../../scripts/remote-rust.py) shares retained-state admission
+with recovery-command selection; [continuation regressions](../../scripts/test-console-assets.py)
+cover repeated source advances, preparation blocks and execution of the generated retry.
 Windows development execution is owned by [windows-dev.py](../../scripts/windows-dev.py)
 and its [native executor](../../scripts/windows-dev-host.py), reached through
 `validation.py windows`. HOME configuration owns machine/session/client locations;

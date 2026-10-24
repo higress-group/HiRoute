@@ -26,6 +26,7 @@ MAX_TMPDIR_BYTES = 40  # Leave at least 66 bytes for nested Linux Unix socket na
 MIN_FREE_BYTES = 30 * 1024**3
 RETENTION_POLICIES = ("on-failure", "always", "never")
 TERMINAL_STATUSES = ("completed", "failed", "blocked")
+RECOVERABLE_SETUP_BLOCKERS = ("console_assets", "cache_server_unhealthy")
 WORKBENCH_SLOTS = 8
 SHARED_BUILD_JOBS = 8
 EXCLUSIVE_BUILD_JOBS = WORKBENCH_SLOTS * SHARED_BUILD_JOBS
@@ -310,69 +311,127 @@ def checkout_lease(root, run_id):
     return handle
 
 
-def verify_reused_checkout(root, request):
-    owner_id = request["reuse_checkout"]
-    validate_run_id(owner_id)
-    previous_path = root / "runs" / owner_id / "result.json"
-    if not previous_path.is_file():
-        raise RunBlocked("checkout_missing", "Reusable checkout owner run is missing")
-    previous = json.loads(previous_path.read_text())
-    checkout = root / "worktrees" / owner_id
-    console_blocked = (previous.get("status") == "blocked" and previous.get("blocker") == "console_assets"
-                       and previous.get("process_exit") is None and not previous.get("command_started_at"))
-    ready = previous.get("status") == "completed" or console_blocked
-    if (previous.get("id") != owner_id or not ready
-            or (previous.get("retention") != "always"
-                and not (console_blocked and previous.get("retention") == "on-failure"))
-            or previous.get("sha") != request["sha"]
-            or previous.get("origin") != request["origin"]
-            or previous.get("executor_sha") != request["executor_sha"]
-            or previous.get("checkout") != str(checkout)
-            or previous.get("cleanup", {}).get("checkout", {}).get("state") in ("removed", "absent")
-            or not checkout.is_dir() or checkout.is_symlink()
-            or checkout.resolve(strict=True) not in worktree_paths(root / "repository.git")
-            or command(["git", "-C", str(checkout), "rev-parse", "HEAD"]) != request["sha"]
-            or command(["git", "-C", str(checkout), "status", "--porcelain", "--untracked-files=all"])):
-        raise RunBlocked("checkout_changed", "Reusable checkout or build inputs differ from its owner run")
-    return checkout
+def recoverable_setup(result):
+    return (result.get("status") == "blocked"
+            and result.get("blocker") in RECOVERABLE_SETUP_BLOCKERS
+            and result.get("process_exit") is None
+            and result.get("command_started_at") is None
+            and result.get("command_finished_at") is None
+            and not result.get("timed_out"))
 
 
-def continuation_owner(root, request):
-    previous_id = request["continue_checkout"]
-    validate_run_id(previous_id)
-    previous = json.loads((root / "runs" / previous_id / "result.json").read_text())
-    owner = previous.get("checkout_owner", previous_id)
+def checkout_recovery_modes(first, latest):
+    """Resource admission and command generation share the same stopped-state policy.
+
+    Liveness, leases and current source are checked separately at acquisition.
+    A recoverable setup result remains ineligible as executed test evidence.
+    """
+    if latest.get("timed_out"):
+        return ()
+    setup = recoverable_setup(latest)
+    modes = []
+    if (first.get("retention") == "always" and latest.get("plan")
+            and latest.get("executor_digest")
+            and (latest.get("status") in ("completed", "failed") or setup)):
+        modes.append("continue")
+    if ((first.get("retention") == "always"
+         or (first.get("retention") == "on-failure" and recoverable_setup(first)))
+            and (latest.get("status") == "completed" or setup)):
+        modes.append("reuse")
+    return tuple(modes)
+
+
+def checkout_run(root, run_id):
+    validate_run_id(run_id)
+    path = root / "runs" / run_id / "result.json"
+    if not path.is_file():
+        raise RunBlocked("checkout_missing", "Retained checkout run is missing")
+    result = json.loads(path.read_text())
+    if result.get("id") != run_id:
+        raise RunBlocked("checkout_changed", "Retained checkout run identity differs")
+    return result
+
+
+def checkout_owner(root, run_id):
+    previous = checkout_run(root, run_id)
+    owner = previous.get("checkout_owner", run_id)
     validate_run_id(owner)
     return owner
 
 
-def continue_checkout(root, request, owner):
-    """Called with repository and checkout leases held; never rewrites old evidence."""
-    previous_id = request["continue_checkout"]
-    previous = json.loads((root / "runs" / previous_id / "result.json").read_text())
-    first = json.loads((root / "runs" / owner / "result.json").read_text())
-    state_path = root / ("checkout-" + owner + ".json")
-    state = json.loads(state_path.read_text())
+def retained_checkout(root, request, owner, mode):
+    """Resolve mutable checkout state independently of its immutable owner result."""
+    selected = request[mode + "_checkout"]
+    first = checkout_run(root, owner)
+    state = json.loads((root / ("checkout-" + owner + ".json")).read_text())
+    previous = checkout_run(root, state["run_id"])
     checkout = root / "worktrees" / owner
-    if (previous.get("status") not in ("completed", "failed")
-            or previous.get("timed_out") or worker_alive(previous.get("worker_pid"))
-            or first.get("retention") != "always"
-            or not request.get("plan") or previous.get("plan") != request["plan"]
-            or any(previous.get(key) != request.get(key)
-                   for key in ("origin", "ref", "executor_digest", "schedule_digest"))
-            or not request.get("executor_digest")
-            or state.get("run_id") != previous_id or state.get("sha") != previous.get("sha")
-            or previous.get("checkout") != str(checkout)
+    keys = ("origin", "ref", "plan", "executor_digest", "schedule_digest", "report_digest", "console_digest")
+    if mode == "reuse":
+        keys += ("executor_sha",)
+    if (mode not in checkout_recovery_modes(first, previous)
+            or (selected != previous["id"] and (mode == "continue" or selected != owner))
+            or first.get("checkout_owner", owner) != owner
+            or previous.get("checkout_owner", previous["id"]) != owner
+            or worker_alive(previous.get("worker_pid"))
+            or state.get("sha") != previous.get("sha")
+            or (mode == "reuse" and previous.get("sha") != request["sha"])
+            or any(previous.get(key) != request.get(key) for key in keys)
+            or any(row.get("checkout") != str(checkout)
+                   or row.get("cleanup", {}).get("checkout", {}).get("state") in ("removed", "absent")
+                   for row in (first, previous))
             or not checkout.is_dir() or checkout.is_symlink()
             or checkout.resolve(strict=True) not in worktree_paths(root / "repository.git")
             or command(["git", "-C", str(checkout), "rev-parse", "HEAD"]) != previous["sha"]
             or command(["git", "-C", str(checkout), "status", "--porcelain", "--untracked-files=all"])):
-        raise RunBlocked("continuation_changed", "Continuation requires the latest stopped run, same plan/driver, and clean retained source")
+        raise RunBlocked("continuation_changed" if mode == "continue" else "checkout_changed",
+                         "Recovery requires the current stopped checkout, same plan/driver, and clean source")
+    return checkout, previous
+
+
+def verify_reused_checkout(root, request):
+    owner = checkout_owner(root, request["reuse_checkout"])
+    return retained_checkout(root, request, owner, "reuse")[0]
+
+
+def continuation_owner(root, request):
+    return checkout_owner(root, request["continue_checkout"])
+
+
+def continue_checkout(root, request, owner):
+    """Called with repository and checkout leases held; never rewrites old evidence."""
+    checkout, previous = retained_checkout(root, request, owner, "continue")
+    state_path = root / ("checkout-" + owner + ".json")
     command(["git", "-C", str(checkout), "merge-base", "--is-ancestor", previous["sha"], request["sha"]])
     # Record intent first: interrupted transitions cannot be mistaken for the previous run.
-    save(state_path, dict(run_id=request["id"], sha=request["sha"], previous_run=previous_id))
+    save(state_path, dict(run_id=request["id"], sha=request["sha"], previous_run=previous["id"]))
     command(["git", "-C", str(checkout), "checkout", "--detach", request["sha"]])
     return checkout
+
+
+def checkout_recovery_command(root, result, frontend_dist=None):
+    """Use the existing SSH entry so recovery retains the selected host/workbench."""
+    owner = result["checkout_owner"]
+    first = result if owner == result["id"] else checkout_run(root, owner)
+    modes = checkout_recovery_modes(first, result)
+    rerun = ["python3", "scripts/remote-rust.py", "--host", result["ssh_host"],
+             "--workbench", result.get("workbench", ROOT), "run", "--ref", result["ref"],
+             "--sha", result["sha"], "--retention", "always", "--timeout", str(result["timeout"])]
+    if frontend_dist:
+        rerun += ["--frontend-dist", str(frontend_dist)]
+    if modes:
+        mode = modes[0]
+        rerun += ["--" + mode + "-checkout", result["id"] if mode == "continue" else owner]
+    if result.get("schedule"):
+        rerun += ["--schedule", result["schedule"]]
+    if result.get("exclusive"):
+        rerun += ["--exclusive"]
+    if result.get("plan"):
+        rerun += ["--plan", result["plan"]]
+    rerun += ["--phase", result.get("phase", "focused")]
+    for related in result.get("related_runs", []):
+        rerun += ["--related-run", related]
+    return shlex.join(rerun + ["--", *result["command"]])
 
 
 def cleanup_temp_directory(info):
@@ -614,8 +673,8 @@ def worker(request_path):
             if shutil.disk_usage(root).free < MIN_FREE_BYTES:
                 raise RunBlocked("insufficient_disk", "Less than 30 GiB free; validation did not start")
             repo = root / "repository.git"
-            owner_id = (continuation_owner(root, request) if request.get("continue_checkout")
-                        else request.get("reuse_checkout"))
+            selected_checkout = request.get("continue_checkout") or request.get("reuse_checkout")
+            owner_id = checkout_owner(root, selected_checkout) if selected_checkout else None
             reused_lease = checkout_lease(root, owner_id or request["id"])
             checkout = root / "worktrees" / (owner_id or request["id"])
             checkout.parent.mkdir(exist_ok=True)
@@ -650,26 +709,13 @@ def worker(request_path):
                 result["console_assets"] = dict(state="blocked", reason=str(error))
                 staging = Path.home() / ".cache/hiroute/console-assets" / request["id"]
                 host = request["ssh_host"]
-                rerun = ["python3", "scripts/validation.py", "--frontend-dist", str(staging / "dist"),
-                         "backend", "run", "--ref", request["ref"], "--sha", request["sha"],
-                         "--retention", "always"]
-                if owner_id or request["retention"] != "never":
-                    rerun += ["--reuse-checkout", owner_id or request["id"]]
-                if request.get("schedule"):
-                    rerun += ["--schedule", request["schedule"]]
-                if request.get("exclusive"):
-                    rerun += ["--exclusive"]
-                if request.get("plan"):
-                    rerun += ["--plan", request["plan"], "--phase", request.get("phase", "focused")]
-                rerun += ["--", *request["command"]]
                 result["console_assets"]["preparation"] = [
                     "Use clean candidate " + request["sha"] + " on the configured frontend target:",
                     "python3 scripts/validation.py frontend ci",
                     "python3 scripts/validation.py frontend build --console-assets",
                     "From the machine with that dist, copy it to a separate backend staging directory:",
                     shlex.join(["ssh", host, shlex.join(["mkdir", "-p", str(staging)])]),
-                    shlex.join(["scp", "-r", "apps/desktop/dist", host + ":" + str(staging) + "/"]),
-                    "Rerun from the caller; --frontend-dist is a path on the backend host:", shlex.join(rerun)]
+                    shlex.join(["scp", "-r", "apps/desktop/dist", host + ":" + str(staging) + "/"])]
                 raise RunBlocked("console_assets", str(error) +
                                  "; prepare with validation.py frontend build --console-assets, then pass "
                                  "--frontend-dist to SSH backend run; see result.console_assets.preparation") from error
@@ -740,6 +786,15 @@ def worker(request_path):
             result["status"] = "failed" if result["process_exit"] != 0 or bad_tests else "completed"
     except RunBlocked as error:
         result.update(status="blocked", blocker=error.blocker, error=str(error))
+        if recoverable_setup(result) and result.get("checkout_owner"):
+            frontend = (Path.home() / ".cache/hiroute/console-assets" / request["id"] / "dist"
+                        if error.blocker == "console_assets" else request.get("frontend_dist"))
+            result["recovery"] = dict(command=checkout_recovery_command(root, result, frontend),
+                                      after_worker_stops=True)
+            if error.blocker == "console_assets":
+                result["console_assets"]["preparation"] += [
+                    "After this worker stops, rerun from the same committed driver; "
+                    "--frontend-dist is a path on the backend host:", result["recovery"]["command"]]
     except Exception as error:
         result.update(status="failed", error=str(error))
     finally:
@@ -908,9 +963,9 @@ def main():
     run.add_argument("--retention", choices=RETENTION_POLICIES, default="on-failure",
                      help="Checkout/TMPDIR retention: on-failure (default), always, or never")
     run.add_argument("--reuse-checkout", metavar="RUN_ID",
-                     help="Reuse a completed --retention always run's exact checkout and target under an exclusive lease")
+                     help="Reuse a retained owner's current exact checkout and target under an exclusive lease")
     run.add_argument("--continue-checkout", metavar="PREVIOUS_RUN_ID",
-                     help="Advance a retained integration checkout to a descendant SHA on the same plan")
+                     help="Continue the latest stopped or recoverable setup run to a descendant SHA on the same plan")
     run.add_argument("--schedule", choices=("workspace-smoke", "workspace-dag"),
                      help="Prepare backend builds, then run smoke and remaining tests in separate shared slots")
     reporting().add_arguments(run)

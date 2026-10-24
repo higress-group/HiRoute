@@ -68,6 +68,27 @@ that exclude the installed scenarios MUST NOT require a frontend build. Real ins
 management and Quickstart assertions remain required after preparation; artifact verification alone does not
 establish their outcomes.
 
+#### Scenario: Resume a retained checkout after a recoverable preparation block
+
+When a retained integration checkout has advanced through one or more candidate
+revisions, a missing or mismatched console input, or failed cache admission before
+the selected command starts, MUST leave its exact latest stopped run recoverable.
+The fixed checkout owner controls retention and cleanup; current resource state
+and the latest run control recovery. A prior owner's SHA or verdict MUST NOT stand
+in for the current candidate. Recovery instructions and admission MUST use the same
+explicit preparation-state policy and preserve the selected host/workbench,
+candidate, command, timeout, schedule, plan, phase and executed related-run links.
+
+After preparation, the generated command MUST create a new run in the same retained
+checkout and recheck its lease, stopped worker, latest-state identity, clean source,
+origin, plan, driver/helpers, descendant revision and required artifact provenance.
+Unknown or executed blockers, stale borrowers and invalid resource state MUST NOT
+gain preparation-recovery admission. All earlier results retain their source and
+verdict; an unexecuted blocked run MUST remain ineligible as related execution
+evidence. The selected tests MUST actually execute after recovery; valid artifacts
+alone do not establish acceptance. Fresh blocked `on-failure` owners retain their
+exact-candidate reuse path; `never` retention requires a new checkout.
+
 ### Requirement: Evidence binds actual revision, artifact, role, and path
 
 Report MUST include checked source revision, build/executable identity, platform,

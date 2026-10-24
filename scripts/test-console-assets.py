@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Console selection, provenance and real managed-checkout admission regressions."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -94,6 +95,64 @@ class Artifact(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True).strip()
 
+    def execute_worker(self, root, row, source=None, cache_error=None):
+        home = self.root / 'home'
+        binary = home / '.cargo/bin'
+        binary.mkdir(parents=True, exist_ok=True)
+        fake = '''import sys,json,pathlib
+if '--version' in sys.argv:
+ print(pathlib.Path(sys.argv[0]).name+' fixture');sys.exit(0)
+if 'metadata' in sys.argv:
+ print(json.dumps({'target_directory':str(pathlib.Path.cwd()/'target')}));sys.exit(0)
+bad=(pathlib.Path(sys.argv[0]).resolve().parents[2]/'fail-command').exists()
+print('Running tests/publication_process.rs (target/debug/deps/publication_process-abcdef0123456789)')
+print('running 1 test')
+print('test component_fixture ... '+('FAILED' if bad else 'ok'))
+print('test result: '+('FAILED' if bad else 'ok')+'. '+str(int(not bad))+' passed; '+str(int(bad))+' failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s')
+sys.exit(101 if bad else 0)
+'''
+        for name in ('cargo', 'rustc'):
+            path = binary / name
+            path.write_text('#!' + sys.executable + '\n' + fake)
+            path.chmod(0o700)
+        run = root / 'runs' / row['id']
+        run.mkdir(parents=True)
+        if source is not None:
+            row = dict(row, frontend_dist=str(source))
+        runner.save(run / 'request.json', row)
+        with patch.object(runner.Path, 'home', return_value=home), patch.dict(os.environ, {}, clear=False), \
+             patch.object(runner.sys, 'platform', 'linux'), \
+             patch.object(runner.tempfile, 'gettempdir', return_value=str(self.root)), \
+             patch.object(runner, 'worker_alive', return_value=False), \
+             patch.object(runner, 'MIN_FREE_BYTES', 0), \
+             patch.object(runner, 'admit_cache_server', side_effect=cache_error, return_value={'state': 'ready'}), \
+             patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}) as stats:
+            runner.worker(run / 'request.json')
+        result = json.loads((run / 'result.json').read_text())
+        if result.get('temporary_directory'):
+            self.addCleanup(runner.cleanup_temp_directory, result['temporary_directory'])
+        return result, stats
+
+    def generated_request(self, command, run_id, executor_sha=None):
+        argv = shlex.split(command)
+        self.assertEqual(argv[:2], ['python3', 'scripts/remote-rust.py'])
+        revision = executor_sha or self.git('rev-parse', 'HEAD')
+        def committed(arguments):
+            if arguments == ['git', 'rev-parse', 'HEAD']:
+                return revision
+            if arguments == ['git', 'remote', 'get-url', 'origin']:
+                return str(self.repo)
+            if arguments[:2] == ['git', 'show']:
+                return (Path(__file__).parent / arguments[2].split(':scripts/', 1)[1]).read_text().rstrip('\n')
+            self.fail('Unexpected submission read: ' + repr(arguments))
+        with patch.object(runner, 'command', side_effect=committed), \
+             patch.object(runner.sys, 'argv', argv[1:]), \
+             patch.object(runner.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as ssh:
+            runner.main()
+        request = json.loads(ssh.call_args.kwargs['input'])
+        request['id'] = run_id
+        return request
+
     def test_build_stamps_only_successful_unchanged_source(self):
         with patch.object(assets.subprocess, 'call', return_value=0) as npm:
             self.assertEqual(assets.build(self.repo, {}), 0)
@@ -165,38 +224,8 @@ class Artifact(unittest.TestCase):
                                 'installed_', '--', '--nocapture'],
                        retention='on-failure', exclusive=False, timeout=10, plan='console-assets', phase='focused',
                        ssh_host='fixture-backend')
-        home = self.root / 'home'
-        binary = home / '.cargo/bin'
-        binary.mkdir(parents=True)
-        fake = '''import sys,json,pathlib
-if '--version' in sys.argv:
- print(pathlib.Path(sys.argv[0]).name+' fixture');sys.exit(0)
-if 'metadata' in sys.argv:
- print(json.dumps({'target_directory':str(pathlib.Path.cwd()/'target')}));sys.exit(0)
-print('Running tests/publication_process.rs (target/debug/deps/publication_process-abcdef0123456789)')
-print('running 1 test')
-print('test component_fixture ... ok')
-print('test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s')
-'''
-        for name in ('cargo', 'rustc'):
-            path = binary / name
-            path.write_text('#!' + sys.executable + '\n' + fake)
-            path.chmod(0o700)
-
         def execute(row, source=None):
-            run = root / 'runs' / row['id']
-            run.mkdir(parents=True)
-            if source is not None:
-                row = dict(row, frontend_dist=str(source))
-            runner.save(run / 'request.json', row)
-            with patch.object(runner.Path, 'home', return_value=home), patch.dict(os.environ, {}, clear=False), \
-                 patch.object(runner.sys, 'platform', 'linux'), \
-                 patch.object(runner.tempfile, 'gettempdir', return_value=str(self.root)), \
-                 patch.object(runner, 'MIN_FREE_BYTES', 0), \
-                 patch.object(runner, 'admit_cache_server', return_value={'state': 'ready'}), \
-                 patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}) as stats:
-                runner.worker(run / 'request.json')
-            return json.loads((run / 'result.json').read_text()), stats
+            return self.execute_worker(root, row, source)
 
         before, stats = execute(request)
         self.assertEqual((before['status'], before['blocker'], before['process_exit']),
@@ -205,10 +234,11 @@ print('test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered ou
         stats.assert_not_called()
         self.assertFalse((root / 'runs' / first / 'command.log').exists())
         self.assertIn('--reuse-checkout ' + first, before['console_assets']['preparation'][-1])
-        staging = home / '.cache/hiroute/console-assets' / first
+        staging = self.root / 'home/.cache/hiroute/console-assets' / first
         preparation = before['console_assets']['preparation']
         self.assertIn(shlex.join(['scp', '-r', 'apps/desktop/dist', 'fixture-backend:' + str(staging) + '/']), preparation)
-        self.assertEqual(shlex.split(preparation[-1])[2:4], ['--frontend-dist', str(staging / 'dist')])
+        arguments = shlex.split(preparation[-1])
+        self.assertEqual(arguments[arguments.index('--frontend-dist') + 1], str(staging / 'dist'))
         row = dict(request, id=second, reuse_checkout=first, retention='always')
         lease = runner.checkout_lease(root, first)
         try:
@@ -238,6 +268,138 @@ print('test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered ou
         stats.assert_not_called()
         self.assertEqual(json.loads((root / 'runs' / first / 'result.json').read_text())['status'], 'blocked')
         runner.cleanup_temp_directory(after['temporary_directory'])
+
+    def test_multiple_advances_block_then_execute_the_generated_recovery_in_the_same_checkout(self):
+        # Real Git/leases/worker/parser and command processes; compiler output is a fixture.
+        for kind in ('missing', 'stale'):
+            with self.subTest(kind=kind):
+                root = self.root / ('workbench-' + kind)
+                owner, middle, latest, blocked, retry, recovered = [
+                    '20261024-0' + str(int(kind == 'stale')) + '000' + str(i) + '-abcdef12'
+                    for i in range(1, 7)]
+                sha = self.git('rev-parse', 'HEAD')
+                common = dict(ref=self.git('symbolic-ref', 'HEAD'), sha=sha, executor_sha=sha,
+                              origin=str(self.repo), retention='always',
+                              exclusive=False, timeout=37, plan='console-recovery', phase='focused',
+                              ssh_host='fixture-backend', workbench='.local/share/fixture-workbench', related_runs=[])
+                for key, name in (('executor', 'remote-rust'), ('schedule', 'validation-schedule'),
+                                  ('report', 'validation-report'), ('console', 'console-assets')):
+                    contents = (Path(__file__).parent / (name + '.py')).read_text().rstrip('\n') + '\n'
+                    common[key + '_digest'] = hashlib.sha256(contents.encode()).hexdigest()
+                home = self.root / 'home'
+                home.mkdir(exist_ok=True)
+                (home / 'fail-command').touch()
+                # The stale case leaves an admitted older receipt through the runner itself.
+                (self.dist / assets.RECEIPT).write_text(json.dumps(assets.manifest(sha, assets.files(self.dist))))
+                first, _ = self.execute_worker(root, dict(common, id=owner,
+                    command=['cargo', 'test', '--test', 'publication_process', 'installed_'] if kind == 'stale'
+                    else ['cargo', 'test', '--lib']), self.dist if kind == 'stale' else None)
+                (home / 'fail-command').unlink()
+                self.assertEqual(first['status'], 'failed', first)
+                checkout = Path(first['checkout'])
+                (checkout / 'target').mkdir(exist_ok=True)
+                sentinel = checkout / 'target/retained-compiler-objects'
+                sentinel.write_bytes(b'retained compilation')
+                previous = owner
+                history = [owner]
+                for index, key in enumerate((middle, latest), 1):
+                    (self.repo / 'advance').write_text(kind + str(index))
+                    self.git('add', 'advance')
+                    self.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                             '-c', 'commit.gpgsign=false', 'commit', '-qm', 'advance fixture')
+                    common['sha'] = self.git('rev-parse', 'HEAD')
+                    result, _ = self.execute_worker(root, dict(common, id=key, continue_checkout=previous,
+                                                              command=['cargo', 'test', '--lib']))
+                    self.assertEqual(result['status'], 'completed', result)
+                    previous = key
+                    history.append(key)
+                command = ['cargo', 'test', '-p', 'hiroute-daemon', '--test', 'publication_process', 'installed_']
+                blocked_request = dict(common, id=blocked, continue_checkout=latest,
+                                       phase='final', related_runs=[middle, latest], command=command)
+                before, stats = self.execute_worker(root, blocked_request)
+                self.assertEqual((before['status'], before['blocker'], before['process_exit']),
+                                 ('blocked', 'console_assets', None), before)
+                self.assertNotIn('command_started_at', before)
+                stats.assert_not_called()
+                history.append(blocked)
+                snapshots = {key: (root / 'runs' / key / 'result.json').read_bytes() for key in history}
+                generated = before['console_assets']['preparation'][-1]
+                self.assertIn('--continue-checkout ' + blocked, generated)
+                self.assertEqual(generated, before['recovery']['command'])
+                self.assertNotIn('--reuse-checkout', generated)
+                # Resource safety remains independent of the recoverable result class.
+                recovery = dict(blocked_request, id=retry, continue_checkout=blocked)
+                with runner.checkout_lease(root, owner), patch.object(runner, 'worker_alive', return_value=False):
+                    for key in ('plan', 'origin', 'ref', 'executor_digest', 'schedule_digest', 'report_digest', 'console_digest'):
+                        with self.subTest(changed=key), self.assertRaises(runner.RunBlocked):
+                            runner.continue_checkout(root, dict(recovery, **{key: 'changed'}), owner)
+                    for key in (owner, middle, latest):
+                        with self.subTest(stale=key), self.assertRaises(runner.RunBlocked):
+                            runner.continue_checkout(root, dict(recovery, continue_checkout=key), owner)
+                    with self.assertRaises(runner.RunBlocked):
+                        runner.verify_reused_checkout(root, dict(recovery, reuse_checkout=middle))
+                    with patch.object(runner, 'worker_alive', return_value=True), self.assertRaises(runner.RunBlocked):
+                        runner.continue_checkout(root, recovery, owner)
+                    (checkout / 'dirty-source').touch()
+                    with self.assertRaises(runner.RunBlocked):
+                        runner.continue_checkout(root, recovery, owner)
+                    (checkout / 'dirty-source').unlink()
+                    state_path = root / ('checkout-' + owner + '.json')
+                    saved_state = state_path.read_bytes()
+                    runner.save(state_path, dict(run_id=middle, sha=common['sha']))
+                    with self.assertRaises(runner.RunBlocked):
+                        runner.continue_checkout(root, recovery, owner)
+                    state_path.write_bytes(saved_state)
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        runner.continue_checkout(root, dict(recovery, sha=first['sha']), owner)
+                # Keep hashes/source checks active on repeated preparation failures.
+                again, _ = self.execute_worker(root, recovery, self.dist)
+                self.assertEqual(again.get('blocker'), 'console_assets', again)
+                snapshots[retry] = (root / 'runs' / retry / 'result.json').read_bytes()
+                (self.dist / assets.RECEIPT).write_text(json.dumps(assets.manifest(common['sha'], assets.files(self.dist))))
+                argv = shlex.split(again['recovery']['command'])
+                staging = Path(argv[argv.index('--frontend-dist') + 1])
+                staging.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(self.dist, staging)
+                request = self.generated_request(again['recovery']['command'], recovered, common['executor_sha'])
+                for key in ('sha', 'executor_sha', 'executor_digest', 'schedule_digest', 'report_digest',
+                            'console_digest', 'timeout', 'plan', 'workbench', 'ssh_host'):
+                    self.assertEqual(request[key], common[key], key)
+                self.assertEqual((request['phase'], request['related_runs'], request['command']),
+                                 ('final', [middle, latest], command))
+                after, _ = self.execute_worker(root, request)
+                self.assertEqual(after['status'], 'completed', after)
+                self.assertEqual(after['process_exit'], 0)
+                self.assertIn('command_started_at', after)
+                self.assertEqual(after['tests']['counts']['passed'], 1)
+                self.assertEqual((after['checkout'], after['checkout_owner']), (str(checkout), owner))
+                self.assertEqual(after['console_assets']['source_revision'], common['sha'])
+                self.assertEqual(sentinel.read_bytes(), b'retained compilation')
+                for key, snapshot in snapshots.items():
+                    self.assertEqual((root / 'runs' / key / 'result.json').read_bytes(), snapshot)
+                metadata = dict(plan=common['plan'], related_runs=[blocked])
+                with self.assertRaisesRegex(ValueError, 'has not executed'):
+                    runner.reporting().related_reports(root / 'runs', metadata)
+
+    def test_cache_preflight_uses_the_same_generated_recovery_and_rechecks_setup(self):
+        root = self.root / 'workbench'
+        owner, retry = '20261024-020001-abcdef12', '20261024-020002-abcdef12'
+        initial = self.generated_request(shlex.join([
+            'python3', 'scripts/remote-rust.py', '--host', 'fixture-backend',
+            '--workbench', '.local/share/fixture-workbench', 'run', '--ref', self.git('symbolic-ref', 'HEAD'),
+            '--sha', self.sha, '--retention', 'always', '--plan', 'cache-recovery', '--', 'cargo', 'test', '--lib']), owner)
+        blocked, stats = self.execute_worker(root, initial,
+            cache_error=runner.RunBlocked('cache_server_unhealthy', 'fixture cache admission failure'))
+        self.assertEqual((blocked['status'], blocked['blocker'], blocked['process_exit']),
+                         ('blocked', 'cache_server_unhealthy', None))
+        self.assertNotIn('command_started_at', blocked)
+        stats.assert_not_called()
+        self.assertIn('--continue-checkout ' + owner, blocked['recovery']['command'])
+        old_result = (root / 'runs' / owner / 'result.json').read_bytes()
+        after, _ = self.execute_worker(root, self.generated_request(blocked['recovery']['command'], retry))
+        self.assertEqual(after['status'], 'completed', after)
+        self.assertEqual(after['checkout'], blocked['checkout'])
+        self.assertEqual((root / 'runs' / owner / 'result.json').read_bytes(), old_result)
 
 
 if __name__ == '__main__':

@@ -23,6 +23,42 @@ spec.loader.exec_module(runner)
 
 
 class Contract(unittest.TestCase):
+    def test_checkout_recovery_requires_a_known_unexecuted_setup_blocker(self):
+        first = dict(retention='always')
+        latest = dict(status='blocked', blocker='console_assets', process_exit=None,
+                      plan='recovery', executor_digest='driver')
+        for blocker in runner.RECOVERABLE_SETUP_BLOCKERS:
+            with self.subTest(blocker=blocker):
+                row = dict(latest, blocker=blocker)
+                self.assertEqual(runner.checkout_recovery_modes(first, row), ('continue', 'reuse'))
+        for changes in (dict(blocker='checkout_busy'), dict(blocker='continuation_changed'),
+                        dict(blocker='unknown'), dict(process_exit=0), dict(command_started_at=0),
+                        dict(command_finished_at=1), dict(timed_out=True), dict(status='running')):
+            with self.subTest(changes=changes):
+                self.assertEqual(runner.checkout_recovery_modes(first, dict(latest, **changes)), ())
+        self.assertEqual(runner.checkout_recovery_modes(dict(latest, retention='on-failure'), latest), ('reuse',))
+        self.assertEqual(runner.checkout_recovery_modes(dict(retention='never'), latest), ())
+        self.assertEqual(runner.checkout_recovery_modes(first, dict(latest, status='failed')), ('continue',))
+
+    def test_recovery_command_keeps_execution_scope_and_does_not_link_the_blocked_run(self):
+        key = '20261024-010203-abcdef12'
+        row = dict(id=key, checkout_owner=key, retention='always', status='blocked', blocker='console_assets',
+                   process_exit=None, plan='recovery', executor_digest='driver', phase='final',
+                   ssh_host='fixture-host', workbench='.local/share/fixture-workbench',
+                   ref='refs/heads/fixture', sha='a' * 40, timeout=123, exclusive=True,
+                   schedule='workspace-dag', related_runs=['20261024-010201-abcdef12'],
+                   command=['cargo', 'test', '--locked', '--workspace', '--exclude', 'hiroute-desktop', '--all-features'])
+        import shlex
+        argv = shlex.split(runner.checkout_recovery_command(Path('/unused'), row, '/staging with spaces/dist'))
+        for flag, value in (('--host', row['ssh_host']), ('--workbench', row['workbench']),
+                            ('--continue-checkout', key), ('--timeout', '123'), ('--schedule', 'workspace-dag'),
+                            ('--frontend-dist', '/staging with spaces/dist'), ('--phase', 'final')):
+            self.assertEqual(argv[argv.index(flag) + 1], value)
+        self.assertIn('--exclusive', argv)
+        self.assertEqual(argv[argv.index('--related-run') + 1], row['related_runs'][0])
+        self.assertEqual(argv[argv.index('--') + 1:], row['command'])
+        self.assertEqual(argv.count(key), 1)
+
     def test_separate_workbench_submission_readback_and_maintenance_keep_the_selected_root(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'remote-rust.json'
@@ -249,6 +285,7 @@ sys.exit(101 if bad else 0)
                      patch.object(runner.tempfile, 'gettempdir', return_value=str(base.resolve())), \
                      patch.object(runner, 'console_assets') as console, \
                      patch.object(runner, 'MIN_FREE_BYTES', 0), \
+                     patch.object(runner, 'worker_alive', return_value=False), \
                      patch.object(runner, 'admit_cache_server', return_value={'state': 'ready'}), \
                      patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}):
                     console.return_value.preflight.return_value = dict(state='not_required', cases=[])
@@ -582,6 +619,7 @@ runner.admit_cache_server(root,env,handles=[handle])
             runner.save(owner_run / 'result.json', dict(id=owner, status='completed',
                 retention='always', sha=sha, origin=str(source), executor_sha=sha,
                 checkout=str(checkout), worker_pid=None))
+            runner.save(root / ('checkout-' + owner + '.json'), dict(run_id=owner, sha=sha))
             request = dict(reuse_checkout=owner, sha=sha, origin=str(source), executor_sha=sha)
             self.assertEqual(runner.verify_reused_checkout(root, request), checkout)
             borrowed = root / 'runs' / borrower
