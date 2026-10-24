@@ -2,7 +2,7 @@
 use super::models::{model_spec, model_status, restore_spec};
 use super::*;
 
-fn reopen(fixture: QoderFixture) -> QoderFixture {
+pub(super) fn reopen(fixture: QoderFixture) -> QoderFixture {
     let scanner = fixture.runtime.adapter.scanner.clone();
     let QoderFixture {
         _root,

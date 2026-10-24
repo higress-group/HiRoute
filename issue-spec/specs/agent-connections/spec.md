@@ -478,6 +478,17 @@ native saved-route or real main-Agent delegation acceptance.
 
 Applying managed Pi, DSH or ordinary OpenCode model settings SHALL install the
 bundled native routing adapter through the existing protected artifact transaction.
+OpenCode MAY explicitly persist `routing_metadata: false` in its additional-model
+selection to omit only the HiRoute metadata plugin. Omission or `true` retains the
+normal installation behavior. The selection SHALL preserve the authorized models,
+classification, actual execution capture and cross-turn evaluation; missing native
+purpose and continuity evidence remains uncertain. It SHALL NOT disable unrelated
+plugins or promise to bypass their native dependency initialization.
+An existing managed adapter SHALL require complete model Restore before this
+selection can be applied. Preview SHALL identify that recovery step before writes;
+a surviving borrowed or foreign adapter SHALL instead require explicit user review.
+Reapplying the normal selection SHALL reinstall the adapter through the same
+transaction, including after a daemon restart or a plugin-free configuration.
 Reconfiguration, activation, drift detection, interrupted-operation retry and
 restore SHALL verify the adapter's exact owned bytes. A conflicting foreign file
 SHALL be preserved. Identical pre-existing files MAY be borrowed and SHALL survive

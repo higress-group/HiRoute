@@ -144,6 +144,8 @@ pub fn preview_agent_settings(
             SettingsBlockReason::QoderDefaultInUse
                 | SettingsBlockReason::QoderModelFileConflict
                 | SettingsBlockReason::AdditionalDefaultInUse
+                | SettingsBlockReason::NativeRoutingAdapterRestoreRequired
+                | SettingsBlockReason::NativeRoutingAdapterExternalResource
                 | SettingsBlockReason::HermesModelFileConflict
         ) {
             return Err(SettingsPlanningError::InvalidSelection);

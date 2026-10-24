@@ -733,3 +733,6 @@ mod budget_tests;
 
 #[path = "settings_entry_native_routing_tests.rs"]
 mod native_routing;
+
+#[path = "settings_entry_opencode_metadata_tests.rs"]
+mod opencode_metadata;

@@ -269,7 +269,7 @@ impl LocalControlAdapter {
                 .scanner
                 .dsh_web_default_in_use(&provider_id, &models)
                 .map_err(|_| ControlReadError::Denied)?;
-        let qoder_model_conflict = if opencode_default_in_use || dsh_default_in_use
+        let mut qoder_model_conflict = if opencode_default_in_use || dsh_default_in_use
             || pi_settings
                 .as_ref()
                 .is_some_and(|settings| settings.removes_default(&provider_id, &models))
@@ -308,7 +308,23 @@ impl LocalControlAdapter {
                         .find(|i| i.effect_id() == "agent-connection-native-routing-adapter")
                         .map(|i| (&operation.operation_id, i))
                 });
-                if matches!(spec.model, AgentFacetIntent::Configure { .. }) {
+                if matches!(&spec.model, AgentFacetIntent::Configure { settings }
+                    if !settings.installs_native_routing_metadata())
+                {
+                    // Do not strand an owned adapter by dropping its effect from the next
+                    // Operation. Normal Restore releases its journal before this explicit
+                    // no-plugin configuration. A foreign/borrowed file is never deleted.
+                    use hiroute_application::agent_connection::SettingsBlockReason;
+                    let blocker = if old.is_some() {
+                        Some(SettingsBlockReason::NativeRoutingAdapterRestoreRequired)
+                    } else if bytes.is_some() {
+                        Some(SettingsBlockReason::NativeRoutingAdapterExternalResource)
+                    } else {
+                        None
+                    };
+                    qoder_model_conflict = qoder_model_conflict.or(blocker);
+                    None
+                } else if matches!(spec.model, AgentFacetIntent::Configure { .. }) {
                     hiroute_integrations::validate_native_plugin_configuration(
                         &self.artifacts,
                         &file_target,

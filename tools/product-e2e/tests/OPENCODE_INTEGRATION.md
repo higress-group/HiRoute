@@ -57,6 +57,77 @@ sharing a session may be misattributed. This is a disclosed degraded capability,
 not full metadata recovery. Never disable unrelated plugins or fabricate dependency
 manifests to obtain a passing startup result.
 
+### Recover from a blocked metadata-plugin startup
+
+The public Agent settings selection accepts `routing_metadata: false` for
+`opencode_additional`. It is saved with the model configuration and survives
+daemon restarts and ordinary model edits. It omits only HiRoute's metadata plugin;
+all selected Plans, protocols and Gateway routing remain available. Other external
+plugins can still cause the native dependency wait.
+
+For an existing managed installation, first return any native saved default that
+references a managed selector to its original provider. Inspect the model status,
+then use the normal model Restore transaction:
+
+```sh
+hiroute agents connect status CONTEXT_ID
+hiroute agents restore preview --context CONTEXT_ID --facet model --apply-file restore-apply.json
+hiroute agents restore apply --request-file restore-apply.json
+```
+
+Wait for the returned Operation to succeed (`hiroute operations get OPERATION_ID`)
+and check status again. Restore preserves unrelated configuration and plugins.
+If a pre-existing HiRoute plugin was borrowed, Restore leaves it in place: explicitly
+review and disable that user-owned file before continuing. Preview reports
+`native_routing_adapter_restore_required` or
+`native_routing_adapter_external_resource` before changing model configuration;
+neither error authorizes deleting another plugin.
+
+Write a request file using the actual context and the complete intended Plan and
+protocol selection. For example, `metadata-fallback.json` has this shape (replace
+the two placeholder IDs and retain every Plan that should remain authorized):
+
+```json
+{
+  "spec": {
+    "schema_version": { "major": 2, "minor": 0 },
+    "context_id": "CONTEXT_ID",
+    "model": {
+      "intent": "configure",
+      "settings": {
+        "mode": "opencode_additional",
+        "allowed_plan_ids": ["PLAN_ID"],
+        "plan_protocols": { "PLAN_ID": "responses" },
+        "routing_metadata": false
+      }
+    },
+    "collaboration": { "intent": "keep" },
+    "management_skill": { "intent": "keep" }
+  }
+}
+```
+
+```sh
+hiroute agents connect preview --request-file metadata-fallback.json --apply-file fallback-apply.json
+hiroute agents connect apply --request-file fallback-apply.json
+hiroute operations get OPERATION_ID
+hiroute agents connect status CONTEXT_ID
+```
+
+Restart the ordinary OpenCode process in the same native profile. Classification,
+capture and evaluation continue with the metadata limitation described above. This
+two-step recovery briefly restores the original model configuration before applying
+managed routes again; it does not silently remove an adapter from an active journal.
+Once native dependencies are ready, preview and apply the same full selection with
+`routing_metadata: true` (or omit the field), then restart OpenCode to load the
+restored plugin. Re-enabling does not reconstruct any earlier missing evidence.
+
+Acceptance must separately show a genuinely cold dependency directory completing
+fresh A/B with actual classification, capture and exact prior-request assessment in
+fallback mode; normal metadata mode must then recover actual request-header
+adoption. Finish with full model Restore and actual default inference. Settings
+transaction tests alone do not prove native startup or model execution.
+
 The public `chat.headers` hook emits immutable v2 purpose/session/current-event
 facts before optional enrichment. Known `title`, `summary` and `compaction` calls
 skip the SDK. Ordinary calls use at most one 128-entry SDK page with a 50 ms abort

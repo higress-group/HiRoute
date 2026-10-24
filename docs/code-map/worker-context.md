@@ -60,6 +60,12 @@ page positions provide compression references while synthetic continuations keep
 unavailable-input semantics. The [OpenCode guide](../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md#ordinary-routing-metadata)
 separates hook regressions from native dependency initialization, recovery and
 Restore inference; a hook deadline cannot bound the native loader that precedes it.
+The persisted OpenCode metadata fallback is decided by
+[additional-model facts](../../crates/daemon/src/control/runtime/settings_facts/additional_model.rs)
+before writes and uses the existing model Restore/Apply journal. Its
+[settings regressions](../../crates/daemon/src/control/runtime/settings_entry_opencode_metadata_tests.rs)
+cover restart, re-enablement, borrowed resources and stale previews; it changes
+metadata precision without changing model authorization or Gateway routing.
 Its [bounded Markdown reference reader](../../crates/integrations/src/agents/opencode_resources.rs)
 adds native user Agent/Mode selectors to the same settings dependency checks;
 removal requires complete references, while retaining selectors permits grant rotation.
