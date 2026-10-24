@@ -41,6 +41,45 @@ fn codex_subscription_replay_omits_only_completed_reasoning_output_status() {
 }
 
 #[test]
+fn codex_subscription_replay_omits_null_reasoning_output_status() {
+    // Responses providers may serialize an absent output lifecycle as null.
+    // The Codex subscription input dialect rejects this output-only field.
+    let body = json!({"model":"route", "stream":true, "input":[
+        {"type":"reasoning","id":"msg-fixture-reasoning","status":null,
+         "summary":[],"content":[{"type":"reasoning_text","text":"retained thought"}],
+         "encrypted_content":null},
+        {"type":"message","id":"msg-fixture-final","role":"assistant","status":"completed",
+         "content":[{"type":"output_text","text":"answer"}]},
+        {"type":"message","role":"user","content":"next task"}
+    ]});
+    let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+    let original = request.clone();
+    assert!(!request.responses_item_statuses.contains_key(&0));
+    for connector in [
+        "connector.cpa.codex",
+        "connector.openai.p0",
+        "connector.cpa.claude",
+    ] {
+        let mut profile =
+            exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+        profile.connector.connector_id = connector.into();
+        let mut expected = body["input"].clone();
+        if connector == "connector.cpa.codex" {
+            expected[0].as_object_mut().unwrap().remove("status");
+        }
+        assert_eq!(
+            project_candidate_request(&request, &profile).unwrap().body["input"],
+            expected,
+            "a nullable output status is omitted only for the Codex subscription input dialect"
+        );
+        let template = project_candidate_request_template(&request, &profile).unwrap();
+        let rendered: serde_json::Value = serde_json::from_slice(&template.bytes).unwrap();
+        assert_eq!(rendered["input"], expected);
+        assert_eq!(request, original);
+    }
+}
+
+#[test]
 fn codex_subscription_normalization_survives_externalized_status_and_sequential_replay() {
     assert_codex_replay_wire(false, None);
 }
