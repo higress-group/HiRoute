@@ -236,6 +236,67 @@ fn codex_v2_standard_json_declaration_is_explicit_and_contradictions_fail() {
     assert!(project_candidate_request(&request, &p).is_err());
 }
 
+#[test]
+fn codex_v2_custom_provider_replays_plaintext_source_without_vendor_metadata() {
+    let p = profile(true);
+    let decoded = decode(
+        &p,
+        &envelope(item(None, "completed", r#"{"cmd":"read-owned-file"}"#)),
+    )
+    .unwrap();
+    let returned = json_output(&p, &decoded);
+    assert_eq!(returned["output"][0]["encrypted_function_args"], json!([]));
+
+    // rust-v0.147.0 core/client.rs::build_responses_request clears this field
+    // for non-OpenAI providers after the original response has been recorded.
+    let mut historical = returned["output"][0].clone();
+    historical
+        .as_object_mut()
+        .unwrap()
+        .remove("encrypted_function_args");
+    let result = json!({"type":"function_call_output","call_id":"call_native","output":"owned-file-contents"});
+    let mut replay = fixture();
+    replay["input"]
+        .as_array_mut()
+        .unwrap()
+        .extend([historical.clone(), result.clone()]);
+    let request = decode_ingress_request(IngressProtocol::Responses, &replay).unwrap();
+    let original = request.native_body.as_ref().unwrap().clone();
+    let prepared = project_candidate_request(&request, &p).unwrap();
+    assert_eq!(
+        prepared.function_encoding_projection,
+        FunctionEncodingProjection::Plaintext
+    );
+    assert_eq!(prepared.body["input"][1], historical);
+    assert_eq!(prepared.body["input"][2], result);
+    assert_eq!(request.native_body.as_ref().unwrap(), &original);
+    assert!(
+        original["input"][1]
+            .get("encrypted_function_args")
+            .is_none()
+    );
+    assert_eq!(returned["output"][0]["encrypted_function_args"], json!([]));
+    let native = project_candidate_request(&request, &profile(false)).unwrap();
+    assert_eq!(native.body["input"], replay["input"]);
+
+    // The absence allowance does not admit explicit encryption or malformed
+    // declarations. In particular, raw null keeps its existing strict contract.
+    for invalid in [
+        json!(["cmd"]),
+        Value::Null,
+        json!(true),
+        json!([1]),
+        json!("cmd"),
+    ] {
+        let mut body = replay.clone();
+        body["input"][1]["encrypted_function_args"] = invalid;
+        match decode_ingress_request(IngressProtocol::Responses, &body) {
+            Ok(request) => assert!(project_candidate_request(&request, &p).is_err()),
+            Err(_) => {}
+        }
+    }
+}
+
 fn lifecycle(encoding: Option<Value>) -> Vec<Value> {
     let arguments = r#"{"message":"read fixture"}"#;
     vec![
@@ -463,14 +524,27 @@ fn codex_v2_plain_standard_response_client_continues_without_codex_extension() {
     );
     assert_eq!(next.body["input"], replay["input"]);
 
-    // The same missing field is not plaintext proof in an explicitly encrypted dialect.
+    // Schema negotiation cannot invalidate ordinary historical function calls.
+    // Codex 0.147 build_responses_request clears this optional metadata for
+    // custom providers even when its original response/journal carried [].
     let mut v2 = fixture();
     v2["input"]
         .as_array_mut()
         .unwrap()
         .extend(replay["input"].as_array().unwrap()[1..].iter().cloned());
     let request = decode_ingress_request(IngressProtocol::Responses, &v2).unwrap();
-    assert!(project_candidate_request(&request, &p).is_err());
+    let next = project_candidate_request(&request, &p).unwrap();
+    assert_eq!(
+        next.function_encoding_projection,
+        FunctionEncodingProjection::Plaintext
+    );
+    assert_eq!(next.body["input"][1], replay["input"][1]);
+    assert_eq!(next.body["input"][2], replay["input"][2]);
+    assert!(
+        request.native_body.as_ref().unwrap()["input"][1]
+            .get("encrypted_function_args")
+            .is_none()
+    );
     assert!(project_candidate_request(&request, &profile(false)).is_ok());
 }
 
