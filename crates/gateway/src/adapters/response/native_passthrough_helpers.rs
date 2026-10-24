@@ -3,8 +3,25 @@ use sha2::{Digest, Sha256};
 
 use super::{
     IngressProtocol, ModelError, ModelIrError, NativeTerminalOutcome, ProjectionMetadata,
-    ProtocolAdapterError,
+    ProtocolAdapterError, ToolKindV1,
 };
+
+/// Web search uses an item ID rather than the callable tool's call ID. Keep
+/// those native carriers distinct even though both project to Function in IR.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum NativeToolCarrier {
+    Call(ToolKindV1),
+    WebSearch,
+}
+
+impl NativeToolCarrier {
+    pub(super) fn kind(self) -> ToolKindV1 {
+        match self {
+            Self::Call(kind) => kind,
+            Self::WebSearch => ToolKindV1::Function,
+        }
+    }
+}
 
 impl ProjectionMetadata {
     pub(super) fn opaque() -> Self {

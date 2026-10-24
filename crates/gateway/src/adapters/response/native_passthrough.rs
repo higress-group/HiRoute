@@ -1,7 +1,7 @@
 //! Same-protocol response projection.
 //!
 //! This path deliberately does not build `ModelResponseIRV1`. It preserves the
-//! provider's legal wire shape and owns only the fields HiRoute must rewrite or
+//! provider's wire shape and owns only the fields HiRoute must rewrite or
 //! validate for routing identity, continuation safety, terminal delivery and
 //! usage observation.
 
@@ -302,7 +302,7 @@ impl ToolIdDelivery {
 struct NativeToolIdentity {
     native_id: String,
     logical_id: String,
-    kind: ToolKindV1,
+    carrier: NativeToolCarrier,
     namespace: Option<String>,
     name: String,
 }
@@ -525,8 +525,13 @@ impl ProjectionState {
                         .note(CompletionReason::UntrackedToolItem);
                     return Ok(ProjectionMetadata::opaque());
                 }
-                let logical =
-                    self.project_tool(index, &native_id, ToolKindV1::Function, None, "web_search")?;
+                let logical = self.project_tool(
+                    index,
+                    &native_id,
+                    NativeToolCarrier::WebSearch,
+                    None,
+                    "web_search",
+                )?;
                 object.insert("item_id".into(), Value::String(logical));
                 false
             }
@@ -983,14 +988,24 @@ impl ProjectionState {
                     .get("namespace")
                     .and_then(Value::as_str)
                     .map(str::to_owned);
-                let logical =
-                    self.project_tool(index, &native_id, kind, namespace.as_deref(), &name)?;
+                let logical = self.project_tool(
+                    index,
+                    &native_id,
+                    NativeToolCarrier::Call(kind),
+                    namespace.as_deref(),
+                    &name,
+                )?;
                 item.insert("call_id".into(), Value::String(logical));
             }
             Some("web_search_call") => {
                 let native_id = string_field(item, "id")?.to_owned();
-                let logical =
-                    self.project_tool(index, &native_id, ToolKindV1::Function, None, "web_search")?;
+                let logical = self.project_tool(
+                    index,
+                    &native_id,
+                    NativeToolCarrier::WebSearch,
+                    None,
+                    "web_search",
+                )?;
                 item.insert("id".into(), Value::String(logical));
             }
             _ => {}
@@ -1005,7 +1020,13 @@ impl ProjectionState {
     ) -> Result<(), ProtocolAdapterError> {
         let native_id = string_field(block, "id")?.to_owned();
         let name = string_field(block, "name")?.to_owned();
-        let logical = self.project_tool(index, &native_id, ToolKindV1::Function, None, &name)?;
+        let logical = self.project_tool(
+            index,
+            &native_id,
+            NativeToolCarrier::Call(ToolKindV1::Function),
+            None,
+            &name,
+        )?;
         block.insert("id".into(), Value::String(logical));
         Ok(())
     }
@@ -1056,7 +1077,7 @@ impl ProjectionState {
                     .as_ref()
                     .map(|tool| ChatToolIdentity {
                         emitted_name: tool.name.clone(),
-                        kind: tool.kind,
+                        kind: tool.carrier.kind(),
                         namespace: tool.namespace.clone(),
                         local_name: tool.name.clone(),
                     })
@@ -1067,7 +1088,7 @@ impl ProjectionState {
             let logical = self.project_tool(
                 index,
                 &native_id,
-                identity.kind,
+                NativeToolCarrier::Call(identity.kind),
                 identity.namespace.as_deref(),
                 &identity.local_name,
             )?;
@@ -1103,22 +1124,32 @@ impl ProjectionState {
         &mut self,
         index: u32,
         native_id: &str,
-        kind: ToolKindV1,
+        carrier: NativeToolCarrier,
         namespace: Option<&str>,
         name: &str,
     ) -> Result<String, ProtocolAdapterError> {
         if let Some(existing) = self.tools.get(&index) {
+            let metadata_changed =
+                existing.namespace.as_deref() != namespace || existing.name != name;
             if existing.native_id != native_id
-                || existing.kind != kind
-                || existing.namespace.as_deref() != namespace
-                || existing.name != name
+                || existing.carrier != carrier
+                || (metadata_changed && self.protocol != IngressProtocol::Responses)
             {
                 return Err(ModelIrError::InvalidResponseLifecycle(
                     "native Tool identity changed".into(),
                 )
                 .into());
             }
-            return Ok(existing.logical_id.clone());
+            let logical_id = existing.logical_id.clone();
+            if metadata_changed {
+                // Responses forwarding owns the call-ID mapping, not provider
+                // names. Preserve conflicting native snapshots without granting
+                // completion proof or repairing canonical execution history.
+                self.response_items_uncertain = true;
+                self.completion_diagnostic
+                    .note(CompletionReason::ItemSnapshot);
+            }
+            return Ok(logical_id);
         }
         let retained = std::mem::size_of::<NativeToolIdentity>()
             .saturating_add(native_id.len())
@@ -1145,7 +1176,7 @@ impl ProjectionState {
             NativeToolIdentity {
                 native_id: native_id.into(),
                 logical_id: logical_id.clone(),
-                kind,
+                carrier,
                 namespace: namespace.map(str::to_owned),
                 name: name.into(),
             },

@@ -1,6 +1,9 @@
 //! Native forwarding does not certify conflicting provider tool metadata.
 use super::*;
-use crate::server::core_runtime::adapters::NativeResponseDecoder;
+use crate::server::core_runtime::{
+    adapters::{NativeResponseDecoder, ProtocolAdapterError},
+    model_ir::ModelIrError,
+};
 
 fn response_stream(name: &str, namespace: Option<&str>, conflicting_arguments: bool) -> Vec<u8> {
     let arguments = r#"{"cmd":"printf current"}"#;
@@ -112,7 +115,11 @@ fn native_response_tool_metadata_alone_cannot_certify_canonical_capture() {
         let mut decoder =
             NativeResponseDecoder::new(&profile(IngressProtocol::Responses), 200, true).unwrap();
         let error = decoder.feed(&wire, true).unwrap_err();
-        assert!(error.to_string().contains("tool identity"), "{error}");
+        assert!(
+            matches!(error, ProtocolAdapterError::ModelIr(ModelIrError::MissingToolIdentity(ref index))
+            if index == "responses index 0"),
+            "{error}"
+        );
     }
 }
 

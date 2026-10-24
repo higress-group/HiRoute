@@ -457,6 +457,16 @@ Equivalent inline and externalized values SHALL produce the same supported
 semantic interpretation and native output. Unsupported or opaque values retain
 their original bytes without inventing a comparable semantic boundary.
 
+For same-protocol Responses delivery, conflicting provider tool names or
+namespaces SHALL retain their native values when the call ID and native tool
+carrier remain stable. Such delivery SHALL remain uncertain and SHALL NOT
+certify complete execution capture. A change between callable and provider-run
+tool carriers, a changed call ID or reuse at another output index SHALL remain
+an identity error. Cross-protocol interpretation SHALL retain its stricter
+semantic requirements. Later complete requests may recover classification,
+capture and evaluation without repairing the conflicting execution or rewriting
+bytes already delivered to the client.
+
 Native Agent adapters supply evidence of input position, request purpose, identity
 and lineage. They SHALL NOT independently infer execution history or claim human
 origin from an unverified callback. Missing evidence loses only the conclusion

@@ -141,6 +141,18 @@ renderers omit foreign reasoning without inventing signatures. The
 [production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
 covers the listener boundary, including tool continuation.
 
+Same-protocol Responses forwarding preserves provider tool names and namespaces
+even when they disagree across snapshots of the same call. The call ID and
+native carrier (function, custom or provider-run web search) must remain stable.
+Conflicting metadata makes completion unknown; canonical capture remains strict
+and the affected history stays partial. The projector neither buffers the whole
+response nor replaces an already delivered instruction with the final snapshot.
+This keeps delivery available without claiming the upstream semantics are valid.
+The [native tool conflict scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/native_tool_conflict.rs)
+checks unmodified delivery, partial history and recovery of later complete work.
+Cross-protocol conversion and Messages/Chat identity checks retain their existing
+rules. A client that cannot consume a contradictory native stream may still fail.
+
 [Historical request projection](src/adapters/request/history.rs) separates completed
 Responses commentary replay to Chat from the live response renderer's phase rules.
 The adapter returns candidate-local phase loss; actual materialization and rejected
