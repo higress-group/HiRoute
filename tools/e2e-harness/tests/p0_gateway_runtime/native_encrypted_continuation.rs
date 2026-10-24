@@ -101,7 +101,7 @@ pub(super) fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
     }
 }
 
-fn enable_native_provider_state(fixture: &RuntimeFixture) {
+pub(super) fn enable_native_provider_state(fixture: &RuntimeFixture) {
     let mut publication = fixture.publication();
     for candidate in &mut publication.aliases[0].candidates {
         for profile in &mut candidate.protocol_profiles {
