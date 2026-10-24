@@ -415,10 +415,14 @@ fn unsupported_phase_control_and_unfinished_history_exclude_chat_with_safe_reaso
                 projections
                     .iter()
                     .all(|event| event["outcome"] == "unsupported"
-                        && event["stage"] == "candidate_preflight"
-                        && event["first_message_index"] == 1
-                        && event["affected_items"] == 1)
+                        && event["stage"] == "candidate_preflight")
             );
+            assert_eq!(projections[1]["first_message_index"], 1);
+            assert_eq!(projections[1]["affected_items"], 1);
+            for event in [&projections[0], &projections[2]] {
+                assert!(event["first_message_index"].is_null());
+                assert!(event["affected_items"].is_null());
+            }
             assert!(
                 !log.contains("private-history-marker") && !log.contains("private-control-marker")
             );

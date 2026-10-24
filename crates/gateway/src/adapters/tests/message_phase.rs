@@ -136,21 +136,24 @@ fn completed_commentary_history_projects_to_chat_with_explicit_phase_loss() {
 #[test]
 fn unfinished_commentary_and_unknown_controls_have_closed_rejection_positions() {
     use hiroute_diagnostics::event::RequestProjectionReason;
-    for (field, value, reason) in [
+    for (field, value, reason, message_index) in [
         (
             "status",
             json!("in_progress"),
             RequestProjectionReason::ItemLifecycleUnsupported,
+            Some(0),
         ),
         (
             "phase",
             json!("future_phase"),
             RequestProjectionReason::NativeSemanticsUnsupported,
+            None,
         ),
         (
             "control_extension",
             json!({"resume":"private-control-value"}),
             RequestProjectionReason::NativeSemanticsUnsupported,
+            None,
         ),
     ] {
         let mut original = document("commentary");
@@ -170,11 +173,44 @@ fn unfinished_commentary_and_unknown_controls_have_closed_rejection_positions() 
                 error,
                 ProtocolAdapterError::RequestUnrepresentable {
                     reason,
-                    message_index: Some(0)
+                    message_index
                 }
             );
             assert!(!error.to_string().contains("private-control-value"));
         }
+    }
+}
+
+#[test]
+fn phase_lifecycle_validation_preserves_supported_reasoning_history_projection() {
+    for status in [None, Some(json!(null)), Some(json!("completed"))] {
+        let mut original = document("commentary");
+        let mut reasoning = json!({"type":"reasoning","id":"rs-prior","summary":[
+            {"type":"summary_text","text":"prior thought"}
+        ],"encrypted_content":null});
+        if let Some(status) = status {
+            reasoning["status"] = status;
+        }
+        original["input"]
+            .as_array_mut()
+            .unwrap()
+            .insert(0, reasoning);
+        let request = decode_ingress_request(IngressProtocol::Responses, &original).unwrap();
+        let profile =
+            exact_state_profile(IngressProtocol::Responses, IngressProtocol::ChatCompletions);
+        let direct = project_candidate_request(&request, &profile).unwrap();
+        let template = project_candidate_request_template(&request, &profile).unwrap();
+        assert_eq!(
+            direct.body["messages"][0],
+            json!({"role":"assistant","reasoning_content":"prior thought"})
+        );
+        assert_eq!(direct.body["messages"][1]["content"], "previous answer");
+        assert_eq!(direct.request_projection_loss.first_message_index, Some(1));
+        assert_eq!(
+            direct.request_projection_loss,
+            template.request_projection_loss
+        );
+        assert_eq!(request.native_body.as_ref(), Some(&original));
     }
 }
 

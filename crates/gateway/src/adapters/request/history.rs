@@ -31,11 +31,12 @@ pub(super) fn validate_message_shapes(
     validate_responses_options(request.responses_options.as_ref(), target)?;
     let mut loss = RequestProjectionLoss::default();
     if target != IngressProtocol::Responses {
-        if let Some((index, _)) = request
-            .responses_item_statuses
-            .iter()
-            .find(|(_, status)| status.as_str() != "completed")
-        {
+        if let Some((index, _)) = request.responses_message_phases.iter().find(|(index, _)| {
+            request
+                .responses_item_statuses
+                .get(*index)
+                .is_some_and(|status| status != "completed")
+        }) {
             return Err(ProtocolAdapterError::RequestUnrepresentable {
                 reason: RequestProjectionReason::ItemLifecycleUnsupported,
                 message_index: (*index < request.messages.len()).then_some(*index),
@@ -44,9 +45,9 @@ pub(super) fn validate_message_shapes(
         if request.native_only {
             return Err(ProtocolAdapterError::RequestUnrepresentable {
                 reason: RequestProjectionReason::NativeSemanticsUnsupported,
-                message_index: request
-                    .native_history_layout()
-                    .and_then(|items| items.iter().position(|item| !item.modeled)),
+                // Native-only extensions may also occur outside canonical messages.
+                // A native replay position alone is not a diagnostic coordinate proof.
+                message_index: None,
             });
         }
         for (index, phase) in &request.responses_message_phases {
