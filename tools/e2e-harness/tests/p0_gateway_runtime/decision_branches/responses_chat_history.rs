@@ -79,7 +79,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
             let decision = facts
                 .iter()
                 .filter(|fact| fact["fact"]["kind"] == "route_decision")
-                .last()
+                .next_back()
                 .unwrap();
             let complexity = &decision["fact"]["complexity"];
             assert_eq!(
@@ -296,7 +296,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
         let decision = facts
             .iter()
             .filter(|event| event["fact"]["kind"] == "route_decision")
-            .last()
+            .next_back()
             .unwrap();
         assert_eq!(decision["fact"]["complexity"]["execution_group"], "regular");
         assert_eq!(decision["fact"]["complexity"]["fallback_used"], false);
@@ -326,7 +326,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
         let after_decision = facts
             .iter()
             .filter(|event| event["fact"]["kind"] == "route_decision")
-            .last()
+            .next_back()
             .unwrap();
         let after_id = &after_decision["correlation"]["request_id"];
         assert_eq!(
