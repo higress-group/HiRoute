@@ -2037,7 +2037,8 @@
       "removal_condition": "Remove only when supported stores and backups no longer retain these exact facts or an authenticated conversion preserves their original evidence.",
       "allowed_paths": [
         "crates/domain/src/observation/execution_validation.rs",
-        "crates/domain/src/observation/execution_tests.rs"
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/merged_contract_tests.rs"
       ]
     },
     {
@@ -2049,7 +2050,8 @@
       "removal_condition": "Remove only when supported stores and backups no longer retain these exact facts or an authenticated conversion preserves their original evidence.",
       "allowed_paths": [
         "crates/domain/src/observation/execution_validation.rs",
-        "crates/domain/src/observation/execution_tests.rs"
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/merged_contract_tests.rs"
       ]
     }
   ]
