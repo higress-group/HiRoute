@@ -21,6 +21,7 @@ fn cache_fixture() -> (tempfile::TempDir, TcpListener, ProductDaemon) {
 
 async fn check_current(
     daemon: &mut ProductDaemon,
+    root: &Path,
     label: &str,
 ) -> ComputeSubscriptionCheckResultV2 {
     let listed = succeeded(
@@ -74,7 +75,21 @@ async fn check_current(
         .unwrap();
     assert_eq!(applied.status, MachineStatus::Accepted, "{applied:?}");
     let operation = applied.data.unwrap();
-    assert_eq!(operation.state, "succeeded");
+    if operation.state != "succeeded" {
+        match retain_failed_product_diagnostics(
+            root,
+            "subscription_candidate_check",
+            &format!("{label}-apply"),
+            false,
+        ) {
+            Ok(path) => eprintln!("safe_product_diagnostics={}", path.display()),
+            Err(error) => eprintln!(
+                "safe_product_diagnostics=unavailable kind={:?}",
+                error.kind()
+            ),
+        }
+    }
+    assert_eq!(operation.state, "succeeded", "failed check phase: {label}");
     let checked = succeeded(
         daemon
             .client
@@ -147,7 +162,12 @@ async fn save_checked(
     management_snapshot(daemon, &format!("{label}-after")).await
 }
 
-fn retain_failed_saved_edit_diagnostics(root: &Path) -> std::io::Result<PathBuf> {
+fn retain_failed_product_diagnostics(
+    root: &Path,
+    scenario: &str,
+    failed_request: &str,
+    wait_for_failed_admission: bool,
+) -> std::io::Result<PathBuf> {
     use hiroute_diagnostics::DiagnosticEvent;
     use hiroute_diagnostics::publication::PublicationStage;
     use hiroute_diagnostics::record::DiagnosticRecordV1;
@@ -155,25 +175,27 @@ fn retain_failed_saved_edit_diagnostics(root: &Path) -> std::io::Result<PathBuf>
     let logs = root.join("storage/diagnostics/daemon");
     // The writer is asynchronous. Wait only for its already-emitted admission event;
     // this never resubmits the failed product action.
-    let deadline = Instant::now() + Duration::from_secs(1);
-    loop {
-        let failed_admission = fs::read(logs.join("current.jsonl"))
-            .unwrap_or_default()
-            .split(|byte| *byte == b'\n')
-            .filter_map(|line| DiagnosticRecordV1::parse_line(line).ok())
-            .any(|record| {
-                matches!(record.event, DiagnosticEvent::PublicationTiming(timing)
-                    if timing.stage == PublicationStage::Admission && !timing.ok)
-            });
-        if failed_admission || Instant::now() >= deadline {
-            break;
+    if wait_for_failed_admission {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            let failed_admission = fs::read(logs.join("current.jsonl"))
+                .unwrap_or_default()
+                .split(|byte| *byte == b'\n')
+                .filter_map(|line| DiagnosticRecordV1::parse_line(line).ok())
+                .any(|record| {
+                    matches!(record.event, DiagnosticEvent::PublicationTiming(timing)
+                        if timing.stage == PublicationStage::Admission && !timing.ok)
+                });
+            if failed_admission || Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
         }
-        std::thread::sleep(Duration::from_millis(10));
     }
     let evidence = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/product-e2e-evidence")
         .join(format!(
-            "subscription-cache-retained-edit-{}",
+            "subscription-cache-{failed_request}-{}",
             std::process::id()
         ));
     fs::create_dir_all(&evidence)?;
@@ -230,9 +252,9 @@ fn retain_failed_saved_edit_diagnostics(root: &Path) -> std::io::Result<PathBuf>
     }
     let report = serde_json::json!({
         "schema": "hiroute.subscription-cache-diagnostic/v1",
-        "scenario": "unconsumed_check_expires_when_same_saved_source_revision_changes",
+        "scenario": scenario,
         "scenario_result": "red",
-        "failed_request": "revision-disable-apply",
+        "failed_request": failed_request,
         "evidence_directory": evidence,
         "current_boot": current_boot,
         "level_applied": level_applied,
@@ -248,7 +270,7 @@ fn retain_failed_saved_edit_diagnostics(root: &Path) -> std::io::Result<PathBuf>
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn checked_candidate_cache_supports_ready_disabled_ready_without_restart() {
-    let (_directory, _proxy, mut daemon) = cache_fixture();
+    let (directory, _proxy, mut daemon) = cache_fixture();
     let mut previous_source: Option<hiroute_application_api::ComputeManagedSourceViewV2> = None;
     let mut previous_checked_revision = 0;
     for (round, intent, state) in [
@@ -268,7 +290,7 @@ async fn checked_candidate_cache_supports_ready_disabled_ready_without_restart()
             MaterializationState::Ready,
         ),
     ] {
-        let checked = check_current(&mut daemon, round).await;
+        let checked = check_current(&mut daemon, directory.path(), round).await;
         let candidate = checked.checked_candidate.as_ref().unwrap();
         assert!(candidate.candidate.candidate_revision > previous_checked_revision);
         previous_checked_revision = candidate.candidate.candidate_revision;
@@ -312,7 +334,7 @@ async fn checked_candidate_cache_supports_ready_disabled_ready_without_restart()
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unconsumed_check_expires_when_same_saved_source_revision_changes() {
     let (directory, _proxy, mut daemon) = cache_fixture();
-    let initial = check_current(&mut daemon, "revision-initial").await;
+    let initial = check_current(&mut daemon, directory.path(), "revision-initial").await;
     let snapshot = save_checked(
         &daemon,
         &initial,
@@ -321,7 +343,7 @@ async fn unconsumed_check_expires_when_same_saved_source_revision_changes() {
     )
     .await;
     let source = &snapshot.sources[0];
-    let checked = check_current(&mut daemon, "revision-unsaved").await;
+    let checked = check_current(&mut daemon, directory.path(), "revision-unsaved").await;
     assert!(checked.save_operation.is_none());
     let before_edit = management_snapshot(&daemon, "revision-before-independent-edit").await;
     assert_eq!(before_edit.sources[0].source_id, source.source_id);
@@ -364,7 +386,12 @@ async fn unconsumed_check_expires_when_same_saved_source_revision_changes() {
         .await
         .unwrap();
     if disabled.status != MachineStatus::Accepted {
-        match retain_failed_saved_edit_diagnostics(directory.path()) {
+        match retain_failed_product_diagnostics(
+            directory.path(),
+            "unconsumed_check_expires_when_same_saved_source_revision_changes",
+            "revision-disable-apply",
+            true,
+        ) {
             Ok(path) => eprintln!("safe_product_diagnostics={}", path.display()),
             Err(error) => eprintln!(
                 "safe_product_diagnostics=unavailable kind={:?}",
@@ -414,7 +441,7 @@ async fn unconsumed_check_expires_when_same_saved_source_revision_changes() {
         status.status,
         ComputeSubscriptionCheckStatusV2::SourceChanged
     );
-    let fresh = check_current(&mut daemon, "revision-fresh").await;
+    let fresh = check_current(&mut daemon, directory.path(), "revision-fresh").await;
     assert!(
         fresh
             .checked_candidate
@@ -430,7 +457,7 @@ async fn unconsumed_check_expires_when_same_saved_source_revision_changes() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cached_checked_candidate_does_not_hide_same_source_lineage_replacement() {
     let (directory, _proxy, mut daemon) = cache_fixture();
-    let initial = check_current(&mut daemon, "lineage-initial").await;
+    let initial = check_current(&mut daemon, directory.path(), "lineage-initial").await;
     let saved = save_checked(
         &daemon,
         &initial,
@@ -438,7 +465,7 @@ async fn cached_checked_candidate_does_not_hide_same_source_lineage_replacement(
         "lineage-save",
     )
     .await;
-    let checked = check_current(&mut daemon, "lineage-unsaved").await;
+    let checked = check_current(&mut daemon, directory.path(), "lineage-unsaved").await;
     let source_id = &saved.sources[0].source_id;
     // Fault-inject a changed durable association while retaining ID/revision. There is
     // intentionally no public operation that rewrites a saved lineage in place.
@@ -495,7 +522,7 @@ async fn saved_borrowed_mode_and_membership_survive_native_credential_failures()
     let auth = serde_json::to_vec(&minimal).unwrap();
     fs::write(&auth_path, &auth).unwrap();
     fs::set_permissions(&auth_path, fs::Permissions::from_mode(0o644)).unwrap();
-    let checked = check_current(&mut daemon, "compatible-native").await;
+    let checked = check_current(&mut daemon, directory.path(), "compatible-native").await;
     let saved = save_checked(
         &daemon,
         &checked,
