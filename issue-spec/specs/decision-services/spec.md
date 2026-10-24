@@ -453,6 +453,16 @@ add when replaying a tool-only response. Replay references still require complet
 integrity verification; nonempty whitespace/text, tool identity and typed arguments,
 roles and supported metadata retain their existing comparisons and bounds. Empty
 text alone cannot establish an edge or erase a previously accepted nonempty delta.
+Missing and explicit-empty function encoding MAY support contextual association only
+through a separate bounded full-boundary proof. It SHALL retain the entire ordered
+accepted reasoning/text, tool kind/namespace/name/logical call ID and canonical JSON
+arguments. Original full and visible digests SHALL keep their exact three-state encoding
+distinction. Nonempty encoding or opaque reasoning/provider state on either side disables
+this compatibility proof. Unknown fields, unsupported content and exhausted fingerprint
+budgets lose the edge. The proof reuses measured tool digests without additional Replay
+reads or larger budgets; it does not combine encoding changes with reasoning omission.
+It SHALL NOT grant exact ancestry, human origin or provider affinity. Multiple compatible
+predecessors remain ambiguous under the existing pending-request and branch-ranking rules.
 Original forwarding, capture and strict request fingerprints remain unchanged. Unavailable
 or ambiguous evidence starts an independent branch. A completed actual same-scope
 stage MAY remain a contextual assessment candidate with association uncertainty

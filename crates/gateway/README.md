@@ -90,6 +90,8 @@ scan/parse/compact/IR/template output with inline bytes across native Responses,
 Responses and portable Chat/Messages tools, including large data and budget refusal.
 Original ingress history/source evidence is untouched. Cipher/mixed peer content and
 historical function calls explicitly declaring encrypted paths cannot cross this boundary.
+Such a function-call replay uses the same closed candidate-local portability failure;
+malformed declarations remain ingress errors and encrypted source responses remain strict.
 For reasoning history, [native request projection](src/adapters/request/native.rs)
 uses the retained canonical encrypted state classified by ingress. Missing, null and
 empty-string carriers keep their original shape; nonempty or Replay-backed opaque state
@@ -246,6 +248,14 @@ the prepared SUT recipe binds its manifest and source revision. Default-feature
 library checks separately cover the standalone Gateway's JSON representation.
 Bounded Responses reasoning summaries and encrypted content are compared with
 the actual accepted reasoning events, including empty-summary placeholders.
+The [boundary owner](src/agent_turn_history/boundary.rs) also computes one bounded
+plaintext function-encoding proof from the already measured tool digests. It permits
+missing versus explicit-empty encoding only as contextual association, binding the
+whole ordered reasoning/text/tool boundary and canonical arguments. Original full and
+visible digests stay unchanged; opaque state, changed content and ambiguous concurrent
+predecessors do not gain an edge. [Encoding boundary cases](src/agent_turn_history/boundary/function_encoding_compat_tests.rs)
+cover both directions and production Replay; the listener tool-stage case checks two
+actual members followed by a new input's assessment. No request or execution fact is rewritten.
 Encrypted content is compared only by its exact bounded digest after Replay
 integrity verification. It is never decrypted or projected into assessment;
 equality provides contextual continuity without provider affinity. Changed or

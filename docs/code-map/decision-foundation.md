@@ -120,6 +120,11 @@ A unique visible response projection also retains actual stage capture
 when plaintext reasoning is omitted, with sticky association uncertainty and no
 affinity hint; [projection regressions](../../crates/gateway/src/agent_turn_history/boundary/projection_tests.rs)
 cover competing branches, old-prefix changes and frozen membership.
+The same boundary owner has a separate full ordered plaintext-encoding proof for
+missing versus empty function encoding, with contextual uncertainty and unchanged
+exact digests. [Encoding comparisons](../../crates/gateway/src/agent_turn_history/boundary/function_encoding_compat_tests.rs)
+and [concurrent controls](../../crates/gateway/src/agent_turn_history/concurrent_encoding_tests.rs)
+bind complete tool identity/arguments, reasoning and ordering without changing branch ranking.
 Optional content comparisons use the shared [fingerprint budget](../../crates/gateway/src/context_hold/fingerprint.rs)
 before Replay reads and JSON key sorting; exhausting it loses evidence, not routing.
 The [Replay range owner](../../crates/gateway/src/replay.rs) records canonical JSON

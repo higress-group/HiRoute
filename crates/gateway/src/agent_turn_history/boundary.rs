@@ -34,6 +34,7 @@ enum Block {
     Tool {
         logical_id: String,
         digest: Option<[u8; 32]>,
+        plaintext_digest: Option<[u8; 32]>,
         encrypted: bool,
     },
 }
@@ -122,6 +123,7 @@ impl BoundaryCapture {
                     Block::Tool {
                         logical_id: logical_id.clone(),
                         digest: None,
+                        plaintext_digest: None,
                         encrypted: false,
                     },
                 );
@@ -138,13 +140,14 @@ impl BoundaryCapture {
                 if let Some(Block::Tool {
                     logical_id,
                     digest,
+                    plaintext_digest,
                     encrypted,
                 }) = self.blocks.get_mut(index)
                 {
                     *encrypted = encrypted_function_args
                         .as_ref()
                         .is_some_and(|paths| !paths.is_empty());
-                    *digest = tool_digest(
+                    let base = tool_digest(
                         logical_id,
                         *tool_kind,
                         namespace.as_deref(),
@@ -153,13 +156,20 @@ impl BoundaryCapture {
                         None,
                         &mut self.budget,
                     );
-                    *digest = digest.and_then(|value| {
+                    *digest = base.and_then(|value| {
                         function_encoding_digest(
                             value,
                             encrypted_function_args.as_deref(),
                             &mut self.budget,
                         )
                     });
+                    // Reuse the already bounded canonical argument digest. This
+                    // additional proof never rereads Replay or changes exact bytes.
+                    *plaintext_digest = if *tool_kind == ToolKindV1::Function {
+                        base
+                    } else {
+                        *digest
+                    };
                     self.unavailable = digest.is_none();
                 } else {
                     self.unavailable = true;
@@ -238,9 +248,12 @@ impl BoundaryCapture {
                     );
                 }
                 Block::Tool {
-                    digest, encrypted, ..
+                    digest,
+                    plaintext_digest,
+                    encrypted,
+                    ..
                 } => {
-                    hash.part(b"tool", (*digest)?);
+                    hash.part_with_plaintext(b"tool", (*digest)?, (*plaintext_digest)?);
                     hash.encrypted |= *encrypted;
                 }
             }
@@ -374,21 +387,25 @@ pub(super) fn incoming_evidence(
                     hash.encrypted |= encrypted_function_args
                         .as_ref()
                         .is_some_and(|paths| !paths.is_empty());
-                    hash.part(
+                    let base = tool_digest(
+                        logical_id,
+                        *tool_kind,
+                        namespace.as_deref(),
+                        name,
+                        arguments,
+                        Some(replay),
+                        budget,
+                    )?;
+                    let exact =
+                        function_encoding_digest(base, encrypted_function_args.as_deref(), budget)?;
+                    hash.part_with_plaintext(
                         b"tool",
-                        function_encoding_digest(
-                            tool_digest(
-                                logical_id,
-                                *tool_kind,
-                                namespace.as_deref(),
-                                name,
-                                arguments,
-                                Some(replay),
-                                budget,
-                            )?,
-                            encrypted_function_args.as_deref(),
-                            budget,
-                        )?,
+                        exact,
+                        if *tool_kind == ToolKindV1::Function {
+                            base
+                        } else {
+                            exact
+                        },
                     );
                 }
                 ContentPart::ProviderState { state } => {
@@ -420,11 +437,12 @@ pub(super) fn incoming_evidence(
     })
 }
 
-/// Two bounded projections of the same accepted output. Only the full digest is
-/// an exact response proof; visible-only association is explicitly uncertain.
+/// Bounded proofs of the same ordered output. Only the original full digest is
+/// exact; plaintext encoding and visible-only associations remain uncertain.
 #[derive(Clone, Copy)]
 pub(super) struct BoundaryEvidence {
     full: [u8; 32],
+    plaintext_full: [u8; 32],
     visible: Option<[u8; 32]>,
     reasoning: bool,
     contextual: bool,
@@ -433,16 +451,18 @@ pub(super) struct BoundaryEvidence {
 
 impl BoundaryEvidence {
     /// Some(false) is exact agreement; Some(true) is contextual association.
-    /// Present (even empty) reasoning never authorizes a projection fallback.
+    /// Encoding compatibility keeps reasoning intact; omission remains directional.
     pub(super) fn matches(self, incoming: Self) -> Option<bool> {
         if self.full == incoming.full {
             Some(self.encrypted || incoming.encrypted || incoming.contextual)
-        } else if self.reasoning
-            && !incoming.reasoning
-            && !self.encrypted
+        } else if !self.encrypted
             && !incoming.encrypted
-            && self.visible.is_some()
-            && self.visible == incoming.visible
+            && (self.reasoning == incoming.reasoning
+                && self.plaintext_full == incoming.plaintext_full
+                || self.reasoning
+                    && !incoming.reasoning
+                    && self.visible.is_some()
+                    && self.visible == incoming.visible)
         {
             Some(true)
         } else {
@@ -453,6 +473,7 @@ impl BoundaryEvidence {
 
 struct BoundaryHasher {
     full: Sha256,
+    plaintext_full: Sha256,
     visible: Sha256,
     content: bool,
     visible_content: bool,
@@ -464,6 +485,7 @@ impl Default for BoundaryHasher {
     fn default() -> Self {
         Self {
             full: Sha256::new_with_prefix(b"accepted-response-boundary/v2"),
+            plaintext_full: Sha256::new_with_prefix(b"accepted-plaintext-encoding-boundary/v1"),
             visible: Sha256::new_with_prefix(b"accepted-response-boundary/v2"),
             content: false,
             visible_content: false,
@@ -475,8 +497,14 @@ impl Default for BoundaryHasher {
 
 impl BoundaryHasher {
     fn part(&mut self, kind: &[u8], digest: [u8; 32]) {
+        self.part_with_plaintext(kind, digest, digest);
+    }
+
+    fn part_with_plaintext(&mut self, kind: &[u8], digest: [u8; 32], plaintext: [u8; 32]) {
         self.full.update(kind);
         self.full.update(digest);
+        self.plaintext_full.update(kind);
+        self.plaintext_full.update(plaintext);
         self.content = true;
         if kind == b"reasoning" || kind == b"encrypted_content" {
             self.reasoning = true;
@@ -491,6 +519,7 @@ impl BoundaryHasher {
     fn finish(self) -> Option<BoundaryEvidence> {
         self.content.then(|| BoundaryEvidence {
             full: self.full.finalize().into(),
+            plaintext_full: self.plaintext_full.finalize().into(),
             visible: self.visible_content.then(|| self.visible.finalize().into()),
             reasoning: self.reasoning,
             contextual: false,
