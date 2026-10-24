@@ -8,12 +8,14 @@ untouched. This is a macOS acceptance facility, not a production client launcher
 """
 import argparse
 import ctypes
+import fcntl
 import importlib.util
 import json
 import os
 from pathlib import Path
 import select
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -98,6 +100,18 @@ def anchor_main(control, events, native_stdin, command):
             ready, _, _ = select.select([control], [], [], 0.02)
             if ready:
                 message = os.read(control, 1)
+                if message == b'I':
+                    # This single thread owns and reaps the child. Between the
+                    # alive check and kill, an exited but unreaped child cannot
+                    # have its PID reused. No process-name/ancestry inference.
+                    if child.poll() is None:
+                        try:
+                            os.kill(child.pid, signal.SIGINT)
+                            report({'event': 'native_interrupt_dispatched', 'pid': child.pid})
+                        except ProcessLookupError:
+                            report({'event': 'native_interrupt_rejected', 'reason': 'native_exited'})
+                    else:
+                        report({'event': 'native_interrupt_rejected', 'reason': 'native_exited'})
                 if message == b'R' and reported:
                     released = True
                     return 0
@@ -113,7 +127,7 @@ def anchor_main(control, events, native_stdin, command):
             os.killpg(os.getpid(), signal.SIGKILL)
 
 
-def supervise(command, evidence, seconds):
+def supervise(command, evidence, seconds, native_control=None):
     kernel = Kernel()
     events = []
     cancelled = []
@@ -146,8 +160,9 @@ def supervise(command, evidence, seconds):
         deadline = None
         terminated = False
         while True:
-            ready, _, _ = select.select([event_r], [], [], 0.02)
-            if ready:
+            watched = [event_r] + ([native_control] if native_control is not None else [])
+            ready, _, _ = select.select(watched, [], [], 0.02)
+            if event_r in ready:
                 data = os.read(event_r, 4096)
                 if not data and anchor.poll() is not None:
                     raise RuntimeError('anchor exited before release')
@@ -158,6 +173,21 @@ def supervise(command, evidence, seconds):
                     record(value)
                     if value['event'] == 'exit':
                         native_exit = value['code']
+            if native_control in ready:
+                message = os.read(native_control, 1)
+                if not message:
+                    # The optional outer controller leases the whole session.
+                    # Losing it is cleanup, never evidence of a native Stop.
+                    record({'event': 'native_control_eof'})
+                    cancelled.append('native_control_eof')
+                    os.close(native_control)
+                    native_control = None
+                elif message != b'I':
+                    raise RuntimeError('invalid native control command')
+                elif cancelled or native_exit is not None:
+                    record({'event': 'native_interrupt_rejected', 'reason': 'native_exited_or_cleanup'})
+                else:
+                    os.write(control_w, b'I')
             if native_exit is None and not cancelled:
                 continue
             if deadline is None:
@@ -188,6 +218,8 @@ def supervise(command, evidence, seconds):
     finally:
         # EOF revokes the lease even after a guardian-side exception.
         os.close(control_w)
+        if native_control is not None:
+            os.close(native_control)
         if anchor is not None and anchor.poll() is None:
             anchor.wait(timeout=seconds)
         os.close(event_r)
@@ -205,6 +237,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence', required=True)
     parser.add_argument('--cleanup-seconds', type=float, default=20)
+    parser.add_argument('--native-control-fd', type=int,
+                        help='private read-only pipe: I dispatches native SIGINT; EOF revokes the session')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
@@ -212,7 +246,19 @@ def main():
         parser.error('requires macOS and a cleanup budget within 20 seconds')
     if not command or not Path(command[0]).is_absolute():
         parser.error('requires an absolute native entry')
-    return supervise(command, args.evidence, args.cleanup_seconds)
+    if args.native_control_fd is not None:
+        fd = args.native_control_fd
+        try:
+            valid = fd > 2 and stat.S_ISFIFO(os.fstat(fd).st_mode) and (
+                fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_ACCMODE) == os.O_RDONLY
+        except OSError:
+            valid = False
+        if not valid:
+            parser.error('native control requires a private read-only pipe above standard descriptors')
+        # The anchor inherits only its three explicitly named descriptors; the
+        # native child inherits none of these control/event/outer-lease pipes.
+        os.set_inheritable(fd, False)
+    return supervise(command, args.evidence, args.cleanup_seconds, args.native_control_fd)
 
 
 if __name__ == '__main__':

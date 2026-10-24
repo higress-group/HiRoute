@@ -5,6 +5,9 @@ the [macOS session supervisor](../../scripts/native-agent-supervisor.py). Its li
 anchor preserves ownership after a client exits, and its private lease closes on
 guardian death. Native exit and cleanup outcomes remain separate. It covers the
 anchored session; detached sessions are not an inferred cleanup authority.
+An optional private command pipe dispatches native SIGINT through the live anchor;
+its EOF revokes the session. Dispatch is separate from native Stop acknowledgement
+and Gateway cancellation evidence. Interrupting the guardian requests cleanup only.
 
 [Code map](README.md) · [Desktop scenarios](../../apps/desktop/tests/README.md) ·
 [Agent/Worker scenarios](worker-context.md#representative-scenarios)

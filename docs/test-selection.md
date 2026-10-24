@@ -177,6 +177,15 @@ when a driver needs those installed tools on its private PATH; ambient PATH is
 not inherited, and each exposed entry adds only its exact read-only file.
 Keep daily configuration/session directories outside dependency exceptions.
 
+On macOS, wrap native launches with `scripts/native-agent-supervisor.py` to retain
+a live session anchor through descendant cleanup. For native Stop, optionally pass
+`--native-control-fd FD` with a private read-only pipe above the standard descriptors.
+Keep its writer only in the controller: byte `I` requests SIGINT to the anchor's
+still-live native child; closing it revokes the session. It is not inherited by the
+native process and does not replace stdin/stdout. The dispatch event proves signal
+delivery was requested, not a native acknowledgement or an interrupted HTTP result.
+Signals to the guardian mean cleanup, not native Stop. Check those facts separately.
+
 Daily guards retain their original observations and every later delta. On a host
 being used concurrently, an unexplained change to a preexisting file or process
 remains `changed_unattributed`; it cannot establish which process caused it. A new
