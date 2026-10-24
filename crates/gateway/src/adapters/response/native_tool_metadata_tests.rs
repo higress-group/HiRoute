@@ -42,7 +42,11 @@ fn native_response_tool_metadata_changes_forward_without_certifying_completion()
                 units.last().unwrap().terminal,
                 Some(NativeTerminalOutcome::Unknown)
             );
-            let values: Vec<_> = units.iter().map(unit_json).collect();
+            let values: Vec<_> = units
+                .iter()
+                .filter(|unit| !unit.bytes.is_empty())
+                .map(unit_json)
+                .collect();
             assert_eq!(values.len(), 6);
             // Names and namespaces are provider-owned. Neither a replacement
             // tool nor a repaired executable instruction is manufactured.
@@ -54,7 +58,7 @@ fn native_response_tool_metadata_changes_forward_without_certifying_completion()
             );
             assert_eq!(values[5]["response"]["output"][0]["name"], name);
             let mapped = &values[1]["item"]["call_id"];
-            assert_ne!(mapped, "call-1");
+            assert_eq!(mapped, "call-1");
             assert_eq!(&values[4]["item"]["call_id"], mapped);
             assert_eq!(&values[5]["response"]["output"][0]["call_id"], mapped);
             let (_, evidence) = native.take_completion_diagnostic().unwrap();
@@ -81,7 +85,11 @@ fn native_response_tool_metadata_does_not_repair_conflicting_arguments_or_captur
         units.last().unwrap().terminal,
         Some(NativeTerminalOutcome::Unknown)
     );
-    let values: Vec<_> = units.iter().map(unit_json).collect();
+    let values: Vec<_> = units
+        .iter()
+        .filter(|unit| !unit.bytes.is_empty())
+        .map(unit_json)
+        .collect();
     assert_eq!(values[2]["delta"], r#"{"cmd":"printf previous"}"#);
     assert_eq!(values[3]["arguments"], r#"{"cmd":"printf current"}"#);
     let mut decoder =
@@ -92,6 +100,20 @@ fn native_response_tool_metadata_does_not_repair_conflicting_arguments_or_captur
             .to_string()
             .contains("native final tool arguments disagree with deltas")
     );
+}
+
+#[test]
+fn native_response_tool_metadata_alone_cannot_certify_canonical_capture() {
+    for (name, namespace) in [
+        ("spawn_agent", None),
+        ("exec_command", Some("collaboration")),
+    ] {
+        let wire = response_stream(name, namespace, false);
+        let mut decoder =
+            NativeResponseDecoder::new(&profile(IngressProtocol::Responses), 200, true).unwrap();
+        let error = decoder.feed(&wire, true).unwrap_err();
+        assert!(error.to_string().contains("tool identity"), "{error}");
+    }
 }
 
 #[test]
@@ -111,6 +133,21 @@ fn native_response_tool_metadata_still_requires_stable_owned_call_identity() {
         let changed = json!({"type":"response.output_item.done","output_index":index,"item":{
             "type":kind,"id":"item-1","call_id":call,"name":"exec_command","arguments":"{}"}});
         assert!(native.feed(&sse(None, &changed), false).is_err());
+    }
+    // The web-search carrier uses `id`, not `call_id`; shared canonical
+    // Function kind does not authorize switching native identity fields.
+    for reverse in [false, true] {
+        let web = json!({"type":"response.output_item.added","output_index":0,"item":{
+            "type":"web_search_call","id":"call-1","status":"in_progress"}});
+        let mut native = projector(IngressProtocol::Responses, true);
+        native.feed(&sse(None, &start), false).unwrap();
+        let (first, changed) = if reverse {
+            (&web, &added)
+        } else {
+            (&added, &web)
+        };
+        native.feed(&sse(None, first), false).unwrap();
+        assert!(native.feed(&sse(None, changed), false).is_err());
     }
 }
 

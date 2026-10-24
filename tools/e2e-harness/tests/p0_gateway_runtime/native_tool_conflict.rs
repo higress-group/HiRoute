@@ -17,7 +17,7 @@ fn tool(id: &str, path: &str) -> Value {
         "name":"read","status":"completed","arguments":json!({"path":path}).to_string()})
 }
 
-fn parallel_tools(conflicting_delta: bool) -> (ProviderReply, Vec<u8>) {
+fn parallel_tools(conflicting_delta: bool, conflicting_metadata: bool) -> (ProviderReply, Vec<u8>) {
     let output = vec![
         message("a-comment", "commentary", "Reading both fixtures."),
         tool("a-first", "fixture/first.txt"),
@@ -57,6 +57,16 @@ fn parallel_tools(conflicting_delta: bool) -> (ProviderReply, Vec<u8>) {
     );
     if conflicting_delta {
         delta["delta"] = json!(json!({"path":"fixture/path-a.txt"}).to_string());
+    }
+    if conflicting_metadata {
+        let added = events
+            .iter_mut()
+            .find(|e| e["type"] == "response.output_item.added" && e["output_index"] == 2)
+            .unwrap();
+        // The same call ID changes provider-owned name and namespace at done.
+        // No field is repaired: the client still receives both native versions.
+        added["item"]["name"] = json!("previous_read");
+        added["item"]["namespace"] = json!("previous_tools");
     }
     let encode = |events: &[Value]| {
         events
@@ -146,7 +156,16 @@ fn replay_with_results(input: &mut Vec<Value>, delivered: Vec<Value>, expected_c
 
 #[test]
 fn real_listener_conflicting_parallel_tool_final_stays_partial_and_next_stage_recovers() {
-    let (conflicting, raw_conflicting) = parallel_tools(true);
+    assert_conflicting_parallel_tool_recovers(false);
+}
+
+#[test]
+fn real_listener_conflicting_native_tool_metadata_forwards_and_next_stage_recovers() {
+    assert_conflicting_parallel_tool_recovers(true);
+}
+
+fn assert_conflicting_parallel_tool_recovers(conflicting_metadata: bool) {
+    let (conflicting, raw_conflicting) = parallel_tools(true, conflicting_metadata);
     let regular = NativeProvider::start(vec![
         streamed("b-tool", vec![tool("b-read", "fixture/next.txt")]),
         streamed(
@@ -354,7 +373,7 @@ fn real_listener_conflicting_parallel_tool_final_stays_partial_and_next_stage_re
 
 #[test]
 fn real_listener_consistent_parallel_tools_keep_known_completion_and_one_stage() {
-    let (consistent, raw_consistent) = parallel_tools(false);
+    let (consistent, raw_consistent) = parallel_tools(false, false);
     let regular = NativeProvider::start(vec![
         consistent,
         streamed(
