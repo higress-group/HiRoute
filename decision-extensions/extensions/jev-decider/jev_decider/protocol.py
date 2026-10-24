@@ -66,14 +66,14 @@ def validate_hiroute_request(value: Any) -> dict[str, Any]:
     _exact(
         value,
         {
-            "decision",
+            "route",
             "latest_user",
             "visible_conversation",
             "history_partial",
-            "assessment_target",
+            "preceding_stage",
         },
     )
-    _definition(value["decision"])
+    _route(value["route"])
     latest = value["latest_user"]
     if not isinstance(latest, list) or not latest:
         raise ProtocolError("latest_user must be a non-empty array")
@@ -101,25 +101,19 @@ def validate_hiroute_request(value: Any) -> dict[str, Any]:
                 _content_part(part, tool=True)
     if not isinstance(value["history_partial"], bool):
         raise ProtocolError("history_partial must be boolean")
-    target = value["assessment_target"]
+    target = value["preceding_stage"]
     if target is not None:
         if not isinstance(target, dict):
-            raise ProtocolError("assessment_target must be an object or null")
-        _exact(target, {"from", "instructions", "criteria"})
+            raise ProtocolError("preceding_stage must be an object or null")
+        _exact(target, {"from", "category", "group", "complete"})
         start = target["from"]
         if type(start) is not int or not 0 <= start < len(conversation):
-            raise ProtocolError("assessment_target.from is outside visible_conversation")
-        _text(target["instructions"])
-        criteria = target["criteria"]
-        if not isinstance(criteria, list) or len(criteria) != 3:
-            raise ProtocolError("assessment requires three anchors")
-        for index, item in enumerate(criteria):
-            if not isinstance(item, dict):
-                raise ProtocolError("assessment anchor must be an object")
-            _exact(item, {"score", "criterion"})
-            if type(item["score"]) not in (float, int) or item["score"] != index / 2:
-                raise ProtocolError("assessment anchors must be 0, 0.5, 1 in order")
-            _text(item["criterion"])
+            raise ProtocolError("preceding_stage.from is outside visible_conversation")
+        _text(target["category"])
+        _text(target["group"])
+        categories = {"smart_saving": ["regular", "primary"]} if value["route"]["kind"] == "smart_saving" else {c["id"]: c["groups"] for c in value["route"]["categories"]}
+        if target["category"] not in categories or target["group"] not in categories[target["category"]] or type(target["complete"]) is not bool:
+            raise ProtocolError("preceding_stage is outside the published route")
     return value
 
 
@@ -127,27 +121,32 @@ def encode_json(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
 
 
-def _definition(value: Any, *, refinement: bool = False) -> None:
+def _route(value: Any) -> None:
     if not isinstance(value, dict):
-        raise ProtocolError("decision definition must be an object")
-    kind = value.get("kind")
-    if kind not in ({"ordinal"} if refinement else {"ordinal", "categorical"}):
-        raise ProtocolError("unsupported decision kind")
-    key = "levels" if kind == "ordinal" else "options"
-    _exact(value, {"kind", "instructions", key})
-    _text(value["instructions"])
-    entries = value[key]
-    if not isinstance(entries, list) or not 2 <= len(entries) <= 16:
-        raise ProtocolError("decision needs 2–16 distinct entries")
-    ids: set[str] = set()
-    for entry in entries:
-        if not isinstance(entry, dict):
-            raise ProtocolError("decision entry must be an object")
-        _exact(entry, {"id", "criterion"}, {"refinement"} if kind == "categorical" else set())
-        identifier = _text(entry["id"])
-        _text(entry["criterion"])
-        if identifier in ids:
-            raise ProtocolError("duplicate allowed ID")
-        ids.add(identifier)
-        if "refinement" in entry:
-            _definition(entry["refinement"], refinement=True)
+        raise ProtocolError("route must be an object")
+    if value.get("kind") == "smart_saving":
+        _exact(value, {"kind", "groups"})
+        if value["groups"] != ["regular", "primary"]:
+            raise ProtocolError("invalid smart-saving groups")
+    elif value.get("kind") == "branches":
+        _exact(value, {"kind", "categories", "default_category"})
+        categories = value["categories"]
+        if not isinstance(categories, list) or not 2 <= len(categories) <= 16:
+            raise ProtocolError("route needs 2–16 categories")
+        ids = set()
+        for category in categories:
+            if not isinstance(category, dict):
+                raise ProtocolError("category must be an object")
+            _exact(category, {"id", "condition", "groups"})
+            identifier = _text(category["id"])
+            if len(identifier) > 128 or identifier == "smart_saving" or identifier in ids:
+                raise ProtocolError("invalid category ID")
+            ids.add(identifier)
+            _text(category["condition"])
+            if category["groups"] not in (["regular"], ["regular", "primary"]):
+                raise ProtocolError("invalid category groups")
+        _text(value["default_category"])
+        if value["default_category"] not in ids:
+            raise ProtocolError("default category is not published")
+    else:
+        raise ProtocolError("unknown route kind")

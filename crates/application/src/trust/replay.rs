@@ -9,6 +9,13 @@ pub fn replay(stages: &[TrustObservedStageV1], thresholds: &[u16]) -> PlanTrustR
     let mut included = Vec::new();
     for stage in stages {
         let sample = &stage.sample;
+        if sample.selection.as_ref().is_some_and(|selection| {
+            selection.decision_protocol
+                == Some(hiroute_domain::DecisionProtocolV1::CustomExtensionV1)
+        }) {
+            *excluded.entry("extension_decision".into()).or_insert(0) += 1;
+            continue;
+        }
         let reason = sample.selection.as_ref().map(|s| s.selection_reason);
         let exclusion = match reason {
             Some(Reason::Heuristic) => Some("heuristic"),
@@ -22,6 +29,9 @@ pub fn replay(stages: &[TrustObservedStageV1], thresholds: &[u16]) -> PlanTrustR
                 .is_some_and(|(s, e)| s.execution_group != e.group) =>
             {
                 Some("availability_relay")
+            }
+            Some(Reason::ExtensionDecision | Reason::DecisionUnavailable) => {
+                Some("extension_decision")
             }
             Some(Reason::DegreeUnavailable) | None => Some("degree_unavailable"),
             _ => None,

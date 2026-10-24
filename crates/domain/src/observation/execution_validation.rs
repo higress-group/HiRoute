@@ -18,6 +18,14 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_history = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:857e4f2b42278ac3877e34f2188eeecc7c1d188832316b23f577f3bc0b82b1ac";
+        let persisted_extension = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:5f42929cdb812799e4e4a10885324debb21e6489bde5e935599de57b54b8ab23";
         let persisted_pre_admission = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
@@ -51,6 +59,8 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_digest.as_str()
                 == "sha256:80b4ff13af8abc79d7721fea42141300beade2acf1d2659983ceaafcdc6e4799";
         if !(current
+            || persisted_history
+            || persisted_extension
             || persisted_pre_admission
             || persisted_pre_auxiliary
             || persisted_pre_membership
@@ -81,10 +91,14 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidEnvelope);
         }
-        if !current && matches!(&self.fact, ExecutionFactV1::AgentTurnAdmitted(_)) {
+        if !(current || persisted_history)
+            && matches!(&self.fact, ExecutionFactV1::AgentTurnAdmitted(_))
+        {
             return Err(ExecutionFactError::InvalidFact);
         }
         if !(current
+            || persisted_history
+            || persisted_extension
             || persisted_pre_admission
             || persisted_pre_auxiliary
             || persisted_pre_membership)
@@ -98,7 +112,7 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_admission || persisted_pre_auxiliary)
+        if !(current || persisted_history || persisted_pre_admission || persisted_pre_auxiliary)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::AgentTurnFinished {
@@ -112,14 +126,42 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_admission)
+        if !(current || persisted_history || persisted_pre_admission)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route) if route.native_auxiliary)
         {
             return Err(ExecutionFactError::InvalidFact);
         }
+        if !(current || persisted_extension) {
+            let extension_data = match &self.fact {
+                ExecutionFactV1::RouteDecision(route) => {
+                    route.complexity.as_ref().is_some_and(|decision| {
+                        decision.extension_reason.is_some()
+                            || matches!(
+                                decision.selection_reason,
+                                crate::ModelGroupReasonV1::ExtensionDecision
+                                    | crate::ModelGroupReasonV1::DecisionUnavailable
+                            )
+                            || decision.policy.as_ref().is_some_and(|policy| {
+                                policy.extension.is_some() || policy.floor_millis.is_none()
+                            })
+                    })
+                }
+                ExecutionFactV1::AgentTurnFinished {
+                    branch_execution, ..
+                } => branch_execution.as_ref().is_some_and(|execution| {
+                    execution.policy.extension.is_some() || execution.policy.floor_millis.is_none()
+                }),
+                _ => false,
+            };
+            if extension_data {
+                return Err(ExecutionFactError::InvalidFact);
+            }
+        }
         self.trust.validate()?;
         self.fact.validate()?;
         if (current
+            || persisted_history
+            || persisted_extension
             || persisted_pre_admission
             || persisted_pre_auxiliary
             || persisted_pre_membership
@@ -131,6 +173,8 @@ impl ExecutionFactEnvelopeV1 {
             return Err(ExecutionFactError::InvalidFact);
         }
         if !(current
+            || persisted_history
+            || persisted_extension
             || persisted_pre_admission
             || persisted_pre_auxiliary
             || persisted_pre_membership
@@ -141,6 +185,8 @@ impl ExecutionFactEnvelopeV1 {
             return Err(ExecutionFactError::InvalidFact);
         }
         if !(current
+            || persisted_history
+            || persisted_extension
             || persisted_pre_admission
             || persisted_pre_auxiliary
             || persisted_pre_membership
@@ -166,6 +212,8 @@ impl ExecutionFactEnvelopeV1 {
         }
         if let Some(pricing) = &self.pricing {
             if !(current
+                || persisted_history
+                || persisted_extension
                 || persisted_pre_admission
                 || persisted_pre_auxiliary
                 || persisted_pre_membership

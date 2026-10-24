@@ -14,14 +14,44 @@ pub const DEFAULT_COMPETENCE_CRITERIA: [&str; 3] = [
 #[serde(deny_unknown_fields)]
 pub struct BranchExecutionPolicyV1 {
     pub name: String,
-    pub floor_millis: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<DecisionExtensionIdentityV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floor_millis: Option<u16>,
     /// Digest of the effective frozen standard, for built-in and custom decisions.
     pub criteria_digest: Option<crate::CanonicalDigest>,
 }
 
 impl BranchExecutionPolicyV1 {
     pub fn validate(&self) -> bool {
-        text(&self.name, 128) && self.floor_millis <= 1000
+        text(&self.name, 128)
+            && match &self.extension {
+                Some(extension) => {
+                    extension.revision > 0
+                        && super::strategy::valid_reference(&extension.id)
+                        && self.floor_millis.is_none()
+                        && self.criteria_digest.is_none()
+                }
+                None => self.floor_millis.is_some_and(|floor| floor <= 1000),
+            }
+    }
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionExtensionIdentityV1 {
+    pub id: String,
+    pub revision: u64,
+}
+
+impl DecisionExtensionIdentityV1 {
+    pub fn execution_policy(&self, name: &str) -> BranchExecutionPolicyV1 {
+        BranchExecutionPolicyV1 {
+            name: name.into(),
+            extension: Some(self.clone()),
+            floor_millis: None,
+            criteria_digest: None,
+        }
     }
 }
 
@@ -164,6 +194,8 @@ pub enum ModelGroupReasonV1 {
     ComplexTask,
     LowCompetence,
     DegreeUnavailable,
+    ExtensionDecision,
+    DecisionUnavailable,
     SingleGroup,
     DecisionFallback,
     AvailabilityRelay,
@@ -230,10 +262,31 @@ impl JudgmentSettingsV1 {
             .iter()
             .all(|v| v.is_empty() || prompt(v))
     }
+    /// Parked editor text is not an active prompt, but still obeys input safety.
+    pub fn validate_parked(&self) -> bool {
+        self.degree.simple_threshold_millis <= 1000
+            && self.competence.floor_millis <= 1000
+            && [
+                &self.degree.instructions,
+                &self.degree.simple,
+                &self.degree.complex,
+                &self.competence.instructions,
+                &self.competence.criteria[0],
+                &self.competence.criteria[1],
+                &self.competence.criteria[2],
+            ]
+            .iter()
+            .all(|value| {
+                !value
+                    .chars()
+                    .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+            })
+    }
     pub fn execution_policy(&self, name: &str) -> BranchExecutionPolicyV1 {
         BranchExecutionPolicyV1 {
             name: name.into(),
-            floor_millis: self.competence.floor_millis,
+            extension: None,
+            floor_millis: Some(self.competence.floor_millis),
             criteria_digest: crate::CanonicalDigest::of(&(
                 &self.competence.instructions,
                 &self.competence.criteria,
@@ -274,6 +327,9 @@ impl BranchRoutingV1 {
         if self.native_protocol.is_some() && !super::native_mode(&self.classifier) {
             return Err(super::NativeProtocolError::ContentMismatch);
         }
+        if self.classifier.extension_identity().is_some() {
+            return Ok(());
+        }
         for b in &self.branches {
             super::validate_assessment_scope(
                 self.native_protocol.as_ref(),
@@ -295,7 +351,9 @@ impl BranchRoutingV1 {
         Ok(())
     }
     pub fn validate(&self, draft: bool) -> bool {
+        let extension = self.classifier.extension_identity().is_some();
         if !draft
+            && !extension
             && (self.native_protocol.is_some() && !super::native_mode(&self.classifier)
                 || self.branches.iter().any(|b| {
                     super::validate_assessment_scope(
@@ -315,7 +373,9 @@ impl BranchRoutingV1 {
         }
         if self.branches.len() > 16
             || (!draft && self.branches.len() < 2)
-            || !(if draft {
+            || !(if extension {
+                self.judgment.validate_parked()
+            } else if draft {
                 self.judgment.validate_draft()
             } else {
                 self.judgment.validate()
@@ -338,7 +398,9 @@ impl BranchRoutingV1 {
                 && b.name.len() <= 512
                 && (b.condition.is_empty() || prompt(&b.condition))
                 && b.judgment.as_ref().is_none_or(|v| {
-                    if draft {
+                    if extension {
+                        v.validate_parked()
+                    } else if draft {
                         v.validate_draft()
                     } else {
                         v.validate()

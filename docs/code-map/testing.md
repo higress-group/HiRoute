@@ -134,6 +134,11 @@ outside the host's outbound ephemeral range; the parent keeps that lease through
 the isolated child's Gateway shutdown. On Unix it shares the publication fixture's
 per-user address-lock namespace across worktrees and runner temporary directories.
 
+The [Gateway runtime fixture](../../tools/e2e-harness/tests/runtime_support/listeners.rs)
+holds its product and optional control listeners together during preparation,
+then releases both immediately before starting the child. Releasing a `bind(0)`
+probe before choosing the other address can assign both roles the same port.
+
 The [shared product session](../../crates/product-session/src) owns confirmation,
 exact-digest authority and command orchestration tests. Its permit-drop and
 broker-abort cases verify that cancelled callers can retry, while stale permits
@@ -288,6 +293,11 @@ independent native roots and contains the complete acceptance driver; its exact-
 observer belongs to the trusted controller. Client drivers retain business oracles,
 port ownership and cleanup. [Offline regressions](../../scripts/test-native-agent-scope.py)
 do not establish native execution or DSH Web/Cordis scope coverage.
+The [control-shell startup fixture](../../tools/product-e2e/tests/control_shell_support/startup.rs)
+retains bounded private failure evidence before temporary-root cleanup; its
+[regressions](../../tools/product-e2e/tests/control_shell_support/startup_tests.rs)
+cover timeout, early exit, normal readiness and incomplete diagnostics. Follow the
+[diagnostic guide](../diagnostic-troubleshooting.md) for retention and interpretation.
 
 Shared private filesystem behavior has one [platform contract suite](../../crates/platform/src/private_fs/tests.rs): exclusive creation, protected handle reads, permission preservation and identity-bound cleanup. Storage and Worker tests keep domain errors, recovery and lifecycle assertions; the native Windows cases additionally exercise ACLs and held handles.
 

@@ -564,6 +564,7 @@ fn planner_smart_saving_ranks_only_inside_materialized_groups() {
     ];
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            extension: None,
             native_protocol: None,
             judgment: Default::default(),
             simple_group_id: "economy".into(),
@@ -709,6 +710,7 @@ fn context_hold_applies_only_inside_the_current_branch() {
     );
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            extension: None,
             native_protocol: None,
             judgment: Default::default(),
             simple_group_id: "simple-group".into(),
@@ -798,6 +800,7 @@ fn smart_saving_preserves_lossless_state_without_reviving_old_groups() {
     let glm = stateful_messages_candidate("glm");
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            extension: None,
             native_protocol: None,
             judgment: Default::default(),
             simple_group_id: "simple-group".into(),
@@ -955,6 +958,7 @@ fn smart_saving_uses_explicit_primary_relay_when_regular_cannot_serialize() {
     luna.request_projection_exclusion = Some(ExclusionReasonCodeV1::OpaqueStateUnportable);
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            extension: None,
             native_protocol: None,
             judgment: Default::default(),
             simple_group_id: "simple-group".into(),
@@ -1013,6 +1017,7 @@ fn smart_saving_cannot_downgrade_to_state_owner_when_primary_lacks_image_capabil
     refresh_profile(&mut glm);
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            extension: None,
             native_protocol: None,
             judgment: Default::default(),
             simple_group_id: "simple-group".into(),
@@ -1114,6 +1119,7 @@ fn external_classification_drives_existing_smart_groups_without_rule_score() {
     .unwrap();
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            extension: None,
             native_protocol: None,
             judgment: Default::default(),
             simple_group_id: "simple-group".into(),
@@ -1157,6 +1163,7 @@ fn external_classification_drives_existing_smart_groups_without_rule_score() {
         ],
     );
     planner_input.classification_decision = Some(BranchDecisionV1 {
+        extension_reason: None,
         decision_protocol: Some(hiroute_domain::DecisionProtocolV1::LocalRules),
         routing_observation: None,
         policy: None,
@@ -1210,6 +1217,7 @@ fn external_decision_can_be_inherited_without_inventing_a_rule_threshold() {
     )
     .unwrap();
     let previous = BranchDecisionV1 {
+        extension_reason: None,
         decision_protocol: Some(hiroute_domain::DecisionProtocolV1::LocalRules),
         routing_observation: None,
         policy: None,

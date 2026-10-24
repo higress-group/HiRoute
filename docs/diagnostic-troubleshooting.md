@@ -33,6 +33,19 @@ Unit tests that do not start the diagnostics runtime do not generate product log
 
 Debug does not relax log-content boundaries. Do not add bodies, credentials, complete configuration or raw third-party output for temporary diagnosis. Before sharing, distinguish safe product JSONL from private merged output, real configuration and request evidence. Do not upload an entire test root.
 
+The `control_shell` integration test retains startup failures under
+`target/product-e2e-evidence/control-shell-startup-*/` before its temporary fixture
+and daemon guard are cleaned up. The failure message names the private directory;
+`report.json` records the child PID/status, original ten-second readiness budget,
+observed boot/stage and missing or truncated files. Each retained stdout, stderr
+and current daemon JSONL tail is limited to 64 KiB. The daemon uses a fresh Debug
+diagnostics root, separate from the rejected role-composition check. No configuration
+or data files are copied. Raw output tails are private and must not be posted directly.
+An available diagnostic snapshot does not prove an asynchronous writer flush or
+absence of lost events; missing, partial or ambiguous boot evidence remains explicit.
+The managed runner preserves this non-debug target directory with its run artifacts.
+The snapshot explains the last observed startup boundary, not the cause of a timeout.
+
 For upstream authentication or gateway rejection, correlate Debug `upstream_wire` by `request_token` and `attempt_index`. Request events record whether Bearer / x-api-key is present, Authorization byte length, Content-Length, the actual `native_model` with bounded length/characters, and reasoning effort, Messages thinking type/budget and boolean switches read from the final serialized template. Unknown tiers are `other`; absence and an unavailable projection remain distinct. These facts describe prepared parameters, not delivery or the provider's internal computation. Response and attempt terminal events record HTTP status, actual H1/H2, Content-Type, safe `provider_error` and HMAC correlation of the upstream request ID, without retaining header values, addresses, bodies or raw provider error text. `request_kind=decision_service` uses the same safe channel for actual decision-service calls; `completed`/`failure` denotes the parsed terminal result. Combine upstream request and downstream headers/body facts in `attempt_end.commits` with the next attempt/binding in `fallback` to determine why retries or budget exhaustion occurred before body delivery, or why delivery ended in failure after it began. Missing optional fields in old records mean unknown. If request events are absent, first check levels, diagnostic loss and candidate-preparation failures; absence does not prove another upstream rejection.
 
 ## Gateway listener fixture failures

@@ -91,7 +91,11 @@ pub fn compile_agent_plan_v2(
                     condition: branch.condition.clone(),
                     group: id,
                     primary_group,
-                    judgment: routing.judgment_for(branch).clone(),
+                    judgment: routing
+                        .classifier
+                        .extension_identity()
+                        .is_none()
+                        .then(|| routing.judgment_for(branch).clone()),
                 });
             }
             (
@@ -106,7 +110,9 @@ pub fn compile_agent_plan_v2(
                                     &branches,
                                     &routing.default_branch_id,
                                 ),
-                                branches.iter().map(|b| (b.id.clone(), b.judgment.clone())),
+                                branches.iter().map(|b| {
+                                    (b.id.clone(), b.judgment.clone().expect("built-in judgment"))
+                                }),
                             )
                         })
                         .transpose()
@@ -147,7 +153,10 @@ pub fn compile_agent_plan_v2(
                         })
                         .transpose()
                         .map_err(|_| AgentPlanCompilerError::InvalidDesiredPlan)?,
-                    judgment: judgment.clone(),
+                    judgment: classifier
+                        .extension_identity()
+                        .is_none()
+                        .then(|| judgment.clone()),
                     reselect_on_user_message: *reselect_on_user_message,
                     classifier: ComplexityClassifierV1::with_mode(
                         complex_keywords.clone(),

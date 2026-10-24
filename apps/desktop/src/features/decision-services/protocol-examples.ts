@@ -2,20 +2,6 @@
 export const protocolExamples = {
   "first": {
     "request": {
-      "decision": {
-        "kind": "ordinal",
-        "instructions": "判断当前任务需要的处理程度，不评价上一阶段表现。",
-        "levels": [
-          {
-            "id": "simple",
-            "criterion": "需求明确、边界清楚，可沿用已有模式完成。"
-          },
-          {
-            "id": "complex",
-            "criterion": "需要深入推理、跨模块诊断或设计新的方案。"
-          }
-        ]
-      },
       "latest_user": [
         {
           "kind": "text",
@@ -24,62 +10,21 @@ export const protocolExamples = {
       ],
       "visible_conversation": [],
       "history_partial": false,
-      "assessment_target": null
+      "route": {
+        "kind": "smart_saving",
+        "groups": [
+          "regular",
+          "primary"
+        ]
+      },
+      "preceding_stage": null
     },
     "response": {
-      "decision": {
-        "kind": "ordinal",
-        "probabilities": {
-          "simple": 0.93,
-          "complex": 0.07
-        }
-      }
+      "group": "regular"
     }
   },
   "assessment": {
     "request": {
-      "decision": {
-        "kind": "categorical",
-        "instructions": "按当前请求的主要意图选择一个工作类别，不按任务难度或上次失败选择。条件重叠时选择最符合主要意图的一项；均不匹配时选择默认类别 writing。",
-        "options": [
-          {
-            "id": "writing",
-            "criterion": "撰写、续写或改写文章，包括根据反馈修稿。",
-            "refinement": {
-              "kind": "ordinal",
-              "instructions": "假设当前任务交给写稿分支，判断写稿工作所需程度。",
-              "levels": [
-                {
-                  "id": "simple",
-                  "criterion": "事实和提纲充分，仅需常规组织或局部改写。"
-                },
-                {
-                  "id": "complex",
-                  "criterion": "需要综合冲突材料、构建论证或重组全文。"
-                }
-              ]
-            }
-          },
-          {
-            "id": "review",
-            "criterion": "审阅、核实文章并提出意见，不直接重写全文。",
-            "refinement": {
-              "kind": "ordinal",
-              "instructions": "假设当前任务交给审稿分支，判断审稿工作所需程度。",
-              "levels": [
-                {
-                  "id": "simple",
-                  "criterion": "范围明确的格式、措辞与已知事实核查。"
-                },
-                {
-                  "id": "complex",
-                  "criterion": "需要逐项核对来源、检查因果推断或全篇论证。"
-                }
-              ]
-            }
-          }
-        ]
-      },
       "latest_user": [
         {
           "kind": "text",
@@ -91,7 +36,7 @@ export const protocolExamples = {
           "user": [
             {
               "kind": "text",
-              "text": "根据所给材料写一篇文章。"
+              "text": "检查这篇文章的事实和因果论断。"
             }
           ],
           "status": "completed",
@@ -99,49 +44,50 @@ export const protocolExamples = {
             [
               {
                 "kind": "text",
-                "text": "文章已写出，但将两个没有因果证据的现象写成了因果关系。"
+                "text": "已完成审稿，但遗漏了没有证据支持的因果断言。"
               }
             ]
           ]
         }
       ],
       "history_partial": false,
-      "assessment_target": {
-        "from": 0,
-        "instructions": "评价上一写稿阶段的材料忠实性与论证，不评价尚未发生的审稿。",
-        "criteria": [
+      "route": {
+        "kind": "branches",
+        "categories": [
           {
-            "score": 0,
-            "criterion": "关键事实失真、无进展或需要大幅纠正。"
+            "id": "writing",
+            "condition": "撰写、续写或改写文章，包括根据反馈修稿。",
+            "groups": [
+              "regular",
+              "primary"
+            ]
           },
           {
-            "score": 0.5,
-            "criterion": "有用但不完整，仍有明显事实或论证问题。"
-          },
-          {
-            "score": 1,
-            "criterion": "忠实于材料、归因准确、完成写稿要求。"
+            "id": "review",
+            "condition": "审阅、核实文章并提出意见，不直接重写全文。",
+            "groups": [
+              "regular",
+              "primary"
+            ]
           }
-        ]
+        ],
+        "default_category": "writing"
+      },
+      "preceding_stage": {
+        "from": 0,
+        "category": "review",
+        "group": "regular",
+        "complete": true
       }
     },
     "response": {
-      "decision": {
-        "kind": "categorical",
-        "choice": "review",
-        "refinement": {
-          "kind": "ordinal",
-          "probabilities": {
-            "simple": 0.28,
-            "complex": 0.72
-          }
-        }
-      },
+      "group": "primary",
+      "category": "review",
       "assessment": {
         "score": 0.35,
-        "partial": false,
-        "reason": "上一写稿阶段存在没有证据支撑的因果断言。"
-      }
+        "partial": false
+      },
+      "reason": "Previous review stage needs primary protection"
     }
   }
 };

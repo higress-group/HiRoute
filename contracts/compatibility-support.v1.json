@@ -1374,7 +1374,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2026,6 +2026,30 @@
         "crates/domain/src/observation/execution_validation.rs",
         "crates/domain/src/observation/agent_turn_admission_tests.rs",
         "crates/domain/src/observation/fixtures/pre-admission-968-finished.json"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-extension history/admission digest sha256:857e4f2b42278ac3877e34f2188eeecc7c1d188832316b23f577f3bc0b82b1ac",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Preserve actual history membership, auxiliary markers and admission identities; this digest cannot authenticate extension identities, direct group selection or extension reasons. Live ingestion accepts only the current combined contract.",
+      "removal_condition": "Remove only when supported stores and backups no longer retain these exact facts or an authenticated conversion preserves their original evidence.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-history extension digest sha256:5f42929cdb812799e4e4a10885324debb21e6489bde5e935599de57b54b8ab23",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Preserve extension policies and decisions; this digest cannot authenticate history membership, native auxiliary markers or admission facts. Live ingestion accepts only the current combined contract.",
+      "removal_condition": "Remove only when supported stores and backups no longer retain these exact facts or an authenticated conversion preserves their original evidence.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs"
       ]
     }
   ]

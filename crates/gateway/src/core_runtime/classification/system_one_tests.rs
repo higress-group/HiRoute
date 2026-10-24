@@ -152,7 +152,7 @@ fn oversized_current_input_is_rejected_and_history_removal_marks_only_affected_t
     }];
     h.visible_conversation.insert(0, Arc::new(oversized));
     let prepared = request_template(&a, &diagnostic_request(), &h, false).unwrap();
-    assert!(prepared.has_target && prepared.target_partial);
+    assert!(prepared.bindings.as_ref().unwrap().assessment.is_some() && prepared.target_partial);
     let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
     assert_eq!(
         body["state"]["visible_conversation"]
@@ -255,7 +255,7 @@ fn observed_input_is_disclosed_without_dropping_native_assessment_or_applicabili
                 "kind":"unavailable", "source_kind":"unverified_request_user_origin"
             }));
         assert_eq!(observed_wire, expected);
-        assert!(observed.has_target);
+        assert!(observed.bindings.as_ref().unwrap().assessment.is_some());
         assert_eq!(observed.target_partial, original.target_partial);
         if native_c {
             let observed = observed.routing_observation.unwrap();
@@ -413,7 +413,7 @@ fn c_reopened_frozen_questions_ignore_changed_current_authority_defaults() {
                     primary_group: Some(hiroute_domain::MaterializedGroupId::BranchPrimary(
                         i as u16,
                     )),
-                    judgment: j.clone(),
+                    judgment: Some(j.clone()),
                 })
                 .collect();
             let definition =
@@ -424,7 +424,7 @@ fn c_reopened_frozen_questions_ignore_changed_current_authority_defaults() {
                     definition,
                     a.branch_policies
                         .iter()
-                        .map(|b| (b.id.clone(), b.judgment.clone())),
+                        .map(|b| (b.id.clone(), b.judgment.clone().unwrap())),
                 )
                 .unwrap(),
             );
@@ -487,7 +487,7 @@ fn c_omitted_target_distinguishes_absent_evidence_from_policy_mismatch() {
                     .as_mut()
                     .unwrap()
                     .policy
-                    .floor_millis += 1
+                    .floor_millis = Some(501)
             }
         }
         let prepared = request_template(&a, &diagnostic_request(), &h, false).unwrap();

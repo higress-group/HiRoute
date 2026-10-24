@@ -30,15 +30,8 @@ class DecisionEndpoint(BaseHTTPRequestHandler):
                 if question['type'] == 'choice' else {'type': 'score', 'probabilities': {'0': 0.9, '1': 0.1}})
                 for key, question in body['questions'].items()}}
         else:
-            option = body['decision']['options'][0]
-            decision = {'kind': 'categorical', 'choice': option['id']}
-            refinement = option.get('refinement')
-            if refinement is not None:
-                decision['refinement'] = {'kind': 'ordinal', 'probabilities': {
-                    level['id']: 1.0 if index == 0 else 0.0
-                    for index, level in enumerate(refinement['levels'])}}
-            result = {'decision': decision}
-            if self.native_history_assessment and isinstance(body.get('assessment_target'), dict):
+            result = {'category': body['route']['categories'][0]['id'], 'group': 'regular'}
+            if self.native_history_assessment and isinstance(body.get('preceding_stage'), dict):
                 result['assessment'] = {'score': 0.75, 'partial': False}
         raw = encoded(result)
         self.send_response(200)
@@ -286,7 +279,7 @@ def scenario(repository, routed=False):
         tested = cli('decision services test', {'schema': 'hiroute.classifier-decision-test/v1',
             'classifier': {'kind': 'decision_service', 'service': custom}})
         assert tested['data']['outcome'] == 'passed', tested
-        assert set(DecisionEndpoint.requests[-1][1]) == {'decision', 'latest_user', 'visible_conversation', 'history_partial', 'assessment_target'}
+        assert set(DecisionEndpoint.requests[-1][1]) == {'route', 'latest_user', 'visible_conversation', 'history_partial', 'preceding_stage'}
         mutate({'id': custom['id'], 'expected_revision': 1, 'service': None}, 'custom-delete')
         assert cli('decision services list')['data']['services'] == [next_service]
         print(json.dumps({'scenario': 'decision-services-real-cli-crud-protocol-pinned-publication', 'state': 'green'}), flush=True)

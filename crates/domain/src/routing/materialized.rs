@@ -67,13 +67,8 @@ pub struct MaterializedBranchV1 {
     pub condition: String,
     pub group: MaterializedGroupId,
     pub primary_group: Option<MaterializedGroupId>,
-    pub judgment: super::JudgmentSettingsV1,
-}
-
-impl MaterializedBranchV1 {
-    pub fn execution_policy(&self) -> super::BranchExecutionPolicyV1 {
-        self.judgment.execution_policy(&self.name)
-    }
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judgment: Option<super::JudgmentSettingsV1>,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -91,7 +86,8 @@ pub enum RequestOwnedRouteV1 {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         native_protocol: Option<super::FrozenNativeProtocolV1>,
         classifier: ComplexityClassifierV1,
-        judgment: super::JudgmentSettingsV1,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        judgment: Option<super::JudgmentSettingsV1>,
         reselect_on_user_message: bool,
         simple_groups: Vec<MaterializedGroupId>,
         complex_groups: Vec<MaterializedGroupId>,
@@ -595,7 +591,11 @@ fn validate_request_groups(
                         || b.name.trim().is_empty()
                         || b.condition.trim().is_empty()
                         || b.name.len() > 512
-                        || !b.judgment.validate()
+                        || if classifier.mode.extension_identity().is_some() {
+                            b.judgment.is_some()
+                        } else {
+                            b.judgment.as_ref().is_none_or(|j| !j.validate())
+                        }
                 })
             {
                 return Err(CompiledPlanError::InvalidGroups);
@@ -611,8 +611,12 @@ fn validate_request_groups(
             ..
         } => {
             if let Some(p) = native_protocol {
-                p.validate_smart(judgment)
-                    .map_err(CompiledPlanError::NativeProtocol)?;
+                p.validate_smart(
+                    judgment
+                        .as_ref()
+                        .ok_or(CompiledPlanError::InvalidClassifier)?,
+                )
+                .map_err(CompiledPlanError::NativeProtocol)?;
                 if !super::native_mode(&classifier.mode) {
                     return Err(CompiledPlanError::InvalidClassifier);
                 }
@@ -620,10 +624,13 @@ fn validate_request_groups(
             classifier
                 .validate()
                 .map_err(|_| CompiledPlanError::InvalidClassifier)?;
-            if !judgment.validate()
-                || (simple_groups.as_slice() != [MaterializedGroupId::Economy]
-                    && simple_groups.as_slice()
-                        != [MaterializedGroupId::Economy, MaterializedGroupId::Primary])
+            if (if classifier.mode.extension_identity().is_some() {
+                judgment.is_some()
+            } else {
+                judgment.as_ref().is_none_or(|j| !j.validate())
+            }) || (simple_groups.as_slice() != [MaterializedGroupId::Economy]
+                && simple_groups.as_slice()
+                    != [MaterializedGroupId::Economy, MaterializedGroupId::Primary])
                 || complex_groups.as_slice() != [MaterializedGroupId::Primary]
                 || groups.keys().copied().collect::<BTreeSet<_>>()
                     != BTreeSet::from([MaterializedGroupId::Economy, MaterializedGroupId::Primary])

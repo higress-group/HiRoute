@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+mod listeners;
 mod publication;
 mod publication_update;
 mod wire;
@@ -7,7 +8,7 @@ mod wire;
 use std::collections::{BTreeMap, VecDeque};
 use std::fs::File;
 use std::io::Write;
-use std::net::{SocketAddr, TcpListener};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -22,6 +23,7 @@ use hiroute_e2e::gateway_fixture::{
 };
 use serde_json::json;
 
+use listeners::ListenerReservations;
 use publication::{PublicationRouteMode, snapshot};
 
 #[allow(unused_imports)]
@@ -1202,6 +1204,7 @@ impl RuntimeFixture {
         let serial = runtime_fixture_lock()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let listeners = ListenerReservations::bind(options.test_control).unwrap();
         let directory = tempfile::tempdir().unwrap();
         #[cfg(unix)]
         {
@@ -1225,7 +1228,7 @@ impl RuntimeFixture {
             let mut file = open.open(&path).unwrap();
             file.write_all(nonce.as_bytes()).unwrap();
             file.sync_all().unwrap();
-            ((reserve_address(), nonce), path)
+            ((listeners.control_address().unwrap(), nonce), path)
         });
         let route_mode = match (options.classified_route, options.rest_classifier) {
             (false, false) if options.all_ingress_protocols => {
@@ -1335,8 +1338,11 @@ impl RuntimeFixture {
             &dns_failures,
         )
         .unwrap();
-        let address = reserve_address();
+        let address = listeners.product_address();
         let binary = exact_hirouted_binary();
+        // The child must bind these ports itself. Release together only after
+        // selecting both addresses and completing the fixture's preparation.
+        drop(listeners);
         let mut process = Hirouted::spawn(HiroutedSpawn {
             binary: &binary,
             address,
@@ -1646,13 +1652,6 @@ fn exact_hirouted_binary() -> PathBuf {
             })
         })
         .clone()
-}
-
-fn reserve_address() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
 }
 
 fn prepare_replay_root(path: &Path, mode: ReplayRootMode) {

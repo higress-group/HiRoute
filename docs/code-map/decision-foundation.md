@@ -3,8 +3,8 @@
 [Code map](README.md) · [Architecture](architecture.md) ·
 [Gateway map](../../crates/gateway/README.md) · [Decision API v1](../../decision-extensions/api/README.md)
 
-Built-in decision models and custom extensions supply judgments. HiRoute owns
-routing policy and execution. Difficulty routing uses one task scope and regular/primary
+Built-in decision models supply judgments for HiRoute routing policy. Custom extensions
+select a category/group directly; HiRoute owns candidate execution for both. Difficulty routing uses one task scope and regular/primary
 groups; custom routing first selects a task category, then its regular/optional
 primary group. Tool selection is [protocol documentation only](../../decision-extensions/api/decision-design.md),
 with no current runtime or product entry.
@@ -19,7 +19,7 @@ with no current runtime or product entry.
 | Edit native default/custom assessments | [Assessment intent and released-input adapter](../../crates/domain/src/routing/assessment.rs), [frozen protocol](../../crates/domain/src/routing/system_one_c.rs), [judgment fields](../../apps/desktop/src/features/decision-services/JudgmentSettings.tsx) | [Real CLI next-publication default/custom and restart](../../crates/daemon/tests/support/c_protocol_product.py), [native Session publication/reopen](../../apps/desktop/src-tauri/src/editor_publication_tests.rs), [Desktop interaction](../../apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs) |
 | Explicitly test connectivity or applicability | [Connection UI](../../apps/desktop/src/features/decision-services/DecisionServicesPage.tsx), [CLI applicability contract](../../crates/application-api/src/classifier_diagnostic_c.rs), [Application](../../crates/application/src/classifier_c.rs), [production diagnostic](../../crates/gateway/src/core_runtime/classification/c_capability.rs) | [CLI request boundary](../../crates/cli/src/control_plane.rs), [focused Windows case](../../crates/daemon/tests/windows_headless.rs): the connection page has one connectivity test; CLI/acceptance owns the separate nineteen-question diagnostic; no implicit provider call |
 | Freeze connection, definition and rubric | [Authoring snapshot](../../crates/daemon/src/control/runtime/plan_content_snapshot.rs), [Application compiler](../../crates/application/src/compiler), [Gateway compiler](../../crates/gateway/src/publication/compiler.rs) | [Decision publication contracts](../../crates/gateway/src/publication/tests/decision_contracts.rs), [real publication/restart](../../crates/daemon/tests/publication_process.rs) |
-| Judge the current task and preceding actual stage | [Call lifetime](../../crates/gateway/src/core_runtime/classification.rs), [safe transport diagnostics](../../crates/gateway/src/core_runtime/classification/diagnostic.rs), [System One adapter](../../crates/gateway/src/core_runtime/classification/system_one.rs), [custom codec](../../crates/gateway/src/core_runtime/classification/protocol.rs) | [Provider mapping](../../crates/gateway/src/core_runtime/classification/system_one_tests.rs), [protocol/replay tests](../../crates/gateway/src/core_runtime/classification/protocol_tests.rs) |
+| Judge the current task and preceding actual stage | [Call lifetime](../../crates/gateway/src/core_runtime/classification.rs), [safe transport diagnostics](../../crates/gateway/src/core_runtime/classification/diagnostic.rs), [System One adapter](../../crates/gateway/src/core_runtime/classification/system_one.rs), [custom codec](../../crates/gateway/src/core_runtime/classification/extension.rs) | [Provider mapping](../../crates/gateway/src/core_runtime/classification/system_one_tests.rs), [protocol/replay tests](../../crates/gateway/src/core_runtime/classification/protocol_tests.rs) |
 | Select a group and execute candidates | [Group policy](../../crates/gateway/src/core_runtime/classification/group_policy.rs), [planner](../../crates/gateway/src/planner.rs), [history](../../crates/gateway/src/agent_turn_history/store.rs) | [Threshold/score isolation](../../crates/gateway/src/core_runtime/classification/group_policy_tests.rs), [group boundaries](../../crates/gateway/src/planning/branch_tests.rs), [multi-turn listener journey](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches.rs) |
 | Inspect actual execution and competence | [Quality query](../../crates/observation/src/query_v2/plan_quality.rs), [PlanQuality](../../apps/desktop/src/features/PlanQuality.tsx), [stage detail](../../apps/desktop/src/features/PlanQualityStage.tsx) | [Real C execution and retained query](../../crates/daemon/tests/support/c_protocol_product.py), [stage summaries](../../crates/observation/src/store/tests/plan_quality/summary.rs), [UI identities](../../apps/desktop/tests/plan-quality-state.test.mjs), [C counts and coverage UI](../../apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs) |
 
@@ -37,8 +37,7 @@ attempt leases use the frozen source binding to check current Native membership.
 
 [Decision domain types](../../crates/domain/src/routing/decision.rs) own immutable
 saved connection revisions and judgment settings; [definition types](../../crates/domain/src/routing/decision_definition.rs)
-own categorical/ordinal questions. Plans freeze the selected connection, prompts,
-thresholds and rubric. Editing a connection or draft does not reinterpret a
+own categorical/ordinal questions. Plans freeze the selected connection. Built-in execution freezes prompts, thresholds and rubric; new custom execution omits judgment while source drafts keep parked values. Editing a connection or draft does not reinterpret a
 published plan or historical stage. Branch overrides are complete copies; a
 category without primary candidates needs no degree question.
 
@@ -47,7 +46,7 @@ Desktop calls connections decision models or custom extensions; CLI retains
 existing Secret storage. Custom HTTP belongs to a saved connection, not inline
 `rest` authoring. Current development v1 replaces the earlier decision shape;
 the custom-extension v1 shape has no old-format negotiation. New native publications freeze historical problem applicability in the existing System One
-wire envelope. Earlier frozen publications keep their original execution semantics.
+wire envelope. Earlier built-in frozen publications keep their original execution semantics.
 
 Editor input/readback has no native protocol or background selection. Effective
 native authoring records the current internal protocol, with a fixed eight-turn
@@ -69,10 +68,7 @@ provider-specific configuration and [custom v1](../../decision-extensions/api/RE
 for the extension boundary. Add a separate adapter only for an actual incompatible
 wire protocol; a provider name alone does not justify one.
 
-The adapter binds each question to a category, degree or historical assessment,
-then reduces only the selected path. The extension owns provider integration and
-context trimming; HiRoute owns probability thresholds, competence protection and
-candidate selection. Trimming inside the assessment target marks that assessment
+The native adapter binds each question to a category, degree or historical assessment, then reduces only the selected path. Custom extensions receive route shape and safe history, choose category/group directly, and own their policy and context trimming. HiRoute retains candidate selection and relay. The custom codec verifies actual preceding-stage Plan/connection identity locally and discards assessment if the response changes category. Trimming inside the assessment target marks that assessment
 partial; loss of an earlier prefix does not by itself invalidate the scored stage.
 
 [C allocation](../../crates/gateway/src/core_runtime/classification/c_request.rs)
@@ -93,7 +89,7 @@ only gates an otherwise eligible low-score protection opportunity. Invalid or
 unavailable applicability retains that opportunity conservatively; category,
 degree, rubric validity, inheritance and relay retain their separate owners.
 
-`group_policy.rs` uses the current simple probability and applicable complete
+For built-in connections, `group_policy.rs` uses the current simple probability and applicable complete
 assessment for the same category, plan revision and rubric. Each new user turn
 runs a fresh decision: it neither preserves an old upgrade cursor nor blindly
 returns to regular. Missing/partial scores remain unrated. Recognized tool
@@ -258,3 +254,5 @@ checks complete matching Plan, revision, time and branch scope before placing a
 released-decision count beside protected stages. Product requirements belong to
 [smart-saving routing](../../issue-spec/specs/smart-saving-routing/spec.md) and
 [session history](../../issue-spec/specs/session-history/spec.md).
+
+Custom observations carry extension identity and an optional bounded reason without a competence floor. Complete scores remain scored coverage and may enter averages; competence rates use only complete stages with a real floor, and custom protocol decisions never enter threshold replay. Current custom execution requires absent judgment; Domain Plan validation and Gateway snapshot installation reject the old present-judgment shape. [Current publication/Operation scenarios](../../crates/application/src/routing/authoring/tests.rs) preserve parked source exactly and reject inconsistent sealed inputs, without a custom-only normalization adapter. Native frozen validation and the common [observation boundaries](../../crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs) retain supported historical bytes and reject new authority under old schemas.

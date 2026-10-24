@@ -157,8 +157,8 @@ pub(super) fn request_template<'a>(
         stage_removed: (stage.len() - admitted_stage) as u32,
     };
     Ok(PreparedDecisionRequest {
+        target_category: None,
         template,
-        has_target: admitted_stage > 0,
         target_partial,
         bindings: Some(bindings),
         routing_observation: Some(observation),

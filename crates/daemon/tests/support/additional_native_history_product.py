@@ -146,7 +146,7 @@ def assert_assessed_execution(bodies, prompt, output, current):
     """Bind an assessment to the previous actual input/output, excluding current input."""
     assert bodies, "no native classification was observed"
     for body in bodies:
-        target = body.get("assessment_target")
+        target = body.get("preceding_stage")
         assert isinstance(target, dict), "previous captured execution is not assessed"
         start = target.get("from")
         visible = body["visible_conversation"]
@@ -240,7 +240,7 @@ def exercise_native_history(product, binary, node, selector, oracle, decisions, 
     restart_a = ask("adapter-gateway-restart")
     actual = decisions()[before:]
     assert actual and all(body["history_partial"] and body["visible_conversation"] == []
-                         and body["assessment_target"] is None for body in actual), \
+                         and body["preceding_stage"] is None for body in actual), \
         "Gateway restart revived an unproven accepted execution"
     restart_output = oracle.receipt
     restart_stage = report["routing_receipts"][-1]["completed_stage"]

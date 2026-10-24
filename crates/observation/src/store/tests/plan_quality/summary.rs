@@ -20,7 +20,8 @@ fn branch_competence_keeps_tiers_and_frozen_floor_and_excludes_partial_scores() 
             *branch_execution = Some(hiroute_domain::BranchExecutionV1 {
                 policy: hiroute_domain::BranchExecutionPolicyV1 {
                     name: "发布时的写作分支".into(),
-                    floor_millis: 500,
+                    extension: None,
+                    floor_millis: Some(500),
                     criteria_digest: None,
                 },
                 group: if primary == 0 {

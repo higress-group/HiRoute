@@ -285,6 +285,16 @@ complete assessment may replace that stage's latest score but cannot rewrite an
 already-made selection reason. Network/quota/observation failure is not incompetence.
 Mixed or unknown model identity stays separate instead of crediting one model.
 
+Extension stages MUST retain the extension identity and optional bounded reason without a fabricated probability, threshold or floor. Optional valid scores remain stage observations and enter ordinary score averages. Original supported envelope bytes and canonical digests remain unchanged on reopen; historical schema digests cannot authenticate new extension fields.
+
+#### Scenario: Extension stage is assessed later
+
+- **WHEN** an extension-selected stage later receives a valid complete score
+- **THEN** the recorded score MUST remain on that actual stage without inventing a HiRoute floor or rewriting its selection.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
+
 ### Requirement: Quality summaries and drill-down share one authorized snapshot
 
 Plan quality defaults to the selected published version's latest seven days.
@@ -320,6 +330,8 @@ distinct reasons and bounded retry hints, never empty success. This does not
 increase the read deadline, reader count or automatic retries. Omitted/false
 retains the released strict failure shape.
 
+Extension scores without a floor MUST NOT be classified as below-floor or meets-floor and MUST NOT be relabelled unscored solely because no floor exists. Their valid complete scores still contribute to mean scores and scoring coverage.
+
 #### Scenario: Read routing evidence beside unrelated retained facts
 
 - **WHEN** a Plan-quality read includes routing observations and the workspace retains many unrelated safe facts
@@ -334,6 +346,9 @@ retains the released strict failure shape.
 
 - **WHEN** a Plan-quality stage page resolves its recorded route selection beside other event kinds in the same request
 - **THEN** the reader uses the retained event's covered identity and excludes known unrelated safe projections before opening sensitive payloads. A missing safe projection retains the original payload lookup, while deleted payloads remain unavailable. Small decision fields use rebuildable query indexes so cold reads do not repeatedly open unrelated content pages. Index creation preserves retained bytes and the schema marker; malformed payloads still fail the affected read. Selection, ordering, pagination and full-scope summaries retain their meaning within the existing read deadline and reader admission limits.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
 ### Requirement: Expose Hermes connection state and recorded execution models
 
@@ -491,8 +506,8 @@ Mixed identity cannot be credited to a single model. Complete and partial scores
 are classified first. A stage without a score is awaiting assessment only when no
 later turn exists and its Worker task is not terminal; other unscored stages stay
 unscored. Coverage is complete scores divided by executions; competence is complete
-scores meeting their frozen floor divided by complete scores. Partial, awaiting
-and unscored stages enter coverage's denominator, not competence's denominator.
+scores meeting their frozen floor divided by complete scores that have a real frozen floor. Partial, awaiting
+and unscored stages enter coverage's denominator, not competence's denominator. Complete extension scores count as scored coverage and may contribute to averages, but have no floor and enter neither competence numerator nor denominator. A pure extension population has no competence rate.
 
 Reports disclose protection triggers, availability relay, recorded request duration
 and output rate where available, contributing sessions and retained excerpts.
@@ -511,6 +526,9 @@ explicitly unavailable, never zero or a claimed saving.
 
 The cost comparison SHALL select requests by the disclosed Plan revision, category and Regular group through retained stage identity and reuse the existing per-attempt API-equivalent calculation. Missing/nonunique Primary or saved currency and genuinely dirty/missing request projections make it unavailable until ready; known out-of-scope membership cannot block the selected scope. Partial history alone does not invalidate proven membership; request-level usage and price completeness still apply. Closed mixed/unknown/conflicting membership is an explicit gap. A request without closed-turn membership remains pending while its physical session has retained activity within five minutes; after five minutes without activity it becomes unresolved evidence, without asserting task completion. Late facts reclassify the request on the next read, including after reopen. Unresolved normal requests in the Plan/time window that cannot be ruled out of the selected scope remain in its conservative denominator without an invented revision/group. They count once as missing and excluded (excluded stage gaps are a subset of missing), prevent complete coverage and full-scope amounts/difference, and allow only paired complete-request subtotals. No compared evidence is unknown, never zero. Decision traffic remains outside this population; generic comparison and settlement meanings stay unchanged. The view SHALL disclose the conservative denominator and overlapping missing/excluded counts, and SHALL NOT imply cash savings.
 
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235188590
+
 #### Scenario: Completed Worker without an assessment
 
 - **WHEN** a Worker succeeds but its model stage has no complete assessment
@@ -523,7 +541,7 @@ The cost comparison SHALL select requests by the disclosed Plan revision, catego
 - **THEN** it discloses conservative missing/excluded counts and paired subtotals, reclassifies late evidence without duplication and keeps genuinely dirty request projections unavailable until catch-up.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235188590
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
 ### Requirement: The routing timeline re-emits late evidence without duplicates
 

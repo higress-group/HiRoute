@@ -75,7 +75,8 @@ fn close_branch_turn(
 ) -> CompletedAgentTurn {
     let policy = BranchExecutionPolicyV1 {
         name: "Code".into(),
-        floor_millis: 500,
+        extension: None,
+        floor_millis: Some(500),
         criteria_digest: None,
     };
     let mut selected = decision("code");

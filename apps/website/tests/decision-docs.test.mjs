@@ -12,7 +12,7 @@ test('canonical decision documents render into bilingual website routes', async 
     assert.match(html, /href="\/api\/decision\.openapi\.json"/);
     assert.match(html, /href="\/api\/decision-examples\.json"/);
   }
-  for (const html of rendered.slice(2, 4)) assert.match(html, /assessment_target/);
+  for (const html of rendered.slice(2, 4)) assert.match(html, /preceding_stage/);
   assert.doesNotMatch(rendered.join(''), /href="(?!https:\/\/)[^" ]+\.md(?:#[^"]*)?"/);
   assert.match(rendered[4], /href="\/docs\/decision-api\/"/);
   assert.match(rendered[5], /href="\/en\/docs\/decision-api\/"/);
@@ -26,7 +26,7 @@ test('prepared OpenAPI and examples retain their canonical bytes', () => {
   assert(parsed.paths['/v1/decisions']);
   const examples = fs.readFileSync(new URL('../public/api/decision-examples.json', import.meta.url));
   assert.ok(examples.equals(fs.readFileSync(new URL('../../../decision-extensions/api/decision-examples.json', import.meta.url))), 'Prepared examples differ from the canonical examples');
-  assert.deepEqual(JSON.parse(examples).cases.map(example => example.request.decision.kind), ['ordinal', 'categorical', 'categorical', 'subset']);
+  assert.deepEqual(JSON.parse(examples).cases.map(example => example.request.route.kind), ['smart_saving', 'branches', 'branches']);
   assert.equal(fs.existsSync(new URL('../public/api/jev-policy.default.json', import.meta.url)), false, 'Removed extension policy must not survive in the website download assets');
 });
 
@@ -56,5 +56,5 @@ test('API guides and OpenAPI expose current examples without future tool selecti
   const openapi = JSON.parse(fs.readFileSync(new URL('../public/api/decision.openapi.json', import.meta.url)));
   const examples = openapi.paths['/v1/decisions'].post.requestBody.content['application/json'].examples;
   assert.deepEqual(Object.keys(examples), current.map(c => c.name));
-  assert.equal(examples.single_group_category.value.decision.options[1].refinement, undefined);
+  assert.deepEqual(examples.single_group_category.value.route.categories[1].groups, ['regular']);
 });

@@ -67,14 +67,15 @@ export function judgmentIssue(value: Judgment, id: string, dual: boolean, langua
   const invalid = prompts.find(([, text]) => !text.trim());
   return invalid ? issue(invalid[0], t('请填写完整判断标准。', 'Complete the judgment standard.')) : null;
 }
+export function isCustomExtension(classifier: Classifier): boolean { return classifier.kind === 'decision_service' && classifier.service.connection.kind === 'custom'; }
 export function routingIssue(routing: BranchRouting, language: 'zh' | 'en' = 'zh'): DecisionIssue | null {
   const selected = classifierIssue(routing.classifier, language); if (selected) return selected;
-  const global = judgmentIssue(routing.judgment, 'global', true, language); if (global) return global;
+  const global = isCustomExtension(routing.classifier) ? null : judgmentIssue(routing.judgment, 'global', true, language); if (global) return global;
   for (const [index, branch] of routing.branches.entries()) {
     for (const [key, value] of [['name', branch.name], ['condition', branch.condition]]) {
       if (!value.trim()) return { group: branch.id, selector: `[data-decision-field="branch-${index}-${key}"]`, message: language === 'zh' ? (key === 'name' ? '请填写分支名称。' : '请填写任务条件。') : (key === 'name' ? 'Enter a branch name.' : 'Enter a task condition.') };
     }
-    if (branch.judgment) { const issue = judgmentIssue(branch.judgment, `branch-${index}`, branch.primary_candidates.length > 0, language); if (issue) return issue; }
+    if (!isCustomExtension(routing.classifier) && branch.judgment) { const issue = judgmentIssue(branch.judgment, `branch-${index}`, branch.primary_candidates.length > 0, language); if (issue) return issue; }
   }
   return null;
 }

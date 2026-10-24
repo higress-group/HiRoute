@@ -10,8 +10,7 @@ use runtime_support::{NativeProvider, ObservationFaults, ProviderReply, RuntimeF
 use serde_json::{Value, json};
 
 const RESPONSE: &[u8] = br#"{"id":"accepted","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
-const DECISION: &[u8] =
-    br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}}}"#;
+const DECISION: &[u8] = br#"{"group":"regular"}"#;
 
 fn provider(body: &'static [u8]) -> NativeProvider {
     NativeProvider::start(vec![

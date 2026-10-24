@@ -1,5 +1,6 @@
 import { scenario, scenarioCatalog, runScenarios } from './scenario-selection.mjs';
 import { productShellRequired } from './scenario-requirements.mjs';
+import { extensionDecisionScenarios } from './extension-decision-scenarios.mjs';
 import { cProtocolScenarios } from './c-protocol-scenarios.mjs';
 import { nativeConnectionScenarios } from './native-connection-scenarios.mjs';
 import { presentationScenarios } from './presentation-interactions.mjs';
@@ -59,6 +60,7 @@ async function routing() {
 }
 const scenarios = [
   ...nativeConnectionScenarios({ fresh, click, until, text, calls, control: c }),
+  ...extensionDecisionScenarios({ fresh, routing, click, until, all, calls, control: c }),
   ...cProtocolScenarios({ fresh, routing, click, until, all, text, calls, setInput, control: c }),
   ...presentationScenarios,
   scenario('desktop.routing.two-context-conflict', ['routing-editor'], 'A rival context revision refuses stale publication and preserves the current draft', async () => {
@@ -1023,11 +1025,11 @@ const scenarios = [
     await until(() => c().clipboard.length === 1, 'curl copied');
     const curl = c().clipboard[0];
     assert(curl.includes('https://classifier.example/v1/decisions'), 'Curl targets the wrong API');
-    for (const field of ['decision', 'latest_user', 'visible_conversation', 'history_partial', 'assessment_target']) assert(curl.includes(`"${field}"`), `Curl lacks ${field}`);
-    assert(all('.classifier-protocol pre')[1].textContent.includes('ordinal') && !all('.classifier-protocol pre')[1].textContent.includes('assessment'), 'First decision fabricated an assessment');
+    for (const field of ['route', 'latest_user', 'visible_conversation', 'history_partial', 'preceding_stage']) assert(curl.includes(`"${field}"`), `Curl lacks ${field}`);
+    assert(all('.classifier-protocol pre')[1].textContent.includes('regular') && !all('.classifier-protocol pre')[1].textContent.includes('assessment'), 'First decision fabricated an assessment');
     await click('自定义分支 · 分类并评分');
     assert(all('.classifier-protocol pre')[0].textContent.includes('"from": 0'), 'Assessment request has no prior stage');
-    assert(all('.classifier-protocol pre')[1].textContent.includes('review') && text().includes('这里评分属于上一写稿阶段'), 'Assessment targets the new branch');
+    assert(all('.classifier-protocol pre')[1].textContent.includes('review') && text().includes('评分只属于同类别的前一实际阶段'), 'Assessment targets the new branch');
     if (window.fixtureTransport === 'console') {
       await click('保存 OpenAPI'); await until(() => text().includes('已开始下载') || text().includes('保存失败'), 'browser download outcome');
       if (text().includes('保存失败')) await c().callHost('save_classifier_openapi');

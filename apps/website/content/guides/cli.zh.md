@@ -330,3 +330,5 @@ hiroute value show --routing PLAN_ID --period 7d --basis api-equivalent --refere
 缺单价时，读取已安装的 `prices.effective` / `prices.override.preview` schema，以实际 Binding、币种和 `valuation_kind: "api_equivalent"` 查询，使用返回的 `edit_context` 修订号生成价格 Preview。手动 rates 单位是每百万 token 的整数货币微单位，输入/输出/缓存分别设置；使用有依据的价格或让用户提供这些非敏感数值，不猜测单价。保留原设置，提前给出填好参数的价格恢复 Preview/Apply 命令；原先没有手动覆盖时可用 `follow_catalog` 恢复目录价格。使用 Preview 返回的完整 spec/digest/revisions 和同一个提交 key 应用。订阅也能设置 API 等价参考价，不改变权益或普通计费分类；免费、订阅、付费和未知保持区别。
 
 若参考计价中缓存创建按普通输入单价收费，可将参考缓存写入价设为输入价。此时金额与未上报的普通输入/缓存创建拆分无关，HiRoute 可合并同价计算桶，但不会补造或改写用量；两者单价不同时仍需要该细分计数。
+
+自定义扩展直接返回类别和模型组；路由不使用 HiRoute 阈值或评分标准，草稿保留切回内置连接时需要的设置。可选阶段评分只用于观察。

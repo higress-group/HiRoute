@@ -7,11 +7,7 @@ System One provider call. HiRoute also has built-in connections under
 **Models → Decision models**, so you only need this service when choosing a
 self-hosted custom extension.
 
-The extension follows the request's task categories, degree criteria and frozen
-assessment standard. It returns a category/degree result and optional competence
-for the preceding actual stage. HiRoute owns thresholds, model groups, availability
-relay and observations. There are no deployment-level routing rules, thresholds
-or fixed branch policies.
+The extension returns category and regular/primary group directly. Its own default policy uses simple probability 0.8 and competence floor 0.5; only a complete low score of the preceding regular stage in the selected category triggers primary protection. HiRoute executes the result without applying another threshold. Optional assessment is observation-only.
 
 ## Install
 
@@ -91,7 +87,7 @@ The two HTTP boundaries have different payloads:
 
 | Caller → receiver | Endpoint | Payload |
 | --- | --- | --- |
-| HiRoute → this extension | `/v1/decisions` | The [custom extension request](../../api/README.md): definition, current input, visible history and assessment target |
+| HiRoute → this extension | `/v1/decisions` | The [custom extension request](../../api/README.md): published route, current input, visible history and preceding_stage |
 | This extension → decision provider | Configured `/alpha/decisions` or `/systemone` URL | System One `model`, `state` and typed Choice/Score questions |
 
 Do not use the provider URL as this extension's endpoint in HiRoute. To call a
@@ -133,3 +129,5 @@ and the HTTP handler with local fixtures. They do not establish provider decisio
 quality or native Desktop acceptance. HiRoute's explicit connection test validates
 the saved connection and required result fields; task-specific quality still needs
 representative real usage.
+
+Policy configuration: `JEV_SIMPLE_THRESHOLD` defaults to `0.8`; `JEV_COMPETENCE_FLOOR` defaults to `0.5`. Both must be finite in 0..1. Use separate deployments or saved connections for different policies; route requests carry no thresholds. Cross-category, partial and preceding-primary scores cannot protect a new regular choice.

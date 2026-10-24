@@ -22,7 +22,7 @@ pub(crate) fn fixture() -> PlannerInputV1 {
             condition: "Coding work".into(),
             group: MaterializedGroupId::Branch(0),
             primary_group: Some(MaterializedGroupId::BranchPrimary(0)),
-            judgment: JudgmentSettingsV1::default(),
+            judgment: Some(JudgmentSettingsV1::default()),
         },
         MaterializedBranchV1 {
             id: "writing".into(),
@@ -30,7 +30,7 @@ pub(crate) fn fixture() -> PlannerInputV1 {
             condition: "Writing work".into(),
             group: MaterializedGroupId::Branch(1),
             primary_group: None,
-            judgment: JudgmentSettingsV1::default(),
+            judgment: Some(JudgmentSettingsV1::default()),
         },
     ];
     let groups = [
@@ -49,6 +49,7 @@ pub(crate) fn fixture() -> PlannerInputV1 {
         request(IngressProtocol::Responses, "Fix a bug"),
         policy(
             MaterializedRouteV1::Branches {
+                extension: None,
                 native_protocol: None,
                 branches,
                 default_branch_id: "writing".into(),
@@ -134,6 +135,7 @@ fn fresh_decisions_keep_valid_in_group_holds_for_both_retired_values() {
             let mut input = fixture();
             if smart {
                 input.policy.route = MaterializedRouteV1::SmartSaving {
+                    extension: None,
                     native_protocol: None,
                     judgment: Default::default(),
                     simple_group_id: "branch_0".into(),

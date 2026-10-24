@@ -70,6 +70,8 @@ pub struct RoutingTimelineTurnV1 {
 #[serde(deny_unknown_fields)]
 pub struct RoutingTimelineSelectionV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_protocol: Option<DecisionProtocolV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub routing_observation: Option<crate::RoutingObservationV1>,
@@ -121,6 +123,7 @@ impl From<BranchDecisionV1> for RoutingTimelineSelectionV1 {
                     applicability_boundary_millis: observation.applicability_boundary_millis,
                 });
         let BranchDecisionV1 {
+            extension_reason,
             decision_protocol,
             routing_observation,
             policy,
@@ -143,6 +146,7 @@ impl From<BranchDecisionV1> for RoutingTimelineSelectionV1 {
             fallback_reason,
         } = value;
         Self {
+            extension_reason,
             decision_protocol,
             routing_observation,
             policy,

@@ -44,6 +44,23 @@ pub struct ClassifierAuthHeaderV1 {
 }
 
 impl ComplexityClassifierModeV1 {
+    pub fn extension_identity(&self) -> Option<super::DecisionExtensionIdentityV1> {
+        match self {
+            Self::DecisionService { service }
+                if matches!(
+                    service.connection,
+                    super::DecisionConnectionV1::Custom { .. }
+                ) =>
+            {
+                Some(super::DecisionExtensionIdentityV1 {
+                    id: service.id.clone(),
+                    revision: service.revision,
+                })
+            }
+            _ => None,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), ComplexityClassifierError> {
         match self {
             Self::LocalRules => Ok(()),

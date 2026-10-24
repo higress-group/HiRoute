@@ -38,35 +38,30 @@ class DecisionEndpointContractTests(unittest.TestCase):
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         try:
-            body = {'decision': {'kind': 'categorical', 'options': [option]}}
+            body = {'route': {'kind': 'branches', 'categories': [option], 'default_category': option['id']}}
             if target is not None:
-                body['assessment_target'] = target
+                body['preceding_stage'] = target
             request = urllib.request.Request(f'http://127.0.0.1:{server.server_port}/decision',
                 data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
             with urllib.request.urlopen(request, timeout=5) as response:
                 result = json.load(response)
             self.assertEqual(endpoint.requests[0][1], body)
-            return result if assessment else result['decision']
+            return result
         finally:
             server.shutdown()
             server.server_close()
             worker.join(timeout=5)
 
-    def test_plain_category_does_not_invent_an_ordinal_refinement(self):
-        result = self.reply({'id': 'native', 'criterion': 'Native task'})
-        self.assertEqual(result, {'kind': 'categorical', 'choice': 'native'})
+    def test_single_group_category_retains_the_declared_category(self):
+        result = self.reply({'id': 'native', 'condition': 'Native task', 'groups': ['regular']})
+        self.assertEqual(result, {'category': 'native', 'group': 'regular'})
 
-    def test_declared_refinement_uses_only_the_requested_levels(self):
-        option = {'id': 'native', 'criterion': 'Native task', 'refinement': {
-            'kind': 'ordinal', 'instructions': 'Use the declared levels',
-            'levels': [{'id': name, 'criterion': name} for name in ('small', 'medium', 'large')]}}
+    def test_dual_group_category_returns_a_declared_group_without_inventing_probabilities(self):
+        option = {'id': 'native', 'condition': 'Native task', 'groups': ['regular', 'primary']}
         result = self.reply(option)
-        self.assertEqual(result['choice'], 'native')
-        self.assertEqual(result['refinement']['kind'], 'ordinal')
-        probabilities = result['refinement']['probabilities']
-        self.assertEqual(set(probabilities), {'small', 'medium', 'large'})
-        self.assertAlmostEqual(sum(probabilities.values()), 1)
-        self.assertGreater(probabilities['small'], probabilities['large'])
+        self.assertEqual(result['category'], 'native')
+        self.assertIn(result['group'], option['groups'])
+        self.assertEqual(set(result), {'category', 'group'})
 
     def test_native_endpoint_returns_quality_only_for_a_captured_target(self):
         option = {'id': 'native', 'criterion': 'Native task'}
@@ -77,7 +72,7 @@ class DecisionEndpointContractTests(unittest.TestCase):
 
 class NativeHistoryOracleTests(unittest.TestCase):
     def body(self):
-        return {'assessment_target': {'from': 1},
+        return {'preceding_stage': {'from': 1},
                 'visible_conversation': ['OLD', 'ACTUAL_A', 'ACCEPTED_A_OUTPUT'],
                 'latest_user': 'ACTUAL_B'}
 
@@ -86,10 +81,10 @@ class NativeHistoryOracleTests(unittest.TestCase):
 
     def test_empty_history_missing_output_wrong_target_and_current_input_are_rejected(self):
         for mutate in [
-                lambda b: b.update(assessment_target=None),
+                lambda b: b.update(preceding_stage=None),
                 lambda b: b.update(visible_conversation=[]),
-                lambda b: b.update(assessment_target={'from': True}),
-                lambda b: b.update(assessment_target={'from': 2}),
+                lambda b: b.update(preceding_stage={'from': True}),
+                lambda b: b.update(preceding_stage={'from': 2}),
                 lambda b: b.update(visible_conversation=['OLD', 'ACTUAL_A']),
                 lambda b: b['visible_conversation'].append('ACTUAL_B'),
                 lambda b: b.update(latest_user='OLDER_INPUT')]:

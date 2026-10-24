@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use super::super::extension::{
+    parse_response as parse_classifier_response, request_template as classifier_request_template,
+};
 use super::*;
 use crate::agent_turn_history::{
     AgentTurnHistorySnapshot, AgentTurnStatus, VisibleAgentTurn, VisibleContentPart,
@@ -9,6 +12,7 @@ use crate::server::core_runtime::model_ir::{
 };
 use crate::server::core_runtime::model_ir::{MessageRole, ModelRequestIRV1};
 use crate::server::request_plan::IngressProtocol;
+use hiroute_domain::{DecisionDefinitionV1, ExecutionGroupV1};
 
 pub(crate) fn request(text: &str) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
@@ -282,7 +286,7 @@ fn optional_hold_preparation_miss_discloses_origin_without_disabling_classificat
                 );
             }
             assert_eq!(body["latest_user"], json!(expected));
-            assert!(body["assessment_target"].is_null());
+            assert!(body["preceding_stage"].is_null());
             assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
             drop(lock);
         }
@@ -299,9 +303,9 @@ fn request_has_exact_five_fields_and_no_execution_identity() {
             .unwrap();
     let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
     assert_eq!(body.as_object().unwrap().len(), 5);
-    assert_eq!(body["decision"]["kind"], "ordinal");
+    assert_eq!(body["route"]["kind"], "smart_saving");
     assert_eq!(body["latest_user"][0]["text"], "next");
-    assert!(body["assessment_target"].is_null());
+    assert!(body["preceding_stage"].is_null());
     assert_eq!(
         body["visible_conversation"][0].as_object().unwrap().len(),
         3
@@ -316,80 +320,207 @@ fn request_has_exact_five_fields_and_no_execution_identity() {
     }
 }
 #[test]
-fn valid_category_survives_invalid_selected_degree_and_optional_assessment() {
-    let output = parse_classifier_response(br#"{"decision":{"kind":"categorical","choice":"write","refinement":{"kind":"ordinal","probabilities":{"simple":1}}},"assessment":{"score":2,"partial":false}}"#, &categories(), true).unwrap();
+fn valid_category_survives_invalid_group_and_optional_assessment() {
+    let output = parse_classifier_response(
+        br#"{"category":"write","group":"other","assessment":{"score":2,"partial":false}}"#,
+        &categories(),
+        Some("write"),
+    )
+    .unwrap();
     assert_eq!(output.branch_id, "write");
     assert!(output.degree_failed && output.probabilities.is_none());
     assert!(output.invalid_assessment && output.assessment.is_none());
-    let single = parse_classifier_response(
-        br#"{"decision":{"kind":"categorical","choice":"review"}}"#,
-        &categories(),
-        false,
-    )
-    .unwrap();
-    assert!(!single.degree_failed && single.probabilities.is_none());
+    for body in [
+        br#"{"category":"review"}"#.as_slice(),
+        br#"{"category":"review","group":{"invalid":true}}"#,
+    ] {
+        let single = parse_classifier_response(body, &categories(), None).unwrap();
+        assert_eq!(single.extension_group, Some(ExecutionGroupV1::Regular));
+        assert!(!single.degree_failed);
+    }
 }
 #[test]
-fn exact_probability_keys_sum_and_duplicates_are_checked() {
+fn direct_decision_rejects_old_unknown_duplicate_and_chat_envelopes() {
+    for body in [
+        r#"{"category":"unknown","group":"regular"}"#,
+        r#"{"category":"review","category":"write","group":"regular"}"#,
+        r#"{"category":"review","group":"regular","extra":1}"#,
+        r#"{"decision":{"kind":"ordinal","probabilities":{"simple":1,"complex":0}}}"#,
+        r#"{"choices":[{"message":{"content":"review"}}]}"#,
+    ] {
+        assert_eq!(
+            parse_classifier_response(body.as_bytes(), &categories(), None),
+            Err(CallFailure::InvalidOutput)
+        );
+    }
+    assert!(
+        parse_classifier_response(
+            br#"{"category":"smart_saving","group":"regular"}"#,
+            &definition(),
+            None
+        )
+        .is_err()
+    );
+    assert!(
+        parse_classifier_response(
+            br#"{"group":"regular","group":"primary"}"#,
+            &definition(),
+            None
+        )
+        .is_err()
+    );
+}
+#[test]
+fn assessments_require_same_category_and_reasons_are_bounded_separately() {
+    let body = json!({"category":"write","group":"regular","reason":"文".repeat(1024),"assessment":{"score":0.5,"partial":false}});
+    let bytes = serde_json::to_vec(&body).unwrap();
+    let response = parse_classifier_response(&bytes, &categories(), Some("write")).unwrap();
+    assert_eq!(response.assessment.unwrap().score, 0.5);
+    assert_eq!(response.extension_group, Some(ExecutionGroupV1::Regular));
+    assert_eq!(response.extension_reason.unwrap().chars().count(), 1024);
+    for target in [None, Some("review")] {
+        let response = parse_classifier_response(&bytes, &categories(), target).unwrap();
+        assert!(response.invalid_assessment && response.assessment.is_none());
+        assert_eq!(response.extension_group, Some(ExecutionGroupV1::Regular));
+    }
+    let duplicate = br#"{"group":"regular","assessment":{"score":0.4,"score":0.5,"partial":true}}"#;
+    assert!(
+        parse_classifier_response(duplicate, &definition(), Some("smart_saving"))
+            .unwrap()
+            .invalid_assessment
+    );
+    let extra =
+        br#"{"group":"regular","assessment":{"score":0.4,"partial":true,"reason":"extra"}}"#;
+    assert!(
+        parse_classifier_response(extra, &definition(), Some("smart_saving"))
+            .unwrap()
+            .invalid_assessment
+    );
+    for reason in [String::new(), "文".repeat(1025)] {
+        assert!(
+            parse_classifier_response(
+                &serde_json::to_vec(&json!({"group":"regular","reason":reason})).unwrap(),
+                &definition(),
+                None
+            )
+            .is_err()
+        );
+    }
+}
+#[test]
+fn builtin_probability_normalization_keeps_strict_keys_and_sum() {
     for probabilities in [
         r#"{"simple":0.8,"complex":0.1}"#,
         r#"{"simple":1}"#,
         r#"{"simple":1,"complex":0,"extra":0}"#,
-        r#"{"simple":0.8,"simple":0.8,"complex":0.2}"#,
         r#"{"simple":-0.1,"complex":1.1}"#,
     ] {
-        let body =
-            format!(r#"{{"decision":{{"kind":"ordinal","probabilities":{probabilities}}}}}"#);
-        assert!(
-            parse_classifier_response(body.as_bytes(), &definition(), false)
-                .unwrap()
-                .degree_failed
-        );
+        let map: UniqueMap<f64> = serde_json::from_str(probabilities).unwrap();
+        assert!(normalize_probabilities(map.0, ["simple", "complex"].into_iter()).is_err());
     }
-    let output = parse_classifier_response(
-        br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.8,"complex":0.2000001}}}"#,
-        &definition(),
-        false,
-    )
-    .unwrap();
-    assert!(!output.degree_failed);
-    assert!((output.probabilities.unwrap().values().sum::<f64>() - 1.0).abs() < 1e-12);
+    assert!(
+        serde_json::from_str::<UniqueMap<f64>>(r#"{"simple":0.8,"simple":0.8,"complex":0.2}"#)
+            .is_err()
+    );
 }
+
 #[test]
-fn response_rejects_unknown_duplicate_category_and_chat_envelopes() {
+fn preceding_stage_requires_exact_plan_connection_and_actual_category() {
+    use crate::agent_turn_history::{AssessmentTarget, ExecutionAttribution, PlanSnapshot};
+    let mut authority = (*authority()).clone();
+    authority.decision = categories();
+    authority.default_category = Some("review".into());
+    authority.plan_identity = Some(("plan/test".into(), 7));
+    let mut history = history(true);
+    history.assessment_target = Some(AssessmentTarget {
+        segment_id: "private-stage".into(),
+        first_turn_id: "turn-1".into(),
+        through_turn_id: "turn-1".into(),
+        first_ordinal: 1,
+        through_ordinal: 1,
+        target_partial: false,
+        plan: PlanSnapshot {
+            plan_id: "plan/test".into(),
+            plan_revision: 7,
+        },
+        attribution: ExecutionAttribution::Single {
+            selected_branch_id: "write".into(),
+            executed_branch_id: "write".into(),
+            model_configuration_id: "private-model".into(),
+            profile_digest: "private-profile".into(),
+        },
+        branch_execution: Some(hiroute_domain::BranchExecutionV1 {
+            policy: authority
+                .extension_identity
+                .as_ref()
+                .unwrap()
+                .execution_policy("Write"),
+            group: ExecutionGroupV1::Primary,
+            candidate_index: 0,
+        }),
+    });
+    for variant in 0..5 {
+        let mut candidate = history.clone();
+        let target = candidate.assessment_target.as_mut().unwrap();
+        match variant {
+            1 => target.plan.plan_revision = 6,
+            2 => {
+                target
+                    .branch_execution
+                    .as_mut()
+                    .unwrap()
+                    .policy
+                    .extension
+                    .as_mut()
+                    .unwrap()
+                    .revision = 2
+            }
+            3 => target.attribution = ExecutionAttribution::Mixed,
+            4 => {
+                if let ExecutionAttribution::Single {
+                    executed_branch_id, ..
+                } = &mut target.attribution
+                {
+                    *executed_branch_id = "review".into();
+                }
+            }
+            _ => (),
+        }
+        let request =
+            classifier_request_template(&request("Review now"), &candidate, &authority, false)
+                .unwrap();
+        let body: Value = serde_json::from_slice(&request.template.bytes).unwrap();
+        if variant == 0 {
+            assert_eq!(
+                body["preceding_stage"],
+                json!({"from":0,"category":"write","group":"primary","complete":true})
+            );
+        } else {
+            assert!(body["preceding_stage"].is_null());
+        }
+        let wire = String::from_utf8(request.template.bytes.to_vec()).unwrap();
+        for private in [
+            "private-stage",
+            "private-model",
+            "private-profile",
+            "plan/test",
+            "floor_millis",
+            "simple_threshold",
+        ] {
+            assert!(!wire.contains(private));
+        }
+    }
+}
+
+#[test]
+fn explicit_null_is_not_absence_for_category_or_reason() {
     for body in [
-        r#"{"decision":{"kind":"categorical","choice":"unknown"}}"#,
-        r#"{"decision":{"kind":"categorical","choice":"review","choice":"write"}}"#,
-        r#"{"decision":{"kind":"categorical","choice":"review"},"extra":1}"#,
-        r#"{"choices":[{"message":{"content":"review"}}]}"#,
+        br#"{"category":null,"group":"regular"}"#.as_slice(),
+        br#"{"group":"regular","reason":null}"#,
     ] {
         assert_eq!(
-            parse_classifier_response(body.as_bytes(), &categories(), false),
+            parse_classifier_response(body, &definition(), None),
             Err(CallFailure::InvalidOutput)
         );
     }
-}
-#[test]
-fn assessment_requires_a_target_and_preserves_unicode_reason() {
-    let body = json!({"decision":{"kind":"ordinal","probabilities":{"simple":0.8,"complex":0.2}},"assessment":{"score":0.5,"partial":false,"reason":"文".repeat(1024)}});
-    let bytes = serde_json::to_vec(&body).unwrap();
-    assert_eq!(
-        parse_classifier_response(&bytes, &definition(), true)
-            .unwrap()
-            .assessment
-            .unwrap()
-            .score,
-        0.5
-    );
-    assert!(
-        parse_classifier_response(&bytes, &definition(), false)
-            .unwrap()
-            .invalid_assessment
-    );
-    let duplicate = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":1,"complex":0}},"assessment":{"score":0.4,"score":0.5,"partial":true}}"#;
-    assert!(
-        parse_classifier_response(duplicate, &definition(), true)
-            .unwrap()
-            .invalid_assessment
-    );
 }

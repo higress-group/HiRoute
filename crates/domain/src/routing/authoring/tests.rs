@@ -444,3 +444,73 @@ fn local_rules_and_custom_extensions_keep_their_assessment_and_omission() {
         );
     }
 }
+
+#[test]
+fn custom_extension_parks_unfinished_prompts_without_erasing_them() {
+    use crate::*;
+    let mut editor = native_editor();
+    let native = editor.smart.classifier.clone();
+    let ComplexityClassifierModeV1::DecisionService { service } = &mut editor.smart.classifier
+    else {
+        unreachable!()
+    };
+    service.connection = DecisionConnectionV1::Custom {
+        endpoint: "https://decision.example/v1/decisions".into(),
+        timeout_ms: 3000,
+        auth_header: None,
+    };
+    editor.smart.judgment.degree.instructions = "   ".into();
+    editor.smart.judgment.competence.criteria[1] = "\n\t".into();
+    let parked = editor.smart.judgment.clone();
+    editor.validate_draft().unwrap();
+    let effective = editor.effective().unwrap();
+    assert_eq!(
+        effective.assessment_scopes()[SMART_SAVING_SCOPE_ID],
+        &parked
+    );
+    editor.smart.classifier = native;
+    assert!(editor.effective().is_err());
+    assert_eq!(editor.smart.judgment, parked);
+}
+
+#[test]
+fn extension_branch_overrides_keep_parked_whitespace_and_restore_native_validation() {
+    use crate::*;
+    let mut value = native_editor();
+    value.mode = PlanEditorMode::CustomBranches;
+    let native = value.smart.classifier.clone();
+    let ComplexityClassifierModeV1::DecisionService { service } = &mut value.smart.classifier
+    else {
+        unreachable!()
+    };
+    service.connection = DecisionConnectionV1::Custom {
+        endpoint: "https://decision.example/v1/decisions".into(),
+        timeout_ms: 3000,
+        auth_header: None,
+    };
+    let mut parked = JudgmentSettingsV1::default();
+    parked.degree.instructions = "   ".into();
+    parked.competence.criteria[0] = "\n\t".into();
+    value.branch_routing = Some(BranchRoutingEditorV1 {
+        classifier: value.smart.classifier.clone(),
+        default_branch_id: "code".into(),
+        judgment: parked.clone(),
+        reselect_on_user_message: false,
+        branches: ["code", "review"]
+            .into_iter()
+            .map(|id| RouteBranchV1 {
+                id: id.into(),
+                name: id.into(),
+                condition: format!("Handle {id}"),
+                candidates: value.candidates.clone(),
+                primary_candidates: value.candidates.clone(),
+                judgment: Some(parked.clone()),
+            })
+            .collect(),
+    });
+    value.effective().unwrap();
+    let before = value.branch_routing.as_ref().unwrap().branches.clone();
+    value.branch_routing.as_mut().unwrap().classifier = native;
+    assert!(value.effective().is_err());
+    assert_eq!(value.branch_routing.as_ref().unwrap().branches, before);
+}

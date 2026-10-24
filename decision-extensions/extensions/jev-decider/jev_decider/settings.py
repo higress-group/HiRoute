@@ -40,6 +40,8 @@ class Settings:
     max_concurrency: int
     inbound_header_name: str | None
     inbound_header_value: str | None
+    simple_threshold: float = .8
+    competence_floor: float = .5
     @classmethod
     def from_env(cls) -> "Settings":
         key_file = os.getenv("OPENROUTER_API_KEY_FILE", "")
@@ -79,7 +81,13 @@ class Settings:
             not header_value or any(character in header_value for character in "\r\n")
         ):
             raise RuntimeError("DECIDER_AUTH_HEADER_VALUE is invalid")
+        simple_threshold = _finite_env("JEV_SIMPLE_THRESHOLD", .8)
+        competence_floor = _finite_env("JEV_COMPETENCE_FLOOR", .5)
+        if not 0 <= simple_threshold <= 1 or not 0 <= competence_floor <= 1:
+            raise RuntimeError("Jev policy thresholds must be within 0..1")
         return cls(
+            simple_threshold=simple_threshold,
+            competence_floor=competence_floor,
             api_key=api_key,
             upstream_url=upstream_url,
             model=os.getenv("JEV_MODEL", DEFAULT_MODEL),

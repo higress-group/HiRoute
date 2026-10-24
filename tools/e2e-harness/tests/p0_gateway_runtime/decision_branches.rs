@@ -5,6 +5,9 @@ use serde_json::{Value, json};
 #[path = "decision_branches/chat_history.rs"]
 mod chat_history;
 
+#[path = "decision_branches/extension.rs"]
+mod extension;
+
 fn reply(body: &'static [u8]) -> ProviderReply {
     ProviderReply::Complete {
         status: 200,
@@ -590,6 +593,7 @@ fn enable_c_in_publication(
             ..
         } => {
             let p = NativeProtocolV1::default();
+            let judgment = judgment.as_mut().unwrap();
             p.stock_assessment(judgment);
             *native_protocol = Some(
                 FrozenNativeProtocolV1::freeze(
@@ -608,13 +612,15 @@ fn enable_c_in_publication(
         } => {
             let p = NativeProtocolV1::default();
             for b in branches.iter_mut() {
-                p.stock_assessment(&mut b.judgment);
+                p.stock_assessment(b.judgment.as_mut().unwrap());
             }
             *native_protocol = Some(
                 FrozenNativeProtocolV1::freeze(
                     &p,
                     branch_decision_definition(branches, default_branch_id),
-                    branches.iter().map(|b| (b.id.clone(), b.judgment.clone())),
+                    branches
+                        .iter()
+                        .map(|b| (b.id.clone(), b.judgment.clone().unwrap())),
                 )
                 .unwrap(),
             );
