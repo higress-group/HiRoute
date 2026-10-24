@@ -212,6 +212,134 @@ pub(super) fn fact_digests(db: &rusqlite::Connection) -> Vec<String> {
 }
 
 #[test]
+fn partial_or_clipped_current_membership_cannot_reuse_a_frozen_full_score() {
+    for (clipped, capture_partial) in [(true, false), (false, true), (true, true)] {
+        let directory = tempfile::tempdir().unwrap();
+        let mut members: Vec<_> = (0..128)
+            .map(|i| Fixture::new(&format!("bounded-member-{i}")))
+            .collect();
+        let first_session = members[0].session.clone();
+        let fact_stream = members[0].fact_stream.clone();
+        let mut later = Fixture::new("bounded-member-129");
+        for member in members.iter_mut().chain(std::iter::once(&mut later)) {
+            member.session = first_session.clone();
+            member.fact_stream = fact_stream.clone();
+        }
+        let refs = members.iter().collect::<Vec<_>>();
+        let first = refs[0];
+        let preserved;
+        {
+            let store = open_store(directory.path());
+            let channel = fact_channel(first, 256 * 1024);
+            let writer = writer(&store);
+            let mut sequence = 0;
+            let mut write = |fixture: &Fixture, fact: ExecutionFactV1, at| {
+                sequence += 1;
+                assert!(matches!(
+                    offer_fact(&writer, &channel, fixture.fact(sequence, fact, at)),
+                    WriterCycleOutcome::Ack(_)
+                ));
+            };
+            for member in refs.iter().copied().chain(std::iter::once(&later)) {
+                write(member, super::super::support::route_decision(PLAN), 1000);
+            }
+            let frozen = membership("bounded-branch", 1, &refs);
+            let mut closed = finished(
+                first,
+                "bounded-stage",
+                "bounded-turn",
+                1,
+                "smart_saving",
+                1000,
+            );
+            if let ExecutionFactV1::AgentTurnFinished {
+                history_membership,
+                last_request_id,
+                ..
+            } = &mut closed
+            {
+                *history_membership = Some(frozen.clone());
+                *last_request_id = Some(refs[127].request.clone());
+            }
+            write(first, closed, 1300);
+            let mut scored = assessment(
+                &later,
+                "bounded-stage",
+                ("bounded-turn", "bounded-turn", 1, 1),
+                1400,
+                0.75,
+            );
+            if let ExecutionFactV1::BranchAssessmentRecorded {
+                history_membership, ..
+            } = &mut scored
+            {
+                *history_membership = Some(frozen.clone());
+            }
+            write(&later, scored, 1400);
+            let before = store
+                .observed_plan_quality_samples(&reader(), &super::query(Some(17)), 5000)
+                .unwrap();
+            assert_eq!(
+                before.summary.scored_stage_count, 1,
+                "complete observed-source membership remains eligible"
+            );
+            assert!(!before.samples[0].assessment.as_ref().unwrap().partial);
+
+            let mut current = frozen;
+            current.revision = 2;
+            current.clipped = clipped;
+            current.capture_partial = capture_partial;
+            let mut closed = finished(
+                &later,
+                "bounded-stage",
+                "bounded-turn",
+                1,
+                "smart_saving",
+                1000,
+            );
+            if let ExecutionFactV1::AgentTurnFinished {
+                history_membership,
+                history_partial,
+                first_request_id,
+                finished_at_ms,
+                status,
+                ..
+            } = &mut closed
+            {
+                *history_membership = Some(current);
+                *history_partial = true;
+                *first_request_id = Some(first.request.clone());
+                *finished_at_ms = 1500;
+                *status = AgentTurnStatusV1::Unknown;
+            }
+            // No later C is available. Its absence must not let the old score
+            // certify unseen or incomplete execution as fully assessed.
+            write(&later, closed, 1500);
+            preserved = fact_digests(&store.connection.lock());
+        }
+        let store = open_store(directory.path());
+        let after = store
+            .observed_plan_quality_samples(&reader(), &super::query(Some(17)), 5000)
+            .unwrap();
+        assert_eq!(
+            after.summary.scored_stage_count, 0,
+            "{clipped}/{capture_partial}"
+        );
+        assert!(after.samples[0].assessment.as_ref().unwrap().partial);
+        let db = store.connection.lock();
+        let original: (f64, i64, String) = db.query_row(
+            "SELECT score,assessment_partial,assessment_membership_json FROM plan_quality_segments WHERE segment_id='bounded-stage'", [],
+            |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap();
+        assert_eq!((original.0, original.1), (0.75, 0));
+        let original: HistoryMembershipV1 = serde_json::from_str(&original.2).unwrap();
+        assert_eq!(original.request_ids.len(), 128);
+        assert!(!original.request_ids.contains(&later.request.to_string()));
+        assert!(!original.clipped && !original.capture_partial);
+        assert_eq!(fact_digests(&db), preserved);
+    }
+}
+
+#[test]
 fn pre_membership_format_roundtrips_unchanged_and_cannot_claim_new_membership() {
     let fixture = Fixture::new("pre-membership-format");
     let mut envelope = fixture.fact(
