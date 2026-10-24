@@ -2065,7 +2065,7 @@
         "crates/domain/src/routing/stored.rs",
         "crates/daemon/src/control/runtime/model_connections.rs",
         "crates/daemon/src/control/runtime/registered_management_candidate.rs",
-        "crates/daemon/src/control/runtime/candidate_execution_tests/native_protocol_profiles.rs"
+        "crates/daemon/src/control/runtime/model_connections/registered_token_plan_tests.rs"
       ]
     }
   ]

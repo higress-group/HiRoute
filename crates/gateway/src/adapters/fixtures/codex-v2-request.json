@@ -178,7 +178,10 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
-                      "description": "Fixture description retained.",
+                      "description": {
+                        "description": "Fixture description retained.",
+                        "type": "string"
+                      },
                       "label": {
                         "description": "Fixture description retained.",
                         "type": "string"

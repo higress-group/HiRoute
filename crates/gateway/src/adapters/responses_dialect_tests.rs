@@ -69,6 +69,12 @@ fn json_output(p: &CandidateProtocolProfile, decoded: &DecodedNativeResponse) ->
 #[test]
 fn codex_v2_full_tool_request_negotiates_without_dropping_native_declarations() {
     let original = fixture();
+    // A business property named `description` is itself a schema, not annotation text.
+    // The real request has an object here; fixture sanitization may edit only its string.
+    assert_eq!(
+        original.pointer("/tools/3/parameters/properties/questions/items/properties/options/items/properties/description"),
+        Some(&json!({"description":"Fixture description retained.","type":"string"}))
+    );
     let request = decode_ingress_request(IngressProtocol::Responses, &original).unwrap();
     let prepared = project_candidate_request(&request, &profile(true)).unwrap();
     let mut expected = original.clone();

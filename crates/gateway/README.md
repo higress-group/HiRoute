@@ -62,7 +62,11 @@ and [response lifecycle scenarios](src/adapters/response/client_stream_tests.rs)
 cover endpoint isolation, replay and identity consistency.
 [The standard Responses JSON dialect](src/adapters/responses_dialect.rs) is an explicit
 request/attempt adapter contract. New registered Token Plan sources select it through
-their exact Responses endpoint; native Codex subscriptions and old saved sources keep
+their exact Responses endpoint, including the ordinary source-local `UserDeclared`
+model path. The endpoint registry does not imply executable catalog model qualification;
+the [save/reopen regression](../daemon/src/control/runtime/model_connections/registered_token_plan_tests.rs)
+uses the real registered check and durable source transaction without inventing catalog capabilities.
+Native Codex subscriptions and old saved sources keep
 their original dialect. It consumes boolean `encrypted` annotations only at JSON Schema
 nodes, retains the complete tool declarations, and projects all-plaintext `agent_message`
 content into assistant blocks carrying the original author/recipient and ordered text.
