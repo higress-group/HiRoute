@@ -1,5 +1,6 @@
 //! Real SQLite journal/proof validation; no status response is stubbed or cached.
 use super::*;
+use hiroute_domain::PortErrorCode;
 use std::sync::Arc;
 
 const KINDS: &[&str] = &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"];
@@ -19,7 +20,7 @@ fn persist(control: &ControlStore, operation: &mut OperationV1) {
         .unwrap();
     let authorization = control
         .verify_apply_authorization(
-            &ProtectedApplyCapability::new(token).unwrap(),
+            &ProtectedApplyCapability::new(token.to_owned()).unwrap(),
             &operation.workspace_id,
             &operation.idempotency.principal,
             &operation.idempotency.operation_kind,
