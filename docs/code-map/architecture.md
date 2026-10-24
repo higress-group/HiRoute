@@ -80,6 +80,8 @@ is the control path. Published plans and grants feed Gateway execution. Worker
 admission freezes a plan and run authority before the native client calls Gateway.
 Observation records what actually ran and supplies authorized reads and continuation.
 
+[Agent status history](../../crates/local-storage/src/control/agent_history_cache.rs) shares only strictly verified immutable successful-operation facts across model, collaboration and management reads. Each scan binds the selected SQL row identity, generation, raw journal and all indexed steps in one SQLite snapshot. Its bounded, rebuildable cache never stores native status, grants, pending operations or authorization; execution and recovery retain the uncached journal reader.
+
 `LocalControlAdapter` remains a broad assembly facade. Follow its focused runtime
 module before extending it; a local feature does not require a facade-wide rewrite.
 

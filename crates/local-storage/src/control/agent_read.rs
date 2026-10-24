@@ -48,9 +48,18 @@ pub(super) fn decode_succeeded_agent(
     connection: &Connection,
     encoded: &str,
 ) -> PortResult<SucceededAgentOperationV1> {
+    decode_selected_agent(connection, encoded, None)
+}
+
+pub(super) fn decode_selected_agent(
+    connection: &Connection,
+    encoded: &str,
+    selected: Option<&super::agent_history_cache::AgentHistoryRow>,
+) -> PortResult<SucceededAgentOperationV1> {
     let invalid = || port(PortErrorCode::Corrupt, "control.agent-read.journal");
     let durable: DurableOperation = serde_json::from_str(encoded).map_err(|_| invalid())?;
-    if durable.schema_version != hiroute_domain::OPERATION_SCHEMA_VERSION
+    if selected.is_some_and(|row| !row.matches(&durable))
+        || durable.schema_version != hiroute_domain::OPERATION_SCHEMA_VERSION
         || durable.state != OperationState::Succeeded
         || OperationId::derive(
             &durable.workspace_id,
@@ -240,17 +249,7 @@ impl ControlStore {
         workspace: &WorkspaceId,
         kinds: &[&str],
     ) -> PortResult<Vec<SucceededAgentOperationV1>> {
-        if kinds.is_empty()
-            || kinds.len() > 2
-            || kinds.iter().any(|kind| {
-                !matches!(
-                    *kind,
-                    "ApplyAgentConnectionChange" | "ApplyAgentConnectionRestore"
-                )
-            })
-        {
-            return Err(port(PortErrorCode::InvalidData, "control.agent-read.kinds"));
-        }
+        validate_kinds(kinds)?;
         let placeholders = vec!["?"; kinds.len()].join(",");
         let connection = self.connection.borrow();
         let mut statement = connection.prepare(&format!("SELECT operation_json FROM operations WHERE workspace_id=? AND operation_kind IN ({placeholders}) AND state='succeeded' ORDER BY rowid DESC"))
@@ -271,4 +270,19 @@ impl ControlStore {
         })
         .collect()
     }
+}
+
+pub(super) fn validate_kinds(kinds: &[&str]) -> PortResult<()> {
+    if kinds.is_empty()
+        || kinds.len() > 2
+        || kinds.iter().any(|kind| {
+            !matches!(
+                *kind,
+                "ApplyAgentConnectionChange" | "ApplyAgentConnectionRestore"
+            )
+        })
+    {
+        return Err(port(PortErrorCode::InvalidData, "control.agent-read.kinds"));
+    }
+    Ok(())
 }
