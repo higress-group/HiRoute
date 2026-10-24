@@ -2,6 +2,10 @@
 
 This crate owns shared filesystem primitives and Windows kernel handles/FFI. It does
 not select an Agent, authorize a business command, or own business state.
+`file_security::macos` provides safe, read-only descriptor calls for native ACL/flags
+and extended attributes, including compression attributes. Callers supply bounded
+buffers and own snapshot validation, hashing and diagnostic policy; these opaque
+native observations do not authorize access or define a persisted permission format.
 `windows::background` owns the native Task Scheduler and Service Control Manager
 adapters, fixed Known Folder resolution, and their closed installation definitions.
 The CLI and host runtime select lifecycle policy and maintain installation journals.

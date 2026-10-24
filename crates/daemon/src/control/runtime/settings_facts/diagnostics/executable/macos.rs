@@ -1,70 +1,42 @@
 //! macOS native ACL/flags and all visible extended attributes; values never leave this reader.
 use super::*;
+use hiroute_platform::file_security::macos::{
+    list_extended_attributes, read_acl_and_flags, read_extended_attribute,
+};
 use nix::libc;
 use std::ffi::CStr;
-use std::os::fd::AsRawFd;
 
 const ACL_LIMIT: usize = 16 * 1024;
 const NAMES_LIMIT: usize = 8 * 1024;
 const VALUES_LIMIT: usize = 64 * 1024;
 const ATTRIBUTES_LIMIT: usize = 64;
 
-fn failure() -> Value {
-    let errno = std::io::Error::last_os_error().raw_os_error();
+fn failure(error: std::io::Error) -> Value {
+    if error.kind() == std::io::ErrorKind::InvalidData {
+        return json!({"state":"invalid"});
+    }
+    let errno = error.raw_os_error();
     json!({"state":if matches!(errno, Some(libc::ERANGE | libc::E2BIG)) {
         "limit"
     } else { "unavailable" }})
 }
 
 fn acl_and_flags(file: &File) -> Value {
-    let mut attributes = libc::attrlist {
-        bitmapcount: 5,
-        reserved: 0,
-        commonattr: libc::ATTR_CMN_FLAGS | libc::ATTR_CMN_EXTENDED_SECURITY,
-        volattr: 0,
-        dirattr: 0,
-        fileattr: 0,
-        forkattr: 0,
-    };
     let mut bytes = vec![0u8; ACL_LIMIT];
-    // SAFETY: the selected regular file stays open; both buffers have their declared sizes.
-    if unsafe {
-        libc::fgetattrlist(
-            file.as_raw_fd(),
-            (&mut attributes as *mut libc::attrlist).cast(),
-            bytes.as_mut_ptr().cast(),
-            bytes.len(),
-            0,
-        )
-    } != 0
-    {
-        return failure();
-    }
-    let length = u32::from_ne_bytes(bytes[..4].try_into().unwrap()) as usize;
-    // Length + flags + attrreference; reject any incomplete kernel result.
-    if !(16..=ACL_LIMIT).contains(&length) {
-        return json!({"state":"invalid"});
-    }
+    let length = match read_acl_and_flags(file, &mut bytes) {
+        Ok(length) => length,
+        Err(error) => return failure(error),
+    };
     json!({"state":"complete", "digest":CanonicalDigest::of_bytes(&bytes[..length])})
 }
 
 fn xattrs(file: &File) -> Value {
     let mut names = vec![0u8; NAMES_LIMIT];
-    // SHOWCOMPRESSION prevents hidden compression attributes from silently escaping evidence.
-    let flags = libc::XATTR_SHOWCOMPRESSION;
-    // SAFETY: the output buffer and retained descriptor remain live for this bounded call.
-    let count = unsafe {
-        libc::flistxattr(
-            file.as_raw_fd(),
-            names.as_mut_ptr().cast(),
-            names.len(),
-            flags,
-        )
+    let count = match list_extended_attributes(file, &mut names) {
+        Ok(count) => count,
+        Err(error) => return failure(error),
     };
-    if count < 0 {
-        return failure();
-    }
-    names.truncate(count as usize);
+    names.truncate(count);
     let mut keys = Vec::new();
     let mut rest = names.as_slice();
     while !rest.is_empty() {
@@ -82,28 +54,15 @@ fn xattrs(file: &File) -> Value {
     let mut used = 0usize;
     let mut value = vec![0u8; VALUES_LIMIT];
     for key in keys {
-        // SAFETY: names are validated NUL-terminated kernel results; value is bounded.
-        let count = unsafe {
-            libc::fgetxattr(
-                file.as_raw_fd(),
-                key.as_ptr(),
-                value.as_mut_ptr().cast(),
-                value.len(),
-                0,
-                flags,
-            )
+        let count = match read_extended_attribute(file, key, &mut value) {
+            Ok(count) => count,
+            Err(error) => return failure(error),
         };
-        if count < 0 {
-            return failure();
-        }
-        used += count as usize;
+        used += count;
         if used > VALUES_LIMIT {
             return json!({"state":"limit"});
         }
-        evidence.push((
-            key.to_bytes(),
-            CanonicalDigest::of_bytes(&value[..count as usize]),
-        ));
+        evidence.push((key.to_bytes(), CanonicalDigest::of_bytes(&value[..count])));
     }
     json!({"state":"complete", "digest":CanonicalDigest::of(&evidence).unwrap()})
 }

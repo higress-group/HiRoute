@@ -94,27 +94,19 @@ fn executable_diagnostics_report_limits_links_and_in_sample_mutation() {
 #[cfg(target_os = "macos")]
 #[test]
 fn executable_diagnostics_include_native_acl_flags_and_unknown_xattrs() {
-    use std::os::fd::AsRawFd;
     let (_root, path) = fixture();
     let before = snapshot(&path);
     assert_eq!(before["extended"]["acl_flags"]["state"], "complete");
     assert_eq!(before["extended"]["xattrs"]["state"], "complete");
     let file = File::open(&path).unwrap();
     let value = b"private-attribute-value";
-    // SAFETY: the fixture fd, literal name and byte buffer remain live for the call.
-    assert_eq!(
-        unsafe {
-            nix::libc::fsetxattr(
-                file.as_raw_fd(),
-                c"user.hiroute-test".as_ptr(),
-                value.as_ptr().cast(),
-                value.len(),
-                0,
-                0,
-            )
-        },
-        0
-    );
+    rustix::fs::fsetxattr(
+        &file,
+        c"user.hiroute-test",
+        value,
+        rustix::fs::XattrFlags::empty(),
+    )
+    .unwrap();
     let attr = snapshot(&path);
     assert_ne!(before["extended"]["xattrs"], attr["extended"]["xattrs"]);
     assert_eq!(before["content"], attr["content"]);
