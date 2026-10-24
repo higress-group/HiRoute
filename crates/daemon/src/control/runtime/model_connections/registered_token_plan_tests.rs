@@ -12,8 +12,8 @@ use hiroute_application_api::{
     NativeUserFactBasisV1, NativeUserFactValueV1, NativeUserModelDeclarationV1,
 };
 use hiroute_domain::{
-    GatewayAuthenticationSemanticsV1, NativeReasoningCapabilityV1, ProtectedSecret,
-    UpstreamProtocol, WorkspaceId,
+    ControlRepositoryPort, GatewayAuthenticationSemanticsV1, NativeReasoningCapabilityV1,
+    ProtectedSecret, UpstreamProtocol, WorkspaceId,
 };
 
 const OPTION: &str = "bailian.token-plan.cn.v1";
