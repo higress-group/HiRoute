@@ -80,6 +80,27 @@ fn codex_subscription_replay_omits_null_reasoning_output_status() {
 }
 
 #[test]
+fn codex_subscription_replay_does_not_normalize_unfinished_reasoning_status() {
+    for status in ["in_progress", "incomplete"] {
+        let body = json!({"model":"route","input":[
+            {"type":"reasoning","id":"rs-unfinished","status":status,"summary":[]},
+            {"role":"user","content":"next task"}
+        ]});
+        let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+        let original = request.clone();
+        let mut profile =
+            exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+        profile.connector.connector_id = "connector.cpa.codex".into();
+        assert_eq!(
+            project_candidate_request(&request, &profile).unwrap().body["input"],
+            body["input"],
+            "the dialect normalization cannot manufacture completed history"
+        );
+        assert_eq!(request, original);
+    }
+}
+
+#[test]
 fn codex_subscription_normalization_survives_externalized_status_and_sequential_replay() {
     assert_codex_replay_wire(false, None);
 }
@@ -170,7 +191,10 @@ fn assert_codex_replay_wire(additional_tools: bool, cleanup: Option<usize>) {
         }
         if connector == "connector.cpa.codex" {
             for item in expected.as_array_mut().unwrap() {
-                if item["type"] == "reasoning" && item["status"] == "completed" {
+                if item["type"] == "reasoning"
+                    && (item["status"] == "completed"
+                        || item.get("status").is_some_and(Value::is_null))
+                {
                     item.as_object_mut().unwrap().remove("status");
                 }
             }

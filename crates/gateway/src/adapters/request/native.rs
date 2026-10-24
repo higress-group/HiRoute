@@ -188,9 +188,10 @@ fn project_dialect(
     Ok((body, projection))
 }
 
-/// Codex subscription input does not accept the output-only completed status on
-/// reasoning items. Keep the original request and every other native field; this
-/// is an endpoint dialect normalization, not a public Responses history rewrite.
+/// Codex subscription input rejects the output-only reasoning status, including
+/// explicit null. Omit only completed or null: null carries no completion proof,
+/// and unfinished states are never normalized into completed history. Keep the
+/// original request and every other field; other endpoints retain native status.
 fn normalize_codex_replay(
     body: &mut Value,
     profile: &CandidateProtocolProfile,
@@ -223,8 +224,11 @@ fn normalize_codex_replay(
         } else {
             item.get("status").and_then(Value::as_str)
         };
+        // JSON null cannot become a Replay marker. Unlike status strings it
+        // remains directly distinguishable from an absent field after backing.
+        let null_status = item.get("status").is_some_and(Value::is_null);
         if item.get("type").and_then(Value::as_str) == Some("reasoning")
-            && status == Some("completed")
+            && (status == Some("completed") || null_status)
         {
             item.as_object_mut()
                 .expect("typed item is an object")
