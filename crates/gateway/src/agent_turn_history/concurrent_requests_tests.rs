@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "concurrent_encoding_tests.rs"]
+mod encoding;
+
 fn scoped(
     store: &AgentTurnHistoryStore,
     key: &AgentTurnHistoryKey,

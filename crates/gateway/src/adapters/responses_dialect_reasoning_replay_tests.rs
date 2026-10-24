@@ -49,7 +49,14 @@ fn opaque_reasoning_stays_rejected_after_production_replay_externalization() {
         let ContentPart::ProviderState { state } = &request.messages[1].content[0] else {
             panic!("opaque provider state")
         };
-        assert!(state.value.content_ref().is_some());
+        assert!(
+            state.value.content_ref().is_some()
+                || state
+                    .value
+                    .as_str()
+                    .and_then(ContentValueExt::content_ref)
+                    .is_some()
+        );
         let original = request.clone();
         assert_eq!(
             project_candidate_request_template(&request, &profile(true)).unwrap_err(),
