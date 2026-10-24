@@ -90,6 +90,17 @@ scan/parse/compact/IR/template output with inline bytes across native Responses,
 Responses and portable Chat/Messages tools, including large data and budget refusal.
 Original ingress history/source evidence is untouched. Cipher/mixed peer content and
 historical function calls explicitly declaring encrypted paths cannot cross this boundary.
+For reasoning history, [native request projection](src/adapters/request/native.rs)
+uses the retained canonical encrypted state classified by ingress. Missing, null and
+empty-string carriers keep their original shape; nonempty or Replay-backed opaque state
+excludes the standard target, including legacy provider state without a sidecar.
+Authorized prefix cleanup uses original canonical positions and excludes tool declarations.
+The [reasoning regressions](src/adapters/responses_dialect_reasoning_tests.rs) and
+[Replay checks](src/adapters/responses_dialect_reasoning_replay_tests.rs) cover these
+boundaries without rewriting original history. The [preflight owner](src/composition/ports.rs)
+records this closed portability failure per candidate so a compatible native member can
+still execute; [listener controls](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_nullable_reasoning.rs)
+also cover the standard-only no-candidate result and subsequent tool-stage assessment.
 Standard Responses function-call replay may omit vendor encoding metadata even when
 schema annotations negotiated the response extension. Codex 0.147's
 [custom-provider request builder](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/core/src/client.rs#L837)

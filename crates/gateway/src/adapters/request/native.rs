@@ -33,6 +33,25 @@ pub(super) fn project(
     canonical: Value,
     omit_prefix: Option<usize>,
 ) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
+    // Ingress classifies this carrier before Replay externalization. Use the
+    // retained canonical range, not presence or shifted indexes in a native tree.
+    if super::super::responses_dialect::standard_json(profile)
+        && request
+            .messages
+            .iter()
+            .enumerate()
+            .skip(omit_prefix.unwrap_or(0))
+            .any(|(index, message)| {
+                request.responses_reasoning_history.get(&index).is_some_and(|history| {
+                    history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque
+                }) || message.content.iter().any(|part| {
+                    // Legacy canonical callers may have no reasoning sidecar.
+                    matches!(part, ContentPart::ProviderState { state } if state.kind == "encrypted_content")
+                })
+            })
+    {
+        return Err(ModelIrError::ProviderStateNotPortable.into());
+    }
     if request.ingress_protocol != profile.capability.upstream_protocol {
         if request.native_only {
             return Err(ProtocolAdapterError::ClientUnrepresentable(

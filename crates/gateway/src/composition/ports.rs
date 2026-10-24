@@ -11,7 +11,7 @@ use crate::ports::{
     ProbeLeaseOutcome, RuntimeStateEntry, RuntimeStateKey,
 };
 use crate::server::core_runtime::adapters;
-use crate::server::core_runtime::model_ir::ModelRequestIRV1;
+use crate::server::core_runtime::model_ir::{ModelIrError, ModelRequestIRV1};
 use crate::server::core_runtime::profiles::{
     CandidateProtocolProfile, CapabilityError, CostClassV1, ExclusionReasonCodeV1,
     PLANNER_INPUT_SCHEMA, PlannerCandidateFactsV1, PlannerInputV1,
@@ -356,10 +356,13 @@ fn project_candidate_facts(
                 rejection: None,
             })
         }
-        Err(adapters::ProtocolAdapterError::Capability(
-            CapabilityError::ProviderStateUnsupported
-            | CapabilityError::NativeProviderStateUnrepresentable,
-        )) => Ok(CandidateProjectionFacts {
+        Err(
+            adapters::ProtocolAdapterError::Capability(
+                CapabilityError::ProviderStateUnsupported
+                | CapabilityError::NativeProviderStateUnrepresentable,
+            )
+            | adapters::ProtocolAdapterError::ModelIr(ModelIrError::ProviderStateNotPortable),
+        ) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: 1,
             exclusion: Some(ExclusionReasonCodeV1::OpaqueStateUnportable),
             rejection: None,

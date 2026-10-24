@@ -92,6 +92,19 @@ the field. A null status conveys no completion evidence. Missing status remains
 missing, and unfinished or unknown statuses are not normalized into completed history.
 The original request, reasoning content/ciphertext, item IDs, message phases and
 other item statuses remain unchanged; public Responses endpoints keep native fields.
+For an explicitly selected standard Responses JSON target, absent, explicit-null and
+empty-string reasoning `encrypted_content` SHALL remain distinct non-opaque native
+shapes. Projection SHALL consume the ingress-typed state of retained canonical messages,
+excluding only an authorized reasoning-cleanup prefix. Nonempty strings, including
+whitespace and Replay-backed ciphertext, remain opaque and SHALL exclude that target;
+legacy canonical encrypted provider state without a reasoning sidecar remains opaque.
+Native input-array shifts or field presence SHALL NOT reclassify those facts. Summary,
+content, item identity/status and tool order/call IDs remain intact. Null or omission
+does not establish completion, trusted origin or assessment evidence. Malformed carriers
+remain ingress errors; unknown native fields retain their existing admission boundary.
+An opaque-state projection gap SHALL exclude only that candidate, allowing an authorized
+native-compatible candidate to execute. With no compatible candidate, the request reports
+the existing no-eligible-candidate result without forwarding ciphertext or trimming history.
 Responses items synthesized from other protocols MUST have response-scoped identities
 that agree across incremental, buffered and terminal projections. Native item IDs
 remain exact; block indexes alone MUST NOT become cross-response identities. Function-call-output
