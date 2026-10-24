@@ -31,7 +31,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
     let replay_items = replay["input"].as_array().unwrap();
     let regular = NativeProvider::start(vec![
         provider_reply(CHAT_OK, stream, true);
-        if restart { 3 } else { 2 }
+        if restart { 4 } else { 2 }
     ]);
     let primary = NativeProvider::start(vec![
         provider_reply(PRIMARY_TOOLS, stream, false),
@@ -44,6 +44,7 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
     ];
     if restart {
         decisions.push(reply(SIMPLE));
+        decisions.push(reply(SIMPLE_WITH_ASSESSMENT));
     }
     let decider = NativeProvider::start(decisions);
     let mut fixture = RuntimeFixture::launch_builtin_branches_with_diagnostics(
@@ -310,6 +311,90 @@ fn assert_return_to_chat(restart: bool, stream: bool) {
             |event| event["fact"]["kind"] == "branch_assessment_recorded"
                 && event["correlation"]["request_id"] == decision["correlation"]["request_id"]
         ));
+        let resumed_request_id = decision["correlation"]["request_id"].clone();
+        input.extend(resumed["output"].as_array().unwrap().iter().cloned());
+        input.push(
+            json!({"role":"user","content":"After restart, assess that answer and greet again."}),
+        );
+        let after = send(&fixture, &input, false);
+        assert_eq!(after["output"][0]["content"][0]["text"], "regular answer");
+        assert_eq!(
+            (regular.calls(), primary.calls(), decider.calls()),
+            (4, 2, 5)
+        );
+        let facts = wait_execution_facts(&fixture, 6);
+        let after_decision = facts
+            .iter()
+            .filter(|event| event["fact"]["kind"] == "route_decision")
+            .last()
+            .unwrap();
+        let after_id = &after_decision["correlation"]["request_id"];
+        assert_eq!(
+            after_decision["fact"]["complexity"]["execution_group"],
+            "regular"
+        );
+        assert_eq!(after_decision["fact"]["complexity"]["fallback_used"], false);
+        assert_eq!(
+            after_decision["fact"]["complexity"]["routing_observation"]["score"],
+            0.9
+        );
+        assert_eq!(
+            after_decision["fact"]["complexity"]["routing_observation"]["target_complete"],
+            true
+        );
+        let resumed_attempt = facts
+            .iter()
+            .find(|event| {
+                event["fact"]["kind"] == "attempt_started"
+                    && event["correlation"]["request_id"] == resumed_request_id
+            })
+            .unwrap();
+        assert!(
+            facts
+                .iter()
+                .any(|event| event["fact"]["kind"] == "request_finished"
+                    && event["correlation"]["request_id"] == resumed_request_id
+                    && event["fact"]["outcome"] == "accepted")
+        );
+        let assessment = facts
+            .iter()
+            .find(|event| {
+                event["fact"]["kind"] == "branch_assessment_recorded"
+                    && &event["correlation"]["request_id"] == after_id
+            })
+            .expect("the next new user assesses the actual accepted post-restart request");
+        assert_eq!(
+            assessment["fact"]["history_membership"]["request_ids"],
+            json!([resumed_request_id])
+        );
+        assert_eq!(
+            assessment["fact"]["history_membership"]["capture_partial"],
+            false
+        );
+        assert_eq!(assessment["fact"]["partial"], false);
+        assert_eq!(assessment["fact"]["score"], 0.9);
+        for field in ["profile_digest", "model_configuration_id"] {
+            assert_eq!(
+                assessment["fact"][field], resumed_attempt["fact"][field],
+                "assessment keeps actual post-restart {field}"
+            );
+        }
+        assert_eq!(
+            resumed_attempt["fact"]["upstream_protocol"],
+            "chat_completions"
+        );
+        assert_eq!(
+            resumed_attempt["fact"]["request_model"],
+            publication.aliases[0].candidates[0]
+                .upstream_model_id
+                .as_str()
+        );
+        assert_eq!(
+            resumed_attempt["fact"]["stable_binding_id"],
+            publication.aliases[0].candidates[0]
+                .stable_target_key
+                .as_str()
+        );
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             let log = std::fs::read_to_string(
