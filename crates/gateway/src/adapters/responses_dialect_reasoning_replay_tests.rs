@@ -1,6 +1,7 @@
 //! Retained typed reasoning state must govern the production Replay projection.
 use super::super::reasoning::{prefix_request, producer_request};
 use super::*;
+use crate::content_ref::JsonValueExt;
 use crate::server::core_runtime::model_ir::ContentPart;
 
 #[test]
