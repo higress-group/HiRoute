@@ -379,7 +379,7 @@ Provider failures are isolated from each other.
 Release Desktop builds MUST reject development-only, invalid or wrong-target CPA
 manifests before producing an executable, using the same manifest policy as native
 launch. Optional launch-time rejection MUST retain a closed diagnostic cause.
-Missing provider runtimes SHALL remain runtime-unavailable in maintenance, model
+An absent CPA runtime SHALL remain runtime-unavailable in maintenance, model
 management and routing rather than claiming that authentication failed. These
 failures SHALL NOT rewrite saved source/model choices or block unrelated sources.
 

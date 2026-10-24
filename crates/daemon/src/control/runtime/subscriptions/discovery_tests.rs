@@ -319,6 +319,12 @@ fn saved_subscription_without_runtime_does_not_become_missing_authentication() {
     ] {
         let fixture = Fixture::new();
         save_login(&fixture, provider);
+        // Independent OAuth is healthy even when no borrowed native runtime exists.
+        fixture.adapter().enable_subscription_maintenance();
+        fixture
+            .adapter()
+            .scan_subscription_maintenance(10_000)
+            .unwrap();
         let before = fixture
             .adapter()
             .stores_lock()
@@ -332,6 +338,12 @@ fn saved_subscription_without_runtime_does_not_become_missing_authentication() {
             .find(|source| source.state == MaterializationState::Ready)
             .unwrap()
             .clone();
+        assert!(
+            fixture
+                .adapter()
+                .subscription_maintenance_presentation(&source.source_id)
+                .is_none()
+        );
         let Fixture {
             runtime,
             runtimes,
