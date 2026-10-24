@@ -126,10 +126,9 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
             let primary = NativeProvider::start(vec![provider_reply(streaming, false, declared)]);
             let classifier =
                 NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_PRIMARY)]);
-            let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+            let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
                 &[&regular, &primary, &classifier],
                 1,
-                ObservationFaults::healthy(),
             );
             dialect(&fixture, true);
             let mut input = vec![json!({"role":"user","content":"A_READ_FIXTURE"})];
@@ -233,10 +232,9 @@ fn real_listener_codex_v2_retry_uses_successful_attempt_encoding_contract() {
     }]);
     let primary = NativeProvider::start(vec![reply(TOOL)]);
     let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
-    let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
         &[&regular, &primary, &classifier],
         2,
-        ObservationFaults::healthy(),
     );
     dialect(&fixture, false);
     let output = send(
