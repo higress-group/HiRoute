@@ -60,6 +60,13 @@ fn warm_publication_proof_does_not_cache_live_readiness_or_reproject_unchanged_b
         assert!(target.observes_verified(Some(&first)).unwrap());
     }
     assert_eq!(target.projection_builds.load(Ordering::Relaxed), 1);
+    {
+        let _busy_proof = target.expected.lock().unwrap();
+        assert_eq!(
+            target.observes_verified(Some(&first)),
+            Err(PublicationTargetError::Unavailable)
+        );
+    }
     target.suspend_requests().unwrap();
     assert!(!target.observes_verified(Some(&first)).unwrap());
     assert!(target.verify_installed(&first).unwrap());
