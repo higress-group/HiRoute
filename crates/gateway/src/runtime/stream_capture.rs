@@ -194,28 +194,6 @@ impl Capture {
         if root.join("stopped").exists() || now() >= session.expires_at {
             return Err(io::Error::other("capture session stopped or expired"));
         }
-        Self::open_locked(
-            root,
-            lock,
-            session,
-            profile,
-            chat_tools,
-            function_encoding_projection,
-            request_bytes,
-            streaming,
-        )
-    }
-
-    fn open_locked(
-        root: &Path,
-        lock: File,
-        session: Session,
-        profile: &CandidateProtocolProfile,
-        chat_tools: Option<&adapters::ChatToolProjection>,
-        function_encoding_projection: adapters::FunctionEncodingProjection,
-        request_bytes: usize,
-        streaming: bool,
-    ) -> io::Result<Self> {
         let mut total = 0u64;
         let mut attempts = 0;
         for entry in fs::read_dir(root)? {
