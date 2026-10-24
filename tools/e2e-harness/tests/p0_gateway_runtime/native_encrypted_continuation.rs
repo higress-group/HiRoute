@@ -55,6 +55,7 @@ pub(super) fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
         match item["type"].as_str().unwrap() {
             "reasoning" => {
                 start.as_object_mut().unwrap().remove("encrypted_content");
+                start["summary"] = json!([]);
             }
             "message" => {
                 start["content"] = json!([]);
@@ -65,7 +66,22 @@ pub(super) fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
             other => panic!("unexpected fixture item {other}"),
         }
         events.push(json!({"type":"response.output_item.added","output_index":index,"item":start}));
-        if item["type"] == "message" {
+        if item["type"] == "reasoning" {
+            for (part_index, part) in item["summary"].as_array().unwrap().iter().enumerate() {
+                let text = &part["text"];
+                events.extend([
+                    json!({"type":"response.reasoning_summary_part.added","output_index":index,
+                        "item_id":item["id"],"summary_index":part_index,
+                        "part":{"type":"summary_text","text":""}}),
+                    json!({"type":"response.reasoning_summary_text.delta","output_index":index,
+                        "item_id":item["id"],"summary_index":part_index,"delta":text}),
+                    json!({"type":"response.reasoning_summary_text.done","output_index":index,
+                        "item_id":item["id"],"summary_index":part_index,"text":text}),
+                    json!({"type":"response.reasoning_summary_part.done","output_index":index,
+                        "item_id":item["id"],"summary_index":part_index,"part":part}),
+                ]);
+            }
+        } else if item["type"] == "message" {
             let text = &item["content"][0]["text"];
             events.extend([
                 json!({"type":"response.output_text.delta","output_index":index,
