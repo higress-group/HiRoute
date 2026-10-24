@@ -5,6 +5,9 @@ use serde_json::{Value, json};
 #[path = "decision_branches/chat_history.rs"]
 mod chat_history;
 
+#[path = "decision_branches/responses_chat_history.rs"]
+mod responses_chat_history;
+
 #[path = "decision_branches/extension.rs"]
 mod extension;
 
