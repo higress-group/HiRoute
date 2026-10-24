@@ -180,3 +180,58 @@ fn publication_record_proof_is_value_owned_and_storage_reads_authenticate_again(
     assert!(changed.verify().is_err());
     assert_eq!(record.verify_current().unwrap(), publication);
 }
+
+#[test]
+fn publication_gateway_projection_is_shared_only_for_exact_immutable_record() {
+    let publication = current_catalog_only(10);
+    let record =
+        PublicationRecordV1::from_publication(publication.workspace_id.clone(), &publication)
+            .unwrap();
+    let first = record.gateway_snapshot().unwrap();
+    assert_eq!(*first, publication.gateway_snapshot().unwrap());
+    for _ in 0..20 {
+        assert!(std::sync::Arc::ptr_eq(
+            &first,
+            &record.clone().gateway_snapshot().unwrap()
+        ));
+    }
+    for change in 0..4 {
+        let mut changed = record.clone();
+        match change {
+            0 => {
+                std::sync::Arc::make_mut(&mut changed.bytes)[0] = b'[';
+                changed.digest = CanonicalDigest::of_bytes(&changed.bytes);
+            }
+            1 => changed.digest = CanonicalDigest::of_bytes(b"wrong"),
+            2 => {
+                changed.publication_revision =
+                    GatewayPublicationRevision::new(record.publication_revision.get() + 1).unwrap()
+            }
+            _ => changed.workspace_id = WorkspaceId::parse("workspace/other").unwrap(),
+        }
+        assert!(changed.gateway_snapshot().is_err());
+    }
+    let cold: PublicationRecordV1 =
+        serde_json::from_slice(&serde_json::to_vec(&record).unwrap()).unwrap();
+    assert_eq!(*cold.gateway_snapshot().unwrap(), *first);
+    assert!(!std::sync::Arc::ptr_eq(
+        &first,
+        &cold.gateway_snapshot().unwrap()
+    ));
+    // A legitimate detached record must be authenticated as its own value.
+    let mut next = publication;
+    next.publication_revision =
+        GatewayPublicationRevision::new(record.publication_revision.get() + 1).unwrap();
+    let mut detached = record.clone();
+    detached.bytes = std::sync::Arc::new(next.canonical_bytes().unwrap());
+    detached.digest = CanonicalDigest::of_bytes(&detached.bytes);
+    detached.publication_revision = next.publication_revision;
+    assert_eq!(
+        *detached.gateway_snapshot().unwrap(),
+        next.gateway_snapshot().unwrap()
+    );
+    assert!(std::sync::Arc::ptr_eq(
+        &first,
+        &record.gateway_snapshot().unwrap()
+    ));
+}
