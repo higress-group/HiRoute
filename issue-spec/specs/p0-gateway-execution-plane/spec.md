@@ -87,7 +87,9 @@ Native Responses history preserves message.phase, supported turn metadata, reaso
 fields/summary, nonempty encrypted_content, and legitimate completed item states;
 no process-local reasoning-owner registration is required. For the registered
 Codex subscription endpoint only, outbound replay omits the redundant output-only
-`completed` status from reasoning items because that endpoint rejects the field.
+`completed` or explicit-null status from reasoning items because that endpoint rejects
+the field. A null status conveys no completion evidence. Missing status remains
+missing, and unfinished or unknown statuses are not normalized into completed history.
 The original request, reasoning content/ciphertext, item IDs, message phases and
 other item statuses remain unchanged; public Responses endpoints keep native fields.
 Responses items synthesized from other protocols MUST have response-scoped identities
