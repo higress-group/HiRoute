@@ -132,6 +132,21 @@ fn shared_management_and_collaboration_coexist_for_all_existing_agent_families()
             .native_target_path(&collaboration_target)
             .unwrap();
         assert!(management.is_file() && collaboration.is_file());
+        assert_eq!(read(), status, "warm history changed status for {class:?}");
+        let management_bytes = fs::read(&management).unwrap();
+        fs::write(&management, b"externally modified Skill\n").unwrap();
+        let drift = read();
+        assert_eq!(
+            drift["management_skill"]["state"], "drift",
+            "warm history hid native drift for {class:?}"
+        );
+        assert_eq!(drift["collaboration"]["state"], "configured");
+        fs::write(&management, management_bytes).unwrap();
+        assert_eq!(
+            read(),
+            status,
+            "restored bytes did not restore current status for {class:?}"
+        );
         let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
             "management_skill":{"intent":"restore","restore_point_ref":status["management_skill"]["restore_point_ref"]}});
         apply(
@@ -195,4 +210,20 @@ fn shared_management_and_collaboration_coexist_for_all_existing_agent_families()
                 .is_none()
         );
     }
+    let stores = runtime.adapter.stores_lock().unwrap();
+    let kinds = &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"];
+    let first = stores
+        .control()
+        .verified_agent_history_for_kinds(&WorkspaceId::default(), kinds)
+        .unwrap();
+    let second = stores
+        .control()
+        .verified_agent_history_for_kinds(&WorkspaceId::default(), kinds)
+        .unwrap();
+    assert!(
+        first.len() >= 36,
+        "six families must retain independent configure/restore histories"
+    );
+    assert_eq!(first.len(), second.len());
+    assert!(first.iter().zip(second).all(|(a, b)| Arc::ptr_eq(a, &b)));
 }
