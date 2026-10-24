@@ -341,6 +341,10 @@ fn shell_quote(value: &str) -> String {
 }
 
 #[cfg(all(test, unix))]
+#[path = "native_claude_probe_environment_tests.rs"]
+mod environment_tests;
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
