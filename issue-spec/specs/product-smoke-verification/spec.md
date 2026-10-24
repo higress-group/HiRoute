@@ -89,6 +89,12 @@ evidence. The selected tests MUST actually execute after recovery; valid artifac
 alone do not establish acceptance. Fresh blocked `on-failure` owners retain their
 exact-candidate reuse path; `never` retention requires a new checkout.
 
+After an executed, non-timeout failure, an otherwise eligible retained checkout
+MUST remain reusable for the exact same candidate, even without a plan or when
+its original `on-failure` owner had a recoverable preparation block. Reuse MUST
+recheck the latest resource state and preserve earlier results; an unchanged
+owner result alone MUST NOT establish admission.
+
 ### Requirement: Evidence binds actual revision, artifact, role, and path
 
 Report MUST include checked source revision, build/executable identity, platform,

@@ -489,12 +489,17 @@ acceptance remains a separate obligation.
 ### Reuse one retained backend checkout for product smoke
 
 For repeated validation on the same pushed SHA, first run with `--retention always`.
-After it completes, submit another command with `--reuse-checkout FIRST_RUN_ID`, the
+After it stops, submit another command with `--reuse-checkout FIRST_RUN_ID`, the
 same `--sha` and branch, and the same build-slot class. The workbench checks the owner
 run, SHA, origin, committed executor, clean worktree and Git registration before using
 its default `target/`. A checkout lease serializes reuse and prevents owner cleanup
 while a borrower runs. Borrower cleanup keeps the owner checkout; after borrowers
 finish, `backend cleanup FIRST_RUN_ID` releases it.
+
+Same-candidate reuse remains available after a non-timeout test failure, including
+when no `--plan` was supplied or the original `on-failure` owner stopped at a
+recoverable preparation block. Each retry creates a new result; the failed result
+keeps its original verdict.
 
 ```sh
 python3 scripts/validation.py backend run --ref refs/heads/codex/my-change \

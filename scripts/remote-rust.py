@@ -336,7 +336,7 @@ def checkout_recovery_modes(first, latest):
         modes.append("continue")
     if ((first.get("retention") == "always"
          or (first.get("retention") == "on-failure" and recoverable_setup(first)))
-            and (latest.get("status") == "completed" or setup)):
+            and (latest.get("status") in ("completed", "failed") or setup)):
         modes.append("reuse")
     return tuple(modes)
 

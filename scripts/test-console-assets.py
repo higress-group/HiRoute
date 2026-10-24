@@ -381,6 +381,86 @@ sys.exit(101 if bad else 0)
                 with self.assertRaisesRegex(ValueError, 'has not executed'):
                     runner.reporting().related_reports(root / 'runs', metadata)
 
+    def test_successful_owner_without_plan_reuses_checkout_after_a_failed_borrower(self):
+        root = self.root / 'workbench'
+        owner, failed, retry = ['20261024-03000' + str(i) + '-abcdef12' for i in range(1, 4)]
+        arguments = ['python3', 'scripts/remote-rust.py', '--host', 'fixture-backend',
+                     '--workbench', '.local/share/fixture-workbench', 'run',
+                     '--ref', self.git('symbolic-ref', 'HEAD'), '--sha', self.sha,
+                     '--retention', 'always']
+        command = ['--', 'cargo', 'test', '--lib']
+        initial = self.generated_request(shlex.join(arguments + command), owner)
+        self.assertIsNone(initial.get('plan'))
+        first, _ = self.execute_worker(root, initial)
+        self.assertEqual((first['status'], first['process_exit']), ('completed', 0), first)
+        checkout = Path(first['checkout'])
+        (checkout / 'target').mkdir(exist_ok=True)
+        sentinel = checkout / 'target/retained-compiler-objects'
+        sentinel.write_bytes(b'retained compilation')
+        reuse = shlex.join(arguments + ['--reuse-checkout', owner] + command)
+        failure = self.root / 'home/fail-command'
+        failure.touch()
+        before, _ = self.execute_worker(root, self.generated_request(reuse, failed))
+        failure.unlink()
+        self.assertEqual((before['status'], before['process_exit']), ('failed', 101), before)
+        self.assertFalse(before.get('timed_out'))
+        self.assertIn('command_finished_at', before)
+        snapshots = {key: (root / 'runs' / key / 'result.json').read_bytes() for key in (owner, failed)}
+        after, _ = self.execute_worker(root, self.generated_request(reuse, retry))
+        self.assertEqual((after['status'], after['process_exit']), ('completed', 0), after.get('error'))
+        self.assertEqual(after['tests']['counts']['passed'], 1)
+        self.assertEqual((after['checkout'], after['checkout_owner']), (str(checkout), owner))
+        self.assertEqual((after['sha'], after['executor_digest']), (before['sha'], before['executor_digest']))
+        self.assertEqual(sentinel.read_bytes(), b'retained compilation')
+        self.assertEqual(json.loads((root / ('checkout-' + owner + '.json')).read_text())['run_id'], retry)
+        for key, snapshot in snapshots.items():
+            self.assertEqual((root / 'runs' / key / 'result.json').read_bytes(), snapshot)
+
+    def test_on_failure_setup_owner_reuses_checkout_after_generated_recovery_test_fails(self):
+        root = self.root / 'workbench'
+        owner, failed, retry = ['20261024-04000' + str(i) + '-abcdef12' for i in range(1, 4)]
+        initial = self.generated_request(shlex.join([
+            'python3', 'scripts/remote-rust.py', '--host', 'fixture-backend',
+            '--workbench', '.local/share/fixture-workbench', 'run', '--ref', self.git('symbolic-ref', 'HEAD'),
+            '--sha', self.sha, '--plan', 'console-retry', '--',
+            'cargo', 'test', '--test', 'publication_process', 'installed_']), owner)
+        self.assertEqual(initial['retention'], 'on-failure')
+        first, stats = self.execute_worker(root, initial)
+        self.assertEqual((first['status'], first['blocker'], first['process_exit']),
+                         ('blocked', 'console_assets', None), first)
+        stats.assert_not_called()
+        checkout = Path(first['checkout'])
+        (checkout / 'target').mkdir(exist_ok=True)
+        sentinel = checkout / 'target/retained-compiler-objects'
+        sentinel.write_bytes(b'retained compilation')
+        recovery = first['recovery']['command']
+        argv = shlex.split(recovery)
+        self.assertEqual(argv[argv.index('--reuse-checkout') + 1], owner)
+        staging = Path(argv[argv.index('--frontend-dist') + 1])
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(self.dist, staging)
+        borrower = self.generated_request(recovery, failed)
+        self.assertEqual(borrower['retention'], 'always')
+        failure = self.root / 'home/fail-command'
+        failure.touch()
+        before, _ = self.execute_worker(root, borrower)
+        failure.unlink()
+        self.assertEqual((before['status'], before['process_exit']), ('failed', 101), before)
+        self.assertFalse(before.get('timed_out'))
+        self.assertIn('command_finished_at', before)
+        self.assertEqual(before['console_assets']['state'], 'verified')
+        snapshots = {key: (root / 'runs' / key / 'result.json').read_bytes() for key in (owner, failed)}
+        after, _ = self.execute_worker(root, self.generated_request(recovery, retry))
+        self.assertEqual((after['status'], after['process_exit']), ('completed', 0), after.get('error'))
+        self.assertEqual(after['tests']['counts']['passed'], 1)
+        self.assertEqual((after['checkout'], after['checkout_owner']), (str(checkout), owner))
+        self.assertEqual((after['sha'], after['executor_digest']), (before['sha'], before['executor_digest']))
+        self.assertEqual(after['console_assets']['source_revision'], self.sha)
+        self.assertEqual(sentinel.read_bytes(), b'retained compilation')
+        self.assertEqual(json.loads((root / ('checkout-' + owner + '.json')).read_text())['run_id'], retry)
+        for key, snapshot in snapshots.items():
+            self.assertEqual((root / 'runs' / key / 'result.json').read_bytes(), snapshot)
+
     def test_cache_preflight_uses_the_same_generated_recovery_and_rechecks_setup(self):
         root = self.root / 'workbench'
         owner, retry = '20261024-020001-abcdef12', '20261024-020002-abcdef12'

@@ -38,7 +38,13 @@ class Contract(unittest.TestCase):
                 self.assertEqual(runner.checkout_recovery_modes(first, dict(latest, **changes)), ())
         self.assertEqual(runner.checkout_recovery_modes(dict(latest, retention='on-failure'), latest), ('reuse',))
         self.assertEqual(runner.checkout_recovery_modes(dict(retention='never'), latest), ())
-        self.assertEqual(runner.checkout_recovery_modes(first, dict(latest, status='failed')), ('continue',))
+        failed = dict(latest, status='failed', process_exit=101, command_started_at=1, command_finished_at=2)
+        self.assertEqual(runner.checkout_recovery_modes(first, failed), ('continue', 'reuse'))
+        self.assertEqual(runner.checkout_recovery_modes(first, dict(failed, plan=None)), ('reuse',))
+        self.assertEqual(runner.checkout_recovery_modes(dict(latest, retention='on-failure'), failed), ('reuse',))
+        self.assertEqual(runner.checkout_recovery_modes(first, dict(failed, timed_out=True)), ())
+        self.assertEqual(runner.checkout_recovery_modes(dict(latest, retention='on-failure'),
+                                                      dict(failed, timed_out=True)), ())
 
     def test_recovery_command_keeps_execution_scope_and_does_not_link_the_blocked_run(self):
         key = '20261024-010203-abcdef12'
