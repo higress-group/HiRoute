@@ -48,6 +48,26 @@ fn completed_responses_commentary_returns_to_regular_chat_with_tools_and_assessm
                     {"type":"function","name":"check","parameters":{"type":"object"}}
                 ]})).unwrap(),
         );
+        let final_user = input.last().and_then(|item| item.get("content"));
+        if final_user.is_some_and(|content| content.as_str() == Some("Now answer a simple question.")
+            || content.pointer("/0/text").and_then(Value::as_str) == Some("Now answer a simple question.")) {
+            let facts = wait_execution_facts(&fixture, 4);
+            let decision = facts.iter().filter(|fact| fact["fact"]["kind"] == "route_decision").last().unwrap();
+            let complexity = &decision["fact"]["complexity"];
+            assert_eq!(complexity["execution_group"], "regular", "the target failure must not be Primary protection");
+            assert_eq!(complexity["selection_reason"], "simple_task");
+            assert_eq!(complexity["simple_probability"], 0.9);
+            assert_eq!(complexity["routing_observation"]["score"], 0.9);
+            assert!(complexity["competence_trigger"].is_null());
+            assert_ne!(complexity["routing_observation"]["protection_action"], "applied");
+            if response.status != 200 {
+                assert!(facts.iter().any(|fact| fact["correlation"]["request_id"] == decision["correlation"]["request_id"]
+                    && fact["fact"]["kind"] == "candidate_decision"
+                    && fact["fact"]["upstream_protocol"] == "chat_completions"
+                    && fact["fact"]["exclusion_reason"] == "PROTOCOL_PATH_UNAVAILABLE"),
+                    "the old candidate must fail at Chat history projection");
+            }
+        }
         assert_eq!(response.status, 200, "{}", String::from_utf8_lossy(&response.body));
         serde_json::from_slice::<Value>(&response.body).unwrap()
     };
