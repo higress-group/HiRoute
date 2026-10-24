@@ -457,7 +457,9 @@ Missing and explicit-empty function encoding MAY support contextual association 
 through a separate bounded full-boundary proof. It SHALL retain the entire ordered
 accepted reasoning/text, tool kind/namespace/name/logical call ID and canonical JSON
 arguments. Original full and visible digests SHALL keep their exact three-state encoding
-distinction. Nonempty encoding or opaque reasoning/provider state on either side disables
+distinction and existing zero-content folding. The separate compatibility proof retains
+the number and ordered positions of empty reasoning summaries. Nonempty encoding or
+opaque reasoning/provider state on either side disables
 this compatibility proof. Unknown fields, unsupported content and exhausted fingerprint
 budgets lose the edge. The proof reuses measured tool digests without additional Replay
 reads or larger budgets; it does not combine encoding changes with reasoning omission.
