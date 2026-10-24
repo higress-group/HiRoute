@@ -574,3 +574,55 @@ fn codex_v2_request_bound_projection_does_not_leak_to_retries_or_other_requests(
     }
     assert_eq!(request.native_body.as_ref().unwrap(), &fixture());
 }
+
+#[test]
+fn codex_v2_unnegotiated_upstream_empty_encoding_is_projected_consistently() {
+    let p = profile(true);
+    let encoding = FunctionEncodingProjection::Preserve;
+    for streaming in [false, true] {
+        let bytes = if streaming {
+            wire(&lifecycle(Some(json!([]))))
+        } else {
+            serde_json::to_vec(&envelope(item(Some(json!([])), "completed", "{}"))).unwrap()
+        };
+        let mut decoder = NativeResponseDecoder::new_for_observation(
+            &p,
+            200,
+            streaming,
+            ToolIdProjection::new(IngressProtocol::Responses),
+            None,
+        )
+        .unwrap()
+        .with_function_encoding(encoding);
+        let mut projector = NativeResponseProjector::new_for_observation(
+            &p,
+            streaming,
+            "alias".into(),
+            None,
+            ToolIdProjection::new(IngressProtocol::Responses),
+        )
+        .unwrap()
+        .with_function_encoding(encoding);
+        decoder.feed(&bytes, true).unwrap();
+        let captured = json_output(&p, &decoder.finish().unwrap());
+        assert!(
+            captured["output"][0]
+                .get("encrypted_function_args")
+                .is_none()
+        );
+        let units = projector.feed(&bytes, true).unwrap();
+        let delivered = units
+            .iter()
+            .flat_map(|u| u.bytes.iter().copied())
+            .collect::<Vec<_>>();
+        assert!(
+            !std::str::from_utf8(&delivered)
+                .unwrap()
+                .contains("encrypted_function_args")
+        );
+        assert_eq!(
+            units.last().unwrap().terminal,
+            Some(NativeTerminalOutcome::Complete)
+        );
+    }
+}

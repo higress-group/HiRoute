@@ -34,6 +34,7 @@ enum Block {
     Tool {
         logical_id: String,
         digest: Option<[u8; 32]>,
+        encrypted: bool,
     },
 }
 
@@ -121,6 +122,7 @@ impl BoundaryCapture {
                     Block::Tool {
                         logical_id: logical_id.clone(),
                         digest: None,
+                        encrypted: false,
                     },
                 );
             }
@@ -133,7 +135,15 @@ impl BoundaryCapture {
                 encrypted_function_args,
                 ..
             } => {
-                if let Some(Block::Tool { logical_id, digest }) = self.blocks.get_mut(index) {
+                if let Some(Block::Tool {
+                    logical_id,
+                    digest,
+                    encrypted,
+                }) = self.blocks.get_mut(index)
+                {
+                    *encrypted = encrypted_function_args
+                        .as_ref()
+                        .is_some_and(|paths| !paths.is_empty());
                     *digest = tool_digest(
                         logical_id,
                         *tool_kind,
@@ -227,7 +237,12 @@ impl BoundaryCapture {
                         text.clone().finalize().into(),
                     );
                 }
-                Block::Tool { digest, .. } => hash.part(b"tool", (*digest)?),
+                Block::Tool {
+                    digest, encrypted, ..
+                } => {
+                    hash.part(b"tool", (*digest)?);
+                    hash.encrypted |= *encrypted;
+                }
             }
             if let Some(digest) = self.encrypted.get(index) {
                 hash.part(b"encrypted_content", *digest);
@@ -356,6 +371,9 @@ pub(super) fn incoming_evidence(
                     arguments,
                     raw_arguments: None,
                 } => {
+                    hash.encrypted |= encrypted_function_args
+                        .as_ref()
+                        .is_some_and(|paths| !paths.is_empty());
                     hash.part(
                         b"tool",
                         function_encoding_digest(

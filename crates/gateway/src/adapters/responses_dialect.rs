@@ -181,6 +181,8 @@ fn schema_node(value: &mut Value) -> Result<bool, ModelIrError> {
         "items",
         "contains",
         "additionalProperties",
+        "additionalItems",
+        "contentSchema",
         "unevaluatedProperties",
         "unevaluatedItems",
         "not",

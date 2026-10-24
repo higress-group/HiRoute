@@ -221,7 +221,9 @@ their original adapter and credential destination until explicitly replaced by a
 confirmed source/Plan.
 
 Missing `encrypted_function_args`, explicit `[]`, and a nonempty array SHALL remain
-three distinct native/replay states. The standard translator may emit `[]` only after
+three distinct native/replay states. An explicit nonempty declaration SHALL remain
+native-only; exact replay equality is contextual and SHALL NOT grant candidate affinity
+or cleanup/portability authority. The standard translator may emit `[]` only after
 selecting the JSON argument contract and consuming the actual request encoding
 declaration (supported schema annotations, explicit encoding replay, or a native peer
 item). Ordinary standard Responses requests without that declaration SHALL retain ordinary

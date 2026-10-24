@@ -267,7 +267,7 @@ fn codex_v2_registered_token_plan_selects_persistable_standard_dialect_without_u
         *ordered = vec![hiroute_domain::ComputeCredentialSelectionV2::Credential {
             credential_ref: hiroute_domain::CredentialRefV1::new(
                 "credential/legacy",
-                "source/legacy",
+                format!("source/{}", legacy.source_id),
                 "hirouted",
                 "provider-auth",
                 std::iter::once(legacy.target.credential_destination().unwrap()).chain(

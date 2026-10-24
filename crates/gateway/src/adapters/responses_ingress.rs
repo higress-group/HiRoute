@@ -72,6 +72,13 @@ pub(super) fn decode_responses_input(
                 ],
                 "responses function_call",
             )?;
+            let encrypted_function_args = super::super::responses_dialect::encoding(object)?;
+            if encrypted_function_args
+                .as_ref()
+                .is_some_and(|paths| !paths.is_empty())
+            {
+                context.mark_modeled_native_only();
+            }
             let (arguments, raw_arguments) =
                 parse_tool_arguments(content_string(object, "arguments")?);
             messages.push(CanonicalMessage {
@@ -83,7 +90,7 @@ pub(super) fn decode_responses_input(
                     name: historical_tool_name(context, object)?,
                     arguments,
                     raw_arguments,
-                    encrypted_function_args: super::super::responses_dialect::encoding(object)?,
+                    encrypted_function_args,
                 }],
                 name: None,
             });

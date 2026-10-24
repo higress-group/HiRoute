@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 const ASSESSED_PRIMARY: &[u8] =
     br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#;
 const TOOL: &[u8] = br#"{"id":"tool","model":"runtime-native","status":"completed","output":[{"type":"function_call","id":"fc","call_id":"call","namespace":"collaboration","name":"spawn_agent","arguments":"{\"message\":\"read fixture\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}"#;
+const TOOL_DECLARED: &[u8] = br#"{"id":"tool","model":"runtime-native","status":"completed","output":[{"type":"function_call","id":"fc","call_id":"call","namespace":"collaboration","name":"spawn_agent","arguments":"{\"message\":\"read fixture\"}","status":"completed","encrypted_function_args":[]}],"usage":{"input_tokens":1,"output_tokens":1}}"#;
 
 fn dialect(fixture: &RuntimeFixture, primary_standard: bool) {
     let mut publication = fixture.publication();
@@ -97,27 +98,32 @@ fn send(
     value["output"].as_array().unwrap().clone()
 }
 
-fn provider_reply(streaming: bool, tool: bool) -> ProviderReply {
-    let response: Value = serde_json::from_slice(if tool { TOOL } else { RESPONSES_OK }).unwrap();
+fn provider_reply(streaming: bool, tool: bool, declared: bool) -> ProviderReply {
+    let body = if tool {
+        if declared { TOOL_DECLARED } else { TOOL }
+    } else {
+        RESPONSES_OK
+    };
+    let response: Value = serde_json::from_slice(body).unwrap();
     if streaming {
         super::native_encrypted_continuation::streamed(
             if tool { "tool" } else { "final" },
             response["output"].as_array().unwrap().clone(),
         )
     } else {
-        reply(if tool { TOOL } else { RESPONSES_OK })
+        reply(body)
     }
 }
 
 #[test]
 fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage() {
-    for v2 in [false, true] {
+    for (v2, declared) in [(false, false), (false, true), (true, false), (true, true)] {
         for streaming in [false, true] {
             let regular = NativeProvider::start(vec![
-                provider_reply(streaming, true),
-                provider_reply(streaming, false),
+                provider_reply(streaming, true, declared),
+                provider_reply(streaming, false, declared),
             ]);
-            let primary = NativeProvider::start(vec![provider_reply(streaming, false)]);
+            let primary = NativeProvider::start(vec![provider_reply(streaming, false, declared)]);
             let classifier =
                 NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_PRIMARY)]);
             let fixture = RuntimeFixture::launch_rest_classified_with_observation(

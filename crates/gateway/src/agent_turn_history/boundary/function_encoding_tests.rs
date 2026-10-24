@@ -1,5 +1,5 @@
 use super::*;
-use crate::agent_turn_history::boundary::{BoundaryCapture, incoming_boundary};
+use crate::agent_turn_history::boundary::{BoundaryCapture, incoming_boundary, incoming_evidence};
 use crate::context_hold::fingerprint::FingerprintBudget;
 use crate::server::core_runtime::adapters::{
     ClientResponseRenderer, NativeResponseDecoder, RenderedClientResponse, ToolIdProjection,
@@ -58,6 +58,17 @@ fn codex_v2_native_encoding_three_states_bind_accepted_output_and_replay_exactly
             assert_eq!(
                 incoming_boundary(&request, 0, &replay, &mut FingerprintBudget::default()),
                 Some(expected)
+            );
+            let encrypted = encoding
+                .as_ref()
+                .is_some_and(|v| !v.as_array().unwrap().is_empty());
+            assert_eq!(request.native_only, encrypted);
+            let incoming =
+                incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default()).unwrap();
+            assert_eq!(
+                capture.evidence().unwrap().matches(incoming),
+                Some(encrypted),
+                "opaque tool equality proves contextual replay, never affinity"
             );
         }
         digests.push(expected);

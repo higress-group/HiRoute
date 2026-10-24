@@ -24,6 +24,12 @@ struct DecodeContext<'a> {
 }
 
 impl DecodeContext<'_> {
+    // A fully modeled opaque wire value can have an exact replay digest without
+    // granting portability or cleanup authority.
+    fn mark_modeled_native_only(&self) {
+        self.native_only.set(true);
+    }
+
     fn mark_native_only(&self) {
         self.native_only.set(true);
         self.unknown_generation

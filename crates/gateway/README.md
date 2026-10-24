@@ -80,7 +80,9 @@ encoding field, so dropping unknown extensions cannot create an artificial histo
 The prepared request passes the same projection to the successful attempt, native/JSON
 renderers and observation tracker; retry and fallback attempts derive their own result. Native Responses preserves missing, empty and nonempty declarations; malformed
 or contradictory declarations fail without a successful terminal claim. Input replay and
-accepted-boundary digests retain those distinctions. [Encoding tests](src/adapters/responses_dialect_tests.rs)
+accepted-boundary digests retain those distinctions. Nonempty encoding remains native-only
+and its exact replay is contextual; it grants neither cross-protocol/cleanup permission nor
+candidate affinity. [Encoding tests](src/adapters/responses_dialect_tests.rs)
 cover the full Codex V2 declaration shape, complete SSE lifecycle, buffered JSON, peer
 Replay, producer-specific conversions and negative cases. [Stored choices](../domain/src/routing/stored.rs)
 persist the standard dialect across restart; old missing choices are never upgraded.
