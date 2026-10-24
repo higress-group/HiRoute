@@ -31,7 +31,7 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069";
+    "sha256:5f42929cdb812799e4e4a10885324debb21e6489bde5e935599de57b54b8ab23";
 
 /// What the Gateway observed when it opened an agent turn. This is not proof
 /// of human authorship or of a particular native compaction command.
@@ -277,6 +277,8 @@ pub enum DecisionProtocolV1 {
 #[serde(deny_unknown_fields)]
 pub struct BranchDecisionV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_protocol: Option<DecisionProtocolV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub routing_observation: Option<crate::RoutingObservationV1>,
@@ -304,6 +306,13 @@ pub struct BranchDecisionV1 {
 
 impl BranchDecisionV1 {
     pub(crate) fn validate(&self) -> Result<(), ExecutionFactError> {
+        if self.extension_reason.as_ref().is_some_and(|reason| {
+            reason.is_empty()
+                || reason.chars().count() > 1024
+                || self.decision_protocol != Some(DecisionProtocolV1::CustomExtensionV1)
+        }) {
+            return Err(ExecutionFactError::InvalidFact);
+        }
         if self
             .routing_observation
             .as_ref()

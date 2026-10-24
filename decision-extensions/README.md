@@ -23,7 +23,7 @@ the saved connection's transport and required response fields with synthetic inp
 it does not establish the accuracy of decisions on your tasks.
 
 A **custom extension** is an optional HTTP service that integrates its own provider
-and follows the task definitions and assessment standards sent by HiRoute. Add it
+and chooses the category and regular/primary group from the route shape sent by HiRoute. Its optional stage score is used only for observation. Add it
 from the same page using its complete endpoint. The form provides copyable request
 examples and an OpenAPI download. The [official Jev extension](extensions/jev-decider/README.md)
 is a deployable reference implementation.
@@ -35,7 +35,7 @@ is a deployable reference implementation.
 | Difficulty routing | Whether the current task is simple or complex | Economy and primary groups |
 | Custom branches | The current task category, then its required degree when it has two groups | Regular models and optional primary models per category |
 
-Category, degree and competence answer different questions:
+For built-in decision models, category, degree and competence answer different questions:
 
 | Question | Example | Effect |
 | --- | --- | --- |
@@ -50,7 +50,7 @@ Difficulty routing uses one task scope, so simple and complex are not separate t
 
 ## How HiRoute selects and executes models
 
-For a task with two groups, regular/economy models are selected when this call's
+For a built-in decision model with two groups, regular/economy models are selected when this call's
 simple probability meets the threshold (default **0.8**) and there is no applicable
 complete score below the competence floor (default **0.5**). Otherwise HiRoute
 selects primary models. Low-score protection uses only a fresh score for the
@@ -73,19 +73,19 @@ Primary exhaustion fails the request. Starting in primary keeps relay within tha
 group; a single-group category fails when its candidates are exhausted. A candidate
 failure does not create a competence score.
 
-If the category is valid but its degree result is unavailable, HiRoute uses that
+For built-in models, if the category is valid but its degree result is unavailable, HiRoute uses that
 category's primary group. If the whole decision fails, difficulty routing uses its
 heuristic rules; custom branches use the default category and its primary group
 when configured.
 
 ## Adjust judgment settings and inspect results
 
-Advanced judgment settings start collapsed. Expand them to edit the simple/complex
+For built-in decision models, advanced judgment settings start collapsed. Expand them to edit the simple/complex
 criteria, thresholds, assessment instructions and the **0 / 0.5 / 1** competence
 anchors. Category conditions describe task intent, degree conditions describe work
 within a category, and competence standards assess work that has already happened.
 
-Custom categories follow the plan's judgment settings by default. Independent
+With built-in models, custom categories follow the plan's judgment settings by default. Independent
 editing copies the complete settings; resetting resumes following the plan.
 Difficulty routing also offers explicit heuristic rules, which do not produce model
 competence scores.
@@ -99,10 +99,12 @@ do not rewrite earlier selection reasons.
 
 | Responsibility | Owner |
 | --- | --- |
-| Task definitions, assessment standards, thresholds and model groups | HiRoute, from the published plan |
+| Categories, conditions and model groups | HiRoute, from the published plan |
+| Custom-extension category/group decisions and optional scores | The extension, using its own policy |
+| Built-in assessment standards and thresholds | HiRoute, from the published plan |
 | Selection, eligibility, availability relay and actual-stage observations | HiRoute |
 | Direct System One provider calls and answer mapping for built-in connections | HiRoute's [built-in adapter](api/system-one-design.md) |
-| Provider calls, answer mapping and necessary history trimming for a custom connection | The custom extension, following the supplied definitions and standards |
+| Provider calls, answer mapping and necessary history trimming for a custom connection | The custom extension, using its own policy within the published categories and groups |
 
 The custom [extension API](api/README.md) can return the current decision and a
 preceding-stage assessment in one call. Its current **v1** has one request shape;
@@ -113,3 +115,5 @@ describes the product configuration.
 
 Tool subset selection is future protocol documentation only; it has no supported
 runtime or product entry.
+
+Custom-extension routes show categories, conditions and candidates only. Their judgment settings stay parked for a later switch back to a built-in connection. Extensions return `category`, `group`, optional `reason` and optional `{score, partial}` assessment; HiRoute applies no threshold or competence protection to this decision.

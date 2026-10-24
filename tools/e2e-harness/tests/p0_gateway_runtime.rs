@@ -21,12 +21,10 @@ const RESPONSES_OK: &[u8] = br#"{"id":"accepted","model":"runtime-native","statu
 const RESPONSES_TOOL_CALL: &[u8] = br#"{"id":"tool-call","model":"runtime-native","status":"completed","output":[{"type":"function_call","id":"fc-native","call_id":"native-call","namespace":"tools","name":"lookup","arguments":"{}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
 const RESPONSES_STREAM_OK: &[u8] = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"stream-ok\",\"model\":\"runtime-native\"}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"runtime-message\",\"output_index\":0,\"content_index\":0,\"delta\":\"ok\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"stream-ok\",\"model\":\"runtime-native\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"runtime-message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n";
 const FALLBACK_OK: &[u8] = br#"{"id":"accepted-fallback","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"fallback"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
-const CLASSIFIER_COMPLEX: &[u8] =
-    br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}}}"#;
-const CLASSIFIER_SIMPLE: &[u8] =
-    br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}}}"#;
+const CLASSIFIER_COMPLEX: &[u8] = br#"{"group":"primary"}"#;
+const CLASSIFIER_SIMPLE: &[u8] = br#"{"group":"regular"}"#;
 const CLASSIFIER_SIMPLE_WITH_ASSESSMENT: &[u8] =
-    br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}},"assessment":{"score":0.75,"partial":false}}"#;
+    br#"{"group":"regular","assessment":{"score":0.0,"partial":false}}"#;
 const CLASSIFIER_INVALID: &[u8] = br#"{"id":"classification","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"category\":\"simple\"}"}]}]}"#;
 const AUTH_ERROR: &[u8] =
     br#"{"error":{"type":"invalid_api_key","message":"private auth marker"}}"#;
@@ -1075,15 +1073,12 @@ fn real_listener_rest_classifier_uses_the_existing_gateway_and_selects_complex()
     );
     assert_eq!(body["visible_conversation"], serde_json::json!([]));
     assert_eq!(
-        body.pointer("/decision/levels/0/criterion")
-            .and_then(|value| value.as_str()),
-        Some(hiroute_domain::DEFAULT_SIMPLE_CRITERION)
+        body["route"],
+        serde_json::json!({"kind":"smart_saving","groups":["regular","primary"]})
     );
-    assert_eq!(
-        body.pointer("/decision/levels/1/criterion")
-            .and_then(|value| value.as_str()),
-        Some(hiroute_domain::DEFAULT_COMPLEX_CRITERION)
-    );
+    assert!(body.get("decision").is_none());
+    assert!(body.get("definition").is_none());
+    assert!(body["preceding_stage"].is_null());
     assert_eq!(body.as_object().unwrap().len(), 5);
     assert!(body.get("model").is_none());
 
@@ -1546,7 +1541,7 @@ fn real_listener_context_hold_boundary_seals_unknown_without_reusing_old_compete
         "unchanged latest_user must not suppress a ContextHold boundary"
     );
     assert!(
-        body["assessment_target"].is_null(),
+        body["preceding_stage"].is_null(),
         "rebuilt context cannot grade an old stage"
     );
     assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
@@ -1680,7 +1675,7 @@ fn real_listener_rest_classifier_sends_and_persists_the_previous_segment_assessm
         + 4;
     let body: serde_json::Value = serde_json::from_slice(&second_wire[body_start..]).unwrap();
     assert_eq!(body.as_object().unwrap().len(), 5);
-    assert_eq!(body["assessment_target"]["from"], 0);
+    assert_eq!(body["preceding_stage"]["from"], 0);
     assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
     assert_eq!(
         body["visible_conversation"][0]["steps"][0][0]["text"], "ok",
@@ -1700,7 +1695,7 @@ fn real_listener_rest_classifier_sends_and_persists_the_previous_segment_assessm
         assessment
             .pointer("/fact/score")
             .and_then(|value| value.as_f64()),
-        Some(0.75)
+        Some(0.0)
     );
     let second_decision = facts
         .iter()

@@ -119,14 +119,15 @@ fn counts(stages: &[&TrustObservedStageV1], runs: &BTreeMap<String, TrustRunV1>)
                     .sample
                     .branch_execution
                     .as_ref()
-                    .map(|e| e.policy.floor_millis)
+                    .and_then(|e| e.policy.floor_millis)
                     .or_else(|| {
                         stage
                             .sample
                             .selection
                             .as_ref()
-                            .and_then(|s| s.policy.as_ref().map(|p| p.floor_millis))
+                            .and_then(|s| s.policy.as_ref().and_then(|p| p.floor_millis))
                     });
+                counts.competence_eligible += u64::from(floor.is_some());
                 if floor.is_some_and(|floor| a.score >= f64::from(floor) / 1000.0) {
                     counts.meets_floor += 1;
                 }
@@ -451,12 +452,12 @@ fn policies(context: &TrustContextV1) -> Vec<(String, u16, BTreeSet<String>)> {
             classifier,
             economy,
             ..
-        } if !matches!(classifier, ComplexityClassifierModeV1::LocalRules) => vec![(
+        } if native_mode(classifier) => vec![(
             SMART_SAVING_SCOPE_ID.into(),
             judgment.degree.simple_threshold_millis,
             models(economy),
         )],
-        AgentPlanStrategyV2::Branches { routing } => routing
+        AgentPlanStrategyV2::Branches { routing } if native_mode(&routing.classifier) => routing
             .branches
             .iter()
             .filter(|b| !b.primary_candidates.is_empty())

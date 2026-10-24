@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Route build/test tools using ~/.config/hiroute/validation.json."""
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 import shlex
@@ -87,6 +88,15 @@ def dispatch(targets, action, arguments, frontend_dist=None, dry_run=False):
     if frontend_dist and not (arguments[:1] == ["run"] and (
             action == "desktop" or (action == "backend" and target["transport"] == "ssh"))):
         raise ValueError("--frontend-dist is only for desktop run or SSH backend run")
+    if action == "desktop" or (action == "backend" and target["transport"] == "local"):
+        options = arguments[:arguments.index("--")] if "--" in arguments else arguments
+        if options[:1] == ["run"] and any(a in ("-h", "--help") for a in options):
+            # Help belongs to the caller's wrapper, just like admission. Do not
+            # require an SSH connection or an upgraded execution-host checkout.
+            spec = importlib.util.spec_from_file_location("validation_host", REPO / "scripts/validation-host.py")
+            host = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(host)
+            return host.run_help(REPO, action)
     if action in ("backend", "desktop", "pilot-build"):
         arguments = with_candidate(arguments, REPO)
     if name == "backend" and target["transport"] == "ssh":

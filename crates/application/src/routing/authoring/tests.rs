@@ -271,15 +271,22 @@ fn consumed_draft_binds_identity_and_revision_but_publishes_the_submitted_editor
 
 #[test]
 fn complete_content_operation_binds_the_version_head_and_publication() {
-    assert_complete_content_operation(false);
+    assert_complete_content_operation(false, None);
 }
 
 #[test]
 fn retained_native_operation_uses_frozen_semantics_and_still_rejects_tampering() {
-    assert_complete_content_operation(true);
+    assert_complete_content_operation(true, None);
 }
 
-fn assert_complete_content_operation(legacy_native: bool) {
+#[test]
+fn current_custom_operations_preserve_parked_source_and_reject_sealed_input_tampering() {
+    for mode in [PlanEditorMode::SmartSaving, PlanEditorMode::CustomBranches] {
+        assert_complete_content_operation(false, Some(mode));
+    }
+}
+
+fn assert_complete_content_operation(legacy_native: bool, custom_mode: Option<PlanEditorMode>) {
     let mut change = change();
     let mut state = state();
     if legacy_native {
@@ -306,7 +313,69 @@ fn assert_complete_content_operation(legacy_native: bool) {
         };
         state.decision_service = Some(service);
     }
+    if let Some(mode) = custom_mode {
+        let service = DecisionServiceV1 {
+            id: "decision/current-operation".into(),
+            revision: 1,
+            name: "Current extension".into(),
+            connection: DecisionConnectionV1::Custom {
+                endpoint: "https://decision.example/choose".into(),
+                timeout_ms: 3000,
+                auth_header: None,
+            },
+        };
+        let classifier = ComplexityClassifierModeV1::DecisionService {
+            service: Box::new(service.clone()),
+        };
+        change.editor.mode = mode;
+        change.editor.smart.classifier = classifier.clone();
+        change.editor.smart.economy = change.editor.candidates.clone();
+        change.editor.smart.primary = change.editor.candidates.clone();
+        change.editor.smart.judgment.degree.instructions = "   ".into();
+        change.editor.smart.judgment.competence.instructions = "  parked assessment  ".into();
+        change.editor.smart.judgment.competence.floor_millis = 730;
+        change.editor.branch_routing = Some(BranchRoutingEditorV1 {
+            classifier,
+            branches: ["code", "docs"]
+                .map(|id| RouteBranchV1 {
+                    id: id.into(),
+                    name: id.into(),
+                    condition: format!("Handle {id}"),
+                    candidates: change.editor.candidates.clone(),
+                    primary_candidates: if id == "code" {
+                        change.editor.candidates.clone()
+                    } else {
+                        vec![]
+                    },
+                    judgment: Some(change.editor.smart.judgment.clone()),
+                })
+                .into(),
+            default_branch_id: "docs".into(),
+            judgment: change.editor.smart.judgment.clone(),
+            reselect_on_user_message: false,
+        });
+        state.decision_service = Some(service);
+    }
     let mut preview = preview_plan_content(&change, &state).unwrap();
+    if custom_mode.is_some() {
+        assert_eq!(
+            preview.plan_version.configuration,
+            change.editor.effective().unwrap()
+        );
+        let mut invalid = preview.plan_version.compiled.body.materialized.clone();
+        match &mut invalid.request_owned {
+            RequestOwnedRouteV1::Classified { judgment, .. } => {
+                assert!(judgment.is_none());
+                *judgment = Some(JudgmentSettingsV1::default());
+            }
+            RequestOwnedRouteV1::Branches { branches, .. } => {
+                assert!(branches.iter().all(|b| b.judgment.is_none()));
+                branches[0].judgment = Some(JudgmentSettingsV1::default());
+            }
+            _ => unreachable!(),
+        }
+        assert_eq!(invalid.validate(), Err(CompiledPlanError::InvalidGroups));
+    }
     if legacy_native {
         // Construct the supported sealed legacy shape. The real released-producer
         // acceptance additionally authenticates actual v0.3.1 Operations on reopen.
@@ -406,22 +475,28 @@ fn assert_complete_content_operation(legacy_native: bool) {
     )
     .unwrap();
     assert_eq!(roundtrip.plan_content_control().unwrap().unwrap(), content);
-    if legacy_native {
-        let mut tampered = plan.spec().clone();
-        tampered.desired_state["editor"]["smart"]["judgment"]["competence"]["criteria"][0] =
-            serde_json::json!("Changed after sealing");
-        assert!(
-            TransactionPlanV1::from_registered_typed_planner(
-                tampered,
-                plan.control().clone(),
-                None,
-                vec![],
-                vec![],
-                plan.external().to_vec(),
-            )
-            .is_err()
-        );
-    }
+    // Alter both envelope copies and the change digest consistently: rejection must
+    // still come from the editor-to-sealed-configuration check.
+    let mut tampered = plan.spec().clone();
+    tampered.desired_state["editor"]["purpose"] = serde_json::json!("Changed after sealing");
+    let mut control = plan.control().clone();
+    control["change_spec_digest"] =
+        serde_json::to_value(CanonicalDigest::of(&tampered).unwrap()).unwrap();
+    let mut effect = serde_json::to_value(&plan.external()[0]).unwrap();
+    effect["desired"]["change_spec"] = serde_json::to_value(&tampered).unwrap();
+    effect["desired"]["control"] = control;
+    assert!(
+        ExternalEffectIntentV1::from_registered_adapter(
+            effect["effect_id"].as_str().unwrap(),
+            serde_json::from_value(effect["kind"].clone()).unwrap(),
+            effect["target"].as_str().unwrap(),
+            serde_json::from_value(effect["before_fingerprint"].clone()).unwrap(),
+            effect["desired"].clone(),
+            effect["desired_mode"].as_u64().unwrap() as u32,
+            effect["sensitive"].as_bool().unwrap(),
+        )
+        .is_err()
+    );
     let mut changed = plan.control().clone();
     changed["plan_head"]["head_revision"] = serde_json::json!(99);
     assert!(

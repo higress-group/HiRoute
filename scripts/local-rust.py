@@ -324,8 +324,7 @@ def run(store, args, prepare=None, on_record=None):
     row["checkout_finished_at"] = time.time()
     row["status"] = "running"
     store.save(row)
-    # Start/cache-query before locking. The command monitor keeps lock FDs away
-    # from Cargo and any sccache server it starts later.
+    # Cache admission and Cargo share the existing exclusive compiler lease.
     env = dict(os.environ, CARGO_BUILD_JOBS=str(jobs), CARGO_INCREMENTAL="0", RUSTC_WRAPPER="sccache")
     process = None
     try:
@@ -334,13 +333,15 @@ def run(store, args, prepare=None, on_record=None):
             "temporary_directory": server_env["TMPDIR"],
             "idle_timeout": "0",
         }
-        before = remote.stats(store.record_path(key).parent, "cache-before", server_env)
         row["queued_at"] = time.time()
         store.save(row)
         with store.locked(checkout, wait=row["wait_for_lock"]) as handles:
             row["capacity_acquired_at"] = time.time()
             if row["wait_for_lock"] and shutil.disk_usage(store.root).free < 30 * GIB:
                 raise ValueError("Less than 30 GiB free after waiting; build not started")
+            row["cache_admission"] = remote.admit_cache_server(
+                store.record_path(key).parent, server_env, checkout, handles=handles)
+            before = remote.stats(store.record_path(key).parent, "cache-before", server_env)
             info = private_temp()
             row["temporary_directory"] = info
             env["TMPDIR"] = info["path"]
@@ -391,7 +392,7 @@ def run(store, args, prepare=None, on_record=None):
     return store.load(key)
 
 
-def main():
+def argument_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
     p = sub.add_parser("run", help="Exact committed candidate in an isolated worktree")
@@ -425,6 +426,11 @@ def main():
     p.add_argument("id")
     p.add_argument("--verdict", choices=("green", "expected_red", "red"), required=True)
     p.add_argument("--evidence-saved", action="store_true", required=True)
+    return parser
+
+
+def main():
+    parser = argument_parser()
     args = parser.parse_args()
     store = Store()
     if args.action == "run":

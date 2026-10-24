@@ -59,6 +59,7 @@ fn score_states_are_exclusive_and_terminal_completion_does_not_mean_competence()
         TrustCountsV1 {
             executed: 4,
             complete: 1,
+            competence_eligible: 1,
             meets_floor: 1,
             partial: 1,
             awaiting_assessment: 1,
@@ -150,10 +151,15 @@ pub(crate) fn trial_context(threshold: u16) -> TrustContextV1 {
                         id: "decision/test".into(),
                         revision: 1,
                         name: "Test".into(),
-                        connection: DecisionConnectionV1::Custom {
+                        connection: DecisionConnectionV1::SystemOne {
+                            provider: "compatible".into(),
+                            model: "synthetic".into(),
                             endpoint: "https://decision.example/choose".into(),
                             timeout_ms: 3000,
-                            auth_header: None,
+                            auth_header: ClassifierAuthHeaderV1 {
+                                name: "Authorization".into(),
+                                value_secret_ref: "synthetic".into(),
+                            },
                         },
                     }),
                 },
@@ -261,4 +267,33 @@ fn suggestion_projection_matches_report_for_every_direction_without_report_rows(
             assert!(actual["replay"]["thresholds"].as_array().unwrap().len() <= 1);
         }
     }
+}
+
+#[test]
+fn extension_assessments_count_as_scored_without_a_competence_denominator() {
+    let mut extension = stage("extension", Some((1.0, false)), false);
+    extension.sample.branch_execution.as_mut().unwrap().policy =
+        hiroute_domain::DecisionExtensionIdentityV1 {
+            id: "extension/test".into(),
+            revision: 1,
+        }
+        .execution_policy("Extension");
+    let extension_only = counts(&[&extension], &BTreeMap::new());
+    assert_eq!(extension_only.complete, 1);
+    assert_eq!(extension_only.unscored, 0);
+    assert_eq!(extension_only.competence_rate(), None);
+    let native = stage("native", Some((0.5, false)), false);
+    let mixed = counts(&[&extension, &native], &BTreeMap::new());
+    assert_eq!(mixed.complete, 2);
+    assert_eq!(mixed.scoring_coverage(), Some(1.0));
+    assert_eq!(mixed.competence_rate(), Some(1.0));
+    let mut old_extension = native;
+    old_extension.sample.selection = Some(selection(0.8, "simple_task", "regular"));
+    old_extension
+        .sample
+        .selection
+        .as_mut()
+        .unwrap()
+        .decision_protocol = Some(hiroute_domain::DecisionProtocolV1::CustomExtensionV1);
+    assert_eq!(replay(&[old_extension], &[700]).included, 0);
 }

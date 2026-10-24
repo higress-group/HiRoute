@@ -193,6 +193,7 @@ print('test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered ou
                  patch.object(runner.sys, 'platform', 'linux'), \
                  patch.object(runner.tempfile, 'gettempdir', return_value=str(self.root)), \
                  patch.object(runner, 'MIN_FREE_BYTES', 0), \
+                 patch.object(runner, 'admit_cache_server', return_value={'state': 'ready'}), \
                  patch.object(runner, 'stats', return_value={'max_cache_size': 30 * 1024**3}) as stats:
                 runner.worker(run / 'request.json')
             return json.loads((run / 'result.json').read_text()), stats

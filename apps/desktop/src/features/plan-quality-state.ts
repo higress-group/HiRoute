@@ -9,7 +9,7 @@ export type QualityExecution = {
   attribution: 'single' | 'mixed' | 'unknown';
 };
 
-export type BranchPolicy = { name: string; floor_millis: number; criteria_digest?: string | null };
+export type BranchPolicy = { name: string; floor_millis?: number | null; extension?: { id: string; revision: number }; criteria_digest?: string | null };
 
 export type QualityModelSummary = {
   branch_policy?: BranchPolicy | null;

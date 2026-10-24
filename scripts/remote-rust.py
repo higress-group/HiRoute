@@ -179,10 +179,56 @@ def capacity(root, exclusive, deadline=None, slots=None):
 
 
 def stats(run, name, server_env):
-    # show-stats can start the server. Never give that long-lived process a run's TMPDIR.
+    # Statistics do not establish server startup or effective scratch health.
     data = json.loads(command(["sccache", "--show-stats", "--stats-format=json"], env=server_env))
     save(run / (name + ".json"), data)
     return data
+
+
+def admit_cache_server(run, server_env, checkout=None, *, handles):
+    """Connect/start through a compile request and exercise effective server scratch.
+
+    --show-stats can succeed with zero statistics when no server exists. A unique
+    Rust crate forces a cache miss, so a warm cache cannot conceal obsolete scratch.
+    The caller holds its normal compiler-capacity lease throughout admission.
+    """
+    record = {"state": "checking"}
+    save(run / "cache-admission.json", record)
+    try:
+        # A compilation connects to the existing server or starts one with this
+        # environment. Never use --start-server blindly: Unix socket startup can
+        # unlink an existing endpoint. File output avoids inherited pipe writers.
+        with tempfile.TemporaryDirectory(prefix="probe-", dir=server_env["TMPDIR"]) as directory:
+            directory = Path(directory)
+            source = directory / "probe.rs"
+            source.write_text("pub const ID: &str = " + json.dumps(uuid.uuid4().hex) + ";\n")
+            artifact = directory / "libhiroute_cache_probe.rlib"
+            with (run / "cache-probe.log").open("w") as output:
+                probe = start_locked_command(
+                    ["sccache", shutil.which("rustc") or "rustc", "--crate-name", "hiroute_cache_probe",
+                     "--crate-type", "lib", "--emit=dep-info,link", str(source), "--out-dir", str(directory)],
+                    checkout, server_env, output, handles)
+                try:
+                    record["probe_exit"] = probe.wait(timeout=30)
+                finally:
+                    if probe.poll() is None:
+                        os.killpg(probe.pid, signal.SIGKILL)
+                        probe.wait()
+            if record["probe_exit"] or not artifact.is_file():
+                raise RuntimeError("cache-miss compilation did not produce a library")
+        record["state"] = "ready"
+    except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+        record.update(state="blocked", error=str(error))
+        raise RunBlocked(
+            "cache_server_unhealthy",
+            "sccache preflight failed; see cache-admission.json and cache-probe.log. "
+            "The existing server was not stopped. After all compiler owners are idle, acquire the "
+            "host's exclusive compiler-capacity locks, preserve server statistics, and explicitly "
+            "stop/start sccache with the recorded stable scratch environment before retrying. "
+            "Do not recreate deleted run directories or clear the disk cache.") from error
+    finally:
+        save(run / "cache-admission.json", record)
+    return record
 
 
 def cache_server_environment(root):
@@ -632,7 +678,8 @@ def worker(request_path):
             result["cache_server_environment"] = {
                 "temporary_directory": server_env["TMPDIR"], "idle_timeout": "0",
             }
-            # Start/query before Cargo, using stable scratch. Never restart an existing server.
+            result["cache_admission"] = admit_cache_server(
+                run, server_env, checkout, handles=[*slots, reused_lease])
             before = stats(run, "cache-before", server_env)
             if before.get("max_cache_size") != 30 * 1024**3:
                 raise RuntimeError("sccache server must be configured with a 30 GiB cache; do not restart a busy shared server")

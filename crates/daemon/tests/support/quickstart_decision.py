@@ -1,6 +1,7 @@
 """Secure user PTY -> installed CLI -> protected socket -> saved decision -> routed requests.
 
-The external decider chooses controlled probabilities, not semantic quality. No live credentials.
+The external decider chooses controlled native probabilities or custom groups,
+not semantic quality. No live credentials.
 """
 import json
 import os
@@ -87,18 +88,21 @@ class Decisions(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         assert self.headers.get('Authorization') == self.credential, 'protected header not resolved'
         self.requests.append(body)
-        result = ({'answers': {key: (
-            {'type': 'choice', 'choice': next(iter(question['criteria']))}
-            if question['type'] == 'choice' else
-            {'type': 'score', 'score': 2.0}
-            if len(question['criteria']) == 3 else
-            {'type': 'score', 'probabilities': {
-                '0': .1 if self.complex else .9, '1': .9 if self.complex else .1}})
-            for key, question in body['questions'].items()}} if 'questions' in body else
-            {'decision': {'kind':'categorical', 'choice':body['decision']['options'][0]['id'],
-                'refinement':{'kind':'ordinal', 'probabilities':{'simple':.9, 'complex':.1}}}}
-            if body['decision']['kind'] == 'categorical' else
-            {'decision': {'kind':'ordinal', 'probabilities':{'simple':.9, 'complex':.1}}})
+        if 'questions' in body:
+            result = {'answers': {key: (
+                {'type': 'choice', 'choice': next(iter(question['criteria']))}
+                if question['type'] == 'choice' else
+                {'type': 'score', 'score': 2.0}
+                if len(question['criteria']) == 3 else
+                {'type': 'score', 'probabilities': {
+                    '0': .1 if self.complex else .9, '1': .9 if self.complex else .1}})
+                for key, question in body['questions'].items()}}
+        else:
+            assert set(body) == {'route', 'latest_user', 'visible_conversation',
+                                 'history_partial', 'preceding_stage'}
+            result = {'group': 'primary' if self.complex else 'regular'}
+            if body['route']['kind'] == 'branches':
+                result['category'] = body['route']['categories'][0]['id']
         raw = json.dumps(result).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')

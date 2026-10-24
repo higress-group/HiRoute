@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Execution-host adapter. Receives a JSON request from validation.py over stdin."""
+import argparse
 import hashlib
 import importlib.util
 import json
@@ -103,6 +104,36 @@ def doctor(payload, repo, env):
     return 0 if ready else 2
 
 
+def run_help(repo, action):
+    """Derive wrapper help from the caller's actual runner argument parser."""
+    spec = importlib.util.spec_from_file_location("local_rust", repo / "scripts/local-rust.py")
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    parser = runner.argument_parser()
+    subcommands = next(item for item in parser._actions if isinstance(item, argparse._SubParsersAction))
+    run = subcommands.choices["run"]
+    run.prog = "validation.py " + action + " run"
+    run.description = ("Desktop always fetches the exact pushed candidate from origin, including on a local Mac."
+                       if action == "desktop" else
+                       "Local backend selects committed source from the configured repository.")
+    run.epilog = "Configure repository and compiler jobs in validation.json. Pass Cargo arguments after --."
+    for option in run._actions:
+        if option.dest in ("repo", "source", "jobs"):
+            option.help = argparse.SUPPRESS
+        elif option.dest == "sha":
+            option.required = False
+            option.help = "Exact candidate commit (defaults to the caller's HEAD)"
+    run.print_help()
+    return 0
+
+
+def overrides_option(arguments, option):
+    # The runner accepts unambiguous argparse long-option abbreviations. Reject
+    # every prefix here, including ambiguous ones, so none can bypass ownership.
+    return any(value.startswith("--") and option.startswith(value.split("=", 1)[0])
+               for value in arguments)
+
+
 def execute(payload):
     target = payload["target"]
     action = payload["action"]
@@ -133,8 +164,12 @@ def execute(payload):
         if arguments[0] == "run":
             boundary = arguments.index("--") if "--" in arguments else len(arguments)
             options = arguments[:boundary]
-            if any(a in ("--repo", "--source", "--jobs") or a.startswith(("--repo=", "--source=", "--jobs=")) for a in options):
-                raise ValueError("Configure repo/jobs in validation.json; source follows the selected transport")
+            if overrides_option(options, "--source"):
+                if action == "desktop":
+                    raise ValueError("Desktop always fetches the exact pushed candidate from origin, including on a local Mac; omit --source")
+                raise ValueError("Local backend selects committed source from the configured repository; omit --source")
+            if any(overrides_option(options, option) for option in ("--repo", "--jobs")):
+                raise ValueError("Configure repo/jobs in validation.json; omit these command-line overrides")
             additions = ["--repo", str(repo)]
             if action == "backend":
                 additions += ["--source", "local"]

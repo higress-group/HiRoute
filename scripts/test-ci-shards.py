@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -106,6 +107,32 @@ class ShardPlanningTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(ValueError, "restricted to GitHub Actions"):
                 shards.run_commands("quality", [["true"]])
+
+    def test_full_hosted_bundles_preserve_default_process_policy_and_complete_selectors(self):
+        commands = shards.full_commands(full_plan(), self.metadata)
+        for shard in ["unit", *shards.INTEGRATION_SHARDS]:
+            command = commands[shard][0]
+            self.assertNotIn("--", command)
+            self.assertEqual(command[:len(shards.FULL_TEST)], shards.FULL_TEST)
+            if shard != "unit":
+                selected = set(command[len(shards.FULL_TEST) + 1::2])
+                self.assertEqual(selected, {target for _, target in shards.INTEGRATION_SHARDS[shard]})
+            with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
+                    patch.object(shards.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+                self.assertEqual(shards.run_commands(shard, [command]), 0)
+            argv = run.call_args.args[0]
+            self.assertEqual(argv[argv.index("--harness-policy") + 1], "hosted-default")
+            self.assertEqual(argv[argv.index("--") + 1:], command)
+
+    def test_affected_command_keeps_its_explicit_thread_policy(self):
+        command = ["cargo", "test", "--locked", "-p", "hiroute-cli", "--test", "service_proxy",
+                   "--", "--test-threads=1"]
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
+                patch.object(shards.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+            self.assertEqual(shards.run_commands("affected", [command]), 0)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[argv.index("--harness-policy") + 1], "selected-command")
+        self.assertEqual(argv[argv.index("--") + 1:], command)
 
 
 if __name__ == "__main__":

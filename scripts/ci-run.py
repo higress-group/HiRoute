@@ -24,7 +24,8 @@ def test_counts(log):
                     (sum(int(row[i]) for row in rows) for i in range(3))))
 
 
-def execute(command, root, output, expected_sha, timeout, require_tests=False, feedback=None):
+def execute(command, root, output, expected_sha, timeout, require_tests=False, feedback=None,
+            harness_policy="selected-command"):
     output.mkdir(parents=True, exist_ok=False)
     result = {"id": output.name, "command": command, "expected_sha": expected_sha,
               "process_exit": None, "status": "failed", "scenario_state": "not_assessed",
@@ -58,6 +59,7 @@ def execute(command, root, output, expected_sha, timeout, require_tests=False, f
         env.setdefault("CARGO_BUILD_JOBS", str(max(1, os.cpu_count() or 1)))
         env["CARGO_INCREMENTAL"] = "0"
         result["build_jobs"] = env["CARGO_BUILD_JOBS"]
+        result["harness_concurrency"] = reporting.harness_concurrency(command, env, harness_policy)
         if command[0] == "cargo":
             metadata = json.loads(subprocess.check_output(
                 ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
@@ -116,6 +118,8 @@ def main():
     parser.add_argument("--expected-sha", default=os.environ.get("GITHUB_SHA"), required=False)
     parser.add_argument("--timeout", type=int, default=3600)
     parser.add_argument("--require-tests", action="store_true")
+    parser.add_argument("--harness-policy", choices=("selected-command", "hosted-default"),
+                        default="selected-command", help="Documented harness policy; does not change the command")
     reporting.add_arguments(parser)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -124,7 +128,7 @@ def main():
         parser.error("provide a safe name, exact SHA, positive timeout, and command")
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()).resolve()
     return execute(command, root, root / "artifacts/ci" / args.name,
-                   args.expected_sha, args.timeout, args.require_tests, reporting.options(args))
+                   args.expected_sha, args.timeout, args.require_tests, reporting.options(args), args.harness_policy)
 
 
 if __name__ == "__main__":

@@ -110,7 +110,8 @@ fn trust_drilldown_filters_exact_identity_without_changing_scope_summary() {
             *branch_execution = Some(BranchExecutionV1 {
                 policy: BranchExecutionPolicyV1 {
                     name: "Trial".into(),
-                    floor_millis: 500,
+                    extension: None,
+                    floor_millis: Some(500),
                     criteria_digest: None,
                 },
                 group,

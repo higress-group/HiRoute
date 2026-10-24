@@ -320,3 +320,51 @@ fn unsupported_execution_digest_is_rejected_without_rewriting_retained_facts() {
         .unwrap();
     assert_eq!(before, after);
 }
+
+#[test]
+fn pre_extension_facts_keep_bytes_without_authenticating_new_decision_fields() {
+    use hiroute_domain::{DecisionExtensionIdentityV1, DecisionProtocolV1, ModelGroupReasonV1};
+    let fixture = Fixture::new("pre-extension");
+    let mut event = fixture.fact(1, super::super::support::route_decision(PLAN), 1010);
+    event.schema_digest = hiroute_domain::CanonicalDigest::parse(
+        "sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069",
+    )
+    .unwrap();
+    let original = serde_json::to_value(&event).unwrap();
+    let digest = hiroute_domain::CanonicalDigest::of(&event).unwrap();
+    let decoded: hiroute_domain::ExecutionFactEnvelopeV1 =
+        serde_json::from_value(original.clone()).unwrap();
+    decoded.validate_persisted_contract().unwrap();
+    assert!(decoded.validate().is_err());
+    assert_eq!(serde_json::to_value(&decoded).unwrap(), original);
+    assert_eq!(
+        hiroute_domain::CanonicalDigest::of(&decoded).unwrap(),
+        digest
+    );
+    for field in 0..3 {
+        let mut changed = decoded.clone();
+        let ExecutionFactV1::RouteDecision(route) = &mut changed.fact else {
+            unreachable!()
+        };
+        let selection = route.complexity.as_mut().unwrap();
+        selection.decision_protocol = Some(DecisionProtocolV1::CustomExtensionV1);
+        match field {
+            0 => selection.extension_reason = Some("Extension chose regular".into()),
+            1 => selection.selection_reason = ModelGroupReasonV1::ExtensionDecision,
+            _ => {
+                selection.policy = Some(
+                    DecisionExtensionIdentityV1 {
+                        id: "extension/test".into(),
+                        revision: 1,
+                    }
+                    .execution_policy("Custom"),
+                )
+            }
+        }
+        assert!(changed.validate_persisted_contract().is_err());
+        changed.schema_digest =
+            hiroute_domain::CanonicalDigest::parse(hiroute_domain::EXECUTION_FACT_PORT_DIGEST_V2)
+                .unwrap();
+        changed.validate().unwrap();
+    }
+}

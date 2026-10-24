@@ -21,7 +21,7 @@ python3 scripts/local-rust.py run \
 By default the runner fetches the branch from this repository's `origin` and verifies the SHA
 is reachable. It creates a disposable detached worktree under
 `~/.cache/hiroute/local-rust/checkouts/`, uses its default `target/`, jobs=2 (override with `--jobs`),
-incremental=0 and existing sccache. It does not restart or empty sccache.
+incremental=0 and shared sccache. It never restarts or empties the shared server.
 It holds `~/.cache/hiroute/mac-rust-validation.lock` on Mac, or
 `~/.cache/hiroute/local-rust-validation.lock` on Linux, plus a checkout lock; a busy
 lock rejects the run rather than starting another local compiler by default. With
@@ -43,6 +43,24 @@ compiled. The result records candidate source, platform and compiler jobs. The
 configured local backend selects this mode automatically. Remote Desktop keeps
 the origin-fetch default. The independent SSH Linux workbench has its own locks;
 do not run both runners on one host/account to bypass its capacity limits.
+
+Before creating a run TMPDIR, cache admission holds the existing compiler lease,
+compiles a unique tiny Rust library through sccache with owner-only stable
+`sccache-tmp/` under the runner root. The request connects to an existing server
+or starts one using that stable environment, with a 30-second bound. A cache miss
+exercises the
+server's effective scratch; environment metadata and `--show-stats` alone do not
+prove that the server started or uses that directory. An already-running server
+is admitted only if the probe succeeds. No server is automatically stopped.
+Admission failure prevents Cargo execution and retains `cache-admission.json` and
+`cache-probe.log` beside the ordinary result. The same command monitor retains
+compiler and checkout locks until the probe exits if the runner crashes; cache
+clients and servers never inherit those lock descriptors. A timed-out probe's
+client process group is reaped before releasing capacity. After all
+compiler owners are idle, an operator may hold the host's exclusive capacity
+locks, preserve statistics and explicitly stop/start the server using the recorded
+stable scratch, `TMP`/`TEMP`, idle timeout zero and existing cache configuration.
+Never recreate an obsolete run directory or clear compiler objects to recover.
 
 TMPDIR is private and canonical. If macOS's per-user temporary path is too long for
 Unix sockets, the runner resolves the OS `/tmp` directory and creates a short
@@ -184,8 +202,8 @@ product functionality**. A real Mac Cargo invocation still requires the relevant
 exact pushed candidate and its platform environment.
 
 An opt-in integration test uses a tiny dependency-free crate pushed to a disposable
-local bare origin, real Cargo/sccache and the shared Mac lock. It tests this runner's
-fetch/build/evidence/reclamation path without compiling the HiRoute workspace:
+local bare origin, real Cargo and an isolated sccache endpoint/cache under the shared host lock. It tests this runner's
+fetch/build/evidence/reclamation path, two compilations across run cleanup, stale-server refusal and failed-test retention without compiling the HiRoute workspace:
 
 ```sh
 HIROUTE_REAL_CARGO_TEST=1 python3 scripts/test-local-rust.py Cleanup.test_real_cargo_pushed_fixture_lifecycle

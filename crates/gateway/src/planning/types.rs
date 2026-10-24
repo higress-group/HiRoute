@@ -64,6 +64,8 @@ pub enum ComplexityReasonCodeV1 {
 #[serde(deny_unknown_fields)]
 pub struct BranchDecisionV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_protocol: Option<hiroute_domain::DecisionProtocolV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub routing_observation: Option<hiroute_domain::RoutingObservationV1>,
@@ -171,12 +173,16 @@ pub struct MaterializedModelGroupV1 {
 pub enum MaterializedRouteV1 {
     Branches {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        extension: Option<hiroute_domain::DecisionExtensionIdentityV1>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         native_protocol: Option<hiroute_domain::FrozenNativeProtocolV1>,
         branches: Vec<hiroute_domain::MaterializedBranchV1>,
         default_branch_id: String,
         reselect_on_user_message: bool,
     },
     SmartSaving {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        extension: Option<hiroute_domain::DecisionExtensionIdentityV1>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         native_protocol: Option<hiroute_domain::FrozenNativeProtocolV1>,
         judgment: Box<hiroute_domain::JudgmentSettingsV1>,

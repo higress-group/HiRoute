@@ -26,7 +26,7 @@ fn outcome(
     let policy = execution_policy(
         input,
         &branches[0].id,
-        &branches[0].judgment,
+        branches[0].judgment.as_ref().unwrap(),
         &branches[0].name,
     );
     ClassificationOutcome {
@@ -186,13 +186,15 @@ fn c_input() -> PlannerInputV1 {
     };
     let protocol = hiroute_domain::NativeProtocolV1::default();
     for branch in branches.iter_mut() {
-        protocol.stock_assessment(&mut branch.judgment);
+        protocol.stock_assessment(branch.judgment.as_mut().unwrap());
     }
     *native_protocol = Some(
         hiroute_domain::FrozenNativeProtocolV1::freeze(
             &protocol,
             hiroute_domain::branch_decision_definition(branches, default_branch_id),
-            branches.iter().map(|b| (b.id.clone(), b.judgment.clone())),
+            branches
+                .iter()
+                .map(|b| (b.id.clone(), b.judgment.clone().unwrap())),
         )
         .unwrap(),
     );
@@ -407,5 +409,41 @@ fn not_dispatched_is_unrated_while_observed_no_target_remains_no_target() {
             (eligibility, reason, A::NotConsidered)
         );
         assert!(observed.score.is_none() && !observed.applicability_requested);
+    }
+}
+
+#[test]
+fn extension_group_is_authoritative_even_with_a_low_complete_assessment() {
+    let mut input = fixture();
+    for selected in [ExecutionGroupV1::Regular, ExecutionGroupV1::Primary] {
+        let mut result = outcome(&input, Some(0.99), Some(0.0));
+        let MaterializedRouteV1::Branches { extension, .. } = &mut input.policy.route else {
+            unreachable!()
+        };
+        *extension = Some(hiroute_domain::DecisionExtensionIdentityV1 {
+            id: "extension/test".into(),
+            revision: 1,
+        });
+        result.decision.execution_group = selected;
+        result.decision.selection_reason = ModelGroupReasonV1::ExtensionDecision;
+        apply(&input, &history(), &mut result);
+        assert_eq!(result.decision.execution_group, selected);
+        assert_eq!(
+            result.decision.selection_reason,
+            ModelGroupReasonV1::ExtensionDecision
+        );
+        assert!(result.decision.simple_probability.is_none());
+        assert!(result.decision.simple_threshold_millis.is_none());
+        assert!(result.decision.competence_trigger.is_none());
+        assert!(
+            result
+                .decision
+                .policy
+                .as_ref()
+                .unwrap()
+                .floor_millis
+                .is_none()
+        );
+        assert_eq!(result.assessment.as_ref().unwrap().score, 0.0);
     }
 }

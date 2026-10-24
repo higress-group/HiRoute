@@ -81,8 +81,8 @@ pub(super) fn request_template(
     let template =
         prepare_replay_json_template(&body, refs).map_err(|_| CallFailure::RejectedInput)?;
     Ok(PreparedDecisionRequest {
+        target_category: None,
         template,
-        has_target: target.is_some(),
         target_partial,
         bindings: Some(bindings),
         routing_observation: None,
@@ -275,6 +275,9 @@ pub(super) fn parse_response(
     }) && (bindings.assessment.is_none() || score.is_some())
         && (bindings.applicability.is_none() || applicability.is_some());
     Ok(ClassifierResponse {
+        extension_group: None,
+        extension_reason: None,
+        extension_decision: false,
         branch_id,
         probabilities,
         degree_failed,

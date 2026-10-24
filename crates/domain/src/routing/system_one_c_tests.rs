@@ -123,7 +123,7 @@ fn categorical_default_assessment_is_labeled_from_authoring_intent() {
         condition: "Write an article".into(),
         group: super::super::MaterializedGroupId::Branch(0),
         primary_group: Some(super::super::MaterializedGroupId::BranchPrimary(0)),
-        judgment: j.clone(),
+        judgment: Some(j.clone()),
     };
     let mut other = branch.clone();
     other.id = "general".into();
@@ -135,7 +135,9 @@ fn categorical_default_assessment_is_labeled_from_authoring_intent() {
     let frozen = FrozenNativeProtocolV1::freeze(
         &p,
         branch_decision_definition(&branches, "writing"),
-        branches.iter().map(|b| (b.id.clone(), b.judgment.clone())),
+        branches
+            .iter()
+            .map(|b| (b.id.clone(), b.judgment.clone().unwrap())),
     )
     .unwrap();
     let before = serde_json::to_vec(&frozen).unwrap();

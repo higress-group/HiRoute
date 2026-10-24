@@ -46,7 +46,8 @@ fn trial_turn(f: &Fixture, revision: u64, group: ExecutionGroupV1) -> ExecutionF
         branch_execution: Some(BranchExecutionV1 {
             policy: BranchExecutionPolicyV1 {
                 name: "Trial".into(),
-                floor_millis: 500,
+                extension: None,
+                floor_millis: Some(500),
                 criteria_digest: None,
             },
             group,
