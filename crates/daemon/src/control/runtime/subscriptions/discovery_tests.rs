@@ -317,7 +317,7 @@ fn saved_subscription_without_runtime_does_not_become_missing_authentication() {
         SubscriptionLoginProviderV1::Codex,
         SubscriptionLoginProviderV1::Claude,
     ] {
-        let fixture = Fixture::new();
+        let mut fixture = Fixture::new();
         save_login(&fixture, provider);
         // Independent OAuth is healthy even when no borrowed native runtime exists.
         fixture.adapter().enable_subscription_maintenance();
@@ -344,31 +344,26 @@ fn saved_subscription_without_runtime_does_not_become_missing_authentication() {
                 .subscription_maintenance_presentation(&source.source_id)
                 .is_none()
         );
-        fixture.runtimes.shutdown().unwrap();
-        // Open the same durable facts with no CPA handle. The original composition is
-        // quiescent and retains the fixture's process/temp-directory cleanup ownership.
-        let runtime = ProductionControlRuntime::open_inner_with_cpa(
-            &fixture.root.path().join("storage"),
-            crate::release_catalog::fixture_catalog(),
-            None,
-            None,
-            false,
-        )
-        .unwrap();
-        runtime.adapter.enable_subscription_maintenance();
+        fixture.reopen(false);
+        fixture.adapter().enable_subscription_maintenance();
         for now in [10_000, 20_000] {
-            runtime.adapter.scan_subscription_maintenance(now).unwrap();
+            fixture
+                .adapter()
+                .scan_subscription_maintenance(now)
+                .unwrap();
             assert!(matches!(
-                runtime.adapter.subscription_maintenance_presentation(&source.source_id),
+                fixture.adapter().subscription_maintenance_presentation(&source.source_id),
                 Some(super::super::maintenance::SubscriptionMaintenancePresentation::RuntimeUnavailable)
             ));
             assert_eq!(
-                runtime.adapter.subscription_routing_unavailability(&source),
+                fixture
+                    .adapter()
+                    .subscription_routing_unavailability(&source),
                 hiroute_application_api::PlanCandidateUnavailableReasonV1::RuntimeUnavailable
             );
         }
-        let after = runtime
-            .adapter
+        let after = fixture
+            .adapter()
             .stores_lock()
             .unwrap()
             .control()
@@ -378,7 +373,8 @@ fn saved_subscription_without_runtime_does_not_become_missing_authentication() {
             before, after,
             "runtime loss must not rewrite saved source or models"
         );
-        drop(runtime);
+        fixture.reopen(true);
+        fixture.adapter().enable_subscription_maintenance();
         fixture
             .adapter()
             .scan_subscription_maintenance(30_000)
@@ -436,7 +432,7 @@ fn public_decision_service_list_reads_saved_state_without_contacting_failed_cpa(
         control_calls(&fixture, &codex),
     ];
     let before_spawns = fixture.spawns();
-    let application = ApplicationService::new(fixture.runtime.application_ports());
+    let application = ApplicationService::new(fixture.runtime().application_ports());
     let request = |operation: &str| LocalControlRequestV2 {
         schema_version: LOCAL_CONTROL_SCHEMA_V2,
         request_id: format!("health-read-{operation}"),

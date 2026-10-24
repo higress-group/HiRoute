@@ -42,7 +42,7 @@ mod discovery_tests;
 mod routing_lock_tests;
 
 struct Fixture {
-    runtime: ProductionControlRuntime,
+    runtime: Option<ProductionControlRuntime>,
     runtimes: Arc<ManagedCpaRuntimeSet>,
     root: crate::test_support::PrivateTempDir,
 }
@@ -137,6 +137,16 @@ impl Fixture {
             },
         )
         .unwrap();
+        Self::finish_startup(&runtime, &storage_root);
+        // Maintenance is intentionally not enabled: each interleaving below owns its clock.
+        Self {
+            runtime: Some(runtime),
+            runtimes,
+            root,
+        }
+    }
+
+    fn finish_startup(runtime: &ProductionControlRuntime, storage_root: &std::path::Path) {
         let target = Arc::new(crate::gateway_ports::GatewayPublicationAdapter::new(
             Arc::new(
                 hiroute_gateway::server::publication::GatewayPublicationInstaller::open(
@@ -149,18 +159,41 @@ impl Fixture {
         runtime.adapter.reconcile_startup_and_open().unwrap();
         runtime
             .adapter
+            .reconcile_cpa_runtime_from_management()
+            .unwrap();
+        runtime
+            .adapter
             .finish_startup_publication_recovery()
             .unwrap();
-        // Maintenance is intentionally not enabled: each interleaving below owns its clock.
-        Self {
-            runtime,
-            runtimes,
-            root,
-        }
+    }
+
+    fn runtime(&self) -> &ProductionControlRuntime {
+        self.runtime.as_ref().expect("fixture Control is open")
     }
 
     fn adapter(&self) -> &LocalControlAdapter {
-        &self.runtime.adapter
+        &self.runtime().adapter
+    }
+
+    fn reopen(&mut self, with_cpa: bool) {
+        self.runtimes.shutdown().unwrap();
+        // Release the production storage owner; opening a second owner must remain locked.
+        drop(self.runtime.take());
+        let runtimes = with_cpa.then(|| self.runtimes.clone());
+        let sources = runtimes
+            .as_ref()
+            .map(|runtime| runtime.clone() as Arc<dyn CpaRegisteredSourcePort + Send + Sync>);
+        let storage_root = self.root.path().join("storage");
+        let runtime = ProductionControlRuntime::open_inner_with_cpa(
+            &storage_root,
+            crate::release_catalog::fixture_catalog(),
+            sources,
+            runtimes,
+            false,
+        )
+        .unwrap();
+        Self::finish_startup(&runtime, &storage_root);
+        self.runtime = Some(runtime);
     }
 
     fn authorize(
@@ -585,7 +618,7 @@ fn forget_waits_for_save_lifecycle_and_disables_the_new_binding() {
     let login = fixture.authorize(SubscriptionLoginProviderV1::Claude);
     let checked = fixture.check(&login);
     let prepared = fixture.prepare(fixture.candidate_request(&checked, "save-holds-lifecycle"));
-    let adapter = fixture.runtime.adapter.clone();
+    let adapter = fixture.runtime().adapter.clone();
     let (saved_tx, saved_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
     let save = std::thread::spawn(move || {
@@ -599,7 +632,7 @@ fn forget_waits_for_save_lifecycle_and_disables_the_new_binding() {
         drop(lifecycle);
     });
     saved_rx.recv_timeout(Duration::from_secs(10)).unwrap();
-    let adapter = fixture.runtime.adapter.clone();
+    let adapter = fixture.runtime().adapter.clone();
     let login_ref = login.login_ref.clone();
     let (entered_tx, entered_rx) = mpsc::channel();
     let (finished_tx, finished_rx) = mpsc::channel();
@@ -643,7 +676,7 @@ fn save_waits_for_withdrawal_lifecycle_then_rejects_the_old_prepared() {
     let checked = fixture.check(&login);
     let prepared = fixture.prepare(fixture.candidate_request(&checked, "save-after-withdrawal"));
     let lifecycle = fixture.adapter().lock_subscription_lifecycle().unwrap();
-    let adapter = fixture.runtime.adapter.clone();
+    let adapter = fixture.runtime().adapter.clone();
     let (entered_tx, entered_rx) = mpsc::channel();
     let (finished_tx, finished_rx) = mpsc::channel();
     let save = std::thread::spawn(move || {
