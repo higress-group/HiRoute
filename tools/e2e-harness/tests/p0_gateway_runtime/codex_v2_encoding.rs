@@ -219,8 +219,39 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
                 .filter(|e| e["fact"]["kind"] == "route_decision")
                 .collect::<Vec<_>>();
             assert_eq!(routes.len(), 3);
-            assert_eq!(routes[1]["fact"]["complexity"]["inherited"], true);
-            assert_eq!(routes[2]["fact"]["complexity"]["inherited"], false);
+            let decisions = routes
+                .iter()
+                .map(|event| {
+                    serde_json::from_value::<hiroute_domain::BranchDecisionV1>(
+                        event["fact"]["complexity"].clone(),
+                    )
+                    .unwrap()
+                })
+                .collect::<Vec<_>>();
+            use hiroute_domain::{ComplexityDecisionSourceV1, ExecutionGroupV1};
+            assert_eq!(
+                decisions
+                    .iter()
+                    .map(|d| d.decision_source)
+                    .collect::<Vec<_>>(),
+                [
+                    ComplexityDecisionSourceV1::ExternalClassifier,
+                    ComplexityDecisionSourceV1::Inherited,
+                    ComplexityDecisionSourceV1::ExternalClassifier,
+                ]
+            );
+            assert_eq!(
+                decisions
+                    .iter()
+                    .map(|d| d.execution_group)
+                    .collect::<Vec<_>>(),
+                [
+                    ExecutionGroupV1::Regular,
+                    ExecutionGroupV1::Regular,
+                    ExecutionGroupV1::Primary
+                ]
+            );
+            assert!(decisions.iter().all(|d| !d.fallback_used));
             let members = routes[..2]
                 .iter()
                 .map(|e| e["correlation"]["request_id"].clone())
