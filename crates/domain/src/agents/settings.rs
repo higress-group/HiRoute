@@ -23,7 +23,7 @@ pub enum AgentModelSelectionV2 {
     #[serde(rename = "opencode_additional")]
     OpenCodeAdditional {
         /// Optional native metadata only; disabling it does not disable model routing.
-        /// Omission preserves released selection bytes and the normal plugin installation.
+        /// Omission preserves existing selection bytes and the normal plugin installation.
         #[serde(
             default = "routing_metadata_enabled",
             skip_serializing_if = "is_enabled"

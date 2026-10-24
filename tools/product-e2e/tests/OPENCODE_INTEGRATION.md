@@ -61,7 +61,7 @@ manifests to obtain a passing startup result.
 
 The public Agent settings selection accepts `routing_metadata: false` for
 `opencode_additional`. It is saved with the model configuration and survives
-daemon restarts and ordinary model edits. It omits only HiRoute's metadata plugin;
+daemon restarts and Desktop model edits. It omits only HiRoute's metadata plugin;
 all selected Plans, protocols and Gateway routing remain available. Other external
 plugins can still cause the native dependency wait.
 

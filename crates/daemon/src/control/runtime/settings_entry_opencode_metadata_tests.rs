@@ -40,6 +40,15 @@ fn blocked(fixture: &QoderFixture, selection: &serde_json::Value, reason: &str) 
             .any(|r| r["reason"] == reason),
         "{result}"
     );
+    let rejected = fixture.service.dispatch_wire(request(
+        "ApplyAgentConnectionChange",
+        json!({"spec":selection, "accept_digest":result["accept_digest"],
+            "dependency_digest":result["dependency_digest"],
+            "expected_revisions":result["expected_revisions"],
+            "idempotency_key":format!("rejected-{reason}")}),
+        None,
+    ));
+    assert!(rejected.error.is_some(), "{rejected:?}");
     assert_eq!(fs::read(&fixture.native_config).unwrap(), before);
     assert_eq!(fs::read(adapter(fixture)).ok(), resource);
 }
