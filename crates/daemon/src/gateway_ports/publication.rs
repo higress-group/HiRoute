@@ -57,7 +57,7 @@ impl GatewayPublicationAdapter {
     ) -> Result<ExpectedPublication, PublicationTargetError> {
         let mut cache = self
             .expected
-            .lock()
+            .try_lock()
             .map_err(|_| PublicationTargetError::Unavailable)?;
         if let Some((previous, expected)) = cache.as_ref()
             && previous == record
