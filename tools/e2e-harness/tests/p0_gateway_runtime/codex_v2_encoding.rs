@@ -5,6 +5,9 @@ use super::*;
 use hiroute_domain::UpstreamProtocol;
 use serde_json::{Value, json};
 
+#[path = "codex_nullable_reasoning.rs"]
+mod nullable_reasoning;
+
 const ASSESSED_PRIMARY: &[u8] =
     br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#;
 const TOOL: &[u8] = br#"{"id":"tool","model":"runtime-native","status":"completed","output":[{"type":"function_call","id":"fc","call_id":"call","namespace":"collaboration","name":"spawn_agent","arguments":"{\"message\":\"read fixture\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}"#;
@@ -167,154 +170,181 @@ fn provider_reply(streaming: bool, tool: bool, declared: bool) -> ProviderReply 
 fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage() {
     for (v2, declared) in [(false, false), (false, true), (true, false), (true, true)] {
         for streaming in [false, true] {
-            let regular = NativeProvider::start(vec![
-                provider_reply(streaming, true, declared),
-                provider_reply(streaming, false, declared),
-            ]);
-            let primary = NativeProvider::start(vec![provider_reply(streaming, false, declared)]);
-            let classifier =
-                NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_PRIMARY)]);
-            let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
-                &[&regular, &primary, &classifier],
-                1,
-            );
-            dialect(&fixture, true);
-            let mut input = vec![json!({"role":"user","content":"A_READ_FIXTURE"})];
-            let mut output = send(&fixture, v2, "a", &input, streaming);
-            assert_eq!(
-                output[0].get("encrypted_function_args").cloned(),
-                if v2 { Some(json!([])) } else { None }
-            );
-            let call = output[0]["call_id"].clone();
-            if !v2 {
-                output[0]
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("encrypted_function_args");
-            }
-            input.extend(output);
-            input.push(json!({"type":"function_call_output","call_id":call,"output":"CONTROLLED_TOOL_RECEIPT"}));
-            input.extend(send(&fixture, v2, "a", &input, streaming));
-            assert_eq!(
-                classifier.calls(),
-                1,
-                "v2={v2}, declared={declared}, streaming={streaming}: tool continuation opened a new decision"
-            );
-            input.push(json!({"role":"user","content":"B_INDEPENDENT_TASK"}));
-            send(&fixture, v2, "b", &input, streaming);
-            assert_eq!(
-                (regular.calls(), primary.calls(), classifier.calls()),
-                (2, 1, 2)
-            );
-            let upstream = classifier_body(&regular, 0);
-            assert_eq!(upstream["tools"], expected_tools(v2, true));
-            assert_eq!(
-                classifier_body(&regular, 1)["input"][2],
-                json!({"type":"function_call_output","call_id":"call","output":"CONTROLLED_TOOL_RECEIPT"})
-            );
-            assert_eq!(classifier_body(&regular, 1)["input"][1]["call_id"], "call");
-            assert!(
-                classifier_body(&regular, 1)["input"][1]
-                    .get("encrypted_function_args")
-                    .is_none()
-            );
-            let judged = classifier_body(&classifier, 1);
-            assert_eq!(
-                judged["preceding_stage"]["complete"], true,
-                "v2={v2}, declared={declared}, streaming={streaming}: {judged}"
-            );
-            let from = judged["preceding_stage"]["from"].as_u64().unwrap() as usize;
-            let assessed = json!(&judged["visible_conversation"].as_array().unwrap()[from..]);
-            // Decision API deliberately excludes raw tool-result bodies. Its status
-            // follows the native result's declared status, absent in this fixture.
-            let mut assessed_user = vec![json!({"kind":"text","text":"A_READ_FIXTURE"})];
-            if v2 {
-                assessed_user.push(
-                    json!({"kind":"unavailable","source_kind":"unverified_request_user_origin"}),
-                );
-            }
-            assert_eq!(
-                assessed,
-                json!([{
-                    "user":assessed_user,
-                    "status":"completed",
-                    "steps":[[{"kind":"tool_activity","tool":"collaboration.spawn_agent","status":"unknown"}],
-                             [{"kind":"text","text":"ok"}]]
-                }])
-            );
-            let facts = wait_execution_facts(&fixture, 3);
-            let routes = facts
-                .iter()
-                .filter(|e| e["fact"]["kind"] == "route_decision")
-                .collect::<Vec<_>>();
-            assert_eq!(routes.len(), 3);
-            let decisions = routes
-                .iter()
-                .map(|event| {
-                    serde_json::from_value::<hiroute_domain::BranchDecisionV1>(
-                        event["fact"]["complexity"].clone(),
-                    )
-                    .unwrap()
-                })
-                .collect::<Vec<_>>();
-            use hiroute_domain::{ComplexityDecisionSourceV1, ExecutionGroupV1};
-            assert_eq!(
-                decisions
-                    .iter()
-                    .map(|d| d.decision_source)
-                    .collect::<Vec<_>>(),
-                [
-                    ComplexityDecisionSourceV1::ExternalClassifier,
-                    ComplexityDecisionSourceV1::Inherited,
-                    ComplexityDecisionSourceV1::ExternalClassifier,
-                ]
-            );
-            assert_eq!(
-                decisions
-                    .iter()
-                    .map(|d| d.execution_group)
-                    .collect::<Vec<_>>(),
-                [
-                    ExecutionGroupV1::Regular,
-                    ExecutionGroupV1::Regular,
-                    ExecutionGroupV1::Primary
-                ]
-            );
-            assert!(decisions.iter().all(|d| !d.fallback_used));
-            let members = routes[..2]
-                .iter()
-                .map(|e| e["correlation"]["request_id"].clone())
-                .collect::<Vec<_>>();
-            let score = facts
-                .iter()
-                .find(|e| e["fact"]["kind"] == "branch_assessment_recorded")
-                .unwrap();
-            assert_eq!(score["fact"]["score"], 0.75);
-            assert_eq!(score["fact"]["partial"], false);
-            assert_eq!(
-                score["fact"]["history_membership"]["request_ids"],
-                json!(members)
-            );
-            assert_eq!(
-                score["fact"]["history_membership"]["capture_partial"],
-                false
-            );
-            assert_eq!(score["fact"]["history_membership"]["source_unverified"], v2);
-            let admissions = facts
-                .iter()
-                .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")
-                .collect::<Vec<_>>();
-            assert_eq!(admissions.len(), 3);
-            assert_eq!(
-                admissions[0]["fact"]["agent_turn_id"],
-                admissions[1]["fact"]["agent_turn_id"]
-            );
-            assert_ne!(
-                admissions[1]["fact"]["agent_turn_id"],
-                admissions[2]["fact"]["agent_turn_id"]
-            );
+            complete_tool_stage(v2, declared, streaming, false);
         }
     }
+}
+
+fn complete_tool_stage(v2: bool, declared: bool, streaming: bool, nullable: bool) {
+    let regular = NativeProvider::start(vec![
+        if nullable {
+            nullable_reasoning::tool_reply(streaming)
+        } else {
+            provider_reply(streaming, true, declared)
+        },
+        provider_reply(streaming, false, declared),
+    ]);
+    let primary = NativeProvider::start(vec![provider_reply(streaming, false, declared)]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_PRIMARY)]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&regular, &primary, &classifier],
+        1,
+    );
+    dialect(&fixture, true);
+    let mut input = vec![json!({"role":"user","content":"A_READ_FIXTURE"})];
+    let mut output = send(&fixture, v2, "a", &input, streaming);
+    let tool_index = usize::from(nullable);
+    assert_eq!(
+        output[tool_index].get("encrypted_function_args").cloned(),
+        if v2 { Some(json!([])) } else { None }
+    );
+    let call = output[tool_index]["call_id"].clone();
+    if !v2 || nullable {
+        output[tool_index]
+            .as_object_mut()
+            .unwrap()
+            .remove("encrypted_function_args");
+    }
+    if nullable {
+        // Codex 0.147's request DTO preserves a null reasoning carrier
+        // and one summary_text, but does not serialize output status.
+        for item in &mut output {
+            item.as_object_mut().unwrap().remove("status");
+        }
+        nullable_reasoning::assert_replayed_shape(&output);
+    }
+    input.extend(output);
+    input.push(
+        json!({"type":"function_call_output","call_id":call,"output":"CONTROLLED_TOOL_RECEIPT"}),
+    );
+    let original_input = input.clone();
+    input.extend(send(&fixture, v2, "a", &input, streaming));
+    assert_eq!(
+        classifier.calls(),
+        1,
+        "v2={v2}, declared={declared}, streaming={streaming}: tool continuation opened a new decision"
+    );
+    input.push(json!({"role":"user","content":"B_INDEPENDENT_TASK"}));
+    send(&fixture, v2, "b", &input, streaming);
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (2, 1, 2)
+    );
+    let upstream = classifier_body(&regular, 0);
+    assert_eq!(upstream["tools"], expected_tools(v2, true));
+    assert_eq!(classifier_body(&regular, 1)["input"], json!(original_input));
+    assert_eq!(
+        classifier_body(&regular, 1)["input"][tool_index + 2],
+        json!({"type":"function_call_output","call_id":"call","output":"CONTROLLED_TOOL_RECEIPT"})
+    );
+    assert_eq!(
+        classifier_body(&regular, 1)["input"][tool_index + 1]["call_id"],
+        "call"
+    );
+    assert!(
+        classifier_body(&regular, 1)["input"][tool_index + 1]
+            .get("encrypted_function_args")
+            .is_none()
+    );
+    let judged = classifier_body(&classifier, 1);
+    assert_eq!(
+        judged["preceding_stage"]["complete"], true,
+        "v2={v2}, declared={declared}, streaming={streaming}: {judged}"
+    );
+    let from = judged["preceding_stage"]["from"].as_u64().unwrap() as usize;
+    let assessed = json!(&judged["visible_conversation"].as_array().unwrap()[from..]);
+    // Decision API deliberately excludes raw tool-result bodies. Its status
+    // follows the native result's declared status, absent in this fixture.
+    let mut assessed_user = vec![json!({"kind":"text","text":"A_READ_FIXTURE"})];
+    if v2 {
+        assessed_user
+            .push(json!({"kind":"unavailable","source_kind":"unverified_request_user_origin"}));
+    }
+    let tool_name = if nullable {
+        "exec_command"
+    } else {
+        "collaboration.spawn_agent"
+    };
+    assert_eq!(
+        assessed,
+        json!([{
+            "user":assessed_user,
+            "status":"completed",
+            "steps":[[{"kind":"tool_activity","tool":tool_name,"status":"unknown"}],
+                     [{"kind":"text","text":"ok"}]]
+        }])
+    );
+    let facts = wait_execution_facts(&fixture, 3);
+    let routes = facts
+        .iter()
+        .filter(|e| e["fact"]["kind"] == "route_decision")
+        .collect::<Vec<_>>();
+    assert_eq!(routes.len(), 3);
+    let decisions = routes
+        .iter()
+        .map(|event| {
+            serde_json::from_value::<hiroute_domain::BranchDecisionV1>(
+                event["fact"]["complexity"].clone(),
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    use hiroute_domain::{ComplexityDecisionSourceV1, ExecutionGroupV1};
+    assert_eq!(
+        decisions
+            .iter()
+            .map(|d| d.decision_source)
+            .collect::<Vec<_>>(),
+        [
+            ComplexityDecisionSourceV1::ExternalClassifier,
+            ComplexityDecisionSourceV1::Inherited,
+            ComplexityDecisionSourceV1::ExternalClassifier,
+        ]
+    );
+    assert_eq!(
+        decisions
+            .iter()
+            .map(|d| d.execution_group)
+            .collect::<Vec<_>>(),
+        [
+            ExecutionGroupV1::Regular,
+            ExecutionGroupV1::Regular,
+            ExecutionGroupV1::Primary
+        ]
+    );
+    assert!(decisions.iter().all(|d| !d.fallback_used));
+    let members = routes[..2]
+        .iter()
+        .map(|e| e["correlation"]["request_id"].clone())
+        .collect::<Vec<_>>();
+    let score = facts
+        .iter()
+        .find(|e| e["fact"]["kind"] == "branch_assessment_recorded")
+        .unwrap();
+    assert_eq!(score["fact"]["score"], 0.75);
+    assert_eq!(score["fact"]["partial"], false);
+    assert_eq!(
+        score["fact"]["history_membership"]["request_ids"],
+        json!(members)
+    );
+    assert_eq!(
+        score["fact"]["history_membership"]["capture_partial"],
+        false
+    );
+    assert_eq!(score["fact"]["history_membership"]["source_unverified"], v2);
+    let admissions = facts
+        .iter()
+        .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")
+        .collect::<Vec<_>>();
+    assert_eq!(admissions.len(), 3);
+    assert_eq!(
+        admissions[0]["fact"]["agent_turn_id"],
+        admissions[1]["fact"]["agent_turn_id"]
+    );
+    assert_ne!(
+        admissions[1]["fact"]["agent_turn_id"],
+        admissions[2]["fact"]["agent_turn_id"]
+    );
 }
 
 #[test]
