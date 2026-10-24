@@ -103,6 +103,72 @@ fn plaintext_function_encoding_compatibility_is_contextual_and_keeps_exact_diges
 }
 
 #[test]
+fn plaintext_encoding_keeps_empty_reasoning_presence_and_position() {
+    for summary in [json!([]), json!([{"type":"summary_text","text":""}])] {
+        let mut source = output(Some(json!([])));
+        source[0]["summary"] = summary.clone();
+        let accepted = capture(&source);
+        for changed in ["none", "omitted", "extra", "reordered"] {
+            let mut items = output(None);
+            items[0]["summary"] = summary.clone();
+            match changed {
+                "none" => {}
+                "omitted" => {
+                    items.remove(0);
+                }
+                "extra" => {
+                    items.insert(0, items[0].clone());
+                }
+                "reordered" => items.swap(0, 1),
+                _ => unreachable!(),
+            }
+            let body = wire(items);
+            for inline in [0, 8192] {
+                let (_dir, replay) = replay();
+                let request = super::super::reasoning_boundary::production_request_for(
+                    IngressProtocol::Responses,
+                    &body,
+                    &replay,
+                    inline,
+                );
+                let original = request.clone();
+                let matched =
+                    incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default())
+                        .and_then(|incoming| accepted.evidence().unwrap().matches(incoming));
+                assert_eq!(
+                    matched,
+                    (changed == "none").then_some(true),
+                    "empty reasoning {changed} at allowance {inline}"
+                );
+                assert_eq!(request, original);
+            }
+        }
+    }
+}
+
+#[test]
+fn plaintext_encoding_cannot_omit_an_empty_reasoning_item() {
+    let mut source = output(Some(json!([])));
+    source[0]["summary"] = json!([]);
+    let accepted = capture(&source);
+    let mut incoming = output(None);
+    incoming.remove(0);
+    let (_dir, replay) = replay();
+    let request = super::super::reasoning_boundary::production_request_for(
+        IngressProtocol::Responses,
+        &wire(incoming),
+        &replay,
+        0,
+    );
+    let matched = incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default())
+        .and_then(|incoming| accepted.evidence().unwrap().matches(incoming));
+    assert_eq!(
+        matched, None,
+        "encoding compatibility retains the entire reasoning boundary"
+    );
+}
+
+#[test]
 fn plaintext_encoding_compatibility_binds_the_whole_ordered_accepted_boundary() {
     let accepted = capture(&output(Some(json!([]))));
     for changed in [
