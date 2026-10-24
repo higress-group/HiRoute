@@ -275,13 +275,27 @@ fn codex_v2_large_function_argument_replay_keeps_three_encoding_states() {
             declaration.as_ref()
         );
         assert_eq!(actual["input"][1]["arguments"], args);
-        if declaration == Some(json!([])) {
+        if declaration
+            .as_ref()
+            .is_none_or(|value| value.as_array().unwrap().is_empty())
+        {
             let (actual, encoding) = backing.project(&request, &profile(true));
             let actual: Value = serde_json::from_slice(&actual).unwrap();
             assert_eq!(encoding, FunctionEncodingProjection::Plaintext);
             assert!(actual["input"][1].get("encrypted_function_args").is_none());
             assert_eq!(actual["input"][1]["arguments"], args);
             assert_eq!(actual["input"][1]["call_id"], "call_native");
+            let inline = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+            assert_eq!(
+                serde_json::to_vec(&actual).unwrap(),
+                project_candidate_request(&inline, &profile(true))
+                    .unwrap()
+                    .bytes
+            );
+            assert_eq!(
+                request.native_body.as_ref().unwrap()["input"][1].get("encrypted_function_args"),
+                declaration.as_ref()
+            );
         } else {
             assert!(project_candidate_request_template(&request, &profile(true)).is_err());
         }
