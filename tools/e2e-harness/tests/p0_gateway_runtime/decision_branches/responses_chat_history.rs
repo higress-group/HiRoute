@@ -7,8 +7,8 @@ const CHAT_OK: &[u8] = br#"{"id":"regular-ok","model":"regular-chat","choices":[
 const PRIMARY_TOOLS: &[u8] = br#"{"id":"primary-tools","model":"primary-responses","status":"completed","output":[{"type":"message","id":"msg-commentary","role":"assistant","phase":"commentary","status":"completed","content":[{"type":"output_text","text":"I will check the record."}]},{"type":"function_call","id":"fc-lookup","call_id":"lookup-call","name":"lookup","arguments":"{\"key\":\"alpha\"}","status":"completed"},{"type":"function_call","id":"fc-check","call_id":"check-call","name":"check","arguments":"{\"key\":\"beta\"}","status":"completed"}],"usage":{"input_tokens":5,"output_tokens":4,"total_tokens":9}}"#;
 const PRIMARY_FINAL: &[u8] = br#"{"id":"primary-final","model":"primary-responses","status":"completed","output":[{"type":"message","id":"msg-final","role":"assistant","phase":"final_answer","status":"completed","content":[{"type":"output_text","text":"Both records are valid."}]}],"usage":{"input_tokens":9,"output_tokens":3,"total_tokens":12}}"#;
 const SIMPLE: &[u8] = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#;
-const COMPLEX_WITH_ASSESSMENT: &[u8] = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.1,"1":0.9}},"q1":{"type":"score","score":0.9},"q2":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#;
-const SIMPLE_WITH_ASSESSMENT: &[u8] = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}},"q1":{"type":"score","score":0.9},"q2":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#;
+const COMPLEX_WITH_ASSESSMENT: &[u8] = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.1,"1":0.9}},"q1":{"type":"score","score":1.8},"q2":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#;
+const SIMPLE_WITH_ASSESSMENT: &[u8] = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}},"q1":{"type":"score","score":1.8},"q2":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#;
 
 #[test]
 fn completed_responses_commentary_returns_to_regular_chat_with_tools_and_assessment() {
