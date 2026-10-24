@@ -1,6 +1,7 @@
 //! Optional native semantic user projection. Execution and Observation retain the original IR.
 use std::io::{self, Read, Write};
 
+use hiroute_diagnostics::event::NativeInputProjection;
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
 use http::HeaderMap;
 use sha2::{Digest, Sha256};
@@ -20,6 +21,7 @@ mod codex;
 
 pub(super) struct NativeRoutingView {
     current_input: Option<Vec<ContentPart>>,
+    projection: NativeInputProjection,
     current_input_position: Option<CurrentInputPosition>,
     current_input_unavailable: bool,
     origin_unverified: bool,
@@ -40,15 +42,23 @@ impl NativeRoutingView {
             return peer;
         }
         if let Some(input) = crate::context_hold::native_input(headers) {
-            let selected = match input {
+            let (selected, projection) = match input {
                 Ok(crate::context_hold::NativeInput::NativeMessages(window)) => {
-                    window_input(request, replay, budget, &window)
+                    let selected = window_input(request, replay, budget, &window);
+                    let verdict = if selected.is_some() {
+                        NativeInputProjection::WindowApplied
+                    } else {
+                        NativeInputProjection::WindowRejected
+                    };
+                    (selected, verdict)
                 }
-                _ => None,
+                Ok(_) => (None, NativeInputProjection::CorrelationOnly),
+                Err(_) => (None, NativeInputProjection::InvalidInput),
             };
             return match selected {
                 Some((parts, position, reservation)) => Self {
                     current_input: Some(parts),
+                    projection,
                     current_input_position: Some(position),
                     current_input_unavailable: false,
                     origin_unverified: true,
@@ -56,6 +66,7 @@ impl NativeRoutingView {
                 },
                 None => Self {
                     current_input: None,
+                    projection,
                     current_input_position: None,
                     current_input_unavailable: false,
                     origin_unverified: true,
@@ -68,6 +79,7 @@ impl NativeRoutingView {
             // which repeated/decorated callback input is the current wire event.
             return Self {
                 current_input: None,
+                projection: NativeInputProjection::LegacyHintObserved,
                 current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: true,
@@ -77,6 +89,7 @@ impl NativeRoutingView {
         let Some(proof) = dsh_user_turns(headers) else {
             return Self {
                 current_input: None,
+                projection: NativeInputProjection::Wire,
                 current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: request.native_only,
@@ -89,6 +102,7 @@ impl NativeRoutingView {
         match projected {
             Some((parts, position, reservation)) => Self {
                 current_input: Some(parts),
+                projection: NativeInputProjection::LegacyWindowApplied,
                 current_input_position: Some(position),
                 current_input_unavailable: false,
                 origin_unverified: true,
@@ -96,12 +110,17 @@ impl NativeRoutingView {
             },
             None => Self {
                 current_input: None,
+                projection: NativeInputProjection::LegacyWindowRejected,
                 current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: true,
                 _reservation: None,
             },
         }
+    }
+
+    pub(super) fn projection(&self) -> NativeInputProjection {
+        self.projection
     }
 
     pub(super) fn current_input(&self) -> Option<&[ContentPart]> {

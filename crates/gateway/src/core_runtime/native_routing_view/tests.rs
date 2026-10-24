@@ -106,6 +106,7 @@ fn current_window_preserves_unlisted_users_and_binds_the_final_wire_scope() {
         "input":{"kind":"native_messages","event_id":"event","coverage":"window",
             "messages":[{"index":1,"sha256":hashes[1]}],"scope_digest":format!("{:x}", Sha256::digest(serde_json::to_vec(&hashes).unwrap()))}});
     let view = fixture.view(&original, envelope.clone());
+    assert_eq!(view.projection(), NativeInputProjection::WindowApplied);
     assert!(std::ptr::eq(view.request(&original), &original));
     assert_eq!(
         view.current_input().unwrap(),
@@ -124,6 +125,7 @@ fn current_window_preserves_unlisted_users_and_binds_the_final_wire_scope() {
         {"index":0,"sha256":hashes[0]}, {"index":1,"sha256":hashes[1]}
     ]);
     let rejected = fixture.view(&original, crossed);
+    assert_eq!(rejected.projection(), NativeInputProjection::WindowRejected);
     assert!(
         rejected.current_input().is_none(),
         "a batch cannot bridge actual output"
@@ -131,6 +133,7 @@ fn current_window_preserves_unlisted_users_and_binds_the_final_wire_scope() {
     assert!(rejected.current_input_position().is_none());
     envelope["input"]["scope_digest"] = "0".repeat(64).into();
     let rejected = fixture.view(&original, envelope);
+    assert_eq!(rejected.projection(), NativeInputProjection::WindowRejected);
     assert!(rejected.current_input().is_none());
     assert!(std::ptr::eq(rejected.request(&original), &original));
     assert!(rejected.origin_unverified());

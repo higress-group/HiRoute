@@ -95,8 +95,11 @@ check inline/Replay equivalence and known signed/redacted/encrypted controls.
 
 The `native_routing_evidence` debug event records the bounded inbound adapter
 header's presence, a local HMAC token, the actual V2 consumer verdict and applied
-history hints. It retains no raw headers, native IDs or credentials. A present
-header without a consumer verdict does not prove that the adapter was accepted.
+history hints. The projection verdict comes from the actual input consumer and
+distinguishes applied/rejected message windows from correlation-only hints.
+An accepted envelope does not by itself prove that its window was adopted.
+It retains no raw headers, native IDs or credentials. A present header without
+a consumer verdict does not prove that the adapter was accepted.
 The event shares the model request token with execution diagnostics; internal
 headers remain removed upstream. Disabled or saturated diagnostics cannot change
 routing or capture. See the [identity diagnostic boundary](src/context_hold/identity/diagnostic.rs).

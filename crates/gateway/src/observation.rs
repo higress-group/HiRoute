@@ -464,7 +464,10 @@ impl GatewayObservation {
         ingress: IngressProtocol,
         identity: &ContextIdentityFacts,
         capture_content: bool,
-        headers: Option<&http::HeaderMap>,
+        headers: Option<(
+            &http::HeaderMap,
+            hiroute_diagnostics::event::NativeInputProjection,
+        )>,
     ) -> RequestObservation {
         let ordinal = self.next_request.fetch_add(1, Ordering::Relaxed);
         let ordinal_bytes = ordinal.to_be_bytes();
@@ -532,9 +535,10 @@ impl GatewayObservation {
             b"request-scoped-turn",
             &[request_id.as_bytes()],
         );
-        if let Some(headers) = headers {
+        if let Some((headers, projection)) = headers {
             let context = self.diagnostic_context();
             let mut evidence = identity.routing_evidence(headers);
+            evidence.projection = projection;
             evidence.request_token = context.token(
                 hiroute_diagnostics::correlation::CorrelationDomain::ModelRequest,
                 &request_id,

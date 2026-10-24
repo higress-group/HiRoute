@@ -41,6 +41,7 @@ pub(super) fn prepare(
     Some(match projected {
         Some(((parts, reservation), index)) => NativeRoutingView {
             current_input: Some(parts),
+            projection: NativeInputProjection::PeerApplied,
             current_input_position: Some(CurrentInputPosition::Event(index)),
             current_input_unavailable: false,
             origin_unverified: true,
@@ -48,6 +49,11 @@ pub(super) fn prepare(
         },
         None => NativeRoutingView {
             current_input: None,
+            projection: if peer.is_some() || latest.is_none() {
+                NativeInputProjection::PeerUnavailable
+            } else {
+                NativeInputProjection::Wire
+            },
             current_input_position: index.map(CurrentInputPosition::Event),
             // An opaque current peer must never select an ancestor User as its
             // task. A later User event still uses the normal complete fallback.

@@ -15,6 +15,7 @@ pub struct NativeRoutingEvidence {
     pub checkpoint_applied: bool,
     pub compression_applied: bool,
     pub identity_conflict: bool,
+    pub projection: NativeInputProjection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,4 +75,21 @@ pub enum NativeRoutingOrigin {
     CurrentUser,
     ExistingTurn,
     Observed,
+}
+
+/// The result retained by the actual optional input consumer, not a second parser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeInputProjection {
+    Unobserved,
+    Wire,
+    CorrelationOnly,
+    InvalidInput,
+    WindowApplied,
+    WindowRejected,
+    LegacyHintObserved,
+    LegacyWindowApplied,
+    LegacyWindowRejected,
+    PeerApplied,
+    PeerUnavailable,
 }

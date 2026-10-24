@@ -33,6 +33,7 @@ impl ContextIdentityFacts {
             checkpoint_applied: native.checkpoint.is_some(),
             compression_applied: native.compacted,
             identity_conflict: self.routing.identity_conflict,
+            projection: hiroute_diagnostics::event::NativeInputProjection::Unobserved,
         }
     }
 }

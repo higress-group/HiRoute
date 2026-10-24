@@ -39,6 +39,9 @@ mod request_projection;
 #[path = "response_diagnostics_tests/pre_attempt_cancel.rs"]
 mod pre_attempt_cancel;
 
+#[path = "response_diagnostics_tests/native_evidence.rs"]
+mod native_evidence;
+
 const CHILD_CASE: &str = "HIROUTE_STREAM_DIAGNOSTIC_CASE";
 const CHILD_ROOT: &str = "HIROUTE_STREAM_DIAGNOSTIC_ROOT";
 const TOKEN: &str = "SENTINEL_CLIENT_CREDENTIAL";
@@ -325,7 +328,10 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             value["usage"] = json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
             (frame(value), None, None, 2)
         }
-        "capture_disabled" => {
+        "capture_disabled"
+        | "native_evidence_applied"
+        | "native_evidence_rejected"
+        | "native_evidence_disabled" => {
             let mut value = chat(json!({"content":"SENTINEL_PROVIDER_TEXT"}), json!("stop"));
             value["usage"] = json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
             (frame(value), None, None, 2)
@@ -340,6 +346,9 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             | "capture_known_usage_first"
             | "capture_unknown"
             | "capture_disabled"
+            | "native_evidence_applied"
+            | "native_evidence_rejected"
+            | "native_evidence_disabled"
     ) {
         wire.extend_from_slice(b"data: [DONE]\n\n");
     }
@@ -465,8 +474,13 @@ fn run_case(case: &str, root: &Path) {
     });
     let mut sinks = GatewayObservationSinks::discard();
     sinks.execution_fact = Arc::new(facts.clone());
-    let observation =
-        GatewayObservation::with_sinks(512 * 1024, sinks).with_diagnostics(diagnostics.port());
+    let observation = GatewayObservation::with_sinks(512 * 1024, sinks).with_diagnostics(
+        if case == "native_evidence_disabled" {
+            Default::default()
+        } else {
+            diagnostics.port()
+        },
+    );
     let runtime = ProductionGatewayRuntime::compose_with_planner_and_observation(
         ports,
         Arc::new(PublicationPlannerInputAuthority),
@@ -487,7 +501,8 @@ fn run_case(case: &str, root: &Path) {
     client
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
-    write!(client, "POST /v1/messages HTTP/1.1\r\nHost: {address}\r\nX-HiRoute-Token: {TOKEN}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+    let native_headers = native_evidence::headers(case);
+    write!(client, "POST /v1/messages HTTP/1.1\r\nHost: {address}\r\nX-HiRoute-Token: {TOKEN}\r\n{native_headers}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
     client.write_all(&body).unwrap();
     let mut response = Vec::new();
     if after_body {
@@ -585,6 +600,7 @@ fn run_case(case: &str, root: &Path) {
             .any(|r| payload(r, "level_applied").is_some_and(|v| v["level"] == "debug")),
         "actual Debug level missing: {log}"
     );
+    native_evidence::assert_evidence(case, &records, &upstream_request, &response);
     if relay {
         assert_prebody_relay_business(&facts);
     } else {
