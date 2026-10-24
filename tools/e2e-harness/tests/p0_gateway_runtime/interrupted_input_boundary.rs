@@ -424,7 +424,7 @@ fn assert_finished(fixture: &RuntimeFixture, classifier: &NativeProvider, a: &Va
         assert_eq!(score[key], b[key], "C must assess B's actual {key}");
     }
     let assessed = classifier_body(classifier, 2);
-    let from = assessed["assessment_target"]["from"].as_u64().unwrap() as usize;
+    let from = assessed["preceding_stage"]["from"].as_u64().unwrap() as usize;
     let target = &assessed["visible_conversation"].as_array().unwrap()[from..];
     assert_eq!(target.len(), 1);
     assert_eq!(target[0]["status"], "completed");
@@ -645,7 +645,7 @@ fn native_id_and_input_boundary(b_turn: &str) {
         assert_eq!(score[key], a[key], "B assesses the actual complete A {key}");
     }
     let assessed = classifier_body(&classifier, 1);
-    let from = assessed["assessment_target"]["from"].as_u64().unwrap() as usize;
+    let from = assessed["preceding_stage"]["from"].as_u64().unwrap() as usize;
     let target = &assessed["visible_conversation"].as_array().unwrap()[from..];
     assert_eq!(target.len(), 1);
     assert_eq!(target[0]["status"], "completed");

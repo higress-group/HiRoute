@@ -9,7 +9,8 @@ const SESSION: &str = "pi-tool-delta-conflict";
 const A_USER: &str = "A: read both public fixture files";
 const B_USER: &str = "B: independently read the next fixture";
 const C_USER: &str = "C: design an independent follow-up";
-const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
+const ASSESSED_COMPLEX: &[u8] =
+    br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#;
 
 fn tool(id: &str, path: &str) -> Value {
     json!({"type":"function_call","id":format!("fc-{id}"),"call_id":id,
@@ -327,7 +328,7 @@ fn real_listener_conflicting_parallel_tool_final_stays_partial_and_next_stage_re
         );
     }
     let assessed = classifier_body(&classifier, 3);
-    let from = assessed["assessment_target"]["from"].as_u64().unwrap() as usize;
+    let from = assessed["preceding_stage"]["from"].as_u64().unwrap() as usize;
     let target = &assessed["visible_conversation"].as_array().unwrap()[from..];
     assert_eq!(target.len(), 1);
     assert_eq!(target[0]["status"], "completed");

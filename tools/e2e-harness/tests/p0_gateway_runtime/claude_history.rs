@@ -59,7 +59,7 @@ fn real_listener_claude_known_auxiliary_survives_missing_identity_and_bad_prompt
     assert!(current.contains("CLAUDE_ACTUAL_B") && current.contains("CLAUDE_SUPPLEMENTAL_TEXT"));
     assert!(current.contains("unverified_request_user_origin"));
     assert!(
-        body["assessment_target"].is_object(),
+        body["preceding_stage"].is_object(),
         "actual A must remain evaluable"
     );
     assert!(

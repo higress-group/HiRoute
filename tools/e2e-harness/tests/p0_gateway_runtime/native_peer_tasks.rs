@@ -111,7 +111,9 @@ fn real_listener_opaque_peer_is_not_ancestor_input_and_same_session_a_b_recovers
     let primary = NativeProvider::start(vec![reply(), reply()]);
     let classifier = NativeProvider::start(vec![
         super::native_history::reply(CLASSIFIER_SIMPLE_WITH_ASSESSMENT),
-        super::native_history::reply(br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#),
+        super::native_history::reply(
+            br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#,
+        ),
     ]);
     let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
         &[&economy, &primary, &classifier],
@@ -174,7 +176,7 @@ fn real_listener_opaque_peer_is_not_ancestor_input_and_same_session_a_b_recovers
     assert!(!opaque_capture.to_string().contains("readable wrapper"));
     let b = classifier_body(&classifier, 1);
     assert_eq!(b["latest_user"][0]["text"], "REAL_NEW_B");
-    let from = b["assessment_target"]["from"]
+    let from = b["preceding_stage"]["from"]
         .as_u64()
         .expect("B evaluates actual captured A") as usize;
     let target =

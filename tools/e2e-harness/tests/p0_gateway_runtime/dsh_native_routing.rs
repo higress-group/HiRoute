@@ -325,7 +325,7 @@ fn real_listener_dsh_invalid_input_proof_keeps_actual_capture_and_auxiliary_isol
             "{failure}: missing main output must be disclosed"
         );
         assert!(
-            !decision["assessment_target"].is_null(),
+            !decision["preceding_stage"].is_null(),
             "{failure}: {decision}"
         );
         let visible = decision["visible_conversation"].to_string();

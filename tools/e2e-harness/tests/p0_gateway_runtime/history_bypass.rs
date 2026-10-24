@@ -142,7 +142,7 @@ fn real_listener_history_bypass_keeps_overlapping_native_requests_and_main_conti
             let detached = classifier_body(&classifier, 1);
             assert_eq!(detached["history_partial"], false, "{detached}");
             assert_eq!(detached["visible_conversation"], json!([]), "{detached}");
-            assert!(detached["assessment_target"].is_null(), "{detached}");
+            assert!(detached["preceding_stage"].is_null(), "{detached}");
             release.0.release();
             main.join().unwrap()
         });
@@ -220,7 +220,7 @@ fn real_listener_history_bypass_capacity_exhaustion_keeps_valid_responses_and_au
         let body = classifier_body(&classifier, index);
         assert_eq!(body["history_partial"], true, "{body}");
         assert_eq!(body["visible_conversation"], json!([]), "{body}");
-        assert!(body["assessment_target"].is_null(), "{body}");
+        assert!(body["preceding_stage"].is_null(), "{body}");
     }
     let denied = send(
         fixture.address,
@@ -238,7 +238,7 @@ fn real_listener_history_bypass_capacity_exhaustion_keeps_valid_responses_and_au
 #[test]
 fn real_listener_overlapping_branches_capture_and_assess_disjoint_actual_executions() {
     let background_output = br#"{"id":"background","model":"runtime-native-model-2","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"BACKGROUND_ACTUAL"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
-    let complex_assessment = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
+    let complex_assessment = br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#;
     let barrier = ProviderBodyBarrier::default();
     let simple = NativeProvider::start(vec![
         ProviderReply::BodyReadBarrier {
@@ -279,7 +279,7 @@ fn real_listener_overlapping_branches_capture_and_assess_disjoint_actual_executi
         // cannot retroactively create an assessment target in B's decision.
         let pending_snapshot = classifier_body(&classifier, 1);
         assert_eq!(pending_snapshot["visible_conversation"], json!([]));
-        assert!(pending_snapshot["assessment_target"].is_null());
+        assert!(pending_snapshot["preceding_stage"].is_null());
         barrier.release();
         main.join().unwrap()
     });
@@ -316,7 +316,7 @@ fn real_listener_overlapping_branches_capture_and_assess_disjoint_actual_executi
         (3, "BACKGROUND_ACTUAL", "MAIN_ACTUAL_TASK"),
     ] {
         let payload = classifier_body(&classifier, index);
-        let start = payload["assessment_target"]["from"]
+        let start = payload["preceding_stage"]["from"]
             .as_u64()
             .expect("actual prior target") as usize;
         let target =

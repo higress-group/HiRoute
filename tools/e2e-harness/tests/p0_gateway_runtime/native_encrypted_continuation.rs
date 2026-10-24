@@ -8,7 +8,8 @@ use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
+const SIMPLE: &[u8] = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#;
+const ASSESSED_COMPLEX: &[u8] = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.1,"1":0.9}},"q1":{"type":"score","score":1.5}}}"#;
 const A_USER: &str = "ACTUAL_A: edit the fixture and report completion";
 const B_USER: &str = "ACTUAL_B: design the next independent task";
 const COMMENTARY: &str = "I will edit the requested fixture.";
@@ -366,11 +367,8 @@ fn assert_encrypted_tool_retry(proved: bool) {
         "b-final",
         vec![message("b-final-message", "final_answer", "B_COMPLETE")],
     )]);
-    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_COMPLEX)]);
-    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
-        &[&regular, &primary, &classifier],
-        1,
-    );
+    let classifier = NativeProvider::start(vec![reply(SIMPLE), reply(ASSESSED_COMPLEX)]);
+    let fixture = RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &classifier], true);
     enable_native_provider_state(&fixture);
     let mut input = vec![json!({"role":"user","content":A_USER})];
     let first = send(&fixture, &input, "a", proved);
@@ -579,23 +577,33 @@ fn assert_encrypted_tool_retry(proved: bool) {
     }
     assert_eq!(score["partial"], false);
     assert_eq!(score["score"], 0.75);
-    let assessed = upstream_body(&classifier, 1);
+    let envelope = upstream_body(&classifier, 1);
+    let assessed = &envelope["state"];
     assert_eq!(assessed["history_partial"], false, "{assessed}");
-    assert_eq!(assessed["assessment_target"]["from"], 0);
-    let criteria = assessed["assessment_target"]["criteria"]
+    assert_eq!(assessed["assessment_from"], 0);
+    let question = &envelope["questions"]["q1"];
+    let instructions = "Evaluate actual smart_saving execution";
+    assert!(
+        question["instructions"]
+            .as_str()
+            .unwrap()
+            .ends_with(instructions)
+    );
+    let criteria = question["criteria"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|criterion| criterion["criterion"].as_str().unwrap())
+        .map(|criterion| criterion.as_str().unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(criteria.len(), 3);
-    let rubric_digest = hiroute_domain::CanonicalDigest::of(&(
-        assessed["assessment_target"]["instructions"]
-            .as_str()
-            .unwrap(),
+    assert_eq!(
         criteria,
-    ))
-    .unwrap();
+        [
+            "smart_saving failed",
+            "smart_saving partly competent",
+            "smart_saving competent"
+        ]
+    );
+    let rubric_digest = hiroute_domain::CanonicalDigest::of(&(instructions, criteria)).unwrap();
     assert_eq!(
         stage["branch_execution"]["policy"]["criteria_digest"],
         serde_json::to_value(rubric_digest).unwrap(),

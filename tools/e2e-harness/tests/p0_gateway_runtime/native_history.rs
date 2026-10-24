@@ -283,7 +283,7 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
                     json!([]),
                     "{agent}: {history}"
                 );
-                assert!(history["assessment_target"].is_null());
+                assert!(history["preceding_stage"].is_null());
             }
             barrier.release();
             parent.join().unwrap()
@@ -625,7 +625,7 @@ fn real_listener_unexplained_native_rewrites_cannot_replace_main_history() {
             "{agent}: {detached}"
         );
         assert!(
-            !detached["assessment_target"].is_null(),
+            !detached["preceding_stage"].is_null(),
             "{agent}: actual context remains eligible"
         );
         assert!(
@@ -679,7 +679,7 @@ fn real_listener_hermes_in_place_compression_retains_observed_original_task() {
             .contains("ORIGINAL_MAIN_TASK")
     );
     assert!(after["visible_conversation"].to_string().contains("ok"));
-    assert!(!after["assessment_target"].is_null());
+    assert!(!after["preceding_stage"].is_null());
 }
 
 #[path = "native_history_continuation.rs"]

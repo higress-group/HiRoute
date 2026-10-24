@@ -22,7 +22,8 @@ fn assert_tool_json_history(changed_value: bool) {
     // Both the provider and client use deliberate, different nonlexical key
     // orders. A sorted client spelling alone would miss the preserve_order bug.
     const TOOL: &[u8] = br#"{"id":"json-tool","model":"runtime-native","status":"completed","output":[{"type":"function_call","id":"fc-native","call_id":"native-call","namespace":"tools","name":"lookup","arguments":"{\"z\":3,\"list\":[1,2],\"a\":{\"y\":2,\"x\":1}}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
-    const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
+    const ASSESSED_COMPLEX: &[u8] =
+        br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#;
     let reply = |body| ProviderReply::Complete {
         status: 200,
         error_kind: None,
@@ -121,7 +122,7 @@ fn assert_tool_json_history(changed_value: bool) {
         );
         let assessed = classifier_body(&classifier, 1);
         assert_eq!(assessed["history_partial"], false, "{assessed}");
-        assert_eq!(assessed["assessment_target"]["from"], 0, "{assessed}");
+        assert_eq!(assessed["preceding_stage"]["from"], 0, "{assessed}");
         assert_eq!(
             assessed["visible_conversation"].as_array().unwrap().len(),
             1
@@ -249,7 +250,8 @@ fn real_listener_native_eof_comment_keeps_complete_history_and_assessment() {
 
 fn assert_stream_keeps_complete_history_and_assessment(wire: &str, preserved: &str) {
     use serde_json::json;
-    const ASSESSED_COMPLEX: &[u8] = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#;
+    const ASSESSED_COMPLEX: &[u8] =
+        br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#;
     let regular = NativeProvider::start(vec![ProviderReply::StreamDrip {
         status: 200,
         chunks: wire.as_bytes().chunks(31).map(<[u8]>::to_vec).collect(),
@@ -321,7 +323,7 @@ fn assert_stream_keeps_complete_history_and_assessment(wire: &str, preserved: &s
         "{decision}"
     );
     assert_eq!(decision["history_partial"], false, "{decision}");
-    assert_eq!(decision["assessment_target"]["from"], 0, "{decision}");
+    assert_eq!(decision["preceding_stage"]["from"], 0, "{decision}");
     assert!(!decision.to_string().contains("notification-only"));
     let facts = wait_execution_facts(&fixture, 2);
     let attempts = facts

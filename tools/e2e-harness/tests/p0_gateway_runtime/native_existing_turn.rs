@@ -36,7 +36,9 @@ fn real_listener_v2_existing_turn_captures_output_then_recovers_a_b_without_summ
             if warm {
                 replies.push(reply(CLASSIFIER_SIMPLE));
             }
-            replies.push(reply(br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#));
+            replies.push(reply(
+                br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#,
+            ));
             let classifier = NativeProvider::start(replies);
             let fixture = RuntimeFixture::launch_rest_classified_with_observation(
                 &[&regular, &primary, &classifier],
@@ -96,7 +98,7 @@ fn real_listener_v2_existing_turn_captures_output_then_recovers_a_b_without_summ
                 (1 + usize::from(warm), 2, 2 + usize::from(warm))
             );
             let b_decision = classifier_body(&classifier, 1 + usize::from(warm));
-            let from = b_decision["assessment_target"]["from"]
+            let from = b_decision["preceding_stage"]["from"]
                 .as_u64()
                 .expect("B must assess A") as usize;
             let assessed =

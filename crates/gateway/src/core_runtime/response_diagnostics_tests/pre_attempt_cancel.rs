@@ -109,12 +109,7 @@ pub(super) fn run_case(case: &str, root: &Path) {
                 .set_read_timeout(Some(Duration::from_secs(10)))
                 .unwrap();
             requests.push(request_body(&read_request(&mut stream)));
-            let probabilities = if index == 0 {
-                json!({"simple":0.9,"complex":0.1})
-            } else {
-                json!({"simple":0.1,"complex":0.9})
-            };
-            let mut decision = json!({"decision":{"kind":"ordinal","probabilities":probabilities}});
+            let mut decision = json!({"group":if index == 0 {"regular"} else {"primary"}});
             if index > 0 {
                 decision["assessment"] = json!({"score":0.75,"partial":false});
             }
@@ -225,7 +220,7 @@ pub(super) fn run_case(case: &str, root: &Path) {
     // branch and discloses a contextual history gap, while its assessment can
     // still address every actual member of the already frozen A stage.
     assert_eq!(classified[1]["history_partial"], true);
-    assert_eq!(classified[1]["assessment_target"]["from"], 0);
+    assert_eq!(classified[1]["preceding_stage"]["from"], 0);
     assert_eq!(
         classified[1]["visible_conversation"]
             .as_array()

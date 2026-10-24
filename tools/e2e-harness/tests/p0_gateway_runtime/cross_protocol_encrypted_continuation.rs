@@ -431,7 +431,7 @@ fn cross_protocol_continuation(ingress: IngressProtocol) {
     assert_eq!(score["score"], 0.75);
     let assessed = upstream_body(&classifier, 1);
     assert_eq!(assessed["history_partial"], false);
-    assert_eq!(assessed["assessment_target"]["from"], 0);
+    assert_eq!(assessed["preceding_stage"]["from"], 0);
     assert_eq!(
         assessed["visible_conversation"].as_array().unwrap().len(),
         1

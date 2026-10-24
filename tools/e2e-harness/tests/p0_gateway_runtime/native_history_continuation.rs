@@ -64,7 +64,7 @@ fn real_listener_known_summary_without_exact_boundary_keeps_actual_output_and_re
             visible.contains("ok"),
             "{agent}: actual output must remain available"
         );
-        assert!(!history["assessment_target"].is_null());
+        assert!(!history["preceding_stage"].is_null());
     }
 }
 
@@ -291,7 +291,7 @@ fn real_listener_fresh_questions_recover_actual_history_without_claiming_human_p
         let visible = followup["visible_conversation"].to_string();
         assert!(visible.contains("ACTUAL_NEW_QUESTION") && visible.contains("ok"));
         assert!(
-            !followup["assessment_target"].is_null(),
+            !followup["preceding_stage"].is_null(),
             "{agent}: evaluation must remain enabled"
         );
         // Cold input was observed, not relabeled as verified human provenance.
@@ -359,7 +359,7 @@ fn real_listener_hermes_legacy_fresh_flag_retains_observed_callback_history_with
         );
     }
     let callback = classifier_body(&classifier, 1);
-    assert!(!callback["assessment_target"].is_null());
+    assert!(!callback["preceding_stage"].is_null());
     let visible = callback["visible_conversation"].to_string();
     assert!(visible.contains("FIRST_REAL_HERMES_USER") && visible.contains("ok"));
     assert!(visible.contains("unverified_request_user_origin"));

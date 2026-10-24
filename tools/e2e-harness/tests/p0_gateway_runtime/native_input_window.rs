@@ -46,8 +46,11 @@ fn real_listener_current_window_evaluates_a_after_shortening_and_trailing_contex
     for agent in ["dsh", "pi", "opencode"] {
         let regular = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
         let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE),
-            reply(br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#)]);
+        let classifier = NativeProvider::start(vec![
+            reply(CLASSIFIER_SIMPLE),
+            reply(CLASSIFIER_SIMPLE),
+            reply(br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#),
+        ]);
         let fixture = RuntimeFixture::launch_rest_classified_with_observation(
             &[&regular, &primary, &classifier],
             1,
@@ -87,7 +90,7 @@ fn real_listener_current_window_evaluates_a_after_shortening_and_trailing_contex
                 .to_string()
                 .contains("TRAILING_RUNTIME_CONTEXT")
         );
-        let from = decision["assessment_target"]["from"]
+        let from = decision["preceding_stage"]["from"]
             .as_u64()
             .expect("B must evaluate completed A") as usize;
         let stage =

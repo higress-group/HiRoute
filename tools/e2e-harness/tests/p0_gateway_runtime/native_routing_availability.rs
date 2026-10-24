@@ -50,9 +50,10 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
     ] {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK)]);
         let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
-        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(
-            br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}},"assessment":{"score":0.75,"partial":false}}"#
-        )]);
+        let classifier = NativeProvider::start(vec![
+            reply(CLASSIFIER_SIMPLE),
+            reply(br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#),
+        ]);
         let fixture = observed_fixture(agent, &[&simple, &primary, &classifier]);
         let make_headers = |turn| {
             if agent == "qoder" {
@@ -111,7 +112,7 @@ fn real_listener_uncertain_native_a_b_classifies_captures_and_evaluates_actual_o
             "{agent}: {b}"
         );
         assert!(
-            !b["assessment_target"].is_null(),
+            !b["preceding_stage"].is_null(),
             "{agent}: evaluation was disabled: {b}"
         );
         assert_eq!(
@@ -127,9 +128,16 @@ fn real_listener_hermes_legacy_text_hint_cannot_relocate_input_or_disable_protec
     use sha2::{Digest, Sha256};
     let simple = NativeProvider::start(vec![reply(RESPONSES_OK)]);
     let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
-    let low = br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}},"assessment":{"score":0.1,"partial":false}}"#;
-    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(low), reply(low)]);
-    let fixture = observed_fixture("hermes", &[&simple, &primary, &classifier]);
+    let simple_reply = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#;
+    let low = br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}},"q1":{"type":"score","score":0.2}}}"#;
+    let classifier = NativeProvider::start(vec![reply(simple_reply), reply(low), reply(low)]);
+    let fixture = RuntimeFixture::launch_builtin_branches(&[&simple, &primary, &classifier], true);
+    let mut publication = fixture.publication();
+    for grant in &mut publication.grants {
+        grant.consumer = Some(hiroute_domain::AgentModelConsumerV1::Hermes);
+    }
+    publication.publication_revision += 1;
+    fixture.publish(&mut publication);
     let mut input = json!([
         {"role":"user","content":"ORIGINAL_OBSERVED_INPUT"},
         {"role":"assistant","content":"execution before Gateway restart"},
@@ -161,20 +169,26 @@ fn real_listener_hermes_legacy_text_hint_cannot_relocate_input_or_disable_protec
         (simple.calls(), primary.calls(), classifier.calls()),
         (1, 2, 3)
     );
-    let cold = classifier_body(&classifier, 0);
+    let cold = classifier_body(&classifier, 0)["state"].clone();
     assert_eq!(cold["latest_user"][0]["text"], "LATER_TODO_REMINDER");
     assert_eq!(
         cold["latest_user"][1]["source_kind"],
         "unverified_request_user_origin"
     );
-    let b = classifier_body(&classifier, 2);
+    let b = classifier_body(&classifier, 2)["state"].clone();
     assert_eq!(b["latest_user"][0]["text"], "FRESH_B");
-    let from = b["assessment_target"]["from"].as_u64().unwrap() as usize;
+    let from = b["assessment_from"].as_u64().unwrap() as usize;
     let stage = &b["visible_conversation"].as_array().unwrap()[from..];
     let stage = serde_json::to_string(stage).unwrap();
     assert!(stage.contains("FRESH_A") && stage.contains("ok"));
     assert!(!stage.contains("ORIGINAL_OBSERVED_INPUT") && !stage.contains("LATER_TODO_REMINDER"));
     let facts = wait_execution_facts(&fixture, 3);
+    assert!(
+        facts
+            .iter()
+            .any(|f| f["fact"]["complexity"]["competence_trigger"].is_object()),
+        "uncertain origin must not disable actual quality protection"
+    );
     let assessments = facts
         .iter()
         .filter(|f| f["fact"]["kind"] == "branch_assessment_recorded")
@@ -229,7 +243,7 @@ fn real_listener_managed_qoder_reserved_entry_recovers_routing_without_inventing
         (2, 0, 2)
     );
     let b = classifier_body(&classifier, 1);
-    assert!(!b["assessment_target"].is_null());
+    assert!(!b["preceding_stage"].is_null());
     assert_eq!(b["history_partial"], true);
     assert!(
         !b["visible_conversation"]
