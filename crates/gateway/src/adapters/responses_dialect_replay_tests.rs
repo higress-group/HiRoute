@@ -72,7 +72,12 @@ impl Backing {
         .unwrap();
         externalize_model_request(&mut request, &self.store, 0).unwrap();
         assert!(self.store.snapshot().disk_backed);
-        assert!(!model_content_refs(&request).is_empty());
+        let mut references = model_content_refs(&request);
+        assert!(!references.is_empty());
+        references.push(raw);
+        drop(document);
+        drop(workspace);
+        self.store.prevalidate(&references).unwrap();
         request
     }
     fn project(

@@ -79,6 +79,8 @@ fn codex_v2_full_tool_request_negotiates_without_dropping_native_declarations() 
     let prepared = project_candidate_request(&request, &profile(true)).unwrap();
     let mut expected = original.clone();
     expected["model"] = json!("physical");
+    // The portable profile caps output at 256 even when the client requests 4096.
+    expected["max_output_tokens"] = json!(256);
     for i in [0, 3, 4] {
         expected["tools"][5]["tools"][i]["parameters"]["properties"]["message"]
             .as_object_mut()

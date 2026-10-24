@@ -132,8 +132,14 @@ fn provider_reply(streaming: bool, tool: bool, declared: bool) -> ProviderReply 
     } else {
         RESPONSES_OK
     };
-    let response: Value = serde_json::from_slice(body).unwrap();
+    let mut response: Value = serde_json::from_slice(body).unwrap();
     if streaming {
+        if !tool {
+            // The compact buffered fixture omits item identity. A streamed
+            // lifecycle requires the same ID in added/delta/done/terminal events.
+            response["output"][0]["id"] = json!("message-final");
+            response["output"][0]["status"] = json!("completed");
+        }
         super::native_encrypted_continuation::streamed(
             if tool { "tool" } else { "final" },
             response["output"].as_array().unwrap().clone(),
@@ -199,7 +205,10 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
                     .is_none()
             );
             let judged = classifier_body(&classifier, 1);
-            assert_eq!(judged["preceding_stage"]["complete"], true, "{judged}");
+            assert_eq!(
+                judged["preceding_stage"]["complete"], true,
+                "v2={v2}, declared={declared}, streaming={streaming}: {judged}"
+            );
             let from = judged["preceding_stage"]["from"].as_u64().unwrap() as usize;
             let assessed = json!(&judged["visible_conversation"].as_array().unwrap()[from..]);
             // Decision API deliberately excludes raw tool-result bodies. Its status
@@ -285,6 +294,40 @@ fn real_listener_codex_v2_and_standard_responses_have_exact_complete_tool_stage(
             );
         }
     }
+}
+
+#[test]
+fn real_listener_codex_v2_missing_stream_item_identity_cannot_claim_complete_history() {
+    let malformed: Value = serde_json::from_slice(RESPONSES_OK).unwrap();
+    let regular = NativeProvider::start(vec![super::native_encrypted_continuation::streamed(
+        "missing-item-id",
+        malformed["output"].as_array().unwrap().clone(),
+    )]);
+    let primary = NativeProvider::start(vec![provider_reply(true, false, false)]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_PRIMARY)]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&regular, &primary, &classifier],
+        1,
+    );
+    dialect(&fixture, true);
+    let mut input = vec![json!({"role":"user","content":"A_READ_FIXTURE"})];
+    input.extend(send(&fixture, true, "a", &input, true));
+    input.push(json!({"role":"user","content":"B_INDEPENDENT_TASK"}));
+    send(&fixture, true, "b", &input, true);
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (1, 1, 2)
+    );
+    let judged = classifier_body(&classifier, 1);
+    assert_eq!(judged["history_partial"], true);
+    assert_eq!(judged["preceding_stage"]["complete"], false);
+    let facts = wait_execution_facts(&fixture, 2);
+    let score = facts
+        .iter()
+        .find(|e| e["fact"]["kind"] == "branch_assessment_recorded")
+        .unwrap();
+    assert_eq!(score["fact"]["partial"], true);
+    assert_eq!(score["fact"]["history_membership"]["capture_partial"], true);
 }
 
 #[test]
