@@ -210,7 +210,7 @@ fn real_listener_managed_qoder_reserved_entry_recovers_routing_without_inventing
     let primary = NativeProvider::start(vec![]);
     let classifier = NativeProvider::start(vec![
         reply(CLASSIFIER_SIMPLE),
-        reply(CLASSIFIER_SIMPLE_WITH_ASSESSMENT),
+        reply(br#"{"group":"regular","assessment":{"score":0.75,"partial":false}}"#),
     ]);
     let fixture = observed_fixture("unknown", &[&simple, &primary, &classifier]);
     let path = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);

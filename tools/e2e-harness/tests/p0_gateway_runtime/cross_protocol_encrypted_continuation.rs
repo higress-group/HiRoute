@@ -4,6 +4,10 @@ use super::*;
 use base64::Engine as _;
 
 const OMITTED_STATE: &str = "synthetic-cross-protocol-ciphertext-never-delivered";
+// This fixture uses the decision extension, while the parent module exercises
+// System One. Keep its response in the selected extension's wire contract.
+const ASSESSED_PRIMARY: &[u8] =
+    br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#;
 
 #[test]
 fn real_listener_responses_opaque_omission_keeps_chat_tool_stage_complete() {
@@ -320,7 +324,7 @@ fn cross_protocol_continuation(ingress: IngressProtocol) {
         "cross-b-final",
         vec![portable_message("cross-b-message", "B_COMPLETE")],
     )]);
-    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_COMPLEX)]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(ASSESSED_PRIMARY)]);
     let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
         &[&regular, &primary, &classifier],
         1,
