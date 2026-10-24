@@ -6,6 +6,18 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_ROWS: usize = 96;
 
+#[cfg(unix)]
+mod executable;
+
+#[cfg(unix)]
+pub(super) fn record_executable(path: &std::path::Path) {
+    // Sampling is diagnostic work, not a discovery dependency or a capability proof.
+    // Do not read installed binaries when no failure-only transaction scope is active.
+    if TRACE.with(|trace| trace.borrow().is_some()) {
+        record("native_executable_content", &executable::snapshot(path));
+    }
+}
+
 #[derive(Default)]
 struct Trace {
     key: String,
@@ -48,14 +60,33 @@ impl Trace {
         if self.rows.len() == MAX_ROWS {
             self.rows.remove(0);
         }
-        self.rows.push(json!({
+        let mut row = json!({
             "snapshot": self.snapshots,
             "operation": self.operation,
             "label": label,
             "digest": CanonicalDigest::of(value).expect("JSON value must be digestible"),
             "baseline": previous.is_none(),
             "changes": changes,
-        }));
+        });
+        if label == "native_executable_content" {
+            // Closed sampling outcomes must remain readable: two unavailable hashes are
+            // not evidence that the executable bytes or native permissions were equal.
+            let state = |pointer| match value.pointer(pointer).and_then(Value::as_str) {
+                Some("stable") => "stable",
+                Some("changed") => "changed",
+                Some("complete") => "complete",
+                Some("limit") => "limit",
+                Some("invalid") => "invalid",
+                Some("not_sampled") | None => "not_sampled",
+                _ => "unavailable",
+            };
+            row["sampling"] = json!({
+                "snapshot":state("/state"), "content":state("/content/state"),
+                "acl_flags":state("/extended/acl_flags/state"),
+                "xattrs":state("/extended/xattrs/state"),
+            });
+        }
+        self.rows.push(row);
     }
 
     fn report(&self) -> Value {

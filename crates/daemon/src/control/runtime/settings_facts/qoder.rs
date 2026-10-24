@@ -39,6 +39,11 @@ impl LocalControlAdapter {
                 ("native_skill_parent", skill.parent().map(Path::to_path_buf)),
                 ("native_skill", Some(skill)),
             ] {
+                if role == "native_executable"
+                    && let Some(path) = path.as_ref()
+                {
+                    diagnostics::record_executable(path);
+                }
                 let metadata = path.and_then(|path| std::fs::symlink_metadata(path).ok());
                 diagnostics::record(
                     role,
