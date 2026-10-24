@@ -6,6 +6,8 @@ pub use checks::*;
 mod agents;
 pub use agents::*;
 mod agent_discovery;
+mod agent_snapshot;
+pub(crate) use agent_snapshot::read_agent_entries;
 // Product-limited native session. No arbitrary operation, path, principal or grant IPC.
 use crate::confirmation::{ConfirmationGate, ConfirmationPermit};
 use crate::failure::DesktopFailure;
@@ -744,7 +746,9 @@ impl ProductSession {
         Ok(operation)
     }
 }
-async fn read_plan_catalog(client: &Client) -> Result<AgentPlanCatalogViewV2, DesktopFailure> {
+pub(crate) async fn read_plan_catalog(
+    client: &Client,
+) -> Result<AgentPlanCatalogViewV2, DesktopFailure> {
     let mut request = AgentPlanCatalogQueryV2 {
         limit: 128,
         cursor: None,
