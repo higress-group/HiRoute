@@ -5,14 +5,14 @@ use hiroute_application::compute_management::{
     ComputeManagementCredentialCompilationV2, ComputeManagementEligibilityV2,
     compile_compute_management_source,
 };
-use hiroute_application::control::{ApplicationMutationPort, ComputeManagementControlPort};
+use hiroute_application::control::ComputeManagementControlPort;
 use hiroute_application_api::{
     ComputeCandidateRefV2, ComputeConnectionApplyRequestV1, ComputeManagementChangeV2,
     ComputeManagementIntentV2, ComputeManagementSubjectV2, NativeUserCapabilityDeclarationV1,
     NativeUserFactBasisV1, NativeUserFactValueV1, NativeUserModelDeclarationV1,
 };
 use hiroute_domain::{
-    GatewayAuthenticationSemanticsV1, NativeReasoningCapabilityV1, OperationState, ProtectedSecret,
+    GatewayAuthenticationSemanticsV1, NativeReasoningCapabilityV1, ProtectedSecret,
     UpstreamProtocol, WorkspaceId,
 };
 
@@ -143,20 +143,65 @@ fn codex_v2_registered_user_models_save_reopen_and_keep_legacy_native_credential
                 edit: None,
             })
             .unwrap();
-        let prepared = runtime
-            .adapter
-            .prepare_compute_save(ComputeConnectionApplyRequestV1 {
-                spec: preview.spec,
-                accept_digest: preview.accept_digest,
-                expected_revisions: preview.expected_revisions,
-                idempotency_key: "codex-v2-token-plan-save".into(),
+        let apply = ComputeConnectionApplyRequestV1 {
+            spec: preview.spec,
+            accept_digest: preview.accept_digest,
+            expected_revisions: preview.expected_revisions,
+            idempotency_key: "codex-v2-token-plan-save".into(),
+        };
+        let service = crate::control::LocalControlDaemon::new(
+            hiroute_application::ApplicationService::new(runtime.application_ports()),
+        );
+        let dispatch = |apply: &ComputeConnectionApplyRequestV1| {
+            service.dispatch_wire(hiroute_application_api::LocalControlWireRequestV2 {
+                schema_version: hiroute_application_api::LOCAL_CONTROL_SCHEMA_V2,
+                request_id: "codex-v2-token-plan-save".into(),
+                operation_id: "ApplyComputeConnectionChange".into(),
+                payload: serde_json::to_value(apply).unwrap(),
+                protected_grant: None,
             })
-            .unwrap();
-        let applied = runtime
-            .adapter
-            .apply_local_prepared_change(prepared)
-            .unwrap();
-        assert_eq!(applied.state, OperationState::Succeeded);
+        };
+        // Candidate references have a different grammar from operation keys. Invalid
+        // caller keys must not become DAEMON_UNAVAILABLE or admit any transaction.
+        for key in [
+            String::new(),
+            request.input_candidate.candidate_ref.clone(),
+            "key with spaces".into(),
+            "key-\u{00e9}".into(),
+            "x".repeat(201),
+        ] {
+            let mut invalid = apply.clone();
+            invalid.idempotency_key = key;
+            let rejected = dispatch(&invalid);
+            assert_eq!(
+                rejected.error.unwrap().code,
+                hiroute_application_api::ErrorCode::InvalidArguments
+            );
+            assert!(rejected.operation.is_none());
+            let stores = runtime.adapter.stores_lock().unwrap();
+            assert!(
+                stores
+                    .control()
+                    .recoverable_operations()
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                stores
+                    .control()
+                    .compute_management_snapshot(&WorkspaceId::default())
+                    .unwrap()
+                    .sources
+                    .is_empty()
+            );
+        }
+        // The same live preview and protected input remain usable after rejection.
+        let applied = dispatch(&apply);
+        assert!(applied.error.is_none(), "{:?}", applied.error);
+        assert_eq!(applied.operation.as_ref().unwrap().state, "succeeded");
+        let replay = dispatch(&apply);
+        assert!(replay.error.is_none(), "{:?}", replay.error);
+        assert_eq!(replay.operation, applied.operation);
         runtime
             .release_manual_protected_input(&request.input_candidate.candidate_ref)
             .unwrap();
