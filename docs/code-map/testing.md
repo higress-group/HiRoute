@@ -5,7 +5,15 @@
 
 [Execution locations](../validation-routing.md) owns caller HOME routing,
 per-origin SSH workbenches, shared compiler capacity and separate candidate/driver
-revision identities. A runner setup failure is not a product test result.
+revision identities. A runner setup failure is not a product test result. Ordinary local and SSH runs
+save results and [private evidence](../../scripts/validation-report.py) before
+reclaiming their managed checkout/TMPDIR, including failed or blocked runs.
+Explicit retention covers diagnosis and consumers that still need build artifacts;
+[local lifecycle regressions](../../scripts/test-local-rust.py) and
+[SSH worker regressions](../../scripts/test-remote-rust.py) protect both paths.
+[Scheduler preparation regressions](../../scripts/test-validation-schedule.py)
+verify complete smoke receipt export without preserving executable snapshots;
+the shared exporter keeps Pilot's existing target-artifact consumer paths.
 The [console artifact owner](../../scripts/console-assets.py) checks selected SSH
 installed-package prerequisites before Rust execution and verifies the same-candidate
 frontend from an execution-host staging directory under the runner's checkout lease.

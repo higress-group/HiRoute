@@ -662,6 +662,30 @@ class Preparation(unittest.TestCase):
         return scheduler.dag_products('build preparation=' + str(report) + '\n',
                                       self.root, self.sha, 'fixture')
 
+    def test_cleanup_evidence_keeps_selected_recipes_without_scheduler_or_smoke_binaries(self):
+        preparation = self.prepare(32)
+        environment = self.execute(preparation)
+        data = json.loads(preparation.read_text())
+        receipts = [item['receipt'] for item in data['artifacts']] + [data['gateway']['receipt']]
+        run = self.root / 'run'
+        run.mkdir()
+        (run / 'dag-targets.json').write_text('{"complete":true}')
+        reporting.preserve_evidence(run, dict(checkout=str(self.root), sha=self.sha, command=COMMAND))
+        manifest = json.loads((run / 'evidence.json').read_text())
+        for binding in receipts:
+            source = Path(binding['path'])
+            key = source.relative_to(self.root).as_posix()
+            self.assertIn(key, manifest['files'])
+            saved = run / manifest['files'][key]['path']
+            self.assertEqual(saved.read_bytes(), source.read_bytes())
+            self.assertEqual('sha256:' + scheduler.file_digest(saved), binding['sha256'])
+            self.assertIn('recipe', json.loads(saved.read_text()))
+        self.assertTrue((run / 'artifacts/smoke/prepare-32/preparation.json').is_file())
+        self.assertFalse((run / 'artifacts/validation-schedule').exists())
+        self.assertTrue((Path(environment['HIROUTE_VALIDATION_PRODUCT_BIN_DIR']) / 'hiroute').is_file())
+        self.assertFalse(any((run / 'artifacts/smoke/builds').glob('*/*/hiroute*')))
+        self.assertEqual((run / 'dag-targets.json').read_text(), '{"complete":true}')
+
     def test_focused_then_dag_selects_exact_receipts_without_removing_other_recipes(self):
         focused = self.prepare(8)
         full = self.prepare(32)

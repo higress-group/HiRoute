@@ -214,6 +214,32 @@ attributable terminal results and counts, the preparation failure, and explicit
 unexecuted target/doctest coverage. Completed independent targets cannot establish
 complete validation when dependent targets were not admitted.
 
+#### Scenario: Managed execution reclaims disposable artifacts after saving evidence
+
+Ordinary local and SSH build/test runs MUST default to reclaiming their managed
+checkout, compiler outputs and private temporary directory after terminal success,
+failure, timeout or preparation block. Before reclamation, they MUST save the exact
+source/command, actual process exit, tests/scenario verdict, logs and required
+private artifact/runtime evidence outside the disposable checkout. Default cleanup
+MUST NOT copy rebuildable compiler profiles or smoke build caches wholesale into
+the evidence store. Selected smoke build receipts MUST preserve complete build
+recipes, while scheduler executable snapshots remain disposable. New explicitly
+retained runs MUST use the same evidence export when their owner releases them.
+Commands that never create a target directory MUST still reclaim their resources
+when no recorded target identity or unknown material prevents cleanup.
+Evidence export and deletion MUST remain protected by ownership
+and execution leases; an export failure, active use, changed identity or unknown
+material MUST preserve the affected original resources with an actionable reason.
+Cleanup MUST NOT turn an unassessed/failed run into successful product acceptance.
+
+Explicit retention MUST remain available for investigation and subsequent artifact
+consumers. Native Pilot builds retain their registered ownership until the final
+consumer finishes. A default console-preparation retry MUST use a fresh checkout
+with the same immediate-cleanup policy after its previous checkout is reclaimed.
+Developer source worktrees, shared compiler caches and other owners' resources
+MUST NOT be reclaimed by this terminal-run policy. Existing retained records keep
+their original retention and evidence-confirmation meaning.
+
 ### Requirement: Native Pilot App reopening preserves its isolated owner
 
 An explicitly requested macOS native Pilot App entry MUST belong to one registered

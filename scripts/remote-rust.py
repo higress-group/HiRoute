@@ -416,7 +416,8 @@ def checkout_recovery_command(root, result, frontend_dist=None):
     modes = checkout_recovery_modes(first, result)
     rerun = ["python3", "scripts/remote-rust.py", "--host", result["ssh_host"],
              "--workbench", result.get("workbench", ROOT), "run", "--ref", result["ref"],
-             "--sha", result["sha"], "--retention", "always", "--timeout", str(result["timeout"])]
+             "--sha", result["sha"], "--retention",
+             "never" if result.get("retention") == "never" else "always", "--timeout", str(result["timeout"])]
     if frontend_dist:
         rerun += ["--frontend-dist", str(frontend_dist)]
     if modes:
@@ -456,6 +457,24 @@ def cleanup_temp_directory(info):
         return {"state": "retained", "path": str(directory), "error": str(error)}
 
 
+def verify_disposable_source(checkout):
+    """Keep unknown source/material; only registered generated roots are disposable."""
+    allowed = ("target/", "artifacts/", "apps/desktop/node_modules/",
+               "apps/desktop/dist/", "apps/desktop/src-tauri/gen/")
+
+    def generated(path):
+        return path.startswith(allowed) or "__pycache__" in Path(path).parts
+
+    changes = subprocess.check_output(
+        ["git", "-C", str(checkout), "status", "--porcelain", "-z", "--untracked-files=all"], text=True)
+    if any(entry and (entry[:2] != "??" or not generated(entry[3:])) for entry in changes.split("\0")):
+        raise ValueError("Source changes/untracked files retained; save or remove them before cleanup")
+    ignored = subprocess.check_output(
+        ["git", "-C", str(checkout), "ls-files", "--others", "--ignored", "--exclude-standard", "-z"], text=True)
+    if any(path and not generated(path) for path in ignored.split("\0")):
+        raise ValueError("Unknown ignored files retained; save or remove them before cleanup")
+
+
 def cleanup_checkout(root, result):
     """Remove one terminal, generated checkout without ever accepting an arbitrary path."""
     checkout_text = result.get("checkout")
@@ -481,6 +500,17 @@ def cleanup_checkout(root, result):
             raise RuntimeError("checkout is not this run's managed direct child")
         if resolved not in worktree_paths(repo):
             raise RuntimeError("checkout is not registered by the managed bare repository")
+        if "evidence_export" in result:
+            try:
+                verify_disposable_source(resolved)
+                # Re-export under the lease, including later evidence from retained runs.
+                # A retained owner may have advanced; bind exported bytes to its actual source.
+                revision = command(["git", "-C", str(resolved), "rev-parse", "HEAD"])
+                result["evidence_export"] = reporting().preserve_evidence(
+                    root / "runs" / result["id"], dict(result, sha=revision))
+            except Exception as error:
+                result["evidence_export"] = dict(state="failed", error=str(error))
+                raise
         status = subprocess.run(["git", "-C", str(resolved), "status", "--porcelain"],
                                 text=True, capture_output=True, check=True).stdout.splitlines()
         command_args = ["git", "--git-dir", str(repo), "worktree", "remove"]
@@ -533,7 +563,9 @@ def cleanup_terminal_run(root, run_id, current_worker=False):
         checkout = cleanup_checkout(root, result)
         validation_ref = cleanup_validation_ref(root, run_id,
             "removed" if result.get("checkout_owner") and result["checkout_owner"] != run_id else checkout["state"])
-    temporary = cleanup_temp_directory(result.get("temporary_directory"))
+    temporary = (cleanup_temp_directory(result.get("temporary_directory"))
+                 if result.get("evidence_export", {}).get("state") != "failed"
+                 else {"state": "retained", "reason": "Evidence export failed"})
     result["cleanup"] = {
         "policy": result.get("retention", "always"),
         "requested_at": time.time(),
@@ -742,6 +774,7 @@ def worker(request_path):
             check_target(checkout, metadata["target_directory"])
             result["rustc"] = command(["rustc", "--version"], checkout)
             result["cargo"] = command(["cargo", "--version"], checkout)
+            result["cargo_build_target"] = os.environ.get("CARGO_BUILD_TARGET")
             result["build_jobs"] = int(os.environ["CARGO_BUILD_JOBS"])
             save(result_path, result)
             with (run / "command.log").open("w") as output:
@@ -820,13 +853,18 @@ def worker(request_path):
             except Exception as error:
                 result["validation_report"] = dict(complete=False, error=str(error))
         require_dag_report(result)
+        try:
+            result["evidence_export"] = reporting().preserve_evidence(run, result)
+        except Exception as error:
+            result["evidence_export"] = dict(state="failed", error=str(error))
         save(result_path, result)
         if reused_lease is not None:
             reused_lease.close()
-        if should_auto_cleanup(result):
+        if should_auto_cleanup(result) and result["evidence_export"]["state"] == "saved":
             cleanup_terminal_run(root, request["id"], current_worker=True)
         else:
-            retain_cleanup_facts(result, "retention policy preserves this terminal run")
+            retain_cleanup_facts(result, "Evidence export failed" if result["evidence_export"]["state"] == "failed"
+                                 else "retention policy preserves this terminal run")
             save(result_path, result)
 
 
@@ -961,8 +999,8 @@ def main():
     run.add_argument("--frontend-dist", help="Execution-host staging directory from validation.py frontend build --console-assets")
     run.add_argument("--exclusive", action="store_true", help="Reserve all 8 slots, 64 compiler jobs (bench/Gates)")
     run.add_argument("--timeout", type=int, default=3600)
-    run.add_argument("--retention", choices=RETENTION_POLICIES, default="on-failure",
-                     help="Checkout/TMPDIR retention: on-failure (default), always, or never")
+    run.add_argument("--retention", choices=RETENTION_POLICIES, default="never",
+                     help="Checkout/TMPDIR retention: never (default), on-failure, or always")
     run.add_argument("--reuse-checkout", metavar="RUN_ID",
                      help="Reuse a retained owner's current exact checkout and target under an exclusive lease")
     run.add_argument("--continue-checkout", metavar="PREVIOUS_RUN_ID",

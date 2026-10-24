@@ -4,6 +4,7 @@ import importlib.util
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import types
@@ -216,6 +217,139 @@ class Feedback(unittest.TestCase):
 
 
 class Storage(unittest.TestCase):
+    def test_evidence_export_preserves_reports_and_runtime_without_copying_compiler_caches(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            checkout, run = root / 'checkout', root / 'run'
+            run.mkdir()
+            expected = {'target/e2e/result.json': 'actual failure',
+                        'target/smoke/run-a/private/diagnostic.log': 'private evidence',
+                        'target/e2e/debug/details.json': 'nested evidence, not a Cargo profile',
+                        'artifacts/screenshot.png': 'captured pixels',
+                        'target/smoke/builds/' + 'a' * 64 + '/hiroute-cli/receipt.json': '{"recipe":"selected"}'}
+            skipped = ('target/debug', 'target/release', 'target/custom',
+                       'target/x86_64-pc-windows-msvc/debug', 'target/wasm32-wasip1/debug',
+                       'target/validation-schedule', 'target/smoke/builds/' + 'a' * 64 + '/hiroute-cli/binary')
+            for name, value in expected.items():
+                path = checkout / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(value)
+            for name in skipped:
+                path = checkout / name / 'large-binary'
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('rebuildable')
+            record = dict(checkout=str(checkout), sha='a' * 40,
+                          command=['cargo', 'test', '--profile=custom', '--target=wasm32-wasip1'],
+                          process_exit=101, scenario='red')
+            first = report.preserve_evidence(run, record)
+            self.assertEqual(first, report.preserve_evidence(run, record))
+            self.assertEqual((record['process_exit'], record['scenario']), (101, 'red'))
+            manifest = json.loads(Path(first['manifest']).read_text())
+            self.assertEqual(manifest['source_revision'], record['sha'])
+            self.assertEqual(set(manifest['files']), set(expected))
+            for name, value in expected.items():
+                self.assertEqual((run / manifest['files'][name]['path']).read_text(), value)
+            for name in skipped:
+                self.assertFalse((run / 'artifacts' / Path(name).relative_to('target')).exists())
+            (checkout / 'target/e2e/result.json').write_text('changed evidence')
+            with self.assertRaisesRegex(ValueError, 'Previously exported evidence differs'):
+                report.preserve_evidence(run, record)
+            self.assertEqual((run / 'artifacts/e2e/result.json').read_text(), 'actual failure')
+
+    def test_inherited_and_configured_cargo_targets_do_not_export_compiler_profiles(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            checkout, run = root / 'checkout', root / 'run'
+            run.mkdir()
+            for target in ('wasm32-wasip1', 'private_json_target'):
+                profile = checkout / 'target' / target / 'debug'
+                profile.mkdir(parents=True)
+                (profile / 'binary').write_bytes(b'rebuildable compiler output')
+                if target == 'private_json_target':
+                    (profile / '.cargo-lock').touch()
+            nested = checkout / 'target/e2e/debug/details.json'
+            nested.parent.mkdir(parents=True)
+            nested.write_text('unique runtime evidence')
+            record = dict(checkout=str(checkout), command=['cargo', 'check'],
+                          cargo_build_target='wasm32-wasip1')
+            report.preserve_evidence(run, record)
+            manifest = json.loads((run / 'evidence.json').read_text())
+            self.assertEqual(set(manifest['files']), {'target/e2e/debug/details.json'})
+            self.assertEqual((run / 'artifacts/e2e/debug/details.json').read_text(), 'unique runtime evidence')
+            self.assertFalse((run / 'artifacts/wasm32-wasip1/debug').exists())
+            self.assertFalse((run / 'artifacts/private_json_target/debug').exists())
+
+    def test_evidence_export_refuses_links_and_missing_reports_before_any_resource_deletion(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            checkout, run = root / 'checkout', root / 'run'
+            (checkout / 'target/e2e').mkdir(parents=True)
+            run.mkdir()
+            outside = root / 'outside'
+            outside.write_text('borrowed bytes')
+            link = checkout / 'target/e2e/link'
+            link.symlink_to(outside)
+            record = dict(checkout=str(checkout), command=['cargo', 'test'])
+            with self.assertRaisesRegex(ValueError, 'link or special file'):
+                report.preserve_evidence(run, record)
+            self.assertEqual(outside.read_text(), 'borrowed bytes')
+            self.assertTrue(link.is_symlink())
+            link.unlink()
+            record['validation_report'] = dict(error='fixture report write failure')
+            with self.assertRaisesRegex(ValueError, 'report was not saved'):
+                report.preserve_evidence(run, record)
+            self.assertTrue(checkout.is_dir())
+            record.pop('validation_report')
+            (run / 'evidence.json').symlink_to(outside)
+            with self.assertRaisesRegex(ValueError, 'manifest is a link'):
+                report.preserve_evidence(run, record)
+            self.assertEqual(outside.read_text(), 'borrowed bytes')
+
+    def test_previous_custom_profiles_stay_disposable_when_the_command_changes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            checkout = root / 'checkout'
+            for profile in ('ci', 'private_json_target/ci'):
+                directory = checkout / 'target' / profile
+                directory.mkdir(parents=True)
+                (directory / '.cargo-lock').touch()
+                (directory / 'binary').write_bytes(b'rebuildable custom compiler output')
+            evidence = checkout / 'target/e2e/debug/details.json'
+            evidence.parent.mkdir(parents=True)
+            evidence.write_text('unique runtime evidence')
+            for index, command in enumerate((['cargo', 'check', '--profile', 'ci'], ['cargo', 'check'])):
+                run = root / str(index)
+                run.mkdir()
+                report.preserve_evidence(run, dict(checkout=str(checkout), command=command))
+                manifest = json.loads((run / 'evidence.json').read_text())
+                self.assertEqual(set(manifest['files']), {'target/e2e/debug/details.json'})
+                self.assertFalse((run / 'artifacts/ci').exists())
+                self.assertFalse((run / 'artifacts/private_json_target/ci').exists())
+
+    def test_link_and_special_profile_markers_cannot_hide_unique_evidence(self):
+        for kind in ('link', 'dangling-link', *(['fifo'] if hasattr(os, 'mkfifo') else [])):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                checkout, run = root / 'checkout', root / 'run'
+                evidence = checkout / 'target/unique-evidence'
+                evidence.mkdir(parents=True)
+                (evidence / 'diagnostic.json').write_text('unique runtime evidence')
+                outside = root / 'outside'
+                if kind == 'link':
+                    outside.write_text('external bytes')
+                marker = evidence / '.cargo-lock'
+                if kind == 'fifo':
+                    os.mkfifo(marker)
+                else:
+                    marker.symlink_to(outside)
+                run.mkdir()
+                with self.assertRaisesRegex(ValueError, 'link or special file'):
+                    report.preserve_evidence(run, dict(checkout=str(checkout), command=['cargo', 'check']))
+                self.assertEqual((evidence / 'diagnostic.json').read_text(), 'unique runtime evidence')
+                self.assertFalse((run / 'evidence.json').exists())
+                if kind == 'link':
+                    self.assertEqual(outside.read_text(), 'external bytes')
+
     def test_report_survives_checkout_removal_and_never_changes_verdict(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

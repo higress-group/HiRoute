@@ -129,17 +129,20 @@ class Store:
         if row["kind"] == "managed":
             if checkout.parent != self.root / "checkouts" or checkout.name != row["id"]:
                 raise ValueError("Not a managed checkout")
-            if git(checkout, "status", "--porcelain", "--untracked-files=all"):
-                raise ValueError("Source changes/untracked files retained")
-            ignored = git(checkout, "ls-files", "--others", "--ignored", "--exclude-standard")
-            if any(not p.startswith("target/") for p in ignored.splitlines()):
-                raise ValueError("Ignored files outside target retained")
+            if "retention" in row:
+                remote.verify_disposable_source(checkout)
+            else:
+                if git(checkout, "status", "--porcelain", "--untracked-files=all"):
+                    raise ValueError("Source changes/untracked files retained")
+                ignored = git(checkout, "ls-files", "--others", "--ignored", "--exclude-standard")
+                if any(not p.startswith("target/") for p in ignored.splitlines()):
+                    raise ValueError("Ignored files outside target retained")
         target = checkout / "target"
-        # Lock admission can fail before Cargo creates a target. Only a managed,
-        # never-started run without recorded target identities may use this path.
+        # Some commands never create a target, including failed package selection
+        # and cargo fmt. New managed records attest that absence at completion.
         # A later-created target (including a dangling link) still fails closed.
-        if (row["kind"] == "managed" and row.get("process_exit") is None
-                and not row.get("command_started_at")
+        if (row["kind"] == "managed" and ("retention" in row or
+                row.get("process_exit") is None and not row.get("command_started_at"))
                 and "target_identity" not in row and "debug_identity" not in row
                 and not os.path.lexists(target)):
             if git(checkout, "ls-files", "target"):
@@ -149,27 +152,30 @@ class Store:
         if target.resolve() != target or identity(target) != row["target_identity"]:
             raise ValueError("Target was replaced")
         debug = target / "debug"
+        if "retention" in row and "debug_identity" not in row and not os.path.lexists(debug):
+            return checkout, debug
         if identity(debug) != row["debug_identity"]:
             raise ValueError("Debug directory was replaced")
         if git(checkout, "ls-files", "target"):
             raise ValueError("Target contains tracked files")
         return checkout, debug
 
-    def preview_one(self, row):
+    def preview_one(self, row, *, lease=None):
         report = {"id": row["id"], "checkout": row["checkout"], "state": "skipped"}
         try:
-            with self.locked(row["checkout"]):
+            with self.locked(row["checkout"]) if lease is None else contextlib.nullcontext(lease):
                 if row.get("removed") or row.get("keep") or row["status"] not in ("terminal", "retired"):
                     raise ValueError("Active, kept, removed, or unknown lifecycle")
                 if row.get("pilot_reuse") and not row.get("pilot_cleanup_ready"):
                     raise ValueError("Pilot owners have not finished their registered sessions")
                 if not row.get("evidence_saved"):
                     raise ValueError("Evidence not confirmed/exported")
-                _, debug = self.verify(row)
-                stamp, size = fingerprint(debug)
+                checkout, debug = self.verify(row)
+                artifact = checkout / "target" if row["kind"] == "managed" and "retention" in row else debug
+                stamp, size = fingerprint(artifact)
                 token = hashlib.sha256((json.dumps(row, sort_keys=True) + stamp).encode()).hexdigest()
                 report.update(state="candidate", token=token, bytes=size,
-                              target=str(debug), sha=row["sha"], kind=row["kind"])
+                              target=str(artifact), sha=row["sha"], kind=row["kind"])
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
             report["reason"] = str(error)
         return report
@@ -178,10 +184,10 @@ class Store:
         return [self.preview_one(self.load(p.parent.name))
                 for p in sorted((self.root / "runs").glob("*/result.json"))]
 
-    def apply(self, key, token):
+    def apply(self, key, token, *, lease=None):
         row = self.load(key)
         # Hold locks throughout revalidation and deletion, including snapshot comparison.
-        with self.locked(row["checkout"]):
+        with self.locked(row["checkout"]) if lease is None else contextlib.nullcontext(lease):
             current_row = self.load(key)
             if current_row["checkout"] != row["checkout"]:
                 raise ValueError("Record checkout changed")
@@ -193,24 +199,30 @@ class Store:
             if not row.get("evidence_saved"):
                 raise ValueError("Evidence not saved")
             checkout, debug = self.verify(row)
-            stamp, size = fingerprint(debug)
+            artifact = checkout / "target" if row["kind"] == "managed" and "retention" in row else debug
+            stamp, size = fingerprint(artifact)
             current = hashlib.sha256((json.dumps(row, sort_keys=True) + stamp).encode()).hexdigest()
             if token != current:
                 raise ValueError("Candidate changed; preview again")
             if row["kind"] == "managed":
-                # Preserve all non-debug target artifacts before removing this disposable tree.
-                if os.path.lexists(checkout / "target"):
+                # New records export runtime evidence even without a target tree.
+                if "retention" in row or os.path.lexists(checkout / "target"):
                     self.export_target(row)
                 remote.command(["git", "-C", row["repo"], "worktree", "remove", "--force", str(checkout)])
             else:
                 shutil.rmtree(debug)  # Never remove a developer worktree or its release/evidence.
             row.update(removed=True, cleaned_at=time.time(), reclaimed_debug_bytes=size)
+            if "retention" in row:
+                row["cleanup"] = dict(state="removed", bytes=size)
             if row.get("temporary_directory"):
                 row["temporary_cleanup"] = remote.cleanup_temp_directory(row["temporary_directory"])
             self.save(row)
             return {"id": key, "state": "removed", "bytes": size}
 
     def export_target(self, row):
+        if "retention" in row:
+            row["evidence_export"] = remote.reporting().preserve_evidence(self.record_path(row["id"]).parent, row)
+            return
         target = Path(row["checkout"]) / "target"
         destination = self.record_path(row["id"]).parent / "artifacts"
         for entry in target.iterdir():
@@ -293,8 +305,10 @@ def run(store, args, prepare=None, on_record=None):
     checkout = store.root / "checkouts" / key
     row = dict(id=key, kind="managed", repo=str(repo), checkout=str(checkout), sha=args.sha,
                command=cargo, status="preparing", keep=args.keep, evidence_saved=False,
+               retention="always" if args.keep else "never",
                process_exit=None, scenario="unassessed", candidate_source=source,
                build_jobs=jobs, wait_for_lock=getattr(args, "wait_for_lock", False),
+               cargo_build_target=os.environ.get("CARGO_BUILD_TARGET"),
                platform=sys.platform, architecture=platform.machine(),
                submitted_at=time.time(), **feedback)
     row["executor_sha256"] = {
@@ -326,16 +340,18 @@ def run(store, args, prepare=None, on_record=None):
     store.save(row)
     # Cache admission and Cargo share the existing exclusive compiler lease.
     env = dict(os.environ, CARGO_BUILD_JOBS=str(jobs), CARGO_INCREMENTAL="0", RUSTC_WRAPPER="sccache")
-    process = None
-    try:
-        server_env = remote.cache_server_environment(store.root)
-        row["cache_server_environment"] = {
-            "temporary_directory": server_env["TMPDIR"],
-            "idle_timeout": "0",
-        }
-        row["queued_at"] = time.time()
-        store.save(row)
-        with store.locked(checkout, wait=row["wait_for_lock"]) as handles:
+    with contextlib.ExitStack() as leases:
+        process = None
+        handles = None
+        try:
+            server_env = remote.cache_server_environment(store.root)
+            row["cache_server_environment"] = {
+                "temporary_directory": server_env["TMPDIR"],
+                "idle_timeout": "0",
+            }
+            row["queued_at"] = time.time()
+            store.save(row)
+            handles = leases.enter_context(store.locked(checkout, wait=row["wait_for_lock"]))
             row["capacity_acquired_at"] = time.time()
             if row["wait_for_lock"] and shutil.disk_usage(store.root).free < 30 * GIB:
                 raise ValueError("Less than 30 GiB free after waiting; build not started")
@@ -375,21 +391,37 @@ def run(store, args, prepare=None, on_record=None):
                 "cache-after",
                 server_env,
             )
-    except (Exception, KeyboardInterrupt) as error:
-        row["error"] = str(error)
-        row["scenario"] = "red"
-    finally:
-        row.update(status="terminal", finished_at=time.time())
-        reporter.write_report(store.record_path(key).parent, row, related)
-        for name, path in (("target_identity", checkout / "target"), ("debug_identity", checkout / "target/debug")):
-            if path.is_dir() and not path.is_symlink():
-                row[name] = identity(path)
-        store.save(row)
-    if row["scenario"] == "green" and not row["keep"]:
-        candidate = store.preview_one(row)
-        if candidate["state"] == "candidate":
-            store.apply(key, candidate["token"])
-    return store.load(key)
+        except (Exception, KeyboardInterrupt) as error:
+            row["error"] = str(error)
+            row["scenario"] = "red"
+        finally:
+            row.update(status="terminal", finished_at=time.time())
+            reporter.write_report(store.record_path(key).parent, row, related)
+            for name, path in (("target_identity", checkout / "target"), ("debug_identity", checkout / "target/debug")):
+                if path.is_dir() and not path.is_symlink():
+                    row[name] = identity(path)
+            store.save(row)
+        if not row["keep"]:
+            try:
+                with store.locked(checkout) if handles is None else contextlib.nullcontext(handles):
+                    store.verify(row)
+                    store.export_target(row)
+                    row["evidence_saved"] = True
+                    store.save(row)
+                candidate = store.preview_one(row, lease=handles)
+                if candidate["state"] == "candidate":
+                    store.apply(key, candidate["token"], lease=handles)
+                else:
+                    row = store.load(key)
+                    row["cleanup"] = dict(state="retained", reason=candidate["reason"])
+                    store.save(row)
+            except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+                row = store.load(key)
+                row["evidence_saved"] = False
+                row["evidence_export"] = dict(state="failed", error=str(error))
+                row["cleanup"] = dict(state="retained", reason=str(error))
+                store.save(row)
+        return store.load(key)
 
 
 def argument_parser():
@@ -403,7 +435,7 @@ def argument_parser():
     p.add_argument("--jobs", type=int, default=2)
     p.add_argument("--wait-for-lock", action="store_true",
                    help="Wait on the existing exclusive host/checkout locks before starting Cargo")
-    p.add_argument("--keep", action="store_true")
+    p.add_argument("--keep", action="store_true", help="Explicitly retain the checkout and artifacts after this run")
     p.add_argument("--cargo-only", action="store_true", help="Assert pure Cargo check: no external scenario verdict or unique debug artifacts")
     p.add_argument("--timeout", type=int, default=3600)
     remote.reporting().add_arguments(p)

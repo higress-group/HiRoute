@@ -71,25 +71,50 @@ parsed test counts, scenario status and before/after sccache statistics are unde
 `~/.cache/hiroute/local-rust/runs/ID/`. Compilation failure, timeout and missing
 scenario assessment are not green. A zero-match test selection is not success.
 
-`--cargo-only` explicitly asserts this is a pure Cargo/component check, with no
-separate E2E verdict and no unique evidence inside `target/debug`. Successful checks
-then export all non-debug target artifacts before removing the disposable checkout.
-Failure retains it. Use `--keep` for investigations or binaries you still need.
+Every ordinary run defaults to immediate reclamation after execution, including
+failed commands, timeouts, interrupted waits and preparation blocks. The runner
+keeps its acquired compiler/checkout leases through report publication, evidence
+export and cleanup. It saves results, logs and cache diagnostics in the run record,
+exports non-compiler target artifacts to `runs/ID/artifacts/`, preserving Pilot's
+existing consumer paths. Checkout `artifacts/` and surviving private TMPDIR contents
+go to `runs/ID/evidence/`. The `evidence.json` manifest records each saved path and
+file hash, including smoke build receipts with complete recipes.
+Debug/release/custom Cargo profiles, cross-target profiles, generated documentation,
+package outputs, smoke binaries and `target/validation-schedule` executable snapshots
+are rebuildable and are not copied. Inherited Cargo targets are recorded; Cargo's
+profile lock also identifies configured and previously used custom profiles. Keep unique evidence outside compiler profiles; use
+`--keep` when arbitrary debug files or built binaries are still needed.
 
-For E2E, omit `--cargo-only`: even exit=0 stays `unassessed`, and the wrapper exits
-nonzero rather than claiming product success. After assessing actual scenarios and
-copying any unique debug evidence elsewhere:
+`--cargo-only` asserts a pure Cargo/component check with no separate product
+assessment. It controls the scenario verdict, independently of cleanup. Omitting
+it leaves exit-zero execution `unassessed` and the wrapper returns nonzero; the
+saved record can still be assessed after its checkout is removed. Failure and
+cleanup never manufacture a green scenario.
+
+`--keep` is the explicit exception for investigations, subsequent binary use and
+Desktop/Pilot acceptance. Native Pilot acquisition already requests retention;
+its final registered owner releases it through `pilot-build finish`. For a manually
+kept E2E run, assess actual scenarios and export any unique debug evidence before:
 
 ```sh
 python3 scripts/local-rust.py finish RUN_ID --verdict green --evidence-saved
+python3 scripts/local-rust.py release RUN_ID
 python3 scripts/local-rust.py preview
 python3 scripts/local-rust.py apply RUN_ID --token TOKEN_FROM_PREVIEW
 ```
 
+Final cleanup of new explicitly kept runs uses the same evidence exporter before
+removing the checkout and TMPDIR. Unknown source/untracked/ignored material or an
+export failure retains the originals with a reason; save or remove the material
+and retry cleanup. Existing records keep their earlier evidence-confirmation rules.
+
 Use `red` or `expected_red` honestly; neither proves product completion. `finish`
-records assessment but does not itself delete anything. Missing artifact exports,
-links in artifacts, source changes or untracked/ignored files outside target cause
-cleanup to retain the checkout. Logs/results remain even after successful cleanup.
+records assessment but does not itself delete anything. Failed report/export,
+links or special files in evidence, source changes, unknown generated files or
+changed resource identities retain the checkout with an explicit cleanup reason.
+Private runtime evidence is exported before its TMPDIR is removed. Developer
+source worktrees, other owners and shared compiler caches remain separately owned.
+Existing retained records keep their original evidence-confirmation requirements.
 
 ## Retire a developer target explicitly
 
@@ -125,9 +150,8 @@ non-destructive; apply rechecks the snapshot and holds the same locks until done
 
 Before local validation, less than 30 GiB free triggers this bounded managed GC,
 aiming for 60 GiB. If still below 30 GiB, compilation is refused. Unknown or kept
-directories are not sacrificed to meet the target. Remote retention remains the
-existing `remote-rust.py` policy and commands; this patch does not alter remote
-execution or introduce a scheduler.
+directories are not sacrificed to meet the target. The SSH runner uses the same immediate-cleanup default through `--retention never`;
+`--retention always` and `on-failure` are explicit retention exceptions.
 
 ## Owner cleanup during build/fix/retest
 
@@ -203,7 +227,7 @@ exact pushed candidate and its platform environment.
 
 An opt-in integration test uses a tiny dependency-free crate pushed to a disposable
 local bare origin, real Cargo and an isolated sccache endpoint/cache under the shared host lock. It tests this runner's
-fetch/build/evidence/reclamation path, two compilations across run cleanup, stale-server refusal and failed-test retention without compiling the HiRoute workspace:
+fetch/build/evidence/reclamation path, two compilations across run cleanup, stale-server refusal and default failed-test reclamation and explicit retention without compiling the HiRoute workspace:
 
 ```sh
 HIROUTE_REAL_CARGO_TEST=1 python3 scripts/test-local-rust.py Cleanup.test_real_cargo_pushed_fixture_lifecycle

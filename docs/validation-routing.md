@@ -93,6 +93,11 @@ Help does not contact the execution host or require its checkout to be updated.
 
 Arguments after `backend`/`desktop` otherwise follow the selected runner's CLI.
 SSH backend returns a queued run ID and supports `wait/status/logs/cleanup/gc`.
+Both local and SSH ordinary runs save reports and private evidence, then reclaim
+their managed checkout and temporary directory after success, failure, timeout or
+pre-command block. Use local `--keep` or SSH `--retention always` when subsequent
+steps need those binaries; SSH `--retention on-failure` explicitly retains failures.
+Desktop/Pilot acquisition retains its build until the registered owners finish.
 Use `backend wait RUN_ID --timeout 50` for one compact terminal or timeout
 observation; repeat a bounded wait when necessary, and inspect full status/logs
 for failures or specific evidence. A wait timeout does not change the run state.
@@ -614,7 +619,6 @@ ssh "$backend_host" "mkdir -p '$staging_dir'"
 scp -r apps/desktop/dist "$backend_host:$staging_dir/"
 python3 scripts/validation.py --frontend-dist "~/$staging_dir/dist" backend run \
   --ref refs/heads/codex/my-change --sha CANDIDATE_SHA \
-  --reuse-checkout BLOCKED_RUN_ID --retention always \
   --plan my-change --phase final -- \
   cargo test --locked -p hiroute-daemon --test publication_process installed_ -- --nocapture
 ```
@@ -637,8 +641,8 @@ executed related runs and Cargo arguments. For an integration checkout retained 
 advances; the original owner remains responsible for cleanup. An early blocked owner
 retained by `on-failure` uses exact-candidate reuse. Both paths recheck stopped-worker,
 current-state, clean-source and driver identity under the checkout lease before
-checking the supplied assets again. `never` removes a fresh checkout, so its command
-starts a new one. Old results remain unchanged. The checkout state records resource use;
+checking the supplied assets again. The default `never` removes a fresh checkout,
+so its recovery command starts a new one and keeps the immediate-cleanup policy. Old results remain unchanged. The checkout state records resource use;
 `--related-run` accepts executed reports, so do not pass a setup-blocked run there.
 Do not replace production assets with a dummy page
 or weaken package assertions. Hosted CI retains its existing frontend artifact

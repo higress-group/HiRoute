@@ -422,7 +422,7 @@ sys.exit(101 if bad else 0)
         initial = self.generated_request(shlex.join([
             'python3', 'scripts/remote-rust.py', '--host', 'fixture-backend',
             '--workbench', '.local/share/fixture-workbench', 'run', '--ref', self.git('symbolic-ref', 'HEAD'),
-            '--sha', self.sha, '--plan', 'console-retry', '--',
+            '--sha', self.sha, '--retention', 'on-failure', '--plan', 'console-retry', '--',
             'cargo', 'test', '--test', 'publication_process', 'installed_']), owner)
         self.assertEqual(initial['retention'], 'on-failure')
         first, stats = self.execute_worker(root, initial)

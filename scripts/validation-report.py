@@ -2,10 +2,14 @@
 """Derived validation diagnostics; never an attestation or an automatic test waiver."""
 import argparse
 from collections import Counter
+import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import sys
+import tempfile
 
 VERSION = 1
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
@@ -13,6 +17,136 @@ HEADER = re.compile(r"^\s*Running (.+?) \(([^)]+)\)\s*$")
 SUMMARY = re.compile(r"^test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored(?:;.*)?$")
 CASE = re.compile(r"^test (\S+) \.\.\. (ok|FAILED|ignored)(?:\s.*)?$")
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def preserve_evidence(run, record):
+    """Export private run evidence before deleting a disposable build or TMPDIR.
+
+    Compiler profiles and executable snapshots are reproducible. Other target
+    artifacts and surviving test scratch may contain unique failure evidence.
+    Unknown links/special files or failed copies retain the original resource.
+    """
+    if record.get("validation_report", {}).get("error"):
+        raise ValueError("Validation report was not saved")
+    run = Path(run)
+    destination = run / "evidence"
+    if destination.is_symlink():
+        raise ValueError("Evidence destination is a link")
+    destination.mkdir(exist_ok=True, mode=0o700)
+    profiles = {"debug", "release", "doc", "package"}
+    targets = set()
+    if record.get("cargo_build_target"):
+        targets.add(Path(record["cargo_build_target"]).stem)
+    args = record.get("command", [])
+    args = args[:args.index("--")] if "--" in args else args
+    for index, arg in enumerate(args):
+        if arg == "--profile" and index + 1 < len(args):
+            profiles.add({"dev": "debug", "test": "debug", "bench": "release"}.get(args[index + 1], args[index + 1]))
+        elif arg.startswith("--profile="):
+            value = arg.split("=", 1)[1]
+            profiles.add({"dev": "debug", "test": "debug", "bench": "release"}.get(value, value))
+        elif arg == "--target" and index + 1 < len(args):
+            targets.add(Path(args[index + 1]).stem)
+        elif arg.startswith("--target="):
+            targets.add(Path(arg.split("=", 1)[1]).stem)
+    files, excluded = {}, []
+
+    def cargo_profile_marker(directory):
+        try:
+            return stat.S_ISREG((directory / ".cargo-lock").lstat().st_mode)
+        except FileNotFoundError:
+            return False
+
+    def copy(source, relative, target_tree=False):
+        info = source.lstat()
+        parts = relative.parts
+        # Cargo profiles can also be under target/<target-triple>/PROFILE.
+        if target_tree and stat.S_ISDIR(info.st_mode):
+            profile = len(parts) in (2, 3) and (cargo_profile_marker(source)
+                or source.name in profiles and (len(parts) == 2 or parts[1] in targets
+                    or re.fullmatch(r"\w+(?:-[\w.]+){2,}|wasm\d+-[\w.-]+", parts[1])))
+            if profile or parts == ("target", "validation-schedule"):
+                excluded.append(relative.as_posix())
+                return
+        if stat.S_ISLNK(info.st_mode) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+            raise ValueError("Evidence contains a link or special file: " + relative.as_posix())
+        # Smoke preparation binds these small receipts by path/hash. Keep the
+        # complete recipe, but not the adjacent executable snapshots.
+        if (target_tree and parts[:3] == ("target", "smoke", "builds") and len(parts) > 3
+                and not (len(parts) in (4, 5) and stat.S_ISDIR(info.st_mode)
+                         or len(parts) == 6 and parts[-1] == "receipt.json")):
+            excluded.append(relative.as_posix())
+            return
+        # Keep local/Pilot's existing target-artifact consumer paths. Runtime
+        # and checkout artifacts have a separate namespace to prevent collisions.
+        output = run / "artifacts" / Path(*parts[1:]) if parts[0] == "target" else destination / relative
+        if output.is_symlink():
+            raise ValueError("Evidence destination contains a link")
+        if stat.S_ISDIR(info.st_mode):
+            output.mkdir(exist_ok=True, mode=0o700)
+            for child in sorted(source.iterdir()):
+                copy(child, relative / child.name, target_tree)
+            return
+        digest = hashlib.sha256()
+        with source.open("rb") as incoming, tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as outgoing:
+            temporary = Path(outgoing.name)
+            try:
+                while True:
+                    data = incoming.read(1024 * 1024)
+                    if not data:
+                        break
+                    digest.update(data)
+                    outgoing.write(data)
+                outgoing.flush()
+                after = source.lstat()
+                if (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns) != (
+                        after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
+                    raise ValueError("Evidence changed during export: " + relative.as_posix())
+                if output.exists():
+                    with output.open("rb") as saved:
+                        existing = hashlib.sha256()
+                        for data in iter(lambda: saved.read(1024 * 1024), b""):
+                            existing.update(data)
+                    if existing.digest() != digest.digest():
+                        raise ValueError("Previously exported evidence differs: " + relative.as_posix())
+                else:
+                    os.replace(temporary, output)
+            finally:
+                temporary.unlink(missing_ok=True)
+        files[relative.as_posix()] = dict(path=output.relative_to(run).as_posix(),
+                                         bytes=info.st_size, sha256=digest.hexdigest())
+
+    checkout = Path(record["checkout"]) if record.get("checkout") else None
+    if checkout is not None and checkout.exists():
+        if checkout.is_symlink():
+            raise ValueError("Evidence checkout is a link")
+        for name in ("target", "artifacts"):
+            source = checkout / name
+            if os.path.lexists(source):
+                copy(source, Path(name), name == "target")
+    scratch = record.get("temporary_directory")
+    if scratch and os.path.lexists(scratch["path"]):
+        source = Path(scratch["path"])
+        info = source.lstat()
+        if (source.is_symlink() or not source.is_dir() or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077 or not source.name.startswith("hr-")
+                or source.parent.resolve() != Path(scratch["system_directory"]).resolve()):
+            raise ValueError("Temporary evidence directory identity is unsafe")
+        copy(source, Path("temporary"))
+    manifest = run / "evidence.json"
+    value = dict(source_revision=record.get("sha"), files=files, excluded=excluded)
+    if manifest.is_symlink():
+        raise ValueError("Evidence manifest is a link")
+    with tempfile.NamedTemporaryFile(dir=run, mode="w", delete=False) as output:
+        temporary = Path(output.name)
+        try:
+            output.write(json.dumps(value, indent=2) + "\n")
+            output.flush()
+            os.replace(temporary, manifest)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return dict(state="saved", manifest=str(manifest), files=len(files),
+                bytes=sum(value["bytes"] for value in files.values()))
 
 
 def add_arguments(parser):
