@@ -347,6 +347,24 @@ fn complete_tool_stage(v2: bool, declared: bool, streaming: bool, nullable: bool
             score["fact"]["history_membership"]["association_unverified"],
             true
         );
+        for member in &members {
+            let attempt = facts
+                .iter()
+                .find(|event| {
+                    event["fact"]["kind"] == "attempt_finished"
+                        && &event["correlation"]["request_id"] == member
+                })
+                .unwrap();
+            assert_eq!(attempt["fact"]["provider_model_event"], "response_complete");
+            for field in ["model_configuration_id", "profile_digest"] {
+                assert_eq!(score["fact"][field], attempt["fact"][field]);
+            }
+            assert!(facts.iter().any(|event| {
+                event["fact"]["kind"] == "request_finished"
+                    && &event["correlation"]["request_id"] == member
+                    && event["fact"]["outcome"] == "accepted"
+            }));
+        }
     }
     let admissions = facts
         .iter()

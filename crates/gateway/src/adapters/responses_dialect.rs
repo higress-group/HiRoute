@@ -91,10 +91,7 @@ pub(super) fn project_request(
                     // vendor metadata even when its recorded response carried [].
                     // Schema negotiation does not change standard JSON history.
                     if declared.as_ref().is_some_and(|paths| !paths.is_empty()) {
-                        return Err(ModelIrError::UnsupportedField(
-                            "encrypted function replay on standard Responses".into(),
-                        )
-                        .into());
+                        return Err(ModelIrError::ProviderStateNotPortable.into());
                     }
                     // Consume the negotiated extension; ordinary standard replay stays ordinary.
                     call.remove("encrypted_function_args");

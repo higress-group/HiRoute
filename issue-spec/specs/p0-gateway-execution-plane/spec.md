@@ -105,6 +105,10 @@ remain ingress errors; unknown native fields retain their existing admission bou
 An opaque-state projection gap SHALL exclude only that candidate, allowing an authorized
 native-compatible candidate to execute. With no compatible candidate, the request reports
 the existing no-eligible-candidate result without forwarding ciphertext or trimming history.
+Valid function-call replay declaring nonempty `encrypted_function_args` uses the same
+closed candidate-local portability reason for a standard Responses JSON target. A native
+compatible candidate retains the complete declaration and arguments. Malformed encoding
+stays an ingress error; a standard source returning encrypted arguments remains invalid.
 Responses items synthesized from other protocols MUST have response-scoped identities
 that agree across incremental, buffered and terminal projections. Native item IDs
 remain exact; block indexes alone MUST NOT become cross-response identities. Function-call-output
