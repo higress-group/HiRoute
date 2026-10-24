@@ -969,7 +969,7 @@ fn login_item_owned_by_this_feature(
 ) -> Result<bool, ControlReadError> {
     for original in stores
         .control()
-        .succeeded_agent_operations_for_kinds(
+        .verified_agent_history_for_kinds(
             workspace,
             &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
         )

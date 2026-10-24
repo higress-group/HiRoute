@@ -67,11 +67,10 @@ impl ClientAccessPort for LocalControlAdapter {
             None => ClientGatewayStateV1::NotComposed,
             Some(target) => match target.observes_verified(active.as_ref()) {
                 Ok(true) if reads_ready => {
-                    if let Some(publication) = active
-                        .as_ref()
-                        .and_then(|p| p.verify().ok())
-                        .filter(|p| p.gateway_snapshot().is_ok())
-                    {
+                    if let Some(publication) = active.as_ref().and_then(|record| {
+                        record.gateway_snapshot().ok()?;
+                        record.verify().ok()
+                    }) {
                         if publication.aliases.is_empty() {
                             ClientGatewayStateV1::NoNewCalls
                         } else {

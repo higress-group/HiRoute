@@ -301,18 +301,49 @@ fn load_by_state(
         )
         .optional()
         .map_err(|_| port(PortErrorCode::Unavailable, "publication.read"))?;
-    row.map(|(revision, digest, bytes)| {
-        PublicationRecordV1::from_parts(
-            workspace.clone(),
-            GatewayPublicationRevision::new(revision)
-                .map_err(|_| port(PortErrorCode::Corrupt, "publication.revision"))?,
-            CanonicalDigest::parse(digest)
-                .map_err(|_| port(PortErrorCode::Corrupt, "publication.digest"))?,
-            bytes,
-        )
-        .map_err(|_| port(PortErrorCode::Corrupt, "publication.verify"))
-    })
-    .transpose()
+    // Do not cache current membership or trust a digest label alone. The single
+    // SELECT above binds state/revision/digest/bytes in a fresh SQLite snapshot.
+    // Exact unchanged bytes can retain their value-owned authentication proof.
+    let mut cache = store.active_publication_cache.borrow_mut();
+    if state == "active" {
+        if let (Some((revision, digest, bytes)), Some(cached)) = (&row, cache.as_ref())
+            && cached.workspace_id == *workspace
+            && cached.publication_revision.get() == *revision
+            && cached.digest.as_str() == digest
+            && cached.bytes.as_slice() == bytes.as_slice()
+        {
+            return Ok(Some(cached.clone()));
+        }
+        *cache = None;
+    }
+    let record = row
+        .map(|(revision, digest, bytes)| {
+            PublicationRecordV1::from_parts(
+                workspace.clone(),
+                GatewayPublicationRevision::new(revision)
+                    .map_err(|_| port(PortErrorCode::Corrupt, "publication.revision"))?,
+                CanonicalDigest::parse(digest)
+                    .map_err(|_| port(PortErrorCode::Corrupt, "publication.digest"))?,
+                bytes,
+            )
+            .map_err(|_| port(PortErrorCode::Corrupt, "publication.verify"))
+        })
+        .transpose()?;
+    // Account conservatively for decoded allocations and derived projections.
+    // Oversized records retain the same strict uncached reader, without eviction
+    // churn or an unbounded per-workspace map. This is not an RSS guarantee.
+    if state == "active"
+        && let Some(record) = &record
+        && record
+            .bytes
+            .len()
+            .saturating_mul(8)
+            .saturating_add(64 * 1024)
+            <= 64 * 1024 * 1024
+    {
+        *cache = Some(record.clone());
+    }
+    Ok(record)
 }
 
 fn port(code: PortErrorCode, context: &'static str) -> PortError {
@@ -417,6 +448,7 @@ mod routing_publication_storage_tests {
         assert_eq!(error.code, PortErrorCode::Conflict);
         assert!(store.prepared_publication(&workspace).unwrap().is_none());
     }
+
     #[test]
     fn active_publication_shares_only_a_fresh_exact_row_and_rejects_warmed_tampering() {
         let directory = tempdir().unwrap();

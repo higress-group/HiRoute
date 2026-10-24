@@ -86,6 +86,8 @@ pub use compute::{
 
 pub struct ControlStore {
     agent_history_cache: RefCell<agent_history_cache::AgentHistoryCache>,
+    // One rebuildable active record; every hit compares a fresh raw SQL row.
+    active_publication_cache: RefCell<Option<hiroute_domain::PublicationRecordV1>>,
     diagnostics: RefCell<hiroute_diagnostics::DiagnosticsPort>,
     pub(crate) connection: RefCell<Connection>,
     pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
@@ -252,6 +254,7 @@ impl ControlStore {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
             agent_history_cache: RefCell::new(Default::default()),
+            active_publication_cache: RefCell::new(None),
             startup_lock: None,
             connection: RefCell::new(open_database(
                 _authority,
@@ -272,6 +275,7 @@ impl ControlStore {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
             agent_history_cache: RefCell::new(Default::default()),
+            active_publication_cache: RefCell::new(None),
             startup_lock: None,
             connection: RefCell::new(open_database_from_set(
                 authority,
