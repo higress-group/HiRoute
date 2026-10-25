@@ -67,6 +67,7 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .find(|intent| is_settings_codex_model(intent))
         .unwrap()
         .clone();
+    apply_fixture_catalog(adapter, &mut install);
     let file_effect = adapter.apply_external(&install, &intent).unwrap();
     record_agent_effect(adapter, &mut install, &file_effect);
     adapter
@@ -320,6 +321,7 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .find(|intent| is_settings_codex_model(intent))
         .unwrap()
         .clone();
+    apply_fixture_catalog(adapter, &mut update);
     let update_file = adapter.apply_external(&update, &update_intent).unwrap();
     record_agent_effect(adapter, &mut update, &update_file);
     adapter
@@ -892,16 +894,39 @@ fn record_agent_effect(
     operation: &mut OperationV1,
     effect: &OwnedEffectV1,
 ) {
-    operation
+    let effects = &mut operation
         .step_mut(OperationStepKind::ApplyAgentArtifacts)
-        .effects
-        .push(effect.clone());
+        .effects;
+    if let Some(existing) = effects
+        .iter_mut()
+        .find(|old| old.effect_id == effect.effect_id)
+    {
+        *existing = effect.clone();
+    } else {
+        effects.push(effect.clone());
+    }
     adapter
         .stores_lock()
         .unwrap()
         .control()
         .save_operation(operation)
         .unwrap();
+}
+
+fn apply_fixture_catalog(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
+    let Some(intent) = operation
+        .plan
+        .external()
+        .iter()
+        .find(|intent| is_settings_codex_catalog(intent))
+        .cloned()
+    else {
+        return;
+    };
+    let effect = adapter.apply_external(operation, &intent).unwrap();
+    record_agent_effect(adapter, operation, &effect);
+    let effect = adapter.activate_external(operation, &effect).unwrap();
+    record_agent_effect(adapter, operation, &effect);
 }
 
 fn finish_fixture_operation(adapter: &LocalControlAdapter, operation: &mut OperationV1) {

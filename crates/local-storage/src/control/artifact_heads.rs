@@ -37,12 +37,24 @@ pub(super) fn receipt<'a>(
     operation: &'a OperationV1,
     intent: &ExternalEffectIntentV1,
 ) -> PortResult<Option<&'a OwnedEffectV1>> {
-    let found = operation
+    if operation.state == OperationState::Succeeded
+        && !operation.steps.iter().any(|step| {
+            step.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts
+                && step.status == hiroute_domain::OperationStepStatus::Applied
+        })
+    {
+        return Err(invalid());
+    }
+    let mut matching = operation
         .steps
         .iter()
-        .rev()
-        .flat_map(|step| step.effects.iter().rev())
-        .find(|effect| effect.effect_id == intent.effect_id());
+        .filter(|step| step.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
+        .flat_map(|step| step.effects.iter())
+        .filter(|effect| effect.effect_id == intent.effect_id());
+    let found = matching.next();
+    if matching.next().is_some() {
+        return Err(invalid());
+    }
     if let Some(effect) = found {
         if effect.kind != intent.kind()
             || effect.target != intent.target()
@@ -124,7 +136,7 @@ fn authenticate_owner(
     .ok_or_else(invalid)?;
     if operation.workspace_id != *workspace
         || operation.state != OperationState::Succeeded
-        || !journal::is_current(db, &operation)?
+        || !journal::is_current_artifact_step(db, &operation)?
     {
         return Err(invalid());
     }
@@ -274,7 +286,7 @@ impl ControlStore {
             if expected.operation.as_str() != id
                 || operation.workspace_id.as_str() != workspace
                 || operation.state != OperationState::Succeeded
-                || !journal::is_current(&db, &operation)?
+                || !journal::is_current_artifact_step(&db, &operation)?
             {
                 return Err(invalid());
             }

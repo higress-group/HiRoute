@@ -78,6 +78,7 @@ number after reboot cannot alone invalidate logically intact supported store ide
 
 - **WHEN** completed Agent configuration operations leave superseded restore markers or backups
 - **THEN** ordinary startup authenticates the current workspace/target owners and unresolved operations' exact direct restore inputs, including the current model's catalog, without visiting optional historical Restore menu entries or recursively retaining settled reconfiguration ancestors. Access to an old restore point still authenticates its original journal, marker and protected backup; unrelated damage is not reported as verified healthy.
+- **AND** settled file ownership verifies the original immutable input, exact current identity and file receipt without requiring optional attribution proof from unrelated completed steps. Admission, owner replacement and direct restore reads use this same boundary; the entire unresolved operation remains strictly verified.
 - **AND** admission captures the exact previous owner, and a successful receipt updates or retires the owner in the same transaction as the terminal journal and writer release. Selecting an old restore point cannot bypass this comparison; rollback keeps the prior owner. Missing current owners, membership, receipts or required backups remain failures. Supported initial conversion establishes this projection atomically from authenticated old journals without rewriting them.
 
 #### Scenario: An empty recovery lookup cannot prove completion

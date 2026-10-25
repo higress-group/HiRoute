@@ -37,12 +37,13 @@ fn add_component_file_receipts(operation: &mut OperationV1) {
             .into(),
         })
         .collect();
-    operation
+    let step = operation
         .steps
         .iter_mut()
         .find(|s| s.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
-        .unwrap()
-        .effects = receipts;
+        .unwrap();
+    step.effects = receipts;
+    step.status = hiroute_domain::OperationStepStatus::Applied;
 }
 
 fn rewrite_marker_as_legacy(

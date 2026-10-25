@@ -82,6 +82,31 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
 }
 
 pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> PortResult<bool> {
+    is_current_in_scope(connection, operation, None)
+}
+
+/// Current file roots require their original input and exact file receipt. Optional
+/// grant-attribution proof in another step cannot disable an otherwise valid file
+/// restore dependency. Executing/recovering an operation still uses the full check.
+pub(super) fn is_current_artifact_step(
+    connection: &Connection,
+    operation: &OperationV1,
+) -> PortResult<bool> {
+    let Some(step) = operation
+        .steps
+        .iter()
+        .find(|step| step.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
+    else {
+        return Ok(false);
+    };
+    is_current_in_scope(connection, operation, Some(step.sequence))
+}
+
+fn is_current_in_scope(
+    connection: &Connection,
+    operation: &OperationV1,
+    selected: Option<u16>,
+) -> PortResult<bool> {
     if !operation
         .journal_is_committed()
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.checkpoint"))?
@@ -100,6 +125,7 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
                 operation
                     .steps
                     .iter()
+                    .filter(|s| selected.is_none_or(|sequence| s.sequence == sequence))
                     .map(|s| payloads::step(connection, operation.operation_id.as_str(), s, false))
                     .collect::<PortResult<Vec<_>>>()?,
             ))
@@ -107,11 +133,17 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
     } else {
         Ok((
             checkpoint.plan_json.to_owned(),
-            serde_json::to_value(&operation.steps)
-                .map_err(|_| port(PortErrorCode::InvalidData, "control.current.steps"))?
-                .as_array()
-                .expect("steps array")
-                .clone(),
+            serde_json::to_value(
+                operation
+                    .steps
+                    .iter()
+                    .filter(|s| selected.is_none_or(|sequence| s.sequence == sequence))
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|_| port(PortErrorCode::InvalidData, "control.current.steps"))?
+            .as_array()
+            .expect("steps array")
+            .clone(),
         ))
     };
     let (plan_json, projected_steps) = match projection {
@@ -138,10 +170,11 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
     // accidentally approve an old generation after another connection commits a new one.
     let copies: Option<(String, String)> = connection
         .query_row(
-            "SELECT json_extract(operation_json, '$.steps'),
+            "SELECT CASE WHEN ?16 IS NULL THEN json_extract(operation_json, '$.steps')
+                ELSE json_array(json_extract(operation_json, '$.steps['||?16||']')) END,
                 (SELECT json_group_array(json(step)) FROM (
                     SELECT json_extract(step_json, '$.step') AS step FROM operation_steps
-                    WHERE operation_id=?1 ORDER BY step_no))
+                    WHERE operation_id=?1 AND (?16 IS NULL OR step_no=?16) ORDER BY step_no))
          FROM operations WHERE operation_id=?1 AND generation=?2
          AND json_extract(operation_json, '$.plan')=?3 AND request_digest=?4
          AND accepted_change_digest=?5 AND workspace_id=?6 AND principal=?7
@@ -163,7 +196,7 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
               OR EXISTS(SELECT 1 FROM writer_claim WHERE operation_id=?1)
               OR (?15 AND NOT EXISTS(SELECT 1 FROM writer_claim)))
          AND (SELECT count(*) FROM operation_steps WHERE operation_id=?1)=?14
-         AND NOT EXISTS(SELECT 1 FROM operation_steps s WHERE s.operation_id=?1
+         AND NOT EXISTS(SELECT 1 FROM operation_steps s WHERE s.operation_id=?1 AND (?16 IS NULL OR s.step_no=?16)
              AND (s.step_no IS NOT json_extract(s.step_json, '$.step.sequence')
                   OR s.step_kind IS NOT json_extract(s.step_json, '$.step.kind')
                   OR s.state IS NOT json_extract(s.step_json, '$.step.status')))",
@@ -183,6 +216,7 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
                 operation.schema_version,
                 operation.steps.len() as u64,
                 parked_settings_tail,
+                selected,
             ],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

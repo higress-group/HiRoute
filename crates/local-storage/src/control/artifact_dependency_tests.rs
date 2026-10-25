@@ -179,6 +179,11 @@ fn current_marker_backup_journal_and_coverage_damage_remain_fatal() {
         "backup",
         "journal",
         "generation",
+        "state",
+        "identity-row",
+        "file-step-copy",
+        "file-step-unfinished",
+        "input",
         "head",
         "coverage",
         "identity",
@@ -235,6 +240,49 @@ fn current_marker_backup_journal_and_coverage_damage_remain_fatal() {
                     .borrow()
                     .execute(
                         "UPDATE operations SET generation=generation+1 WHERE operation_id=?1",
+                        [current.operation_id.as_str()],
+                    )
+                    .unwrap();
+            }
+            "state" => {
+                control
+                    .connection
+                    .borrow()
+                    .execute(
+                        "UPDATE operations SET state='rolled_back' WHERE operation_id=?1",
+                        [current.operation_id.as_str()],
+                    )
+                    .unwrap();
+            }
+            "identity-row" => {
+                control
+                    .connection
+                    .borrow()
+                    .execute(
+                        "UPDATE operations SET principal='other-principal' WHERE operation_id=?1",
+                        [current.operation_id.as_str()],
+                    )
+                    .unwrap();
+            }
+            "file-step-copy" => {
+                control.connection.borrow().execute("UPDATE operation_steps SET step_json=json_set(step_json,'$.step.attempts',55) WHERE operation_id=?1 AND step_kind='apply_agent_artifacts'",[current.operation_id.as_str()]).unwrap();
+            }
+            "file-step-unfinished" => {
+                control.connection.borrow().execute("UPDATE operation_steps SET state='pending',step_json=json_set(step_json,'$.step.status','pending') WHERE operation_id=?1 AND step_kind='apply_agent_artifacts'",[current.operation_id.as_str()]).unwrap();
+                let step = current
+                    .steps
+                    .iter()
+                    .find(|s| s.kind == OperationStepKind::ApplyAgentArtifacts)
+                    .unwrap()
+                    .sequence;
+                control.connection.borrow().execute("UPDATE operations SET operation_json=json_set(operation_json,?2,'pending') WHERE operation_id=?1",rusqlite::params![current.operation_id.as_str(),format!("$.steps[{step}].status")]).unwrap();
+            }
+            "input" => {
+                control
+                    .connection
+                    .borrow()
+                    .execute(
+                        "DELETE FROM operation_payloads WHERE operation_id=?1",
                         [current.operation_id.as_str()],
                     )
                     .unwrap();
@@ -483,5 +531,122 @@ fn missing_success_receipt_cannot_replace_a_current_owner() {
             .unwrap()
             .state
             != OperationState::Succeeded
+    );
+}
+
+#[test]
+fn unrelated_completed_step_proof_is_optional_but_pending_journal_stays_strict() {
+    let root = tempdir().unwrap();
+    let (control, artifacts) = open(root.path());
+    let current = complete(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Apply,
+        "owned",
+    );
+    // The file step and its protected material remain exact. Another completed
+    // step's two copies disagree, as happens when optional attribution proof is lost.
+    control.connection.borrow().execute("UPDATE operations SET operation_json=json_set(operation_json,'$.steps[1].attempts',7) WHERE operation_id=?1",[current.operation_id.as_str()]).unwrap();
+    let changed = control
+        .load_operation(&current.operation_id)
+        .unwrap()
+        .unwrap();
+    assert!(
+        !control.operation_is_current(&changed).unwrap(),
+        "execution must not accept this whole journal"
+    );
+    artifacts
+        .validate_dependencies(&control.artifact_dependencies().unwrap())
+        .unwrap();
+    // Both admission and terminal owner replacement authenticate the previous
+    // current file without borrowing unrelated completed-step proof.
+    let mut replacement = admit(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Apply,
+        "replacement",
+    );
+    artifacts
+        .validate_dependencies(&control.artifact_dependencies().unwrap())
+        .unwrap();
+    stage(&artifacts, &mut replacement);
+    finish(&control, &artifacts, &mut replacement);
+    assert_eq!(
+        control.artifact_dependencies().unwrap()[0].operation,
+        replacement.operation_id
+    );
+    let pending = admit(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Apply,
+        "pending",
+    );
+    control.connection.borrow().execute("UPDATE operations SET operation_json=json_set(operation_json,'$.steps[1].attempts',7) WHERE operation_id=?1",[pending.operation_id.as_str()]).unwrap();
+    assert!(
+        control.artifact_dependencies().is_err(),
+        "unresolved operation requires every recovery step"
+    );
+}
+
+#[test]
+fn direct_restore_input_uses_exact_file_proof_not_other_completed_steps() {
+    let root = tempdir().unwrap();
+    let (control, artifacts) = open(root.path());
+    let current = complete(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Apply,
+        "owned",
+    );
+    control.connection.borrow().execute("UPDATE operations SET operation_json=json_set(operation_json,'$.steps[1].attempts',7) WHERE operation_id=?1",[current.operation_id.as_str()]).unwrap();
+    let pending = admit(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Restore,
+        "restore",
+    );
+    let envelope = AgentConnectionControlIntentV1::from_registered_planner(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent.codex",
+            "default",
+            "codex.profile.v1",
+        )
+        .unwrap(),
+        pending.plan.spec(),
+        &json!({"connection_revision":4,"desired_digest":"connection.digest.v4"}),
+    )
+    .unwrap();
+    // Exercise the dependency selector with the native planner's direct-reference
+    // envelope. Native rendering/backup content is covered by daemon process cases.
+    let intent = ExternalEffectIntentV1::from_agent_connection_planner(&envelope,
+        AgentConnectionEffectRoleV1::ManagedConfiguration, None,
+        &json!({"schema":"hiroute.settings-codex-model-file/v1", "change":{"action":"restore","original_operation":current.operation_id}}), 0o640).unwrap();
+    let mut selected = BTreeMap::new();
+    crate::control::artifact_dependencies::add_predecessor(
+        &control,
+        &mut selected,
+        &pending,
+        &intent,
+    )
+    .unwrap();
+    assert_eq!(selected.len(), 1);
+    assert_eq!(
+        selected.values().next().unwrap().operation,
+        current.operation_id
+    );
+    artifacts
+        .validate_dependencies(&selected.into_values().collect::<Vec<_>>())
+        .unwrap();
+    control.connection.borrow().execute("UPDATE operations SET operation_json=json_set(operation_json,'$.steps[4].effects',json('[]')) WHERE operation_id=?1",[current.operation_id.as_str()]).unwrap();
+    assert!(
+        crate::control::artifact_dependencies::add_predecessor(
+            &control,
+            &mut BTreeMap::new(),
+            &pending,
+            &intent
+        )
+        .is_err(),
+        "a damaged required file proof still refuses restore"
     );
 }
