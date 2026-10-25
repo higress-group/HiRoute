@@ -496,6 +496,10 @@
       {
         "name": "native_targets",
         "type": "Option<Vec<hiroute_domain::AgentNativeTargetV1>>"
+      },
+      {
+        "name": "context_id",
+        "type": "Option<String>"
       }
     ],
     "result": "Result<AgentSnapshot, DesktopFailure>",

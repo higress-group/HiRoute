@@ -403,6 +403,7 @@ pub async fn agent_snapshot(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
     native_targets: Option<Vec<hiroute_domain::AgentNativeTargetV1>>,
+    context_id: Option<String>,
 ) -> Result<AgentSnapshot, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -430,8 +431,13 @@ pub async fn agent_snapshot(
         &state.2,
         &state.3,
     );
-    hiroute_product_session::commands::agent_snapshot(&context, &product_state, native_targets)
-        .await
+    hiroute_product_session::commands::agent_snapshot(
+        &context,
+        &product_state,
+        native_targets,
+        context_id,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn retry_agent_settings(

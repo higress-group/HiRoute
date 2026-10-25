@@ -86,7 +86,7 @@ impl LocalControlAdapter {
         };
         for operation in operations {
             let input = operation.agent_input();
-            let effects = &operation.step(OperationStepKind::ApplySecrets).effects;
+            let effects = operation.grant_effects();
             for mutation in input.grants {
                 if mutation.kind() != AgentAccessGrantMutationKindV1::Ensure {
                     continue;

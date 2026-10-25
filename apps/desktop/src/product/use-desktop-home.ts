@@ -62,6 +62,9 @@ export function useDesktopHome() {
   const [agentSnapshot, setAgentSnapshot] = useState<AgentSnapshot | null>(null);
   const sequence = useRef(0);
   const activeDesktopRequest = useRef<string | null>(null);
+  const activeAgentsRequest = useRef<string | null>(null);
+  const invalidatedCatalog = useRef({ agents: false, compute: false });
+  const [catalogInvalidation, setCatalogInvalidation] = useState(0);
   const startupSequence = useRef(0);
 
   const requestId = useCallback((domain: keyof HomeReads) =>
@@ -118,6 +121,7 @@ export function useDesktopHome() {
   }, [requestId]);
 
   const refreshCompute = useCallback(async () => {
+    invalidatedCatalog.current.compute = false;
     const request = requestId('compute');
     setCompute(current => beginDomainRead(current, request, HOME_TARGET));
     try {
@@ -141,9 +145,12 @@ export function useDesktopHome() {
 
   const refreshAgents = useCallback(async () => {
     const request = requestId('agents');
+    invalidatedCatalog.current.agents = false;
+    activeAgentsRequest.current = request;
     setAgents(current => beginDomainRead(current, request, HOME_TARGET));
     try {
       const snapshot = await invoke<AgentSnapshot>('agent_snapshot');
+      if (activeAgentsRequest.current !== request) return;
       setAgentSnapshot(snapshot);
       setAgents(current => resolveDomainRead(
         current,
@@ -160,6 +167,24 @@ export function useDesktopHome() {
       ));
     }
   }, [requestId]);
+
+  // A mutation invalidates background summaries; it does not synchronously
+  // scan every Agent or subscription before the active editor can confirm.
+  const invalidateCatalog = useCallback(() => {
+    invalidatedCatalog.current = { agents: true, compute: true };
+    activeAgentsRequest.current = requestId('agents');
+    setAgentSnapshot(null);
+    setAgents(current => beginDomainRead(current, activeAgentsRequest.current!, HOME_TARGET));
+    const computeRequest = requestId('compute');
+    setCompute(current => beginDomainRead(current, computeRequest, HOME_TARGET));
+    setCatalogInvalidation(value => value + 1);
+  }, [requestId]);
+  const refreshInvalidatedCatalog = useCallback(async () => {
+    await Promise.allSettled([
+      ...(invalidatedCatalog.current.agents ? [refreshAgents()] : []),
+      ...(invalidatedCatalog.current.compute ? [refreshCompute()] : []),
+    ]);
+  }, [refreshAgents, refreshCompute]);
 
   const refreshActivity = useCallback(async () => {
     const request = requestId('activity');
@@ -286,5 +311,8 @@ export function useDesktopHome() {
     refreshActivity,
     refreshValue,
     refreshDomain,
+    invalidateCatalog,
+    refreshInvalidatedCatalog,
+    catalogInvalidation,
   };
 }

@@ -17,6 +17,13 @@ fn complete(control: &ControlStore, key: &str, payload: &str) -> OperationV1 {
     operation
 }
 fn persist(control: &ControlStore, operation: &mut OperationV1) {
+    persist_with_history_padding(control, operation, None);
+}
+fn persist_with_history_padding(
+    control: &ControlStore,
+    operation: &mut OperationV1,
+    padding: Option<&str>,
+) {
     let key = &operation.idempotency.key;
     let token = format!("capability-{key}");
     control
@@ -38,6 +45,17 @@ fn persist(control: &ControlStore, operation: &mut OperationV1) {
         step.status = hiroute_domain::OperationStepStatus::Applied;
     }
     add_component_file_receipts(operation);
+    if let Some(padding) = padding {
+        // A valid receipt's unconsumed compensation data must be authenticated
+        // but is not a current-status or grant fact.
+        let receipt = &mut operation
+            .steps
+            .iter_mut()
+            .find(|step| step.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
+            .unwrap()
+            .effects[0];
+        Arc::make_mut(&mut receipt.compensation)["retained_history_fixture"] = padding.into();
+    }
     control.finish_operation(operation).unwrap();
     // The component fixture has no external finalizer; mark its retained journal settled.
     control.complete_operation_finalization(operation).unwrap();
@@ -132,6 +150,124 @@ fn newest_matching_fact_preserves_no_match_and_current_membership() {
         find().is_err(),
         "selected indexed identity must match the authenticated row"
     );
+}
+
+#[test]
+fn current_lookup_does_not_keep_unmatched_history_alive_until_scan_end() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let oldest = complete(&control, "lookup-oldest", "");
+    complete(&control, "lookup-newest", "");
+    let history = read(&control).unwrap();
+    let newest = Arc::downgrade(&history[0]);
+    drop(history);
+    let found = control
+        .find_verified_agent_operation(&WorkspaceId::default(), KINDS, |fact| {
+            if fact.operation_id == oldest.operation_id {
+                let previous = newest.upgrade().unwrap();
+                assert_eq!(
+                    Arc::strong_count(&previous),
+                    2,
+                    "only the cache and this assertion may retain the unmatched fact"
+                );
+                return Ok(true);
+            }
+            Ok(false)
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.operation_id, oldest.operation_id);
+}
+
+#[test]
+fn current_match_replaces_old_full_cache_without_bulk_scan_eviction() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    complete(&control, "capacity-old", "");
+    control.agent_history_cache.borrow_mut().budget_override = Some((1, usize::MAX));
+    drop(read(&control).unwrap());
+    let latest = complete(&control, "capacity-current", "");
+    let current = control
+        .find_verified_agent_operation(&WorkspaceId::default(), KINDS, |fact| {
+            Ok(fact.operation_id == latest.operation_id)
+        })
+        .unwrap()
+        .unwrap();
+    for _ in 0..3 {
+        let full = read(&control).unwrap();
+        assert!(
+            Arc::ptr_eq(&current, &full[0]),
+            "bulk history must not evict the current fact"
+        );
+        let found = control
+            .find_verified_agent_operation(&WorkspaceId::default(), KINDS, |fact| {
+                Ok(fact.operation_id == latest.operation_id)
+            })
+            .unwrap()
+            .unwrap();
+        assert!(Arc::ptr_eq(&current, &found));
+    }
+}
+
+#[test]
+fn compact_status_projection_still_authenticates_every_discarded_step() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let operation = complete(&control, "compact-projection", "retained-plan");
+    let current = read(&control).unwrap();
+    assert_eq!(
+        current[0].grant_effects(),
+        operation
+            .step(hiroute_domain::OperationStepKind::ApplySecrets)
+            .effects
+    );
+    for step in 0..6 {
+        let db = control.connection.borrow();
+        db.execute_batch("BEGIN").unwrap();
+        db.execute(
+            "UPDATE operation_steps SET step_json='{}' WHERE step_no=?1",
+            [step],
+        )
+        .unwrap();
+        drop(db);
+        assert_eq!(
+            read(&control).unwrap_err().code,
+            PortErrorCode::Corrupt,
+            "step {step}"
+        );
+        control
+            .connection
+            .borrow()
+            .execute_batch("ROLLBACK")
+            .unwrap();
+        assert_eq!(read(&control).unwrap().len(), 1);
+    }
+}
+
+#[test]
+fn large_discarded_receipt_does_not_fill_the_status_projection_budget() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let mut operation = agent_operation(
+        agent_transaction_plan_payload(AgentConnectionTransactionKindV1::Apply, None, ""),
+        "compact-receipt",
+    );
+    persist_with_history_padding(&control, &mut operation, Some(&"p".repeat(2 * 1024 * 1024)));
+    control.agent_history_cache.borrow_mut().budget_override = Some((1, 512 * 1024));
+    let cold = read(&control).unwrap();
+    let warm = read(&control).unwrap();
+    assert!(
+        Arc::ptr_eq(&cold[0], &warm[0]),
+        "discarded compensation is not retained cache memory"
+    );
+    assert!(!format!("{:?}", cold[0]).contains("retained_history_fixture"));
+    assert_eq!(cold[0].plan.spec(), operation.plan.spec());
+    // Strict execution still returns the full original compensation.
+    let strict = control
+        .load_operation(&operation.operation_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(strict.steps, operation.steps);
 }
 
 #[test]

@@ -7,6 +7,12 @@ to their production owners and executable contracts.
 
 ## Responsibilities and state
 
+After a mutation the page uses the optional exact `contextId` scope of
+`agent_snapshot`, with the same backend authority/revision fences. Other retained
+Agent settings become unverified and are read when selected. An inactive page
+defers global refresh invalidations until activation. The shell invalidates its
+background summaries rather than starting another full scan during confirmation.
+
 | Entry | Responsibility |
 | --- | --- |
 | [types.ts](types.ts) | WebView projections and current serialized model choices. These describe the existing native/API contract, not a second capability authority. |

@@ -5,7 +5,24 @@ pub(crate) async fn read_agent_entries(
     client: &Client,
     targets: Vec<hiroute_domain::AgentNativeTargetV1>,
 ) -> Result<Vec<AgentEntry>, DesktopFailure> {
+    read_agent_entries_for_context(client, targets, None).await
+}
+
+pub(crate) async fn read_agent_entries_for_context(
+    client: &Client,
+    targets: Vec<hiroute_domain::AgentNativeTargetV1>,
+    context_id: Option<&str>,
+) -> Result<Vec<AgentEntry>, DesktopFailure> {
     let mut agents = discover_agent_entries(client, targets).await?;
+    if let Some(context) = context_id {
+        if context.is_empty() || context.len() > 256 {
+            return Err("AGENT_INPUT_INVALID".into());
+        }
+        agents.retain(|agent| agent.context_id.as_deref() == Some(context));
+        if agents.len() != 1 {
+            return Err("AGENT_STATUS_UNAVAILABLE".into());
+        }
+    }
     for agent in &mut agents {
         read_settings(client, agent).await;
     }

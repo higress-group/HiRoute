@@ -133,13 +133,23 @@ export function Agents({
   const firstField = useRef<HTMLElement | null>(null);
   const initialTargetHandled = useRef(false);
 
-  async function refresh() {
+  async function refresh(target?: Agent) {
     const epoch = ++queryGeneration.current;
     setScanning(true);
     try {
-      const result = await invoke<AgentSnapshot>('agent_snapshot', { nativeTargets: hermesTargets.current });
+      const result = await invoke<AgentSnapshot>('agent_snapshot', {
+        nativeTargets: hermesTargets.current,
+        ...(target?.context_id ? { contextId: target.context_id } : {}),
+      });
       if (epoch === queryGeneration.current) {
-        setSnapshot(result);
+        if (target?.context_id) {
+          const exact = result.agents.find(agent => agent.context_id === target.context_id
+            && agentKey(agent) === agentKey(target));
+          if (!exact) throw new Error('AGENT_STATUS_UNAVAILABLE');
+          setSnapshot(current => ({ ...result, agents: (current?.agents ?? result.agents).map(agent =>
+            agentKey(agent) === agentKey(target) ? exact
+              : { ...agent, settings: null, status_error: 'AGENT_STATUS_UNVERIFIED' }) }));
+        } else setSnapshot(result);
         setLoadError('');
       }
     } catch (caught) {
@@ -162,8 +172,9 @@ export function Agents({
     finally { setBusy(false); }
   }
   useEffect(() => {
-    void refresh();
-  }, [refreshVersion]);
+    if (active) void refresh();
+    return () => { queryGeneration.current++; };
+  }, [active, refreshVersion]);
   useEffect(() => {
     if (!pendingLaunchCopy || operation?.operation_id !== pendingLaunchCopy.operationId) return;
     if (['failed', 'cancelled', 'compensated'].includes(operation.state)) { setPendingLaunchCopy(null); return; }
@@ -172,7 +183,7 @@ export function Agents({
     const target = pendingLaunchCopy;
     void (async () => {
       try {
-        const current = await invoke<AgentSnapshot>('agent_snapshot', { nativeTargets: hermesTargets.current });
+        const current = await invoke<AgentSnapshot>('agent_snapshot', { nativeTargets: hermesTargets.current, contextId: target.contextId });
         if (cancelled) return;
         const command = confirmedCodexLaunchCommand(target, operation, current.agents.find(agent => agent.agent_id === 'agent_codex_default'), navigator.platform);
         if (!command) { setPendingLaunchCopy(null); setNotice(text('保存已完成，请在启动区域重新读取并复制命令。', 'Save completed. Read and copy the command in the launch section.')); return; }
@@ -310,12 +321,12 @@ export function Agents({
       }
       // Complete this editor's exact readback before refreshing other pages.
       // Their independent discovery must not queue ahead of the result being saved.
-      await refresh();
+      await refresh(agent);
       if (result.mutation) onMutation();
     } catch (caught) {
       setPreview(blockedByCheck);
       setActionFailure(caught);
-      await refresh();
+      await refresh(agent);
       onMutation();
     } finally {
       setBusy(false);
@@ -353,12 +364,13 @@ export function Agents({
           setTokenDraft('');
           setNotice(text('令牌变更已提交，完成后新请求会使用新令牌。', 'Token change submitted. New requests will use it when the operation completes.'));
         }
-        onMutation();
       }
-      await refresh();
+      await refresh(agent);
+      if (result.mutation) onMutation();
     } catch (caught) {
       setActionFailure(caught);
-      await refresh();
+      await refresh(agent);
+      onMutation();
     } finally {
       setBusy(false);
       setBusyText('');
@@ -387,7 +399,7 @@ export function Agents({
             : text('本机认证兼容性检查通过；尚未验证上游模型调用。', 'Local authentication compatibility passed; upstream model access is not verified.'),
       );
       setPreview(null);
-      await refresh();
+      await refresh(agent);
     } catch (caught) {
       setActionFailure(caught);
     } finally {
@@ -411,6 +423,10 @@ export function Agents({
     ?? (selectedAgent?.startsWith('agent_hermes_default:')
       ? agents.find(agent => agent.agent_id === 'agent_hermes_default' && !agent.context_id) : undefined)
     ?? (selectedAgent === null ? agents[0] : undefined);
+  useEffect(() => {
+    if (active && !busy && !scanning && !loadError && selected?.context_id
+      && selected.status_error === 'AGENT_STATUS_UNVERIFIED') void refresh(selected);
+  }, [active, busy, scanning, loadError, selected]);
   const selectedManagement = selected?.settings?.management_skill;
   const selectedCollaboration = selected?.settings?.collaboration;
   const selectedModel = agentModelStatus(selected);
@@ -434,7 +450,7 @@ export function Agents({
     setBusy(true); setActionError('');
     try {
       await invoke('retry_agent_settings', { input: { schema: 'hiroute.agent-settings-retry/v1', context_id: selected.context_id, operation_id: operationId } });
-      await refresh();
+      await refresh(selected);
     } catch (error) { setActionFailure(error); }
     finally { onMutation(); setBusy(false); }
   }

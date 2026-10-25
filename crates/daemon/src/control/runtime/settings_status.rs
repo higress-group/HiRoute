@@ -10,8 +10,8 @@ use hiroute_application_api::{
     AgentModelSurfaceResultV2, AgentSettingsStatusRequestV2,
 };
 use hiroute_domain::{
-    AgentAccessGrantRefV1, OperationState, OperationStepKind, PublicationRepositoryPort,
-    SecretStorePort, is_agent_access_grant_effect,
+    AgentAccessGrantRefV1, OperationState, PublicationRepositoryPort, SecretStorePort,
+    is_agent_access_grant_effect,
 };
 
 enum ModelAction {
@@ -368,8 +368,7 @@ impl LocalControlAdapter {
                     return Err(ControlReadError::Corrupt);
                 };
                 let effect = operation
-                    .step(OperationStepKind::ApplySecrets)
-                    .effects
+                    .grant_effects()
                     .iter()
                     .find(|effect| is_agent_access_grant_effect(effect))
                     .ok_or(ControlReadError::Corrupt)?;

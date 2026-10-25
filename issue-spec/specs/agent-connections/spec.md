@@ -8,6 +8,22 @@ published routes converge through the common recoverable settings workflow.
 
 ## Requirements
 
+### Requirement: Settings confirmation reads its current target
+
+After a settings change, Desktop SHALL read the exact selected context and confirm
+its current result without first scanning every other Agent. The read SHALL retain
+the same current Session, authority, revision and publication checks as a full
+snapshot. Unrelated retained settings SHALL become unverified and be read before
+their next use. Hidden pages SHALL defer refresh work until activated. Trial draft
+save, publication and operation confirmation SHALL NOT launch unrelated full-Agent
+or subscription scans ahead of the active workflow's result; affected background
+summaries are invalidated and refreshed when their consuming view becomes active.
+
+#### Scenario: Save while unrelated views have been visited
+
+- **WHEN** an Agent is saved or a trial draft is published after visiting other pages
+- **THEN** confirmation reads the changed target, hidden Agent pages do not scan, and opening an invalidated view reads current facts before presenting them as verified; failed readback remains unconfirmed without resubmitting.
+
 ### Requirement: Model and collaboration facets have independent intent
 
 Each facet MUST use keep, configure, or restore, with omission meaning keep.

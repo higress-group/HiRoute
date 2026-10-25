@@ -98,8 +98,7 @@ impl LocalControlAdapter {
                 return Err(invalid("publication.agent.source-grant-kind"));
             }
             let effect = operation
-                .step(OperationStepKind::ApplySecrets)
-                .effects
+                .grant_effects()
                 .iter()
                 .find(|effect| is_agent_access_grant_effect(effect))
                 .ok_or_else(|| invalid("publication.agent.source-grant-effect"))?;

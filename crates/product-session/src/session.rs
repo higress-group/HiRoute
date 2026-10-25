@@ -7,7 +7,9 @@ mod agents;
 pub use agents::*;
 mod agent_discovery;
 mod agent_snapshot;
-pub(crate) use agent_snapshot::{read_agent_entries, read_trial_agent_choices};
+pub(crate) use agent_snapshot::{
+    read_agent_entries, read_agent_entries_for_context, read_trial_agent_choices,
+};
 // Product-limited native session. No arbitrary operation, path, principal or grant IPC.
 use crate::confirmation::{ConfirmationGate, ConfirmationPermit};
 use crate::failure::DesktopFailure;

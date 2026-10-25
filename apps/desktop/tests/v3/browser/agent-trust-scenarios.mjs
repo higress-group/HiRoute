@@ -60,6 +60,27 @@ function changeSelect(select, value) {
 const configureSpecs = () => calls('preview_agent_settings').map(item => item.payload.input.spec);
 
 const scenarios = [
+  scenario('agent.readback.active-and-exact', ['agent-readback'], 'Hidden Agents defer invalidation reads; saving reads only its exact context before refreshing summaries', async () => {
+    await fresh('registered');
+    const before = calls('agent_snapshot').length;
+    c().setActive(false); await tick(); c().refresh(); await tick();
+    assert(calls('agent_snapshot').length === before, 'Hidden Agent page scanned the whole installation');
+    c().setActive(true);
+    await until(() => calls('agent_snapshot').length === before + 1 && !facet('model').disabled, 'Active page reads current facts');
+    await openEditor('model');
+    const selected = c().agents.agents.find(agent => agent.agent_id === 'agent_claude_default');
+    const start = calls('agent_snapshot').length;
+    await save();
+    await until(() => c().mutations === 1 && !facet('model').disabled, 'Exact save readback');
+    const reads = calls('agent_snapshot').slice(start);
+    assert(reads.length === 1 && reads[0].payload.contextId === selected.context_id,
+      'Saving queued an unrelated Agent scan ahead of confirmation');
+    const codex = [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex'));
+    codex.click();
+    await until(() => calls('agent_snapshot').length === start + 2 && !facet('model').disabled, 'Invalidated next Agent reads before use');
+    assert(calls('agent_snapshot').at(-1).payload.contextId === c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default').context_id,
+      'Switching Agent reused old settings as freshly verified');
+  }),
   scenario('hermes.discovery.brand-and-known-profile', ['hermes', 'agent-discovery'], 'Hermes shows its own mark and the discovered profile without a separate selection step', async () => {
     c().reset(); c().agents = c().hermesFresh(); await tick();
     const rows = () => [...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Hermes'));

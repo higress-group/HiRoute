@@ -242,11 +242,15 @@ export function DesktopApp() {
 
   useEffect(() => {
     const refreshOnFocus = () => {
-      if (!document.hidden) void home.refreshAll();
+      if (!document.hidden) void (page === 'home' && !trialOpen ? home.refreshAll() : home.refreshDesktop());
     };
     window.addEventListener('focus', refreshOnFocus);
     return () => window.removeEventListener('focus', refreshOnFocus);
-  }, [home.refreshAll]);
+  }, [home.refreshAll, home.refreshDesktop, page, trialOpen]);
+
+  useEffect(() => {
+    if (!trialOpen && ['home', 'routing', 'models'].includes(page)) void home.refreshInvalidatedCatalog();
+  }, [page, trialOpen, home.catalogInvalidation, home.refreshInvalidatedCatalog]);
 
   useEffect(() => {
     const generation = ++pollingGeneration.current;
@@ -285,7 +289,8 @@ export function DesktopApp() {
             noteUnconfirmed(OPERATION_RESULT_UNVERIFIED);
           }
           if (value && isTerminalOperation(value.state)) {
-            await home.refreshAll();
+            home.invalidateCatalog();
+            await home.refreshDesktop();
             return;
           }
         }
@@ -307,7 +312,8 @@ export function DesktopApp() {
     Boolean(home.desktopSnapshot?.pending),
     home.desktopSnapshot?.pending?.operation_id,
     home.desktopSnapshot?.pending?.idempotency_key,
-    home.refreshAll,
+    home.refreshDesktop,
+    home.invalidateCatalog,
     observing,
     operation?.operation_id,
     operation?.state,
@@ -730,21 +736,21 @@ export function DesktopApp() {
           </div>
         </div>}
 
-        {trialIntent && <div className="trial-page-host"><TrialQuickStart onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)} snapshot={home.desktopSnapshot} operation={operation} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); await home.refreshAll(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
+        {trialIntent && <div className="trial-page-host"><TrialQuickStart onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)} snapshot={home.desktopSnapshot} operation={operation} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); home.invalidateCatalog(); await home.refreshDesktop(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
         <div hidden={trialOpen || page !== 'home'}><Home
             language={language}
             reads={home.reads}
             operation={homeOperation}
             trustSuggestions={trustSuggestions}
             onTrustAction={(plan, branch) => void reviewTrustAction(plan, branch)}
-            newModels={<NewModels language={language} mutable={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)} active={page === 'home'} plans={home.desktopSnapshot?.catalog.plans ?? []} refreshVersion={refreshVersion} onTry={modelId => void openTrial({ modelId })} onOpenPlan={planId => { const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId); if (plan) void showRouting({ key: `models/${randomId()}`, plan, initialView: 'performance' }); }} />}
+            newModels={<NewModels language={language} mutable={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)} active={!trialOpen && page === 'home'} plans={home.desktopSnapshot?.catalog.plans ?? []} refreshVersion={refreshVersion} onTry={modelId => void openTrial({ modelId })} onOpenPlan={planId => { const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId); if (plan) void showRouting({ key: `models/${randomId()}`, plan, initialView: 'performance' }); }} />}
             hasTasks={taskRead.status === 'ready' && taskRead.tasks.length > 0}
             onAction={handleHomeAction}
           /></div>
         {visited.has('models') && <div hidden={trialOpen || page !== 'models' || modelTab !== 'general'}><ModelManagementPage
             key={modelIntent.key}
             language={language}
-            active={page === 'models' && modelTab === 'general'}
+            active={!trialOpen && page === 'models' && modelTab === 'general'}
             tabs={modelTabs}
             trustedAuthority={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)}
             refreshVersion={refreshVersion}
@@ -765,7 +771,7 @@ export function DesktopApp() {
             onCreatePlan={bindingId => void showRouting({ key: `routing/${randomId()}`, initialBindingId: bindingId })}
           /></div>}
         {visited.has('models') && <div hidden={trialOpen || page !== 'models' || modelTab !== 'decisions'}><DecisionServicesPage
-          language={language} active={page === 'models' && modelTab === 'decisions'}
+          language={language} active={!trialOpen && page === 'models' && modelTab === 'decisions'}
           mutable={!!home.desktopSnapshot?.trusted_authority && !!home.desktopSnapshot?.service.mutation_available}
           tabs={modelTabs} intent={decisionIntent}
           plans={home.desktopSnapshot?.catalog.plans} drafts={home.desktopSnapshot?.catalog.drafts}
@@ -777,7 +783,7 @@ export function DesktopApp() {
         {visited.has('routing') && <div hidden={trialOpen || page !== 'routing'}><RoutingPage
             key={routingIntent.key}
             language={language}
-            active={page === 'routing'}
+            active={!trialOpen && page === 'routing'}
             refreshVersion={refreshVersion}
             snapshot={home.desktopSnapshot}
             agentSnapshot={home.agentSnapshot}
@@ -798,7 +804,7 @@ export function DesktopApp() {
         {visited.has('agents') && <div hidden={trialOpen || page !== 'agents'}><Agents
             key={agentIntent.key}
             language={language}
-            active={page === 'agents'}
+            active={!trialOpen && page === 'agents'}
             operation={operation}
             initialAgentId={agentIntent.agentId}
             initialFacet={agentIntent.facet}
@@ -809,7 +815,8 @@ export function DesktopApp() {
             mutationAllowed={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)}
             onMutation={() => {
               setObserving(true);
-              void Promise.allSettled([home.refreshAgents(), home.refreshDesktop()]);
+              home.invalidateCatalog();
+              void home.refreshDesktop();
             }}
             onOperation={acceptOperation}
             onUnverifiedOperation={acceptUnverifiedOperation}
@@ -830,7 +837,7 @@ export function DesktopApp() {
           /></div>}
         {visited.has('sessions') && <div hidden={trialOpen || page !== 'sessions'}><Sessions
             key={sessionIntent.key}
-            active={page === 'sessions'}
+            active={!trialOpen && page === 'sessions'}
             initialSession={sessionIntent.sessionId ?? null}
             initialRequest={sessionIntent.requestId ?? null}
             onReturnToQuality={sessionIntent.returnToQuality ? () => void openPageSafely('routing') : undefined}
@@ -839,7 +846,7 @@ export function DesktopApp() {
             onOpenAgents={() => void openPageSafely('agents')}
           /></div>}
         <div hidden={trialOpen || page !== 'settings'}><SettingsPage
-          active={page === 'settings'}
+          active={!trialOpen && page === 'settings'}
           language={language}
           languagePreference={preferences.languagePreference}
           theme={preferences.theme}

@@ -3,8 +3,8 @@ use super::*;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
-// Account for decoded allocations as well as both persisted copies. Admission is
-// stable within a scan: a history larger than the budget cannot churn its cache.
+// Account for the retained decoded projection, not discarded input. Bulk scans
+// never evict the working set; an actual current match can replace an older entry.
 const MAX_ENTRIES: usize = 128;
 const MAX_ACCOUNTED_BYTES: usize = 512 * 1024 * 1024;
 
@@ -12,8 +12,9 @@ const MAX_ACCOUNTED_BYTES: usize = 512 * 1024 * 1024;
 pub(super) struct AgentHistoryCache {
     entries: BTreeMap<String, Entry>,
     bytes: usize,
-    store_identity: Option<(String, i64)>,
+    store_identity: Option<String>,
     read_epoch: Option<ReadEpoch>,
+    use_sequence: u64,
     #[cfg(test)]
     pub(super) decodes: usize,
     #[cfg(test)]
@@ -26,14 +27,24 @@ struct Entry {
     bytes: usize,
     facts: Arc<SucceededAgentOperationV1>,
     verified_epoch: Option<ReadEpoch>,
+    last_used: u64,
+}
+
+struct VerifiedFact {
+    facts: Arc<SucceededAgentOperationV1>,
+    fingerprint: [u8; 32],
+    bytes: usize,
+    verified_epoch: Option<ReadEpoch>,
 }
 
 /// A connection-local proof of unchanged database bytes, never a business revision.
-/// External commits invalidate the store identity; local DML and DDL invalidate this
-/// epoch. Only our own read transaction can mint it: caller transactions may roll
+/// External commits, local DML and DDL invalidate this epoch, without discarding
+/// decoded facts whose exact bytes can be revalidated. Only our own read
+/// transaction can mint it: caller transactions may roll
 /// back previously observed writes without changing SQLite's total-change counter.
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct ReadEpoch {
+    data_version: i64,
     local_changes: u64,
     main_schema: i64,
     temp_schema: i64,
@@ -41,6 +52,9 @@ struct ReadEpoch {
 impl ReadEpoch {
     fn capture(connection: &Connection) -> PortResult<Self> {
         Ok(Self {
+            data_version: connection
+                .query_row("PRAGMA data_version", [], |r| r.get(0))
+                .map_err(|_| unavailable())?,
             local_changes: connection.total_changes(),
             main_schema: connection
                 .query_row("PRAGMA main.schema_version", [], |r| r.get(0))
@@ -105,14 +119,12 @@ impl AgentHistoryRow {
             encoded: row.get(9)?,
         })
     }
-    fn fingerprint(&self, connection: &Connection) -> PortResult<([u8; 32], usize)> {
+    fn fingerprint(&self, connection: &Connection) -> PortResult<[u8; 32]> {
         let mut hash = Sha256::new();
         // Internal, process-local hash domain; no serialized/public schema.
         hash.update(b"verified-agent-history-cache\0");
-        let mut bytes = 0usize;
         for field in self.fields() {
             frame(&mut hash, field.as_bytes());
-            bytes = bytes.saturating_add(field.len());
         }
         hash.update(self.generation.to_be_bytes());
         let mut statement = connection.prepare(
@@ -134,7 +146,6 @@ impl AgentHistoryRow {
             hash.update(number.to_be_bytes());
             for field in [&kind, &state, &encoded] {
                 frame(&mut hash, field.as_bytes());
-                bytes = bytes.saturating_add(field.len());
             }
             count += 1;
         }
@@ -149,17 +160,13 @@ impl AgentHistoryRow {
             let (digest, payload) = row.map_err(|_| corrupt())?;
             frame(&mut hash, digest.as_bytes());
             frame(&mut hash, payload.as_bytes());
-            bytes = bytes.saturating_add(payload.len());
         }
         hash.update(count.to_be_bytes());
         // Invalid counts are rejected even before a cache lookup.
         if count != 6 {
             return Err(corrupt());
         }
-        Ok((
-            hash.finalize().into(),
-            bytes.saturating_mul(8).saturating_add(64 * 1024),
-        ))
+        Ok(hash.finalize().into())
     }
 }
 fn frame(hash: &mut Sha256, bytes: &[u8]) {
@@ -185,14 +192,10 @@ impl AgentHistoryCache {
         if store.is_empty() {
             return Err(corrupt());
         }
-        let data_version = connection
-            .query_row("PRAGMA data_version", [], |r| r.get(0))
-            .map_err(|_| unavailable())?;
-        let identity = (store, data_version);
-        if self.store_identity.as_ref() != Some(&identity) {
+        if self.store_identity.as_ref() != Some(&store) {
             self.entries.clear();
             self.bytes = 0;
-            self.store_identity = Some(identity);
+            self.store_identity = Some(store);
         }
         self.read_epoch = if owned_read {
             Some(ReadEpoch::capture(connection)?)
@@ -206,11 +209,7 @@ impl AgentHistoryCache {
             self.bytes -= old.bytes;
         }
     }
-    fn read(
-        &mut self,
-        connection: &Connection,
-        row: &AgentHistoryRow,
-    ) -> PortResult<Arc<SucceededAgentOperationV1>> {
+    fn read(&mut self, connection: &Connection, row: &AgentHistoryRow) -> PortResult<VerifiedFact> {
         // A selection callback can use another store API on this connection.
         // Once it writes, no later fact in this scan may mint a read-only proof,
         // even if the transaction eventually rolls back after a callback error.
@@ -223,18 +222,28 @@ impl AgentHistoryCache {
             && let Some(entry) = self.entries.get(&row.operation_id)
             && entry.verified_epoch == Some(epoch)
         {
-            return Ok(Arc::clone(&entry.facts));
+            return Ok(VerifiedFact {
+                facts: Arc::clone(&entry.facts),
+                fingerprint: entry.fingerprint,
+                bytes: entry.bytes,
+                verified_epoch: entry.verified_epoch,
+            });
         }
         #[cfg(test)]
         {
             self.fingerprints += 1;
         }
-        let (fingerprint, bytes) = row.fingerprint(connection)?;
+        let fingerprint = row.fingerprint(connection)?;
         if let Some(entry) = self.entries.get_mut(&row.operation_id)
             && entry.fingerprint == fingerprint
         {
             entry.verified_epoch = self.read_epoch;
-            return Ok(Arc::clone(&entry.facts));
+            return Ok(VerifiedFact {
+                facts: Arc::clone(&entry.facts),
+                fingerprint,
+                bytes: entry.bytes,
+                verified_epoch: entry.verified_epoch,
+            });
         }
         self.remove(&row.operation_id);
         #[cfg(test)]
@@ -246,25 +255,61 @@ impl AgentHistoryCache {
             &row.encoded,
             Some(row),
         )?);
+        let fact = VerifiedFact {
+            bytes: facts.accounted_bytes(),
+            facts,
+            fingerprint,
+            verified_epoch: self.read_epoch,
+        };
+        self.retain(&fact, false);
+        Ok(fact)
+    }
+
+    fn retain(&mut self, fact: &VerifiedFact, preferred: bool) {
+        let id = fact.facts.operation_id.as_str();
+        if let Some(entry) = self.entries.get_mut(id) {
+            if preferred {
+                self.use_sequence = self.use_sequence.saturating_add(1);
+                entry.last_used = self.use_sequence;
+            }
+            return;
+        }
         #[cfg(not(test))]
         let (max_entries, max_bytes) = (MAX_ENTRIES, MAX_ACCOUNTED_BYTES);
         #[cfg(test)]
         let (max_entries, max_bytes) = self
             .budget_override
             .unwrap_or((MAX_ENTRIES, MAX_ACCOUNTED_BYTES));
-        if self.entries.len() < max_entries && bytes <= max_bytes.saturating_sub(self.bytes) {
+        if max_entries == 0 || fact.bytes > max_bytes {
+            return;
+        }
+        if preferred {
+            while self.entries.len() >= max_entries
+                || fact.bytes > max_bytes.saturating_sub(self.bytes)
+            {
+                let oldest = self
+                    .entries
+                    .iter()
+                    .min_by_key(|(_, e)| e.last_used)
+                    .map(|(id, _)| id.clone())
+                    .expect("occupied bounded cache");
+                self.remove(&oldest);
+            }
+        }
+        if self.entries.len() < max_entries && fact.bytes <= max_bytes.saturating_sub(self.bytes) {
+            self.use_sequence = self.use_sequence.saturating_add(1);
             self.entries.insert(
-                row.operation_id.clone(),
+                id.to_owned(),
                 Entry {
-                    fingerprint,
-                    bytes,
-                    facts: Arc::clone(&facts),
-                    verified_epoch: self.read_epoch,
+                    fingerprint: fact.fingerprint,
+                    bytes: fact.bytes,
+                    facts: Arc::clone(&fact.facts),
+                    verified_epoch: fact.verified_epoch,
+                    last_used: if preferred { self.use_sequence } else { 0 },
                 },
             );
-            self.bytes += bytes;
+            self.bytes += fact.bytes;
         }
-        Ok(facts)
     }
 }
 
@@ -298,7 +343,10 @@ impl ControlStore {
                 .optional();
             match row {
                 Ok(Some(row)) => match cache.read(&connection, &row) {
-                    Ok(fact) => facts.push((*fact).clone()),
+                    Ok(fact) => {
+                        cache.retain(&fact, true);
+                        facts.push((*fact.facts).clone());
+                    }
                     Err(error)
                         if matches!(
                             error.code,
@@ -346,9 +394,13 @@ impl ControlStore {
         kinds: &[&str],
         require_complete_provenance: bool,
     ) -> PortResult<(Vec<Arc<SucceededAgentOperationV1>>, u64)> {
-        self.scan_verified_agent_history(workspace, kinds, require_complete_provenance, |_| {
-            Ok(false)
-        })
+        self.scan_verified_agent_history(
+            workspace,
+            kinds,
+            require_complete_provenance,
+            true,
+            |_| Ok(false),
+        )
         .map(|(facts, rejected, _)| (facts, rejected))
     }
 
@@ -362,7 +414,7 @@ impl ControlStore {
         kinds: &[&str],
         matches: impl FnMut(&SucceededAgentOperationV1) -> PortResult<bool>,
     ) -> PortResult<Option<Arc<SucceededAgentOperationV1>>> {
-        self.scan_verified_agent_history(workspace, kinds, true, matches)
+        self.scan_verified_agent_history(workspace, kinds, true, false, matches)
             .map(|(mut facts, _, matched)| if matched { facts.pop() } else { None })
     }
 
@@ -371,6 +423,7 @@ impl ControlStore {
         workspace: &WorkspaceId,
         kinds: &[&str],
         require_complete_provenance: bool,
+        collect_history: bool,
         mut stop: impl FnMut(&SucceededAgentOperationV1) -> PortResult<bool>,
     ) -> PortResult<(Vec<Arc<SucceededAgentOperationV1>>, u64, bool)> {
         super::agent_read::validate_kinds(kinds)?;
@@ -432,8 +485,13 @@ impl ControlStore {
             members.insert(row.operation_id.clone());
             match cache.read(&connection, &row) {
                 Ok(fact) => {
-                    matched = stop(&fact)?;
-                    facts.push(fact);
+                    matched = stop(&fact.facts)?;
+                    if matched {
+                        cache.retain(&fact, true);
+                    }
+                    if collect_history || matched {
+                        facts.push(fact.facts);
+                    }
                     if matched {
                         break;
                     }

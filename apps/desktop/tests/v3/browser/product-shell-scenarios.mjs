@@ -62,6 +62,21 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  scenario('desktop.operation.hidden-summaries-defer', ['operation-feedback'], 'Terminal confirmation does not scan a hidden Agent page or unrelated Home summaries', async () => {
+    await fresh();
+    await click('Agent');
+    await until(() => all('.native-list .list-row').length > 0 && !text().includes('正在读取本地 Agent'), 'Agent page loaded');
+    await click('会话');
+    const reads = calls('agent_snapshot').length;
+    c().desktop.pending = { plan_id: 'plan/daily', operation_id: null, idempotency_key: 'key/deferred-summaries' };
+    c().handlers.observe_operation = () => operation('succeeded', 'operation/deferred-summaries');
+    window.dispatchEvent(new Event('focus'));
+    await until(() => feedback()?.dataset.operationPhase === 'succeeded', 'terminal operation confirmed');
+    await pause(150);
+    assert(calls('agent_snapshot').length === reads, 'Hidden summary or Agent page performed a full scan');
+    await click('首页');
+    await until(() => calls('agent_snapshot').length === reads + 1, 'Invalidated summary reread when opened');
+  }),
   ...homeStartupScenarios({ until, control: c }),
   ...operationRecoveryScenarios({ fresh, until, control: c, calls }),
   ...trustProgressScenarios({ fresh, until, control: c }),

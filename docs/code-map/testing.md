@@ -569,3 +569,5 @@ and published content avoid reopening finalization; missing/different heads, pre
 content and foreign owners retain recovery, while malformed published content is
 rejected. Journal bytes remain unchanged. These storage cases do not replace a
 released-package upgrade or native performance measurement.
+
+Current Agent readback coverage: `agent.readback.active-and-exact` and `desktop.operation.hidden-summaries-defer` exercise scoped saves and deferred hidden reads. The storage `agent_history_cache_tests` and `agent_history_epoch_tests` retain full closure corruption, snapshot/rollback and bounded-projection assertions; `commands/agent_snapshot/tests.rs` applies the existing authority fences to exact-context reads.

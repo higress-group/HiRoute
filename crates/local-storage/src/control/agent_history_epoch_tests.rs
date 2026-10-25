@@ -6,6 +6,57 @@ fn hashes(control: &ControlStore) -> usize {
 }
 
 #[test]
+fn unrelated_external_commits_recheck_exact_bytes_without_redecoding_history() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    complete(&control, "external-epoch", "");
+    let original = read(&control).unwrap();
+    let before = hashes(&control);
+    let external = rusqlite::Connection::open(directory.path().join("control.db")).unwrap();
+    external
+        .execute_batch(
+            "CREATE TABLE unrelated_probe(value INTEGER); INSERT INTO unrelated_probe VALUES(1)",
+        )
+        .unwrap();
+    let next = read(&control).unwrap();
+    assert_eq!(
+        hashes(&control),
+        before + 1,
+        "external write invalidates the shortcut proof"
+    );
+    assert!(
+        Arc::ptr_eq(&original[0], &next[0]),
+        "unchanged exact closure retains only its decoded facts"
+    );
+    external
+        .execute_batch("UPDATE operation_steps SET state='pending' WHERE step_no=3")
+        .unwrap();
+    assert_eq!(
+        read(&control).unwrap_err().code,
+        PortErrorCode::Corrupt,
+        "even a non-retained publication step must still be revalidated"
+    );
+}
+
+#[test]
+fn different_store_identity_discards_even_byte_identical_projection() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    complete(&control, "store-identity", "");
+    let old = read(&control).unwrap();
+    control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE storage_meta SET store_uuid=?1 WHERE singleton=1",
+            ["cache-replacement-fixture"],
+        )
+        .unwrap();
+    let new = read(&control).unwrap();
+    assert!(!Arc::ptr_eq(&old[0], &new[0]));
+}
+
+#[test]
 fn changed_schema_and_local_writes_invalidate_without_discarding_unchanged_facts() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());

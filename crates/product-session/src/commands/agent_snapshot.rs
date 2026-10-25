@@ -7,6 +7,7 @@ pub async fn agent_snapshot(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
     native_targets: Option<Vec<hiroute_domain::AgentNativeTargetV1>>,
+    context_id: Option<String>,
 ) -> Result<AgentSnapshot, DesktopFailure> {
     main_window(window)?;
     let epoch = state.2.load(Ordering::SeqCst);
@@ -21,8 +22,12 @@ pub async fn agent_snapshot(
     };
     let before: ClientServiceStatusV1 =
         crate::session::query(&client, "GetClientServiceStatus", &ClientEmptyRequestV1 {}).await?;
-    let agents =
-        crate::session::read_agent_entries(&client, native_targets.unwrap_or_default()).await?;
+    let agents = crate::session::read_agent_entries_for_context(
+        &client,
+        native_targets.unwrap_or_default(),
+        context_id.as_deref(),
+    )
+    .await?;
     let plans = crate::session::read_plan_catalog(&client).await?;
 
     let guard = confirmation_session(state, epoch).await?;

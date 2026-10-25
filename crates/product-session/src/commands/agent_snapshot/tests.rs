@@ -109,6 +109,7 @@ async fn epoch_expiry_during_final_service_read_rejects_the_snapshot() {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum ReadKind {
     Agents,
+    SelectedAgent,
     TrialChoices,
     TrialModel,
     Catalog,
@@ -119,6 +120,7 @@ enum ReadKind {
 async fn hidden_window_reads_succeed_but_revocation_during_transport_is_rejected() {
     for kind in [
         ReadKind::Agents,
+        ReadKind::SelectedAgent,
         ReadKind::Catalog,
         ReadKind::Observation,
         ReadKind::TrialChoices,
@@ -131,7 +133,11 @@ async fn hidden_window_reads_succeed_but_revocation_during_transport_is_rejected
 
 #[tokio::test]
 async fn narrow_trial_reads_keep_all_current_read_fences_without_unrelated_agent_status() {
-    for kind in [ReadKind::TrialChoices, ReadKind::TrialModel] {
+    for kind in [
+        ReadKind::TrialChoices,
+        ReadKind::TrialModel,
+        ReadKind::SelectedAgent,
+    ] {
         for change in [
             Change::None,
             Change::Replace,
@@ -230,7 +236,9 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                 stream.read_line(&mut line).await.unwrap();
                 let request: LocalControlWireRequestV2 = serde_json::from_str(&line).unwrap();
                 let blocked = match read_kind {
-                    ReadKind::Agents | ReadKind::TrialChoices => "ListAgents",
+                    ReadKind::Agents | ReadKind::TrialChoices | ReadKind::SelectedAgent => {
+                        "ListAgents"
+                    }
                     ReadKind::TrialModel => "GetAgentConnectionStatus",
                     ReadKind::Catalog => "ListAgentPlanCatalog",
                     ReadKind::Observation => "ListSessions",
@@ -254,7 +262,10 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                         json!({"schema":"hiroute.client-service-status/v1","daemon_role":"resident","recovery_ready":!(altered && change==Change::Recovery),"mutation_available":true,"gateway":"ready","active_publication": if altered && change==Change::Publication {json!({"revision":2,"digest":CanonicalDigest::of_bytes(b"new-publication")})} else {Value::Null},"revisions":{"target":if altered && change==Change::Revision {2} else {1},"dependencies":{}}})
                     }
                     "ListAgents" | "ScanAgents" => {
-                        let agents = if read_kind == ReadKind::TrialChoices {
+                        let agents = if matches!(
+                            read_kind,
+                            ReadKind::TrialChoices | ReadKind::SelectedAgent
+                        ) {
                             ["claude", "codex", "dsh", "pi", "qoder", "opencode"].into_iter().map(|name|
                                 json!({"agent_id":format!("agent_{name}_default"), "context_id":format!("agent-context/{name}"),"version":"test","configuration_state":"detected"})
                             ).collect::<Vec<_>>()
@@ -264,11 +275,25 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                         json!({"agents":agents})
                     }
                     "GetAgentConnectionStatus" => {
-                        assert_eq!(read_kind, ReadKind::TrialModel);
-                        assert_eq!(request.payload["projection"], "model");
-                        assert_eq!(request.payload["context_id"], "agent-context/selected");
-                        assert!(request.payload.get("include_skills").is_none());
-                        json!({"schema":"hiroute.agent-model-settings-status/v2", "context_id":"agent-context/selected", "state":"not_configured", "operation_id":null, "operation_state":null, "restore_point_ref":null, "applied_revision":null, "surface_results":[], "model_verified":false})
+                        let selected = read_kind == ReadKind::SelectedAgent;
+                        assert!(selected || read_kind == ReadKind::TrialModel);
+                        let context = if selected {
+                            "agent-context/dsh"
+                        } else {
+                            "agent-context/selected"
+                        };
+                        assert_eq!(
+                            request.payload["context_id"], context,
+                            "unrelated Agent status must not be read"
+                        );
+                        if selected {
+                            assert_eq!(request.payload["include_skills"], true);
+                            assert_ne!(request.payload["projection"], "model");
+                        } else {
+                            assert_eq!(request.payload["projection"], "model");
+                            assert!(request.payload.get("include_skills").is_none());
+                        }
+                        json!({"schema":"hiroute.agent-model-settings-status/v2", "context_id":context, "state":"not_configured", "operation_id":null, "operation_state":null, "restore_point_ref":null, "applied_revision":null, "surface_results":[], "model_verified":false})
                     }
                     "ListAgentPlanCatalog" => {
                         json!({"schema":"hiroute.agent-plan-catalog/v2","plans":[],"drafts":[],"next_cursor":null})
@@ -312,7 +337,22 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                 .map(|_| ());
         }
         match read_kind {
-            ReadKind::Agents => agent_snapshot(&context, &state, None).await.map(|_| ()),
+            ReadKind::Agents => agent_snapshot(&context, &state, None, None)
+                .await
+                .map(|_| ()),
+            ReadKind::SelectedAgent => {
+                agent_snapshot(&context, &state, None, Some("agent-context/dsh".into()))
+                    .await
+                    .map(|snapshot| {
+                        assert_eq!(snapshot.agents.len(), 1);
+                        assert_eq!(
+                            snapshot.agents[0].context_id.as_deref(),
+                            Some("agent-context/dsh")
+                        );
+                        assert!(snapshot.agents[0].settings.is_some());
+                        assert!(snapshot.agents[0].status_error.is_none());
+                    })
+            }
             ReadKind::TrialChoices => super::super::trial_agent_choices(&context, &state)
                 .await
                 .map(|snapshot| {

@@ -141,6 +141,15 @@ Current grants, publication membership, pending operations and authorization are
 not cached. This reuse does not authorize execution or replace recovery's strict
 journal reader.
 
+Successful read projections SHALL retain only the validated facts consumed by
+status and grant joins, not unused publication rollback payloads. The entire
+original journal, including discarded steps and payloads, remains part of their
+validation closure. Memory accounting SHALL describe the retained projection.
+Unrelated database commits invalidate unchanged-byte proofs but MAY preserve
+decoded facts for reuse after exact closure comparison. A bounded cache SHALL
+admit a newly requested current fact by replacing an older entry when necessary;
+bulk history scans SHALL NOT continually evict the current working set.
+
 Within the same live storage connection, already verified immutable facts MAY be
 reused without hashing the entire raw closure again when an owned read transaction
 proves that the database snapshot has not changed. The proof SHALL account for
@@ -160,6 +169,13 @@ snapshot proof above; a corrupt visited
 row is not a no-match. Explicit history/restore-list reads retain their full strict
 scope. Ordering a history query SHALL NOT require sorting complete retained payloads
 before the first selected fact can be read.
+Single-current-fact reads SHALL release unmatched facts as they traverse history,
+rather than retaining a full result list until the lookup ends.
+
+#### Scenario: Background commits and growing history do not reconstruct unchanged facts
+
+- **WHEN** an unrelated external commit occurs or a newer current operation is added to a full in-memory cache
+- **THEN** the next read revalidates the exact relevant closure before reusing immutable facts, can retain the newer current fact within the existing bound, and does not retain every unmatched history object; damage to a discarded journal step still fails strict status reads.
 
 #### Scenario: Current fact without historical payload work
 

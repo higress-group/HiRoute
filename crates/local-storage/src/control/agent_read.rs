@@ -17,15 +17,34 @@ pub struct SucceededAgentOperationV1 {
     pub accepted_digest: CanonicalDigest,
     pub state: OperationState,
     pub plan: AgentPlanReadV1,
-    steps: Vec<OperationStepV1>,
+    grant_effects: Vec<OwnedEffectV1>,
 }
 
 impl SucceededAgentOperationV1 {
-    pub fn step(&self, kind: OperationStepKind) -> &OperationStepV1 {
-        &self.steps[OperationStepKind::ALL
-            .iter()
-            .position(|k| *k == kind)
-            .expect("fixed journal")]
+    /// Effects needed for the current grant join, after the entire succeeded
+    /// journal has been verified. This read projection cannot replay or restore.
+    pub fn grant_effects(&self) -> &[OwnedEffectV1] {
+        &self.grant_effects
+    }
+
+    pub(super) fn accounted_bytes(&self) -> usize {
+        // Large publication rollback bodies were validated but are not retained.
+        // Budget the actual immutable projection, with conservative JSON/node
+        // overhead; do not charge discarded input or silently raise the limit.
+        serde_json::to_vec(&(
+            &self.operation_id,
+            &self.workspace_id,
+            &self.idempotency,
+            &self.accepted_digest,
+            self.plan.spec(),
+            self.plan.control(),
+            self.plan.external(),
+            self.plan.agent_access_grants(),
+            &self.grant_effects,
+        ))
+        .map_or(usize::MAX, |bytes| {
+            bytes.len().saturating_mul(8).saturating_add(64 * 1024)
+        })
     }
 }
 
@@ -208,7 +227,12 @@ pub(super) fn decode_selected_agent(
         accepted_digest: durable.accepted_digest,
         state: durable.state,
         plan,
-        steps: durable.steps,
+        grant_effects: durable
+            .steps
+            .into_iter()
+            .find(|step| step.kind == OperationStepKind::ApplySecrets)
+            .expect("validated fixed journal")
+            .effects,
     })
 }
 
