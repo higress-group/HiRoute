@@ -5,7 +5,7 @@ pub use crate::session::{
     AgentConfirmation, AgentOutcome, AgentPreparation, AgentSettingsInput, AgentSnapshot,
     Confirmation, DesktopSnapshot, EditorInput, ModelSaveAccepted, ModelSaveConfirmation,
     MutationOutcome, PriceConfirmation, PriceDisplayResult, PriceEditInput, RenameInput,
-    RestoreInput, Session, SubscriptionCheckConfirmation,
+    RestoreInput, Session, SubscriptionCheckConfirmation, TrialAgentChoices, TrialAgentModel,
 };
 pub use hiroute_application_api::*;
 use hiroute_diagnostics::context::{DiagnosticContext, DiagnosticHandle};
@@ -36,7 +36,9 @@ pub use worker_tasks::*;
 mod web_confirmation;
 use web_confirmation::*;
 mod read_context;
+mod trial_agents;
 pub use read_context::{desktop_snapshot, observation_read};
+pub use trial_agents::{trial_agent_choices, trial_agent_model};
 mod context;
 pub use context::*;
 async fn confirmation_session<'a>(

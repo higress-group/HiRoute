@@ -5,6 +5,36 @@ pub(crate) async fn read_agent_entries(
     client: &Client,
     targets: Vec<hiroute_domain::AgentNativeTargetV1>,
 ) -> Result<Vec<AgentEntry>, DesktopFailure> {
+    let mut agents = discover_agent_entries(client, targets).await?;
+    for agent in &mut agents {
+        read_settings(client, agent).await;
+    }
+    Ok(agents)
+}
+
+pub(crate) async fn read_trial_agent_choices(
+    client: &Client,
+) -> Result<Vec<TrialAgentChoice>, DesktopFailure> {
+    let agents = discover_agent_entries(client, Vec::new()).await?;
+    Ok(agents
+        .into_iter()
+        .map(|agent| TrialAgentChoice {
+            agent_id: agent.agent_id,
+            context_id: agent.context_id,
+            native_target: agent.native_target,
+            version: agent.version,
+            configuration_state: agent.configuration_state,
+            available_surfaces: agent.available_surfaces,
+            native_model_catalog: agent.native_model_catalog,
+            codex_access: agent.codex_access,
+        })
+        .collect())
+}
+
+async fn discover_agent_entries(
+    client: &Client,
+    targets: Vec<hiroute_domain::AgentNativeTargetV1>,
+) -> Result<Vec<AgentEntry>, DesktopFailure> {
     if targets.len() > 128 || targets.iter().any(|target| target.validate().is_err()) {
         return Err("AGENT_INPUT_INVALID".into());
     }
@@ -52,25 +82,27 @@ pub(crate) async fn read_agent_entries(
             super::agent_discovery::merge_entry(&mut scan.agents, agent);
         }
     }
-    for agent in &mut scan.agents {
-        if let Some(context_id) = &agent.context_id {
-            match query(
-                client,
-                "GetAgentConnectionStatus",
-                &AgentSettingsStatusRequestV2 {
-                    effective: None,
-                    include_skills: true,
-                    schema_version: AGENT_SETTINGS_SCHEMA_V2,
-                    context_id: context_id.clone(),
-                    native_target: agent.native_target.clone(),
-                },
-            )
-            .await
-            {
-                Ok(status) => agent.settings = Some(status),
-                Err(_) => agent.status_error = Some("AGENT_STATUS_UNAVAILABLE".into()),
-            }
+    Ok(scan.agents)
+}
+
+async fn read_settings(client: &Client, agent: &mut AgentEntry) {
+    if let Some(context_id) = &agent.context_id {
+        match query(
+            client,
+            "GetAgentConnectionStatus",
+            &AgentSettingsStatusRequestV2 {
+                projection: Default::default(),
+                effective: None,
+                include_skills: true,
+                schema_version: AGENT_SETTINGS_SCHEMA_V2,
+                context_id: context_id.clone(),
+                native_target: agent.native_target.clone(),
+            },
+        )
+        .await
+        {
+            Ok(status) => agent.settings = Some(status),
+            Err(_) => agent.status_error = Some("AGENT_STATUS_UNAVAILABLE".into()),
         }
     }
-    Ok(scan.agents)
 }

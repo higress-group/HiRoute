@@ -1,0 +1,106 @@
+import assert from 'node:assert/strict';
+import { evaluate, waitFor } from './cdp-client.mjs';
+
+export async function trialAgentReadChecks({ client, open, click, shot, results }) {
+ const select = id => evaluate(client, `(()=>{const e=document.querySelector('.trial-agent-choice select');e.value=${JSON.stringify(id)};e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+ const count = command => evaluate(client, `trialTrace.filter(x=>x.command===${JSON.stringify(command)}).length`);
+ const settle = () => evaluate(client, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))');
+ const start = async (query='') => {
+  await open(`lang=en&view=quickstart&agent-family=dsh${query}`,755,600);
+  await click('.new-models button','Try');
+  await waitFor(client, `!!document.querySelector('.trial-agent-choice select')`);
+ };
+ const choosePrimary = () => evaluate(client, `(()=>{[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name)).click();return true;})()`);
+ await start();
+ await waitFor(client, `!!document.querySelector('.trial-presets input:not(:disabled)')`);
+ assert.equal(await count('agent_snapshot'),0,'trial entry never requests the full Agent management view');
+ assert.equal(await count('trial_agent_choices'),1);
+ assert.equal(await count('trial_agent_model'),1,'only the preferred Agent is read');
+ await choosePrimary();
+ await select('agent_dsh_default');
+ await waitFor(client, `!document.querySelector('.trial-footer .btn-primary').disabled`);
+ assert.equal(await count('trial_agent_choices'),1,'switching a known choice does not scan all CLIs');
+ assert.equal(await count('trial_agent_model'),2);
+ await select('agent_claude_default');
+ await waitFor(client, `!!document.querySelector('.trial-presets input:not(:disabled)')`);
+ await evaluate(client, 'trialAgentControl.failNext=true;true');
+ await select('agent_dsh_default');
+ await waitFor(client, `!!document.querySelector('.trial-agent-choice [role=alert]')`);
+ assert.equal(await evaluate(client, `document.querySelector('.trial-footer .btn-primary').disabled`),true,'failed details cannot become empty editable settings');
+ await evaluate(client,`document.querySelector('.trial-agent-choice').scrollIntoView({block:'center'});true`);
+ await shot('trial-agent-error-en-light-755');
+ await click('.trial-agent-choice button','Retry');
+ await waitFor(client, `!document.querySelector('.trial-footer .btn-primary').disabled`);
+ assert.equal(await count('trial_agent_choices'),1,'detail retry does not rediscover');
+ results.push({id:'quickstart.agent-reads.narrow-switch-and-retry',status:'passed'});
+
+ await start('&agent-hold=1');
+ await waitFor(client, 'trialAgentControl.pending.length===1');
+ await choosePrimary();
+ await evaluate(client, 'trialAgentControl.pending[0].release();true');
+ await waitFor(client, `!!document.querySelector('.trial-presets input:not(:disabled)') && !document.querySelector('.trial-footer .btn-primary').disabled`);
+ assert.equal(await evaluate(client, `document.querySelector('.trial-agent-choice select').value`),'agent_claude_default');
+ assert.ok(await evaluate(client, `document.querySelector('.trial-choice.selected[aria-expanded=false]').textContent.includes(primaryModel.display_name)`),'late Agent details retain the Primary chosen by the user');
+ assert.equal(await count('trial_agent_choices'),1);
+ assert.equal(await count('trial_agent_model'),1,'adopting the completed default does not repeat its detail read');
+ results.push({id:'quickstart.agent-reads.manual-primary-before-default-agent',status:'passed'});
+
+ await start('&agent-hold=1');
+ await waitFor(client, 'trialAgentControl.pending.length===1');
+ assert.equal(await evaluate(client, `document.querySelector('.trial-presets input:not(:disabled)')`),null);
+ await evaluate(client,`document.querySelector('.trial-agent-choice').scrollIntoView({block:'center'});true`);
+ await shot('trial-agent-loading-en-light-755');
+ await select('agent_dsh_default');
+ await waitFor(client, 'trialAgentControl.pending.length===2');
+ await evaluate(client, "trialAgentControl.setClaudePlan('Fresh A');true");
+ await select('agent_claude_default');
+ await waitFor(client, 'trialAgentControl.pending.length===3');
+ await evaluate(client, 'trialAgentControl.pending[2].release();true');
+ await waitFor(client, `!!document.querySelector('.trial-presets input:not(:disabled)')&&document.querySelector('.trial-presets').textContent.includes('Fresh A')`);
+ await evaluate(client, 'trialAgentControl.pending[0].release();trialAgentControl.pending[1].release();true');
+ await settle();
+ assert.ok(await evaluate(client, `document.querySelector('.trial-presets').textContent.includes('Fresh A')`),'late original A and B cannot overwrite the latest A');
+ assert.equal(await count('trial_agent_choices'),1);
+ await shot('trial-agent-selection-race-en-light-755');
+ results.push({id:'quickstart.agent-reads.a-b-a-rejects-late-details',status:'passed'});
+
+ await start('&agent-hold=1');
+ await waitFor(client, 'trialAgentControl.pending.length===1');
+ await click('.trial-page .toolbar-actions button','Back');
+ await waitFor(client, `!document.querySelector('.trial-page')`);
+ await evaluate(client, "trialAgentControl.setClaudePlan('Reopened A');true");
+ await click('.new-models button','Try');
+ await waitFor(client, 'trialAgentControl.pending.length===2');
+ await evaluate(client, 'trialAgentControl.pending[1].release();true');
+ await waitFor(client, `document.querySelector('.trial-presets')?.textContent.includes('Reopened A')`);
+ await evaluate(client, 'trialAgentControl.pending[0].release();true'); await settle();
+ assert.ok(await evaluate(client, `document.querySelector('.trial-presets').textContent.includes('Reopened A')`));
+ assert.equal(await count('trial_agent_choices'),2,'a new flow rediscovers instead of retaining a previous lifetime');
+ results.push({id:'quickstart.agent-reads.close-reopen-rejects-old-details',status:'passed'});
+
+ await start();
+ await waitFor(client, `!!document.querySelector('.trial-presets input:not(:disabled)')`);
+ await choosePrimary();
+ await click('.trial-footer button','Review changes');
+ await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+ await click('.trial-review button','Save and publish route');
+ await waitFor(client, `!!document.querySelector('.trial-mapping .trial-presets input:not(:disabled)')`);
+ await evaluate(client, "trialAgentControl.setClaudePlan('External update');true");
+ await click('.trial-mapping button','Review and map Agent');
+ await waitFor(client, `document.querySelector('.trial-mapping [role=alert]')?.textContent.includes('Agent settings changed')`);
+ assert.equal(await count('preview_agent_settings'),0,'mapping refresh rejects a changed native selection before Preview/Apply');
+ assert.ok(await evaluate(client, `document.querySelector('.trial-mapping .trial-presets').textContent.includes('External update')`));
+ await shot('trial-agent-stale-mapping-en-light-755');
+ await click('.trial-mapping button','Review and map Agent');
+ await waitFor(client, `document.querySelector('.trial-mapping .callout.good')?.textContent.includes('Mapping confirmed')`);
+ assert.equal(await count('preview_agent_settings'),1);
+ results.push({id:'quickstart.agent-reads.mapping-rechecks-current-selection',status:'passed'});
+
+ await open('lang=zh&theme=dark&view=quickstart&agent-family=dsh',1200,813);
+ await click('.new-models button','试用');
+ await waitFor(client, `!!document.querySelector('.trial-presets input:not(:disabled)')`);
+ await evaluate(client, `document.querySelector('.trial-agent-choice').scrollIntoView({block:'center'});true`);
+ assert.ok(await evaluate(client, `document.documentElement.scrollWidth<=innerWidth+1&&[...document.querySelectorAll('.trial-agent-choice,.trial-preset')].every(e=>e.scrollWidth<=e.clientWidth+1)`));
+ await shot('trial-agent-ready-zh-dark-1200');
+ results.push({id:'quickstart.agent-reads.ready-layout.zh.dark.1200',status:'passed'});
+}

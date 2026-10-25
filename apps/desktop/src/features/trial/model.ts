@@ -1,4 +1,6 @@
-import type { Agent, AgentSnapshot } from '../agents/types';
+import type { Agent } from '../agents/types';
+import type { TrialAgentSnapshot } from './agent-read';
+import { preferredTrialAgent } from './agent-read.ts';
 import { agentEditorSeed } from '../agents/editor-state.ts';
 import { agentEcosystem } from '../agents/ecosystems.ts';
 import { agentModelStatus } from '../agents/status.ts';
@@ -38,9 +40,8 @@ export function trialMappingValues(agent: Agent, planId: string, mapping: TrialM
   throw new Error('AGENT_UNSUPPORTED');
 }
 
-export function initialTrialMapping(snapshot: AgentSnapshot): TrialMapping {
-  const usable = snapshot.agents.filter(agent => agentEditorSeed(agent, 'model', []).known && agent.context_id);
-  return { agentId: (usable.find(agent => agentEcosystem(agent.agent_id) === 'claude') ?? usable[0])?.agent_id ?? '', presets: ['opus'] };
+export function initialTrialMapping(snapshot: TrialAgentSnapshot): TrialMapping {
+  return { agentId: (snapshot.selected ?? preferredTrialAgent(snapshot.choices, ''))?.agent_id ?? '', presets: ['opus'] };
 }
 
 export function trialSelection(candidate: Options['candidates'][number]): Selection {

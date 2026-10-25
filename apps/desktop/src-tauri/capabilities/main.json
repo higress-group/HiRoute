@@ -66,6 +66,8 @@
     "allow-save-classifier-header-secret",
     "allow-save-classifier-openapi",
     "allow-agent-snapshot",
+    "allow-trial-agent-choices",
+    "allow-trial-agent-model",
     "allow-preview-agent-previous-routing",
     "allow-preview-agent-settings",
     "allow-retry-agent-settings",

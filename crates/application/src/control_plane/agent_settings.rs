@@ -325,6 +325,9 @@ pub(crate) fn status(
         ) {
             Ok(payload)
                 if payload.schema_version == hiroute_application_api::AGENT_SETTINGS_SCHEMA_V2
+                    && (payload.projection
+                        != hiroute_application_api::AgentSettingsStatusProjectionV2::Model
+                        || (!payload.include_skills && payload.effective.is_none()))
                     && payload
                         .effective
                         .as_ref()

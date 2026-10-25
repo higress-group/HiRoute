@@ -36,11 +36,29 @@ fn legacy_status_requests_omit_extended_skill_projection() {
     let old = r#"{"schema_version":{"major":2,"minor":0},"context_id":"agent-context/codex"}"#;
     let request: AgentSettingsStatusRequestV2 = serde_json::from_str(old).unwrap();
     assert!(!request.include_skills);
+    assert_eq!(request.projection, AgentSettingsStatusProjectionV2::Full);
     assert_eq!(serde_json::to_string(&request).unwrap(), old);
     let mut extended = request;
     extended.include_skills = true;
     assert_eq!(
         serde_json::to_value(extended).unwrap()["include_skills"],
         true
+    );
+}
+
+#[test]
+fn model_only_projection_is_explicit_and_unknown_projections_are_rejected() {
+    let wire = r#"{"schema_version":{"major":2,"minor":0},"context_id":"agent-context/codex","projection":"model"}"#;
+    let request: AgentSettingsStatusRequestV2 = serde_json::from_str(wire).unwrap();
+    assert_eq!(request.projection, AgentSettingsStatusProjectionV2::Model);
+    assert_eq!(
+        serde_json::to_value(request).unwrap()["projection"],
+        "model"
+    );
+    assert!(
+        serde_json::from_str::<AgentSettingsStatusRequestV2>(
+            &wire.replace("\"model\"", "\"unknown\"")
+        )
+        .is_err()
     );
 }

@@ -107,8 +107,29 @@ async fn epoch_expiry_during_final_service_read_rejects_the_snapshot() {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum ReadKind {
     Agents,
+    TrialChoices,
+    TrialModel,
     Catalog,
     Observation,
+}
+
+#[tokio::test]
+async fn narrow_trial_reads_keep_all_current_read_fences_without_unrelated_agent_status() {
+    for kind in [ReadKind::TrialChoices, ReadKind::TrialModel] {
+        for change in [
+            Change::None,
+            Change::Replace,
+            Change::Epoch,
+            Change::Revision,
+            Change::Publication,
+            Change::Recovery,
+            Change::Authority,
+            Change::Cancel,
+            Change::FinalEpoch,
+        ] {
+            exercise_read(change, kind).await;
+        }
+    }
 }
 
 #[tokio::test]
@@ -193,7 +214,8 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                 stream.read_line(&mut line).await.unwrap();
                 let request: LocalControlWireRequestV2 = serde_json::from_str(&line).unwrap();
                 let blocked = match read_kind {
-                    ReadKind::Agents => "ListAgents",
+                    ReadKind::Agents | ReadKind::TrialChoices => "ListAgents",
+                    ReadKind::TrialModel => "GetAgentConnectionStatus",
                     ReadKind::Catalog => "ListAgentPlanCatalog",
                     ReadKind::Observation => "ListSessions",
                 };
@@ -215,7 +237,23 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                     "GetClientServiceStatus" => {
                         json!({"schema":"hiroute.client-service-status/v1","daemon_role":"resident","recovery_ready":!(altered && change==Change::Recovery),"mutation_available":true,"gateway":"ready","active_publication": if altered && change==Change::Publication {json!({"revision":2,"digest":CanonicalDigest::of_bytes(b"new-publication")})} else {Value::Null},"revisions":{"target":if altered && change==Change::Revision {2} else {1},"dependencies":{}}})
                     }
-                    "ListAgents" | "ScanAgents" => json!({"agents":[]}),
+                    "ListAgents" | "ScanAgents" => {
+                        let agents = if read_kind == ReadKind::TrialChoices {
+                            ["claude", "codex", "dsh", "pi", "qoder", "opencode"].into_iter().map(|name|
+                                json!({"agent_id":format!("agent_{name}_default"), "context_id":format!("agent-context/{name}"),"version":"test","configuration_state":"detected"})
+                            ).collect::<Vec<_>>()
+                        } else {
+                            vec![]
+                        };
+                        json!({"agents":agents})
+                    }
+                    "GetAgentConnectionStatus" => {
+                        assert_eq!(read_kind, ReadKind::TrialModel);
+                        assert_eq!(request.payload["projection"], "model");
+                        assert_eq!(request.payload["context_id"], "agent-context/selected");
+                        assert!(request.payload.get("include_skills").is_none());
+                        json!({"schema":"hiroute.agent-model-settings-status/v2", "context_id":"agent-context/selected", "state":"not_configured", "operation_id":null, "operation_state":null, "restore_point_ref":null, "applied_revision":null, "surface_results":[], "model_verified":false})
+                    }
                     "ListAgentPlanCatalog" => {
                         json!({"schema":"hiroute.agent-plan-catalog/v2","plans":[],"drafts":[],"next_cursor":null})
                     }
@@ -258,6 +296,24 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
         }
         match read_kind {
             ReadKind::Agents => agent_snapshot(&context, &state, None).await.map(|_| ()),
+            ReadKind::TrialChoices => super::super::trial_agent_choices(&context, &state)
+                .await
+                .map(|snapshot| {
+                    assert_eq!(snapshot.choices.len(), 6);
+                    let value = serde_json::to_value(snapshot).unwrap();
+                    assert!(
+                        value["choices"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .all(|choice| choice.get("settings").is_none())
+                    );
+                }),
+            ReadKind::TrialModel => {
+                super::super::trial_agent_model(&context, &state, "agent-context/selected".into())
+                    .await
+                    .map(|_| ())
+            }
             ReadKind::Catalog => super::super::desktop_snapshot(&context, &state)
                 .await
                 .map(|_| ()),

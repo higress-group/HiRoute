@@ -1,4 +1,5 @@
 import { resolveAssessment } from '../../../src/features/decision-services/native-protocol.ts';
+import { trialAgentRead } from './trial-agent-fixture';
 import { defaultJudgment } from '../../../src/features/decision-services/types';
 import type { AgentSnapshot } from '../../../src/agents';
 import type { HomeReads } from '../../../src/features/home';
@@ -556,6 +557,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
   if (command === 'close_subscription_check') return undefined;
   if (command === 'desktop_snapshot') return fresh ? { ...readyDesktop, catalog: { plans: [], drafts: [] } } : readyDesktop;
   if (command === 'agent_snapshot') return fresh ? { ...readyAgents, agents: [] } : agentSnapshotFor(scenario);
+  if (command === 'trial_agent_choices' || command === 'trial_agent_model') return trialAgentRead(fresh ? { ...readyAgents, agents: [] } : agentSnapshotFor(scenario), command, payload);
   if (command === 'worker_executor_availability') {
     const ready = { state: 'ready' as const };
     const unavailable = { state: 'unavailable' as const, reason: 'installation_not_configured' as const };

@@ -75,6 +75,16 @@ Source SPEC comments:
 
 ### Requirement: Settings bind current facts once through one transaction
 
+V2 settings status supports explicit `full` and `model` projections. Omission
+retains the existing full response and `include_skills` semantics, and the default
+projection is omitted when serialized. Unknown projections and `model` combined
+with `include_skills=true` or `effective` are rejected. Model projection reuses the
+same strict model evaluation, including pending/recovery states, Configure/Restore,
+native files, current grants and publication; it does not evaluate management or
+collaboration. Omitted facets mean not projected, not unconfigured. This extension
+requires a matching host/daemon; rejection by an older daemon remains a retryable
+read failure, never evidence of empty configuration.
+
 Preview/Apply MUST bind context, target file ownership, required native capability,
 selected plans/protocols, resource revisions, and dependency digest, reproducing
 facts at Application admission. One save click is explicit intent without a second
@@ -99,6 +109,11 @@ bypass another's ownership. Damaged recovery proofs or unverifiable shared effec
 retain the recovery gate. Unmanaged unreadable targets cannot block service startup;
 actual managed access/recovery still checks type, contents, and identity. No extra
 owner/group-read/write-bit check or chmod is introduced.
+
+#### Scenario: Read model settings without unrelated Skill resources
+
+- **WHEN** a consumer requests model projection and an unrequested Skill resource is unreadable
+- **THEN** valid model facts remain readable with their original proof checks; the full query retains its existing Skill checks and failures.
 
 ### Requirement: Connection bearer is separate from provider and Worker secrets
 
