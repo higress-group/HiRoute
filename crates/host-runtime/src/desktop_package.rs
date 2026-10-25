@@ -232,6 +232,7 @@ fn tool(program: &str, args: &[&std::ffi::OsStr]) -> Result<String, &'static str
 
 /// `None` still requires a present TeamIdentifier plus Developer ID Application.
 /// A pinned team, when supplied, must match that identifier exactly.
+#[cfg(any(target_os = "macos", test))]
 fn developer_id_signature_ok(signature: &str, expected_team: Option<&str>) -> bool {
     let Some(team) = signature.lines().find_map(|line| {
         line.strip_prefix("TeamIdentifier=")
