@@ -166,7 +166,7 @@ const scenarios = [
           const name = provider === 'codex' ? 'Codex' : 'Claude Code';
           await until(() => all('.oc-status-row').some(row => row.querySelector('strong')?.textContent === name && !row.querySelector('button')?.disabled), 'ready provider sign-in');
           all('.oc-status-row').find(row => row.querySelector('strong')?.textContent === name).querySelector('button').click();
-          await until(() => button(label('手动完成授权', 'Complete authorization manually')), 'pending callback mode');
+          await until(() => { const manualAction = button(label('手动完成授权', 'Complete authorization manually')); return manualAction && !manualAction.disabled; }, 'completed sign-in action and pending callback mode');
           assert(calls('open_external_url').length === (manual ? 0 : 1), 'Manual conflict opened a browser before guidance or automatic mode did not open it');
           assert(text().includes(manual ? label('无法自动接收浏览器授权', 'Automatic callback reception is unavailable') : label('HiRoute 会自动接收结果', 'HiRoute will receive the result automatically')), 'Callback mode guidance missing');
           if (manual) { await click(label('打开登录页面', 'Open sign-in page')); assert(calls('open_external_url').length === 1, 'Explicit manual browser action did not dispatch'); }

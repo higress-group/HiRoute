@@ -294,6 +294,7 @@ const authoringCases: [string, () => Promise<void>][] = [
     assert(document.documentElement.scrollWidth <= innerWidth, 'Loading page overflowed');
   }],
   ['routing.authoring.failure: retry preserves selected plan and hides raw errors', async () => {
+    await until(() => Boolean(rejectAuthoring), 'pending authoring request before failure injection');
     rejectAuthoring!({ source: 'backend', envelope: { error: { code: 'DAEMON_UNAVAILABLE', private: 'private-provider-message' } } });
     await until(() => Boolean(document.querySelector('[role="alert"]')), 'authoring failure');
     assert(!document.body.textContent?.includes('private-provider-message'), 'Raw service error leaked');

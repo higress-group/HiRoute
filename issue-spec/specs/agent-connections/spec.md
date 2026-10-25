@@ -450,6 +450,12 @@ writer. Idempotent replay SHALL return the admitted operation without repeating
 native preparation. Current dependency, accepted digest, login-item restoration,
 external fingerprint and atomic journal checks remain mandatory; unchanged route
 selections do not authorize skipping native drift checks.
+The typed settings planner SHALL confirm original caller intent against those facts
+and bind the normalized specification to the request digest, Operation identity and
+journal. Existing callers MAY submit the original intent with the returned preview
+digests, including an omitted known Hermes target or preserved Codex model entries.
+Normalization SHALL NOT bypass intent, dependency, revision or Restore authority
+checks; genuinely stale settings continue to report `CHANGE_PREVIEW_STALE`.
 
 #### Scenario: DSH composition changes during or after preview
 

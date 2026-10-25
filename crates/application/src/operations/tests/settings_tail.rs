@@ -280,7 +280,7 @@ fn current_settings_are_prepared_once_after_authority_and_revision_checks() {
         CanonicalDigest::of_bytes(b"publication-source"),
     );
     let digest = CanonicalDigest::of_bytes(b"current-settings");
-    let request = ApplyRequestV1 {
+    let mut request = ApplyRequestV1 {
         schema_version: CHANGE_SPEC_SCHEMA_V1,
         spec: plan.spec().clone(),
         accept_digest: digest.clone(),
@@ -288,6 +288,11 @@ fn current_settings_are_prepared_once_after_authority_and_revision_checks() {
         idempotency_key: "current-settings".into(),
         apply_capability: Some("current-settings-cap".into()),
     };
+    let canonical_digest = apply_request_digest(&request).unwrap();
+    // The settings planner clears this caller-provided list and derives it from current facts.
+    // The journal must retain the same canonical identity as the previous sealed-plan path.
+    request.spec.desired_state["protected_native_model_ids"] = json!(["caller-placeholder"]);
+    assert_ne!(apply_request_digest(&request).unwrap(), canonical_digest);
     let calls = Arc::new(AtomicUsize::new(0));
     let prepare = |request| {
         let calls = calls.clone();
@@ -322,7 +327,7 @@ fn current_settings_are_prepared_once_after_authority_and_revision_checks() {
     stale.expected_revisions.target += 1;
     assert!(matches!(
         coordinator.accept_prepared(&WorkspaceId::default(), &principal(), prepare(stale)),
-        Err(TransactionError::RevisionConflict(_))
+        Err(TransactionError::ChangePreviewStale)
     ));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     for replay in [false, true] {
@@ -334,6 +339,8 @@ fn current_settings_are_prepared_once_after_authority_and_revision_checks() {
             )
             .unwrap();
         assert_eq!(accepted.existing, replay);
+        assert_eq!(accepted.operation().request_digest, canonical_digest);
+        assert_eq!(accepted.operation().plan.spec(), plan.spec());
         assert_eq!(
             calls.load(Ordering::SeqCst),
             1,
@@ -384,6 +391,15 @@ fn restore_only_settings_require_restore_authority_before_journal_admission() {
     assert!(matches!(
         coordinator.accept_prepared(&WorkspaceId::default(), &principal(), wrong),
         Err(TransactionError::InvalidArguments)
+    ));
+    let wrong_current =
+        crate::PreparedTransactionV1::for_current_agent_settings(request.clone(), || {
+            panic!("Change authority cannot prepare a Restore plan")
+        })
+        .unwrap();
+    assert!(matches!(
+        coordinator.accept_prepared(&WorkspaceId::default(), &principal(), wrong_current),
+        Err(TransactionError::CapabilityDenied)
     ));
     assert_eq!(ports.counters(), before);
     assert!(ports.state.borrow().operations.is_empty());

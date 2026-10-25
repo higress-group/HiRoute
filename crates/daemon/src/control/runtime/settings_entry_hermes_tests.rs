@@ -470,6 +470,18 @@ fn model_resources_rehydrate_after_restart_and_restore_without_touching_skill() 
         fixture.profile.to_str().unwrap()
     );
     let spec = fixture.restore();
+    assert!(spec.get("native_target").is_none());
+    let preview = fixture.service.dispatch_wire(request(
+        "PreviewAgentConnectionRestore",
+        json!({"spec":spec}),
+        None,
+    ));
+    assert!(preview.error.is_none(), "{preview:?}");
+    assert_eq!(
+        preview.data.unwrap()["spec"]["native_target"]["config_root"],
+        fixture.profile.to_str().unwrap()
+    );
+    // Released callers can submit their original intent with the confirmed digest.
     apply(
         &fixture.service,
         &fixture.runtime,

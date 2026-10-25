@@ -277,17 +277,35 @@ where
                 {
                     return Err(TransactionError::InvalidArguments);
                 }
-                return self.accept_with_reproduced_plan(
-                    workspace,
-                    principal,
-                    &operation_kind,
-                    request,
-                    move |_current, _request| {
-                        let plan = build()?;
-                        self.validate_prepared_external(&plan)?;
-                        Ok((reproduced_digest, plan))
-                    },
-                );
+                return self
+                    .accept_with_prepared_request(
+                        workspace,
+                        principal,
+                        &operation_kind,
+                        request,
+                        move |_current, request| {
+                            // The typed planner confirms the original intent against current facts,
+                            // then seals its normalized form (for example a known Hermes target or
+                            // preserved Codex models). Keep the existing normalized journal identity.
+                            let plan = build()?;
+                            if plan.spec().command_id != request.spec.command_id
+                                || plan.spec().resource_id != request.spec.resource_id
+                                || settings_restore_plan(plan.spec())
+                                    != settings_restore_plan(&request.spec)
+                            {
+                                return Err(TransactionError::ChangePreviewStale);
+                            }
+                            self.validate_prepared_external(&plan)?;
+                            request.spec = plan.spec().clone();
+                            Ok((reproduced_digest, plan))
+                        },
+                    )
+                    .map_err(|error| match error {
+                        TransactionError::RevisionConflict(_) => {
+                            TransactionError::ChangePreviewStale
+                        }
+                        error => error,
+                    });
             }
             PreparedPlan::Publication(build) => {
                 if revalidate.is_some()
@@ -510,6 +528,32 @@ where
             &ApplyRequestV1,
         ) -> Result<(CanonicalDigest, TransactionPlanV1), TransactionError>,
     {
+        self.accept_with_prepared_request(
+            workspace,
+            principal,
+            operation_kind,
+            request,
+            |current, request| reproduce(current, request),
+        )
+    }
+
+    // Only the Application-owned Agent settings planner may replace the request's spec
+    // with its freshly confirmed canonical form. Ordinary planners receive an immutable
+    // request through accept_with_reproduced_plan and retain the exact equality fence.
+    fn accept_with_prepared_request<F>(
+        &self,
+        workspace: &WorkspaceId,
+        principal: &VerifiedPrincipal,
+        operation_kind: &str,
+        mut request: ApplyRequestV1,
+        reproduce: F,
+    ) -> Result<AcceptedApply, TransactionError>
+    where
+        F: FnOnce(
+            &RevisionSetV1,
+            &mut ApplyRequestV1,
+        ) -> Result<(CanonicalDigest, TransactionPlanV1), TransactionError>,
+    {
         let _writer = self.admission.lock_writer()?;
         if !self
             .admission
@@ -530,8 +574,6 @@ where
             operation_kind,
             request.idempotency_key.clone(),
         )?;
-        let request_digest = apply_request_digest(&request)?;
-
         if let Some(existing) = self.control.operation_for_idempotency(workspace, &scope)? {
             if existing.accepted_digest == request.accept_digest {
                 return Ok(AcceptedApply {
@@ -589,10 +631,11 @@ where
             )
         };
 
-        let (reproduced_digest, plan) = reproduce(&current, &request)?;
+        let (reproduced_digest, plan) = reproduce(&current, &mut request)?;
         if reproduced_digest != request.accept_digest || plan.spec() != &request.spec {
             return Err(TransactionError::ChangePreviewStale);
         }
+        let request_digest = apply_request_digest(&request)?;
         let operation_id = OperationId::derive(workspace, &scope, &request_digest);
         let operation = OperationV1::new(
             operation_id,
