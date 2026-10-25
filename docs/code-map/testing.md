@@ -479,6 +479,10 @@ The [recovery-read transaction tests](../../crates/local-storage/src/control/cur
 prove exact current-journal exclusion without redundant decoding, retain other
 parked operations, and reject stale current facts, indexed-step damage and missing
 membership coverage. Publication process tests retain activation/recovery behavior.
+The [trial Agent browser controls](../../apps/desktop/tests/v3/visual/trial-agent-read-checks.mjs)
+also cover an external Codex root-to-profile change: stale Apply cannot overwrite
+the new target, explicit refresh discovers it and replaces stale authority, and
+only a subsequent user confirmation maps the refreshed context.
 The [actual Git Bash control](../../crates/integrations/src/agents/qoder_probe_windows_cli.rs)
 executes the selected candidate CLI, including literal special-character drive paths,
 and retains exact output equality. Its required native recipe selects an explicit

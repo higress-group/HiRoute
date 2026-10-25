@@ -5,11 +5,18 @@ import { readyDesktop, readyAgents, readyManagement, dailyPlan, mockProductInvok
 import type { DesktopOperation, DesktopSnapshot } from '../../../src/product/home-projections';
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
 import { trialAgentRead } from './trial-agent-fixture';
+import type { Agent } from '../../../src/features/agents/types';
 const desktop = structuredClone(readyDesktop); desktop.catalog = { plans: [], drafts: [] }; desktop.pending = null;
 const agents = structuredClone(readyAgents); agents.agents = [{...agents.agents.find(a=>a.agent_id==='agent_claude_default')!,context_id:'agent-context/claude/default',settings:{state:'not_configured',restore_point_ref:null,model_verified:false}}];agents.plans.plans=[];
 const additionalFamily = new URLSearchParams(location.search).get('agent-family');
 if (['dsh', 'pi', 'qoder', 'opencode'].includes(additionalFamily ?? '')) agents.agents.push({
  ...structuredClone(agents.agents[0]), agent_id:`agent_${additionalFamily}_default`, context_id:`agent-context/${additionalFamily}/default`,
+});
+const retiredContexts = new Map<string, Agent>();
+if (additionalFamily === 'codex') agents.agents.push({
+ ...structuredClone(readyAgents.agents.find(a=>a.agent_id==='agent_codex_default')!),
+ context_id:'agent-context/codex/root',
+ codex_access:{codex_home:'/workspace/codex',slot_id:'codex',root_context_id:'agent-context/codex/root',profile_context_id:'agent-context/codex/profile',selected_mode:'root',slot_occupied:true,target_file:'config.toml',profile_name:'hiroute',commands:{},pending_operation:null,access_revoked:false,conflict_fields:[]},
 });
 const decision = {id:'decision/trial',revision:1,name:'Saved decision model',connection:{kind:'custom',endpoint:'https://decision.example.test',timeout_ms:10000}};
 let observed:DesktopOperation|null=null;
@@ -28,6 +35,14 @@ Object.assign(window,{trialModel,primaryModel});
 const agentControl = {
  hold: new URLSearchParams(location.search).has('agent-hold'), failNext: false,
  pending: [] as { context: string; release(): void }[],
+ mappedContexts: [] as string[], rejectedContexts: [] as string[],
+ setTrusted(value: boolean) { agents.trusted_authority=value; },
+ setCodexMode(mode: 'root' | 'profile') {
+  const agent=agents.agents.find(a=>a.agent_id==='agent_codex_default')!;
+  retiredContexts.set(agent.context_id!,{...structuredClone(agent),settings:{state:'restored',restore_point_ref:null,model_verified:false}});
+  agent.context_id=`agent-context/codex/${mode}`;
+  agent.codex_access={...agent.codex_access!,selected_mode:mode};
+ },
  setClaudePlan(name: string) {
   const agent = agents.agents[0];
   agent.settings = {state:'configured',restore_point_ref:null,model_verified:false,current_selection:{mode:'claude_launcher',surfaces:['claude_cli'],fixed_models:[],preset_mappings:{opus:{kind:'plan',plan_id:name},sonnet:{kind:'preserve_native'},haiku:{kind:'preserve_native'}}}};
@@ -39,7 +54,8 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  if(command==='trial_agent_choices') return trialAgentRead(agents,command,payload);
  if(command==='trial_agent_model') {
   if(agentControl.failNext){agentControl.failNext=false;throw Error('AGENT_STATUS_UNAVAILABLE');}
-  const result=trialAgentRead(agents,command,payload);
+  const retired=retiredContexts.get(payload.contextId);
+  const result=trialAgentRead(retired ? {...agents,agents:[retired]} : agents,command,payload);
   if(agentControl.hold) await new Promise<void>(release=>agentControl.pending.push({context:payload.contextId,release}));
   return result;
  }
@@ -68,7 +84,13 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   return {state:'succeeded',operation:observed};
  }
  if(command==='preview_agent_settings') {
+  const codex=agents.agents.find(a=>a.agent_id==='agent_codex_default');
+  if(codex && payload.input.spec.context_id.startsWith('agent-context/codex/') && payload.input.spec.context_id!==codex.context_id) {
+   agentControl.rejectedContexts.push(payload.input.spec.context_id);
+   return {preview:{applicable:false,blockers:[{reason:'codex_slot_conflict'}]}};
+  }
   const agent=agents.agents.find(a=>a.context_id===payload.input.spec.context_id)!;
+  agentControl.mappedContexts.push(payload.input.spec.context_id);
   const selection=structuredClone(payload.input.spec.model.settings);
   // Match the native snapshot's map order rather than echoing the form object.
   if (selection.mode==='claude_launcher') {

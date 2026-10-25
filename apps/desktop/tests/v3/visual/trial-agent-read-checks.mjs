@@ -5,8 +5,8 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
  const select = id => evaluate(client, `(()=>{const e=document.querySelector('.trial-agent-choice select');e.value=${JSON.stringify(id)};e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
  const count = command => evaluate(client, `trialTrace.filter(x=>x.command===${JSON.stringify(command)}).length`);
  const settle = () => evaluate(client, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))');
- const start = async (query='') => {
-  await open(`lang=en&view=quickstart&agent-family=dsh${query}`,755,600);
+ const start = async (query='',family='dsh') => {
+  await open(`lang=en&view=quickstart&agent-family=${family}${query}`,755,600);
   await click('.new-models button','Try');
   await waitFor(client, `!!document.querySelector('.trial-agent-choice select')`);
  };
@@ -102,6 +102,37 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
  assert.equal(await count('preview_agent_settings'),1);
  assert.equal(await count('trial_agent_choices'),1);
  results.push({id:'quickstart.agent-reads.mapping-rechecks-current-selection',status:'passed'});
+
+ await start('', 'codex');
+ await waitFor(client, `!!document.querySelector('.trial-presets input:not(:disabled)')`);
+ await select('agent_codex_default');
+ await choosePrimary();
+ await click('.trial-footer button','Review changes');
+ await click('.trial-review button','Save and publish route');
+ await waitFor(client, `!!document.querySelector('.trial-mapping .btn-primary:not(:disabled)')`);
+ await evaluate(client, "trialAgentControl.setCodexMode('profile');true");
+ await click('.trial-mapping button','Review and map Agent');
+ await waitFor(client, `document.querySelector('.trial-mapping [role=alert]')?.textContent.includes('Agent settings changed')`);
+ assert.equal(await count('preview_agent_settings'),0);
+ await click('.trial-mapping button','Review and map Agent');
+ await waitFor(client, 'trialAgentControl.rejectedContexts.length===1');
+ assert.equal(await evaluate(client,'trialAgentControl.mappedContexts.length'),0,'stale root cannot overwrite the newly active profile');
+ await evaluate(client, 'trialAgentControl.setTrusted(false);true');
+ await click('.trial-mapping button','Refresh result');
+ await waitFor(client, `!document.querySelector('.trial-mapping > .actions .btn-quiet').disabled`);
+ assert.equal(await count('trial_agent_choices'),2,'explicit mapping refresh must rediscover changed contexts');
+ assert.equal(await evaluate(client,`document.querySelector('.trial-mapping .btn-primary').disabled`),true,'untrusted refreshed facts cannot authorize mapping');
+ await evaluate(client, 'trialAgentControl.setTrusted(true);true');
+ await click('.trial-mapping button','Refresh result');
+ await waitFor(client, `!!document.querySelector('.trial-mapping .btn-primary:not(:disabled)')`);
+ assert.equal(await count('trial_agent_choices'),3,'explicit retry replaces a previously untrusted discovery proof');
+ assert.equal(await evaluate(client,'trialAgentControl.mappedContexts.length'),0,'refresh never submits or confirms a mapping');
+ await shot('trial-agent-rediscovered-codex-en-light-755');
+ await click('.trial-mapping button','Review and map Agent');
+ await waitFor(client, `document.querySelector('.trial-mapping .callout.good')?.textContent.includes('Mapping confirmed')`);
+ assert.deepEqual(await evaluate(client,'trialAgentControl.mappedContexts'),['agent-context/codex/profile']);
+ assert.equal(await count('trial_agent_choices'),3,'the confirmed normal Apply still reads only the selected context');
+ results.push({id:'quickstart.agent-reads.explicit-rediscovery-recovers-context-and-authority',status:'passed'});
 
  await open('lang=zh&theme=dark&view=quickstart&agent-family=dsh',1200,813);
  await click('.new-models button','试用');

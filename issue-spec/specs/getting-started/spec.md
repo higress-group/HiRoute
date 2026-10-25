@@ -351,6 +351,11 @@ within the open flow across publication and mapping. They remain hints, never pr
 that the selected installation or settings are current; reopening or explicitly
 refreshing discovery reads new choices. Mapping MUST NOT repeat all-Agent discovery
 solely because the flow changed steps or requested a fresh selected settings read.
+The mapping page's explicit refresh/retry SHALL rediscover choices and reread the
+selected settings so an external native-context or authority change remains
+recoverable without closing the flow. This read SHALL NOT submit a mapping. A changed
+target requires a new user confirmation; pending-operation reconciliation still
+matches its original exact context and submitted selection.
 Choosing Primary while Agent details are pending SHALL retain that explicit model
 choice without preventing default Agent initialization. Late details SHALL NOT
 replace an explicitly selected Agent or Primary.
