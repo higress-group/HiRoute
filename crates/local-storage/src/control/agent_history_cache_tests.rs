@@ -558,7 +558,7 @@ fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_refere
             let inline = super::super::payloads::expand(&db, &encoded).unwrap();
             db.execute(
                 "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
-                params![id, inline.as_str()],
+                rusqlite::params![id, inline.as_str()],
             )
             .unwrap();
         }
