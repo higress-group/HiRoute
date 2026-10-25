@@ -1111,8 +1111,14 @@ fn operation(
     .unwrap();
     let stores = adapter.stores_lock().unwrap();
     let workspace = WorkspaceId::default();
-    let scope =
-        IdempotencyScopeV1::new("interactive-user", "ApplyAgentSettingsChange", key).unwrap();
+    // Match the public settings entry: current file owners authenticate the
+    // configure operation, while restoration has its own idempotency scope.
+    let operation_kind = if original.is_some() {
+        "ApplyAgentConnectionRestore"
+    } else {
+        "ApplyAgentConnectionChange"
+    };
+    let scope = IdempotencyScopeV1::new("interactive-user", operation_kind, key).unwrap();
     let mut operation = OperationV1::new(
         OperationId::derive(&workspace, &scope, &accept),
         workspace.clone(),
