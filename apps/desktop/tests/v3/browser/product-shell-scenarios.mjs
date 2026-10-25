@@ -5,6 +5,7 @@ import { cProtocolScenarios } from './c-protocol-scenarios.mjs';
 import { nativeConnectionScenarios } from './native-connection-scenarios.mjs';
 import { presentationScenarios } from './presentation-interactions.mjs';
 import { trustProgressScenarios } from './trust-progress-scenarios.mjs';
+import { operationRecoveryScenarios } from './operation-recovery-scenarios.mjs';
 const c = () => window.productShell;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -60,6 +61,7 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  ...operationRecoveryScenarios({ fresh, until, control: c, calls }),
   ...trustProgressScenarios({ fresh, until, control: c }),
   ...nativeConnectionScenarios({ fresh, click, until, text, calls, control: c }),
   ...extensionDecisionScenarios({ fresh, routing, click, until, all, calls, control: c }),

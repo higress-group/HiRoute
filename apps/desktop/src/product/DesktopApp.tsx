@@ -274,6 +274,11 @@ export function DesktopApp() {
           if (value) {
             unconfirmedSince = null;
             setOperationError('');
+            // This guarded lookup has reconciled the snapshot's discovery hint
+            // with the current native operation. Do not treat that same hint as
+            // another submission while the terminal Home readback is in flight.
+            supersededPendingKey.current = home.desktopSnapshot?.pending?.idempotency_key
+              ?? supersededPendingKey.current;
             setOperation(current => acceptObservedOperation(current, value));
             setOperationRecoveryPending(false);
           } else {
