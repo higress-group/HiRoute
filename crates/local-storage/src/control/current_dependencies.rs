@@ -4,6 +4,11 @@ use crate::LocalStorageError;
 use hiroute_domain::{GatewayPublicationV1, PublicationRecordV1};
 
 pub(crate) fn initialize(tx: &Connection) -> Result<(), LocalStorageError> {
+    tx.execute(
+        "INSERT INTO agent_native_target_coverage VALUES
+        (1,1,(SELECT store_uuid FROM storage_meta WHERE singleton=1),0)",
+        [],
+    )?;
     // The legacy format had no durable finalize bit. Visit it once, under the upgrade
     // transaction, before publishing coverage. In particular, Succeeded does not prove
     // that a Plan head was committed by the old post-terminal callback.
@@ -15,6 +20,8 @@ pub(crate) fn initialize(tx: &Connection) -> Result<(), LocalStorageError> {
         if !journal::is_current(tx, &operation).map_err(|_| LocalStorageError::InvalidData)? {
             return Err(LocalStorageError::InvalidData);
         }
+        super::native_targets::remember(tx, &operation)
+            .map_err(|_| LocalStorageError::InvalidData)?;
         let finalization = matches!(
             operation.state,
             OperationState::Succeeded | OperationState::RolledBack

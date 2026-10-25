@@ -529,3 +529,9 @@ pending terminal finalization and payload substitution. These component cases do
 not establish native startup timing or same-data Debug/Release completion.
 
 The `plan_content_process.py` production process suite interrupts before and after the local terminal commit: the latter already has the exact Plan head/version while remaining durably pending until the real finalizer finishes. `control::read_stamp` rejects missing revision guards and observes committed writes from either connection; the daemon routing lock test proves native read-grant registration remains independent of the routing-input fence.
+
+Explicit native-target discovery tests in `control::agent_history_cache_tests`
+count only current target-owner reads as history grows, keep pending targets
+strict, reject missing coverage/current owners, and preserve inline legacy journal
+bytes during one-time target-reference initialization. Superseded unrelated
+corruption remains visible to the strict history reader without blocking discovery.

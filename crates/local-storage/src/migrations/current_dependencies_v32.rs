@@ -18,6 +18,18 @@ CREATE TABLE operation_recovery_coverage (
     store_uuid TEXT NOT NULL CHECK(length(store_uuid)>0),
     pending_count INTEGER NOT NULL CHECK(pending_count>=0)
 );
+CREATE TABLE agent_native_target_heads (
+    workspace_id TEXT NOT NULL,
+    context_id TEXT NOT NULL,
+    owner_operation_id TEXT NOT NULL REFERENCES operations(operation_id),
+    PRIMARY KEY(workspace_id,context_id)
+);
+CREATE TABLE agent_native_target_coverage (
+    singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+    format_version INTEGER NOT NULL CHECK(format_version=1),
+    store_uuid TEXT NOT NULL CHECK(length(store_uuid)>0),
+    target_count INTEGER NOT NULL CHECK(target_count>=0)
+);
 CREATE TABLE publication_grant_proofs (
     workspace_id TEXT NOT NULL,
     grant_id TEXT NOT NULL,
@@ -82,6 +94,7 @@ pub(super) fn remove_test_shape(db: &rusqlite::Connection) {
     super::routing_read_v32::remove_test_shape(db);
     db.execute_batch("DROP TRIGGER operation_recovery_insert;
         DROP TRIGGER operation_recovery_guard; DROP TRIGGER operation_recovery_update;
+        DROP TABLE agent_native_target_heads; DROP TABLE agent_native_target_coverage;
         DROP TABLE operation_payloads; DROP TABLE operation_recovery_coverage; DROP TABLE operation_recovery_members;
         DROP TABLE publication_grant_proofs; DROP INDEX plan_versions_prepared;
         DROP INDEX gateway_publications_state;

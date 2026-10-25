@@ -366,7 +366,7 @@ fn target_operation(root: &str, key: &str, restore: bool) -> OperationV1 {
 }
 
 #[test]
-fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails() {
+fn native_target_discovery_reads_only_current_targets_and_keeps_unfinished_tails() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());
     let main_path = directory.path().join("hermes-main");
@@ -382,7 +382,10 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
         .unwrap();
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].config_root(), main_root);
-    assert_eq!(control.agent_history_cache.borrow().decodes, 21);
+    assert_eq!(
+        super::super::native_targets::TARGET_READS.with(std::cell::Cell::get),
+        1
+    );
     for _ in 0..3 {
         assert_eq!(
             control
@@ -391,7 +394,10 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
             targets
         );
     }
-    assert_eq!(control.agent_history_cache.borrow().decodes, 21);
+    assert_eq!(
+        super::super::native_targets::TARGET_READS.with(std::cell::Cell::get),
+        4
+    );
 
     let pending = target_operation(pending_root, "pending-target", false);
     let token = "capability-pending-target";
@@ -457,4 +463,128 @@ fn native_target_discovery_reuses_verified_successes_and_keeps_unfinished_tails(
         targets
     );
     assert_eq!(read(&control).unwrap_err().code, PortErrorCode::Corrupt);
+}
+
+#[test]
+fn native_target_heads_ignore_unreferenced_corruption_but_require_the_current_owner() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let path = directory.path().join("hermes-selected");
+    let root = path.to_str().unwrap();
+    let mut old = target_operation(root, "old-native-target", false);
+    persist(&control, &mut old);
+    let mut current = target_operation(root, "current-native-target", true);
+    persist(&control, &mut current);
+    control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE operations SET operation_json='invalid' WHERE operation_id=?1",
+            [old.operation_id.as_str()],
+        )
+        .unwrap();
+    assert_eq!(
+        control
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .unwrap()[0]
+            .config_root(),
+        root
+    );
+    control.validate_native_target_heads().unwrap();
+    assert_eq!(read(&control).unwrap_err().code, PortErrorCode::Corrupt);
+    control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE operations SET operation_json='invalid' WHERE operation_id=?1",
+            [current.operation_id.as_str()],
+        )
+        .unwrap();
+    assert!(control.validate_native_target_heads().is_err());
+}
+
+#[test]
+fn native_target_coverage_and_current_owner_damage_never_become_empty_discovery() {
+    for damage in [
+        "DELETE FROM agent_native_target_coverage",
+        "UPDATE agent_native_target_coverage SET store_uuid='wrong-store'",
+        "DELETE FROM agent_native_target_heads",
+        "UPDATE agent_native_target_heads SET context_id='wrong-context'",
+    ] {
+        let directory = tempdir().unwrap();
+        let control = open(directory.path());
+        let path = directory.path().join("hermes-selected");
+        let mut current = target_operation(path.to_str().unwrap(), "coverage-native-target", false);
+        persist(&control, &mut current);
+        control.connection.borrow().execute_batch(damage).unwrap();
+        assert!(
+            control
+                .agent_settings_native_targets(&WorkspaceId::default())
+                .is_err(),
+            "{damage}"
+        );
+    }
+}
+
+#[test]
+fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_reference() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let path = directory.path().join("hermes-selected");
+    for key in ["legacy-first", "legacy-second"] {
+        let mut operation = target_operation(path.to_str().unwrap(), key, false);
+        persist(&control, &mut operation);
+    }
+    let bytes = |db: &rusqlite::Connection| {
+        db.prepare("SELECT operation_json FROM operations ORDER BY rowid")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    // The supported source stores inline immutable input. Export the fixture into
+    // that exact representation before exercising its semantic conversion.
+    {
+        let db = control.connection.borrow();
+        let rows = db
+            .prepare("SELECT operation_id,operation_json FROM operations ORDER BY rowid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        for (id, encoded) in rows {
+            let inline = super::super::payloads::expand(&db, &encoded).unwrap();
+            db.execute(
+                "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
+                params![id, inline.as_str()],
+            )
+            .unwrap();
+        }
+    }
+    let before = bytes(&control.connection.borrow());
+    // Reproduce the format initializer's one-time semantic phase on retained data;
+    // remove only metadata it owns, retaining all immutable journal/payload bytes.
+    let db = control.connection.borrow();
+    db.execute_batch(
+        "BEGIN; DROP TRIGGER operation_recovery_insert; DROP TRIGGER operation_recovery_guard;
+        DROP TRIGGER operation_recovery_update; DELETE FROM operation_recovery_members;
+        DELETE FROM operation_recovery_coverage; DELETE FROM agent_native_target_heads;
+        DELETE FROM agent_native_target_coverage; DELETE FROM publication_grant_proofs;",
+    )
+    .unwrap();
+    super::super::current_dependencies::initialize(&db).unwrap();
+    db.execute_batch(crate::migrations::current_dependencies_v32::TRIGGERS)
+        .unwrap();
+    db.execute_batch("COMMIT").unwrap();
+    assert_eq!(bytes(&db), before);
+    drop(db);
+    assert_eq!(
+        control
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .unwrap()
+            .len(),
+        1
+    );
 }

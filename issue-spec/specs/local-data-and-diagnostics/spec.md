@@ -69,6 +69,11 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **WHEN** a current or prepared publication, last-known-good state, active Secret proof, live hold or unresolved operation depends on an older record
 - **THEN** that record remains inside the required validation closure, and its missing or invalid content blocks the affected admission or recovery; age alone cannot exempt it.
 
+#### Scenario: Explicit native targets do not require historical replay
+
+- **WHEN** an Agent target has several retained settings operations
+- **THEN** ordinary discovery and startup validate the current explicit target owner and complete target membership, including pending work, without decoding superseded unrelated settings history. Supported conversion establishes those references once without changing the old journal bytes. Missing current owners or coverage remain failures; target hints do not grant execution authority.
+
 #### Scenario: An empty recovery lookup cannot prove completion
 
 - **WHEN** recovery membership is missing, inconsistent or incomplete, including an operation marked Succeeded whose required finalization is outstanding

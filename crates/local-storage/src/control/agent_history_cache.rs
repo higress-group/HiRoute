@@ -286,18 +286,6 @@ impl ControlStore {
             .map(|(facts, _)| facts)
     }
 
-    /// Discovery still visits every accepted operation through its own strict
-    /// immutable-input reader. Missing provenance cannot turn a path hint into
-    /// authority, nor make an otherwise readable journal block startup.
-    pub(super) fn verified_agent_history_for_discovery(
-        &self,
-        workspace: &WorkspaceId,
-        kinds: &[&str],
-    ) -> PortResult<Vec<Arc<SucceededAgentOperationV1>>> {
-        self.read_verified_agent_history(workspace, kinds, false)
-            .map(|(facts, _)| facts)
-    }
-
     pub(super) fn read_verified_agent_history(
         &self,
         workspace: &WorkspaceId,

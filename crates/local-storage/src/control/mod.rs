@@ -614,6 +614,7 @@ impl ControlStore {
             )
             .map_err(|_| port(PortErrorCode::Conflict, "control.operation.insert"))?;
         store_steps(&transaction, operation)?;
+        native_targets::remember(&transaction, operation)?;
         compute::begin_save_handoff_in(&transaction, operation)?;
         transaction
             .commit()
