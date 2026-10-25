@@ -317,3 +317,5 @@ keeps field inference visible and loads source/rule details against that same ca
 snapshot. The [feed producer](../../tools/release-facts/src/feed.rs) checks embedded
 semantic identity against HEAD and the supplied baseline before release gating.
 Hosts use product-session; published execution remains in its existing owner.
+
+The [routing input fence](../../crates/local-storage/src/control/read_stamp.rs) advances with relevant local configuration writes, including external SQLite writers. Its [schema guards](../../crates/local-storage/src/migrations/routing_read_v32.rs) exclude native read grants and cursors. Routing still revalidates the actual CPA batch and current catalog identity.

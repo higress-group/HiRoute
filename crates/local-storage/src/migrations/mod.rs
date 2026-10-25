@@ -18,6 +18,7 @@ pub(crate) mod current_dependencies_v32;
 mod current_storage;
 mod observation_source;
 mod recovery_package;
+pub(crate) mod routing_read_v32;
 mod startup_format;
 pub(crate) mod startup_recovery;
 pub(crate) use startup_format::validate_startup_format;

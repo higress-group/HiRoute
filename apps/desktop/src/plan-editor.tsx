@@ -171,7 +171,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   useDiscardGuard('routing', dirty, language, confirmReplacement);
   useEffect(() => { onDirty?.(dirty); }, [dirty, onDirty]);
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
-  useEffect(() => { onPublicationReady?.(!!options && !optionsLoading && !optionsError && !busy); }, [options, optionsLoading, optionsError, busy, onPublicationReady]);
+  useEffect(() => { onPublicationReady?.(!!options && !optionsError && !busy); }, [options, optionsError, busy, onPublicationReady]);
   useImperativeHandle(ref, () => ({
     saveDraft: () => act('save_draft'),
     publish: () => act('publish'),
@@ -237,7 +237,9 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     }
     if (timeoutValidationError) return { field: 'request_timeout', message: timeoutValidationError };
     if (optionsError) return { message: optionsError };
-    if (!options || optionsLoading) return { message: text('模型信息仍在读取，请稍后再试。', 'Model information is still loading. Try again shortly.') };
+    // A background refresh after an edit retains the last successful hints. The
+    // actual preview/admission validates the exact edited input and current facts.
+    if (!options) return { message: text('模型信息仍在读取，请稍后再试。', 'Model information is still loading. Try again shortly.') };
     const windowError = contextWindowError(editor.limits.context_window_tokens, options.context_window, language);
     if (windowError) return { field: 'context_window', message: windowError };
     if (editor.branch_routing && editor.mode === 'custom_branches') { const issue = routingIssue(editor.branch_routing, language); if (issue) return issue; }

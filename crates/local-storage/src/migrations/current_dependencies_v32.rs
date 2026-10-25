@@ -37,11 +37,20 @@ pub(crate) const TRIGGERS: &str = r#"
 CREATE TRIGGER operation_recovery_insert AFTER INSERT ON operations
 WHEN NEW.state NOT IN ('succeeded','rolled_back') OR NEW.finalization_pending=1
 BEGIN
+    SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM operation_recovery_coverage c JOIN storage_meta s
+        ON s.singleton=c.singleton AND s.store_uuid=c.store_uuid
+        WHERE c.singleton=1 AND c.format_version=1
+        AND c.pending_count=(SELECT count(*) FROM operation_recovery_members))
+        THEN RAISE(ABORT,'incomplete operation recovery coverage') END;
     INSERT INTO operation_recovery_members VALUES(NEW.operation_id);
     UPDATE operation_recovery_coverage SET pending_count=pending_count+1 WHERE singleton=1;
 END;
 CREATE TRIGGER operation_recovery_guard BEFORE UPDATE OF state,finalization_pending ON operations
-WHEN (OLD.state NOT IN ('succeeded','rolled_back') OR OLD.finalization_pending=1)
+WHEN NOT EXISTS(SELECT 1 FROM operation_recovery_coverage c JOIN storage_meta s
+        ON s.singleton=c.singleton AND s.store_uuid=c.store_uuid
+        WHERE c.singleton=1 AND c.format_version=1
+        AND c.pending_count=(SELECT count(*) FROM operation_recovery_members))
+    OR (OLD.state NOT IN ('succeeded','rolled_back') OR OLD.finalization_pending=1)
     != EXISTS(SELECT 1 FROM operation_recovery_members WHERE operation_id=OLD.operation_id)
 BEGIN
     SELECT RAISE(ABORT,'incomplete operation recovery membership');
@@ -64,11 +73,13 @@ END;
 pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::LocalStorageError> {
     crate::control::current_dependencies::initialize(tx)?;
     tx.execute_batch(TRIGGERS)?;
+    super::routing_read_v32::initialize(tx)?;
     Ok(())
 }
 
 #[cfg(test)]
 pub(super) fn remove_test_shape(db: &rusqlite::Connection) {
+    super::routing_read_v32::remove_test_shape(db);
     db.execute_batch("DROP TRIGGER operation_recovery_insert;
         DROP TRIGGER operation_recovery_guard; DROP TRIGGER operation_recovery_update;
         DROP TABLE operation_payloads; DROP TABLE operation_recovery_coverage; DROP TABLE operation_recovery_members;

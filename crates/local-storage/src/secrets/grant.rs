@@ -25,7 +25,8 @@ const GRANT_ID_RANDOM_BYTES: usize = 16;
 
 impl LocalSecretStore {
     /// Provenance lookup only: callers still authenticate the exact publication/effect
-    /// join. Retired operations are not roots for startup's optional Agent attribution.
+    /// join. The latest head may reuse a version created by a different operation;
+    /// consider both bounded owners, rather than replaying every historical ensure.
     pub fn active_agent_grant_owner_operations(
         &self,
         workspace: &hiroute_domain::WorkspaceId,
@@ -33,10 +34,14 @@ impl LocalSecretStore {
         let connection = self.connection.borrow();
         let mut statement = connection
             .prepare(
-                "SELECT DISTINCT v.owner_operation_id
+                "SELECT h.owner_operation_id
             FROM agent_access_grant_heads h JOIN agent_access_grant_versions v
             ON v.connection_id=h.connection_id AND v.generation=h.active_version_generation
-            WHERE v.owner_scope=?1 ORDER BY v.owner_operation_id",
+            WHERE v.owner_scope=?1
+            UNION SELECT v.owner_operation_id
+            FROM agent_access_grant_heads h JOIN agent_access_grant_versions v
+            ON v.connection_id=h.connection_id AND v.generation=h.active_version_generation
+            WHERE v.owner_scope=?1",
             )
             .map_err(|_| port(PortErrorCode::Unavailable, "secret.grant.provenance"))?;
         statement

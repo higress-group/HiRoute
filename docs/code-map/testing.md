@@ -527,3 +527,5 @@ and [`current_storage/tests.rs`](../../crates/local-storage/src/migrations/curre
 retained-history growth, active/LKG damage, missing membership/coverage, rollback,
 pending terminal finalization and payload substitution. These component cases do
 not establish native startup timing or same-data Debug/Release completion.
+
+The `plan_content_process.py` production process suite interrupts before and after the local terminal commit: the latter already has the exact Plan head/version while remaining durably pending until the real finalizer finishes. `control::read_stamp` rejects missing revision guards and observes committed writes from either connection; the daemon routing lock test proves native read-grant registration remains independent of the routing-input fence.

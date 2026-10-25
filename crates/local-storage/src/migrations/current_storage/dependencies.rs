@@ -12,6 +12,9 @@ pub(super) fn validate(
     _runtime: &crate::RuntimeStore,
     secrets: &crate::LocalSecretStore,
 ) -> Result<(), LocalStorageError> {
+    control
+        .read_stamp()
+        .map_err(|_| LocalStorageError::InvalidData)?;
     let connection = control.connection.borrow();
     let pending = crate::control::current_dependencies::validate_recovery_members(&connection)
         .map_err(|_| LocalStorageError::InvalidData)?;

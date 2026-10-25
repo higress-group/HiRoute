@@ -4,26 +4,25 @@ use super::*;
 #[derive(Debug, PartialEq, Eq)]
 pub struct ControlReadStamp {
     store: String,
-    external_commits: u64,
-    connection_changes: u64,
+    routing_inputs: u64,
 }
 
 impl ControlStore {
-    /// Unlike a workspace revision alone, this observes all local configuration writes,
-    /// including writes made on this connection and commits made by another connection.
-    /// Callers must still validate their independently owned external dependencies.
+    /// Both same-connection and external relevant writes advance this revision in
+    /// their own transaction. Native read-grant registration cannot invalidate it.
+    /// CPA and catalog authority must still be checked by the caller.
     pub fn read_stamp(&self) -> PortResult<ControlReadStamp> {
-        self.connection
-            .borrow()
-            .query_row(
-                "SELECT store_uuid,(SELECT data_version FROM pragma_data_version),total_changes()
-             FROM storage_meta WHERE singleton=1 AND length(store_uuid)>0",
+        let db = self.connection.borrow();
+        crate::migrations::routing_read_v32::validate(&db)
+            .map_err(|_| port(PortErrorCode::Corrupt, "control.read-stamp.coverage"))?;
+        db.query_row(
+                "SELECT store_uuid,revision FROM storage_meta JOIN routing_read_revision USING(singleton)
+             WHERE singleton=1 AND length(store_uuid)>0",
                 [],
                 |r| {
                     Ok(ControlReadStamp {
                         store: r.get(0)?,
-                        external_commits: r.get(1)?,
-                        connection_changes: r.get(2)?,
+                        routing_inputs: r.get(1)?,
                     })
                 },
             )
@@ -56,7 +55,12 @@ mod tests {
             .unwrap();
         let local = store.read_stamp().unwrap();
         assert_ne!(before, local);
+        // A rolled-back change does not invalidate a committed local snapshot.
         let other = Connection::open(&path).unwrap();
+        other
+            .execute_batch("BEGIN; UPDATE storage_meta SET store_uuid=store_uuid; ROLLBACK;")
+            .unwrap();
+        assert_eq!(local, store.read_stamp().unwrap());
         other
             .execute(
                 "UPDATE storage_meta SET store_uuid=store_uuid WHERE singleton=1",
@@ -64,5 +68,12 @@ mod tests {
             )
             .unwrap();
         assert_ne!(local, store.read_stamp().unwrap());
+        other
+            .execute_batch("DROP TRIGGER routing_read_plan_drafts_update")
+            .unwrap();
+        assert!(
+            store.read_stamp().is_err(),
+            "missing producer coverage is never a stable snapshot"
+        );
     }
 }

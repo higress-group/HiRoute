@@ -62,13 +62,20 @@ fn empty_or_replaced_coverage_cannot_hide_unfinished_work() {
             root.path().join("backups"),
         )
         .unwrap();
-        admitted(&control, "lost-member");
+        let mut op = admitted(&control, "lost-member");
         control.connection.borrow().execute_batch(damage).unwrap();
         assert!(
             validate_recovery_members(&control.connection.borrow()).is_err(),
             "{damage}"
         );
         assert!(control.recoverable_operations().is_err(), "{damage}");
+        if !damage.starts_with("DROP TRIGGER") {
+            op.steps[0].attempts += 1;
+            assert!(
+                control.save_operation(&mut op).is_err(),
+                "write after {damage}"
+            );
+        }
     }
 }
 

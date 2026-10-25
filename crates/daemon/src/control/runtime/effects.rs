@@ -337,7 +337,10 @@ impl ExternalEffectPort for LocalControlAdapter {
             )
             .map_err(|_| invalid("plan.content.admission"))?;
         // The pending scope stays closed until the real post-commit activation finishes.
-        control.finish_operation(operation)
+        crate::publication_failpoint::crash("before_local_finish");
+        let generation = control.finish_operation(operation)?;
+        crate::publication_failpoint::crash("after_local_finish");
+        Ok(generation)
     }
     fn finish_publication_activation(
         &self,
