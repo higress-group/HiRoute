@@ -81,6 +81,11 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **AND** settled file ownership verifies the original immutable input, exact current identity and file receipt without requiring optional attribution proof from unrelated completed steps. Admission, owner replacement and direct restore reads use this same boundary; the entire unresolved operation remains strictly verified.
 - **AND** admission captures the exact previous owner, and a successful receipt updates or retires the owner in the same transaction as the terminal journal and writer release. Selecting an old restore point cannot bypass this comparison; rollback keeps the prior owner. Missing current owners, membership, receipts or required backups remain failures. Supported initial conversion establishes this projection atomically from authenticated old journals without rewriting them.
 
+#### Scenario: A settled idempotent retry cannot repeat old cleanup
+
+- **WHEN** a completed removal is retried with its original idempotency identity after a new installation at the same target
+- **THEN** the exact authenticated terminal Operation returns its original result without replaying settled cleanup against the new installation. Only an authoritative durable pending-finalization obligation can request its callback again; missing or inconsistent membership remains an error. A crash after local terminal commit but before required finalization retains that obligation for recovery.
+
 #### Scenario: An empty recovery lookup cannot prove completion
 
 - **WHEN** recovery membership is missing, inconsistent or incomplete, including an operation marked Succeeded whose required finalization is outstanding

@@ -195,7 +195,8 @@ fn is_current_in_scope(
          AND (state IN ('succeeded', 'rolled_back', 'needs_attention')
               OR EXISTS(SELECT 1 FROM writer_claim WHERE operation_id=?1)
               OR (?15 AND NOT EXISTS(SELECT 1 FROM writer_claim)))
-         AND (SELECT count(*) FROM operation_steps WHERE operation_id=?1)=?14
+         AND (SELECT count(*) FROM operation_steps WHERE operation_id=?1
+              AND (?16 IS NULL OR step_no=?16))=CASE WHEN ?16 IS NULL THEN ?14 ELSE 1 END
          AND NOT EXISTS(SELECT 1 FROM operation_steps s WHERE s.operation_id=?1 AND (?16 IS NULL OR s.step_no=?16)
              AND (s.step_no IS NOT json_extract(s.step_json, '$.step.sequence')
                   OR s.step_kind IS NOT json_extract(s.step_json, '$.step.kind')

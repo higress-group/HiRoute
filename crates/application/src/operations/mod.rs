@@ -281,8 +281,10 @@ where
             return Ok(operation);
         }
         if operation.state.is_terminal() {
-            self.external.finish_publication_activation(&operation)?;
-            self.control.complete_operation_finalization(&operation)?;
+            if self.control.operation_finalization_pending(&operation)? {
+                self.external.finish_publication_activation(&operation)?;
+                self.control.complete_operation_finalization(&operation)?;
+            }
             return Ok(operation);
         }
         if operation.state == OperationState::RollingBack {

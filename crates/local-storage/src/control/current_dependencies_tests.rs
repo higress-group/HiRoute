@@ -31,13 +31,19 @@ fn terminal_journal_remains_pending_until_real_finalizer_acknowledges_it() {
         control.pending_finalization_operations().unwrap(),
         vec![op.clone()]
     );
+    assert!(control.operation_finalization_pending(&op).unwrap());
+    let mut stale = op.clone();
+    stale.generation += 1;
+    assert!(control.operation_finalization_pending(&stale).is_err());
     drop(control);
     let control = ControlStore::open(&crate::test_storage_authority(), &path, &backup).unwrap();
+    assert!(control.operation_finalization_pending(&op).unwrap());
     assert_eq!(
         control.pending_finalization_operations().unwrap(),
         vec![op.clone()]
     );
     control.complete_operation_finalization(&op).unwrap();
+    assert!(!control.operation_finalization_pending(&op).unwrap());
     control.complete_operation_finalization(&op).unwrap();
     assert!(
         validate_recovery_members(&control.connection.borrow())
@@ -164,4 +170,33 @@ fn large_effect_payload_is_immutable_while_progress_updates_stay_small() {
         .unwrap();
     assert!(!control.operation_is_current(&op).unwrap());
     assert!(control.load_operation(&op.operation_id).is_err());
+}
+
+#[test]
+fn finalization_lookup_refuses_missing_durable_membership() {
+    for damage in [
+        "DELETE FROM operation_recovery_members",
+        "DELETE FROM operation_recovery_coverage",
+        "UPDATE operation_recovery_coverage SET store_uuid='foreign-store'",
+    ] {
+        let root = tempdir().unwrap();
+        let control = ControlStore::open(
+            &crate::test_storage_authority(),
+            root.path().join("control.db"),
+            root.path().join("backups"),
+        )
+        .unwrap();
+        let mut op = admitted(&control, "pending-finalizer");
+        op.state = OperationState::RolledBack;
+        for step in &mut op.steps {
+            step.status = OperationStepStatus::Compensated;
+        }
+        control.finish_operation(&mut op).unwrap();
+        assert!(control.operation_finalization_pending(&op).unwrap());
+        control.connection.borrow().execute_batch(damage).unwrap();
+        assert!(
+            control.operation_finalization_pending(&op).is_err(),
+            "{damage}"
+        );
+    }
 }

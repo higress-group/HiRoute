@@ -1716,10 +1716,11 @@ pub trait ControlRepositoryPort {
     }
     /// Persists a terminal state and releases the durable single-writer claim when safe.
     fn finish_operation(&self, operation: &mut OperationV1) -> PortResult<u64>;
+    /// Read the authoritative completion obligation for this exact committed terminal
+    /// journal. A settled idempotent replay must not run old cleanup on newer state.
+    fn operation_finalization_pending(&self, operation: &OperationV1) -> PortResult<bool>;
     /// Clear durable post-commit work only after the real external finalizer succeeded.
-    fn complete_operation_finalization(&self, _operation: &OperationV1) -> PortResult<()> {
-        Ok(())
-    }
+    fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()>;
     /// Persists a non-terminal settings tail and atomically releases this operation's writer
     /// claim in the same control transaction. Fails when another operation holds the claim.
     fn save_operation_tail(&self, operation: &mut OperationV1) -> PortResult<()>;

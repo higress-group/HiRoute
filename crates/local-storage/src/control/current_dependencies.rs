@@ -107,6 +107,37 @@ pub(crate) fn record_publication_proofs(
 }
 
 impl ControlStore {
+    pub fn operation_requires_finalization(&self, operation: &OperationV1) -> PortResult<bool> {
+        let invalid = || port(PortErrorCode::Corrupt, "control.finalize.obligation");
+        if !matches!(
+            operation.state,
+            OperationState::Succeeded | OperationState::RolledBack
+        ) {
+            return Err(invalid());
+        }
+        // One read transaction binds the exact journal, membership and completion bit.
+        // A terminal label, absent writer or a stale caller is never completion proof.
+        let mut db = self.connection.borrow_mut();
+        let tx = db.transaction().map_err(|_| invalid())?;
+        let members = validate_recovery_members(&tx)?;
+        if !journal::is_current(&tx, operation)? {
+            return Err(invalid());
+        }
+        let pending: bool = tx.query_row(
+            "SELECT finalization_pending FROM operations WHERE operation_id=?1 AND generation=?2",
+            params![operation.operation_id.as_str(), operation.generation], |row| row.get(0),
+        ).map_err(|_| invalid())?;
+        if pending
+            != members
+                .iter()
+                .any(|id| id == operation.operation_id.as_str())
+        {
+            return Err(invalid());
+        }
+        tx.commit().map_err(|_| invalid())?;
+        Ok(pending)
+    }
+
     /// Terminal journal publication and mandatory post-commit work are different facts.
     /// The caller may settle only after the existing real activation callback succeeds.
     pub fn finish_operation_finalization(&self, operation: &OperationV1) -> PortResult<()> {

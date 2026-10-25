@@ -5,7 +5,6 @@ use hiroute_application::publication::admission::{AdmissionAction, AdmissionSubj
 use hiroute_diagnostics::publication::{PublicationStage, measure};
 use hiroute_domain::{
     OperationState, OperationV1, PortError, PortErrorCode, PortResult, PublicationRepositoryPort,
-    WorkspaceId,
 };
 use std::collections::BTreeSet;
 

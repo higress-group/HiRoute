@@ -30,6 +30,7 @@ struct Grant {
 #[derive(Default)]
 struct MemoryState {
     operations: HashMap<String, OperationV1>,
+    finalization_pending: HashSet<String>,
     idempotency: HashMap<String, String>,
     grants: HashMap<String, Grant>,
     effects: HashMap<String, (OwnedEffectV1, bool)>,
@@ -375,9 +376,41 @@ impl ControlRepositoryPort for MemoryPorts {
     fn finish_operation(&self, operation: &mut OperationV1) -> PortResult<u64> {
         self.save_operation(operation)?;
         if operation.state != OperationState::NeedsAttention {
-            self.state.borrow_mut().writer = None;
+            let mut state = self.state.borrow_mut();
+            state.writer = None;
+            state
+                .finalization_pending
+                .insert(operation.operation_id.to_string());
         }
         Ok(0)
+    }
+
+    fn operation_finalization_pending(&self, operation: &OperationV1) -> PortResult<bool> {
+        if !self.operation_is_current(operation)? {
+            return Err(PortError::new(
+                PortErrorCode::Conflict,
+                "test.finalize.current",
+            ));
+        }
+        Ok(self
+            .state
+            .borrow()
+            .finalization_pending
+            .contains(operation.operation_id.as_str()))
+    }
+
+    fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()> {
+        if !self.operation_is_current(operation)? {
+            return Err(PortError::new(
+                PortErrorCode::Conflict,
+                "test.finalize.current",
+            ));
+        }
+        self.state
+            .borrow_mut()
+            .finalization_pending
+            .remove(operation.operation_id.as_str());
+        Ok(())
     }
 
     fn save_operation_tail(&self, operation: &mut OperationV1) -> PortResult<()> {

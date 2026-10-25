@@ -309,6 +309,10 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
     // a restartable crash image. Real pre-receipt crash/restart and post-recovery
     // attribution are exercised by publication_process's after_target/after_active
     // Agent settings cases, using the actual unfinished transaction.
+    let service_receipt = operation
+        .step(OperationStepKind::Activate)
+        .terminal_result
+        .clone();
     operation
         .step_mut(OperationStepKind::Activate)
         .terminal_result = None;
@@ -329,5 +333,21 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
     clear_grant_mappings(root.path());
     runtime.adapter.restore_active_publication().unwrap();
     record_attributed_session(&runtime, &grant, "parked-without-service-proof", &plan);
+    assert_unlinked_session(&runtime, "parked-without-service-proof");
+    // Restore only the exact original service receipt in this attribution fixture.
+    // Availability of valid proof authorizes future writes, never retroactive identity.
+    operation
+        .step_mut(OperationStepKind::Activate)
+        .terminal_result = service_receipt;
+    runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .save_operation(&mut operation)
+        .unwrap();
+    runtime.adapter.restore_active_publication().unwrap();
+    record_attributed_session(&runtime, &grant, "parked-proof-restored", &plan);
+    assert_attributed_session(&runtime, "parked-proof-restored");
     assert_unlinked_session(&runtime, "parked-without-service-proof");
 }

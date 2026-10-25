@@ -1558,6 +1558,10 @@ impl ControlRepositoryPort for ControlStore {
         read_control_head(&connection, &operation.workspace_id)
     }
 
+    fn operation_finalization_pending(&self, operation: &OperationV1) -> PortResult<bool> {
+        self.operation_requires_finalization(operation)
+    }
+
     fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()> {
         self.finish_operation_finalization(operation)
     }

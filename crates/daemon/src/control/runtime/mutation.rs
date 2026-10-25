@@ -356,6 +356,12 @@ impl ControlRepositoryPort for LocalControlAdapter {
         self.stores_lock()?.control().writer_recovery_required()
     }
 
+    fn operation_finalization_pending(&self, operation: &OperationV1) -> PortResult<bool> {
+        self.stores_lock()?
+            .control()
+            .operation_requires_finalization(operation)
+    }
+
     fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()> {
         self.stores_lock()?
             .control()
