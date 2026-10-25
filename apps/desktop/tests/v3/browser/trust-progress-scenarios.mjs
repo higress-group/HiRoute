@@ -19,17 +19,19 @@ export function trustProgressScenarios({ fresh, until, control }) {
         assert(!attention().querySelector('[role="alert"]'), 'Deferred work produced a warning');
         assert(!attention().textContent.includes(language === 'zh' ? '当前没有路由调整建议' : 'No routing adjustments are suggested'), 'Pending suggestions were reported as empty');
         assert(attention().querySelector('[role="status"]')?.textContent.includes(language === 'zh' ? '继续读取' : 'Continuing'), 'Pending progress is not disclosed');
-        const previousVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState');
-        let visibility = 'hidden';
-        try {
-          Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
-          document.dispatchEvent(new Event('visibilitychange'));
-          await new Promise(resolve => setTimeout(resolve, 1250));
-          assert(reads === 1, 'Hidden client continued pending suggestion reads');
-          visibility = 'visible'; document.dispatchEvent(new Event('visibilitychange'));
-        } finally {
-          if (previousVisibility) Object.defineProperty(document, 'visibilityState', previousVisibility);
-          else delete document.visibilityState;
+        if (language === 'en') {
+          const previousVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+          let visibility = 'hidden';
+          try {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
+            document.dispatchEvent(new Event('visibilitychange'));
+            await new Promise(resolve => setTimeout(resolve, 1250));
+            assert(reads === 1, 'Hidden client continued pending suggestion reads');
+            visibility = 'visible'; document.dispatchEvent(new Event('visibilitychange'));
+          } finally {
+            if (previousVisibility) Object.defineProperty(document, 'visibilityState', previousVisibility);
+            else delete document.visibilityState;
+          }
         }
         await until(() => reads >= 2 && attention().textContent.includes(language === 'zh' ? '当前没有路由调整建议' : 'No routing adjustments are suggested'), 'automatic suggestion continuation');
         assert(reads === 2 && !attention().querySelector('[role="alert"]'), 'Completed continuation retried or retained a warning');
