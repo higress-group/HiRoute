@@ -46,4 +46,3 @@ fn configuration_priming_preserves_exact_inputs_and_permission_findings() {
         assert_eq!(finding, complete.permission_hardening);
     }
 }
-
