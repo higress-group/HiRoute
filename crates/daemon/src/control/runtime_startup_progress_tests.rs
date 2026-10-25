@@ -19,7 +19,7 @@ fn ordinary_startup_and_reopen_do_not_claim_a_history_upgrade() {
             true,
             RuntimeOpenOverrides {
                 storage_startup: hiroute_local_storage::StorageStartupOptions {
-                    upgrade_progress: Some(sender),
+                    upgrade_progress: Some(sender.into()),
                     ..Default::default()
                 },
                 ..Default::default()

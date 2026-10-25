@@ -431,7 +431,7 @@ fn run_all(
         config = config.with_codex_desktop_engine(engine);
     }
     let (progress, phases) = std::sync::mpsc::channel();
-    config.upgrade_progress = Some(progress);
+    config.upgrade_progress = Some(progress.into());
     let progress_writer = std::thread::spawn(move || -> Result<(), String> {
         let mut stdout = std::io::stdout().lock();
         for phase in phases {

@@ -372,6 +372,7 @@ pub(crate) struct MigrationSetCoordinator {
 }
 
 impl MigrationSetCoordinator {
+    #[cfg(test)]
     pub(crate) fn prepare(
         authority: &DaemonStorageAuthority,
         barrier: &SingleWriterBackupBarrier,
@@ -379,7 +380,35 @@ impl MigrationSetCoordinator {
         backup_root: &Path,
         secret_binding: Option<&MigrationSecretBinding>,
     ) -> Result<Self, LocalStorageError> {
+        Self::prepare_with_progress(
+            authority,
+            barrier,
+            live_root,
+            backup_root,
+            secret_binding,
+            None,
+        )
+    }
+
+    pub(crate) fn prepare_with_progress(
+        authority: &DaemonStorageAuthority,
+        barrier: &SingleWriterBackupBarrier,
+        live_root: &Path,
+        backup_root: &Path,
+        secret_binding: Option<&MigrationSecretBinding>,
+        progress: Option<&hiroute_host_runtime::StorageUpgradeProgress>,
+    ) -> Result<Self, LocalStorageError> {
         if BackupSet::durable_manifest_present(backup_root)? {
+            if completed_batches::admit_current(backup_root, live_root, secret_binding)? {
+                return Ok(Self {
+                    set: None,
+                    control_store_uuid: None,
+                    runtime_store_uuid: None,
+                });
+            }
+            if let Some(progress) = progress {
+                progress.report(hiroute_host_runtime::StorageUpgradePhase::SourceCheck);
+            }
             let previous = BackupSet::open(authority, backup_root)?;
             completed_batches::archive_if_needed(
                 &previous,
@@ -470,6 +499,10 @@ impl MigrationSetCoordinator {
             let control = open_existing_for_snapshot(&paths[0])?;
             let runtime = open_existing_for_snapshot(&paths[1])?;
             let secrets = open_existing_for_snapshot(&paths[2])?;
+            if let Some(progress) = progress {
+                progress.report(hiroute_host_runtime::StorageUpgradePhase::SourceCheck);
+                progress.report(hiroute_host_runtime::StorageUpgradePhase::Backup);
+            }
             BackupSet::create_migration(
                 barrier,
                 backup_root,

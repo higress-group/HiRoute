@@ -44,8 +44,7 @@ pub struct StorageStartupOptions {
     pub preserve_observation_source: bool,
     /// An admitted old package retained by the installer/operator for recovery.
     pub recovery_package: Option<std::path::PathBuf>,
-    pub upgrade_progress:
-        Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageUpgradePhase>>,
+    pub upgrade_progress: Option<hiroute_host_runtime::StorageUpgradeProgress>,
     /// Per-attempt typed facts also reach the caller when admission cannot
     /// acquire the writer lock or write a recovery file.
     pub startup_failure: Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageRecovery>>,
@@ -226,12 +225,13 @@ impl LocalStorageSet {
         let runtime_path = live_root.join("runtime.db");
         let secrets_path = live_root.join("secrets.db");
         let secret_binding = LocalSecretStore::migration_binding(&secrets_path, &master_key_path)?;
-        let mut migration = migrations::MigrationSetCoordinator::prepare(
+        let mut migration = migrations::MigrationSetCoordinator::prepare_with_progress(
             authority,
             barrier,
             &live_root,
             &backup_root,
             secret_binding.as_ref(),
+            options.and_then(|options| options.upgrade_progress.as_ref()),
         )?;
         if let Some(options) = options {
             migration.preserve_complete_source(
@@ -244,6 +244,12 @@ impl LocalStorageSet {
             )?;
         }
         let target_schema_version = migration.target_schema_version();
+        if (migration.durable_set_prepared()
+            || options.is_some_and(|options| options.preserve_observation_source))
+            && let Some(progress) = options.and_then(|options| options.upgrade_progress.as_ref())
+        {
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::Conversion);
+        }
         let control_result = if migration.durable_set_prepared() {
             ControlStore::open_from_migration_set(
                 authority,
@@ -325,6 +331,12 @@ impl LocalStorageSet {
             drop(control);
             migration.restore_after_failure(barrier, &live_root)?;
             return Err(error);
+        }
+        if migration.durable_set_prepared()
+            && target_schema_version == migrations::LATEST_SCHEMA_VERSION
+            && let Some(progress) = options.and_then(|options| options.upgrade_progress.as_ref())
+        {
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
         }
         let integrity = if migration.durable_set_prepared() {
             // A first format conversion audits its complete source/target. Ordinary opens

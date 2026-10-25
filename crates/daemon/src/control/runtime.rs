@@ -356,7 +356,7 @@ impl ProductionControlRuntime {
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress
         {
-            let _ = progress.send(hiroute_host_runtime::StorageUpgradePhase::SourceCheck);
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::SourceCheck);
         }
         let stores = LocalStorageSet::open_for_daemon_startup_with_options(storage_root, &startup)
             .map_err(|error| error.to_string())?;
@@ -657,7 +657,7 @@ impl ProductionControlRuntime {
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress
         {
-            let _ = progress.send(hiroute_host_runtime::StorageUpgradePhase::Validation);
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
         }
         let delegation_epoch = delegation_epoch()?;
         let plan_admission =
@@ -730,6 +730,11 @@ impl ProductionControlRuntime {
         ));
         // Recovery needs exact configuration descriptors, not the informational native-version
         // inventory. A recovered Secret step still rejects a changed or missing source revision.
+        if let Some(progress) = &startup.upgrade_progress
+            && progress.started()
+        {
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::ServiceRecovery);
+        }
         adapter.prime_discovery()?;
         // Price availability alone does not reject an otherwise authorized model request.
         // Pending price Operations perform mandatory installation during recovery below.

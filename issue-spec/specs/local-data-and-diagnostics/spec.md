@@ -101,6 +101,17 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **WHEN** supported older data needs a complete initial conversion or a full-store integrity audit is performed
 - **THEN** the existing coordinated recovery boundary preserves the source and reports the actual work separately; interruption cannot publish partial current-state coverage or turn unchecked historical data into a successful integrity result.
 
+#### Scenario: Completed upgrade backup is retained without reopening history
+
+- **WHEN** the durable completion record names the current target format and agrees with the current three-store identities and secret binding
+- **THEN** ordinary reopen validates current dependencies and unfinished work without reading the retired backup contents or auditing unrelated history. Damage in that retired backup remains a failure when it is explicitly opened for recovery; it is never reported as verified healthy.
+- **AND** incomplete batches, older targets, malformed completion records, missing current stores and mismatched identities retain strict recovery admission. A current format number or an existing backup path alone cannot prove completion.
+
+#### Scenario: Upgrade status follows entered work
+
+- **WHEN** startup enters backup publication, data conversion, final current-data validation and service recovery
+- **THEN** it reports the corresponding bounded phases on the existing readiness channel, without rescanning history for progress. Completing an older batch before the current batch does not repeat or regress visible phases. A failed stage remains the last entered phase; no later stage or ready result is fabricated. Ordinary current-format restart emits no upgrade phases and retains its normal readiness deadline.
+
 ### Requirement: Journal progress does not rewrite immutable payloads
 
 Current Operations SHALL store their immutable admitted input and large compensation
