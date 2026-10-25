@@ -133,13 +133,23 @@ fn cancel_after_partial_tool(fixture: &RuntimeFixture, input: &[Value], expected
         );
         received.extend_from_slice(&buffer[..count]);
         if let Some(split) = received.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
-            let delivered = &received[split + 4..];
+            assert_eq!(
+                wire_header(&received, "transfer-encoding").as_deref(),
+                Some("chunked")
+            );
+            let (delivered, complete) =
+                hiroute_e2e::gateway_fixture::decode_chunked_response_body(&received[split + 4..])
+                    .unwrap();
+            assert!(
+                !complete,
+                "unfinished tool response must not complete its HTTP entity"
+            );
             if delivered.len() >= expected.len() {
                 assert_eq!(
                     delivered, expected,
                     "all accepted bytes except the public alias stay exact"
                 );
-                break events(delivered);
+                break events(&delivered);
             }
         }
     };
@@ -199,6 +209,10 @@ fn send(fixture: &RuntimeFixture, input: &[Value], turn: &str) -> Vec<Value> {
         200,
         "{}",
         String::from_utf8_lossy(&response.body)
+    );
+    assert!(
+        response.http_entity_complete,
+        "successful later stage must finish its HTTP entity"
     );
     let events = events(&response.body);
     assert!(!events.iter().any(|e| matches!(
