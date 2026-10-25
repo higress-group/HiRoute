@@ -21,6 +21,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'crates/daemon/tests/support'))
 from agent_product_support import apply_settings, run_native_command, expose_native_installation
 from publication_product import Product
+from publication_process import AgentSettingsPreviewBlocked
 import standalone_headless_product as headless
 from dsh_native_context import DshModelSettings, read_patch, encode_patch
 from decision_services_product import DecisionEndpoint
@@ -483,6 +484,32 @@ class NativeProcessTests(unittest.TestCase):
         finally:
             neighbor.terminate()
             neighbor.wait(timeout=5)
+
+
+class SettingsBlockerEvidenceTests(unittest.TestCase):
+    def test_capability_failure_keeps_exact_typed_cause_without_private_fields(self):
+        for capability in ('effective_configuration', 'atomic_managed_replace', 'ingress_authentication'):
+            error = AgentSettingsPreviewBlocked([{'facet': 'model', 'reason': 'capability_unavailable',
+                'capabilities': [{'capability': capability, 'reason': 'stale', 'private': 'credential'}],
+                'model_ids': ['private-model'], 'configuration': 'private-config'}])
+            self.assertEqual(error.diagnostic_blockers, [{'facet': 'model', 'reason': 'capability_unavailable',
+                'capabilities': [{'capability': capability, 'reason': 'stale'}]}])
+            self.assertEqual(error.reason_codes, ['capability_unavailable'])
+
+    def test_unrecognized_values_and_malformed_fields_are_not_echoed(self):
+        error = AgentSettingsPreviewBlocked([None, {'reason': 'private_secret'},
+            {'reason': [], 'facet': {}}, {'reason': 'capability_unavailable', 'facet': 'private-config',
+             'capabilities': [{'capability': 'ingress_authentication', 'reason': 'private-error'},
+                              {'capability': [], 'reason': 'unknown'}, 'private-string']}])
+        self.assertEqual(error.diagnostic_blockers, [{'reason': 'capability_unavailable', 'capabilities': []}])
+        self.assertEqual(AgentSettingsPreviewBlocked(None).diagnostic_blockers, [])
+
+    def test_blocker_and_capability_collections_are_bounded(self):
+        row = {'facet': 'model', 'reason': 'capability_unavailable', 'capabilities':
+            [{'capability': 'ingress_authentication', 'reason': 'unknown'}] * 30}
+        error = AgentSettingsPreviewBlocked([row] * 30)
+        self.assertEqual(len(error.diagnostic_blockers), 16)
+        self.assertTrue(all(len(row['capabilities']) == 7 for row in error.diagnostic_blockers))
 
 
 class ProductFailureEvidenceTests(unittest.TestCase):

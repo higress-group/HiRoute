@@ -314,6 +314,7 @@ def run(repository, label):
             if isinstance(error, RegressionFailure) and re.fullmatch(r'[a-z_]+', str(error)) else 'harness_failure'}
         if hasattr(error, 'reason_codes'):
             report['failure']['preview_blocker_reasons'] = error.reason_codes
+            report['failure']['preview_blockers'] = error.diagnostic_blockers
         report['failure']['frames'] = [{'file': Path(frame.filename).name, 'line': frame.lineno,
             'function': frame.name} for frame in traceback.extract_tb(error.__traceback__)]
     finally:
