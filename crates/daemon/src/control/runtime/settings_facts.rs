@@ -479,8 +479,7 @@ impl LocalControlAdapter {
                 return Err(ControlReadError::Corrupt);
             };
             let effect = original
-                .step(hiroute_domain::OperationStepKind::ApplySecrets)
-                .effects
+                .grant_effects()
                 .iter()
                 .find(|effect| is_agent_access_grant_effect(effect))
                 .ok_or(ControlReadError::Corrupt)?;
