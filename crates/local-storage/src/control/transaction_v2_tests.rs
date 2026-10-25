@@ -1078,3 +1078,5 @@ fn current_operation_allows_only_the_committed_parked_settings_tail_without_a_wr
 mod current_dependencies_tests;
 #[path = "journal_order_tests.rs"]
 mod journal_order_tests;
+#[path = "legacy_finalization_tests.rs"]
+mod legacy_finalization_tests;
