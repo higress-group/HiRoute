@@ -315,6 +315,10 @@ retains bounded private failure evidence before temporary-root cleanup; its
 [regressions](../../tools/product-e2e/tests/control_shell_support/startup_tests.rs)
 cover timeout, early exit, normal readiness and incomplete diagnostics. Follow the
 [diagnostic guide](../diagnostic-troubleshooting.md) for retention and interpretation.
+The [product read boundary](../../crates/product-session/src/commands/read_context.rs)
+reports post-transport Home rejections; its [command tests](../../crates/product-session/src/commands/read_context/tests.rs)
+and [closed event checks](../../crates/diagnostics/tests/product_read.rs) distinguish
+actual final failures from successful control calls without logging payloads.
 
 Shared private filesystem behavior has one [platform contract suite](../../crates/platform/src/private_fs/tests.rs): exclusive creation, protected handle reads, permission preservation and identity-bound cleanup. Storage and Worker tests keep domain errors, recovery and lifecycle assertions; the native Windows cases additionally exercise ACLs and held handles.
 

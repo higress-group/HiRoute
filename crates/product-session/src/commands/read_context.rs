@@ -3,7 +3,28 @@
 use super::*;
 use crate::authority::{HostAuthority, SessionAuthority};
 use hiroute_client_core::Client;
+use hiroute_diagnostics::event::{ControlOperation, ProductReadEnd};
 use std::sync::Arc;
+
+#[cfg(test)]
+mod tests;
+
+async fn measured_read<T>(
+    state: &CommandState<'_>,
+    operation: ControlOperation,
+    read: impl std::future::Future<Output = Result<T, DesktopFailure>>,
+) -> Result<T, DesktopFailure> {
+    let started = std::time::Instant::now();
+    let result = read.await;
+    state
+        .3
+        .try_emit(DiagnosticEvent::ProductReadEnd(ProductReadEnd {
+            operation,
+            error: result.as_ref().err().map(DesktopFailure::event_code),
+            elapsed_ms: started.elapsed().as_millis() as u64,
+        }));
+    result
+}
 
 pub(super) struct ReadContext {
     pub client: Client,
@@ -80,6 +101,18 @@ pub async fn desktop_snapshot(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
 ) -> Result<DesktopSnapshot, DesktopFailure> {
+    measured_read(
+        state,
+        ControlOperation::DesktopSnapshot,
+        desktop_snapshot_inner(window, state),
+    )
+    .await
+}
+
+async fn desktop_snapshot_inner(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+) -> Result<DesktopSnapshot, DesktopFailure> {
     main_window(window)?;
     let read = ReadContext::capture(state, true).await?;
     let service = read.status().await?;
@@ -95,6 +128,19 @@ pub async fn desktop_snapshot(
 }
 
 pub async fn observation_read(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    request: ObservationReadRequestV2,
+) -> Result<Value, DesktopFailure> {
+    measured_read(
+        state,
+        ControlOperation::ObservationRead,
+        observation_read_inner(window, state, request),
+    )
+    .await
+}
+
+async fn observation_read_inner(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
     request: ObservationReadRequestV2,

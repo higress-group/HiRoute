@@ -64,6 +64,7 @@ pub enum DiagnosticEvent {
     Preview(PreviewEvent),
     Apply(ApplyEvent),
     ControlCallEnd(ControlCallEnd),
+    ProductReadEnd(ProductReadEnd),
     ControlStage(ControlStage),
     ProtectedExchange(ProtectedExchange),
     RequestBegin(RequestBegin),
@@ -154,6 +155,13 @@ impl DiagnosticEvent {
                 }
             }
             DiagnosticEvent::ControlStage(_) => Debug,
+            DiagnosticEvent::ProductReadEnd(read) => {
+                if read.error.is_some() {
+                    Warn
+                } else {
+                    Debug
+                }
+            }
             DiagnosticEvent::ProtectedExchange(exchange) => {
                 if exchange.error.is_some() {
                     Warn
@@ -268,6 +276,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::Preview(_) => "preview",
             DiagnosticEvent::Apply(_) => "apply",
             DiagnosticEvent::ControlCallEnd(_) => "control_call_end",
+            DiagnosticEvent::ProductReadEnd(_) => "product_read_end",
             DiagnosticEvent::ControlStage(_) => "control_stage",
             DiagnosticEvent::ProtectedExchange(_) => "protected_exchange",
             DiagnosticEvent::RequestBegin(_) => "request_begin",

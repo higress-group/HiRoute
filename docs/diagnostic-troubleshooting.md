@@ -91,6 +91,17 @@ macOS may stop reporting PGID/SID for an exited but unreaped child. The supervis
 
 ## Native connection lost while the daemon responds
 
+For failed Home reads, also inspect `product_read_end` for `desktop_snapshot` and
+`observation_read`. These events report the final product boundary after transport,
+authorization and publication checks. `client_context_invalid` distinguishes an
+inactive presentation context; `read_snapshot_changed`, `confirmation_stale` and
+`resident_unavailable` identify different rejected-read boundaries. Other failures
+retain their closed transport/business category, with unknown native errors folded
+into `external_error`. Failed reads survive Info filtering; successful reads are
+Debug. Neither event contains request contents or raw exceptions. A missing event
+does not establish success or failure, and a successful control response cannot
+replace this final-read evidence.
+
 A successful Local Control/CLI query does not establish that Desktop's separate
 inherited protected channel is healthy. Home and Sessions also require that
 channel. `TRUSTED_AUTHORITY_UNAVAILABLE` after an exchange failure stays denied;
