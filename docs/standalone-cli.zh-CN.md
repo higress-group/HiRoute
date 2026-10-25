@@ -316,7 +316,7 @@ registered 模板。当前内置 OpenRouter 选项没有远端目录探测路径
 set -eu
 umask 077
 KEY_FILE='/absolute/private/openrouter-key'
-work=$(mktemp -d)
+work=$(mktemp -d "${TMPDIR:-/tmp}/hiroute-connection.XXXXXXXX")
 candidate="candidate/native/openrouter-$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 hiroute schema show --command-id compute.connection.test --include-schema --output json > "$work/contract.json"
 hiroute compute connection options --output json > "$work/options.json"

@@ -311,7 +311,7 @@ files for diagnosis. Only references enter ordinary JSON; the key stays on FD 3.
 set -eu
 umask 077
 KEY_FILE='/absolute/private/openrouter-key'
-work=$(mktemp -d)
+work=$(mktemp -d "${TMPDIR:-/tmp}/hiroute-connection.XXXXXXXX")
 candidate="candidate/native/openrouter-$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 hiroute schema show --command-id compute.connection.test --include-schema --output json > "$work/contract.json"
 hiroute compute connection options --output json > "$work/options.json"

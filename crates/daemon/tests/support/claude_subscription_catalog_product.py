@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import sys
 import time
+import traceback
 import uuid
 from urllib.parse import parse_qs, urlparse
 
@@ -311,6 +312,8 @@ def run(repository, label):
     except Exception as error:
         report['failure'] = {'class': type(error).__name__, 'code': str(error)
             if isinstance(error, RegressionFailure) and re.fullmatch(r'[a-z_]+', str(error)) else 'harness_failure'}
+        report['failure']['frames'] = [{'file': Path(frame.filename).name, 'line': frame.lineno,
+            'function': frame.name} for frame in traceback.extract_tb(error.__traceback__)]
     finally:
         report['diagnostics'] = product.diagnostics_snapshot()
         if report['state'] != 'green':
