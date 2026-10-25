@@ -86,6 +86,11 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **WHEN** a completed removal is retried with its original idempotency identity after a new installation at the same target
 - **THEN** the exact authenticated terminal Operation returns its original result without replaying settled cleanup against the new installation. Only an authoritative durable pending-finalization obligation can request its callback again; missing or inconsistent membership remains an error. A crash after local terminal commit but before required finalization retains that obligation for recovery.
 
+#### Scenario: Current model checks do not scan replaced declarations
+
+- **WHEN** publication admission checks installed model budgets or an active Agent access view checks the current configuration
+- **THEN** those reads use authenticated current managed-configuration owners, retaining immutable admission, exact file and grant-step receipts, current Secret and budget checks, without decoding superseded unrelated settings journals. Missing optional completed service provenance does not block these reads or confer session attribution. A malformed current owner, required file or grant proof remains a failure. Explicit historical Restore reads retain their original strict validation.
+
 #### Scenario: An empty recovery lookup cannot prove completion
 
 - **WHEN** recovery membership is missing, inconsistent or incomplete, including an operation marked Succeeded whose required finalization is outstanding

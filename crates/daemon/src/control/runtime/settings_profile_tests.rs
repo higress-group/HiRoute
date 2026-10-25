@@ -191,6 +191,26 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     let current_access = current_access.expect("current access must ignore replaced history");
     assert!(current_access.slot_occupied && !current_access.access_revoked);
     assert!(current_access.conflict_fields.is_empty());
+    journal
+        .execute(
+            "CREATE TEMP TABLE saved_optional_steps AS SELECT * FROM operation_steps
+        WHERE operation_id=?1 AND step_kind='activate'",
+            [edited["operation_id"].as_str().unwrap()],
+        )
+        .unwrap();
+    journal.execute_batch("DELETE FROM operation_steps WHERE operation_id IN (SELECT operation_id FROM saved_optional_steps)
+        AND step_kind='activate';").unwrap();
+    let current_access = runtime.adapter.codex_access_view();
+    journal
+        .execute_batch(
+            "INSERT INTO operation_steps SELECT * FROM saved_optional_steps;
+        DROP TABLE saved_optional_steps;",
+        )
+        .unwrap();
+    let current_access =
+        current_access.expect("optional service provenance must not disable current access");
+    assert!(current_access.slot_occupied && !current_access.access_revoked);
+    assert!(current_access.conflict_fields.is_empty());
     let operation: OperationId = serde_json::from_value(edited["operation_id"].clone()).unwrap();
     let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&operation)}});
     // A profile revoke needs neither the original metadata directory nor a valid root file.

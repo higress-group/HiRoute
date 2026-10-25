@@ -197,6 +197,28 @@ fn output_shrink_names_all_live_consumers_and_preserves_checkpoint_details_after
         "agent.model.budget.conflict",
         "superseded history must not replace current budget checks"
     );
+    // Current file and grant proofs remain intact even when optional completed
+    // service provenance is absent. Restore the exact fixture rows afterwards.
+    journal.execute_batch("CREATE TEMP TABLE saved_optional_steps AS SELECT * FROM operation_steps
+        WHERE operation_id=(SELECT operation_id FROM operations WHERE idempotency_key='budget-pi-next-generation')
+        AND step_kind='activate';
+        DELETE FROM operation_steps WHERE operation_id IN (SELECT operation_id FROM saved_optional_steps)
+        AND step_kind='activate';").unwrap();
+    let admission = fixture
+        .runtime
+        .adapter
+        .validate_external_admission(&candidate.plan.external()[0]);
+    journal
+        .execute_batch(
+            "INSERT INTO operation_steps SELECT * FROM saved_optional_steps;
+        DROP TABLE saved_optional_steps;",
+        )
+        .unwrap();
+    assert_eq!(
+        admission.unwrap_err().context,
+        "agent.model.budget.conflict",
+        "optional service provenance must not disable current budget checks"
+    );
     let (_, _, before) = rejected(&fixture, &alias);
     assert_eq!(
         before

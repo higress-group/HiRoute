@@ -218,10 +218,7 @@ impl LocalControlAdapter {
         let stores = self.stores_lock().map_err(super::map_port)?;
         for original in stores
             .control()
-            .succeeded_agent_operations_for_kind(
-                &WorkspaceId::default(),
-                "ApplyAgentConnectionChange",
-            )
+            .current_agent_configuration_operations(&WorkspaceId::default())
             .map_err(super::map_port)?
         {
             if original.plan.spec().resource_id.as_deref() != Some(context) {
@@ -242,13 +239,8 @@ impl LocalControlAdapter {
                 hiroute_domain::AgentAccessGrantRefV1::from_ensure_effect(effect, mutation)
                     .map_err(|_| ControlReadError::Corrupt)?;
             if &reference == grant {
-                let op = stores
-                    .control()
-                    .load_operation(&original.operation_id)
-                    .map_err(super::map_port)?
-                    .ok_or(ControlReadError::Corrupt)?;
                 drop(stores);
-                return self.codex_conflicts(&op, false);
+                return self.codex_conflicts(&original, false);
             }
         }
         Ok(Vec::new())

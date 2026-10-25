@@ -102,6 +102,21 @@ pub(super) fn is_current_artifact_step(
     is_current_in_scope(connection, operation, Some(step.sequence))
 }
 
+/// Active native model checks also consume the original grant Ensure receipt. Other
+/// completed steps (including optional attribution) are not authority for this read.
+pub(super) fn is_current_grant_step(
+    connection: &Connection,
+    operation: &OperationV1,
+) -> PortResult<bool> {
+    let Some(step) = operation.steps.iter().find(|step| {
+        step.kind == hiroute_domain::OperationStepKind::ApplySecrets
+            && step.status == hiroute_domain::OperationStepStatus::Applied
+    }) else {
+        return Ok(false);
+    };
+    is_current_in_scope(connection, operation, Some(step.sequence))
+}
+
 fn is_current_in_scope(
     connection: &Connection,
     operation: &OperationV1,

@@ -170,6 +170,49 @@ fn superseded_damage_is_outside_startup_but_strict_on_access() {
             .is_err()
     );
     assert!(control.load_operation(&old.operation_id).is_err());
+    let current = control
+        .current_agent_configuration_operations(&WorkspaceId::default())
+        .unwrap();
+    assert_eq!(current.len(), 1);
+    assert_ne!(current[0].operation_id, old.operation_id);
+    assert!(
+        control
+            .current_agent_configuration_operations(
+                &WorkspaceId::parse("workspace/foreign").unwrap()
+            )
+            .unwrap()
+            .is_empty()
+    );
+    control
+        .connection
+        .borrow()
+        .execute(
+            "DELETE FROM operation_steps WHERE operation_id=?1 AND step_kind='activate'",
+            [current[0].operation_id.as_str()],
+        )
+        .unwrap();
+    assert_eq!(
+        control
+            .current_agent_configuration_operations(&WorkspaceId::default())
+            .unwrap()
+            .len(),
+        1,
+        "optional completed service proof cannot disable current file/grant authority"
+    );
+    control
+        .connection
+        .borrow()
+        .execute(
+            "DELETE FROM operation_steps WHERE operation_id=?1 AND step_kind='apply_secrets'",
+            [current[0].operation_id.as_str()],
+        )
+        .unwrap();
+    assert!(
+        control
+            .current_agent_configuration_operations(&WorkspaceId::default())
+            .is_err(),
+        "active budget authority still requires its exact grant-step proof"
+    );
 }
 
 #[test]

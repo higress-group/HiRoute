@@ -543,3 +543,12 @@ admission-owner CAS, successful retirement, rollback retention and failure betwe
 owner update and terminal commit. Legacy marker tests authenticate V2/V3 backups on
 individual access as well as explicit full audit. These are storage assertions,
 not a substitute for process interruption/restart or native latency acceptance.
+
+Current model consumers use the same bounded owner set: the daemon
+[`settings_entry_model_budget_tests.rs`](../../crates/daemon/src/control/runtime/settings_entry_model_budget_tests.rs)
+publication-admission scenario and
+[`settings_profile_tests.rs`](../../crates/daemon/src/control/runtime/settings_profile_tests.rs)
+active Codex access scenario retain replaced journal damage and missing optional
+completed-service rows without bypassing current budget/native-file checks.
+The storage dependency cases separately reject a missing required grant step.
+Historical Restore is exercised after restoring the exact damaged fixture bytes.

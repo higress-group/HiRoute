@@ -29,10 +29,10 @@ impl LocalControlAdapter {
         let next = record.verify().map_err(|_| invalid())?;
         let stores = self.stores_lock()?;
         let mut blockers = Vec::new();
-        for operation in stores.control().succeeded_agent_operations_for_kind(
-            &WorkspaceId::default(),
-            "ApplyAgentConnectionChange",
-        )? {
+        for operation in stores
+            .control()
+            .current_agent_configuration_operations(&WorkspaceId::default())?
+        {
             let Some(intent) = operation.plan.external().iter().find(|intent| {
                 super::native_additional_model::is_settings_additional_model(intent)
                     || hiroute_application::agent_connection::is_settings_hermes_model(intent)

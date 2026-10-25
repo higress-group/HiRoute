@@ -158,6 +158,11 @@ fn settings_skill_activation_records_original_operation_and_native_target() {
                 .is_err()
         );
         assert_eq!(fs::read(&path).unwrap(), b"User changed Skill\n");
+        // This component fixture activated the file above. Record that step before
+        // settling its journal; a Succeeded label alone is not a file receipt proof.
+        operation
+            .step_mut(OperationStepKind::ApplyAgentArtifacts)
+            .status = hiroute_domain::OperationStepStatus::Applied;
         operation.state = OperationState::Succeeded;
         adapter
             .stores_lock()

@@ -126,7 +126,7 @@ fn authenticate_owner(
     workspace: &WorkspaceId,
     target: &str,
     expected: &Owner,
-) -> PortResult<()> {
+) -> PortResult<OperationV1> {
     let operation = load_operation_where(
         &Default::default(),
         db,
@@ -146,7 +146,7 @@ fn authenticate_owner(
     if retires(intent) || owner(&operation, intent)? != *expected {
         return Err(invalid());
     }
-    Ok(())
+    Ok(operation)
 }
 
 fn replace(
@@ -254,6 +254,66 @@ pub(super) fn remember_legacy(db: &Connection, operation: &OperationV1) -> PortR
 }
 
 impl ControlStore {
+    /// Current native model declarations for budget and access checks. Historical
+    /// Restore menus retain their separate strict history reader. Authenticate the
+    /// current file reference before selecting its typed role; then require the
+    /// exact grant-step proof consumed by these active-authority checks. Optional
+    /// completed service provenance is not a dependency of current budget/access reads.
+    pub fn current_agent_configuration_operations(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> PortResult<Vec<OperationV1>> {
+        use hiroute_domain::{AgentConnectionEffectRoleV1, AgentOperationRead};
+        let db = self.connection.borrow();
+        let snapshot = if db.is_autocommit() {
+            Some(db.unchecked_transaction().map_err(|_| invalid())?)
+        } else {
+            None
+        };
+        validate_coverage(&db)?;
+        let mut query = db.prepare("SELECT target,owner_operation_id,owner_json FROM artifact_heads WHERE workspace_id=?1 ORDER BY target").map_err(|_| invalid())?;
+        let rows = query
+            .query_map([workspace.as_str()], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|_| invalid())?;
+        let mut output = BTreeMap::new();
+        for row in rows {
+            let (target, id, encoded) = row.map_err(|_| invalid())?;
+            let expected: Owner = serde_json::from_str(&encoded).map_err(|_| invalid())?;
+            if expected.operation.as_str() != id {
+                return Err(invalid());
+            }
+            let operation = authenticate_owner(&db, workspace, &target, &expected)?;
+            let subject = operation
+                .agent_input()
+                .connection_subject()
+                .map_err(|_| invalid())?
+                .ok_or_else(invalid)?;
+            let model_target = AgentConnectionEffectRoleV1::ManagedConfiguration
+                .target_for(&subject)
+                .map_err(|_| invalid())?;
+            if target != model_target {
+                continue;
+            }
+            if operation.idempotency.operation_kind != "ApplyAgentConnectionChange"
+                || !journal::is_current_grant_step(&db, &operation)?
+            {
+                return Err(invalid());
+            }
+            output.insert(operation.operation_id.to_string(), operation);
+        }
+        drop(query);
+        if let Some(snapshot) = snapshot {
+            snapshot.commit().map_err(|_| invalid())?;
+        }
+        Ok(output.into_values().collect())
+    }
+
     /// Bounded by current resources and unresolved work, not historical menu entries.
     pub(crate) fn artifact_dependencies(
         &self,
