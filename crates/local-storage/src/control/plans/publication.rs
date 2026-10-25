@@ -270,3 +270,82 @@ fn commit_head_in(
     }
     Ok(())
 }
+
+/// The old producer committed the head/version/draft in one local transaction after
+/// the terminal journal. Discover its actual completion, never infer it from Succeeded.
+/// Called only after the initializer authenticates the complete original journal.
+/// Current Gateway installation and grants still pass the independent startup gate.
+pub(in crate::control) fn legacy_plan_finalization_required(
+    db: &Connection,
+    operation: &OperationV1,
+) -> Result<bool, PlanVersionError> {
+    if !matches!(
+        operation.state,
+        OperationState::Succeeded | OperationState::RolledBack
+    ) {
+        return Ok(false);
+    }
+    let Some(content) = operation
+        .plan
+        .plan_content_control()
+        .map_err(|_| PlanVersionError::Invalid)?
+    else {
+        return Ok(false);
+    };
+    // Keep rollback and superseded/different heads on the established recovery path.
+    if operation.state != OperationState::Succeeded
+        || head_in(
+            db,
+            &content.plan_head.reference.workspace_id,
+            &content.plan_head.reference.plan_id,
+        )?
+        .as_ref()
+            != Some(&content.plan_head)
+    {
+        return Ok(true);
+    }
+    let indexed_head: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM plan_heads WHERE workspace_id=?1 AND plan_id=?2 AND head_revision=?3)",
+        params![content.plan_head.reference.workspace_id.as_str(), content.plan_head.reference.plan_id.as_str(), content.plan_head.head_revision],
+        |r| r.get(0),
+    ).map_err(storage)?;
+    if !indexed_head {
+        return Ok(true);
+    }
+    let prepared: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM plan_versions WHERE owner_operation_id=?1 AND state='prepared')",
+        [operation.operation_id.as_str()], |r| r.get(0),
+    ).map_err(storage)?;
+    if prepared {
+        return Ok(true);
+    }
+    // A head-only lifecycle retains the original version owner. New content must
+    // additionally bind the published version to this exact accepted operation.
+    if content
+        .before_head
+        .as_ref()
+        .is_none_or(|before| before.reference != content.plan_head.reference)
+    {
+        let owned: bool = db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM plan_versions WHERE workspace_id=?1 AND plan_id=?2
+             AND content_revision=?3 AND owner_operation_id=?4 AND state='published')",
+                params![
+                    content.plan_head.reference.workspace_id.as_str(),
+                    content.plan_head.reference.plan_id.as_str(),
+                    content.plan_head.reference.content_revision,
+                    operation.operation_id.as_str()
+                ],
+                |r| r.get(0),
+            )
+            .map_err(storage)?;
+        if !owned {
+            return Ok(true);
+        }
+    }
+    match lookup_in(db, &content.plan_head.reference) {
+        Ok(version) => Ok(version != content.plan_version),
+        Err(PlanVersionError::Unavailable) => Ok(true),
+        Err(error) => Err(error),
+    }
+}

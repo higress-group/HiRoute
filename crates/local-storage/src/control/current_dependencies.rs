@@ -25,14 +25,8 @@ pub(crate) fn initialize(tx: &Connection) -> Result<(), LocalStorageError> {
             .map_err(|_| LocalStorageError::InvalidData)?;
         super::artifact_heads::remember_legacy(tx, &operation)
             .map_err(|_| LocalStorageError::InvalidData)?;
-        let finalization = matches!(
-            operation.state,
-            OperationState::Succeeded | OperationState::RolledBack
-        ) && operation
-            .plan
-            .plan_content_control()
-            .map_err(|_| LocalStorageError::InvalidData)?
-            .is_some();
+        let finalization = plans::legacy_plan_finalization_required(tx, &operation)
+            .map_err(|_| LocalStorageError::InvalidData)?;
         tx.execute(
             "UPDATE operations SET finalization_pending=?2 WHERE operation_id=?1",
             params![operation.operation_id.as_str(), finalization],

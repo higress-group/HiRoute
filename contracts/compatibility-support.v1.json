@@ -2089,14 +2089,16 @@
       "field": "inline operation_json plan and large step compensation in supported pre-schema32 journals",
       "mode": "recovery_read_only",
       "owner": "local-storage",
-      "reason": "Schema32 new journals partition immutable input and large compensation payloads from mutable progress using authenticated operation-owned references. Supported retained inline journals keep their original bytes and typed validation, including their existing recovery writer when unfinished; startup conversion establishes complete recovery membership without rewriting them. Current producers never emit inline plans. The coordinated source backup and matching-version recovery preserve the entire old representation.",
+      "reason": "Schema32 new journals partition immutable input and large compensation payloads from mutable progress using authenticated operation-owned references. Supported retained inline journals keep their original bytes and typed validation, including their existing recovery writer when unfinished; startup conversion establishes complete recovery membership without rewriting them. A fully authenticated successful legacy Plan whose exact head and published version are already committed, with the required owner and no prepared residue, does not acquire a redundant finalization obligation; incomplete or different local state retains recovery. Current Gateway installation and grant validation remain independent mandatory checks. Current producers never emit inline plans. The coordinated source backup and matching-version recovery preserve the entire old representation.",
       "removal_condition": "End inline journal support only through an explicit compatibility decision preserving supported recovery and historical reads.",
       "allowed_paths": [
         "crates/local-storage/src/control/payloads.rs",
         "crates/local-storage/src/control/journal.rs",
         "crates/local-storage/src/control/mod.rs",
         "crates/local-storage/src/migrations/current_dependencies_v32.rs",
-        "crates/local-storage/src/control/current_dependencies.rs"
+        "crates/local-storage/src/control/current_dependencies.rs",
+        "crates/local-storage/src/control/plans/publication.rs",
+        "crates/local-storage/src/control/legacy_finalization_tests.rs"
       ]
     }
   ]

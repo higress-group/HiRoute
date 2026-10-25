@@ -552,3 +552,10 @@ active Codex access scenario retain replaced journal damage and missing optional
 completed-service rows without bypassing current budget/native-file checks.
 The storage dependency cases separately reject a missing required grant step.
 Historical Restore is exercised after restoring the exact damaged fixture bytes.
+
+[Legacy Plan completion discovery](../../crates/local-storage/src/control/legacy_finalization_tests.rs)
+exercises the actual initializer over retained inline journals. Exact committed heads
+and published content avoid reopening finalization; missing/different heads, prepared
+content and foreign owners retain recovery, while malformed published content is
+rejected. Journal bytes remain unchanged. These storage cases do not replace a
+released-package upgrade or native performance measurement.

@@ -78,7 +78,16 @@ fn content_operation() -> OperationV1 {
 
 #[test]
 fn legacy_initializer_uses_committed_content_without_reopening_settled_finalization() {
-    for scenario in ["committed", "missing_head", "prepared", "different_head"] {
+    for scenario in [
+        "committed",
+        "missing_head",
+        "prepared",
+        "different_head",
+        "foreign_owner",
+        "malformed_published_version",
+        "head_column_mismatch",
+        "rolled_back",
+    ] {
         let pending = scenario != "committed";
         let directory = tempdir().unwrap();
         let control = ControlStore::open(
@@ -95,9 +104,17 @@ fn legacy_initializer_uses_committed_content_without_reopening_settled_finalizat
             .stage_plan_version(&op, &content.plan_version)
             .unwrap();
         // Storage-boundary fixture: actual provider execution is not claimed.
-        op.state = OperationState::Succeeded;
+        op.state = if scenario == "rolled_back" {
+            OperationState::RolledBack
+        } else {
+            OperationState::Succeeded
+        };
         for step in &mut op.steps {
-            step.status = OperationStepStatus::Applied;
+            step.status = if scenario == "rolled_back" {
+                OperationStepStatus::Compensated
+            } else {
+                OperationStepStatus::Applied
+            };
         }
         control.finish_operation(&mut op).unwrap();
         let db = control.connection.borrow();
@@ -125,6 +142,18 @@ fn legacy_initializer_uses_committed_content_without_reopening_settled_finalizat
                 rusqlite::params![other.head_revision, serde_json::to_string(&other).unwrap()],
             )
             .unwrap();
+        } else if scenario == "foreign_owner" {
+            db.execute(
+                "UPDATE plan_versions SET owner_operation_id='unrelated-operation'",
+                [],
+            )
+            .unwrap();
+        } else if scenario == "malformed_published_version" {
+            db.execute("UPDATE plan_versions SET version_json='{}'", [])
+                .unwrap();
+        } else if scenario == "head_column_mismatch" {
+            db.execute("UPDATE plan_heads SET head_revision=head_revision+1", [])
+                .unwrap();
         }
         db.execute_batch(
             "BEGIN;
@@ -141,7 +170,16 @@ fn legacy_initializer_uses_committed_content_without_reopening_settled_finalizat
             DELETE FROM publication_grant_proofs;",
         )
         .unwrap();
-        crate::control::current_dependencies::initialize(&db).unwrap();
+        let initialized = crate::control::current_dependencies::initialize(&db);
+        if scenario == "malformed_published_version" {
+            assert!(
+                initialized.is_err(),
+                "a matching head cannot authenticate damaged content"
+            );
+            db.execute_batch("ROLLBACK").unwrap();
+            continue;
+        }
+        initialized.unwrap();
         let actual: bool = db
             .query_row("SELECT finalization_pending FROM operations", [], |r| {
                 r.get(0)
