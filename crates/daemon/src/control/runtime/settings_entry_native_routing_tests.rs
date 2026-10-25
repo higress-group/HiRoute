@@ -34,11 +34,12 @@ fn dsh_save_checks_composition_once_per_capture_and_again_at_admission() {
         "dsh-probe-count",
     );
     assert_eq!(model_status(&fixture)["state"], "configured");
-    // Preview, Apply confirmation and locked admission each own one proof.
+    // Preview and Apply admission each own one independent proof.
+    // Apply does not build and clone a complete plan before entering its writer.
     // The second file snapshot neither starts another engine nor skips drift checks.
     assert_eq!(
         fs::read_to_string(&calls).unwrap(),
-        "--profile\n--profile\n--profile\n"
+        "--profile\n--profile\n"
     );
     private_file(
         &executable,
