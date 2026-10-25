@@ -58,6 +58,35 @@ fn publication_decode_validates_each_candidate_once_for_1_5_10() {
 }
 
 #[test]
+fn cold_publication_decode_does_not_repeat_completed_aggregate_validation() {
+    let publication = serde_json::from_slice::<GatewayPublicationV1>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap()
+    .into_current()
+    .unwrap();
+    assert!(!publication.grants.is_empty());
+    assert!(!publication.aliases.is_empty());
+    let bytes = publication.canonical_bytes().unwrap();
+    AGGREGATE_VALIDATIONS.with(|calls| calls.set(0));
+    let restored = GatewayPublicationV1::decode(&bytes).unwrap();
+    assert_eq!(restored, publication);
+    assert!(
+        AGGREGATE_VALIDATIONS.with(|calls| calls.get()) <= 2,
+        "cold decode needs base and final-head validation, not repeated checks during encoding"
+    );
+    AGGREGATE_VALIDATIONS.with(|calls| calls.set(0));
+    assert_eq!(restored.canonical_bytes().unwrap(), bytes);
+    assert_eq!(AGGREGATE_VALIDATIONS.with(|calls| calls.get()), 1);
+
+    // An unrelated caller can mutate the public aggregate. No proof may escape this call.
+    let mut changed = restored;
+    changed.aliases.clear();
+    assert!(changed.canonical_bytes().is_err());
+    assert!(StoredPublicationV1::freeze(&changed).is_err());
+}
+
+#[test]
 fn publication_raw_boundaries_still_reject_nested_tampering_and_noncanonical_bytes() {
     let mut publication = current_catalog_only(5);
     let mut bytes = publication.canonical_bytes().unwrap();
