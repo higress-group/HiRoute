@@ -141,10 +141,21 @@ const scenarios = [
     assert(calls('preview_plan_editor').length === 1, 'Stale publication was retried automatically');
   }),
   scenario('desktop.models.subscription-login.callback-modes', ['subscription-proxy', 'subscription-login'], 'Automatic callback opens the browser; manual fallback explains the conflict before opening and keeps callback text protected', async () => {
+    const browser = window.fixtureTransport === 'console';
+    const originalClick = HTMLAnchorElement.prototype.click;
+    let opened = [];
+    // Console navigation is a browser anchor, never native IPC. Observe the real host
+    // boundary while keeping this synthetic authorization URL inside the fixture.
+    if (browser) HTMLAnchorElement.prototype.click = function () {
+      opened.push({ url: this.href, target: this.target, rel: this.rel });
+    };
+    const openCount = () => browser ? opened.length : calls('open_external_url').length;
+    try {
     for (const language of (window.cpaCallbackLanguages ?? ['zh', 'en'])) {
       for (const provider of ['codex', 'claude']) {
         for (const manual of [false, true]) {
           let session;
+          opened = [];
           await fresh(() => {
             session = { provider, login_ref: `login/fixture-${provider}`, status: 'pending',
               authorization_url: 'https://example.invalid/oauth/authorize',
@@ -167,9 +178,14 @@ const scenarios = [
           await until(() => all('.oc-status-row').some(row => row.querySelector('strong')?.textContent === name && !row.querySelector('button')?.disabled), 'ready provider sign-in');
           all('.oc-status-row').find(row => row.querySelector('strong')?.textContent === name).querySelector('button').click();
           await until(() => { const manualAction = button(label('手动完成授权', 'Complete authorization manually')); return manualAction && !manualAction.disabled; }, 'completed sign-in action and pending callback mode');
-          assert(calls('open_external_url').length === (manual ? 0 : 1), 'Manual conflict opened a browser before guidance or automatic mode did not open it');
+          assert(openCount() === (manual ? 0 : 1), 'Manual conflict opened a browser before guidance or automatic mode did not open it');
           assert(text().includes(manual ? label('无法自动接收浏览器授权', 'Automatic callback reception is unavailable') : label('HiRoute 会自动接收结果', 'HiRoute will receive the result automatically')), 'Callback mode guidance missing');
-          if (manual) { await click(label('打开登录页面', 'Open sign-in page')); assert(calls('open_external_url').length === 1, 'Explicit manual browser action did not dispatch'); }
+          if (manual) { await click(label('打开登录页面', 'Open sign-in page')); assert(openCount() === 1, 'Explicit manual browser action did not dispatch'); }
+          if (browser) {
+            assert(calls('open_external_url').length === 0, 'Console navigation invoked native IPC');
+            assert(opened.length === 1 && opened[0].url === session.authorization_url
+              && opened[0].target === '_blank' && opened[0].rel.includes('noreferrer'), 'Console authorization anchor lost its URL or navigation boundary');
+          }
           await click(label('手动完成授权', 'Complete authorization manually'));
           await until(() => all('input[type="password"]').length === 1, 'protected manual callback form');
           const dialog = all('[role="dialog"]')[0];
@@ -194,6 +210,7 @@ const scenarios = [
         }
       }
     }
+    } finally { HTMLAnchorElement.prototype.click = originalClick; }
   }),
   scenario('desktop.models.subscription-scan.append-to-login', ['subscription-proxy', 'subscription-login'], 'Independent sign-in from an append scan creates a new connection instead of retaining the previous append target', async () => {
     let previous;

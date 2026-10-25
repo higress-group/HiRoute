@@ -95,13 +95,22 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     let preserved_profile = fs::read(&profile).unwrap();
     let misplaced_skill = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
         "model":{"intent":"keep"},"collaboration":{"intent":"configure","settings":{"trigger_mode":"explicit"}}});
+    // Keep every unrelated admission precondition current so this case reaches the
+    // collaboration-context denial, rather than failing the revision fence first.
+    let current = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .current_revisions(&WorkspaceId::default())
+        .unwrap();
     for operation in ["PreviewAgentConnectionChange", "ApplyAgentConnectionChange"] {
         let payload = if operation.starts_with("Preview") {
             json!({"spec":misplaced_skill})
         } else {
             let digest = CanonicalDigest::of_bytes(b"misplaced-skill");
             json!({"spec":misplaced_skill,"accept_digest":digest,"dependency_digest":digest,
-                "expected_revisions":{"target":0,"dependencies":{}},"idempotency_key":"misplaced-skill"})
+                "expected_revisions":current,"idempotency_key":"misplaced-skill"})
         };
         let rejected = service.dispatch_wire(request(operation, payload, None));
         let error = rejected.error.unwrap();
