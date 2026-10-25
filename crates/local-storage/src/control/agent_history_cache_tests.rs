@@ -33,6 +33,30 @@ fn persist(control: &ControlStore, operation: &mut OperationV1) {
     for step in &mut operation.steps {
         step.status = hiroute_domain::OperationStepStatus::Applied;
     }
+    // This history-reader fixture uses bound adapter receipts. File-byte/backup
+    // authentication is exercised separately by the artifact dependency scenarios.
+    let receipts = operation
+        .plan
+        .external()
+        .iter()
+        .filter(|intent| intent.kind() == hiroute_domain::OwnedEffectKind::AgentArtifact)
+        .map(|intent| hiroute_domain::OwnedEffectV1 {
+            effect_id: intent.effect_id().into(),
+            kind: intent.kind(),
+            target: intent.target().into(),
+            before_fingerprint: intent.before_fingerprint().cloned(),
+            after_fingerprint: Some(CanonicalDigest::of_bytes(b"history-reader-fixture")),
+            compensation: json!({"schema":"hiroute.managed-artifact-compensation/v1",
+                "operation_id":operation.operation_id,"effect_id":intent.effect_id()})
+            .into(),
+        })
+        .collect();
+    operation
+        .steps
+        .iter_mut()
+        .find(|s| s.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
+        .unwrap()
+        .effects = receipts;
     control.finish_operation(operation).unwrap();
     // The component fixture has no external finalizer; mark its retained journal settled.
     control.complete_operation_finalization(operation).unwrap();

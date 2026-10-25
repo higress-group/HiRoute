@@ -535,3 +535,11 @@ count only current target-owner reads as history grows, keep pending targets
 strict, reject missing coverage/current owners, and preserve inline legacy journal
 bytes during one-time target-reference initialization. Superseded unrelated
 corruption remains visible to the strict history reader without blocking discovery.
+
+[Artifact dependency regressions](../../crates/local-storage/src/control/artifact_dependency_tests.rs)
+use real protected files and journal transactions to distinguish superseded damage
+from current or unfinished recovery damage. They cover missing coverage, exact
+admission-owner CAS, successful retirement, rollback retention and failure between
+owner update and terminal commit. Legacy marker tests authenticate V2/V3 backups on
+individual access as well as explicit full audit. These are storage assertions,
+not a substitute for process interruption/restart or native latency acceptance.

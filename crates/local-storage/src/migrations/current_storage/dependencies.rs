@@ -18,6 +18,9 @@ pub(super) fn validate(
     control
         .validate_native_target_heads()
         .map_err(|_| LocalStorageError::InvalidData)?;
+    control
+        .artifact_dependencies()
+        .map_err(|_| LocalStorageError::InvalidData)?;
     let connection = control.connection.borrow();
     let pending = crate::control::current_dependencies::validate_recovery_members(&connection)
         .map_err(|_| LocalStorageError::InvalidData)?;

@@ -13,6 +13,9 @@ use serde_json::json;
 
 use super::{ArtifactBackupAad, ControlStore, ManagedArtifactStore};
 
+#[path = "artifact_dependency_tests.rs"]
+mod artifact_dependency_tests;
+
 fn rewrite_marker_as_legacy(
     store: &ManagedArtifactStore,
     operation: &OperationId,
@@ -545,6 +548,14 @@ fn managed_artifact_v2_backup_migrates_to_v4_and_restores_exact_bytes() {
         "hiroute.managed-artifact-marker/v2",
         ArtifactBackupAad::LegacyV2,
     );
+    // Exact access also upgrades/authenticates this legacy record; it must not
+    // require a scan of unrelated history on a later ordinary open.
+    let upgraded = store
+        .load_marker(&operation, intent.effect_id())
+        .unwrap()
+        .unwrap();
+    assert_eq!(upgraded.schema, "hiroute.managed-artifact-marker/v4");
+    assert_eq!(upgraded.backup_aad, ArtifactBackupAad::LegacyV2);
     drop(store);
 
     let reopened =
@@ -609,6 +620,14 @@ fn managed_delete_v3_backup_migrates_to_v4_and_restores_exact_bytes() {
         "hiroute.managed-artifact-marker/v3",
         ArtifactBackupAad::LegacyV3,
     );
+    // Exact access also upgrades/authenticates this legacy record; it must not
+    // require a scan of unrelated history on a later ordinary open.
+    let upgraded = store
+        .load_marker(&operation, intent.effect_id())
+        .unwrap()
+        .unwrap();
+    assert_eq!(upgraded.schema, "hiroute.managed-artifact-marker/v4");
+    assert_eq!(upgraded.backup_aad, ArtifactBackupAad::LegacyV3);
     drop(store);
 
     let reopened =

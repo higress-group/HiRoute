@@ -416,20 +416,26 @@ impl LocalStorageSet {
         ManagedArtifactStore::open(&daemon_storage_authority(), root, restore_root)
     }
 
-    /// Register every native target together, before validating any persisted effect marker.
-    /// Sequential single-target opening cannot recover a store containing both Agent families.
+    /// Register all native targets, then authenticate current recovery roots and unresolved
+    /// work. Optional historical restore records are authenticated on explicit access.
     pub fn open_managed_artifacts_with_external_targets(
         &self,
         root: impl AsRef<Path>,
         restore_root: impl AsRef<Path>,
         targets: impl IntoIterator<Item = (String, std::path::PathBuf)>,
     ) -> Result<ManagedArtifactStore, LocalStorageError> {
-        ManagedArtifactStore::open_with_external_targets(
+        let dependencies = self
+            .control
+            .artifact_dependencies()
+            .map_err(|_| LocalStorageError::InvalidData)?;
+        let store = ManagedArtifactStore::open_registered(
             &daemon_storage_authority(),
             root,
             restore_root,
             targets,
-        )
+        )?;
+        store.validate_dependencies(&dependencies)?;
+        Ok(store)
     }
 
     /// Restart-safe factory for a registered native Agent configuration target. Its exact path

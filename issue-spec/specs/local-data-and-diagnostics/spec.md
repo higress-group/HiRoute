@@ -74,6 +74,12 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **WHEN** an Agent target has several retained settings operations
 - **THEN** ordinary discovery and startup validate the current explicit target owner and complete target membership, including pending work, without decoding superseded unrelated settings history. Supported conversion establishes those references once without changing the old journal bytes. Missing current owners or coverage remain failures; target hints do not grant execution authority.
 
+#### Scenario: Native restore history is distinct from required recovery material
+
+- **WHEN** completed Agent configuration operations leave superseded restore markers or backups
+- **THEN** ordinary startup authenticates the current workspace/target owners and unresolved operations' exact direct restore inputs, including the current model's catalog, without visiting optional historical Restore menu entries or recursively retaining settled reconfiguration ancestors. Access to an old restore point still authenticates its original journal, marker and protected backup; unrelated damage is not reported as verified healthy.
+- **AND** admission captures the exact previous owner, and a successful receipt updates or retires the owner in the same transaction as the terminal journal and writer release. Selecting an old restore point cannot bypass this comparison; rollback keeps the prior owner. Missing current owners, membership, receipts or required backups remain failures. Supported initial conversion establishes this projection atomically from authenticated old journals without rewriting them.
+
 #### Scenario: An empty recovery lookup cannot prove completion
 
 - **WHEN** recovery membership is missing, inconsistent or incomplete, including an operation marked Succeeded whose required finalization is outstanding

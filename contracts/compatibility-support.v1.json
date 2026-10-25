@@ -800,9 +800,10 @@
           "mode": "recovery_read_only",
           "owner": "local-storage",
           "reason": "Authenticate legacy exists/write compensation and migrate its marker metadata to V4 before recovery.",
-          "removal_condition": "Remove only when every active restore directory contains zero V2 markers after open-time migration and each still-supported backup either restores through V4 successfully or is explicitly retired.",
+          "removal_condition": "Remove only when every active restore directory contains zero V2 markers after authenticated on-access or explicit full-audit conversion and each still-supported backup either restores through V4 successfully or is explicitly retired.",
           "allowed_paths": [
             "crates/local-storage/src/control/mod.rs",
+            "crates/local-storage/src/control/artifact_validation.rs",
             "crates/local-storage/src/control/agent_transaction_tests.rs"
           ]
         },
@@ -811,9 +812,10 @@
           "mode": "recovery_read_only",
           "owner": "local-storage",
           "reason": "Authenticate legacy delete compensation and migrate its marker metadata to V4 before recovery.",
-          "removal_condition": "Remove only when every active restore directory contains zero V3 markers after open-time migration and each still-supported backup either restores through V4 successfully or is explicitly retired.",
+          "removal_condition": "Remove only when every active restore directory contains zero V3 markers after authenticated on-access or explicit full-audit conversion and each still-supported backup either restores through V4 successfully or is explicitly retired.",
           "allowed_paths": [
             "crates/local-storage/src/control/mod.rs",
+            "crates/local-storage/src/control/artifact_validation.rs",
             "crates/local-storage/src/control/agent_transaction_tests.rs"
           ]
         }

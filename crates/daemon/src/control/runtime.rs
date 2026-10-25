@@ -615,7 +615,7 @@ impl ProductionControlRuntime {
                 Ok(artifacts) => break artifacts,
                 Err(error) => {
                     // An added JSONC layer must not redirect an existing JSON recovery target.
-                    // The same store validates every marker against the exact candidate path;
+                    // The same store validates each required marker against the exact candidate path;
                     // no new binding metadata or permissive recovery reader is introduced.
                     if matches!(&error, hiroute_local_storage::LocalStorageError::Locked)
                         && let Some(path) = alternatives.next()

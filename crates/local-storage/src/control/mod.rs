@@ -44,6 +44,9 @@ mod windows_native_reader_tests;
 mod agent_check;
 mod agent_history_cache;
 mod agent_read;
+mod artifact_dependencies;
+mod artifact_heads;
+mod artifact_validation;
 mod native_targets;
 pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
@@ -615,6 +618,7 @@ impl ControlStore {
             .map_err(|_| port(PortErrorCode::Conflict, "control.operation.insert"))?;
         store_steps(&transaction, operation)?;
         native_targets::remember(&transaction, operation)?;
+        artifact_heads::admit(&transaction, operation)?;
         compute::begin_save_handoff_in(&transaction, operation)?;
         transaction
             .commit()
@@ -1534,6 +1538,7 @@ impl ControlRepositoryPort for ControlStore {
             .map_err(|_| port(PortErrorCode::Conflict, "control.finish.plan-head"))?;
         decision_services::finish(&transaction, operation)?;
         compute::finish_save_handoff_in(&transaction, operation)?;
+        artifact_heads::finish(&transaction, operation)?;
         let generation = journal::save(&transaction, operation)?;
         if operation.state != OperationState::NeedsAttention {
             let released = transaction
@@ -2099,6 +2104,18 @@ impl ManagedArtifactStore {
         restore_root: impl AsRef<Path>,
         targets: impl IntoIterator<Item = (String, PathBuf)>,
     ) -> Result<Self, LocalStorageError> {
+        let store = Self::open_registered(_authority, root, restore_root, targets)?;
+        store.migrate_legacy_markers()?;
+        store.validate_existing_marker_bindings()?;
+        Ok(store)
+    }
+
+    pub(crate) fn open_registered(
+        _authority: &DaemonStorageAuthority,
+        root: impl AsRef<Path>,
+        restore_root: impl AsRef<Path>,
+        targets: impl IntoIterator<Item = (String, PathBuf)>,
+    ) -> Result<Self, LocalStorageError> {
         let mut external_targets = BTreeMap::new();
         for (target, path) in targets {
             // Startup registers potential targets, including Agents never configured here.
@@ -2126,10 +2143,7 @@ impl ManagedArtifactStore {
             external_targets: std::sync::RwLock::new(external_targets),
             untouched_deletions: std::sync::Mutex::new(BTreeMap::new()),
         };
-        // Register all exact bindings before validating the targets actually owned by markers.
-        // A never-managed Agent's directory cannot prevent unrelated service startup.
-        store.migrate_legacy_markers()?;
-        store.validate_existing_marker_bindings()?;
+        // Exact current dependencies are checked by the coordinated store factory.
         Ok(store)
     }
 
@@ -2322,111 +2336,28 @@ impl ManagedArtifactStore {
         operation_id: &OperationId,
         effect_id: &str,
     ) -> Result<Option<ArtifactMarker>, LocalStorageError> {
-        let path = self.marker_path(operation_id, effect_id);
-        match fs::symlink_metadata(&path) {
-            Ok(metadata) => {
-                validate_owner_regular_file(&metadata)?;
-                #[cfg(windows)]
-                let bytes = read_private_restore_file(&path)?;
-                #[cfg(not(windows))]
-                let bytes = fs::read(path)?;
-                let encoded: Value =
-                    serde_json::from_slice(&bytes).map_err(|_| LocalStorageError::InvalidData)?;
-                if encoded.get("backup_aad").is_none() {
-                    return Err(LocalStorageError::InvalidData);
-                }
-                let marker: ArtifactMarker =
-                    serde_json::from_value(encoded).map_err(|_| LocalStorageError::InvalidData)?;
-                if marker.schema != current_artifact_schema()
-                    || marker.operation_id != operation_id.as_str()
-                    || marker.effect_id != effect_id
-                    || marker.restore_store_uuid != self.restore_store_uuid
-                    || marker.restore_key_id != self.restore_key_id
-                {
-                    return Err(LocalStorageError::InvalidData);
-                }
-                self.validate_marker_shape(&marker)?;
-                Ok(Some(marker))
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error.into()),
+        let marker = self.load_marker_compatible(&self.marker_path(operation_id, effect_id))?;
+        if marker
+            .as_ref()
+            .is_some_and(|m| m.operation_id != operation_id.as_str() || m.effect_id != effect_id)
+        {
+            return Err(LocalStorageError::InvalidData);
         }
+        Ok(marker)
     }
 
-    /// Atomically upgrades marker metadata while preserving the exact authenticated backup.
-    /// The explicit AAD discriminator prevents a schema-label rewrite from making ciphertext
-    /// unrecoverable after a crash.
+    /// Explicit full audit/conversion. Ordinary scoped admission uses exact references.
     fn migrate_legacy_markers(&self) -> Result<(), LocalStorageError> {
         for entry in fs::read_dir(&self.restore_root)? {
-            let entry = entry?;
-            let path = entry.path();
+            let path = entry?.path();
             if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
                 continue;
             }
-            let metadata = fs::symlink_metadata(&path)?;
-            validate_owner_regular_file(&metadata).map_err(|_| LocalStorageError::Locked)?;
-            #[cfg(windows)]
-            let bytes = read_private_restore_file(&path)?;
-            #[cfg(not(windows))]
-            let bytes = fs::read(&path)?;
-            let encoded: Value =
-                serde_json::from_slice(&bytes).map_err(|_| LocalStorageError::Locked)?;
-            let has_backup_aad = encoded.get("backup_aad").is_some();
-            let mut marker: ArtifactMarker =
-                serde_json::from_value(encoded).map_err(|_| LocalStorageError::Locked)?;
-            let operation_id = OperationId::parse(marker.operation_id.clone())
-                .map_err(|_| LocalStorageError::Locked)?;
-            if path != self.marker_path(&operation_id, &marker.effect_id)
-                || marker.restore_store_uuid != self.restore_store_uuid
-                || marker.restore_key_id != self.restore_key_id
-                || marker.external_path_digest != self.external_path_digest(&marker.target)?
-            {
-                return Err(LocalStorageError::Locked);
-            }
-            let external = self
-                .external_targets
-                .read()
-                .map_err(|_| LocalStorageError::InvalidData)?
-                .contains_key(&marker.target);
-            if external {
-                // A durable effect is a real recovery consumer, not an unused registration.
-                // Validate before touching even a legacy marker's internal representation.
-                let _ = self.target_path(&marker.target)?;
-            }
-            let changed = match marker.schema.as_str() {
-                "hiroute.managed-artifact-marker/v2" => {
-                    marker.backup_aad = if marker.backup_name.is_some() {
-                        ArtifactBackupAad::LegacyV2
-                    } else {
-                        ArtifactBackupAad::CurrentV4
-                    };
-                    true
-                }
-                "hiroute.managed-artifact-marker/v3" => {
-                    marker.backup_aad = if marker.backup_name.is_some() {
-                        ArtifactBackupAad::LegacyV3
-                    } else {
-                        ArtifactBackupAad::CurrentV4
-                    };
-                    true
-                }
-                #[cfg(windows)]
-                "hiroute.windows-managed-artifact-marker/v5" if has_backup_aad => false,
-                "hiroute.managed-artifact-marker/v4" if has_backup_aad => false,
-                "hiroute.managed-artifact-marker/v4" => return Err(LocalStorageError::Locked),
-                _ => return Err(LocalStorageError::Locked),
-            };
-            if changed {
-                marker.schema = "hiroute.managed-artifact-marker/v4".to_owned();
-            }
-            self.validate_marker_shape(&marker)
-                .map_err(|_| LocalStorageError::Locked)?;
+            let marker = self
+                .load_marker_compatible(&path)?
+                .ok_or(LocalStorageError::Locked)?;
             self.validated_backup(&marker)
                 .map_err(|_| LocalStorageError::Locked)?;
-            if changed {
-                self.save_marker(&marker)
-                    .map_err(|_| LocalStorageError::Locked)?;
-            }
         }
         Ok(())
     }

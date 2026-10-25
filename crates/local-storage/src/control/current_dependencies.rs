@@ -4,6 +4,7 @@ use crate::LocalStorageError;
 use hiroute_domain::{GatewayPublicationV1, PublicationRecordV1};
 
 pub(crate) fn initialize(tx: &Connection) -> Result<(), LocalStorageError> {
+    tx.execute("INSERT INTO artifact_head_coverage VALUES (1,1,(SELECT store_uuid FROM storage_meta WHERE singleton=1),0)", [])?;
     tx.execute(
         "INSERT INTO agent_native_target_coverage VALUES
         (1,1,(SELECT store_uuid FROM storage_meta WHERE singleton=1),0)",
@@ -22,6 +23,8 @@ pub(crate) fn initialize(tx: &Connection) -> Result<(), LocalStorageError> {
         }
         super::native_targets::remember(tx, &operation)
             .map_err(|_| LocalStorageError::InvalidData)?;
+        super::artifact_heads::remember_legacy(tx, &operation)
+            .map_err(|_| LocalStorageError::InvalidData)?;
         let finalization = matches!(
             operation.state,
             OperationState::Succeeded | OperationState::RolledBack
@@ -34,6 +37,15 @@ pub(crate) fn initialize(tx: &Connection) -> Result<(), LocalStorageError> {
             "UPDATE operations SET finalization_pending=?2 WHERE operation_id=?1",
             params![operation.operation_id.as_str(), finalization],
         )?;
+    }
+    drop(query);
+    // Only unresolved work still needs a compare-and-swap basis. Terminal callbacks
+    // use the already committed owner projection, never regenerate it after restart.
+    let mut query = tx.prepare("SELECT operation_json FROM operations WHERE state NOT IN ('succeeded','rolled_back') ORDER BY rowid")?;
+    for row in query.query_map([], |r| r.get::<_, String>(0))? {
+        let operation = decode_operation(&Default::default(), &row?)
+            .map_err(|_| LocalStorageError::InvalidData)?;
+        super::artifact_heads::admit(tx, &operation).map_err(|_| LocalStorageError::InvalidData)?;
     }
     drop(query);
     // Rows which were already nonterminal need membership even if an UPDATE above
