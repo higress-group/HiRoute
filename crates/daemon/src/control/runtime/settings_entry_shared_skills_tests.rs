@@ -205,6 +205,20 @@ fn shared_management_and_collaboration_coexist_for_all_existing_agent_families()
             replay.data.unwrap()["operation_id"],
             removed["operation_id"]
         );
+        // Ordinary Apply takes the early replay read. Explicit retry enters the
+        // coordinator and must also respect durable completion.
+        let retry = service.dispatch_wire(request(
+            "ApplyAgentConnectionChange",
+            json!({
+            "schema":"hiroute.agent-settings-retry/v1", "context_id":context,
+            "operation_id":removed["operation_id"]}),
+            None,
+        ));
+        assert!(
+            retry.error.is_none(),
+            "settled explicit retry after reinstall {class:?}: {retry:?}"
+        );
+        assert_eq!(retry.data.unwrap()["operation_id"], removed["operation_id"]);
         assert_eq!(read(), before_retry);
         assert_eq!(fs::read(&management).unwrap(), management_before_retry);
         assert_eq!(

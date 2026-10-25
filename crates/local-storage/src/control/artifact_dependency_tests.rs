@@ -182,6 +182,7 @@ fn current_marker_backup_journal_and_coverage_damage_remain_fatal() {
         "state",
         "identity-row",
         "file-step-copy",
+        "file-step-row",
         "file-step-unfinished",
         "input",
         "head",
@@ -263,6 +264,9 @@ fn current_marker_backup_journal_and_coverage_damage_remain_fatal() {
                         [current.operation_id.as_str()],
                     )
                     .unwrap();
+            }
+            "file-step-row" => {
+                control.connection.borrow().execute("DELETE FROM operation_steps WHERE operation_id=?1 AND step_kind='apply_agent_artifacts'", [current.operation_id.as_str()]).unwrap();
             }
             "file-step-copy" => {
                 control.connection.borrow().execute("UPDATE operation_steps SET step_json=json_set(step_json,'$.step.attempts',55) WHERE operation_id=?1 AND step_kind='apply_agent_artifacts'",[current.operation_id.as_str()]).unwrap();
@@ -648,5 +652,54 @@ fn direct_restore_input_uses_exact_file_proof_not_other_completed_steps() {
         )
         .is_err(),
         "a damaged required file proof still refuses restore"
+    );
+}
+
+#[test]
+fn missing_optional_completed_row_does_not_pin_file_but_pending_rows_are_required() {
+    let root = tempdir().unwrap();
+    let (control, artifacts) = open(root.path());
+    let current = complete(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Apply,
+        "owned",
+    );
+    control
+        .connection
+        .borrow()
+        .execute(
+            "DELETE FROM operation_steps WHERE operation_id=?1 AND step_kind='apply_secrets'",
+            [current.operation_id.as_str()],
+        )
+        .unwrap();
+    artifacts
+        .validate_dependencies(&control.artifact_dependencies().unwrap())
+        .unwrap();
+    let mut replacement = admit(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Apply,
+        "replacement",
+    );
+    stage(&artifacts, &mut replacement);
+    finish(&control, &artifacts, &mut replacement);
+    let pending = admit(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Apply,
+        "pending",
+    );
+    control
+        .connection
+        .borrow()
+        .execute(
+            "DELETE FROM operation_steps WHERE operation_id=?1 AND step_kind='apply_secrets'",
+            [pending.operation_id.as_str()],
+        )
+        .unwrap();
+    assert!(
+        control.artifact_dependencies().is_err(),
+        "all pending step rows are required"
     );
 }
