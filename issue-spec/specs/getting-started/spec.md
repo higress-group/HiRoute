@@ -340,6 +340,9 @@ details SHALL block review and offer retry; late responses after selection chang
 or closure SHALL NOT replace current details. Before mapping, the flow SHALL
 refresh discovery and the selected model settings, require review of any changed
 selection/context, and retain normal fresh Preview/Apply checks.
+Choosing Primary while Agent details are pending SHALL retain that explicit model
+choice without preventing default Agent initialization. Late details SHALL NOT
+replace an explicitly selected Agent or Primary.
 
 A registered connection must observe the selected model before continuing. Protected
 input/check/save and native subscription import retain their existing authority.

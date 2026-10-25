@@ -36,6 +36,17 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
 
  await start('&agent-hold=1');
  await waitFor(client, 'trialAgentControl.pending.length===1');
+ await choosePrimary();
+ await evaluate(client, 'trialAgentControl.pending[0].release();true');
+ await waitFor(client, `!!document.querySelector('.trial-presets input:not(:disabled)') && !document.querySelector('.trial-footer .btn-primary').disabled`);
+ assert.equal(await evaluate(client, `document.querySelector('.trial-agent-choice select').value`),'agent_claude_default');
+ assert.ok(await evaluate(client, `document.querySelector('.trial-choice.selected[aria-expanded=false]').textContent.includes(primaryModel.display_name)`),'late Agent details retain the Primary chosen by the user');
+ assert.equal(await count('trial_agent_choices'),1);
+ assert.equal(await count('trial_agent_model'),1,'adopting the completed default does not repeat its detail read');
+ results.push({id:'quickstart.agent-reads.manual-primary-before-default-agent',status:'passed'});
+
+ await start('&agent-hold=1');
+ await waitFor(client, 'trialAgentControl.pending.length===1');
  assert.equal(await evaluate(client, `document.querySelector('.trial-presets input:not(:disabled)')`),null);
  await evaluate(client,`document.querySelector('.trial-agent-choice').scrollIntoView({block:'center'});true`);
  await shot('trial-agent-loading-en-light-755');

@@ -82,12 +82,19 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     finally { inFlight.current = false; setLoading(false); }
   }
   useEffect(() => { void refresh(); }, []);
+  const mappingInitialized = useRef(false);
   const primaryInitialized = useRef(false);
   useEffect(() => {
     const agents = agentRead.snapshot;
-    if (!data || !agentRead.ready || !agents || primaryInitialized.current) return;
+    if (!data || !agentRead.ready || !agents) return;
+    // Choosing Primary while details load must not suppress the default Agent;
+    // choosing an Agent explicitly must not be undone by a late default read.
+    if (!mappingInitialized.current) {
+      mappingInitialized.current = true;
+      setMapping(value => value.agentId ? value : initialTrialMapping(agents));
+    }
+    if (primaryInitialized.current) return;
     primaryInitialized.current = true;
-    const target = initialTrialMapping(agents); setMapping(target);
     const current = currentPrimary(agents.selected ?? undefined, agents.plans.plans);
     const candidate = data.options.candidates.find(c => c.binding_id === current?.binding_id && c.routable);
     if (candidate) { setPrimaryId(candidate.model_configuration_id); setPrimaryBinding(candidate.binding_id); setPrimarySelection(current); }
@@ -177,7 +184,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       </div>
     </section>
     <section className="trial-card trial-card-pair">
-      <div className="trial-column"><h3>{t('接入的 Agent', 'Agent')}</h3>{agentRead.snapshot && <TrialAgentChoice snapshot={agentRead.snapshot} value={mapping} onChange={value => { if (value.agentId !== mapping.agentId) setPrimarySelection(undefined); setMapping(value); }} language={language} loading={agentRead.loading} onRetry={() => void agentRead.refresh()} />}{agentRead.error && <p role="alert">{t('Agent 配置暂时无法读取，请重试。', 'Agent settings could not be read. Retry.')}<button className="btn btn-quiet" onClick={() => void agentRead.refresh(true)}>{t('重试', 'Retry')}</button></p>}</div>
+      <div className="trial-column"><h3>{t('接入的 Agent', 'Agent')}</h3>{agentRead.snapshot && <TrialAgentChoice snapshot={agentRead.snapshot} value={mapping} onChange={value => { mappingInitialized.current = true; if (value.agentId !== mapping.agentId) setPrimarySelection(undefined); setMapping(value); }} language={language} loading={agentRead.loading} onRetry={() => void agentRead.refresh()} />}{agentRead.error && <p role="alert">{t('Agent 配置暂时无法读取，请重试。', 'Agent settings could not be read. Retry.')}<button className="btn btn-quiet" onClick={() => void agentRead.refresh(true)}>{t('重试', 'Retry')}</button></p>}</div>
       <div className="trial-column">
         <h3>{custom ? t('路由名称', 'Route name') : t('名称与起始信任度', 'Name and starting trust')}</h3>
         <label className="field"><span className="field-label">{t('路由名称', 'Route name')}</span><input className="input" value={name ?? defaultName} placeholder={t('选好模型后自动填写', 'Filled in after choosing models')} maxLength={80} onChange={e => setName(e.target.value)} /></label>
