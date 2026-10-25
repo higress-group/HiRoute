@@ -977,16 +977,15 @@ fn login_item_owned_by_this_feature(
             |operation| Ok(operation.plan.external().iter().any(is_settings_login_item)),
         )
         .map_err(super::map_port)?;
-    if let Some(original) = original {
-        if let Some(intent) = original
+    if let Some(original) = original
+        && let Some(intent) = original
             .plan
             .external()
             .iter()
             .find(|intent| is_settings_login_item(intent))
-        {
-            let payload = decode_settings_login_item(intent).map_err(super::map_port)?;
-            return Ok(payload.created());
-        }
+    {
+        let payload = decode_settings_login_item(intent).map_err(super::map_port)?;
+        return Ok(payload.created());
     }
     Ok(false)
 }
