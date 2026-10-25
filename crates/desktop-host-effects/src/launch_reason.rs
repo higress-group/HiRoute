@@ -66,7 +66,10 @@ unsafe extern "C" fn open_application_handler(
     RECORDED.store(if login_item { 2 } else { 1 }, Ordering::SeqCst);
     // Preserve the previously installed handler first; the observation must not change how
     // the system dispatches its own launch event.
-    let status = match *PREVIOUS.lock().unwrap() {
+    // The chained AppKit handler may synchronously enter Tauri setup/Ready and
+    // reinstall handlers. Never hold our lock across that reentrant native call.
+    let previous = *PREVIOUS.lock().unwrap();
+    let status = match previous {
         (Some(previous), refcon) => unsafe { previous(event, reply, refcon) },
         _ => NO_ERR,
     };
@@ -177,6 +180,7 @@ pub fn launch_reason_recorded() -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     // A synthetic open-application event exercises the attribute parsing without a GUI.
     // AEDesc is 16 bytes on LP64 (descriptorType plus a data handle).
@@ -268,12 +272,40 @@ mod tests {
 
     #[test]
     fn the_observer_installs_and_reports_no_reason_before_dispatch() {
-        let installed = observe_launch_reason(|_| unreachable!("no event is dispatched here"));
+        static CHAIN_ENTERED: AtomicBool = AtomicBool::new(false);
+        static CHAIN_UNLOCKED: AtomicBool = AtomicBool::new(false);
+        static REASON_RECORDED_BEFORE_CHAIN: AtomicBool = AtomicBool::new(false);
+        unsafe extern "C" fn previous(_: AppleEventRef, _: *mut std::ffi::c_void, _: isize) -> i32 {
+            CHAIN_ENTERED.store(true, Ordering::SeqCst);
+            CHAIN_UNLOCKED.store(PREVIOUS.try_lock().is_ok(), Ordering::SeqCst);
+            REASON_RECORDED_BEFORE_CHAIN
+                .store(launch_reason_recorded() == Some(true), Ordering::SeqCst);
+            -1708
+        }
+        let callback_ran = Arc::new(AtomicBool::new(false));
+        let callback = callback_ran.clone();
+        let installed = observe_launch_reason(move |login_item| {
+            assert!(login_item);
+            assert!(CHAIN_ENTERED.load(Ordering::SeqCst));
+            callback.store(true, Ordering::SeqCst);
+        });
         assert!(installed, "AEInstallEventHandler must succeed in-process");
         assert_eq!(launch_reason_recorded(), None);
         assert!(observer_is_installed());
         // A guarded reinstall never stacks the observer over itself.
         reinstate_launch_reason_observer();
         assert!(observer_is_installed());
+        let native_previous = *PREVIOUS.lock().unwrap();
+        *PREVIOUS.lock().unwrap() = (Some(previous), 0);
+        let mut event = synthetic_event(Some(true));
+        let status = unsafe {
+            open_application_handler(std::ptr::addr_of!(event).cast(), std::ptr::null_mut(), 0)
+        };
+        unsafe { AEDisposeDesc(std::ptr::addr_of_mut!(event).cast()) };
+        *PREVIOUS.lock().unwrap() = native_previous;
+        assert_eq!(status, -1708, "preserve the native handler result");
+        assert!(REASON_RECORDED_BEFORE_CHAIN.load(Ordering::SeqCst));
+        assert!(CHAIN_UNLOCKED.load(Ordering::SeqCst));
+        assert!(callback_ran.load(Ordering::SeqCst));
     }
 }

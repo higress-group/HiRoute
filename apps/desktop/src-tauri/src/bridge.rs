@@ -64,7 +64,9 @@ mod window_behavior;
 use window_behavior::*;
 mod updates;
 use updates::*;
+mod launch_presentation;
 mod shutdown;
+use launch_presentation::LaunchPresentation;
 pub struct DesktopState(
     pub Arc<Mutex<Option<Session>>>,
     pub Arc<StartupState>,
@@ -602,37 +604,6 @@ pub async fn stop_observing(
     );
     hiroute_product_session::commands::stop_observing(&context, &product_state).await
 }
-/// How the main window may be presented at launch. The window is created hidden; only a
-/// normal foreground launch shows it, and only after the native launch reason is known.
-pub struct LaunchPresentation {
-    background: bool,
-    duplicate: bool,
-    /// No native launch-event observer exists; a foreground launch shows at Ready.
-    fallback_at_ready: bool,
-}
-
-impl LaunchPresentation {
-    fn headless(&self) -> bool {
-        self.background || self.duplicate
-    }
-
-    fn present_main_window(&self, handle: &tauri::AppHandle) {
-        if self.headless() {
-            return;
-        }
-        if let Some(window) = handle.get_webview_window("main")
-            && !window.is_visible().unwrap_or(false)
-        {
-            let _ = window.show();
-            // Bare Pilot launches need foreground presentation for WebView polling.
-            #[cfg(all(feature = "desktop-pilot", debug_assertions))]
-            if std::env::var_os("HIROUTE_DESKTOP_TEST_ROOT").is_some() {
-                let _ = window.set_focus();
-            }
-        }
-    }
-}
-
 pub fn run() {
     // An explicit background start runs the same Resident initialization and recovery chain;
     // only the window presentation differs.
@@ -666,8 +637,9 @@ pub fn run() {
                     .unwrap_or_else(|| env!("CARGO_PKG_VERSION").into()),
                 root.clone().ok(),
             ));
-            // The single-host desktop.lock is taken synchronously, before any window exists:
-            // a duplicate host hands off and exits here instead of presenting dead UI. Every
+            // The single-host desktop.lock is taken before Resident initialization.
+            // The configured window is still hidden: a duplicate hands off instead of
+            // presenting dead UI. Every
             // other acquisition failure keeps its existing async startup diagnostics.
             #[cfg(unix)]
             let (preacquired, duplicate) = match root.as_deref() {
@@ -683,38 +655,7 @@ pub fn run() {
             if duplicate {
                 crate::duplicate_host::finish(app.handle(), background);
             }
-            // The native launch-event observer is installed before any window can be shown,
-            // so a login-item launch initializes the same Resident without a flash of UI.
-            #[cfg(target_os = "macos")]
-            let native_observer = if background || duplicate {
-                false
-            } else {
-                let handle = app.handle().clone();
-                hiroute_desktop_host_effects::observe_launch_reason(move |login_item| {
-                    if !login_item {
-                        handle
-                            .state::<LaunchPresentation>()
-                            .present_main_window(&handle);
-                    }
-                })
-            };
-            app.manage(LaunchPresentation {
-                background,
-                duplicate,
-                fallback_at_ready: !background && !duplicate && {
-                    #[cfg(target_os = "macos")]
-                    {
-                        // Pilot launches a bare Debug executable, which does not receive the
-                        // normal open-application Apple event. Present its isolated test window
-                        // at Ready so protected confirmations can use a visible main window.
-                        !native_observer || cfg!(all(feature = "desktop-pilot", debug_assertions))
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        true
-                    }
-                },
-            });
+            app.manage(LaunchPresentation::new(app.handle(), background, duplicate));
             app.manage(start_session(
                 diagnostic_handle,
                 root.clone().ok(),
@@ -877,6 +818,7 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("build HiRoute Desktop");
+    launch_presentation::observe_before_run(&app, background);
     app.run(|handle, event| {
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Reopen { .. } = event
@@ -886,27 +828,7 @@ pub fn run() {
             let _ = window.set_focus();
         }
         if let tauri::RunEvent::Ready = event {
-            let presentation = handle.state::<LaunchPresentation>();
-            if presentation.headless() {
-                // A background or duplicate start never presents the window at launch.
-            } else if presentation.fallback_at_ready {
-                presentation.present_main_window(handle);
-            } else {
-                // On macOS the launch reason decides: if the native launch event has already
-                // been dispatched, its observer recorded the reason before this point;
-                // otherwise the observer decides at dispatch. Reinstall it in case something
-                // replaced it after setup — the window must never appear before the native
-                // launch reason is known.
-                #[cfg(target_os = "macos")]
-                match hiroute_desktop_host_effects::launch_reason_recorded() {
-                    Some(login_item) => {
-                        if !login_item {
-                            presentation.present_main_window(handle);
-                        }
-                    }
-                    None => hiroute_desktop_host_effects::reinstate_launch_reason_observer(),
-                }
-            }
+            handle.state::<LaunchPresentation>().on_ready(handle);
         }
         shutdown::on_run_event(handle, &event);
     });
@@ -959,7 +881,3 @@ pub async fn observation_read(
 #[cfg(test)]
 #[path = "bridge_command_acl_tests.rs"]
 mod command_acl_tests;
-
-#[cfg(test)]
-#[path = "bridge_launch_presentation_tests.rs"]
-mod launch_presentation_tests;

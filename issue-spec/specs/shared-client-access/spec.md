@@ -181,6 +181,33 @@ If an automatically generated key's response is uncertain, the result exposes th
 original key for explicit query/retry; there is no automatic new-key replay. Titles
 are lookup aids, not deduplication authority.
 
+### Requirement: Native Desktop presents the intended launch
+
+A normal macOS application launch SHALL show the first host's main window and
+load its initial Home without another open action or a manual read retry. The
+host SHALL observe the native launch reason before the application dispatches
+the initial open event, retain an early result until window setup completes, and
+preserve the framework's handling of that event. A proven login-item launch or
+explicit background start SHALL initialize the service without flashing a
+window. A duplicate host SHALL hand off without presenting a second window.
+An explicit later reopen SHALL show the existing window normally.
+
+Window presentation SHALL NOT weaken native authority, publication consistency,
+or closed/hidden-context rejection. Service readiness alone SHALL NOT establish
+that a Home read was delivered to a valid visible window.
+
+#### Scenario: Foreground launch event precedes window setup
+
+- **WHEN** the native open event arrives before Desktop's presentation state exists
+- **THEN** its foreground reason SHALL survive setup, the main window SHALL become
+  visible, and its initial Home SHALL load without user retry.
+
+#### Scenario: Login or background service starts without presentation
+
+- **WHEN** the launch is proven to be a login item or explicitly requests background mode
+- **THEN** startup SHALL not show a window; a later explicit reopen may present it,
+  while reads from a closed or invalidated window retain their existing rejection.
+
 ### Requirement: Installed CLI resolves one explicit service instance
 
 On macOS, CLI defaults to the current user's Desktop runtime. Absolute

@@ -1,5 +1,15 @@
 # Desktop behavior tests
 
+Native startup presentation is owned by `src-tauri/src/bridge/launch_presentation.rs`
+and the macOS launch observer in `hiroute-desktop-host-effects`. Their Rust cases
+cover early/late reasons, foreground fallback, background/duplicate suppression,
+login-event attributes and reentrant native-handler chaining. Ordinary signed
+Release acceptance must additionally observe the fixed process's on-screen window
+before any desktop-control binding, then verify the initial Home and final read
+verdicts. A bound-window screenshot or a successful service query cannot establish
+that the application displayed its own first window. Preserve close/reopen and
+background-start behavior separately from synthetic launch-event evidence.
+
 ## Console and Windows host coverage
 
 The V3 browser runner accepts `HIROUTE_BROWSER_TRANSPORT=console` to execute the
