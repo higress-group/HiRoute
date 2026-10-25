@@ -230,6 +230,21 @@ fn tool(program: &str, args: &[&std::ffi::OsStr]) -> Result<String, &'static str
     String::from_utf8(bytes).map_err(|_| "PACKAGE_VERIFY_FAILED")
 }
 
+/// `None` still requires a present TeamIdentifier plus Developer ID Application.
+/// A pinned team, when supplied, must match that identifier exactly.
+fn developer_id_signature_ok(signature: &str, expected_team: Option<&str>) -> bool {
+    let Some(team) = signature.lines().find_map(|line| {
+        line.strip_prefix("TeamIdentifier=")
+            .filter(|team| !team.is_empty() && *team != "not set")
+    }) else {
+        return false;
+    };
+    if expected_team.is_some_and(|expected| expected != team) {
+        return false;
+    }
+    signature.contains("Authority=Developer ID Application:")
+}
+
 #[cfg(target_os = "macos")]
 pub fn verify_desktop_app(
     app: &Path,
@@ -306,12 +321,7 @@ pub fn verify_desktop_app(
             return Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH");
         }
     } else {
-        let team = expected_team.ok_or("UPGRADE_SIGNATURE_IDENTITY_UNCONFIGURED")?;
-        if !signature
-            .lines()
-            .any(|l| l == format!("TeamIdentifier={team}"))
-            || !signature.contains("Authority=Developer ID Application:")
-        {
+        if !developer_id_signature_ok(&signature, expected_team) {
             return Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH");
         }
         tool(
@@ -412,5 +422,29 @@ mod tests {
             read_desktop_package_identity(invalid.path()).unwrap_err(),
             "PACKAGE_INVENTORY_INVALID"
         );
+    }
+
+    #[test]
+    fn developer_id_signature_requires_present_team_without_pinning() {
+        let signature = "\
+Authority=Developer ID Application: Example Org (ABCD123456)
+Authority=Developer ID Certification Authority
+TeamIdentifier=ABCD123456
+";
+        assert!(developer_id_signature_ok(signature, None));
+        assert!(developer_id_signature_ok(signature, Some("ABCD123456")));
+        assert!(!developer_id_signature_ok(signature, Some("OTHERTEAM1")));
+        assert!(!developer_id_signature_ok(
+            "Signature=adhoc\nTeamIdentifier=not set\n",
+            None
+        ));
+        assert!(!developer_id_signature_ok(
+            "Authority=Developer ID Application: Example Org (ABCD123456)\n",
+            None
+        ));
+        assert!(!developer_id_signature_ok(
+            "TeamIdentifier=ABCD123456\n",
+            None
+        ));
     }
 }
