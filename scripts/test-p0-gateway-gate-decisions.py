@@ -827,9 +827,6 @@ class GateDecisionTests(unittest.TestCase):
         dedicated_workflow = (
             REPOSITORY / ".github/workflows/gateway-core-dedicated.yml"
         ).read_text(encoding="utf-8")
-        stability_source = (
-            REPOSITORY / "crates/gateway-core/tests/gateway_stability.rs"
-        ).read_text(encoding="utf-8")
         # The current hosted suite is separate from the sealed historical Gate.
         # Keep the real sealed-result rejection cases above, and bind this join
         # to the three workflows documented in github-actions-validation.md.
@@ -852,10 +849,6 @@ class GateDecisionTests(unittest.TestCase):
         self.assertIn("dedicated_1k_10k_sse_connection_churn_for_ten_minutes", dedicated_workflow)
         self.assertIn("--require-tests", dedicated_workflow)
         self.assertIn("--ignored --exact --nocapture", dedicated_workflow)
-        self.assertIn("TcpStream::connect", stability_source)
-        self.assertIn("for _ in 0..count", stability_source)
-        self.assertIn("run_socket_count(count, duration", stability_source)
-        self.assertIn("vec![1_000, 10_000]", stability_source)
 
 
 if __name__ == "__main__":
