@@ -1172,13 +1172,12 @@ fn real_listener_rest_classifier_uses_the_existing_gateway_and_selects_complex()
 
 #[test]
 fn real_listener_rest_classifier_runs_once_for_each_supported_ingress() {
-    let simple = NativeProvider::start(Vec::new());
+    let simple = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: RESPONSES_OK,
+    }]);
     let complex = NativeProvider::start(vec![
-        ProviderReply::Complete {
-            status: 200,
-            error_kind: None,
-            body: RESPONSES_OK,
-        },
         ProviderReply::Complete {
             status: 200,
             error_kind: None,
@@ -1194,7 +1193,7 @@ fn real_listener_rest_classifier_runs_once_for_each_supported_ingress() {
         ProviderReply::Complete {
             status: 200,
             error_kind: None,
-            body: CLASSIFIER_COMPLEX,
+            body: CLASSIFIER_SIMPLE,
         },
         ProviderReply::Complete {
             status: 200,
@@ -1242,7 +1241,9 @@ fn real_listener_rest_classifier_runs_once_for_each_supported_ingress() {
         ),
     ];
 
-    for (path, header, body, _) in &cases {
+    // Check routing after each ingress so an inverted group selection cannot
+    // pass by balancing the final aggregate call counts.
+    for (index, (path, header, body, _)) in cases.iter().enumerate() {
         let response = request(
             fixture.address,
             "POST",
@@ -1256,12 +1257,13 @@ fn real_listener_rest_classifier_runs_once_for_each_supported_ingress() {
             "{path}: {}",
             String::from_utf8_lossy(&response.body)
         );
+        assert_eq!(
+            (simple.calls(), complex.calls(), classifier.calls()),
+            (1, index, index + 1),
+            "{path}: classification must select the requested group exactly once"
+        );
     }
 
-    assert_eq!(
-        (simple.calls(), complex.calls(), classifier.calls()),
-        (0, 3, 3)
-    );
     for (wire, (_, _, _, expected_latest)) in classifier.requests().iter().zip(cases) {
         let split = wire
             .windows(4)
@@ -1335,30 +1337,6 @@ fn real_listener_rest_classifier_streams_complete_replay_backed_context_without_
         !serde_json::to_string(&body)
             .unwrap()
             .contains(&instructions)
-    );
-}
-
-#[test]
-fn real_listener_rest_classifier_can_select_the_simple_group() {
-    let simple = NativeProvider::start(vec![ProviderReply::Complete {
-        status: 200,
-        error_kind: None,
-        body: RESPONSES_OK,
-    }]);
-    let complex = NativeProvider::start(Vec::new());
-    let classifier = NativeProvider::start(vec![ProviderReply::Complete {
-        status: 200,
-        error_kind: None,
-        body: CLASSIFIER_SIMPLE,
-    }]);
-    let fixture = RuntimeFixture::launch_rest_classified(&[&simple, &complex, &classifier], 2);
-
-    let response = fixture.request();
-
-    assert_eq!(response.status, 200);
-    assert_eq!(
-        (simple.calls(), complex.calls(), classifier.calls()),
-        (1, 0, 1)
     );
 }
 
@@ -2134,12 +2112,29 @@ fn real_listener_source_deadline_during_rest_classification_never_falls_back() {
 
 #[test]
 fn real_listener_disconnect_during_rest_classification_never_runs_the_main_model() {
+    struct ReleaseOnDrop(ProviderBodyBarrier);
+    impl Drop for ReleaseOnDrop {
+        fn drop(&mut self) {
+            self.0.release();
+        }
+    }
+
     let simple = NativeProvider::start(Vec::new());
     let complex = NativeProvider::start(Vec::new());
-    let classifier = NativeProvider::start(vec![ProviderReply::Stall {
-        duration: Duration::from_secs(4),
+    let barrier = ProviderBodyBarrier::default();
+    let classifier = NativeProvider::start(vec![ProviderReply::BodyReadBarrier {
+        barrier: barrier.clone(),
+        status: 200,
+        error_kind: None,
+        body: CLASSIFIER_SIMPLE,
     }]);
-    let fixture = RuntimeFixture::launch_rest_classified(&[&simple, &complex, &classifier], 2);
+    // Drop the release guard before the provider, including assertion failures.
+    let _release = ReleaseOnDrop(barrier.clone());
+    let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+        &[&simple, &complex, &classifier],
+        2,
+        ObservationFaults::healthy(),
+    );
     let downstream = open_request(
         fixture.address,
         "POST",
@@ -2147,10 +2142,7 @@ fn real_listener_disconnect_during_rest_classification_never_runs_the_main_model
         &[("X-HiRoute-Token", "runtime-token")],
         br#"{"model":"runtime-model","input":"cancel me","stream":false}"#,
     );
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while classifier.calls() == 0 && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    barrier.wait_for_arrivals(1, Duration::from_secs(2));
     assert_eq!(
         classifier.calls(),
         1,
@@ -2158,7 +2150,23 @@ fn real_listener_disconnect_during_rest_classification_never_runs_the_main_model
     );
     drop(downstream);
 
-    std::thread::sleep(Duration::from_millis(3_250));
+    // Observe terminal cancellation while classification is still blocked.
+    // A timed sleep alone could pass before a late fallback starts.
+    let facts = wait_execution_facts(&fixture, 1);
+    let finished = facts
+        .iter()
+        .find(|fact| fact["fact"]["kind"] == "request_finished")
+        .unwrap();
+    assert_eq!(finished["fact"]["outcome"], "cancelled");
+    assert_eq!(finished["fact"]["attempts_started"], 0);
+    assert_eq!(finished["fact"]["attempts_finished"], 0);
+    assert!(finished["fact"]["accepted_attempt_ordinal"].is_null());
+    assert!(
+        !facts
+            .iter()
+            .any(|fact| fact["fact"]["kind"] == "attempt_started")
+    );
+    barrier.release();
     assert_eq!(
         (simple.calls(), complex.calls()),
         (0, 0),

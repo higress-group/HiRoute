@@ -31,21 +31,16 @@ async function fixture(entries = [user("current", 1)], read) {
 }
 
 for (const purpose of ["title", "summary", "compaction"]) {
-  for (const fault of ["reject", "synchronous throw", "timeout", "current outside page"]) {
-    test(`OpenCode ${purpose} purpose is independent of SDK ${fault}`, async () => {
-      const f = await fixture([], () => {
-        if (fault === "reject") return Promise.reject(Error("injected SDK rejection"));
-        if (fault === "synchronous throw") throw Error("injected SDK throw");
-        if (fault === "timeout") return new Promise(() => {});
-        return Promise.resolve({ data: [] });
-      });
-      const output = await f.headers(input("current", purpose));
-      assert.deepEqual(context(output), { version: 2, agent: "opencode", purpose,
-        session_id: "session", turn_id: "current" });
-      assert.equal(f.calls.length, 0, "known auxiliaries never invoke optional history");
-      assert.equal(output.headers.native, "retained");
+  test(`OpenCode ${purpose} retains minimal routing without reading SDK history`, async () => {
+    const f = await fixture([], () => {
+      assert.fail("known auxiliaries must not invoke optional SDK history");
     });
-  }
+    const output = await f.headers(input("current", purpose));
+    assert.deepEqual(context(output), { version: 2, agent: "opencode", purpose,
+      session_id: "session", turn_id: "current" });
+    assert.equal(f.calls.length, 0, "known auxiliaries never invoke optional history");
+    assert.equal(output.headers.native, "retained");
+  });
 }
 
 test("OpenCode known purpose survives unavailable optional IDs and managed gating stays exact", async () => {

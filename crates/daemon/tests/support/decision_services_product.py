@@ -45,9 +45,9 @@ class DecisionEndpoint(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def native_history_decisions(product, plan_id, editor):
+def native_history_decisions(product, plan_id, editor, endpoint_base=DecisionEndpoint):
     """Observe real native routing through a saved service and public Plan edits."""
-    endpoint_type = type('NativeHistoryEndpoint', (DecisionEndpoint,),
+    endpoint_type = type('NativeHistoryEndpoint', (endpoint_base,),
                          {'requests': [], 'native_history_assessment': True})
     endpoint = ThreadingHTTPServer(('127.0.0.1', 0), endpoint_type)
     worker = threading.Thread(target=endpoint.serve_forever, daemon=True)

@@ -1056,11 +1056,13 @@ impl ProjectionState {
                 None => u32_field(call, "index")?,
             };
             let existing = self.tools.get(&index).cloned();
-            let native_id = optional_str(call, "id")?
+            let emitted_id = optional_str(call, "id")?
                 // Chat argument deltas can retain an explicit empty id. It
                 // supplies no replacement identity; only an already bound
                 // index can provide the original tool id in that case.
-                .filter(|id| !id.is_empty())
+                .filter(|id| !id.is_empty());
+            let has_emitted_id = emitted_id.is_some();
+            let native_id = emitted_id
                 .map(str::to_owned)
                 .or_else(|| existing.as_ref().map(|tool| tool.native_id.clone()))
                 .ok_or_else(|| ModelIrError::MissingToolIdentity(format!("chat index {index}")))?;
@@ -1092,7 +1094,10 @@ impl ProjectionState {
                 identity.namespace.as_deref(),
                 &identity.local_name,
             )?;
-            if call.contains_key("id") {
+            // Index lookup validates the call but must not add identity to a
+            // delta: Chat clients concatenate strings across chunks. Preserve
+            // empty, null and absent IDs exactly as emitted by the provider.
+            if has_emitted_id {
                 call.insert("id".into(), Value::String(logical));
             }
         }
