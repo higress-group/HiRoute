@@ -373,7 +373,7 @@ pub(super) fn installed_test_layout(test: &str) -> bool {
         .unwrap();
     assert!(
         status.success(),
-        "installed-layout console composition failed"
+        "installed-layout console composition failed: {status}"
     );
     true
 }

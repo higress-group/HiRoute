@@ -36,13 +36,18 @@ fn configuration_priming_preserves_exact_inputs_and_permission_findings() {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&settings, fs::Permissions::from_mode(0o644)).unwrap();
         let (credential, finding) = scanner.claude_protected_configuration_inputs();
-        assert!(credential.is_none());
         let complete = scanner
             .scan()
             .into_iter()
             .find(|value| outcome_agent_id(&value.outcome) == "agent_claude_default")
             .unwrap();
-        assert!(finding.is_some());
+        // Priming follows the existing passive native-config policy; it must
+        // neither invent a new permission gate nor silently harden the file.
+        assert_eq!(credential, complete.discovered_credential);
         assert_eq!(finding, complete.permission_hardening);
+        assert_eq!(
+            fs::metadata(&settings).unwrap().permissions().mode() & 0o777,
+            0o644
+        );
     }
 }
