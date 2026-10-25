@@ -49,13 +49,19 @@ fn opening() -> Vec<u8> {
 }
 
 #[test]
-fn native_chat_empty_id_deltas_preserve_arguments_and_tool_result_roundtrip() {
+fn native_chat_identity_free_deltas_preserve_arguments_and_tool_result_roundtrip() {
     let argument_fragments = ["{\"path\":\"fixture.txt\",", "\"flags\":[true,7]}", ""];
     let expected = json!({"path":"fixture.txt","flags":[true,7]});
     let mut wire = opening();
     for (index, arguments) in argument_fragments.iter().enumerate() {
+        let mut call = json!({"index":0,"function":{"arguments":arguments}});
+        match index {
+            0 => call["id"] = json!(""),
+            1 => call["id"] = Value::Null,
+            _ => {}
+        }
         wire.extend(chunk(
-            json!({"index":0,"id":"","function":{"arguments":arguments}}),
+            call,
             if index == argument_fragments.len() - 1 {
                 json!("tool_calls")
             } else {
@@ -78,6 +84,8 @@ fn native_chat_empty_id_deltas_preserve_arguments_and_tool_result_roundtrip() {
         );
         let delivered_wire: Vec<u8> = delivered.into_iter().flat_map(|unit| unit.bytes).collect();
         let mut arguments = String::new();
+        let mut client_id = String::new();
+        let mut id_deltas = Vec::new();
         for line in std::str::from_utf8(&delivered_wire).unwrap().lines() {
             let Some(data) = line.strip_prefix("data:") else {
                 continue;
@@ -88,9 +96,24 @@ fn native_chat_empty_id_deltas_preserve_arguments_and_tool_result_roundtrip() {
             let value: Value = serde_json::from_str(data).unwrap();
             assert_eq!(value["model"], "alias");
             let call = &value["choices"][0]["delta"]["tool_calls"][0];
-            assert_eq!(call["id"], "call-fixture");
+            id_deltas.push(call.get("id").cloned());
+            // Chat SDKs append string deltas; the native decoder below also
+            // tracks identity, so a decoder-only roundtrip would miss repeats.
+            if let Some(id) = call.get("id").and_then(Value::as_str) {
+                client_id.push_str(id);
+            }
             arguments.push_str(call["function"]["arguments"].as_str().unwrap());
         }
+        assert_eq!(client_id, "call-fixture");
+        assert_eq!(
+            id_deltas,
+            [
+                Some(json!("call-fixture")),
+                Some(json!("")),
+                Some(Value::Null),
+                None
+            ]
+        );
         assert_eq!(arguments, argument_fragments.concat());
 
         let mut decoder = NativeResponseDecoder::new(&profile(), 200, true).unwrap();
@@ -105,7 +128,7 @@ fn native_chat_empty_id_deltas_preserve_arguments_and_tool_result_roundtrip() {
             panic!("Chat JSON response")
         };
         let call = &body["choices"][0]["message"]["tool_calls"][0];
-        assert_eq!(call["id"], "call-fixture");
+        assert_eq!(call["id"], client_id);
         assert_eq!(call["function"]["name"], "inspect");
         assert_eq!(
             serde_json::from_str::<Value>(call["function"]["arguments"].as_str().unwrap()).unwrap(),
@@ -114,7 +137,7 @@ fn native_chat_empty_id_deltas_preserve_arguments_and_tool_result_roundtrip() {
         let followup = json!({"model":"alias","tools":[{"type":"function","function":{
             "name":"inspect","parameters":{"type":"object"}}}],"messages":[
             body["choices"][0]["message"].clone(),
-            {"role":"tool","tool_call_id":call["id"],"content":"fixture result"}
+            {"role":"tool","tool_call_id":client_id,"content":"fixture result"}
         ]});
         let request = decode_ingress_request(IngressProtocol::ChatCompletions, &followup)
             .expect("native client replays the delivered tool call and correlated result");
