@@ -167,6 +167,10 @@ through the production Hyper connection owner and shared confirmation broker.
 Browser scenarios
 run through both host transports; their production CSS screenshots include the
 console and Windows startup/update pages, without establishing native effects.
+The [Home startup scenarios](../../apps/desktop/tests/v3/browser/home-startup-scenarios.mjs)
+exercise delayed snapshot and startup-status results through the production
+[Home reader](../../apps/desktop/src/product/use-desktop-home.ts); stale replies
+cannot replace newer service evidence or clear the current failure.
 
 The [Rust installation journal](../../crates/host-runtime/src/standalone_install/journal/tests.rs)
 covers current-schema interruption recovery. Package tests verify x64 and ARM64

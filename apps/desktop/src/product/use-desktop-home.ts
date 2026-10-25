@@ -62,6 +62,7 @@ export function useDesktopHome() {
   const [agentSnapshot, setAgentSnapshot] = useState<AgentSnapshot | null>(null);
   const sequence = useRef(0);
   const activeDesktopRequest = useRef<string | null>(null);
+  const startupSequence = useRef(0);
 
   const requestId = useCallback((domain: keyof HomeReads) =>
     `home/${domain}/${++sequence.current}`, []);
@@ -74,8 +75,9 @@ export function useDesktopHome() {
     setPlans(current => beginDomainRead(current, plansRequest, HOME_TARGET));
     try {
       const snapshot = await invoke<DesktopSnapshot>('desktop_snapshot');
-      setStartup({ state: 'ready', recovery_available: false });
       if (activeDesktopRequest.current !== serviceRequest) return;
+      startupSequence.current++;
+      setStartup({ state: 'ready', recovery_available: false });
       setDesktopSnapshot(snapshot);
       setService(current => resolveDomainRead(
         current,
@@ -105,10 +107,12 @@ export function useDesktopHome() {
       const code = errorCode(error);
       setService(current => failDomainRead(current, serviceRequest, HOME_TARGET, code));
       setPlans(current => failDomainRead(current, plansRequest, HOME_TARGET, code));
-      try {
-        setStartup(await invoke('startup_status'));
-      } catch {
-        setStartup({ state: 'failed', code, recovery_available: false });
+      const startupRequest = ++startupSequence.current;
+      const report = await invoke<NonNullable<typeof startup>>('startup_status').catch(() => ({
+        state: 'failed' as const, code, recovery_available: false,
+      }));
+      if (activeDesktopRequest.current === serviceRequest && startupSequence.current === startupRequest) {
+        setStartup(report);
       }
     }
   }, [requestId]);
@@ -247,10 +251,13 @@ export function useDesktopHome() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
+      const startupRequest = ++startupSequence.current;
       try {
         const report = await invoke<NonNullable<typeof startup>>('startup_status');
         if (cancelled) return;
-        setStartup(current => current?.state === 'ready' ? current : report);
+        if (startupSequence.current === startupRequest) {
+          setStartup(current => current?.state === 'ready' ? current : report);
+        }
         if (report.state === 'starting') timer = setTimeout(() => void poll(), 500);
       } catch {
         if (!cancelled) timer = setTimeout(() => void poll(), 1000);

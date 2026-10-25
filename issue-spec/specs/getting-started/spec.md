@@ -29,6 +29,13 @@ state, never invented savings or a chart of fabricated zeros.
 - **THEN** Desktop MUST retain the correct service state, identify the affected read,
   and offer a retry without overwriting edits or claiming the resource is absent.
 
+#### Scenario: A startup result arrives after a newer Home refresh
+
+- **WHEN** an old snapshot or startup-status read completes after a newer Home result
+- **THEN** it MUST NOT clear the current startup failure or replace newer successful
+  service evidence with an earlier failure. Independent startup checks and failed-read
+  follow-ups MUST share the same ordering of accepted startup results.
+
 ### Requirement: Preferences preserve the current interaction
 
 The production shell MUST support English and Chinese, light and dark themes,

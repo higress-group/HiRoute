@@ -63,6 +63,9 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.home.stale-startup-failure',
+  'desktop.home.stale-startup-success',
+  'desktop.home.stale-startup-poll',
   'desktop.home.trust-waits-for-recovery',
   'desktop.home.trust-pending-continues',
   'desktop.home.trust-error-and-legacy-retry',
