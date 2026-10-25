@@ -684,7 +684,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     return { state: 'succeeded', operation: { state: 'succeeded' } };
   }
   if (command === 'preview_restore_name') return { operation: { state: 'succeeded' } };
-  if (command === 'preview_compute_save') return {
+  if (command === 'preview_compute_save' || command === 'preview_compute_save_v3') return {
     candidate: payload?.change?.subject?.candidate,
     spec: { schema_version: { major: 2, minor: 0 }, command_id: 'fixture-model-save', desired_state: {} },
     accept_digest: 'sha256:fixture-save',

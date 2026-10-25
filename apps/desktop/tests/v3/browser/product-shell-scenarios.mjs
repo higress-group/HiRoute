@@ -506,8 +506,8 @@ const scenarios = [
     assert(all('.model-result-row input:checked').length === 1, 'Tool check lost the explicit model selection');
     assert(!button('保存连接').disabled, 'Successful tool check disabled save');
     await click('保存连接');
-    await until(() => calls('preview_compute_save').length === 1, 'save preview');
-    const preview = JSON.stringify(calls('preview_compute_save')[0].payload);
+    await until(() => calls('preview_compute_save_v3').length === 1, 'current save preview');
+    const preview = JSON.stringify(calls('preview_compute_save_v3')[0].payload);
     assert(preview.includes('model-ref/qwen3-coder-plus/checked') && !preview.includes('model-ref/qwen3-max/checked'), 'Save did not use only the selected fresh model reference');
   }),
   scenario('desktop.routing.disabled-header', ['routing-editor'], 'A stopped route stays visibly disabled while its editor has unsaved changes', async () => {
