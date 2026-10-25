@@ -1,5 +1,6 @@
 //! Exact bytes, rollback and current receipts remain authoritative on warm reads.
 use super::*;
+use rusqlite::{Connection, params};
 
 fn count(control: &ControlStore) -> usize {
     control.completed_operation_cache.borrow().decodes
