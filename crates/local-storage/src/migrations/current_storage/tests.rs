@@ -294,6 +294,8 @@ fn historical_plan_bytes_become_strict_when_current_or_held() {
         } else {
             // Missing bytes are also a failure, rather than an empty JOIN result.
             let external = Connection::open(root.path().join("live/control.db")).unwrap();
+            // Deliberately inject a broken reference in this disposable damage fixture.
+            external.pragma_update(None, "foreign_keys", false).unwrap();
             external.execute("DELETE FROM plan_versions", []).unwrap();
             assert!(
                 validate_current_storage(stores.control(), stores.runtime(), stores.secrets())

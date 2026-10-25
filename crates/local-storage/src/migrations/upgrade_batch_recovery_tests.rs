@@ -30,6 +30,11 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     transaction
         .execute_batch(migration_sql(kind, version).unwrap())
         .unwrap();
+    if kind == DatabaseKind::Control && version == 32 {
+        // The crash fixture commits the complete current migration transaction,
+        // including its semantic initialization before publishing the schema marker.
+        current_dependencies_v32::initialize(&transaction).unwrap();
+    }
     transaction
         .pragma_update(None, "user_version", version)
         .unwrap();
