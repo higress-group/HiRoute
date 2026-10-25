@@ -87,6 +87,8 @@ async fn corrupt_observation_store_reports_data_failure_without_rewriting_it() {
     // before corrupting one member. Fabricated database bytes without a key
     // exercise missing-key admission instead of observation-store integrity.
     drop(Resident::open(root.path(), &binary).unwrap());
+    let key_path = root.path().join("storage/observation-hmac-key");
+    let original_key = std::fs::read(&key_path).unwrap();
     let observation = root.path().join("storage/observation");
     std::fs::set_permissions(
         root.path().join("storage"),
@@ -102,8 +104,11 @@ async fn corrupt_observation_store_reports_data_failure_without_rewriting_it() {
     let error = Resident::open(root.path(), &binary)
         .err()
         .expect("corrupt observation data must stop startup");
-    assert_eq!(error, "DAEMON_STORAGE_UNREADABLE");
+    // The current format admission cannot identify a non-SQLite source. It
+    // preserves that typed cause before opening or attempting to convert it.
+    assert_eq!(error, "DAEMON_UPGRADE_SOURCE_UNSUPPORTED");
     assert_eq!(std::fs::read(&database).unwrap(), original);
+    assert!(std::fs::read(&key_path).unwrap() == original_key);
 }
 
 #[tokio::test]
