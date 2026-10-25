@@ -152,6 +152,10 @@ The [native tool conflict scenario](../../tools/e2e-harness/tests/p0_gateway_run
 checks unmodified delivery, partial history and recovery of later complete work.
 Cross-protocol conversion and Messages/Chat identity checks retain their existing
 rules. A client that cannot consume a contradictory native stream may still fail.
+Native Chat argument deltas retain empty, null or absent tool IDs on the wire.
+The bound index supplies identity for validation only; repeating the full ID in
+each delta would make Chat clients concatenate it. The [Chat delta regression](src/adapters/response/chat_tool_delta_tests.rs)
+checks client-side accumulation against canonical capture and tool-result replay.
 
 [Historical request projection](src/adapters/request/history.rs) separates completed
 Responses commentary replay to Chat from the live response renderer's phase rules.
