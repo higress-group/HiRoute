@@ -129,8 +129,17 @@ pub(super) fn schema23_source(root: &Path, case: &Value) {
 pub(super) fn assert_frozen_rows(connection: &Connection, case: &Value) {
     for table in TABLES {
         let data = &case["tables"][table];
+        // Compare every column exported by the frozen producer, byte for byte.
+        // New recovery metadata is not part of the historical row representation.
+        let columns = data["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect::<Vec<_>>()
+            .join(",");
         let mut statement = connection
-            .prepare(&format!("SELECT * FROM {table} ORDER BY 1,2"))
+            .prepare(&format!("SELECT {columns} FROM {table} ORDER BY 1,2"))
             .unwrap();
         let count = statement.column_count();
         let actual: Vec<Vec<rusqlite::types::Value>> = statement

@@ -93,6 +93,12 @@ fn failed_finalization_transaction_keeps_the_member_and_coverage() {
         let mut db = control.connection.borrow_mut();
         let tx = db.transaction().unwrap();
         tx.execute("UPDATE operations SET state='rolled_back',finalization_pending=0 WHERE operation_id=?1", [op.operation_id.as_str()]).unwrap();
+        // The real terminal transaction also releases its writer claim before commit.
+        tx.execute(
+            "DELETE FROM writer_claim WHERE operation_id=?1",
+            [op.operation_id.as_str()],
+        )
+        .unwrap();
         assert!(validate_recovery_members(&tx).unwrap().is_empty());
         // Deliberate rollback models a failure before commit, not a partially published index.
     }

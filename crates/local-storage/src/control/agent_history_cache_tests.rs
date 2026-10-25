@@ -34,6 +34,8 @@ fn persist(control: &ControlStore, operation: &mut OperationV1) {
         step.status = hiroute_domain::OperationStepStatus::Applied;
     }
     control.finish_operation(operation).unwrap();
+    // The component fixture has no external finalizer; mark its retained journal settled.
+    control.complete_operation_finalization(operation).unwrap();
 }
 fn open(directory: &std::path::Path) -> ControlStore {
     ControlStore::open(
@@ -149,7 +151,8 @@ fn large_history_validates_once_then_shares_facts_without_scan_thrash() {
         .connection
         .borrow()
         .query_row(
-            "SELECT sum(length(operation_json)) FROM operations",
+            "SELECT (SELECT sum(length(operation_json)) FROM operations) +
+                    (SELECT sum(length(payload_json)) FROM operation_payloads)",
             [],
             |r| r.get(0),
         )
@@ -281,6 +284,15 @@ fn history_membership_and_valid_same_connection_writes_are_not_cached() {
         .borrow()
         .execute(
             "DELETE FROM operation_steps WHERE operation_id=?1",
+            [first.operation_id.as_str()],
+        )
+        .unwrap();
+    // Remove the complete isolated fixture closure, preserving FK enforcement.
+    control
+        .connection
+        .borrow()
+        .execute(
+            "DELETE FROM operation_payloads WHERE operation_id=?1",
             [first.operation_id.as_str()],
         )
         .unwrap();

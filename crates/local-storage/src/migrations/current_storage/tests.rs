@@ -207,3 +207,99 @@ fn active_and_lkg_damage_still_blocks_ordinary_startup() {
         assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
     }
 }
+
+#[test]
+fn historical_plan_bytes_become_strict_when_current_or_held() {
+    for role in ["unreferenced", "head", "hold", "prepared-owner-missing"] {
+        let root = crate::test_tempdir().unwrap();
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let publication: GatewayPublicationV1 = serde_json::from_slice(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../e2e/product/fixtures/routing/current-publication.v3.json"
+        )))
+        .unwrap();
+        let compiled = publication.into_current().unwrap().plans.remove(0);
+        let version =
+            PlanVersionV1::from_unversioned_compiled_recovery(WorkspaceId::default(), compiled)
+                .unwrap();
+        let r = &version.reference;
+        let db = stores.control.connection.borrow();
+        db.execute(
+            "INSERT INTO plan_versions VALUES(?1,?2,?3,?4,?5,?6,'isolated-fixture')",
+            params![
+                r.workspace_id.as_str(),
+                r.plan_id.as_str(),
+                r.content_revision,
+                r.content_digest.as_str(),
+                serde_json::to_string(&version).unwrap(),
+                if role == "prepared-owner-missing" {
+                    "prepared"
+                } else {
+                    "published"
+                }
+            ],
+        )
+        .unwrap();
+        if role == "head" {
+            let head = PlanHeadV1 {
+                head_revision: r.content_revision,
+                reference: r.clone(),
+                model_alias: version.compiled.model_alias().clone(),
+                status: PlanLifecycleV1::Enabled,
+            };
+            db.execute(
+                "INSERT INTO plan_heads VALUES(?1,?2,?3,?4)",
+                params![
+                    r.workspace_id.as_str(),
+                    r.plan_id.as_str(),
+                    head.head_revision,
+                    serde_json::to_string(&head).unwrap()
+                ],
+            )
+            .unwrap();
+        } else if role == "hold" {
+            db.execute(
+                "INSERT INTO plan_version_holds VALUES(?1,'retained-worker',?2,?3,?4,0,1)",
+                params![
+                    r.workspace_id.as_str(),
+                    r.plan_id.as_str(),
+                    r.content_revision,
+                    r.content_digest.as_str()
+                ],
+            )
+            .unwrap();
+        }
+        drop(db);
+        if role == "prepared-owner-missing" {
+            assert!(
+                validate_current_storage(stores.control(), stores.runtime(), stores.secrets())
+                    .is_err()
+            );
+            continue;
+        }
+        validate_current_storage(stores.control(), stores.runtime(), stores.secrets()).unwrap();
+        stores
+            .control
+            .connection
+            .borrow()
+            .execute("UPDATE plan_versions SET version_json='{}'", [])
+            .unwrap();
+        let result = validate_current_storage(stores.control(), stores.runtime(), stores.secrets());
+        assert_eq!(result.is_ok(), role == "unreferenced", "{role}");
+        if role == "unreferenced" {
+            assert!(
+                audit_current_storage(stores.control(), stores.runtime(), stores.secrets())
+                    .is_err()
+            );
+        } else {
+            // Missing bytes are also a failure, rather than an empty JOIN result.
+            let external = Connection::open(root.path().join("live/control.db")).unwrap();
+            external.execute("DELETE FROM plan_versions", []).unwrap();
+            assert!(
+                validate_current_storage(stores.control(), stores.runtime(), stores.secrets())
+                    .is_err(),
+                "{role}"
+            );
+        }
+    }
+}
