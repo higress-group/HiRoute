@@ -2,6 +2,60 @@
 use super::models::{model_spec, model_status, restore_spec};
 use super::*;
 
+#[test]
+fn dsh_save_checks_composition_once_per_capture_and_again_at_admission() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::native_model::tests::settings_entry_tests::qoder::native_routing::dsh_save_checks_composition_once_per_capture_and_again_at_admission",
+    ) {
+        return;
+    }
+    let mut fixture = QoderFixture::with_all_models();
+    fixture.context = fixture
+        .runtime
+        .adapter
+        .settings_context_for_agent("agent_dsh_default")
+        .unwrap();
+    fixture.native_config = fixture.runtime.adapter.scanner.dsh_user_models_target();
+    let executable = fixture
+        .runtime
+        .adapter
+        .scanner
+        .dsh_executable_target()
+        .unwrap();
+    let calls = fixture._root.path().join("dsh-probe-calls");
+    private_file(&executable, format!("#!/bin/sh\nprintf '%s\\n' \"$1\" >> '{}'\nif [ \"$1\" = --version ]; then echo 'DSH 0.2.0'; else printf '%s\\n' '- id: llm-pi-ai'; fi\n", calls.display()).as_bytes());
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut spec = model_spec(&fixture);
+    spec["model"]["settings"]["mode"] = json!("dsh_additional");
+    apply(
+        &fixture.service,
+        &fixture.runtime,
+        spec.clone(),
+        "dsh-probe-count",
+    );
+    assert_eq!(model_status(&fixture)["state"], "configured");
+    // Preview, Apply confirmation and locked admission each own one proof.
+    // The second file snapshot neither starts another engine nor skips drift checks.
+    assert_eq!(
+        fs::read_to_string(&calls).unwrap(),
+        "--profile\n--profile\n--profile\n"
+    );
+    private_file(
+        &executable,
+        b"#!/bin/sh\nprintf '%s\\n' '- id: wrong-module'\n",
+    );
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    let spec: api::AgentSettingsSpecV2 = serde_json::from_value(spec).unwrap();
+    assert!(
+        fixture
+            .runtime
+            .adapter
+            .capture_settings_facts(&spec)
+            .is_err(),
+        "a previous call cannot authorize a changed installation"
+    );
+}
+
 pub(super) fn reopen(fixture: QoderFixture) -> QoderFixture {
     let scanner = fixture.runtime.adapter.scanner.clone();
     let QoderFixture {
