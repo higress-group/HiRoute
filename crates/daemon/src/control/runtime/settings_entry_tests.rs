@@ -280,6 +280,22 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
     };
     let configured_references = references();
     assert_eq!(configured_references.references.len(), 2);
+    let service_revision = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .active_publication(&WorkspaceId::default())
+        .unwrap()
+        .unwrap()
+        .publication_revision
+        .get();
+    assert!(
+        configured_references
+            .references
+            .iter()
+            .all(|reference| reference.revision == service_revision)
+    );
     assert!(configured_references.references.iter().any(|reference|
         reference.kind == hiroute_domain::AgentPlanReferenceKind::DefaultModel));
     // Explicit fixture capabilities cover the journal/facet join here. This does not claim

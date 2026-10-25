@@ -4,7 +4,7 @@ use hiroute_domain::{
     AgentFacetIntent, AgentModelDefaultSelectionV2, AgentModelSelectionV2, AgentPlanId,
     AgentPlanReference, AgentPlanReferenceKind, AgentPlanReferenceReadPort,
     AgentPlanReferenceSubject, AgentPlanReferences, AgentSettingsSpecV2, CanonicalDigest,
-    OperationStepKind, PortErrorCode, PortResult, SettingsServiceCompletionV1, WorkspaceId,
+    PortErrorCode, PortResult, WorkspaceId,
 };
 use rusqlite::params;
 use std::collections::BTreeSet;
@@ -69,15 +69,11 @@ impl AgentPlanReferenceReadPort for ControlStore {
                     } = settings.model
                     {
                         let revision = operation
-                            .step(OperationStepKind::Activate)
-                            .terminal_result
-                            .as_deref()
-                            .and_then(SettingsServiceCompletionV1::parse)
-                            .filter(|receipt| receipt.publication_revision > 0)
+                            .service_publication_revision()
+                            .filter(|revision| *revision > 0)
                             .ok_or_else(|| {
                                 port(PortErrorCode::Corrupt, "agents.references.receipt")
-                            })?
-                            .publication_revision;
+                            })?;
                         append_settings_references(
                             &mut references,
                             plan,

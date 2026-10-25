@@ -18,6 +18,7 @@ pub struct SucceededAgentOperationV1 {
     pub state: OperationState,
     pub plan: AgentPlanReadV1,
     grant_effects: Vec<OwnedEffectV1>,
+    service_publication_revision: Option<u64>,
 }
 
 impl SucceededAgentOperationV1 {
@@ -25,6 +26,10 @@ impl SucceededAgentOperationV1 {
     /// journal has been verified. This read projection cannot replay or restore.
     pub fn grant_effects(&self) -> &[OwnedEffectV1] {
         &self.grant_effects
+    }
+
+    pub fn service_publication_revision(&self) -> Option<u64> {
+        self.service_publication_revision
     }
 
     pub(super) fn accounted_bytes(&self) -> usize {
@@ -41,6 +46,7 @@ impl SucceededAgentOperationV1 {
             self.plan.external(),
             self.plan.agent_access_grants(),
             &self.grant_effects,
+            self.service_publication_revision,
         ))
         .map_or(usize::MAX, |bytes| {
             bytes.len().saturating_mul(8).saturating_add(64 * 1024)
@@ -221,6 +227,11 @@ pub(super) fn decode_selected_agent(
         return Err(invalid());
     }
     Ok(SucceededAgentOperationV1 {
+        service_publication_revision: durable.steps[5]
+            .terminal_result
+            .as_deref()
+            .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
+            .map(|receipt| receipt.publication_revision),
         operation_id: durable.operation_id,
         workspace_id: durable.workspace_id,
         idempotency: durable.idempotency,

@@ -142,7 +142,8 @@ not cached. This reuse does not authorize execution or replace recovery's strict
 journal reader.
 
 Successful read projections SHALL retain only the validated facts consumed by
-status and grant joins, not unused publication rollback payloads. The entire
+status, grant joins and service publication references, not unused publication
+rollback payloads. The entire
 original journal, including discarded steps and payloads, remains part of their
 validation closure. Memory accounting SHALL describe the retained projection.
 Unrelated database commits invalidate unchanged-byte proofs but MAY preserve
