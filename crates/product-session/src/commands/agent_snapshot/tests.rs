@@ -104,7 +104,36 @@ async fn epoch_expiry_during_final_service_read_rejects_the_snapshot() {
     exercise(Change::FinalEpoch).await;
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ReadKind {
+    Agents,
+    Catalog,
+    Observation,
+}
+
+#[tokio::test]
+async fn slow_catalog_and_body_reads_release_session_and_reject_stale_publication() {
+    for kind in [ReadKind::Catalog, ReadKind::Observation] {
+        for change in [
+            Change::None,
+            Change::Replace,
+            Change::Epoch,
+            Change::Revision,
+            Change::Publication,
+            Change::Recovery,
+            Change::Authority,
+            Change::Cancel,
+            Change::FinalEpoch,
+        ] {
+            exercise_read(change, kind).await;
+        }
+    }
+}
+
 async fn exercise(change: Change) {
+    exercise_read(change, ReadKind::Agents).await;
+}
+async fn exercise_read(change: Change, read_kind: ReadKind) {
     let root = tempfile::Builder::new()
         .prefix("hragents-")
         .tempdir_in(std::fs::canonicalize("/tmp").unwrap())
@@ -132,6 +161,7 @@ async fn exercise(change: Change) {
     let (final_started_server, final_release_server) =
         (final_status_started.clone(), final_status_release.clone());
     let status_reads = Arc::new(AtomicU64::new(0));
+    let blocked_reads = Arc::new(AtomicU64::new(0));
     let (started_server, release_server, changed_server) =
         (started.clone(), release.clone(), changed.clone());
     let server = tokio::spawn(async move {
@@ -147,6 +177,7 @@ async fn exercise(change: Change) {
                 final_release_server.clone(),
                 status_reads.clone(),
             );
+            let blocked_reads = blocked_reads.clone();
             tokio::spawn(async move {
                 let mut stream = BufReader::new(stream);
                 let mut line = String::new();
@@ -161,7 +192,14 @@ async fn exercise(change: Change) {
                 line.clear();
                 stream.read_line(&mut line).await.unwrap();
                 let request: LocalControlWireRequestV2 = serde_json::from_str(&line).unwrap();
-                if request.operation_id == "ListAgents" {
+                let blocked = match read_kind {
+                    ReadKind::Agents => "ListAgents",
+                    ReadKind::Catalog => "ListAgentPlanCatalog",
+                    ReadKind::Observation => "ListSessions",
+                };
+                if request.operation_id == blocked
+                    && blocked_reads.fetch_add(1, Ordering::SeqCst) == 0
+                {
                     started.notify_one();
                     release.notified().await;
                 }
@@ -209,15 +247,29 @@ async fn exercise(change: Change) {
     };
     let mut snapshot = Box::pin(async {
         if change == Change::OldLock {
-            sessions
+            return sessions
                 .lock()
                 .await
                 .as_mut()
                 .unwrap()
                 .agent_snapshot()
                 .await
-        } else {
-            agent_snapshot(&context, &state, None).await
+                .map(|_| ());
+        }
+        match read_kind {
+            ReadKind::Agents => agent_snapshot(&context, &state, None).await.map(|_| ()),
+            ReadKind::Catalog => super::super::desktop_snapshot(&context, &state)
+                .await
+                .map(|_| ()),
+            ReadKind::Observation => super::super::observation_read(
+                &context,
+                &state,
+                ObservationReadRequestV2::new(ObservationReadIntentV2::Status(
+                    ObservationStatusQueryV2 {},
+                )),
+            )
+            .await
+            .map(|_| ()),
         }
     });
     if change == Change::FinalEpoch {

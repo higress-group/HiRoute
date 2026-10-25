@@ -5,6 +5,26 @@ export function trustProgressScenarios({ fresh, until, control }) {
   const assert = (value, message) => { if (!value) throw new Error(message); };
   const attention = () => document.querySelector('.trust-attention');
   return [
+    scenario('desktop.home.trust-waits-for-recovery', ['home-trust-progress'], 'Suggestions wait for actual service recovery instead of warning during startup', async () => {
+      let snapshots = 0; let suggestions = 0;
+      await fresh(() => {
+        c().handlers.desktop_snapshot = payload => {
+          snapshots += 1;
+          const value = structuredClone(c().fixtureResponse('desktop_snapshot', payload));
+          value.service.recovery_ready = false;
+          value.service.mutation_available = false;
+          return value;
+        };
+        c().handlers.observation_read = payload => {
+          if (payload.request.intent.view === 'plan_trust_suggestions') { suggestions += 1; throw { code: 'RECOVERY_REQUIRED' }; }
+          return c().fixtureResponse('observation_read', payload);
+        };
+      });
+      await until(() => snapshots > 0 && attention()?.textContent.includes('正在读取路由证据'), 'startup recovery waiting state');
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      assert(suggestions === 0, 'Suggestions queried before recovery admitted reads');
+      assert(!attention().querySelector('[role="alert"]'), 'Unfinished startup appeared as a suggestion failure');
+    }),
     scenario('desktop.home.trust-pending-continues', ['home-trust-progress'], 'Budget-deferred suggestions remain pending and continue automatically in both languages', async () => {
       for (const language of ['zh', 'en']) {
         let reads = 0;

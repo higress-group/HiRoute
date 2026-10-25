@@ -85,7 +85,7 @@ try {
       await evaluate(client, 'document.querySelector("button").click()');
       await waitFor(client, 'Boolean(document.querySelector("[data-ux-results]")?.textContent)', { timeout: 20000 });
       const result = await evaluate(client, 'JSON.parse(document.querySelector("[data-ux-results]").textContent)');
-      const required = ['routing.options.id-safety', 'routing.options.exclusions', 'routing.options.service-error', 'routing.options.empty'];
+      const required = ['routing.options.loading', 'routing.options.id-safety', 'routing.options.exclusions', 'routing.options.service-error', 'routing.options.empty'];
       if (result.tests !== required.length || result.results?.length !== required.length
         || result.results.some(item => !['green', 'red'].includes(item.state))
         || new Set(result.results.map(item => item.name.split(':')[0])).size !== required.length

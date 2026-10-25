@@ -5,6 +5,7 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
     let update = operation
         .journal_update()
         .map_err(|_| port(PortErrorCode::InvalidData, "control.journal.inputs"))?;
+    let partitioned = payloads::partitioned(transaction, operation.operation_id.as_str())?;
     let mut expression = String::from(
         "json_set(operation_json, '$.state', ?2, '$.generation', ?3, '$.safe_error_code', ?4",
     );
@@ -32,7 +33,12 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
                 )
             })?
             .into(),
-        payloads::plan(transaction, operation, false)?.into(),
+        (if partitioned {
+            payloads::plan(transaction, operation, false)?
+        } else {
+            update.plan_json.to_owned()
+        })
+        .into(),
         operation.request_digest.as_str().to_owned().into(),
         operation.accepted_digest.as_str().to_owned().into(),
         operation.workspace_id.as_str().to_owned().into(),
@@ -41,13 +47,14 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
         operation.idempotency.key.clone().into(),
     ];
     for step in &update.changed_steps {
-        let encoded = serde_json::to_string(&payloads::step(
-            transaction,
-            operation.operation_id.as_str(),
-            step,
-            true,
-        )?)
-        .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
+        let projection = if partitioned {
+            payloads::step(transaction, operation.operation_id.as_str(), step, true)?
+        } else {
+            serde_json::to_value(step)
+                .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?
+        };
+        let encoded = serde_json::to_string(&projection)
+            .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
         values.push(encoded.into());
         expression.push_str(&format!(
             ", '$.steps[{}]', json(?{})",
@@ -84,11 +91,9 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
     let checkpoint = operation
         .journal_update()
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.inputs"))?;
-    // Earlier formats are decoded only while the coordinated converter still owns admission.
-    let version: u32 = connection
-        .pragma_query_value(None, "user_version", |r| r.get(0))
-        .map_err(|_| port(PortErrorCode::Unavailable, "control.current.format"))?;
-    let projection = if version >= 32 {
+    // A supported retained inline journal keeps its original immutable bytes.
+    let partitioned = payloads::partitioned(connection, operation.operation_id.as_str())?;
+    let projection = if partitioned {
         (|| {
             Ok::<_, PortError>((
                 payloads::plan(connection, operation, false)?,

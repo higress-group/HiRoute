@@ -127,7 +127,6 @@ export function DesktopApp() {
   const [operation, setOperation] = useState<DesktopOperation | null>(null);
   const [operationPresentation, setOperationPresentation] = useState<OperationPresentation>({ kind: 'background' });
   const [observing, setObserving] = useState(true);
-  const trustSuggestions = useTrustSuggestions(observing && Boolean(home.desktopSnapshot), `${refreshVersion}:${home.desktopSnapshot?.catalog.plans.map(p => `${p.agent_plan_id}:${p.head.head_revision}`).join(',') ?? ''}`, page === 'home');
   const [operationRecoveryPending, setOperationRecoveryPending] = useState(false);
   const [pollingRevision, setPollingRevision] = useState(0);
   const [operationError, setOperationError] = useState('');
@@ -203,6 +202,7 @@ export function DesktopApp() {
     unknown: text.serviceUnknown,
   }[serviceStatus.state];
   const serviceOperational = serviceStatus.operational;
+  const trustSuggestions = useTrustSuggestions(observing && serviceOperational && Boolean(home.desktopSnapshot), `${refreshVersion}:${home.desktopSnapshot?.catalog.plans.map(p => `${p.agent_plan_id}:${p.head.head_revision}`).join(',') ?? ''}`, page === 'home');
   const navigationLabel = serviceOperational
       ? language === 'zh' ? '仅在本机运行' : 'Running locally'
       : serviceLabel;

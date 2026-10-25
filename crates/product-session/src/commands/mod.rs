@@ -35,6 +35,8 @@ mod worker_tasks;
 pub use worker_tasks::*;
 mod web_confirmation;
 use web_confirmation::*;
+mod read_context;
+pub use read_context::{desktop_snapshot, observation_read};
 mod context;
 pub use context::*;
 async fn confirmation_session<'a>(
@@ -194,22 +196,6 @@ fn mutation_result(state: &str) -> ActionResult {
         },
     }
 }
-pub async fn desktop_snapshot(
-    window: &ClientContext<'_>,
-    state: &CommandState<'_>,
-) -> Result<DesktopSnapshot, DesktopFailure> {
-    main_window(window)?;
-    let mut guard = state.0.lock().await;
-    let session = guard.as_mut().ok_or_else(|| {
-        state
-            .1
-            .get()
-            .cloned()
-            .unwrap_or("RESIDENT_UNAVAILABLE".into())
-    })?;
-    session.resume_observing();
-    session.snapshot().await
-}
 pub async fn refresh_route_references(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
@@ -268,9 +254,11 @@ pub async fn plan_editor_options(
     input: hiroute_application_api::PlanEditorOptionsRequestV1,
 ) -> Result<hiroute_application_api::PlanEditorOptionsV1, DesktopFailure> {
     main_window(window)?;
-    let guard = state.0.lock().await;
-    let session = guard.as_ref().ok_or("RESIDENT_UNAVAILABLE")?;
-    crate::session::query(&session.client, "GetPlanEditorOptions", &input).await
+    let read = read_context::ReadContext::capture(state, false).await?;
+    let before = read.status().await?;
+    let options = crate::session::query(&read.client, "GetPlanEditorOptions", &input).await?;
+    let _guard = read.finish(state, &before).await?;
+    Ok(options)
 }
 pub async fn preview_rename(
     window: &ClientContext<'_>,
@@ -761,21 +749,6 @@ pub async fn stop_observing(
         .ok_or("RESIDENT_UNAVAILABLE")?
         .stop_observing();
     Ok(())
-}
-pub async fn observation_read(
-    window: &ClientContext<'_>,
-    state: &CommandState<'_>,
-    request: hiroute_application_api::ObservationReadRequestV2,
-) -> Result<serde_json::Value, DesktopFailure> {
-    main_window(window)?;
-    state
-        .0
-        .lock()
-        .await
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .observation_read(request)
-        .await
 }
 
 mod dispatch;

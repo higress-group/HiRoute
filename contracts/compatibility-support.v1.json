@@ -314,6 +314,7 @@
     "hiroute.operation-idempotency-result/v1",
     "hiroute.operation-input/v1",
     "hiroute.operation-lookup/v1",
+    "hiroute.operation-payload/v1",
     "hiroute.operation-step-input/v1",
     "hiroute.operation-step/v1",
     "hiroute.operation-view/v1",
@@ -2079,6 +2080,21 @@
         "crates/daemon/src/control/runtime/model_connections.rs",
         "crates/daemon/src/control/runtime/registered_management_candidate.rs",
         "crates/daemon/src/control/runtime/model_connections/registered_token_plan_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.operation-input/v1",
+      "field": "inline operation_json plan and large step compensation in supported pre-schema32 journals",
+      "mode": "recovery_read_only",
+      "owner": "local-storage",
+      "reason": "Schema32 new journals partition immutable input and large compensation payloads from mutable progress using authenticated operation-owned references. Supported retained inline journals keep their original bytes and typed validation, including their existing recovery writer when unfinished; startup conversion establishes complete recovery membership without rewriting them. Current producers never emit inline plans. The coordinated source backup and matching-version recovery preserve the entire old representation.",
+      "removal_condition": "End inline journal support only through an explicit compatibility decision preserving supported recovery and historical reads.",
+      "allowed_paths": [
+        "crates/local-storage/src/control/payloads.rs",
+        "crates/local-storage/src/control/journal.rs",
+        "crates/local-storage/src/control/mod.rs",
+        "crates/local-storage/src/migrations/current_dependencies_v32.rs",
+        "crates/local-storage/src/control/current_dependencies.rs"
       ]
     }
   ]

@@ -160,7 +160,7 @@ fn stage_version_in(
 /// Local head, version state and consumed draft share the terminal journal transaction.
 /// The outer writer/admission owner has verified installation; the journal generation
 /// CAS in the same transaction prevents a detached intent from committing this head.
-pub(super) fn finish_plan_operation(
+pub(in crate::control) fn finish_plan_operation(
     tx: &Connection,
     operation: &OperationV1,
 ) -> Result<(), PlanVersionError> {

@@ -26,7 +26,7 @@ impl LocalControlAdapter {
                     .effective()
                     .ok()
                     .and_then(|configuration| configuration.decision_service().cloned());
-                let before = self.routing_compilation_snapshot(workspace)?;
+                let local_before = self.routing_read_stamp()?;
                 let read_rows = || {
                     let stores = self.stores_lock().map_err(super::map_port)?;
                     let head = match &change.target {
@@ -65,18 +65,10 @@ impl LocalControlAdapter {
                 };
                 let (mut current_head, draft, mut heads, decision_service) = read_rows()?;
                 let after = self.routing_compilation_snapshot(workspace)?;
-                let repeated = read_rows()?;
-                if before.facts != after.facts
-                    || before.expected_revisions != after.expected_revisions
-                    || before.active_publication != after.active_publication
-                    || repeated
-                        != (
-                            current_head.clone(),
-                            draft.clone(),
-                            heads.clone(),
-                            decision_service.clone(),
-                        )
-                {
+                // Plan rows and routing inputs are collected once. The routing collector
+                // validates CPA/source facts after capture; this wider local fence also
+                // covers the authoring rows captured before it.
+                if local_before != self.routing_read_stamp()? {
                     return Err(ControlReadError::SnapshotChanged);
                 }
                 if let Some(head) = &current_head {

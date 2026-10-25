@@ -63,7 +63,6 @@ END;
 
 pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::LocalStorageError> {
     crate::control::current_dependencies::initialize(tx)?;
-    crate::control::payloads::migrate(tx).map_err(|_| crate::LocalStorageError::InvalidData)?;
     tx.execute_batch(TRIGGERS)?;
     Ok(())
 }

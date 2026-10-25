@@ -60,11 +60,13 @@ mod native_permissions;
 #[path = "../agents/native_reference.rs"]
 mod native_reference;
 pub(crate) mod payloads;
+mod read_stamp;
 use native_permissions::{
     current_artifact_aad, current_artifact_schema, desired_windows_permissions,
 };
 #[cfg(windows)]
 use native_permissions::{read_private_restore_file, windows_artifact_fingerprint};
+pub use read_stamp::ControlReadStamp;
 #[path = "../agents/native_restoration_ack.rs"]
 mod native_restoration_ack;
 mod operation_status;
@@ -1764,9 +1766,15 @@ fn store_step(
     operation: &OperationV1,
     step: &OperationStepV1,
 ) -> PortResult<()> {
+    let projection = if payloads::partitioned(transaction, operation.operation_id.as_str())? {
+        payloads::step(transaction, operation.operation_id.as_str(), step, true)?
+    } else {
+        serde_json::to_value(step)
+            .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?
+    };
     let encoded = serde_json::to_string(&hiroute_domain::canonicalize_json(json!({
         "schema": "hiroute.operation-step/v1",
-        "step": payloads::step(transaction, operation.operation_id.as_str(), step, true)?,
+        "step": projection,
     })))
     .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
     transaction

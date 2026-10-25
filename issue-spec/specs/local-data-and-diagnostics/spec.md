@@ -79,6 +79,39 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **WHEN** supported older data needs a complete initial conversion or a full-store integrity audit is performed
 - **THEN** the existing coordinated recovery boundary preserves the source and reports the actual work separately; interruption cannot publish partial current-state coverage or turn unchecked historical data into a successful integrity result.
 
+### Requirement: Journal progress does not rewrite immutable payloads
+
+Current Operations SHALL store their immutable admitted input and large compensation
+payloads separately from mutable journal progress. The storage representation MUST
+preserve the domain input, accepted digest, step order, ownership and recovery
+semantics. A reference is not execution authority: cold reads authenticate payload
+bytes and reconstruct the typed input; warm updates compare their exact committed
+input, generation, identity and both journal copies in the same transaction.
+Missing, substituted or changed required bytes SHALL fail validation. Supported
+retained inline journals keep their original bytes and existing recovery checks;
+ordinary startup does not rewrite completed history into the new representation.
+
+The successful local Plan head/version/draft change and terminal journal SHALL
+commit in one Control transaction under existing writer and admission guards.
+Required external completion remains explicitly pending until its real callback
+succeeds. Restart SHALL recover that completion without inferring it from a terminal
+journal label, and SHALL preserve the explicit retry policy for parked native tails.
+
+#### Scenario: Large immutable payload survives repeated progress updates
+
+- **WHEN** an admitted Operation with a large immutable input or compensation payload updates attempts or state
+- **THEN** only the compact progress changes, the payload bytes remain unchanged, and a later cold read reconstructs the same typed Operation.
+
+#### Scenario: Required payload is damaged after an earlier successful read
+
+- **WHEN** required retained payload bytes are removed or altered while their reference remains
+- **THEN** both currentness validation and cold recovery reject the damaged value; an earlier in-memory value cannot authorize the update.
+
+#### Scenario: Final local transaction or external completion is interrupted
+
+- **WHEN** a Plan operation stops before its local terminal transaction commits or before required external finalization completes
+- **THEN** head/version/draft and journal do not expose a partial local commit, and required external work stays in the durable recovery set until confirmed complete.
+
 ### Requirement: Supported upgrades use one three-store coordinator
 
 0.2.0 is the first supported release baseline; historical 0.1.0/schema22 records are

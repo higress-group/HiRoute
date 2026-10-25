@@ -20,7 +20,7 @@ pub use agents::*;
 pub use backup::{BackupSet, SingleWriterBackupBarrier, SqliteBackup};
 pub use control::{
     ApplyCapabilityRegistrar, ApplyCapabilityRegistrationV1, ComputeSubscriptionValidationRecordV1,
-    ComputeSubscriptionValidationStateV1, ControlStore, ManagedArtifactStore,
+    ComputeSubscriptionValidationStateV1, ControlReadStamp, ControlStore, ManagedArtifactStore,
     SucceededAgentOperationV1,
 };
 pub use runtime::RuntimeStore;

@@ -156,34 +156,13 @@ pub(super) fn expand_step_record(db: &Connection, owner: &str, encoded: &str) ->
     serde_json::to_value(&record).map_err(|_| invalid())
 }
 
-/// One-time format conversion inside the coordinated migration transaction.
-pub(crate) fn migrate(db: &Connection) -> PortResult<()> {
-    let mut query = db
-        .prepare("SELECT operation_json FROM operations ORDER BY rowid")
-        .map_err(|_| unavailable())?;
-    let rows = query
-        .query_map([], |r| r.get::<_, String>(0))
-        .map_err(|_| unavailable())?;
-    for row in rows {
-        let operation = decode_operation(&Default::default(), &row.map_err(|_| invalid())?)?;
-        let encoded = encode(db, &operation)?;
-        db.execute(
-            "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
-            params![operation.operation_id.as_str(), encoded],
-        )
-        .map_err(|_| unavailable())?;
-        for s in &operation.steps {
-            let encoded = serde_json::to_string(&hiroute_domain::canonicalize_json(json!({
-                "schema":"hiroute.operation-step/v1", "step":step(db, operation.operation_id.as_str(), s, true)?
-            }))).map_err(|_| invalid())?;
-            db.execute(
-                "UPDATE operation_steps SET step_json=?3 WHERE operation_id=?1 AND step_no=?2",
-                params![operation.operation_id.as_str(), s.sequence, encoded],
-            )
-            .map_err(|_| unavailable())?;
-        }
-    }
-    Ok(())
+/// Older completed journals retain their original bytes. The producer format is
+/// explicit in the input field; old inputs stay on their registered legacy writer
+/// until their own recovery completes, rather than rewriting unrelated history.
+pub(super) fn partitioned(db: &Connection, owner: &str) -> PortResult<bool> {
+    db.query_row("SELECT json_extract(operation_json,'$.plan.schema')=?2 FROM operations WHERE operation_id=?1",
+        params![owner,SCHEMA], |r| r.get::<_,Option<bool>>(0)).optional()
+        .map(|value| value.flatten().unwrap_or(false)).map_err(|_| invalid())
 }
 
 fn invalid() -> PortError {
