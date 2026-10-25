@@ -117,6 +117,21 @@ registry admission and its separately supplied Plan/control join, so those check
 do not repeatedly decode the same full publication. Changed persisted bytes still
 enter complete authentication; this proof does not cover mutable journal state.
 
+Completed provenance reads MAY reuse a bounded decoded Operation only after
+comparing the complete current journal and all retained payload bytes in the same
+SQLite snapshot. This memo contains decoded content, not a currentness verdict;
+selected indexed receipts, current identity, native files and grants SHALL still
+be checked at their existing boundaries. Changed or missing bytes and nonterminal
+operations take the cold path. Caller transactions compare actual bytes on every
+lookup, including after rollback; reopening does not retain the memo. No stored
+format or migration is introduced for this optimization.
+
+A publication marker's parsed immutable record MAY be shared while the exact
+compensation object and all effect identity fields are unchanged. Mutable caller
+copies, replacement records and changed effect identities SHALL be revalidated.
+Every use still joins the marker to its owning Operation and current durable
+checkpoint; a cached record never establishes current installation or permission.
+
 Read-only successful Agent projections used by status, installed-model budget
 checks and restored grant attribution MAY share verified immutable facts after
 checking exact current row identity, raw journal and indexed steps in one storage

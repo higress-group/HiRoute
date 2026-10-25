@@ -125,13 +125,20 @@ fn authenticate_owner(
     workspace: &WorkspaceId,
     target: &str,
     expected: &Owner,
+    cache: Option<&RefCell<completed_operation_cache::CompletedOperationCache>>,
 ) -> PortResult<OperationV1> {
-    let operation = load_operation_where(
-        &Default::default(),
-        db,
-        "operation_id=?1",
-        [expected.operation.as_str()],
-    )?
+    let operation = if let Some(cache) = cache {
+        cache
+            .borrow_mut()
+            .read(&Default::default(), db, &expected.operation)?
+    } else {
+        load_operation_where(
+            &Default::default(),
+            db,
+            "operation_id=?1",
+            [expected.operation.as_str()],
+        )?
+    }
     .ok_or_else(invalid)?;
     if operation.workspace_id != *workspace
         || operation.state != OperationState::Succeeded
@@ -176,12 +183,16 @@ fn replace(
 
 /// Accepted target/revision checks and writer claim precede this in the same transaction.
 /// The exact current owner is captured even when the user selected an older Restore point.
-pub(super) fn admit(db: &Connection, operation: &OperationV1) -> PortResult<()> {
+pub(super) fn admit(
+    db: &Connection,
+    operation: &OperationV1,
+    cache: Option<&RefCell<completed_operation_cache::CompletedOperationCache>>,
+) -> PortResult<()> {
     validate_coverage(db)?;
     for intent in head_intents(operation) {
         let before = current(db, &operation.workspace_id, intent.target())?;
         if let Some(before) = &before {
-            authenticate_owner(db, &operation.workspace_id, intent.target(), before)?;
+            authenticate_owner(db, &operation.workspace_id, intent.target(), before, cache)?;
         }
         db.execute("INSERT INTO artifact_head_transitions(operation_id,target,before_json) VALUES(?1,?2,?3)",
             params![operation.operation_id.as_str(), intent.target(), serde_json::to_string(&before).map_err(|_| invalid())?]).map_err(|_| invalid())?;
@@ -190,7 +201,11 @@ pub(super) fn admit(db: &Connection, operation: &OperationV1) -> PortResult<()> 
 }
 
 /// Called before terminal journal publication/releasing the writer, in that same transaction.
-pub(super) fn finish(db: &Connection, operation: &OperationV1) -> PortResult<()> {
+pub(super) fn finish(
+    db: &Connection,
+    operation: &OperationV1,
+    cache: Option<&RefCell<completed_operation_cache::CompletedOperationCache>>,
+) -> PortResult<()> {
     if !matches!(
         operation.state,
         OperationState::Succeeded | OperationState::RolledBack
@@ -216,7 +231,7 @@ pub(super) fn finish(db: &Connection, operation: &OperationV1) -> PortResult<()>
             return Err(invalid());
         }
         if let Some(before) = &before {
-            authenticate_owner(db, &operation.workspace_id, intent.target(), before)?;
+            authenticate_owner(db, &operation.workspace_id, intent.target(), before, cache)?;
         }
         if operation.state == OperationState::Succeeded {
             // A missing/foreign receipt cannot retire an existing recovery owner.
@@ -287,7 +302,13 @@ impl ControlStore {
             if expected.operation.as_str() != id {
                 return Err(invalid());
             }
-            let operation = authenticate_owner(&db, workspace, &target, &expected)?;
+            let operation = authenticate_owner(
+                &db,
+                workspace,
+                &target,
+                &expected,
+                Some(&self.completed_operation_cache),
+            )?;
             let subject = operation
                 .agent_input()
                 .connection_subject()

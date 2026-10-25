@@ -91,6 +91,9 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
  assert.equal(await count('preview_agent_settings'),0,'mapping refresh rejects a changed native selection before Preview/Apply');
  assert.ok(await evaluate(client, `document.querySelector('.trial-mapping .trial-presets').textContent.includes('External update')`));
  await shot('trial-agent-stale-mapping-en-light-755');
+ // Hold periodic reconciliation: a completed Apply must trigger its own exact
+ // readback, even before the next timer tick. No wall-clock performance assertion.
+ await evaluate(client, `(()=>{const original=window.setInterval.bind(window);window.setInterval=(callback,ms,...args)=>original(callback,ms===2000?60000:ms,...args);return true;})()`);
  await click('.trial-mapping button','Review and map Agent');
  await waitFor(client, `document.querySelector('.trial-mapping .callout.good')?.textContent.includes('Mapping confirmed')`);
  assert.equal(await count('preview_agent_settings'),1);

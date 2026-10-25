@@ -368,6 +368,11 @@ never the preceding successful operation. Completed connections, drafts and Plan
 remain visible after later failures. A published Plan can be mapped from Routing
 after reload without recreating it.
 
+After a mapping Apply reply, the flow SHALL immediately read the exact selected
+Agent settings and reconcile the submitted operation/selection. A completed mapping
+SHALL NOT wait for a periodic timer before that read. Pending or uncertain outcomes
+retain same-operation reconciliation without resubmission or invented success.
+
 After this flow confirms that the Agent mapping applied successfully, it SHALL wait for matching Plan activity while the trial page and window remain visible. It SHALL query the existing sessions view from that confirmation time at a five-second cadence, skipping an in-flight read. The first matching candidate observed by the flow SHALL remain selectable through "Watch this session", which opens its live routing timeline only on user action. A Plan match SHALL NOT be described as proof of the Agent identity or a newly created, chronologically first session. Closing or hiding the flow stops reads; showing it resumes them. A read failure SHALL offer retry while retaining the model-performance and session-list actions.
 
 #### Scenario: Switch Agent while a previous read is pending

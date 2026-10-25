@@ -47,6 +47,7 @@ mod agent_read;
 mod artifact_dependencies;
 mod artifact_heads;
 mod artifact_validation;
+mod completed_operation_cache;
 mod native_targets;
 pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
@@ -92,6 +93,7 @@ pub use compute::{
 };
 
 pub struct ControlStore {
+    completed_operation_cache: RefCell<completed_operation_cache::CompletedOperationCache>,
     agent_history_cache: RefCell<agent_history_cache::AgentHistoryCache>,
     // One rebuildable active record; every hit compares a fresh raw SQL row.
     active_publication_cache: RefCell<Option<hiroute_domain::PublicationRecordV1>>,
@@ -261,6 +263,7 @@ impl ControlStore {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
             agent_history_cache: RefCell::new(Default::default()),
+            completed_operation_cache: RefCell::new(Default::default()),
             active_publication_cache: RefCell::new(None),
             startup_lock: None,
             connection: RefCell::new(open_database(
@@ -282,6 +285,7 @@ impl ControlStore {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
             agent_history_cache: RefCell::new(Default::default()),
+            completed_operation_cache: RefCell::new(Default::default()),
             active_publication_cache: RefCell::new(None),
             startup_lock: None,
             connection: RefCell::new(open_database_from_set(
@@ -618,7 +622,11 @@ impl ControlStore {
             .map_err(|_| port(PortErrorCode::Conflict, "control.operation.insert"))?;
         store_steps(&transaction, operation)?;
         native_targets::remember(&transaction, operation)?;
-        artifact_heads::admit(&transaction, operation)?;
+        artifact_heads::admit(
+            &transaction,
+            operation,
+            Some(&self.completed_operation_cache),
+        )?;
         compute::begin_save_handoff_in(&transaction, operation)?;
         transaction
             .commit()
@@ -756,11 +764,10 @@ impl ControlRepositoryPort for ControlStore {
     }
 
     fn load_operation(&self, operation_id: &OperationId) -> PortResult<Option<OperationV1>> {
-        load_operation_where(
+        self.completed_operation_cache.borrow_mut().read(
             &self.diagnostics.borrow(),
             &self.connection.borrow(),
-            "operation_id = ?1",
-            params![operation_id.as_str()],
+            operation_id,
         )
     }
 
@@ -1538,7 +1545,11 @@ impl ControlRepositoryPort for ControlStore {
             .map_err(|_| port(PortErrorCode::Conflict, "control.finish.plan-head"))?;
         decision_services::finish(&transaction, operation)?;
         compute::finish_save_handoff_in(&transaction, operation)?;
-        artifact_heads::finish(&transaction, operation)?;
+        artifact_heads::finish(
+            &transaction,
+            operation,
+            Some(&self.completed_operation_cache),
+        )?;
         let generation = journal::save(&transaction, operation)?;
         if operation.state != OperationState::NeedsAttention {
             let released = transaction

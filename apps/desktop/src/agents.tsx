@@ -307,14 +307,16 @@ export function Agents({
           setBaseline(fingerprint);
           setEditor(null);
         }
-        onMutation();
       }
+      // Complete this editor's exact readback before refreshing other pages.
+      // Their independent discovery must not queue ahead of the result being saved.
       await refresh();
+      if (result.mutation) onMutation();
     } catch (caught) {
       setPreview(blockedByCheck);
       setActionFailure(caught);
-      onMutation();
       await refresh();
+      onMutation();
     } finally {
       setBusy(false);
       setBusyText('');

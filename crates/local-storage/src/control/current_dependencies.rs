@@ -39,7 +39,8 @@ pub(crate) fn initialize(tx: &Connection) -> Result<(), LocalStorageError> {
     for row in query.query_map([], |r| r.get::<_, String>(0))? {
         let operation = decode_operation(&Default::default(), &row?)
             .map_err(|_| LocalStorageError::InvalidData)?;
-        super::artifact_heads::admit(tx, &operation).map_err(|_| LocalStorageError::InvalidData)?;
+        super::artifact_heads::admit(tx, &operation, None)
+            .map_err(|_| LocalStorageError::InvalidData)?;
     }
     drop(query);
     // Rows which were already nonterminal need membership even if an UPDATE above

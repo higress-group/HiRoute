@@ -4,6 +4,8 @@ use hiroute_domain::PortErrorCode;
 use std::sync::Arc;
 
 const KINDS: &[&str] = &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"];
+#[path = "completed_operation_cache_tests.rs"]
+mod completed_decoder;
 #[path = "agent_history_epoch_tests.rs"]
 mod epoch;
 fn complete(control: &ControlStore, key: &str, payload: &str) -> OperationV1 {

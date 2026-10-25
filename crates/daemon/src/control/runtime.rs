@@ -669,6 +669,7 @@ impl ProductionControlRuntime {
         let delegation_finalization = Arc::new(DelegationFinalization::default());
         let adapter = Arc::new(LocalControlAdapter {
             publication_diagnostics: Mutex::new(Default::default()),
+            publication_marker_cache: Mutex::new(None),
             stores: Mutex::new(stores),
             price_snapshot: Arc::new(hiroute_application::prices::PriceSnapshotSlot::default()),
             delegation_digest_authority: digest_authority,
@@ -987,6 +988,7 @@ fn delegation_epoch() -> Result<String, String> {
 
 struct LocalControlAdapter {
     publication_diagnostics: Mutex<DiagnosticsPort>,
+    publication_marker_cache: Mutex<Option<publication::DecodedMarker>>,
     price_snapshot: Arc<hiroute_application::prices::PriceSnapshotSlot>,
     stores: Mutex<LocalStorageSet>,
     delegation_digest_authority: DigestAuthority,

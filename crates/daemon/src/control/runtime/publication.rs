@@ -21,6 +21,9 @@ pub(super) const PUBLICATION_TARGET: &str = "publication/current";
 const PUBLICATION_MARKER_SCHEMA: &str = "hiroute.product-publication-marker/v2";
 const LEGACY_MARKER_SCHEMA: &str = "hiroute.product-publication-marker/v1";
 
+#[cfg(test)]
+thread_local! { pub(super) static MARKER_DECODES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
 mod lifecycle;
 use lifecycle::target_error;
 
@@ -33,7 +36,7 @@ enum InstallationDecision {
     Abort,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PublicationEffectMarkerV1 {
     schema: String,
@@ -47,6 +50,25 @@ struct PublicationEffectMarkerV1 {
     record: Option<PublicationRecordV1>,
     #[serde(default)]
     decision: InstallationDecision,
+}
+
+// One immutable parsed marker. Holding the Arc means a caller's Arc::make_mut
+// produces a different allocation; pointer equality never accepts changed content.
+// The operation, current journal and publication bindings are rechecked by callers.
+pub(super) struct DecodedMarker {
+    effect: OwnedEffectV1,
+    operation_id: OperationId,
+    marker: PublicationEffectMarkerV1,
+}
+impl DecodedMarker {
+    fn matches(&self, effect: &OwnedEffectV1) -> bool {
+        std::sync::Arc::ptr_eq(&self.effect.compensation, &effect.compensation)
+            && self.effect.effect_id == effect.effect_id
+            && self.effect.kind == effect.kind
+            && self.effect.target == effect.target
+            && self.effect.before_fingerprint == effect.before_fingerprint
+            && self.effect.after_fingerprint == effect.after_fingerprint
+    }
 }
 
 impl LocalControlAdapter {
@@ -124,7 +146,7 @@ impl LocalControlAdapter {
             .iter()
             .find(|effect| effect.effect_id == intent.effect_id())
         {
-            let (_, marker) = Self::decode_publication_marker(effect)?;
+            let (_, marker) = self.decode_publication_marker(effect)?;
             if let Some(record) = marker.record {
                 return Ok(record);
             }
@@ -242,7 +264,7 @@ impl LocalControlAdapter {
         operation: &OperationV1,
         effect: &OwnedEffectV1,
     ) -> PortResult<(OperationId, PublicationEffectMarkerV1)> {
-        let (operation_id, mut marker) = Self::decode_publication_marker(effect)?;
+        let (operation_id, mut marker) = self.decode_publication_marker(effect)?;
         if operation_id != operation.operation_id {
             return Err(invalid("publication.effect.operation-binding"));
         }
@@ -286,8 +308,32 @@ impl LocalControlAdapter {
     }
 
     fn decode_publication_marker(
+        &self,
         effect: &OwnedEffectV1,
     ) -> PortResult<(OperationId, PublicationEffectMarkerV1)> {
+        let mut cache = self
+            .publication_marker_cache
+            .lock()
+            .map_err(|_| invalid("publication.marker-cache.lock"))?;
+        if let Some(cached) = cache.as_ref()
+            && cached.matches(effect)
+        {
+            return Ok((cached.operation_id.clone(), cached.marker.clone()));
+        }
+        let (operation_id, marker) = Self::decode_publication_marker_uncached(effect)?;
+        *cache = Some(DecodedMarker {
+            effect: effect.clone(),
+            operation_id: operation_id.clone(),
+            marker: marker.clone(),
+        });
+        Ok((operation_id, marker))
+    }
+
+    fn decode_publication_marker_uncached(
+        effect: &OwnedEffectV1,
+    ) -> PortResult<(OperationId, PublicationEffectMarkerV1)> {
+        #[cfg(test)]
+        MARKER_DECODES.with(|count| count.set(count.get() + 1));
         if effect.kind != OwnedEffectKind::Publication || effect.target != PUBLICATION_TARGET {
             return Err(invalid("publication.effect.kind"));
         }

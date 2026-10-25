@@ -56,23 +56,23 @@ export function TrialAgentMapping({ plan, initial, language, mutable, onOperatio
   const [done, setDone] = useState<number | null>(null);
   const requested = useRef<{ context: string; fingerprint: string } | null>(null);
   const inFlight = useRef(false);
-  async function refresh() {
+  async function refresh(observedPending = pending) {
     if (inFlight.current) return;
     inFlight.current = true;
     try {
       const current = await agentRead.refresh();
       if (!current) return;
       setMapping(value => value ?? initialTrialMapping(current));
-      if (pending && mapping && requested.current) {
+      if (observedPending && mapping && requested.current) {
         const agent = current.selected?.agent_id === mapping.agentId ? current.selected : null;
         const status = agent && agentModelStatus(agent);
         const exact = agent?.context_id === requested.current.context && status?.state === 'configured'
           && editorFingerprint(agentEditorSeed(agent, 'model', [])) === requested.current.fingerprint;
         // For an unknown submission result the settings are the authority, but no
         // unrelated global operation is treated as this flow's completion.
-        if (exact && (pending === 'unverified' || status?.operation_id === pending.operation_id || pending.state === 'succeeded')) {
+        if (exact && (observedPending === 'unverified' || status?.operation_id === observedPending.operation_id || observedPending.state === 'succeeded')) {
           setDone(previous => previous ?? Date.now()); setPending(null); setError(''); onChanged();
-        } else if (pending !== 'unverified' && status?.operation_id === pending.operation_id && ['rolled_back', 'failed', 'cancelled', 'compensated'].includes(status.operation_state ?? '')) {
+        } else if (observedPending !== 'unverified' && status?.operation_id === observedPending.operation_id && ['rolled_back', 'failed', 'cancelled', 'compensated'].includes(status.operation_state ?? '')) {
           setPending(null); setError(t('路由已发布，但 Agent 映射未生效。请检查状态后重试。', 'The route is published, but the Agent mapping did not apply. Review its state before retrying.'));
         }
       }
@@ -117,8 +117,10 @@ export function TrialAgentMapping({ plan, initial, language, mutable, onOperatio
       if (result.mutation && classifyAgentMutation(result.mutation) !== 'cancelled') {
         setPending(result.mutation.operation ?? 'unverified');
         if (result.mutation.operation) onOperation(result.mutation.operation);
+        // Read the exact submitted outcome immediately. The periodic read is only
+        // recovery for an operation still in flight, not a minimum completion delay.
+        await refresh(result.mutation.operation ?? 'unverified');
       }
-      onChanged();
     } catch {
       if (submitted) setPending('unverified');
       setError(t('映射尚未确认。已发布路由会保留，请刷新结果或到 Agent 页面处理。', 'Mapping is unconfirmed. The published route is retained; refresh the result or inspect the Agent page.'));
