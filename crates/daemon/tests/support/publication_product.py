@@ -670,8 +670,8 @@ finally:
             shutil.copy2(source, target)
         return self.diagnostics_snapshot(destination)
 
-    def close(self):
-        failed = sys.exc_info()[0] is not None
+    def close(self, *, failure=False):
+        failed = failure or sys.exc_info()[0] is not None
         cleanup_failure = None
         try:
             self.stop(diagnostic_failure=failed)

@@ -528,6 +528,19 @@ class ProductFailureEvidenceTests(unittest.TestCase):
         rows = json.loads((self.product.root / 'harness-outputs.json').read_text())['frames']
         self.assertEqual([blob[row['offset']:row['offset'] + row['length']] for row in rows], self.product.outputs)
 
+    def test_temporary_root_survives_a_caught_business_failure(self):
+        self.product.temporary = self.temporary
+        try:
+            raise AssertionError('driver records failure before cleanup')
+        except AssertionError:
+            pass
+        self.product.close(failure=True)
+        self.assertTrue(self.product.root.is_dir())
+        blob = (self.product.root / 'harness-failure.bin').read_bytes()
+        rows = json.loads((self.product.root / 'harness-failure.json').read_text())['frames']
+        self.assertEqual([blob[row['offset']:row['offset'] + row['length']] for row in rows], self.product.outputs)
+        self.assertFalse(self.temporary._finalizer.alive)
+
     def test_cleanup_failure_without_prior_error_stays_red_and_retains_output(self):
         self.product.stop = lambda **kwargs: (_ for _ in ()).throw(RuntimeError('cleanup failed'))
         with self.assertRaisesRegex(RuntimeError, '^cleanup failed$'):

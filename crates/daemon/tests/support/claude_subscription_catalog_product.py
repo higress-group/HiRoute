@@ -324,7 +324,7 @@ def run(repository, label):
             product.preserve_diagnostics(evidence / 'diagnostics')
             report['evidence_root'] = str(evidence)
             private_json(evidence / 'report.json', report)
-        product.close()
+        product.close(failure=report['state'] != 'green')
     print(json.dumps(report, sort_keys=True), flush=True)
     require(report['state'] == 'green', 'claude_catalog_product_red')
 
