@@ -34,7 +34,8 @@ and bounds EOF reads in time and bytes. Unix descriptor flags retain their contr
 neither a request-file selector nor native handle text contains the credential itself.
 Unix `--secret-fd` and non-task `--capability-fd` keep the documented regular-file
 redirect (`3< KEY_FILE`) and inherited pipes, reject stdio/devices, and bound the
-read to 512 bytes and 2s. `work-plans`/`tasks` capability material stays pipe-only.
+read to 512 bytes and 2s. The deadline uses poll on `/dev/fd/N` without changing
+inherited file-status flags. `work-plans`/`tasks` capability material stays pipe-only.
 The shared reader does not execute a shell, alter requests or choose a business schema.
 
 `sessions receipt RECEIPT_ID` continues to serialize `SessionLookupV1` and read the v1

@@ -426,55 +426,39 @@ pub(crate) fn read_protected_fd(fd: u32) -> Result<String, LocalControlClientErr
 /// Bound both bytes and time; never load `/dev/zero` or wait indefinitely for EOF.
 #[cfg(unix)]
 fn read_protected_fd_unix(fd: u32) -> Result<String, LocalControlClientError> {
-    use std::io::Read;
-    use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
-    use std::time::{Duration, Instant};
-
     let denied = || LocalControlClientError::ProtectedInput;
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY)
-        .open(format!("/dev/fd/{fd}"))
-        .map_err(|_| denied())?;
-    let file_type = file.metadata().map_err(|_| denied())?.file_type();
-    if !file_type.is_file() && !file_type.is_fifo() {
+    let mut bytes = crate::unix_bounded_fd::read_unix_fd_bounded(
+        fd,
+        crate::unix_bounded_fd::UnixFdReadBounds {
+            min_fd: 3,
+            max_bytes: 512,
+            timeout: std::time::Duration::from_secs(2),
+        },
+    )
+    .map_err(|_| denied())?;
+    if bytes.is_empty() || bytes.contains(&0) {
+        bytes.fill(0);
         return Err(denied());
     }
-    let deadline = Instant::now() + Duration::from_secs(2);
-    let mut bytes = [0u8; 513];
-    let mut len = 0;
-    let outcome = loop {
-        if Instant::now() >= deadline || len == bytes.len() {
-            break Err(denied());
-        }
-        match file.read(&mut bytes[len..]) {
-            Ok(0) => break Ok(()),
-            Ok(n) => len += n,
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(5));
+    match String::from_utf8(bytes) {
+        Ok(mut value) => {
+            if value.ends_with("\r\n") {
+                value.truncate(value.len() - 2);
+            } else if value.ends_with('\n') {
+                value.pop();
             }
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => break Err(denied()),
+            if value.is_empty() {
+                Err(denied())
+            } else {
+                Ok(value)
+            }
         }
-    };
-    let parsed = outcome.and_then(|_| {
-        if len == 0 || len > 512 || bytes[..len].contains(&0) {
-            return Err(denied());
-        }
-        let mut value = String::from_utf8(bytes[..len].to_vec()).map_err(|_| denied())?;
-        if value.ends_with("\r\n") {
-            value.truncate(value.len() - 2);
-        } else if value.ends_with('\n') {
-            value.pop();
-        }
-        if value.is_empty() {
+        Err(error) => {
+            let mut invalid = error.into_bytes();
+            invalid.fill(0);
             Err(denied())
-        } else {
-            Ok(value)
         }
-    });
-    bytes.fill(0);
-    parsed
+    }
 }
 
 #[cfg(windows)]
@@ -648,5 +632,28 @@ mod protected_fd_tests {
             read_protected_fd(nul.as_raw_fd() as u32),
             Err(LocalControlClientError::ProtectedInput)
         );
+    }
+
+    fn timeout_under_watchdog(kind: &str, prefix: &[u8]) {
+        if let Some(fd) = crate::unix_bounded_fd::watchdog::child_fd() {
+            std::process::exit(if read_protected_fd(fd).is_err() { 0 } else { 1 });
+        }
+        let (read, write) = nix::unistd::pipe().unwrap();
+        if !prefix.is_empty() {
+            nix::unistd::write(&write, prefix).unwrap();
+        }
+        let child = crate::unix_bounded_fd::watchdog::spawn(&read, kind);
+        crate::unix_bounded_fd::watchdog::wait(child, std::time::Duration::from_secs(5));
+        drop(write);
+    }
+
+    #[test]
+    fn protected_fd_empty_pipe_times_out_under_watchdog() {
+        timeout_under_watchdog("protected-empty", b"");
+    }
+
+    #[test]
+    fn protected_fd_partial_pipe_times_out_under_watchdog() {
+        timeout_under_watchdog("protected-partial", b"partial-secret");
     }
 }
