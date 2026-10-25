@@ -185,7 +185,10 @@ async fn cancelled_blocking_result_cleanup_finishes_before_scope_join() {
         .cancel_and_finalize(Duration::from_millis(100))
         .await
         .unwrap();
-    assert_eq!(active_during_cleanup, 1, "discarded result still owns cleanup");
+    assert_eq!(
+        active_during_cleanup, 1,
+        "discarded result still owns cleanup"
+    );
     assert_eq!(join_during_cleanup, Err(ExecutorError::JoinTimeout));
     assert_eq!(scope.active_children(), 0);
     assert_eq!(executor.snapshot().late_dropped, 1);
