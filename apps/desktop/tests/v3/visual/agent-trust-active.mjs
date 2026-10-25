@@ -150,6 +150,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(s => s.capabilities.includes('home-trust-progress'))) {
+        checks.push(...await (await import('./trust-progress-captures.mjs')).trustProgressCaptures(client, baseUrl, outputRoot));
+      }
       if (selected.some(s => s.capabilities.includes('native-recovery'))) {
         checks.push(...await (await import('./native-connection-captures.mjs')).nativeConnectionCaptures(client, baseUrl, outputRoot));
       }

@@ -208,6 +208,14 @@ MUST NOT appear as no suggestion. Home, navigation and Plan-list indicators use
 the same suggestion result. Applying a suggestion opens an ordinary editable
 change; it never silently publishes.
 
+Work deferred by the bounded suggestion-read budget MUST be disclosed as pending,
+separately from actual unavailable/oversized reads and a complete empty result.
+The visible view SHALL continue pending reads automatically with bounded backoff,
+retaining the normal budget, current-evidence checks and actionable real errors.
+Completed work may be reused only under the existing reader, revision, visibility
+and evidence bindings. Hidden clients and inactive suggestion subscriptions SHALL
+NOT continue polling.
+
 #### Scenario: High rate with incomplete coverage or only old-version evidence
 
 - **WHEN** historical competence is high but coverage is below 60%, fewer than

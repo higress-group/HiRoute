@@ -63,6 +63,8 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.home.trust-pending-continues',
+  'desktop.home.trust-error-and-legacy-retry',
   'desktop.routing.recovered-mapping-session',
   'desktop.connection.unowned-service',
   'desktop.connection.loss-retry-recovery',

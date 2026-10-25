@@ -112,6 +112,19 @@ Operation JSON. Failed journal writes cannot advance the in-memory committed vie
 Cold loads, independent recovery, changed objects, or invalidated context perform
 full durable-input validation rather than trusting matching Operation ID/generation.
 Dynamic dependencies are always rechecked at their original boundaries.
+Cold reconstruction MAY retain the authenticated immutable publication effect for
+registry admission and its separately supplied Plan/control join, so those checks
+do not repeatedly decode the same full publication. Changed persisted bytes still
+enter complete authentication; this proof does not cover mutable journal state.
+
+Read-only successful Agent projections used by status, installed-model budget
+checks and restored grant attribution MAY share verified immutable facts after
+checking exact current row identity, raw journal and indexed steps in one storage
+snapshot. Budget reads retain strict rejection; startup attribution counts and
+skips unverifiable candidates without inventing an association or blocking startup.
+Current grants, publication membership, pending operations and authorization are
+not cached. This reuse does not authorize execution or replace recovery's strict
+journal reader.
 
 ### Requirement: Durable business identity survives implementation changes
 

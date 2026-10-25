@@ -600,6 +600,21 @@ impl ExternalEffectIntentV1 {
         if !matches!(desired_mode, 0o600 | 0o640 | 0o644) {
             return Err(OperationValidationError::InvalidArtifactMode);
         }
+        // The private immutable effect carries the complete authentication result.
+        // Reuse it for registry admission and the later Plan/control join instead
+        // of decoding the same publication three times during a cold load.
+        let content_publication = if routing_content::is_effect(&desired) {
+            Some(Arc::new(routing_content::decode_external(
+                &effect_id,
+                kind,
+                &target,
+                &desired,
+                desired_mode,
+                sensitive,
+            )?))
+        } else {
+            None
+        };
         let setup_registered = match kind {
             OwnedEffectKind::Publication => {
                 effect_id == "publication-setup"
@@ -626,15 +641,16 @@ impl ExternalEffectIntentV1 {
             sensitive,
         )
         .is_ok();
-        let routing_registered = routing::validate_external_components(
-            &effect_id,
-            kind,
-            &target,
-            &desired,
-            desired_mode,
-            sensitive,
-        )
-        .is_ok();
+        let routing_registered = content_publication.is_some()
+            || routing::validate_external_components(
+                &effect_id,
+                kind,
+                &target,
+                &desired,
+                desired_mode,
+                sensitive,
+            )
+            .is_ok();
         let permission_registered = agent_config_permission::validate_external_components(
             &effect_id,
             kind,
@@ -663,18 +679,6 @@ impl ExternalEffectIntentV1 {
         {
             return Err(OperationValidationError::UnregisteredEffectPlan);
         }
-        let content_publication = if routing_content::is_effect(&desired) {
-            Some(std::sync::Arc::new(routing_content::decode_external(
-                &effect_id,
-                kind,
-                &target,
-                &desired,
-                desired_mode,
-                sensitive,
-            )?))
-        } else {
-            None
-        };
         Ok(Self {
             content_publication,
             effect_id,

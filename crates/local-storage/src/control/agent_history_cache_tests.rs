@@ -50,6 +50,93 @@ fn read(
 }
 
 #[test]
+fn budget_and_attribution_reads_reuse_the_same_verified_history() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    for key in ["budget-first", "budget-second"] {
+        complete(&control, key, &"p".repeat(128 * 1024));
+    }
+    let decodes = || super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
+    let before = decodes();
+    let cold = read(&control).unwrap();
+    assert_eq!(decodes() - before, 2);
+    let expected: Vec<_> = cold.iter().map(|fact| fact.operation_id.clone()).collect();
+    for _ in 0..3 {
+        let budget = control
+            .succeeded_agent_operations_for_kind(&WorkspaceId::default(), KINDS[0])
+            .unwrap();
+        let (attribution, rejected) = control
+            .agent_attribution_recovery_candidates(&WorkspaceId::default())
+            .unwrap();
+        assert_eq!(rejected, 0);
+        for facts in [&budget, &attribution] {
+            assert_eq!(
+                facts
+                    .iter()
+                    .map(|fact| fact.operation_id.clone())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+    }
+    assert_eq!(
+        decodes() - before,
+        2,
+        "read-only consumers revalidated warm history"
+    );
+}
+
+#[test]
+fn attribution_skips_changed_proofs_while_budget_reads_remain_strict() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let valid = complete(&control, "valid", "");
+    let invalid = complete(&control, "invalid", "");
+    read(&control).unwrap();
+    let external = rusqlite::Connection::open(directory.path().join("control.db")).unwrap();
+    external
+        .execute(
+            "UPDATE operation_steps SET state='pending' WHERE operation_id=?1 AND step_no=5",
+            [invalid.operation_id.as_str()],
+        )
+        .unwrap();
+    for _ in 0..2 {
+        let (facts, rejected) = control
+            .agent_attribution_recovery_candidates(&WorkspaceId::default())
+            .unwrap();
+        assert_eq!(rejected, 1);
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].operation_id, valid.operation_id);
+        assert_eq!(
+            control
+                .succeeded_agent_operations_for_kind(&WorkspaceId::default(), KINDS[0])
+                .unwrap_err()
+                .code,
+            PortErrorCode::Corrupt
+        );
+    }
+    external
+        .execute(
+            "UPDATE operation_steps SET state='applied' WHERE operation_id=?1 AND step_no=5",
+            [invalid.operation_id.as_str()],
+        )
+        .unwrap();
+    external
+        .execute(
+            "UPDATE operations SET generation=-1 WHERE operation_id=?1",
+            [invalid.operation_id.as_str()],
+        )
+        .unwrap();
+    let (facts, rejected) = control
+        .agent_attribution_recovery_candidates(&WorkspaceId::default())
+        .unwrap();
+    assert_eq!(rejected, 1, "Unreadable row metadata was not counted");
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].operation_id, valid.operation_id);
+    assert_eq!(read(&control).unwrap_err().code, PortErrorCode::Corrupt);
+}
+
+#[test]
 fn large_history_validates_once_then_shares_facts_without_scan_thrash() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());

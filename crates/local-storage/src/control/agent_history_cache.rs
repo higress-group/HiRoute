@@ -191,6 +191,7 @@ impl ControlStore {
         kinds: &[&str],
     ) -> PortResult<Vec<Arc<SucceededAgentOperationV1>>> {
         self.read_verified_agent_history(workspace, kinds, true)
+            .map(|(facts, _)| facts)
     }
 
     /// Discovery still visits every accepted operation through its own strict
@@ -202,14 +203,15 @@ impl ControlStore {
         kinds: &[&str],
     ) -> PortResult<Vec<Arc<SucceededAgentOperationV1>>> {
         self.read_verified_agent_history(workspace, kinds, false)
+            .map(|(facts, _)| facts)
     }
 
-    fn read_verified_agent_history(
+    pub(super) fn read_verified_agent_history(
         &self,
         workspace: &WorkspaceId,
         kinds: &[&str],
         require_complete_provenance: bool,
-    ) -> PortResult<Vec<Arc<SucceededAgentOperationV1>>> {
+    ) -> PortResult<(Vec<Arc<SucceededAgentOperationV1>>, u64)> {
         super::agent_read::validate_kinds(kinds)?;
         let connection = self.connection.borrow();
         // An existing caller transaction already supplies the snapshot. Never
@@ -258,9 +260,28 @@ impl ControlStore {
             cache.store_identity = Some(identity);
         }
         let mut facts = Vec::new();
+        let mut rejected = 0_u64;
         let mut members = std::collections::BTreeSet::new();
         for row in rows {
-            let row = row.map_err(|_| corrupt())?;
+            let row = match row {
+                Ok(row) => row,
+                Err(error)
+                    if !require_complete_provenance
+                        && matches!(
+                            error,
+                            rusqlite::Error::FromSqlConversionFailure(..)
+                                | rusqlite::Error::IntegralValueOutOfRange(..)
+                                | rusqlite::Error::InvalidColumnType(..)
+                                | rusqlite::Error::Utf8Error(..)
+                        ) =>
+                {
+                    // Malformed historical row fields cannot become a proof.
+                    // Query/transport failures still fail the whole read below.
+                    rejected = rejected.saturating_add(1);
+                    continue;
+                }
+                Err(_) => return Err(corrupt()),
+            };
             members.insert(row.operation_id.clone());
             match cache.read(&connection, &row) {
                 Ok(fact) => facts.push(fact),
@@ -268,6 +289,7 @@ impl ControlStore {
                     if !require_complete_provenance && error.code == PortErrorCode::Corrupt =>
                 {
                     // No unverified fact is returned or cached as a proof.
+                    rejected = rejected.saturating_add(1);
                 }
                 Err(error) => return Err(error),
             }
@@ -291,6 +313,6 @@ impl ControlStore {
         if let Some(transaction) = transaction {
             transaction.commit().map_err(|_| unavailable())?;
         }
-        Ok(facts)
+        Ok((facts, rejected))
     }
 }

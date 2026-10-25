@@ -4,6 +4,11 @@ use hiroute_domain::{
     AgentOperationInputView, AgentOperationRead, AgentPlanReadV1, OperationStepKind,
 };
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static DECODE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Clone, Debug)]
 pub struct SucceededAgentOperationV1 {
     pub operation_id: OperationId,
@@ -56,6 +61,8 @@ pub(super) fn decode_selected_agent(
     encoded: &str,
     selected: Option<&super::agent_history_cache::AgentHistoryRow>,
 ) -> PortResult<SucceededAgentOperationV1> {
+    #[cfg(test)]
+    DECODE_COUNT.with(|count| count.set(count.get() + 1));
     let invalid = || port(PortErrorCode::Corrupt, "control.agent-read.journal");
     let durable: DurableOperation = serde_json::from_str(encoded).map_err(|_| invalid())?;
     if selected.is_some_and(|row| !row.matches(&durable))
@@ -210,31 +217,12 @@ impl ControlStore {
         &self,
         workspace: &WorkspaceId,
     ) -> PortResult<(Vec<SucceededAgentOperationV1>, u64)> {
-        let connection = self.connection.borrow();
-        let mut statement = connection
-            .prepare(
-                "SELECT operation_json FROM operations WHERE workspace_id=?1
-             AND operation_kind='ApplyAgentConnectionChange' AND state='succeeded'
-             ORDER BY rowid DESC",
-            )
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.query"))?;
-        let rows = statement
-            .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.query"))?;
-        let mut verified = Vec::new();
-        let mut rejected = 0_u64;
-        for row in rows {
-            let encoded =
-                row.map_err(|_| port(PortErrorCode::Corrupt, "control.agent-read.row"))?;
-            match decode_succeeded_agent(&connection, &encoded) {
-                Ok(operation) => verified.push(operation),
-                Err(error) if error.code == PortErrorCode::Corrupt => {
-                    rejected = rejected.saturating_add(1);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        Ok((verified, rejected))
+        let (facts, rejected) =
+            self.read_verified_agent_history(workspace, &["ApplyAgentConnectionChange"], false)?;
+        Ok((
+            facts.into_iter().map(|fact| (*fact).clone()).collect(),
+            rejected,
+        ))
     }
 
     pub fn succeeded_agent_operations_for_kind(
@@ -249,26 +237,8 @@ impl ControlStore {
         workspace: &WorkspaceId,
         kinds: &[&str],
     ) -> PortResult<Vec<SucceededAgentOperationV1>> {
-        validate_kinds(kinds)?;
-        let placeholders = vec!["?"; kinds.len()].join(",");
-        let connection = self.connection.borrow();
-        let mut statement = connection.prepare(&format!("SELECT operation_json FROM operations WHERE workspace_id=? AND operation_kind IN ({placeholders}) AND state='succeeded' ORDER BY rowid DESC"))
-            .map_err(|_| port(PortErrorCode::Unavailable,"control.agent-read.query"))?;
-        let rows = statement
-            .query_map(
-                rusqlite::params_from_iter(
-                    std::iter::once(workspace.as_str()).chain(kinds.iter().copied()),
-                ),
-                |r| r.get::<_, String>(0),
-            )
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.query"))?;
-        rows.map(|row| {
-            decode_succeeded_agent(
-                &connection,
-                &row.map_err(|_| port(PortErrorCode::Corrupt, "control.agent-read.row"))?,
-            )
-        })
-        .collect()
+        self.verified_agent_history_for_kinds(workspace, kinds)
+            .map(|facts| facts.into_iter().map(|fact| (*fact).clone()).collect())
     }
 }
 
