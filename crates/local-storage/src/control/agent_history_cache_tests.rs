@@ -586,7 +586,7 @@ fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_refere
                 r.get::<_, usize>(0)
             })
             .unwrap(),
-            1
+            0, // Explicit native-target hints here declare no file effects.
         );
     }
     assert_eq!(bytes(&db), before);

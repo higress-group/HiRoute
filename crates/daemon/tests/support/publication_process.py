@@ -125,12 +125,22 @@ def model_settings_spec_v2(product, allowed_plan_ids, default_plan_id=None,
     }
 
 
+class AgentSettingsPreviewBlocked(AssertionError):
+    """Keep bounded non-secret blocker reasons when a product scenario cannot apply."""
+    def __init__(self, blockers):
+        super().__init__('agent_settings_preview_blocked')
+        self.reason_codes = [item['reason'] for item in blockers[:16]
+            if isinstance(item, dict) and isinstance(item.get('reason'), str)
+            and len(item['reason']) <= 80 and all(c.islower() or c == '_' for c in item['reason'])]
+
+
 def prepare_agent_settings_v2(product, spec, key):
     agent_id = getattr(product, 'agent_settings_agent_id', None)
     if agent_id is not None:
         ensure_native_model_evidence(product, agent_id)
     preview = product.preview('agents connect preview', {'spec': spec})
-    assert preview['applicable'], preview.get('blockers')
+    if not preview['applicable']:
+        raise AgentSettingsPreviewBlocked(preview.get('blockers', []))
     body = {
         # Seal the exact normalized full-state selection shown by Preview. This mirrors the
         # Desktop confirmation payload and prevents a sparse fixture input from dropping models.
