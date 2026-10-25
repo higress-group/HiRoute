@@ -421,6 +421,23 @@ Passive dotenv/OAuth import is not supported. Public composition checks stay pat
 capability-based, not exact release pins; cross-version execution needs separate
 native evidence. Model and collaboration restore remain independent.
 
+Settings reads SHALL resolve the current executable and native configuration without
+running a diagnostic version command. Explicit discovery MAY obtain the version.
+A model facts capture SHALL check the public composition once and bind that result
+to its observed installation and model-configuration dependencies. It SHALL reread
+those dependencies after both native snapshots and reject changes. Preview, Apply
+and locked admission SHALL perform independent captures; no composition result may
+be reused across them. This avoids duplicate subprocesses without weakening current
+configuration, ownership or publication checks.
+
+#### Scenario: DSH composition changes during or after preview
+
+- **GIVEN** a supported DSH installation and selected published model routes
+- **WHEN** the public composition probe or either native snapshot observes changing dependencies
+- **THEN** the capture is rejected instead of publishing a mixed configuration
+- **AND** Apply and locked admission independently check the then-current composition,
+  even if the earlier Preview succeeded.
+
 ### Requirement: Collaboration proofs distinguish preinstall from installed Skill
 
 Codex/Claude/OpenCode initial collaboration install MUST use user-triggered private-context proof

@@ -53,14 +53,6 @@ impl LocalControlAdapter {
                 .check_pi_model_configuration()
                 .map_err(|_| ControlReadError::Unavailable)?;
         }
-        #[cfg(unix)]
-        if kind == hiroute_domain::AgentKindV1::DeepseekHarness
-            && matches!(spec.model, AgentFacetIntent::Configure { .. })
-        {
-            self.scanner
-                .check_dsh_model_configuration()
-                .map_err(|_| ControlReadError::Unavailable)?;
-        }
         let pi_settings = if kind == hiroute_domain::AgentKindV1::Pi {
             Some(
                 self.scanner

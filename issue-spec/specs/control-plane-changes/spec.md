@@ -126,10 +126,22 @@ Current grants, publication membership, pending operations and authorization are
 not cached. This reuse does not authorize execution or replace recovery's strict
 journal reader.
 
+Within the same live storage connection, already verified immutable facts MAY be
+reused without hashing the entire raw closure again when an owned read transaction
+proves that the database snapshot has not changed. The proof SHALL account for
+external commits, same-connection writes and schema changes. Unknown or invalidated
+proof falls back to exact row/step/payload validation. It is process-local and SHALL
+NOT survive connection replacement or reopening. Caller-owned transactions SHALL
+use the exact-byte path and SHALL NOT publish a shortcut proof: rollback, savepoint
+rollback or an interrupted read cannot make their temporary facts authoritative
+on a subsequent read. The proof and facts belong to the same established read
+snapshot, never a newer token read after that snapshot ends.
+
 Current Agent status and settings preparation MAY stop at the newest authenticated
 fact that decides the requested facet or exact current grant. Older facts after that
 match are not dependencies of that answer. Every visited row, its indexed identity
-and raw dependency closure still require snapshot-bound validation; a corrupt visited
+and raw dependency closure still require snapshot-bound validation or the unchanged
+snapshot proof above; a corrupt visited
 row is not a no-match. Explicit history/restore-list reads retain their full strict
 scope. Ordering a history query SHALL NOT require sorting complete retained payloads
 before the first selected fact can be read.
@@ -141,6 +153,15 @@ before the first selected fact can be read.
   operations; changed bytes or indexed identity of the selected operation are rejected
   on the next read, including after a warm read, while an explicit history query still
   checks every requested member.
+
+#### Scenario: Multiple current reads of an unchanged history
+
+- **WHEN** multiple Agent facets read the same verified successful operations with
+  no intervening database change
+- **THEN** they share immutable validation without rereading and hashing the full
+  journal closure for each facet; a local write, external commit or schema change
+  invalidates the shortcut, and a caller transaction's temporary result is rejected
+  after rollback if it does not match the committed bytes.
 
 #### Scenario: Status observation while a writer owns an operation
 

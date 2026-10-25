@@ -117,8 +117,32 @@ impl LocalControlAdapter {
             .settings_agent_for_context(&spec.context_id)
             .ok_or(ControlReadError::NotFound)?;
         self.check_codex_slot(spec, class)?;
+        // Probe the installed composition once per facts capture, not once per
+        // native-file snapshot. Apply captures again under the admission lock;
+        // mutable configuration still participates in both snapshots below.
+        #[cfg(unix)]
+        let dsh_composition = if class == SettingsAgentClass::Dsh
+            && matches!(spec.model, AgentFacetIntent::Configure { .. })
+        {
+            Some(
+                self.scanner
+                    .check_dsh_model_configuration()
+                    .map_err(|_| ControlReadError::Unavailable)?,
+            )
+        } else {
+            None
+        };
         let first = self.complete_settings_snapshot(spec, class)?;
         let second = self.complete_settings_snapshot(spec, class)?;
+        #[cfg(unix)]
+        if let Some(checked) = dsh_composition
+            && !self
+                .scanner
+                .dsh_model_configuration_is_current(&checked)
+                .map_err(|_| ControlReadError::SnapshotChanged)?
+        {
+            return Err(ControlReadError::SnapshotChanged);
+        }
         if first.facts.dependency_digest != second.facts.dependency_digest {
             return Err(ControlReadError::SnapshotChanged);
         }

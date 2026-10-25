@@ -4,6 +4,8 @@ use hiroute_domain::PortErrorCode;
 use std::sync::Arc;
 
 const KINDS: &[&str] = &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"];
+#[path = "agent_history_epoch_tests.rs"]
+mod epoch;
 fn complete(control: &ControlStore, key: &str, payload: &str) -> OperationV1 {
     let mut operation = agent_operation(
         agent_transaction_plan_payload(AgentConnectionTransactionKindV1::Apply, None, payload),
@@ -239,6 +241,7 @@ fn large_history_validates_once_then_shares_facts_without_scan_thrash() {
     assert!(size > 21 * 1024 * 1024);
     let cold = read(&control).unwrap();
     assert_eq!(control.agent_history_cache.borrow().decodes, 21);
+    assert_eq!(control.agent_history_cache.borrow().fingerprints, 21);
     // Model, collaboration and management reads across multiple Agents share
     // this same immutable history; filtering belongs after strict verification.
     for _ in 0..7 * 3 {
@@ -247,6 +250,11 @@ fn large_history_validates_once_then_shares_facts_without_scan_thrash() {
         assert!(cold.iter().zip(&warm).all(|(a, b)| Arc::ptr_eq(a, b)));
     }
     assert_eq!(control.agent_history_cache.borrow().decodes, 21);
+    assert_eq!(
+        control.agent_history_cache.borrow().fingerprints,
+        21,
+        "unchanged read snapshots must not reread/hash every retained payload per facet"
+    );
     let strict = control
         .succeeded_agent_operations_for_kinds(&WorkspaceId::default(), KINDS)
         .unwrap();

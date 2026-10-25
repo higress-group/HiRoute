@@ -244,6 +244,10 @@ history decoder. [Static source/configuration rules](../../crates/integrations/s
 belong to the native leaf. [Local capability checks](../../crates/integrations/src/agents/dsh_native.rs)
 inspect public composition without model activation and keep collaboration resources
 independent of model-provider edits.
+Settings discovery reads native files without a version subprocess. The
+[facts capture](../../crates/daemon/src/control/runtime/settings_facts.rs) owns one
+public composition probe per capture and checks its dependencies after both native
+snapshots; Preview, Apply and locked admission keep independent proofs.
 
 The [Worker profile](../../crates/daemon/src/delegation/profile/README.md#dsh-public-composition)
 adds a final run-owned patch while preserving borrowed resource roots. Continue

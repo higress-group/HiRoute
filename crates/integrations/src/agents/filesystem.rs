@@ -430,7 +430,7 @@ impl FilesystemAgentScannerV1 {
             self.scan_codex(),
             self.qoder_settings_discovery(false),
             self.pi_settings_discovery(),
-            self.dsh_settings_discovery(),
+            self.scan_dsh(),
             self.opencode_settings_discovery(),
         ];
         match executable_probe(&self.layout.claude_executable) {

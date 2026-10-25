@@ -13,8 +13,11 @@ pub(super) struct AgentHistoryCache {
     entries: BTreeMap<String, Entry>,
     bytes: usize,
     store_identity: Option<(String, i64)>,
+    read_epoch: Option<ReadEpoch>,
     #[cfg(test)]
     pub(super) decodes: usize,
+    #[cfg(test)]
+    pub(super) fingerprints: usize,
     #[cfg(test)]
     pub(super) budget_override: Option<(usize, usize)>,
 }
@@ -22,6 +25,31 @@ struct Entry {
     fingerprint: [u8; 32],
     bytes: usize,
     facts: Arc<SucceededAgentOperationV1>,
+    verified_epoch: Option<ReadEpoch>,
+}
+
+/// A connection-local proof of unchanged database bytes, never a business revision.
+/// External commits invalidate the store identity; local DML and DDL invalidate this
+/// epoch. Only our own read transaction can mint it: caller transactions may roll
+/// back previously observed writes without changing SQLite's total-change counter.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ReadEpoch {
+    local_changes: u64,
+    main_schema: i64,
+    temp_schema: i64,
+}
+impl ReadEpoch {
+    fn capture(connection: &Connection) -> PortResult<Self> {
+        Ok(Self {
+            local_changes: connection.total_changes(),
+            main_schema: connection
+                .query_row("PRAGMA main.schema_version", [], |r| r.get(0))
+                .map_err(|_| unavailable())?,
+            temp_schema: connection
+                .query_row("PRAGMA temp.schema_version", [], |r| r.get(0))
+                .map_err(|_| unavailable())?,
+        })
+    }
 }
 
 /// These are the columns of the selected row, not another matching row found by
@@ -146,7 +174,7 @@ fn corrupt() -> PortError {
 }
 
 impl AgentHistoryCache {
-    fn bind_store(&mut self, connection: &Connection) -> PortResult<()> {
+    fn bind_store(&mut self, connection: &Connection, owned_read: bool) -> PortResult<()> {
         let store: String = connection
             .query_row(
                 "SELECT store_uuid FROM storage_meta WHERE singleton=1",
@@ -166,6 +194,11 @@ impl AgentHistoryCache {
             self.bytes = 0;
             self.store_identity = Some(identity);
         }
+        self.read_epoch = if owned_read {
+            Some(ReadEpoch::capture(connection)?)
+        } else {
+            None
+        };
         Ok(())
     }
     fn remove(&mut self, id: &str) {
@@ -178,10 +211,29 @@ impl AgentHistoryCache {
         connection: &Connection,
         row: &AgentHistoryRow,
     ) -> PortResult<Arc<SucceededAgentOperationV1>> {
+        // A selection callback can use another store API on this connection.
+        // Once it writes, no later fact in this scan may mint a read-only proof,
+        // even if the transaction eventually rolls back after a callback error.
+        if let Some(epoch) = self.read_epoch
+            && ReadEpoch::capture(connection)? != epoch
+        {
+            self.read_epoch = None;
+        }
+        if let Some(epoch) = self.read_epoch
+            && let Some(entry) = self.entries.get(&row.operation_id)
+            && entry.verified_epoch == Some(epoch)
+        {
+            return Ok(Arc::clone(&entry.facts));
+        }
+        #[cfg(test)]
+        {
+            self.fingerprints += 1;
+        }
         let (fingerprint, bytes) = row.fingerprint(connection)?;
-        if let Some(entry) = self.entries.get(&row.operation_id)
+        if let Some(entry) = self.entries.get_mut(&row.operation_id)
             && entry.fingerprint == fingerprint
         {
+            entry.verified_epoch = self.read_epoch;
             return Ok(Arc::clone(&entry.facts));
         }
         self.remove(&row.operation_id);
@@ -207,6 +259,7 @@ impl AgentHistoryCache {
                     fingerprint,
                     bytes,
                     facts: Arc::clone(&facts),
+                    verified_epoch: self.read_epoch,
                 },
             );
             self.bytes += bytes;
@@ -232,7 +285,7 @@ impl ControlStore {
             None
         };
         let mut cache = self.agent_history_cache.borrow_mut();
-        cache.bind_store(&connection)?;
+        cache.bind_store(&connection, transaction.is_some())?;
         let mut facts = Vec::new();
         let mut rejected = 0u64;
         let mut statement = connection.prepare("SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json
@@ -273,8 +326,9 @@ impl ControlStore {
         Ok((facts, rejected))
     }
 
-    /// Exact current membership and raw dependency closure are always read in one
-    /// SQLite snapshot. Only immutable facts are shared; callers still read native
+    /// Current membership and dependency validation belong to one SQLite snapshot;
+    /// unchanged snapshot proofs avoid repeated raw-closure hashing. Only immutable
+    /// facts are shared; callers still read native
     /// files, grants, pending operations and publication state on every request.
     /// Execution/recovery continue to use their uncached strict journal readers.
     pub fn verified_agent_history_for_kinds(
@@ -349,7 +403,7 @@ impl ControlStore {
             )
             .map_err(|_| unavailable())?;
         let mut cache = self.agent_history_cache.borrow_mut();
-        cache.bind_store(&connection)?;
+        cache.bind_store(&connection, transaction.is_some())?;
         let mut facts = Vec::new();
         let mut rejected = 0_u64;
         let mut members = std::collections::BTreeSet::new();

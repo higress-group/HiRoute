@@ -126,6 +126,12 @@ impl FilesystemAgentScannerV1 {
         .map_err(|_| AgentFilesystemScanError::InvalidConfig)
     }
     pub fn dsh_settings_discovery(&self) -> FilesystemAgentDiscoveryV1 {
+        self.dsh_discovery(false)
+    }
+    pub(super) fn scan_dsh(&self) -> FilesystemAgentDiscoveryV1 {
+        self.dsh_discovery(true)
+    }
+    fn dsh_discovery(&self, version_diagnostic: bool) -> FilesystemAgentDiscoveryV1 {
         let Some(executable) = self.dsh_executable_target() else {
             return probe_report(
                 "agent_dsh_default",
@@ -133,9 +139,15 @@ impl FilesystemAgentScannerV1 {
                 ExecutableProbe::NotFound,
             );
         };
-        let version = match executable_probe(&executable) {
-            ExecutableProbe::Installed(value) => value.version,
-            _ => String::new(),
+        // Version output is diagnostic, not configuration authority. Settings
+        // snapshots recheck the native files/path without launching the engine.
+        let version = if version_diagnostic {
+            match executable_probe(&executable) {
+                ExecutableProbe::Installed(value) => value.version,
+                _ => String::new(),
+            }
+        } else {
+            "not-probed".into()
         };
         let mut outcome = resolve_agent_observation(base_observation(
             "agent_dsh_default",
@@ -187,9 +199,24 @@ impl FilesystemAgentScannerV1 {
         }
     }
     #[cfg(any(unix, windows))]
-    pub fn check_dsh_model_configuration(&self) -> Result<(), AgentFilesystemScanError> {
-        self.dsh_native_contract(true)?;
-        self.check_dsh_public_cli(&["llm-pi-ai"])
+    pub fn check_dsh_model_configuration(
+        &self,
+    ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
+        let before = self.dsh_native_contract(true)?;
+        self.check_dsh_public_cli(&["llm-pi-ai"])?;
+        if before != self.dsh_native_contract(true)? {
+            return Err(AgentFilesystemScanError::SourceChanged);
+        }
+        Ok(before)
+    }
+    /// Revalidate the exact installation/configuration observed by this capture.
+    /// This proof is scoped to the caller's capture and is never a persisted grant.
+    pub fn dsh_model_configuration_is_current(
+        &self,
+        checked: &CanonicalDigest,
+    ) -> Result<bool, AgentFilesystemScanError> {
+        self.dsh_native_contract(true)
+            .map(|current| current == *checked)
     }
     #[cfg(any(unix, windows))]
     pub fn check_dsh_collaboration(&self, cli: &Path) -> Result<(), AgentFilesystemScanError> {
