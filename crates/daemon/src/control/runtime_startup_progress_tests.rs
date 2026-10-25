@@ -45,6 +45,7 @@ fn startup_primes_exact_secret_descriptors_without_informational_native_processe
     use std::os::unix::fs::PermissionsExt;
     let directory = crate::test_support::private_tempdir();
     let root = directory.path();
+    drop(hiroute_local_storage::LocalStorageSet::open_for_daemon_startup(root).unwrap());
     let home = root.join("native-home");
     std::fs::create_dir(&home).unwrap();
     std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
