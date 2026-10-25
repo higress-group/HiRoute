@@ -66,6 +66,48 @@ fn unrelated_historical_damage_is_isolated_but_explicit_audit_rejects_it() {
 }
 
 #[test]
+fn completed_upgrade_reopen_isolates_history_and_retired_backup_damage() {
+    use crate::migrations::worker_dependencies_v24_tests::{cases, schema23_source};
+    for damage in ["history", "backup"] {
+        let directory = crate::test_tempdir().unwrap();
+        let root = directory.path().join("storage");
+        schema23_source(&root, &cases()[0]);
+        let stores = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+        let backup = crate::upgrade_backup_root(&root).unwrap();
+        assert_eq!(
+            crate::BackupSet::open(&crate::test_storage_authority(), &backup)
+                .unwrap()
+                .phase(),
+            crate::backup::BackupSetPhase::Completed
+        );
+        history(&stores, 3);
+        if damage == "history" {
+            stores.control.connection.borrow().execute(
+                "UPDATE gateway_publications SET digest='corrupted-history' WHERE publication_revision=1", [],
+            ).unwrap();
+        } else {
+            std::fs::write(backup.join("control.db"), b"damaged retired backup").unwrap();
+        }
+        drop(stores);
+        let reopened = LocalStorageSet::open_for_daemon_startup(&root)
+            .unwrap_or_else(|e| panic!("{damage}: {e}"));
+        if damage == "history" {
+            assert!(
+                audit_current_storage(reopened.control(), reopened.runtime(), reopened.secrets())
+                    .is_err()
+            );
+        } else {
+            assert!(crate::BackupSet::open(&crate::test_storage_authority(), &backup).is_err());
+            assert_eq!(
+                std::fs::read(backup.join("control.db")).unwrap(),
+                b"damaged retired backup"
+            );
+        }
+        reopened.validate_recovered_grant_publications().unwrap();
+    }
+}
+
+#[test]
 fn recovered_grants_match_exact_material_and_generation_in_retained_history() {
     let root = crate::test_tempdir().unwrap();
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
