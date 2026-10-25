@@ -36,7 +36,8 @@ neither a request-file selector nor native handle text contains the credential i
 The shared reader does not execute a shell, alter requests or choose a business schema.
 Unix `--spec-fd`, including `0` for stdin, accepts an inherited regular file or pipe,
 rejects devices, and bounds the JSON read to 1 MiB and 2s, matching Windows
-`--spec-handle`.
+`--spec-handle`. The deadline uses poll on `/dev/fd/N` without changing
+inherited file-status flags.
 
 `sessions receipt RECEIPT_ID` continues to serialize `SessionLookupV1` and read the v1
 RoutingReceipt. Both JSON sources accept only an `ObservationReadRequestV2` with the

@@ -20,6 +20,8 @@ mod request_input;
 mod routing_timeline;
 mod service;
 mod trust;
+#[cfg(unix)]
+mod unix_bounded_fd;
 mod worker;
 
 use std::ffi::OsString;

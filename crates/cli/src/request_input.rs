@@ -122,48 +122,15 @@ pub(crate) fn read_json(reader: impl Read, limit: u64) -> Result<Value, ErrorCod
 /// Regular files and pipes are accepted; devices are rejected. Bound 1 MiB and 2s.
 #[cfg(unix)]
 pub(crate) fn read_json_from_fd(fd: u32) -> Result<Value, ErrorCode> {
-    read_json_from_fd_timed(fd, std::time::Duration::from_secs(2))
-}
-
-#[cfg(unix)]
-fn read_json_from_fd_timed(fd: u32, timeout: std::time::Duration) -> Result<Value, ErrorCode> {
-    use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
-    use std::time::Instant;
-
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY)
-        .open(format!("/dev/fd/{fd}"))
-        .map_err(|_| ErrorCode::InvalidArguments)?;
-    let file_type = file
-        .metadata()
-        .map_err(|_| ErrorCode::InvalidArguments)?
-        .file_type();
-    if !file_type.is_file() && !file_type.is_fifo() {
-        return Err(ErrorCode::InvalidArguments);
-    }
-    let deadline = Instant::now() + timeout;
-    let mut bytes = Vec::new();
-    let mut buf = [0u8; 8192];
-    loop {
-        if Instant::now() >= deadline {
-            return Err(ErrorCode::InvalidArguments);
-        }
-        let remaining = (MAX_REQUEST_BYTES as usize + 1).saturating_sub(bytes.len());
-        if remaining == 0 {
-            break;
-        }
-        let nread = remaining.min(buf.len());
-        match file.read(&mut buf[..nread]) {
-            Ok(0) => break,
-            Ok(n) => bytes.extend_from_slice(&buf[..n]),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => return Err(ErrorCode::InvalidArguments),
-        }
-    }
+    let bytes = crate::unix_bounded_fd::read_unix_fd_bounded(
+        fd,
+        crate::unix_bounded_fd::UnixFdReadBounds {
+            min_fd: 0,
+            max_bytes: MAX_REQUEST_BYTES as usize,
+            timeout: std::time::Duration::from_secs(2),
+        },
+    )
+    .map_err(|_| ErrorCode::InvalidArguments)?;
     read_json(bytes.as_slice(), MAX_REQUEST_BYTES)
 }
 
@@ -278,10 +245,9 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn json_from_fd_accepts_file_and_pipe_and_rejects_device_stall_and_oversize() {
+    fn json_from_fd_accepts_file_and_pipe_and_rejects_device_and_oversize() {
         use std::io::{Seek, SeekFrom, Write};
         use std::os::fd::AsRawFd;
-        use std::time::{Duration, Instant};
 
         let mut file = tempfile::tempfile().unwrap();
         file.write_all(br#"{"ok":true}"#).unwrap();
@@ -314,14 +280,31 @@ mod tests {
             read_json_from_fd(oversized.as_raw_fd() as u32),
             Err(ErrorCode::InvalidArguments)
         );
+    }
 
-        let (stalled, keep_open) = nix::unistd::pipe().unwrap();
-        let started = Instant::now();
-        assert_eq!(
-            read_json_from_fd_timed(stalled.as_raw_fd() as u32, Duration::from_millis(50)),
-            Err(ErrorCode::InvalidArguments)
-        );
-        assert!(started.elapsed() < Duration::from_secs(1));
-        drop(keep_open);
+    #[cfg(unix)]
+    fn json_from_fd_timeout_under_watchdog(kind: &str, prefix: &[u8]) {
+        if let Some(fd) = crate::unix_bounded_fd::watchdog::child_fd() {
+            std::process::exit(if read_json_from_fd(fd).is_err() { 0 } else { 1 });
+        }
+        let (read, write) = nix::unistd::pipe().unwrap();
+        if !prefix.is_empty() {
+            nix::unistd::write(&write, prefix).unwrap();
+        }
+        let child = crate::unix_bounded_fd::watchdog::spawn(&read, kind);
+        crate::unix_bounded_fd::watchdog::wait(child, std::time::Duration::from_secs(5));
+        drop(write);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn json_from_fd_empty_pipe_times_out_under_watchdog() {
+        json_from_fd_timeout_under_watchdog("spec-empty", b"");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn json_from_fd_partial_json_without_eof_times_out_under_watchdog() {
+        json_from_fd_timeout_under_watchdog("spec-partial", br#"{"ok":true}"#);
     }
 }
