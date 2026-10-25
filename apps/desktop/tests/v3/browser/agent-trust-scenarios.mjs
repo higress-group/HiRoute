@@ -76,10 +76,23 @@ const scenarios = [
     assert(reads.length === 1 && reads[0].payload.contextId === selected.context_id,
       'Saving queued an unrelated Agent scan ahead of confirmation');
     const codex = [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex'));
+    let rejectRead;
+    c().handlers.agent_snapshot = () => new Promise((_, reject) => { rejectRead = reject; });
     codex.click();
-    await until(() => calls('agent_snapshot').length === start + 2 && !facet('model').disabled, 'Invalidated next Agent reads before use');
+    await until(() => calls('agent_snapshot').length === start + 2 && rejectRead, 'Invalidated next Agent starts its read');
+    assert(facet('model').disabled && facet('management_skill').disabled,
+      'Unverified Agent became editable while its read was pending');
+    assert(!text().includes('本机服务尚未就绪'), 'An ordinary read falsely warned that the service was down');
     assert(calls('agent_snapshot').at(-1).payload.contextId === c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default').context_id,
       'Switching Agent reused old settings as freshly verified');
+    rejectRead({ code: 'AGENT_STATUS_UNAVAILABLE' });
+    await until(() => document.querySelector('[data-error-code="AGENT_STATUS_UNAVAILABLE"]'), 'Failed readback stays actionable');
+    assert(facet('model').disabled, 'Failed readback allowed writes against stale settings');
+    delete c().handlers.agent_snapshot;
+    document.querySelector('[data-error-code="AGENT_STATUS_UNAVAILABLE"] button').click();
+    await until(() => calls('agent_snapshot').length === start + 3 && !facet('model').disabled, 'Scoped retry confirms the selected Agent');
+    assert(calls('agent_snapshot').at(-1).payload.contextId === c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default').context_id,
+      'Retry scanned unrelated Agents');
   }),
   scenario('hermes.discovery.brand-and-known-profile', ['hermes', 'agent-discovery'], 'Hermes shows its own mark and the discovered profile without a separate selection step', async () => {
     c().reset(); c().agents = c().hermesFresh(); await tick();

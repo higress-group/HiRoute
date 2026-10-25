@@ -435,7 +435,9 @@ export function Agents({
   const needsRecovery = (state?: string | null) => state === 'drift' || state === 'needs_attention';
   const selectedHasDrift = needsRecovery(selectedModel?.state) || needsRecovery(selectedCollaboration?.state) || needsRecovery(selectedManagement?.state);
   const selectedPending = selectedModel?.state === 'pending' || selectedCollaboration?.state === 'pending' || selectedManagement?.state === 'pending';
-  const mutable = mutationAllowed && Boolean(snapshot?.trusted_authority);
+  const authorityMutable = mutationAllowed && Boolean(snapshot?.trusted_authority);
+  const mutable = authorityMutable && !scanning && !loadError
+    && selected?.status_error !== 'AGENT_STATUS_UNVERIFIED';
   const qoderRecoveryOperation = selected?.agent_id === 'agent_qoder_default'
     && !selected.status_error && ['pending', 'needs_attention'].includes(selectedModel?.state ?? '')
     ? selectedModel?.operation_id : undefined;
@@ -567,7 +569,7 @@ export function Agents({
                     ? <p className="field-help">{selected.native_target.config_root}</p>
                     : <p>{text('选择本机 Hermes 实际使用的配置目录，即可配置模型路由、任务路由和 HiRoute 管理 Skill。独立 profile 请选对应目录。', 'Select the configuration directory used by Hermes on this computer to configure model routing, task routing and the HiRoute management Skill. For a separate profile, select its directory.')}</p>}
                 </section>}
-                {!mutable && !selected.codex_access?.pending_operation && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('Agent 配置可以查看，暂时不能修改', 'Agent settings are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，连接恢复后即可保存配置。', 'The local service is not ready. Reconnect before saving.')}</p></div></div>}
+                {!authorityMutable && !selected.codex_access?.pending_operation && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('Agent 配置可以查看，暂时不能修改', 'Agent settings are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，连接恢复后即可保存配置。', 'The local service is not ready. Reconnect before saving.')}</p></div></div>}
                 {selected.codex_access && <CodexAccessPanel access={selected.codex_access} language={language} retryDisabled={busy || Boolean(editor) || !snapshot.trusted_authority} onRetry={async () => {
                   const access = selected.codex_access;
                   if (access?.pending_operation) await retrySettingsOperation(access.pending_operation);
@@ -625,7 +627,7 @@ export function Agents({
                     setNotice(text('已载入之前的映射草稿，请审阅后保存。', 'Earlier mappings loaded as a draft. Review before saving.'));
                   }}
                   onRestore={selectedModel?.restore_point_ref ? source => void change(selected, 'model', true, source) : undefined} />}
-                {!editor && loadError && <div className="callout warn agent-feedback agent-inline-feedback" role="alert" data-error-code={loadError}><UiIcon name="warning" /><div><strong>{text('状态刷新失败', 'Status refresh failed')}</strong><p>{text('当前仍显示上次读取的结果。', 'The last loaded result is still shown.')}</p><button className="btn" type="button" onClick={() => void refresh()}>{text('重试', 'Retry')}</button></div></div>}
+                {!editor && loadError && <div className="callout warn agent-feedback agent-inline-feedback" role="alert" data-error-code={loadError}><UiIcon name="warning" /><div><strong>{text('状态刷新失败', 'Status refresh failed')}</strong><p>{text('当前状态尚未核实，请重试后再修改。', 'The current state is unverified. Retry before making changes.')}</p><button className="btn" type="button" disabled={scanning} onClick={() => void refresh(selected)}>{text('重试', 'Retry')}</button></div></div>}
                 {!editor && blockedPreview}
                 {!editor && notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{notice}</span></div></div>}
                 {!editor && actionError && <div className="callout bad agent-feedback agent-inline-feedback" role="alert" data-error-code={actionError}><UiIcon name="warning" /><span>{actionErrorHint ?? agentActionErrorMessage(actionError, language)}</span></div>}
