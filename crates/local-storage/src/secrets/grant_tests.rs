@@ -8,7 +8,7 @@ use hiroute_domain::{
     OperationId, PortErrorCode, ProtectedSecret, SecretStorePort,
 };
 
-use super::LocalSecretStore;
+use super::{LocalSecretStore, validate_current_grants, validate_stable_grants};
 
 const CONNECTION_ID: &str = "agent-connection/claude-code";
 const OWNER_SCOPE: &str = "principal/local-owner";
