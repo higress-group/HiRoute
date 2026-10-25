@@ -7,7 +7,6 @@ pub(crate) struct Dependency {
     pub intent: ExternalEffectIntentV1,
     pub receipt: Option<OwnedEffectV1>,
     pub required: bool,
-    pub native_required: bool,
 }
 type Dependencies = BTreeMap<(String, String), Dependency>;
 
@@ -38,9 +37,6 @@ pub(super) fn add(
     if required && receipt.is_none() {
         return Err(invalid());
     }
-    let native_required = native_payload(intent)
-        && intent.desired()["payload"]["change"]["action"] == "configure"
-        && (required || receipt.is_some());
     let key = (
         operation.operation_id.to_string(),
         intent.effect_id().into(),
@@ -50,7 +46,6 @@ pub(super) fn add(
             return Err(invalid());
         }
         existing.required |= required;
-        existing.native_required |= native_required;
     } else {
         output.insert(
             key,
@@ -59,7 +54,6 @@ pub(super) fn add(
                 intent: intent.clone(),
                 receipt,
                 required,
-                native_required,
             },
         );
     }
@@ -178,7 +172,9 @@ impl ManagedArtifactStore {
             }
             // A protected record may be written before staging. Authenticate it if present,
             // even for an interrupted operation without a marker/receipt yet.
-            if native_payload(intent) {
+            let catalog =
+                intent.desired()["payload"]["schema"] == "hiroute.codex-catalog-artifact/v1";
+            if native_payload(intent) || catalog {
                 let record = self
                     .load_native_restore(&dependency.operation, intent)
                     .map_err(|_| LocalStorageError::Locked)?;
@@ -191,8 +187,35 @@ impl ManagedArtifactStore {
                         )
                     )
                 });
-                if (dependency.native_required || markerless.is_some()) && record.is_none() {
+                let required_record = (catalog
+                    || intent.desired()["payload"]["change"]["action"] == "configure")
+                    && (dependency.required || receipt.is_some());
+                if (required_record || markerless.is_some()) && record.is_none() {
                     return Err(LocalStorageError::Locked);
+                }
+                if catalog {
+                    let expected: CanonicalDigest = serde_json::from_value(
+                        intent.desired()["payload"]["content_digest"].clone(),
+                    )
+                    .map_err(|_| LocalStorageError::Locked)?;
+                    if record
+                        .as_ref()
+                        .is_some_and(|bytes| CanonicalDigest::of_bytes(bytes) != expected)
+                    {
+                        return Err(LocalStorageError::Locked);
+                    }
+                    // This immutable, HiRoute-owned file is a current model dependency.
+                    // Borrowed native configuration may change independently; it is not
+                    // subjected to this whole-file equality requirement.
+                    if dependency.required
+                        && self
+                            .read_native_target(intent.target())
+                            .map_err(|_| LocalStorageError::Locked)?
+                            .as_ref()
+                            .is_none_or(|bytes| CanonicalDigest::of_bytes(bytes) != expected)
+                    {
+                        return Err(LocalStorageError::Locked);
+                    }
                 }
                 if let Some(receipt) = markerless {
                     let value: Value =
