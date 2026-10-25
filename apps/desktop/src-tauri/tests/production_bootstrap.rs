@@ -76,8 +76,18 @@ async fn corrupt_observation_store_reports_data_failure_without_rewriting_it() {
         .prefix("hr02-corrupt-")
         .tempdir_in(std::fs::canonicalize("/tmp").unwrap())
         .unwrap();
+    let binary = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("hirouted");
+    // Establish a valid store group and its key through the production owner
+    // before corrupting one member. Fabricated database bytes without a key
+    // exercise missing-key admission instead of observation-store integrity.
+    drop(Resident::open(root.path(), &binary).unwrap());
     let observation = root.path().join("storage/observation");
-    std::fs::create_dir_all(&observation).unwrap();
     std::fs::set_permissions(
         root.path().join("storage"),
         std::fs::Permissions::from_mode(0o700),
@@ -89,13 +99,6 @@ async fn corrupt_observation_store_reports_data_failure_without_rewriting_it() {
     std::fs::write(&database, original).unwrap();
     std::fs::set_permissions(&database, std::fs::Permissions::from_mode(0o600)).unwrap();
 
-    let binary = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("hirouted");
     let error = Resident::open(root.path(), &binary)
         .err()
         .expect("corrupt observation data must stop startup");
