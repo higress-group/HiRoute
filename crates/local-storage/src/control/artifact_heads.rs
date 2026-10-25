@@ -55,8 +55,8 @@ pub(super) fn receipt<'a>(
     if matching.next().is_some() {
         return Err(invalid());
     }
-    if let Some(effect) = found {
-        if effect.kind != intent.kind()
+    if let Some(effect) = found
+        && (effect.kind != intent.kind()
             || effect.target != intent.target()
             || effect.before_fingerprint.as_ref() != intent.before_fingerprint()
             || effect.compensation["operation_id"] != operation.operation_id.as_str()
@@ -68,10 +68,9 @@ pub(super) fn receipt<'a>(
                         | "hiroute.native-file-reference/v1"
                         | "hiroute.native-restoration-ack/v1"
                 )
-            )
-        {
-            return Err(invalid());
-        }
+            ))
+    {
+        return Err(invalid());
     }
     Ok(found)
 }

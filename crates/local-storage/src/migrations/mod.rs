@@ -277,6 +277,9 @@ fn set_owner_file_permissions(path: &Path) -> Result<(), LocalStorageError> {
     validate_owner_file(path)
 }
 
+// Keep source/key and target-identity checks explicit at this migration boundary,
+// as in open_database_internal; neither identity can substitute for the other.
+#[allow(clippy::too_many_arguments)]
 fn migrate(
     connection: &mut Connection,
     path: &Path,
