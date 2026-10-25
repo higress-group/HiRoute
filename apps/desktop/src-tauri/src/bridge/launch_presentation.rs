@@ -58,12 +58,16 @@ impl LaunchPresentation {
     }
 
     pub(super) fn on_ready(&self, handle: &AppHandle) {
+        #[cfg(target_os = "macos")]
         let reason = hiroute_desktop_host_effects::launch_reason_recorded();
+        #[cfg(not(target_os = "macos"))]
+        let reason = None;
         if self.should_present_at_ready(reason) {
             self.present_main_window(handle);
         } else if !self.headless() && reason.is_none() {
             // A framework may replace its handler during setup. Rechain only
             // while the launch event is still pending, never after losing it.
+            #[cfg(target_os = "macos")]
             hiroute_desktop_host_effects::reinstate_launch_reason_observer();
         }
     }
