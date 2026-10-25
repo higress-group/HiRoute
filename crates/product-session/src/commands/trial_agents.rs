@@ -22,7 +22,7 @@ pub async fn trial_agent_choices(
     let before = read.status().await?;
     let choices = crate::session::read_trial_agent_choices(&read.client).await?;
     let _guard = read.finish(state, &before).await?;
-    if !window.is_visible()? {
+    if !window.is_active() {
         return Err("CLIENT_CONTEXT_INVALID".into());
     }
     Ok(TrialAgentChoices {
@@ -60,7 +60,7 @@ pub async fn trial_agent_model(
     }
     let plans = crate::session::read_plan_catalog(&read.client).await?;
     let _guard = read.finish(state, &before).await?;
-    if !window.is_visible()? {
+    if !window.is_active() {
         return Err("CLIENT_CONTEXT_INVALID".into());
     }
     Ok(TrialAgentModel {

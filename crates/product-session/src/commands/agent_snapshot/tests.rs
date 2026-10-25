@@ -67,6 +67,8 @@ enum Change {
     Authority,
     Cancel,
     FinalEpoch,
+    Hidden,
+    ClientRevoked,
 }
 
 #[tokio::test]
@@ -111,6 +113,20 @@ enum ReadKind {
     TrialModel,
     Catalog,
     Observation,
+}
+
+#[tokio::test]
+async fn hidden_window_reads_succeed_but_revocation_during_transport_is_rejected() {
+    for kind in [
+        ReadKind::Agents,
+        ReadKind::Catalog,
+        ReadKind::Observation,
+        ReadKind::TrialChoices,
+        ReadKind::TrialModel,
+    ] {
+        exercise_read(Change::Hidden, kind).await;
+        exercise_read(Change::ClientRevoked, kind).await;
+    }
 }
 
 #[tokio::test]
@@ -280,7 +296,8 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
     let context = ClientContext {
         id: "agent-test",
         confirmations: &broker,
-        active: &|| true,
+        active: &|| change != Change::ClientRevoked || !changed.load(Ordering::SeqCst),
+        visible: &|| change != Change::Hidden,
         notify: None,
     };
     let mut snapshot = Box::pin(async {
@@ -415,7 +432,7 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
         release.notify_one();
     };
     let (result, _) = tokio::join!(snapshot, concurrent);
-    if matches!(change, Change::None | Change::OldLock) {
+    if matches!(change, Change::None | Change::OldLock | Change::Hidden) {
         assert!(result.is_ok());
     } else {
         assert!(result.is_err(), "old Agent facts escaped after {change:?}");

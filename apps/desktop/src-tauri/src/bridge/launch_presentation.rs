@@ -11,8 +11,9 @@ pub(super) struct LaunchPresentation {
     fallback_at_ready: bool,
 }
 
-/// Called after App construction has installed the framework's native handlers,
-/// but before running its event loop. The callback can precede user setup: the
+/// Called before running the event loop. The host observer registers again at
+/// AppKit's WillFinishLaunching boundary, after its native handlers are installed.
+/// The callback can precede user setup: the
 /// host-effects owner records the reason before forwarding the native event,
 /// and Ready consumes that record once the presentation state/window exist.
 pub(super) fn observe_before_run(app: &App, background: bool) {

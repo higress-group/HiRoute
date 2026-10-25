@@ -7,7 +7,8 @@ pub(super) async fn observation_delete(
 ) -> Result<serde_json::Value, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -21,6 +22,7 @@ pub(super) async fn observation_delete(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -39,7 +41,8 @@ pub async fn observation_capacity_get(
 ) -> Result<hiroute_domain::ObservationCapacityStatusV1, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -53,6 +56,7 @@ pub async fn observation_capacity_get(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -72,7 +76,8 @@ pub async fn observation_capacity_set(
 ) -> Result<hiroute_domain::ObservationCapacityStatusV1, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -86,6 +91,7 @@ pub async fn observation_capacity_set(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(

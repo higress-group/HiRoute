@@ -3,7 +3,11 @@
 Native startup presentation is owned by `src-tauri/src/bridge/launch_presentation.rs`
 and the macOS launch observer in `hiroute-desktop-host-effects`. Their Rust cases
 cover early/late reasons, foreground fallback, background/duplicate suppression,
-login-event attributes and reentrant native-handler chaining. Ordinary signed
+login-event attributes and reentrant native-handler chaining. The macOS
+`launch_lifecycle` executable creates a real NSApplication on a subprocess's main
+thread, runs `finishLaunching`, then dispatches a synthetic foreground/login event
+through the registered handler. It detects AppKit replacing a pre-run observer;
+it does not establish LaunchServices or real login-item acceptance. Ordinary signed
 Release acceptance must additionally observe the fixed process's on-screen window
 before any desktop-control binding, then verify the initial Home and final read
 verdicts. A bound-window screenshot or a successful service query cannot establish

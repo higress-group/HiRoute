@@ -29,6 +29,7 @@ async fn final_read_rejections_are_recorded_without_changing_the_returned_failur
         id: "main",
         confirmations: &broker,
         active: &|| true,
+        visible: &|| true,
         notify: None,
     };
     assert!(matches!(desktop_snapshot(&context, &state).await,

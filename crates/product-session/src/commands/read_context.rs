@@ -118,7 +118,7 @@ async fn desktop_snapshot_inner(
     let service = read.status().await?;
     let catalog = crate::session::read_plan_catalog(&read.client).await;
     let guard = read.finish(state, &service).await?;
-    if !window.is_visible()? {
+    if !window.is_active() {
         return Err("CLIENT_CONTEXT_INVALID".into());
     }
     Ok(guard
@@ -166,7 +166,7 @@ async fn observation_read_inner(
         return Err(DesktopFailure::backend(envelope));
     }
     let _guard = read.finish(state, &before).await?;
-    if !window.is_visible()? {
+    if !window.is_active() {
         return Err("CLIENT_CONTEXT_INVALID".into());
     }
     envelope.data.ok_or_else(|| "RESPONSE_DATA_MISSING".into())

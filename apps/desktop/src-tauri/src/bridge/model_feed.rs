@@ -9,7 +9,8 @@ pub(super) async fn model_feed_status(
 ) -> Result<ModelFeedStatusV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -23,6 +24,7 @@ pub(super) async fn model_feed_status(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -41,7 +43,8 @@ pub(super) async fn model_feed_refresh(
 ) -> Result<ModelFeedStatusV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -55,6 +58,7 @@ pub(super) async fn model_feed_refresh(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -74,7 +78,8 @@ pub(super) async fn model_feed_settings_apply(
 ) -> Result<ModelFeedStatusV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -88,6 +93,7 @@ pub(super) async fn model_feed_settings_apply(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -108,7 +114,8 @@ pub(super) async fn model_feed_remove_preview(
 ) -> Result<ModelFeedRemovalPreviewV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -122,6 +129,7 @@ pub(super) async fn model_feed_remove_preview(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -142,7 +150,8 @@ pub(super) async fn model_feed_remove_apply(
 ) -> Result<ModelFeedStatusV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -156,6 +165,7 @@ pub(super) async fn model_feed_remove_apply(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -175,7 +185,8 @@ pub(super) async fn model_availability(
 ) -> Result<ModelAvailabilityResultV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -189,6 +200,7 @@ pub(super) async fn model_availability(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -208,7 +220,8 @@ pub(super) async fn list_model_metadata(
 ) -> Result<ModelMetadataPageV1, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -222,6 +235,7 @@ pub(super) async fn list_model_metadata(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -241,7 +255,8 @@ pub(super) async fn get_model_metadata(
 ) -> Result<ModelMetadataDetailV1, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -255,6 +270,7 @@ pub(super) async fn get_model_metadata(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -274,7 +290,8 @@ pub(super) async fn compute_defaults(
 ) -> Result<ComputeDefaultsResultV1, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -288,6 +305,7 @@ pub(super) async fn compute_defaults(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -308,7 +326,8 @@ pub(super) async fn preview_compute_save_v3(
 ) -> Result<hiroute_product_session::commands::WebComputeSavePreviewV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -322,6 +341,7 @@ pub(super) async fn preview_compute_save_v3(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(

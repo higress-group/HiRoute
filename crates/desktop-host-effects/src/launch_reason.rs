@@ -6,8 +6,8 @@
 //! NSApplication's own handling of the launch event is preserved.
 #![allow(unsafe_code)]
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::{Mutex, Once};
 
 // Four-char codes from AEDataModel.h / AERegistry.h.
 const K_CORE_EVENT_CLASS: u32 = u32::from_be_bytes(*b"aevt");
@@ -15,13 +15,13 @@ const K_AE_OPEN_APPLICATION: u32 = u32::from_be_bytes(*b"oapp");
 const KEY_AE_LAUNCHED_AS_LOGIN_ITEM: u32 = u32::from_be_bytes(*b"lgit");
 const TYPE_BOOLEAN: u32 = u32::from_be_bytes(*b"bool");
 
-const NO_ERR: i32 = 0;
+const NO_ERR: i16 = 0;
 
 /// Identifies our observer in AEGetEventHandler without comparing function pointers.
 const OBSERVER_REFCON: isize = 0x4869_526F_7574;
 
 type AppleEventRef = *const std::ffi::c_void;
-type EventHandler = unsafe extern "C" fn(AppleEventRef, *mut std::ffi::c_void, isize) -> i32;
+type EventHandler = unsafe extern "C" fn(AppleEventRef, *mut std::ffi::c_void, isize) -> i16;
 type LaunchDecision = Box<dyn FnOnce(bool) + Send>;
 
 #[link(name = "ApplicationServices", kind = "framework")]
@@ -32,23 +32,23 @@ unsafe extern "C" {
         handler: Option<EventHandler>,
         handler_refcon: isize,
         is_sys_handler: u8,
-    ) -> i32;
+    ) -> i16;
     fn AEGetEventHandler(
         event_class: u32,
         event_id: u32,
         handler: *mut Option<EventHandler>,
         handler_refcon: *mut isize,
         is_sys_handler: u8,
-    ) -> i32;
+    ) -> i16;
     fn AEGetAttributePtr(
         event: AppleEventRef,
         name: u32,
         desired_type: u32,
         type_code: *mut u32,
         data: *mut std::ffi::c_void,
-        maximum_size: usize,
-        actual_size: *mut usize,
-    ) -> i32;
+        maximum_size: isize,
+        actual_size: *mut isize,
+    ) -> i16;
 }
 
 // RECORDED: 0 unknown, 1 normal foreground, 2 login-item launch.
@@ -56,12 +56,37 @@ static RECORDED: AtomicU8 = AtomicU8::new(0);
 static DISPATCHED: AtomicBool = AtomicBool::new(false);
 static PREVIOUS: Mutex<(Option<EventHandler>, isize)> = Mutex::new((None, 0));
 static ON_LAUNCH: Mutex<Option<LaunchDecision>> = Mutex::new(None);
+static OBSERVE_LIFECYCLE: Once = Once::new();
+
+fn observe_appkit_registration() {
+    OBSERVE_LIFECYCLE.call_once(|| {
+        // NSApplication replaces the Carbon event handler during finishLaunching,
+        // after App construction but before WillFinishLaunching. Register at the
+        // documented lifecycle boundary, without replacing the framework delegate.
+        let callback =
+            block2::RcBlock::new(|_: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+                reinstate_launch_reason_observer();
+            });
+        let observer = unsafe {
+            objc2_foundation::NSNotificationCenter::defaultCenter()
+                .addObserverForName_object_queue_usingBlock(
+                    Some(objc2_app_kit::NSApplicationWillFinishLaunchingNotification),
+                    None,
+                    None,
+                    &callback,
+                )
+        };
+        // A single process-lifetime subscription, just like the native handler.
+        // The notification is synchronous; no queue or timing retry is involved.
+        std::mem::forget(observer);
+    });
+}
 
 unsafe extern "C" fn open_application_handler(
     event: AppleEventRef,
     reply: *mut std::ffi::c_void,
     _refcon: isize,
-) -> i32 {
+) -> i16 {
     let login_item = reads_launched_as_login_item(event);
     RECORDED.store(if login_item { 2 } else { 1 }, Ordering::SeqCst);
     // Preserve the previously installed handler first; the observation must not change how
@@ -84,7 +109,7 @@ unsafe extern "C" fn open_application_handler(
 fn reads_launched_as_login_item(event: AppleEventRef) -> bool {
     let mut value: u8 = 0;
     let mut type_code: u32 = 0;
-    let mut actual_size: usize = 0;
+    let mut actual_size: isize = 0;
     let status = unsafe {
         AEGetAttributePtr(
             event,
@@ -154,6 +179,7 @@ fn install_chained() -> bool {
 /// installed, in which case the caller falls back to foreground presentation.
 pub fn observe_launch_reason(on_launch: impl FnOnce(bool) + Send + 'static) -> bool {
     *ON_LAUNCH.lock().unwrap() = Some(Box::new(on_launch));
+    observe_appkit_registration();
     install_chained()
 }
 
@@ -191,9 +217,9 @@ mod tests {
         fn AECreateDesc(
             type_code: u32,
             data: *const std::ffi::c_void,
-            size: usize,
+            size: isize,
             desc: *mut std::ffi::c_void,
-        ) -> i32;
+        ) -> i16;
         fn AECreateAppleEvent(
             event_class: u32,
             event_id: u32,
@@ -201,15 +227,15 @@ mod tests {
             return_id: i16,
             transaction_id: i32,
             event: *mut std::ffi::c_void,
-        ) -> i32;
+        ) -> i16;
         fn AEPutAttributePtr(
             event: *mut std::ffi::c_void,
             name: u32,
             type_code: u32,
             data: *const std::ffi::c_void,
-            size: usize,
-        ) -> i32;
-        fn AEDisposeDesc(event: *mut std::ffi::c_void) -> i32;
+            size: isize,
+        ) -> i16;
+        fn AEDisposeDesc(event: *mut std::ffi::c_void) -> i16;
     }
 
     fn synthetic_event(login_item: Option<bool>) -> DescStorage {
@@ -275,7 +301,7 @@ mod tests {
         static CHAIN_ENTERED: AtomicBool = AtomicBool::new(false);
         static CHAIN_UNLOCKED: AtomicBool = AtomicBool::new(false);
         static REASON_RECORDED_BEFORE_CHAIN: AtomicBool = AtomicBool::new(false);
-        unsafe extern "C" fn previous(_: AppleEventRef, _: *mut std::ffi::c_void, _: isize) -> i32 {
+        unsafe extern "C" fn previous(_: AppleEventRef, _: *mut std::ffi::c_void, _: isize) -> i16 {
             CHAIN_ENTERED.store(true, Ordering::SeqCst);
             CHAIN_UNLOCKED.store(PREVIOUS.try_lock().is_ok(), Ordering::SeqCst);
             REASON_RECORDED_BEFORE_CHAIN

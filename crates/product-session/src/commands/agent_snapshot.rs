@@ -44,6 +44,9 @@ pub async fn agent_snapshot(
     if state.2.load(Ordering::SeqCst) != epoch {
         return Err("CONFIRMATION_STALE".into());
     }
+    if !window.is_active() {
+        return Err("CLIENT_CONTEXT_INVALID".into());
+    }
     let current_native = session.authority.native_connection();
     if before.revisions != after.revisions
         || before.active_publication != after.active_publication

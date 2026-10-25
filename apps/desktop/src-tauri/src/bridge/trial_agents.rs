@@ -8,7 +8,8 @@ pub async fn trial_agent_model(
 ) -> Result<hiroute_product_session::commands::TrialAgentModel, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -22,6 +23,7 @@ pub async fn trial_agent_model(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
@@ -40,7 +42,8 @@ pub async fn trial_agent_choices(
 ) -> Result<hiroute_product_session::commands::TrialAgentChoices, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
-    let active = || window.is_visible().unwrap_or(false);
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
     let notify = |request: &WebConfirmationRequest| {
         window
             .emit_to(
@@ -54,6 +57,7 @@ pub async fn trial_agent_choices(
         id: window.label(),
         confirmations: &broker,
         active: &active,
+        visible: &visible,
         notify: Some(&notify),
     };
     let product_state = hiroute_product_session::commands::CommandState(
