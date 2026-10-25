@@ -90,25 +90,53 @@ fn completed_decoder_does_not_replace_current_receipt_or_identity_checks() {
         .load_operation(&operation.operation_id)
         .unwrap()
         .unwrap();
-    control.with_connection(|db| {
-        db.execute(
-            "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=2",
-            [operation.operation_id.as_str()],
-        )
-        .unwrap()
-    });
+    for step in &operation.steps {
+        let original: String = control.with_connection(|db| {
+            db.query_row(
+                "SELECT step_json FROM operation_steps WHERE operation_id=?1 AND step_no=?2",
+                params![operation.operation_id.as_str(), step.sequence],
+                |row| row.get(0),
+            )
+            .unwrap()
+        });
+        control.with_connection(|db| {
+            assert_eq!(db.execute(
+                "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=?2",
+                params![operation.operation_id.as_str(), step.sequence],
+            ).unwrap(), 1);
+        });
+        let warm = control
+            .load_operation(&operation.operation_id)
+            .unwrap()
+            .unwrap();
+        assert!(!control.operation_is_current(&warm).unwrap());
+        let db = control.connection.borrow();
+        assert_eq!(
+            super::super::super::journal::is_current_artifact_step(&db, &warm).unwrap(),
+            step.kind != hiroute_domain::OperationStepKind::ApplyAgentArtifacts,
+            "only the current artifact receipt owns artifact authority: {:?}",
+            step.kind,
+        );
+        assert_eq!(
+            super::super::super::journal::is_current_grant_step(&db, &warm).unwrap(),
+            step.kind != hiroute_domain::OperationStepKind::ApplySecrets,
+            "only the current grant receipt owns grant authority: {:?}",
+            step.kind,
+        );
+        drop(db);
+        control.with_connection(|db| {
+            db.execute(
+                "UPDATE operation_steps SET step_json=?3 WHERE operation_id=?1 AND step_no=?2",
+                params![operation.operation_id.as_str(), step.sequence, original],
+            )
+            .unwrap();
+        });
+        assert!(control.operation_is_current(&warm).unwrap());
+    }
     let warm = control
         .load_operation(&operation.operation_id)
         .unwrap()
         .unwrap();
-    assert!(!control.operation_is_current(&warm).unwrap());
-    assert!(
-        !super::super::super::journal::is_current_artifact_step(
-            &control.connection.borrow(),
-            &warm
-        )
-        .unwrap()
-    );
     control.with_connection(|db| {
         db.execute(
             "UPDATE operations SET accepted_change_digest='changed' WHERE operation_id=?1",
@@ -117,6 +145,13 @@ fn completed_decoder_does_not_replace_current_receipt_or_identity_checks() {
         .unwrap()
     });
     assert!(!control.operation_is_current(&warm).unwrap());
+    assert!(
+        !super::super::super::journal::is_current_artifact_step(
+            &control.connection.borrow(),
+            &warm
+        )
+        .unwrap()
+    );
 }
 
 #[test]
