@@ -441,17 +441,22 @@ Settings reads SHALL resolve the current executable and native configuration wit
 running a diagnostic version command. Explicit discovery MAY obtain the version.
 A model facts capture SHALL check the public composition once and bind that result
 to its observed installation and model-configuration dependencies. It SHALL reread
-those dependencies after both native snapshots and reject changes. Preview, Apply
-and locked admission SHALL perform independent captures; no composition result may
-be reused across them. This avoids duplicate subprocesses without weakening current
-configuration, ownership or publication checks.
+those dependencies after both native snapshots and reject changes. Preview and
+Apply admission SHALL perform independent captures; no composition result may be
+reused across them. Apply SHALL reproduce current facts, confirm the accepted intent
+and seal effects once inside the existing writer boundary, after revision and
+principal checks. It SHALL NOT build and clone another complete plan before the
+writer. Idempotent replay SHALL return the admitted operation without repeating
+native preparation. Current dependency, accepted digest, login-item restoration,
+external fingerprint and atomic journal checks remain mandatory; unchanged route
+selections do not authorize skipping native drift checks.
 
 #### Scenario: DSH composition changes during or after preview
 
 - **GIVEN** a supported DSH installation and selected published model routes
 - **WHEN** the public composition probe or either native snapshot observes changing dependencies
 - **THEN** the capture is rejected instead of publishing a mixed configuration
-- **AND** Apply and locked admission independently check the then-current composition,
+- **AND** Apply checks the then-current composition inside locked admission,
   even if the earlier Preview succeeded.
 
 ### Requirement: Collaboration proofs distinguish preinstall from installed Skill
@@ -785,6 +790,25 @@ HiRoute SHALL let the owner independently configure, inspect and restore task de
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/125#issuecomment-6186244084
+
+### Requirement: Selected Agent refresh reads only its current context
+
+Refreshing a known Agent after a save SHALL discover and read that exact context
+without scanning neighboring Agents or the caller's default Hermes directory.
+`ScanAgents` MAY accept an optional `context_id` with its exact native target;
+omitting it retains the existing full-scan behavior. An invalid context, mismatched
+native target or changed selected Codex root/profile SHALL fail without rebinding
+the caller to another context. Explicit full rescan remains the recovery path.
+The selected read SHALL retain before/after service revision, publication, recovery,
+client authority and window-lifetime validation; discovery alone never proves
+that settings or a saved operation are effective.
+
+#### Scenario: A save refresh has an unrelated installed Agent
+
+- **WHEN** the client refreshes the saved Agent's exact current context
+- **THEN** the selected Agent is discovered afresh and its settings are verified,
+  without launching or reading the unrelated Agent's configuration
+- **AND** an external change to the selected context is reported for explicit recovery.
 
 ### Requirement: Supported Agent discovery preserves scope and remains actionable
 

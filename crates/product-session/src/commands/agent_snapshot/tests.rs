@@ -236,9 +236,8 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                 stream.read_line(&mut line).await.unwrap();
                 let request: LocalControlWireRequestV2 = serde_json::from_str(&line).unwrap();
                 let blocked = match read_kind {
-                    ReadKind::Agents | ReadKind::TrialChoices | ReadKind::SelectedAgent => {
-                        "ListAgents"
-                    }
+                    ReadKind::Agents | ReadKind::TrialChoices => "ListAgents",
+                    ReadKind::SelectedAgent => "ScanAgents",
                     ReadKind::TrialModel => "GetAgentConnectionStatus",
                     ReadKind::Catalog => "ListAgentPlanCatalog",
                     ReadKind::Observation => "ListSessions",
@@ -262,11 +261,21 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                         json!({"schema":"hiroute.client-service-status/v1","daemon_role":"resident","recovery_ready":!(altered && change==Change::Recovery),"mutation_available":true,"gateway":"ready","active_publication": if altered && change==Change::Publication {json!({"revision":2,"digest":CanonicalDigest::of_bytes(b"new-publication")})} else {Value::Null},"revisions":{"target":if altered && change==Change::Revision {2} else {1},"dependencies":{}}})
                     }
                     "ListAgents" | "ScanAgents" => {
+                        if read_kind == ReadKind::SelectedAgent {
+                            assert_eq!(
+                                request.operation_id, "ScanAgents",
+                                "selected reads cannot discover all Agents"
+                            );
+                            assert_eq!(request.payload["context_id"], "agent-context/dsh");
+                            assert!(request.payload.get("native_target").is_none());
+                        }
                         let agents = if matches!(
                             read_kind,
                             ReadKind::TrialChoices | ReadKind::SelectedAgent
                         ) {
-                            ["claude", "codex", "dsh", "pi", "qoder", "opencode"].into_iter().map(|name|
+                            ["claude", "codex", "dsh", "pi", "qoder", "opencode"].into_iter()
+                                .filter(|name| read_kind != ReadKind::SelectedAgent || *name == "dsh")
+                                .map(|name|
                                 json!({"agent_id":format!("agent_{name}_default"), "context_id":format!("agent-context/{name}"),"version":"test","configuration_state":"detected"})
                             ).collect::<Vec<_>>()
                         } else {

@@ -332,6 +332,28 @@ fn codex_discovery_keeps_desktop_in_default_profile_mode() {
         .find(|a| a["agent_id"] == "agent_codex_default")
         .unwrap();
     assert_eq!(codex["codex_access"]["selected_mode"], "profile");
+    let selected = service.dispatch_wire(request(
+        "ScanAgents",
+        json!({"context_id":codex["context_id"]}),
+        None,
+    ));
+    assert!(selected.error.is_none(), "{selected:?}");
+    let selected = selected.data.unwrap();
+    assert_eq!(selected["agents"].as_array().unwrap().len(), 1);
+    assert_eq!(selected["agents"][0]["context_id"], codex["context_id"]);
+    assert_eq!(
+        selected["agents"][0]["codex_access"]["selected_mode"],
+        "profile"
+    );
+    let stale_root = service.dispatch_wire(request(
+        "ScanAgents",
+        json!({"context_id":codex["codex_access"]["root_context_id"]}),
+        None,
+    ));
+    assert!(
+        stale_root.error.is_some(),
+        "a root context must not silently bind to the selected profile"
+    );
     let surfaces = codex["available_surfaces"].as_array().unwrap();
     assert!(surfaces.contains(&json!("codex_cli")));
     assert!(surfaces.contains(&json!("codex_desktop")));

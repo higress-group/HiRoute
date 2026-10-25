@@ -270,17 +270,35 @@ impl ApplicationService {
         else {
             return failed(ErrorCode::InvalidArguments, request.request_id);
         };
-        if input.native_target.is_some() && request.operation_id != "ScanAgents" {
+        if (input.native_target.is_some() || input.context_id.is_some())
+            && request.operation_id != "ScanAgents"
+        {
             return failed(ErrorCode::InvalidArguments, request.request_id);
         }
         let Some(ports) = self.ports.as_ref() else {
             return failed(ErrorCode::DaemonUnavailable, request.request_id);
         };
-        let result = match &input.native_target {
-            Some(target) if target.validate().is_ok() => ports.discovery.discover_target(target),
-            Some(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
-            None if request.operation_id == "ListAgents" => ports.discovery.list(),
-            None => ports.discovery.discover(),
+        if input
+            .native_target
+            .as_ref()
+            .is_some_and(|target| target.validate().is_err())
+            || input
+                .context_id
+                .as_ref()
+                .is_some_and(|context| context.is_empty() || context.len() > 256)
+        {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        }
+        let result = if let Some(context) = &input.context_id {
+            ports
+                .discovery
+                .discover_context(context, input.native_target.as_ref())
+        } else {
+            match &input.native_target {
+                Some(target) => ports.discovery.discover_target(target),
+                None if request.operation_id == "ListAgents" => ports.discovery.list(),
+                None => ports.discovery.discover(),
+            }
         };
         match result {
             Ok(agents) => succeeded(

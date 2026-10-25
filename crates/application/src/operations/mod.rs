@@ -954,6 +954,10 @@ fn apply_request_digest(request: &ApplyRequestV1) -> Result<CanonicalDigest, Tra
 pub enum TransactionError {
     #[error("typed plan content preparation failed: {0:?}")]
     PlanContent(hiroute_application_api::ErrorCode),
+    #[error("Agent settings preparation failed: {0:?}")]
+    AgentSettings(hiroute_application_api::ErrorCode),
+    #[error("Agent settings facts unavailable: {0:?}")]
+    AgentSettingsRead(crate::control::ControlReadError),
     #[error("invalid transaction arguments")]
     InvalidArguments,
     #[error("cash budget behavior is not enabled in P0")]
@@ -1032,7 +1036,8 @@ impl TransactionError {
             {
                 ErrorCode::QoderModelBudgetConflict
             }
-            Self::PlanContent(code) => *code,
+            Self::PlanContent(code) | Self::AgentSettings(code) => *code,
+            Self::AgentSettingsRead(error) => crate::map_control_error(*error),
             Self::FeatureNotEnabled
             | Self::Preparation(ChangePreparationError::FeatureNotEnabled) => {
                 ErrorCode::FeatureNotEnabled

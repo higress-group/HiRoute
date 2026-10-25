@@ -138,7 +138,7 @@ export function Agents({
     setScanning(true);
     try {
       const result = await invoke<AgentSnapshot>('agent_snapshot', {
-        nativeTargets: hermesTargets.current,
+        nativeTargets: target?.context_id ? (target.native_target ? [target.native_target] : []) : hermesTargets.current,
         ...(target?.context_id ? { contextId: target.context_id } : {}),
       });
       if (epoch === queryGeneration.current) {
@@ -183,7 +183,7 @@ export function Agents({
     const target = pendingLaunchCopy;
     void (async () => {
       try {
-        const current = await invoke<AgentSnapshot>('agent_snapshot', { nativeTargets: hermesTargets.current, contextId: target.contextId });
+        const current = await invoke<AgentSnapshot>('agent_snapshot', { nativeTargets: [], contextId: target.contextId });
         if (cancelled) return;
         const command = confirmedCodexLaunchCommand(target, operation, current.agents.find(agent => agent.agent_id === 'agent_codex_default'), navigator.platform);
         if (!command) { setPendingLaunchCopy(null); setNotice(text('保存已完成，请在启动区域重新读取并复制命令。', 'Save completed. Read and copy the command in the launch section.')); return; }

@@ -581,3 +581,13 @@ rejected. Journal bytes remain unchanged. These storage cases do not replace a
 released-package upgrade or native performance measurement.
 
 Current Agent readback coverage: `agent.readback.active-and-exact` and `desktop.operation.hidden-summaries-defer` exercise scoped saves and deferred hidden reads. The storage `agent_history_cache_tests` and `agent_history_epoch_tests` retain full closure corruption, snapshot/rollback and bounded-projection assertions; `commands/agent_snapshot/tests.rs` applies the existing authority fences to exact-context reads.
+
+Selected Agent refresh and settings admission: the production adapter scenarios in
+[`settings_entry_native_routing_tests.rs`](../../crates/daemon/src/control/runtime/settings_entry_native_routing_tests.rs)
+prove two independent DSH composition checks (Preview and locked Apply), exact-context
+selection, rejection of mismatched targets and absence of neighboring CLI probes.
+[`settings_tail.rs`](../../crates/application/src/operations/tests/settings_tail.rs)
+checks authorization/revision before preparation, replay without rebuilding and
+separate Restore authority. Shared transport tests in
+[`agent_snapshot/tests.rs`](../../crates/product-session/src/commands/agent_snapshot/tests.rs)
+retain all publication/authority/lifetime fences for selected reads.

@@ -75,6 +75,7 @@ const scenarios = [
     const reads = calls('agent_snapshot').slice(start);
     assert(reads.length === 1 && reads[0].payload.contextId === selected.context_id,
       'Saving queued an unrelated Agent scan ahead of confirmation');
+    assert(reads[0].payload.nativeTargets.length === 0, 'Non-Hermes save must not reread remembered Hermes profiles');
     const codex = [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex'));
     let rejectRead;
     c().handlers.agent_snapshot = () => new Promise((_, reject) => { rejectRead = reject; });
@@ -93,6 +94,7 @@ const scenarios = [
     await until(() => calls('agent_snapshot').length === start + 3 && !facet('model').disabled, 'Scoped retry confirms the selected Agent');
     assert(calls('agent_snapshot').at(-1).payload.contextId === c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default').context_id,
       'Retry scanned unrelated Agents');
+    assert(calls('agent_snapshot').at(-1).payload.nativeTargets.length === 0, 'Codex retry must not reread remembered Hermes profiles');
   }),
   scenario('hermes.discovery.brand-and-known-profile', ['hermes', 'agent-discovery'], 'Hermes shows its own mark and the discovered profile without a separate selection step', async () => {
     c().reset(); c().agents = c().hermesFresh(); await tick();

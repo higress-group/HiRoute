@@ -3,6 +3,68 @@ use super::models::{model_spec, model_status, restore_spec};
 use super::*;
 
 #[test]
+fn selected_agent_discovery_preserves_identity_without_neighbor_probes() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::native_model::tests::settings_entry_tests::qoder::native_routing::selected_agent_discovery_preserves_identity_without_neighbor_probes",
+    ) {
+        return;
+    }
+    let fixture = QoderFixture::with_all_models();
+    let context = fixture
+        .runtime
+        .adapter
+        .settings_context_for_agent("agent_dsh_default")
+        .unwrap();
+    // A discover-all implementation would execute this unrelated installed CLI.
+    let neighbor = fixture._root.path().join("missing-claude");
+    let marker = fixture._root.path().join("unrelated-probe");
+    private_file(
+        &neighbor,
+        format!(
+            "#!/bin/sh\nprintf hit > '{}'\nprintf '2.1.231\\n'\n",
+            marker.display()
+        )
+        .as_bytes(),
+    );
+    fs::set_permissions(&neighbor, fs::Permissions::from_mode(0o700)).unwrap();
+    let reply =
+        fixture
+            .service
+            .dispatch_wire(request("ScanAgents", json!({"context_id":context}), None));
+    assert!(reply.error.is_none(), "{reply:?}");
+    let data = reply.data.unwrap();
+    assert_eq!(data["agents"].as_array().unwrap().len(), 1);
+    assert_eq!(data["agents"][0]["agent_id"], "agent_dsh_default");
+    assert_eq!(data["agents"][0]["context_id"], context);
+    assert!(!marker.exists(), "selected read probed a neighboring Agent");
+    for input in [
+        json!({"context_id":"agent-context/dsh/unknown"}),
+        json!({"context_id":""}),
+        json!({"context_id":context,"native_target":{"kind":"hermes","config_root":"/unrelated-profile"}}),
+    ] {
+        assert!(
+            fixture
+                .service
+                .dispatch_wire(request("ScanAgents", input, None))
+                .error
+                .is_some()
+        );
+    }
+    assert!(!marker.exists());
+    let full = fixture
+        .service
+        .dispatch_wire(request("ScanAgents", json!({}), None));
+    assert!(
+        full.error.is_none(),
+        "released empty request still scans all Agents"
+    );
+    assert!(
+        marker.exists(),
+        "negative control proves the unrelated executable is discoverable"
+    );
+}
+
+#[test]
 fn dsh_save_checks_composition_once_per_capture_and_again_at_admission() {
     if crate::test_support::isolated_agent_home(
         "control::runtime::native_model::tests::settings_entry_tests::qoder::native_routing::dsh_save_checks_composition_once_per_capture_and_again_at_admission",
@@ -41,11 +103,30 @@ fn dsh_save_checks_composition_once_per_capture_and_again_at_admission() {
         fs::read_to_string(&calls).unwrap(),
         "--profile\n--profile\n"
     );
+    let fresh = fixture.service.dispatch_wire(request(
+        "PreviewAgentConnectionChange",
+        json!({"spec":spec}),
+        None,
+    ));
+    assert!(fresh.error.is_none(), "{fresh:?}");
+    let fresh = fresh.data.unwrap();
+    let before = fs::read(&fixture.native_config).unwrap();
     private_file(
         &executable,
         b"#!/bin/sh\nprintf '%s\\n' '- id: wrong-module'\n",
     );
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    let rejected = fixture.service.dispatch_wire(request(
+        "ApplyAgentConnectionChange", json!({"spec":spec,
+            "accept_digest":fresh["accept_digest"], "dependency_digest":fresh["dependency_digest"],
+            "expected_revisions":fresh["expected_revisions"], "idempotency_key":"changed-after-preview"}), None,
+    ));
+    assert!(
+        rejected.error.is_some(),
+        "changed native composition must be rejected at admission"
+    );
+    assert!(rejected.operation.is_none());
+    assert_eq!(fs::read(&fixture.native_config).unwrap(), before);
     let spec: api::AgentSettingsSpecV2 = serde_json::from_value(spec).unwrap();
     assert!(
         fixture

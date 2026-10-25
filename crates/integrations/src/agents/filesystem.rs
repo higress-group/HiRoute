@@ -426,21 +426,45 @@ impl FilesystemAgentScannerV1 {
     }
 
     pub fn scan(&self) -> Vec<FilesystemAgentDiscoveryV1> {
-        let mut results = vec![
-            self.scan_codex(),
-            self.qoder_settings_discovery(false),
-            self.pi_settings_discovery(),
-            self.scan_dsh(),
-            self.opencode_settings_discovery(),
-        ];
-        match executable_probe(&self.layout.claude_executable) {
-            ExecutableProbe::Installed(executable) => {
-                results.push(self.scan_claude(Some(executable), None, false));
+        self.scan_selected(None)
+    }
+
+    /// Fresh discovery for one known installation; never scan neighboring Agents.
+    pub fn scan_agent(&self, agent_id: &str) -> Option<FilesystemAgentDiscoveryV1> {
+        self.scan_selected(Some(agent_id)).into_iter().next()
+    }
+
+    fn scan_selected(&self, selected: Option<&str>) -> Vec<FilesystemAgentDiscoveryV1> {
+        let mut results = Vec::new();
+        for agent_id in [
+            "agent_codex_default",
+            "agent_qoder_default",
+            "agent_pi_default",
+            "agent_dsh_default",
+            "agent_opencode_default",
+            "agent_claude_default",
+        ] {
+            if selected.is_some_and(|selected| selected != agent_id) {
+                continue;
             }
-            other => {
-                let report = probe_report("agent_claude_default", AgentKindV1::ClaudeCode, other);
-                results.push(self.scan_claude(None, Some(report.outcome), false));
-            }
+            let discovery = match agent_id {
+                "agent_codex_default" => self.scan_codex(),
+                "agent_qoder_default" => self.qoder_settings_discovery(false),
+                "agent_pi_default" => self.pi_settings_discovery(),
+                "agent_dsh_default" => self.scan_dsh(),
+                "agent_opencode_default" => self.opencode_settings_discovery(),
+                _ => match executable_probe(&self.layout.claude_executable) {
+                    ExecutableProbe::Installed(executable) => {
+                        self.scan_claude(Some(executable), None, false)
+                    }
+                    other => {
+                        let report =
+                            probe_report("agent_claude_default", AgentKindV1::ClaudeCode, other);
+                        self.scan_claude(None, Some(report.outcome), false)
+                    }
+                },
+            };
+            results.push(discovery);
         }
         results.sort_by(|left, right| {
             outcome_agent_id(&left.outcome).cmp(outcome_agent_id(&right.outcome))

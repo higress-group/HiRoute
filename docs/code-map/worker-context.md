@@ -333,3 +333,11 @@ selected by `actual_windows_opencode_worker_native_history_and_cancellation` in
 [`windows_headless.rs`](../../crates/daemon/tests/windows_headless.rs). It shares the
 public routing/Worker receipt oracle and Job cancellation assertions with existing
 Windows acceptance; it adds no alternative production lifecycle.
+
+Selected post-save discovery is owned by
+[`agent_discovery.rs`](../../crates/daemon/src/control/runtime/agent_discovery.rs)
+and the shared
+[`Agent snapshot reader`](../../crates/product-session/src/session/agent_snapshot.rs).
+The exact context crosses `ScanAgents`; full discovery remains explicit. Agent
+settings effects are prepared once under the Application writer in
+[`prepared.rs`](../../crates/application/src/operations/prepared.rs).

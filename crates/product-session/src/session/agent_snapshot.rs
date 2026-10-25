@@ -13,16 +13,34 @@ pub(crate) async fn read_agent_entries_for_context(
     targets: Vec<hiroute_domain::AgentNativeTargetV1>,
     context_id: Option<&str>,
 ) -> Result<Vec<AgentEntry>, DesktopFailure> {
-    let mut agents = discover_agent_entries(client, targets).await?;
-    if let Some(context) = context_id {
-        if context.is_empty() || context.len() > 256 {
+    let mut agents = if let Some(context) = context_id {
+        if context.is_empty()
+            || context.len() > 256
+            || targets.len() > 1
+            || targets.iter().any(|target| target.validate().is_err())
+        {
             return Err("AGENT_INPUT_INVALID".into());
         }
-        agents.retain(|agent| agent.context_id.as_deref() == Some(context));
-        if agents.len() != 1 {
+        #[derive(Deserialize)]
+        struct Scan {
+            agents: Vec<AgentEntry>,
+        }
+        let scan: Scan = query(
+            client,
+            "ScanAgents",
+            &hiroute_application_api::AgentScanRequestV1 {
+                context_id: Some(context.to_owned()),
+                native_target: targets.into_iter().next(),
+            },
+        )
+        .await?;
+        if scan.agents.len() != 1 || scan.agents[0].context_id.as_deref() != Some(context) {
             return Err("AGENT_STATUS_UNAVAILABLE".into());
         }
-    }
+        scan.agents
+    } else {
+        discover_agent_entries(client, targets).await?
+    };
     for agent in &mut agents {
         read_settings(client, agent).await;
     }
@@ -81,6 +99,7 @@ async fn discover_agent_entries(
             client,
             "ScanAgents",
             &hiroute_application_api::AgentScanRequestV1 {
+                context_id: None,
                 native_target: Some(target.clone()),
             },
         )
