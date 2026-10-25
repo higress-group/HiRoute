@@ -169,6 +169,28 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
             .unwrap()
             .contains("user_edit = true")
     );
+    // The active access projection must not authenticate an unrelated replaced journal.
+    let journal = rusqlite::Connection::open(dir.path().join("live/control.db")).unwrap();
+    let (old_id, old_json): (String, String) = journal.query_row(
+        "SELECT operation_id,operation_json FROM operations WHERE idempotency_key='create-profile'",
+        [], |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap();
+    journal
+        .execute(
+            "UPDATE operations SET operation_json='unrelated old damage' WHERE operation_id=?1",
+            [&old_id],
+        )
+        .unwrap();
+    let current_access = runtime.adapter.codex_access_view();
+    journal
+        .execute(
+            "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
+            rusqlite::params![old_id, old_json],
+        )
+        .unwrap();
+    let current_access = current_access.expect("current access must ignore replaced history");
+    assert!(current_access.slot_occupied && !current_access.access_revoked);
+    assert!(current_access.conflict_fields.is_empty());
     let operation: OperationId = serde_json::from_value(edited["operation_id"].clone()).unwrap();
     let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&operation)}});
     // A profile revoke needs neither the original metadata directory nor a valid root file.
