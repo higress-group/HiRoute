@@ -85,10 +85,13 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
  await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
  await click('.trial-review button','Save and publish route');
  await waitFor(client, `!!document.querySelector('.trial-mapping .trial-presets input:not(:disabled)')`);
+ assert.equal(await count('trial_agent_choices'),1,'publication retains discovery choices within the same flow');
+ assert.equal(await count('trial_agent_model'),2,'the mapping step still reads the current selected settings');
  await evaluate(client, "trialAgentControl.setClaudePlan('External update');true");
  await click('.trial-mapping button','Review and map Agent');
  await waitFor(client, `document.querySelector('.trial-mapping [role=alert]')?.textContent.includes('Agent settings changed')`);
  assert.equal(await count('preview_agent_settings'),0,'mapping refresh rejects a changed native selection before Preview/Apply');
+ assert.equal(await count('trial_agent_choices'),1,'mapping freshness comes from the strict context read, not CLI rediscovery');
  assert.ok(await evaluate(client, `document.querySelector('.trial-mapping .trial-presets').textContent.includes('External update')`));
  await shot('trial-agent-stale-mapping-en-light-755');
  // Hold periodic reconciliation: a completed Apply must trigger its own exact
@@ -97,6 +100,7 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
  await click('.trial-mapping button','Review and map Agent');
  await waitFor(client, `document.querySelector('.trial-mapping .callout.good')?.textContent.includes('Mapping confirmed')`);
  assert.equal(await count('preview_agent_settings'),1);
+ assert.equal(await count('trial_agent_choices'),1);
  results.push({id:'quickstart.agent-reads.mapping-rechecks-current-selection',status:'passed'});
 
  await open('lang=zh&theme=dark&view=quickstart&agent-family=dsh',1200,813);

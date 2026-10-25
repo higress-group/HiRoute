@@ -67,14 +67,25 @@ impl NativeProbeProcess {
 
     #[cfg(unix)]
     pub fn stop(&mut self) -> io::Result<()> {
+        self.stop_with_grace_wait(std::thread::sleep)
+    }
+
+    #[cfg(unix)]
+    fn stop_with_grace_wait(&mut self, wait: impl FnOnce(Duration)) -> io::Result<()> {
         if self.stopped {
             return Ok(());
         }
         if self.signals_closed {
             return Err(io::Error::other("native process stop incomplete"));
         }
+        let running = self.observe()?.is_none();
         self.signal(Signal::TERM)?;
-        std::thread::sleep(Duration::from_millis(100));
+        // A completed check has no remaining work to drain. Keep its waitable
+        // leader as the ownership anchor, kill any surviving group members,
+        // and still prove reap/group absence below. A live check keeps its grace.
+        if running {
+            wait(Duration::from_millis(100));
+        }
         // The leader is still waitable even when it exited before a surviving tool.
         self.signal(Signal::KILL)?;
         self.signals_closed = true;
@@ -311,8 +322,35 @@ mod tests {
         assert_eq!(child.observe().unwrap(), Some(true));
         // A second WNOWAIT observation proves the first poll did not reap the leader.
         assert_eq!(child.observe().unwrap(), Some(true));
-        child.stop().unwrap();
+        child
+            .stop_with_grace_wait(|_| panic!("completed probe must not wait for a live leader"))
+            .unwrap();
         assert!(child.observe().is_err());
+    }
+
+    #[test]
+    fn running_probe_keeps_termination_grace_and_reaps_owned_group() {
+        let child = Command::new("/bin/sh")
+            .args(["-c", "exec sleep 90"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let mut child = NativeProbeProcess::new(child);
+        assert_eq!(child.observe().unwrap(), None);
+        let mut waited = false;
+        child
+            .stop_with_grace_wait(|duration| {
+                assert_eq!(duration, Duration::from_millis(100));
+                waited = true;
+                std::thread::sleep(duration);
+            })
+            .unwrap();
+        assert!(waited);
+        assert!(child.stopped);
+        child.stop().unwrap();
     }
 
     #[test]
@@ -335,7 +373,9 @@ mod tests {
         let mut child = NativeProbeProcess::new(child);
         await_exit(&child);
         let tool = std::fs::read_to_string(pidfile).unwrap();
-        let _ = child.stop(); // An orphan zombie may conservatively leave scope unknown.
+        // An orphan zombie may conservatively leave scope unknown, but no live
+        // owned tool may survive and no grace belongs to the exited leader.
+        let _ = child.stop_with_grace_wait(|_| panic!("exited leader has no graceful work"));
         let state = Command::new("/bin/ps")
             .args(["-p", tool.trim(), "-o", "stat="])
             .output()

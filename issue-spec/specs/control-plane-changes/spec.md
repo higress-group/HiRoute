@@ -211,6 +211,17 @@ rather than retaining a full result list until the lookup ends.
   semantic-digest binding; adding a selection does not repeat whole-publication work
   for every selected route.
 
+#### Scenario: Publication checks other pending operations
+
+- **WHEN** activation checks for conflicting recoverable operations while holding
+  its committed current operation
+- **THEN** one SQLite snapshot verifies recovery membership coverage and the exact
+  current journal, including its indexed steps and immutable inputs, before excluding
+  that operation from decoding. All other pending operations remain strictly decoded
+  and checked by every applicable conflict guard. Stale current facts, damaged
+  coverage or a damaged pending operation fail the check; independent recovery still
+  decodes the complete unresolved set.
+
 ### Requirement: Durable business identity survives implementation changes
 
 Persisted contracts MUST store frozen business facts and their contract identity,

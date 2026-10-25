@@ -65,6 +65,7 @@ mod native_permissions;
 mod native_reference;
 pub(crate) mod payloads;
 mod read_stamp;
+mod recovery_reads;
 use native_permissions::{
     current_artifact_aad, current_artifact_schema, desired_windows_permissions,
 };
@@ -772,30 +773,7 @@ impl ControlRepositoryPort for ControlStore {
     }
 
     fn recoverable_operations(&self) -> PortResult<Vec<OperationV1>> {
-        let connection = self.connection.borrow();
-        current_dependencies::validate_recovery_members(&connection)?;
-        let mut statement = connection
-            .prepare(
-                "SELECT operation_json FROM operation_recovery_members m JOIN operations USING(operation_id)
-                 WHERE state NOT IN ('succeeded', 'rolled_back', 'needs_attention')
-                    OR (state = 'needs_attention' AND operation_id =
-                        (SELECT operation_id FROM writer_claim WHERE singleton = 1))
-                 ORDER BY created_at, operation_id",
-            )
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.recovery.prepare"))?;
-        let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.recovery.query"))?;
-        let mut operations = Vec::new();
-        for row in rows {
-            let encoded = row.map_err(|_| port(PortErrorCode::Corrupt, "control.recovery.row"))?;
-            operations.push(decode_stored_operation(
-                &self.diagnostics.borrow(),
-                &connection,
-                &encoded,
-            )?);
-        }
-        Ok(operations)
+        self.read_recoverable_operations(None)
     }
 
     fn writer_recovery_required(&self) -> PortResult<bool> {

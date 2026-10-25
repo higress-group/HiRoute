@@ -12,30 +12,7 @@ impl LocalControlAdapter {
         same_operation: Option<&hiroute_domain::OperationId>,
     ) -> hiroute_domain::PortResult<()> {
         let stores = self.stores_lock()?;
-        for op in stores.control().recoverable_operations()? {
-            if same_operation == Some(&op.operation_id) {
-                continue;
-            }
-            let has_receipt = op
-                .step(hiroute_domain::OperationStepKind::Activate)
-                .terminal_result
-                .as_deref()
-                .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
-                .is_some();
-            if has_receipt
-                && op
-                    .plan
-                    .external()
-                    .iter()
-                    .any(super::native_model::is_settings_codex_model)
-            {
-                return Err(hiroute_domain::PortError::new(
-                    hiroute_domain::PortErrorCode::Conflict,
-                    "codex.pending_file_tail.change",
-                ));
-            }
-        }
-        Ok(())
+        check_pending_codex_change(&stores.control().recoverable_operations()?, same_operation)
     }
 
     fn codex_slot_state(
@@ -311,4 +288,35 @@ impl LocalControlAdapter {
         }
         Ok(fields)
     }
+}
+
+// The activation caller has already verified its own journal in the recovery snapshot.
+pub(super) fn check_pending_codex_change(
+    operations: &[hiroute_domain::OperationV1],
+    same_operation: Option<&hiroute_domain::OperationId>,
+) -> hiroute_domain::PortResult<()> {
+    for op in operations {
+        if same_operation == Some(&op.operation_id) {
+            continue;
+        }
+        let has_receipt = op
+            .step(hiroute_domain::OperationStepKind::Activate)
+            .terminal_result
+            .as_deref()
+            .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
+            .is_some();
+        if has_receipt
+            && op
+                .plan
+                .external()
+                .iter()
+                .any(super::native_model::is_settings_codex_model)
+        {
+            return Err(hiroute_domain::PortError::new(
+                hiroute_domain::PortErrorCode::Conflict,
+                "codex.pending_file_tail.change",
+            ));
+        }
+    }
+    Ok(())
 }

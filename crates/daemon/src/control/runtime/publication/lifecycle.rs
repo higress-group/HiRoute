@@ -68,9 +68,14 @@ impl LocalControlAdapter {
         &self,
         operation: &OperationV1,
     ) -> PortResult<()> {
-        self.require_current_operation(operation)?;
-        self.guard_codex_pending_change(Some(&operation.operation_id))?;
-        self.guard_additional_pending_model_change(Some(&operation.operation_id))?;
+        // Verify the current journal and complete recovery membership together.
+        // Do not fully reconstruct this same operation twice just to discard it.
+        let other = self
+            .stores_lock()?
+            .control()
+            .other_recoverable_operations(operation)?;
+        super::super::settings_codex_profile::check_pending_codex_change(&other, None)?;
+        super::super::additional_model_budget::check_pending_model_change(&other, None)?;
         self.begin_plan_content_activation(operation)?;
         // Settings model publications are hot-swappable: the aggregate ArcSwap cutover keeps
         // every in-flight pin on its old root, so normal B updates never suspend admission.

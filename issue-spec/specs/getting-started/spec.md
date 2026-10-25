@@ -345,8 +345,12 @@ facets. Explicit rediscovery and a new flow lifetime refresh the choices. Choice
 are hints, not proof of editable or empty settings. Missing, failed or superseded
 details SHALL block review and offer retry; late responses after selection changes
 or closure SHALL NOT replace current details. Before mapping, the flow SHALL
-refresh discovery and the selected model settings, require review of any changed
-selection/context, and retain normal fresh Preview/Apply checks.
+refresh the selected model settings, require review of any changed selection/context,
+and retain normal fresh Preview/Apply checks. Discovery choices MAY be retained only
+within the open flow across publication and mapping. They remain hints, never proof
+that the selected installation or settings are current; reopening or explicitly
+refreshing discovery reads new choices. Mapping MUST NOT repeat all-Agent discovery
+solely because the flow changed steps or requested a fresh selected settings read.
 Choosing Primary while Agent details are pending SHALL retain that explicit model
 choice without preventing default Agent initialization. Late details SHALL NOT
 replace an explicitly selected Agent or Primary.

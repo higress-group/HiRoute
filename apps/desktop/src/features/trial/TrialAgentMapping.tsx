@@ -2,7 +2,7 @@ import { TrialSessionHandoff } from './TrialSessionHandoff';
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import type { Outcome, Preview } from '../agents/types';
-import { trialModelChoices, type TrialAgentSnapshot } from './agent-read';
+import { trialModelChoices, type TrialAgentChoices, type TrialAgentSnapshot } from './agent-read';
 import { useTrialAgents } from './useTrialAgents';
 import { agentDisplayName, agentEcosystem } from '../agents/ecosystems';
 import { agentEditorSeed, editorFingerprint } from '../agents/editor-state';
@@ -41,14 +41,15 @@ export function TrialAgentChoice({ snapshot, value, onChange, language, disabled
 }
 
 /** A published Plan survives every mapping failure and can be mapped here after reload. */
-export function TrialAgentMapping({ plan, initial, language, mutable, onOperation, onChanged, onOpenAgent, onOpenPerformance, onOpenSessions, onConfirmed }: {
+export function TrialAgentMapping({ plan, initial, initialChoices, language, mutable, onOperation, onChanged, onOpenAgent, onOpenPerformance, onOpenSessions, onConfirmed }: {
+  initialChoices?: TrialAgentChoices | null;
   onOpenPerformance?(): void; onOpenSessions?(sessionId?: string): void; onConfirmed?(): void;
   plan: Plan; initial?: TrialMapping; language: 'zh' | 'en'; mutable: boolean;
   onOperation(operation: OperationReference): void; onChanged(): void; onOpenAgent?(id: string): void;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   const [mapping, setMapping] = useState<TrialMapping | null>(initial ?? null);
-  const agentRead = useTrialAgents(mapping?.agentId ?? '');
+  const agentRead = useTrialAgents(mapping?.agentId ?? '', initialChoices);
   const snapshot = agentRead.snapshot;
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [pending, setPending] = useState<OperationReference | 'unverified' | null>(null);
@@ -92,7 +93,7 @@ export function TrialAgentMapping({ plan, initial, language, mutable, onOperatio
     let submitted = false;
     try {
       const reviewed = snapshot.selected;
-      const current = await agentRead.refresh(true);
+      const current = await agentRead.refresh();
       if (!current) throw Error('AGENT_STATUS_UNAVAILABLE');
       const agent = current.selected?.agent_id === mapping.agentId ? current.selected : null;
       if (!reviewed || !agent || !current.trusted_authority || reviewed.context_id !== agent.context_id

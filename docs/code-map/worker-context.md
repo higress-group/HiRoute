@@ -83,6 +83,10 @@ Worker project ancestry uses the [native Git boundary check](../../crates/integr
 with the filtered child HOME/XDG/PATH and shared bounded probe process. Both configuration
 and resource inspection require a confirmed Git stop or the filesystem root within the
 existing bound; an invalid marker or unavailable Git cannot truncate admission.
+The shared [probe process owner](../../crates/integrations/src/agents/native_probe_process.rs)
+retains an exited Unix leader until group signals finish. Only a still-running
+leader receives termination grace; completed probes immediately stop surviving
+group members and still require reap and proven group absence.
 
 Hermes uses an [explicit effective profile](../../crates/integrations/src/agents/hermes/README.md)
 and one default main-model Plan. Desktop keeps Hermes in the common Agent list;

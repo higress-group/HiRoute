@@ -11,6 +11,109 @@ fn admitted(control: &ControlStore, key: &str) -> OperationV1 {
 }
 
 #[test]
+fn other_recovery_reads_validate_current_without_redecoding_it() {
+    let root = tempdir().unwrap();
+    let control = ControlStore::open(
+        &crate::test_storage_authority(),
+        root.path().join("control.db"),
+        root.path().join("backups"),
+    )
+    .unwrap();
+    let op = admitted(&control, "current-recovery-read");
+    let count = || crate::control::recovery_reads::DECODE_COUNT.with(std::cell::Cell::get);
+    let before = count();
+    assert!(
+        control
+            .other_recoverable_operations(&op)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        count(),
+        before,
+        "the current journal must not be reconstructed and then discarded"
+    );
+    assert_eq!(control.recoverable_operations().unwrap(), vec![op.clone()]);
+    assert_eq!(
+        count(),
+        before + 1,
+        "independent recovery still fully decodes the writer"
+    );
+    let mut stale = op.clone();
+    stale.generation += 1;
+    assert!(control.other_recoverable_operations(&stale).is_err());
+    control
+        .connection
+        .borrow()
+        .execute(
+            "DELETE FROM operation_steps WHERE operation_id=?1 AND step_no=0",
+            [op.operation_id.as_str()],
+        )
+        .unwrap();
+    assert!(
+        control.other_recoverable_operations(&op).is_err(),
+        "even the excluded current journal must retain every indexed step"
+    );
+}
+
+#[test]
+fn other_recovery_reads_preserve_parked_members_and_reject_damage() {
+    let root = tempdir().unwrap();
+    let control = ControlStore::open(
+        &crate::test_storage_authority(),
+        root.path().join("control.db"),
+        root.path().join("backups"),
+    )
+    .unwrap();
+    let mut parked = admitted(&control, "parked-before-current");
+    parked.state = OperationState::Activating;
+    parked
+        .step_mut(hiroute_domain::OperationStepKind::Activate)
+        .terminal_result = Some(
+        serde_json::to_string(&hiroute_domain::SettingsServiceCompletionV1 {
+            schema: hiroute_domain::SETTINGS_SERVICE_COMPLETION_SCHEMA.into(),
+            publication_revision: 1,
+            publication_digest: CanonicalDigest::of_bytes(b"publication"),
+            completed_effects_digest: CanonicalDigest::of_bytes(b"completed"),
+        })
+        .unwrap(),
+    );
+    control.save_operation_tail(&mut parked).unwrap();
+    let current = admitted(&control, "new-current");
+    assert_eq!(
+        control.other_recoverable_operations(&current).unwrap(),
+        vec![parked.clone()]
+    );
+    control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE operations SET operation_json='corrupt pending journal' WHERE operation_id=?1",
+            [parked.operation_id.as_str()],
+        )
+        .unwrap();
+    assert!(control.other_recoverable_operations(&current).is_err());
+}
+
+#[test]
+fn current_recovery_exclusion_never_bypasses_membership_coverage() {
+    let root = tempdir().unwrap();
+    let control = ControlStore::open(
+        &crate::test_storage_authority(),
+        root.path().join("control.db"),
+        root.path().join("backups"),
+    )
+    .unwrap();
+    let current = admitted(&control, "current-coverage");
+    control
+        .connection
+        .borrow()
+        .execute("DROP TRIGGER operation_recovery_insert", [])
+        .unwrap();
+    assert!(control.other_recoverable_operations(&current).is_err());
+}
+
+#[test]
 fn terminal_journal_remains_pending_until_real_finalizer_acknowledges_it() {
     let root = tempdir().unwrap();
     let path = root.path().join("control.db");

@@ -167,7 +167,14 @@ pub(super) fn guard_pending_model_change(
     control: &dyn ControlRepositoryPort,
     same_operation: Option<&hiroute_domain::OperationId>,
 ) -> PortResult<()> {
-    for operation in control.recoverable_operations()? {
+    check_pending_model_change(&control.recoverable_operations()?, same_operation)
+}
+
+pub(super) fn check_pending_model_change(
+    operations: &[hiroute_domain::OperationV1],
+    same_operation: Option<&hiroute_domain::OperationId>,
+) -> PortResult<()> {
+    for operation in operations {
         if same_operation == Some(&operation.operation_id) {
             continue;
         }

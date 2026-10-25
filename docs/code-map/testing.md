@@ -473,6 +473,12 @@ The [owned capture reader](../../crates/integrations/src/agents/native_probe_pro
 reads the retained file only after its native process scope stops, preserving
 exclusive Windows sharing and the exact byte limit. Its native causal control
 uses the production private-file creator; borrowed files keep their path reader.
+Unix process controls also prove that an exited leader skips termination grace,
+a running leader retains it, and a TERM-ignoring descendant cannot remain active.
+The [recovery-read transaction tests](../../crates/local-storage/src/control/current_dependencies_tests.rs)
+prove exact current-journal exclusion without redundant decoding, retain other
+parked operations, and reject stale current facts, indexed-step damage and missing
+membership coverage. Publication process tests retain activation/recovery behavior.
 The [actual Git Bash control](../../crates/integrations/src/agents/qoder_probe_windows_cli.rs)
 executes the selected candidate CLI, including literal special-character drive paths,
 and retains exact output equality. Its required native recipe selects an explicit
