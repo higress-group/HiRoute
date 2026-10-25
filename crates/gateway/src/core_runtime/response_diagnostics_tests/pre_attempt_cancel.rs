@@ -378,13 +378,68 @@ fn send(address: std::net::SocketAddr, input: &[Value]) -> Value {
         "{}",
         String::from_utf8_lossy(&response)
     );
-    // JSON responses use a known Content-Length on this native path.
-    request_body(&response)
+    response_body(&response)
 }
 
 fn request_body(raw: &[u8]) -> Value {
     let start = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
     serde_json::from_slice(&raw[start..]).unwrap()
+}
+
+fn response_body(raw: &[u8]) -> Value {
+    let start = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    let head = std::str::from_utf8(&raw[..start]).unwrap();
+    let mut remaining = &raw[start..];
+    if head
+        .lines()
+        .any(|line| line.eq_ignore_ascii_case("transfer-encoding: chunked"))
+    {
+        let mut decoded = Vec::new();
+        loop {
+            let end = remaining.windows(2).position(|w| w == b"\r\n").unwrap();
+            let size =
+                usize::from_str_radix(std::str::from_utf8(&remaining[..end]).unwrap(), 16).unwrap();
+            remaining = &remaining[end + 2..];
+            if size == 0 {
+                assert_eq!(
+                    remaining, b"\r\n",
+                    "response entity must finish exactly once"
+                );
+                return serde_json::from_slice(&decoded).unwrap();
+            }
+            assert_eq!(&remaining[size..size + 2], b"\r\n");
+            decoded.extend_from_slice(&remaining[..size]);
+            remaining = &remaining[size + 2..];
+        }
+    }
+    let length: usize = head
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+        .unwrap()
+        .1
+        .trim()
+        .parse()
+        .unwrap();
+    assert_eq!(
+        remaining.len(),
+        length,
+        "response entity must satisfy its length"
+    );
+    serde_json::from_slice(remaining).unwrap()
+}
+
+#[test]
+fn response_reader_requires_complete_entity_before_accepting_valid_json() {
+    let complete = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n";
+    assert_eq!(response_body(complete), json!({}));
+    for wire in [
+        &complete[..complete.len() - 2],
+        &complete[..complete.len() - 5],
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n{}",
+    ] {
+        assert!(std::panic::catch_unwind(|| response_body(wire)).is_err());
+    }
 }
 
 fn reply(stream: &mut impl Write, body: &Value) {
