@@ -43,11 +43,16 @@ impl ClientAccessPort for LocalControlAdapter {
         let control = stores.control();
         let revisions = control.current_revisions(&workspace).map_err(map_port)?;
         let active = control.active_publication(&workspace).map_err(map_port)?;
-        let pending = control.recoverable_operations().map_err(map_port)?;
-        let writer_released = control
-            .writer_claim_operation()
-            .map_err(map_port)?
-            .is_none();
+        let writer_released = !control.writer_recovery_required().map_err(map_port)?;
+        // A writer already establishes that mutations/reads are not ready. Do not
+        // reconstruct its full multi-megabyte recovery plan on every status poll,
+        // competing with the very transaction the UI is waiting for. Once released,
+        // parked tails still require their complete authenticated service receipts.
+        let pending = if writer_released {
+            control.recoverable_operations().map_err(map_port)?
+        } else {
+            Vec::new()
+        };
         let recovered = pending.is_empty() && writer_released;
         // A verified service segment can be read while its client file awaits cleanup.
         // Ordinary mutations remain closed, and generic or displaced recovery stays blocked.

@@ -469,7 +469,7 @@ impl LocalControlAdapter {
                 let publication = record
                     .verify()
                     .map_err(|_| invalid("publication.activate.verify"))?;
-                publication
+                record
                     .gateway_snapshot()
                     .map_err(|_| invalid("publication.activate.projection"))?;
                 self.register_operation_agent_grants(

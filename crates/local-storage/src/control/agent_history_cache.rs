@@ -292,6 +292,33 @@ impl ControlStore {
         kinds: &[&str],
         require_complete_provenance: bool,
     ) -> PortResult<(Vec<Arc<SucceededAgentOperationV1>>, u64)> {
+        self.scan_verified_agent_history(workspace, kinds, require_complete_provenance, |_| {
+            Ok(false)
+        })
+        .map(|(facts, rejected, _)| (facts, rejected))
+    }
+
+    /// Resolve the newest relevant completed fact. Older operations after that
+    /// fact cannot change the answer and are not dependencies of this current read.
+    /// Every visited row and its exact payload/journal closure is authenticated in
+    /// one SQLite snapshot. History/restore-list callers retain the full reader.
+    pub fn find_verified_agent_operation(
+        &self,
+        workspace: &WorkspaceId,
+        kinds: &[&str],
+        matches: impl FnMut(&SucceededAgentOperationV1) -> PortResult<bool>,
+    ) -> PortResult<Option<Arc<SucceededAgentOperationV1>>> {
+        self.scan_verified_agent_history(workspace, kinds, true, matches)
+            .map(|(mut facts, _, matched)| if matched { facts.pop() } else { None })
+    }
+
+    fn scan_verified_agent_history(
+        &self,
+        workspace: &WorkspaceId,
+        kinds: &[&str],
+        require_complete_provenance: bool,
+        mut stop: impl FnMut(&SucceededAgentOperationV1) -> PortResult<bool>,
+    ) -> PortResult<(Vec<Arc<SucceededAgentOperationV1>>, u64, bool)> {
         super::agent_read::validate_kinds(kinds)?;
         let connection = self.connection.borrow();
         // An existing caller transaction already supplies the snapshot. Never
@@ -307,14 +334,18 @@ impl ControlStore {
         };
         let placeholders = vec!["?"; kinds.len()].join(",");
         let mut statement = connection.prepare(&format!(
-            "SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json FROM operations WHERE workspace_id=? AND operation_kind IN ({placeholders}) AND state='succeeded' ORDER BY rowid DESC"
+            "SELECT rowid FROM operations WHERE workspace_id=? AND operation_kind IN ({placeholders}) AND state='succeeded' ORDER BY rowid DESC"
         )).map_err(|_| unavailable())?;
+        // Sort only row identities. Sorting multi-megabyte historical JSON spills
+        // the whole history to temporary files before the first fact is returned.
+        let mut selected = connection.prepare("SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json FROM operations WHERE rowid=?1")
+            .map_err(|_| unavailable())?;
         let rows = statement
             .query_map(
                 rusqlite::params_from_iter(
                     std::iter::once(workspace.as_str()).chain(kinds.iter().copied()),
                 ),
-                AgentHistoryRow::read,
+                |row| row.get::<_, i64>(0),
             )
             .map_err(|_| unavailable())?;
         let mut cache = self.agent_history_cache.borrow_mut();
@@ -322,7 +353,9 @@ impl ControlStore {
         let mut facts = Vec::new();
         let mut rejected = 0_u64;
         let mut members = std::collections::BTreeSet::new();
+        let mut matched = false;
         for row in rows {
+            let row = row.and_then(|id| selected.query_row([id], AgentHistoryRow::read));
             let row = match row {
                 Ok(row) => row,
                 Err(error)
@@ -344,7 +377,13 @@ impl ControlStore {
             };
             members.insert(row.operation_id.clone());
             match cache.read(&connection, &row) {
-                Ok(fact) => facts.push(fact),
+                Ok(fact) => {
+                    matched = stop(&fact)?;
+                    facts.push(fact);
+                    if matched {
+                        break;
+                    }
+                }
                 Err(error)
                     if !require_complete_provenance && error.code == PortErrorCode::Corrupt =>
                 {
@@ -360,7 +399,8 @@ impl ControlStore {
             .entries
             .iter()
             .filter(|(id, entry)| {
-                entry.facts.workspace_id == *workspace
+                !matched
+                    && entry.facts.workspace_id == *workspace
                     && kinds.contains(&entry.facts.idempotency.operation_kind.as_str())
                     && !members.contains(*id)
             })
@@ -370,9 +410,10 @@ impl ControlStore {
             cache.remove(&id);
         }
         drop(statement);
+        drop(selected);
         if let Some(transaction) = transaction {
             transaction.commit().map_err(|_| unavailable())?;
         }
-        Ok((facts, rejected))
+        Ok((facts, rejected, matched))
     }
 }

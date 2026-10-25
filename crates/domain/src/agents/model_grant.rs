@@ -108,9 +108,24 @@ impl AgentModelGrantV2 {
         }
         let mut routes = BTreeMap::new();
         let mut route_protocols = BTreeMap::new();
-        for id in selection.allowed_plan_ids() {
+        let plan_ids = selection.allowed_plan_ids();
+        // Authenticate/project the publication once for this selection, not once per
+        // selected Plan. Each route still checks its own ingress and exact Plan binding.
+        let published = if plan_ids.is_empty() {
+            Vec::new()
+        } else if protocol == AgentIngressProtocolV1::ChatCompletions {
+            publication
+                .published_hermes_agent_plans()
+                .map_err(|_| AgentConnectionError::InvalidPlan)?
+        } else {
+            publication
+                .published_agent_plans()
+                .map_err(|_| AgentConnectionError::InvalidPlan)?
+        };
+        for id in plan_ids {
             let selected = selection.plan_protocol(&id, protocol);
-            let plan_routes = Self::plan_routes(selected, [id].into(), publication)?;
+            let plan_routes =
+                Self::project_plan_routes(selected, [id].into(), publication, &published)?;
             for name in plan_routes.keys() {
                 if selected != protocol {
                     route_protocols.insert(name.clone(), selected);
@@ -167,6 +182,15 @@ impl AgentModelGrantV2 {
             publication.published_agent_plans()
         }
         .map_err(|_| AgentConnectionError::InvalidPlan)?;
+        Self::project_plan_routes(protocol, plan_ids, publication, &published)
+    }
+
+    fn project_plan_routes(
+        protocol: AgentIngressProtocolV1,
+        plan_ids: std::collections::BTreeSet<AgentPlanId>,
+        publication: &GatewayPublicationV1,
+        published: &[crate::PublishedAgentPlanV1],
+    ) -> Result<BTreeMap<String, AgentModelRouteV2>, AgentConnectionError> {
         let mut routes = BTreeMap::new();
         for plan_id in plan_ids {
             let plan = published

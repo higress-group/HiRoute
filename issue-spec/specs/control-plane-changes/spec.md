@@ -126,6 +126,38 @@ Current grants, publication membership, pending operations and authorization are
 not cached. This reuse does not authorize execution or replace recovery's strict
 journal reader.
 
+Current Agent status and settings preparation MAY stop at the newest authenticated
+fact that decides the requested facet or exact current grant. Older facts after that
+match are not dependencies of that answer. Every visited row, its indexed identity
+and raw dependency closure still require snapshot-bound validation; a corrupt visited
+row is not a no-match. Explicit history/restore-list reads retain their full strict
+scope. Ordering a history query SHALL NOT require sorting complete retained payloads
+before the first selected fact can be read.
+
+#### Scenario: Current fact without historical payload work
+
+- **WHEN** a current Agent facet has a verified latest matching operation
+- **THEN** its status/settings preparation does not reconstruct older irrelevant
+  operations; changed bytes or indexed identity of the selected operation are rejected
+  on the next read, including after a warm read, while an explicit history query still
+  checks every requested member.
+
+#### Scenario: Status observation while a writer owns an operation
+
+- **WHEN** the durable writer claim is present
+- **THEN** service status reports mutation/recovery unavailability without expanding
+  the in-progress plan solely to report busy; this does not authorize execution or
+  recovery, which retain complete current-operation checks. After release, any parked
+  native-file tail still requires its authenticated service-completion receipt.
+
+#### Scenario: Select multiple routes from one publication
+
+- **WHEN** one Agent settings selection includes multiple published Plans
+- **THEN** the immutable publication catalog is authenticated/projected once for the
+  selection, while each route retains its own active-state, ingress, revision and
+  semantic-digest binding; adding a selection does not repeat whole-publication work
+  for every selected route.
+
 ### Requirement: Durable business identity survives implementation changes
 
 Persisted contracts MUST store frozen business facts and their contract identity,

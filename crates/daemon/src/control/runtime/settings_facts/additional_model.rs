@@ -133,48 +133,65 @@ impl LocalControlAdapter {
             _ => return Err(ControlReadError::Denied),
         };
         let previous = if let Some(reference) = &current_grant {
-            let mut found = None;
-            for operation in stores
+            let found = stores
                 .control()
-                .succeeded_agent_operations_for_kind(&workspace, "ApplyAgentConnectionChange")
+                .find_verified_agent_operation(
+                    &workspace,
+                    &["ApplyAgentConnectionChange"],
+                    |operation| {
+                        let invalid = || {
+                            hiroute_domain::PortError::new(
+                                hiroute_domain::PortErrorCode::Corrupt,
+                                "agent.model.current-grant",
+                            )
+                        };
+                        if operation.plan.spec().resource_id.as_deref() != Some(&spec.context_id) {
+                            return Ok(false);
+                        }
+                        let Some(intent) = operation
+                            .plan
+                            .external()
+                            .iter()
+                            .find(|intent| {
+                                super::super::native_additional_model::is_settings_additional_model(
+                                    intent,
+                                )
+                            })
+                            .cloned()
+                        else {
+                            return Ok(false);
+                        };
+                        let payload =
+                            settings_additional_model_file_for_operation(operation, &intent)?;
+                        if !matches!(payload.change, AdditionalModelFileAction::Configure { .. }) {
+                            return Err(invalid());
+                        }
+                        let [mutation] = operation.plan.agent_access_grants() else {
+                            return Err(invalid());
+                        };
+                        let effect = operation
+                            .step(hiroute_domain::OperationStepKind::ApplySecrets)
+                            .effects
+                            .iter()
+                            .find(|effect| is_agent_access_grant_effect(effect))
+                            .ok_or_else(invalid)?;
+                        let original = AgentAccessGrantRefV1::from_ensure_effect(effect, mutation)
+                            .map_err(|_| invalid())?;
+                        Ok(&original == reference)
+                    },
+                )
                 .map_err(super::super::map_port)?
-            {
-                if operation.plan.spec().resource_id.as_deref() != Some(&spec.context_id) {
-                    continue;
-                }
-                let Some(intent) = operation
-                    .plan
-                    .external()
-                    .iter()
-                    .find(|intent| {
-                        super::super::native_additional_model::is_settings_additional_model(intent)
-                    })
-                    .cloned()
-                else {
-                    continue;
-                };
-                let payload = settings_additional_model_file_for_operation(&operation, &intent)
-                    .map_err(super::super::map_port)?;
-                if !matches!(payload.change, AdditionalModelFileAction::Configure { .. }) {
-                    return Err(ControlReadError::Corrupt);
-                }
-                let [mutation] = operation.plan.agent_access_grants() else {
-                    return Err(ControlReadError::Corrupt);
-                };
-                let effect = operation
-                    .step(hiroute_domain::OperationStepKind::ApplySecrets)
-                    .effects
-                    .iter()
-                    .find(|effect| is_agent_access_grant_effect(effect))
-                    .ok_or(ControlReadError::Corrupt)?;
-                let original = AgentAccessGrantRefV1::from_ensure_effect(effect, mutation)
-                    .map_err(|_| ControlReadError::Corrupt)?;
-                if &original == reference {
-                    found = Some((operation, intent));
-                    break;
-                }
-            }
-            Some(found.ok_or(ControlReadError::Corrupt)?)
+                .ok_or(ControlReadError::Corrupt)?;
+            let intent = found
+                .plan
+                .external()
+                .iter()
+                .find(|intent| {
+                    super::super::native_additional_model::is_settings_additional_model(intent)
+                })
+                .cloned()
+                .ok_or(ControlReadError::Corrupt)?;
+            Some((found, intent))
         } else {
             None
         };

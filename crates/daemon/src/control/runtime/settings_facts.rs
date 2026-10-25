@@ -969,14 +969,15 @@ fn login_item_owned_by_this_feature(
     stores: &hiroute_local_storage::LocalStorageSet,
     workspace: &WorkspaceId,
 ) -> Result<bool, ControlReadError> {
-    for original in stores
+    let original = stores
         .control()
-        .verified_agent_history_for_kinds(
+        .find_verified_agent_operation(
             workspace,
             &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
+            |operation| Ok(operation.plan.external().iter().any(is_settings_login_item)),
         )
-        .map_err(super::map_port)?
-    {
+        .map_err(super::map_port)?;
+    if let Some(original) = original {
         if let Some(intent) = original
             .plan
             .external()

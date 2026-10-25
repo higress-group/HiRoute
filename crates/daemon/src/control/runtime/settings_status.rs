@@ -245,17 +245,15 @@ impl LocalControlAdapter {
             status.operation_state = Some(pending.state.as_str().into());
             return Ok((status, None, None));
         }
-        let operations = stores
+        let operation = stores
             .control()
-            .verified_agent_history_for_kinds(
+            .find_verified_agent_operation(
                 &WorkspaceId::default(),
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
+                |operation| Ok(belongs(operation)),
             )
             .map_err(super::map_port)?;
-        let Some(operation) = operations
-            .into_iter()
-            .find(|operation| belongs(operation.as_ref()))
-        else {
+        let Some(operation) = operation else {
             return Ok((status, None, None));
         };
         let intent = model_intent(class, operation.as_ref()).ok_or(ControlReadError::Corrupt)?;

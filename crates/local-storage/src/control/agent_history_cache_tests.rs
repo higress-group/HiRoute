@@ -53,6 +53,84 @@ fn read(
 }
 
 #[test]
+fn newest_matching_fact_stops_before_unneeded_history_but_rechecks_current_bytes() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let old = complete(&control, "unneeded-old", &"p".repeat(128 * 1024));
+    let selected = complete(&control, "current-selected", "current");
+    let find = || {
+        control.find_verified_agent_operation(&WorkspaceId::default(), KINDS, |fact| {
+            Ok(fact.operation_id == selected.operation_id)
+        })
+    };
+    let decodes = || super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
+    let before = decodes();
+    assert_eq!(find().unwrap().unwrap().operation_id, selected.operation_id);
+    assert_eq!(decodes() - before, 1);
+    assert_eq!(find().unwrap().unwrap().operation_id, selected.operation_id);
+    assert_eq!(decodes() - before, 1);
+    let external = rusqlite::Connection::open(directory.path().join("control.db")).unwrap();
+    external
+        .execute(
+            "UPDATE operations SET operation_json='{}' WHERE operation_id=?1",
+            [old.operation_id.as_str()],
+        )
+        .unwrap();
+    assert_eq!(find().unwrap().unwrap().operation_id, selected.operation_id);
+    assert!(
+        read(&control).is_err(),
+        "explicit whole-history reads remain strict"
+    );
+    assert!(
+        control
+            .find_verified_agent_operation(&WorkspaceId::default(), KINDS, |_| Ok(false))
+            .is_err(),
+        "no match must not skip a corrupt visited row"
+    );
+    external
+        .execute(
+            "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=0",
+            [selected.operation_id.as_str()],
+        )
+        .unwrap();
+    assert!(
+        find().is_err(),
+        "a warm result cannot authorize changed current journal bytes"
+    );
+}
+
+#[test]
+fn newest_matching_fact_preserves_no_match_and_current_membership() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    complete(&control, "first", "");
+    assert!(
+        control
+            .find_verified_agent_operation(&WorkspaceId::default(), KINDS, |_| Ok(false))
+            .unwrap()
+            .is_none()
+    );
+    let next = complete(&control, "next", "");
+    let find =
+        || control.find_verified_agent_operation(&WorkspaceId::default(), KINDS, |_| Ok(true));
+    assert_eq!(find().unwrap().unwrap().operation_id, next.operation_id);
+    let external = rusqlite::Connection::open(directory.path().join("control.db")).unwrap();
+    external
+        .execute(
+            "UPDATE operations SET accepted_change_digest=?2 WHERE operation_id=?1",
+            rusqlite::params![
+                next.operation_id.as_str(),
+                CanonicalDigest::of_bytes(b"substituted").as_str()
+            ],
+        )
+        .unwrap();
+    assert!(
+        find().is_err(),
+        "selected indexed identity must match the authenticated row"
+    );
+}
+
+#[test]
 fn budget_and_attribution_reads_reuse_the_same_verified_history() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());

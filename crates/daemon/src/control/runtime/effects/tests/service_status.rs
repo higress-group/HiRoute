@@ -74,6 +74,40 @@ fn service_status_requires_resumed_target_and_no_retained_writer_claim() {
     let (mut operation, _, _) =
         routing_operation(&runtime.adapter, publication, None, "status-claim");
     assert!(!runtime.adapter.service_status().unwrap().recovery_ready);
+    // A retained writer is sufficient to report busy, without rebuilding its plan
+    // on every UI poll. This observation cannot authorize or repair that operation.
+    let journal = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
+    let bytes: String = journal
+        .query_row(
+            "SELECT operation_json FROM operations WHERE operation_id=?1",
+            [operation.operation_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    journal
+        .execute(
+            "UPDATE operations SET operation_json='{}' WHERE operation_id=?1",
+            [operation.operation_id.as_str()],
+        )
+        .unwrap();
+    let busy = runtime.adapter.service_status().unwrap();
+    assert!(!busy.recovery_ready && !busy.mutation_available);
+    assert_eq!(busy.gateway, ClientGatewayStateV1::Unavailable);
+    assert!(
+        runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .control()
+            .recoverable_operations()
+            .is_err()
+    );
+    journal
+        .execute(
+            "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
+            rusqlite::params![operation.operation_id.as_str(), bytes],
+        )
+        .unwrap();
     operation.transition(OperationState::RollingBack).unwrap();
     operation
         .transition(OperationState::NeedsAttention)

@@ -2,6 +2,64 @@
 use super::*;
 use crate::routing::CANDIDATE_VALIDATIONS;
 
+#[test]
+fn selecting_many_agent_routes_authenticates_the_publication_once() {
+    let publication = serde_json::from_slice::<GatewayPublicationV1>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap()
+    .into_current()
+    .unwrap();
+    let ids: BTreeSet<_> = publication
+        .published_agent_plans()
+        .unwrap()
+        .into_iter()
+        .filter(|plan| {
+            plan.active
+                && plan
+                    .supported_ingress
+                    .contains(&AgentIngressProtocolV1::Responses)
+        })
+        .map(|plan| plan.agent_plan_id)
+        .collect();
+    assert!(
+        ids.len() > 1,
+        "the regression must select multiple real Plans"
+    );
+    let expected = crate::AgentModelGrantV2::from_plan_ids(
+        AgentIngressProtocolV1::Responses,
+        ids.clone(),
+        &publication,
+    )
+    .unwrap();
+    let selection = crate::AgentModelSelectionV2::DshAdditional {
+        allowed_plan_ids: ids,
+        plan_protocols: BTreeMap::new(),
+    };
+    AGGREGATE_VALIDATIONS.with(|calls| calls.set(0));
+    let grant = crate::AgentModelGrantV2::derive(
+        AgentIngressProtocolV1::Responses,
+        &selection,
+        &publication,
+        &BTreeMap::new(),
+    )
+    .unwrap();
+    assert_eq!(grant, expected);
+    assert_eq!(AGGREGATE_VALIDATIONS.with(|calls| calls.get()), 1);
+    grant.validate_selection(&selection).unwrap();
+    let mut corrupted = publication;
+    corrupted.authority_epoch = 0;
+    assert!(
+        crate::AgentModelGrantV2::derive(
+            AgentIngressProtocolV1::Responses,
+            &selection,
+            &corrupted,
+            &BTreeMap::new(),
+        )
+        .is_err()
+    );
+}
+
 fn current_catalog_only(count: usize) -> GatewayPublicationV1 {
     let mut publication = serde_json::from_slice::<crate::GatewayPublicationV1>(include_bytes!(
         "../../../../e2e/product/fixtures/routing/current-publication.v3.json"

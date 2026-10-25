@@ -30,8 +30,6 @@ impl LocalControlAdapter {
         {
             self.validate_additional_installed_model_budgets(&record)?;
             record
-                .verify()
-                .map_err(|_| invalid("publication.admission.verify"))?
                 .gateway_snapshot()
                 .map_err(|_| invalid("publication.admission.projection"))?;
         }
@@ -58,10 +56,7 @@ impl LocalControlAdapter {
         &self,
         record: &PublicationRecordV1,
     ) -> PortResult<bool> {
-        let publication = record
-            .verify()
-            .map_err(|_| invalid("publication.target.record"))?;
-        publication
+        record
             .gateway_snapshot()
             .map_err(|_| invalid("publication.target.projection"))?;
         self.required_publication_target()?
@@ -121,8 +116,6 @@ impl LocalControlAdapter {
                     .expect("publication_marker always returns the current shape");
                 self.validate_additional_installed_model_budgets(record)?;
                 record
-                    .verify()
-                    .map_err(|_| invalid("publication.install.record"))?
                     .gateway_snapshot()
                     .map_err(|_| invalid("publication.install.projection"))?;
                 self.required_publication_target()?;
