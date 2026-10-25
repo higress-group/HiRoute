@@ -136,6 +136,12 @@ Preview/Apply does not re-run `claude --version`. An unknown native provider in 
 cannot make a valid executable/resource disappear when switching to an authorized plan.
 Only the action requiring an unproven capability is unavailable.
 
+Startup recovery SHALL prime its protected-input registry from current native configuration
+without requiring informational native version probes. It SHALL retain permission findings
+and exact source-revision checks before reading a recovered secret. Configuration priming
+does not establish executable, managed-launch or connection authority; explicit Agent
+inventory retains its complete discovery behavior.
+
 Explicit Claude authentication and collaboration checks MUST replace inherited
 HOME, native configuration and temporary-directory selectors with disposable
 probe-owned roots. Both the generic temporary directory and Claude's dedicated

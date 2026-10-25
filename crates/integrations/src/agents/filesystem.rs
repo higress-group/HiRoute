@@ -409,6 +409,22 @@ impl FilesystemAgentScannerV1 {
         })
     }
 
+    /// Configuration-only facts for startup's protected-input registry. Native
+    /// version, capability and managed-launch observations are not returned or
+    /// asserted here. Reading the secret still rechecks its exact source revision.
+    pub fn claude_protected_configuration_inputs(
+        &self,
+    ) -> (
+        Option<DiscoveredCredentialRefV1>,
+        Option<PermissionHardeningRequiredV1>,
+    ) {
+        let configuration = self.scan_claude(None, None, false);
+        (
+            configuration.discovered_credential,
+            configuration.permission_hardening,
+        )
+    }
+
     pub fn scan(&self) -> Vec<FilesystemAgentDiscoveryV1> {
         let mut results = vec![
             self.scan_codex(),

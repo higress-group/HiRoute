@@ -728,9 +728,9 @@ impl ProductionControlRuntime {
             worker_platform.clone(),
             Arc::new(UnavailableWorkerProfileSource),
         ));
-        // Prime opaque scanner descriptors before journal recovery. A recovered Secret step can
-        // resolve only the same exact revision; changed or missing sources fail closed.
-        adapter.refresh_discovery()?;
+        // Recovery needs exact configuration descriptors, not the informational native-version
+        // inventory. A recovered Secret step still rejects a changed or missing source revision.
+        adapter.prime_discovery()?;
         // Price availability alone does not reject an otherwise authorized model request.
         // Pending price Operations perform mandatory installation during recovery below.
         let _ = adapter.rebuild_price_snapshot();

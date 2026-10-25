@@ -89,6 +89,9 @@ its native host resolves the caller's existing default profile and its details c
 select another through the same target-read flow before settings become available.
 The common [discovery preference](../../apps/desktop/src/features/agents/discovery.ts)
 remembers explicit targets as hints, with backend revalidation and per-profile failure isolation.
+Startup [protected-input priming](../../crates/daemon/src/control/runtime/mutation.rs)
+reads exact native configuration descriptors without running informational version probes;
+explicit Agent inventory retains full discovery and later secret reads recheck source revisions.
 Its [native request middleware](../../assets/agents/hermes/__init__.py) carries the real
 session into trusted Gateway correlation and emits observed batch context
 independently from optional bounded read-only compression evidence;

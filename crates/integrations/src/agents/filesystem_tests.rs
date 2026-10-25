@@ -13,6 +13,8 @@ use crate::agents::{
 mod claude_routing;
 #[path = "filesystem_tests/dsh.rs"]
 mod dsh;
+#[path = "filesystem_tests/startup_inputs.rs"]
+mod startup_inputs;
 #[path = "filesystem_tests/pi.rs"]
 mod pi;
 #[path = "filesystem_tests/qoder.rs"]
