@@ -35,12 +35,24 @@ impl OperationV1 {
     }
 
     pub(super) fn establish_journal_checkpoint(&mut self) -> Result<(), OperationValidationError> {
-        self.journal_checkpoint = Some(Arc::new(JournalCheckpoint {
-            identity: self.immutable_identity()?,
-            plan: self.plan.clone(),
-            plan_json: StoredOperationInputV1::freeze(&self.plan)?
+        let identity = self.immutable_identity()?;
+        // Restoration changes journal fields, not the validated immutable plan.
+        // Retain only this value-owned encoding; a detached plan or changed
+        // identity must rebuild it. Cold input still constructs its own proof.
+        let plan_json = match self.journal_checkpoint.as_ref() {
+            Some(before)
+                if before.identity == identity && Arc::ptr_eq(&before.plan, &self.plan) =>
+            {
+                before.plan_json.clone()
+            }
+            _ => StoredOperationInputV1::freeze(&self.plan)?
                 .canonical_json()?
                 .into(),
+        };
+        self.journal_checkpoint = Some(Arc::new(JournalCheckpoint {
+            identity,
+            plan: self.plan.clone(),
+            plan_json,
             generation: self.generation,
             steps: self.steps.clone(),
             state: self.state,
