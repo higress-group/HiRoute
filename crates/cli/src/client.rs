@@ -411,23 +411,70 @@ pub(crate) fn read_protected_fd(fd: u32) -> Result<String, LocalControlClientErr
     if fd < 3 {
         return Err(LocalControlClientError::ProtectedInput);
     }
-    let path = Path::new("/dev/fd").join(fd.to_string());
-    let bytes = std::fs::read(path).map_err(|_| LocalControlClientError::ProtectedInput)?;
-    if bytes.is_empty() || bytes.len() > 512 || bytes.contains(&0) {
-        return Err(LocalControlClientError::ProtectedInput);
+    #[cfg(unix)]
+    {
+        read_protected_fd_unix(fd)
     }
-    let mut value =
-        String::from_utf8(bytes).map_err(|_| LocalControlClientError::ProtectedInput)?;
-    if value.ends_with("\r\n") {
-        value.truncate(value.len() - 2);
-    } else if value.ends_with('\n') {
-        value.pop();
-    }
-    if value.is_empty() {
+    #[cfg(not(unix))]
+    {
+        let _ = fd;
         Err(LocalControlClientError::ProtectedInput)
-    } else {
-        Ok(value)
     }
+}
+
+/// Inherited secret/capability material is a regular file (`3< KEY_FILE`) or a pipe.
+/// Bound both bytes and time; never load `/dev/zero` or wait indefinitely for EOF.
+#[cfg(unix)]
+fn read_protected_fd_unix(fd: u32) -> Result<String, LocalControlClientError> {
+    use std::io::Read;
+    use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
+    use std::time::{Duration, Instant};
+
+    let denied = || LocalControlClientError::ProtectedInput;
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY)
+        .open(format!("/dev/fd/{fd}"))
+        .map_err(|_| denied())?;
+    let file_type = file.metadata().map_err(|_| denied())?.file_type();
+    if !file_type.is_file() && !file_type.is_fifo() {
+        return Err(denied());
+    }
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut bytes = [0u8; 513];
+    let mut len = 0;
+    let outcome = loop {
+        if Instant::now() >= deadline || len == bytes.len() {
+            break Err(denied());
+        }
+        match file.read(&mut bytes[len..]) {
+            Ok(0) => break Ok(()),
+            Ok(n) => len += n,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break Err(denied()),
+        }
+    };
+    let parsed = outcome.and_then(|_| {
+        if len == 0 || len > 512 || bytes[..len].contains(&0) {
+            return Err(denied());
+        }
+        let mut value = String::from_utf8(bytes[..len].to_vec()).map_err(|_| denied())?;
+        if value.ends_with("\r\n") {
+            value.truncate(value.len() - 2);
+        } else if value.ends_with('\n') {
+            value.pop();
+        }
+        if value.is_empty() {
+            Err(denied())
+        } else {
+            Ok(value)
+        }
+    });
+    bytes.fill(0);
+    parsed
 }
 
 #[cfg(windows)]
@@ -542,6 +589,64 @@ mod locator_tests {
         assert_eq!(
             resolve_runtime_root(None, None, Some("relative".into()), true, None),
             Err(LocalControlClientError::LocatorUnavailable)
+        );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod protected_fd_tests {
+    use super::*;
+    use std::io::Write;
+    use std::os::fd::AsRawFd;
+
+    #[test]
+    fn protected_fd_accepts_regular_file_and_pipe_within_512_bytes() {
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(b"sk-test\n").unwrap();
+        file.flush().unwrap();
+        use std::io::Seek;
+        file.rewind().unwrap();
+        assert_eq!(
+            read_protected_fd(file.as_raw_fd() as u32).unwrap(),
+            "sk-test"
+        );
+
+        let (read, write) = nix::unistd::pipe().unwrap();
+        nix::unistd::write(&write, b"pipe-secret").unwrap();
+        drop(write);
+        assert_eq!(
+            read_protected_fd(read.as_raw_fd() as u32).unwrap(),
+            "pipe-secret"
+        );
+    }
+
+    #[test]
+    fn protected_fd_rejects_stdio_device_oversize_and_nul() {
+        assert_eq!(
+            read_protected_fd(0),
+            Err(LocalControlClientError::ProtectedInput)
+        );
+        let zero = std::fs::File::open("/dev/zero").unwrap();
+        assert_eq!(
+            read_protected_fd(zero.as_raw_fd() as u32),
+            Err(LocalControlClientError::ProtectedInput)
+        );
+        let mut oversize = tempfile::tempfile().unwrap();
+        oversize.write_all(&[b'x'; 513]).unwrap();
+        oversize.flush().unwrap();
+        use std::io::Seek;
+        oversize.rewind().unwrap();
+        assert_eq!(
+            read_protected_fd(oversize.as_raw_fd() as u32),
+            Err(LocalControlClientError::ProtectedInput)
+        );
+        let mut nul = tempfile::tempfile().unwrap();
+        nul.write_all(b"abc\0def").unwrap();
+        nul.flush().unwrap();
+        nul.rewind().unwrap();
+        assert_eq!(
+            read_protected_fd(nul.as_raw_fd() as u32),
+            Err(LocalControlClientError::ProtectedInput)
         );
     }
 }
