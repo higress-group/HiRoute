@@ -137,8 +137,10 @@ python3 scripts/package-desktop.py build \
 ```
 
 凭据只来自本机钥匙串，不放进仓库或命令输出。工具签名嵌套二进制和 App，提交公证，
-staple 并验证后重建 zip，再封装、签名和公证 DMG；两次公证均须 Accepted。自签名构建在包内明确标记
-`controlled-trial`，不声称 Developer ID 签名或公证；该技术标记本身也不代表已经完成组件声明、安装和发布审核。
+staple 并验证后重建 zip，再封装、签名和公证 DMG；两次公证均须 Accepted。
+Developer ID 升级会把该签名 TeamIdentifier 编译进原生更新器（`HIROUTE_DEVELOPER_ID_TEAM`）。
+未配置或团队不匹配时失败关闭；下载的安装包不能自行提供受信任团队。
+自签名构建在包内明确标记 `controlled-trial`，不声称 Developer ID 签名或公证；该技术标记本身也不代表已经完成组件声明、安装和发布审核。
 短期公开自签名版本仍须显式提供并核对适用组件材料，通过上述审核后才可进入官网发布清单。
 
 安装场景需另行记录：安装位置/Finder 无覆盖启动、CLI 同服务和未运行错误、实际委派/结果、
