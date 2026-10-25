@@ -231,6 +231,45 @@ fn send(fixture: &RuntimeFixture, input: &[Value], turn: &str) -> Vec<Value> {
         .clone()
 }
 
+fn fact_envelopes<'a>(facts: &'a [Value], kind: &'a str) -> impl Iterator<Item = &'a Value> {
+    facts
+        .iter()
+        .filter(move |entry| entry["fact"]["kind"] == kind)
+}
+
+#[track_caller]
+fn assert_regular_routes<'a>(facts: &'a [Value], sources: &[&str]) -> Vec<&'a Value> {
+    assert_single_planner_run_per_request(facts, sources.len());
+    let routes = fact_envelopes(facts, "route_decision").collect::<Vec<_>>();
+    assert_eq!(routes.len(), sources.len());
+    for (index, (route, source)) in routes.iter().zip(sources).enumerate() {
+        let decision = &route["fact"]["complexity"];
+        assert_eq!(decision["execution_group"], "regular", "route {index}");
+        assert_eq!(decision["fallback_used"], false, "route {index}");
+        assert_eq!(decision["decision_source"], *source, "route {index}");
+    }
+    routes
+}
+
+#[track_caller]
+fn assert_complete_assessment(score: &Value, stage: &Value) {
+    assert_eq!(score["partial"], false);
+    assert_eq!(score["history_membership"], stage["history_membership"]);
+    for key in [
+        "segment_id",
+        "plan_id",
+        "plan_revision",
+        "model_configuration_id",
+        "profile_digest",
+    ] {
+        assert!(!stage[key].is_null(), "assessed stage is missing {key}");
+        assert_eq!(
+            score[key], stage[key],
+            "score must assess the actual stage's {key}"
+        );
+    }
+}
+
 #[test]
 fn real_listener_stop_then_appended_input_records_new_message_and_complete_later_stage() {
     run(false);
@@ -281,9 +320,8 @@ fn run(rewrite_old_prefix: bool) {
     assert_eq!(input.len(), 81);
     let completed_text = cancel_after_partial_tool(&fixture, &input, &expected);
     let cancelled_facts = wait_execution_facts(&fixture, 1);
-    let a = cancelled_facts
-        .iter()
-        .find(|e| e["fact"]["kind"] == "agent_turn_finished")
+    let a = fact_envelopes(&cancelled_facts, "agent_turn_finished")
+        .next()
         .unwrap()["fact"]
         .clone();
     assert_eq!(a["status"], "interrupted");
@@ -296,9 +334,8 @@ fn run(rewrite_old_prefix: bool) {
             .len(),
         1
     );
-    let a_admission = &cancelled_facts
-        .iter()
-        .find(|e| e["fact"]["kind"] == "agent_turn_admitted")
+    let a_admission = &fact_envelopes(&cancelled_facts, "agent_turn_admitted")
+        .next()
         .unwrap()["fact"];
     if rewrite_old_prefix {
         input[0]["content"] = json!("changed old fixture question");
@@ -316,9 +353,7 @@ fn run(rewrite_old_prefix: bool) {
     assert_eq!(new[82]["content"], B_USER);
     assert!(!new.iter().any(|item| item["call_id"] == "a-unfinished"));
     let after_b = wait_execution_facts(&fixture, 2);
-    let admissions = after_b
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")
+    let admissions = fact_envelopes(&after_b, "agent_turn_admitted")
         .map(|e| &e["fact"])
         .collect::<Vec<_>>();
     assert_eq!(admissions.len(), 2);
@@ -350,27 +385,16 @@ fn run(rewrite_old_prefix: bool) {
 
 fn assert_finished(fixture: &RuntimeFixture, classifier: &NativeProvider, a: &Value, cause: &str) {
     let facts = wait_execution_facts(fixture, 4);
-    assert_single_planner_run_per_request(&facts, 4);
-    let routes = facts
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "route_decision")
-        .collect::<Vec<_>>();
-    assert_eq!(routes.len(), 4);
-    for (index, route) in routes.iter().enumerate() {
-        assert_eq!(route["fact"]["complexity"]["execution_group"], "regular");
-        assert_eq!(route["fact"]["complexity"]["fallback_used"], false);
-        assert_eq!(
-            route["fact"]["complexity"]["decision_source"],
-            if index == 2 {
-                "inherited"
-            } else {
-                "external_classifier"
-            }
-        );
-    }
-    let stages = facts
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "agent_turn_finished")
+    let routes = assert_regular_routes(
+        &facts,
+        &[
+            "external_classifier",
+            "external_classifier",
+            "inherited",
+            "external_classifier",
+        ],
+    );
+    let stages = fact_envelopes(&facts, "agent_turn_finished")
         .map(|e| &e["fact"])
         .collect::<Vec<_>>();
     assert_eq!(stages.len(), 3);
@@ -403,10 +427,7 @@ fn assert_finished(fixture: &RuntimeFixture, classifier: &NativeProvider, a: &Va
             "same execution configuration must recover independently"
         );
     }
-    let scores = facts
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "branch_assessment_recorded")
-        .collect::<Vec<_>>();
+    let scores = fact_envelopes(&facts, "branch_assessment_recorded").collect::<Vec<_>>();
     assert_eq!(scores.len(), 2);
     assert_eq!(
         scores[0]["correlation"]["request_id"],
@@ -425,18 +446,7 @@ fn assert_finished(fixture: &RuntimeFixture, classifier: &NativeProvider, a: &Va
         scores[1]["correlation"]["request_id"],
         routes[3]["correlation"]["request_id"]
     );
-    let score = &scores[1]["fact"];
-    assert_eq!(score["partial"], false);
-    assert_eq!(score["history_membership"], b["history_membership"]);
-    for key in [
-        "segment_id",
-        "plan_id",
-        "plan_revision",
-        "model_configuration_id",
-        "profile_digest",
-    ] {
-        assert_eq!(score[key], b[key], "C must assess B's actual {key}");
-    }
+    assert_complete_assessment(&scores[1]["fact"], b);
     let assessed = classifier_body(classifier, 2);
     let from = assessed["preceding_stage"]["from"].as_u64().unwrap() as usize;
     let target = &assessed["visible_conversation"].as_array().unwrap()[from..];
@@ -545,9 +555,7 @@ fn native_id_and_input_boundary(b_turn: &str) {
         "changing a native ID must not reclassify an exact tool continuation"
     );
     let before_b = wait_execution_facts(&fixture, 2);
-    let admissions = before_b
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")
+    let admissions = fact_envelopes(&before_b, "agent_turn_admitted")
         .map(|e| &e["fact"])
         .collect::<Vec<_>>();
     assert_eq!(admissions.len(), 2);
@@ -558,13 +566,11 @@ fn native_id_and_input_boundary(b_turn: &str) {
         );
     }
     assert!(
-        !before_b
-            .iter()
-            .any(|e| e["fact"]["kind"] == "branch_assessment_recorded")
+        fact_envelopes(&before_b, "branch_assessment_recorded")
+            .next()
+            .is_none()
     );
-    let finished = before_b
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "agent_turn_finished")
+    let finished = fact_envelopes(&before_b, "agent_turn_finished")
         .map(|e| &e["fact"])
         .collect::<Vec<_>>();
     assert_eq!(finished.len(), 1);
@@ -606,29 +612,16 @@ fn native_id_and_input_boundary(b_turn: &str) {
         (3, 0, 2)
     );
     let facts = wait_execution_facts(&fixture, 3);
-    assert_single_planner_run_per_request(&facts, 3);
-    let b_admission = facts
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "agent_turn_admitted")
+    let b_admission = fact_envelopes(&facts, "agent_turn_admitted")
         .map(|e| &e["fact"])
         .nth(2)
         .unwrap();
     assert_ne!(b_admission["agent_turn_id"], a["agent_turn_id"]);
     assert_eq!(b_admission["opening_cause"], "user_message");
-    let routes = facts
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "route_decision")
-        .collect::<Vec<_>>();
-    assert_eq!(routes.len(), 3);
-    for (route, expected) in
-        routes
-            .iter()
-            .zip(["external_classifier", "inherited", "external_classifier"])
-    {
-        assert_eq!(route["fact"]["complexity"]["decision_source"], expected);
-        assert_eq!(route["fact"]["complexity"]["execution_group"], "regular");
-        assert_eq!(route["fact"]["complexity"]["fallback_used"], false);
-    }
+    let routes = assert_regular_routes(
+        &facts,
+        &["external_classifier", "inherited", "external_classifier"],
+    );
     assert_eq!(
         a["history_membership"]["request_ids"],
         json!([
@@ -636,28 +629,13 @@ fn native_id_and_input_boundary(b_turn: &str) {
             routes[1]["correlation"]["request_id"]
         ])
     );
-    let scores = facts
-        .iter()
-        .filter(|e| e["fact"]["kind"] == "branch_assessment_recorded")
-        .collect::<Vec<_>>();
+    let scores = fact_envelopes(&facts, "branch_assessment_recorded").collect::<Vec<_>>();
     assert_eq!(scores.len(), 1);
     assert_eq!(
         scores[0]["correlation"]["request_id"],
         routes[2]["correlation"]["request_id"]
     );
-    let score = &scores[0]["fact"];
-    assert_eq!(score["partial"], false);
-    assert_eq!(score["history_membership"], a["history_membership"]);
-    for key in [
-        "segment_id",
-        "plan_id",
-        "plan_revision",
-        "model_configuration_id",
-        "profile_digest",
-    ] {
-        assert!(!a[key].is_null());
-        assert_eq!(score[key], a[key], "B assesses the actual complete A {key}");
-    }
+    assert_complete_assessment(&scores[0]["fact"], a);
     let assessed = classifier_body(&classifier, 1);
     let from = assessed["preceding_stage"]["from"].as_u64().unwrap() as usize;
     let target = &assessed["visible_conversation"].as_array().unwrap()[from..];
