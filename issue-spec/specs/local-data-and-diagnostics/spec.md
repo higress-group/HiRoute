@@ -11,9 +11,43 @@ different lifetimes.
 ### Requirement: Startup preserves damaged or unsupported data
 
 Startup MUST distinguish stale socket, unready service, and unreadable local stores.
-Damaged control/runtime/secrets/observation state stops business startup and retains
-original directories. It cannot silently reset, overwrite with an empty database,
-or claim migration did not happen merely because the service later failed.
+Ordinary current-format startup MUST strictly validate the complete dependency
+closure of current business state and unresolved recovery work before admitting
+business traffic. This includes current, prepared and last-known-good publications,
+current Plan heads and their versions, exact active Secret grant proofs, versions
+held by live Workers or continuations, and operations whose required completion
+has not settled. Parked native-file tails, NeedsAttention operations and operations
+marked Succeeded with required finalization outstanding remain unresolved work;
+membership does not authorize automatic retries of parked user-file changes.
+
+Damaged, unreadable, unsupported or incomplete state needed to establish that
+closure stops affected business startup and retains original directories. The
+membership and completeness of current dependencies and unresolved work MUST be
+established from the authoritative storage and recovery boundaries; an empty
+index, missing completion marker or absent writer claim alone is not proof that
+there is nothing to recover. All production writes and supported conversions MUST
+preserve this invariant atomically with the state they describe. Existing content,
+ownership, generation, authorization, revocation and epoch checks remain required.
+Optional Observation attribution remains distinct from admission authority:
+unavailable attribution stays explicitly unassociated under its existing bounded
+diagnostics policy and cannot fabricate a proof or become a new startup blocker.
+
+Damage confined to historical records outside this dependency closure MUST NOT
+block unrelated current work. Access to those records or a full audit MUST verify
+the relevant stored content and references and report actual corruption or
+unavailability, never substitute empty history or successful verification. Ordinary
+startup admission MUST NOT depend on scanning, decoding or replaying all unrelated
+completed history, nor certify the integrity of unchecked historical data.
+Detected database structural errors or an unprovable current dependency closure
+remain failures; no claim is made that a bounded startup detects every damaged
+page or historical record. Full-store audits and the complete initial conversion
+of supported older representations SHALL be identified separately from ordinary
+startup, with their actual scope, progress and result. Incomplete conversion,
+missing required recovery members or incompatible writers cannot enable a fast
+path or initialize an empty current state.
+
+Startup cannot silently reset, overwrite with an empty database, or claim migration
+did not happen merely because the service later failed.
 Only a genuinely fresh root may initialize; an incomplete existing three-store set,
 unknown files indicating prior state, or recovery backup prevents fresh initialization.
 The real bootstrap diagnostics directory may already exist without being discarded.
@@ -24,6 +58,26 @@ backup requires whole-group restoration with its corresponding complete old bina
 not deletion of storage or a single database replacement. Archive/restart recovery
 retains actual backup ownership and package identity. A changing filesystem device
 number after reboot cannot alone invalidate logically intact supported store identity.
+
+#### Scenario: Independent historical damage does not disable current routing
+
+- **WHEN** current dependencies and unresolved recovery work are verified, but an unrelated retained historical publication is damaged
+- **THEN** normal startup and unrelated current routing remain available; a read or audit of that publication reports its actual failure and preserves the original data, without describing unchecked history as healthy.
+
+#### Scenario: A historical version is still a current dependency
+
+- **WHEN** a current or prepared publication, last-known-good state, active Secret proof, live hold or unresolved operation depends on an older record
+- **THEN** that record remains inside the required validation closure, and its missing or invalid content blocks the affected admission or recovery; age alone cannot exempt it.
+
+#### Scenario: An empty recovery lookup cannot prove completion
+
+- **WHEN** recovery membership is missing, inconsistent or incomplete, including an operation marked Succeeded whose required finalization is outstanding
+- **THEN** startup refuses affected business admission and preserves recovery material rather than treating an empty lookup as no work; parked native-file tails retain their explicit retry policy.
+
+#### Scenario: First conversion and full audit are distinct from ordinary startup
+
+- **WHEN** supported older data needs a complete initial conversion or a full-store integrity audit is performed
+- **THEN** the existing coordinated recovery boundary preserves the source and reports the actual work separately; interruption cannot publish partial current-state coverage or turn unchecked historical data into a successful integrity result.
 
 ### Requirement: Supported upgrades use one three-store coordinator
 
