@@ -472,10 +472,7 @@ fn setup_apply(options: &[String]) -> Result<Value, ErrorCode> {
                 let fd = next(options, &mut index)?
                     .parse::<u32>()
                     .map_err(|_| ErrorCode::InvalidArguments)?;
-                spec = Some(read_json(
-                    std::fs::File::open(format!("/dev/fd/{fd}"))
-                        .map_err(|_| ErrorCode::InvalidArguments)?,
-                )?);
+                spec = Some(request_input::read_json_from_fd(fd)?);
             }
             #[cfg(windows)]
             "--spec-handle" => {

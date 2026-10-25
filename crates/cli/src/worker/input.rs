@@ -413,7 +413,7 @@ fn read_prompt(positional: Option<String>, file: Option<String>) -> Result<Strin
         if path == "-" {
             read_bounded(std::io::stdin())?
         } else {
-            read_bounded(std::fs::File::open(path).map_err(|_| ErrorCode::InvalidArguments)?)?
+            read_bounded(open_regular_file(&path)?)?
         }
     } else {
         if std::io::stdin().is_terminal() {
@@ -443,6 +443,27 @@ fn read_bounded(reader: impl Read) -> Result<String, ErrorCode> {
         return Err(ErrorCode::InvalidArguments);
     }
     String::from_utf8(bytes).map_err(|_| ErrorCode::InvalidArguments)
+}
+
+fn open_regular_file(path: &str) -> Result<std::fs::File, ErrorCode> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY);
+    }
+    let file = options
+        .open(path)
+        .map_err(|_| ErrorCode::InvalidArguments)?;
+    if !file
+        .metadata()
+        .map_err(|_| ErrorCode::InvalidArguments)?
+        .is_file()
+    {
+        return Err(ErrorCode::InvalidArguments);
+    }
+    Ok(file)
 }
 
 fn next(options: &[String], index: &mut usize) -> Result<String, ErrorCode> {
@@ -656,5 +677,57 @@ mod tests {
         let second = random_key("worker-exec").unwrap();
         assert!(first.starts_with("worker-exec/"));
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn submission_file_reads_regular_prompt_text() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("prompt.txt");
+        std::fs::write(&path, "ship it\n").unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        let parsed = parse_submission(
+            &[
+                "--plan".into(),
+                "worker".into(),
+                "--cwd".into(),
+                cwd.to_string_lossy().into_owned(),
+                "--file".into(),
+                path.to_string_lossy().into_owned(),
+            ],
+            false,
+            "request",
+        )
+        .unwrap();
+        assert_eq!(parsed.prompt, "ship it");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn submission_file_rejects_fifo_without_waiting_for_a_writer() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("prompt.fifo");
+        nix::unistd::mkfifo(
+            &path,
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        let started = std::time::Instant::now();
+        assert!(
+            parse_submission(
+                &[
+                    "--plan".into(),
+                    "worker".into(),
+                    "--cwd".into(),
+                    cwd.to_string_lossy().into_owned(),
+                    "--file".into(),
+                    path.to_string_lossy().into_owned(),
+                ],
+                false,
+                "request",
+            )
+            .is_err()
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 }
