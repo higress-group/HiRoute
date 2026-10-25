@@ -481,13 +481,23 @@ pub(super) fn parse_response(wire: Vec<u8>) -> WireResponse {
         .map(|line| line.split_once(':').unwrap())
         .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().into()))
         .collect();
-    let (body, http_entity_complete) = if headers
+    let wire_body = &wire[split + 4..];
+    let (body, http_entity_complete) = if matches!(status, 100..=199 | 204 | 304) {
+        (wire_body.to_vec(), wire_body.is_empty())
+    } else if headers
         .get("transfer-encoding")
         .is_some_and(|value: &String| value.eq_ignore_ascii_case("chunked"))
     {
-        hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[split + 4..]).unwrap()
+        hiroute_e2e::gateway_fixture::decode_chunked_response_body(wire_body).unwrap()
+    } else if let Some(length) = headers.get("content-length") {
+        (
+            wire_body.to_vec(),
+            length
+                .parse::<usize>()
+                .is_ok_and(|length| wire_body.len() == length),
+        )
     } else {
-        (wire[split + 4..].to_vec(), true)
+        (wire_body.to_vec(), true)
     };
     assert!(
         http_entity_complete,
@@ -499,6 +509,31 @@ pub(super) fn parse_response(wire: Vec<u8>) -> WireResponse {
         body,
         http_entity_complete,
     }
+}
+
+#[test]
+fn protocol_success_reader_rejects_incomplete_entities_even_when_json_is_valid() {
+    for wire in [
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n{}".as_slice(),
+        b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\n{}",
+        b"HTTP/1.1 200 OK\r\nContent-Length: invalid\r\n\r\n{}",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n",
+    ] {
+        assert!(std::panic::catch_unwind(|| parse_response(wire.to_vec())).is_err());
+    }
+    for wire in [
+        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".as_slice(),
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n",
+    ] {
+        let response = parse_response(wire.to_vec());
+        assert!(response.http_entity_complete);
+        assert_eq!(response.body, b"{}");
+    }
+    let not_modified =
+        parse_response(b"HTTP/1.1 304 Not Modified\r\nContent-Length: 42\r\n\r\n".to_vec());
+    assert!(not_modified.http_entity_complete);
+    assert!(not_modified.body.is_empty());
 }
 
 pub(super) struct Hirouted {

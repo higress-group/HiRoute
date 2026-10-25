@@ -27,6 +27,14 @@ impl GatewayLifecycle for StreamingLifecycle {
             "content-type",
             HeaderValue::from_static("text/event-stream"),
         );
+        if request.path_and_query.as_ref() == "/informational" {
+            session
+                .write_response_head(GatewayResponseHead {
+                    status: StatusCode::EARLY_HINTS,
+                    headers: HeaderMap::new(),
+                })
+                .await?;
+        }
         if request.path_and_query.as_ref() == "/length" {
             headers.insert(CONTENT_LENGTH, HeaderValue::from(PREFIX.len() as u64));
         }
@@ -53,7 +61,11 @@ impl GatewayLifecycle for StreamingLifecycle {
                 return Err(TransportError::DeadlineExceeded);
             }
         }
-        Ok(SessionReuse::Close)
+        Ok(if request.path_and_query.as_ref() == "/reuse" {
+            SessionReuse::Reusable
+        } else {
+            SessionReuse::Close
+        })
     }
 }
 
@@ -160,10 +172,67 @@ async fn framing_preserves_known_length_no_body_and_http10_boundaries() -> Resul
         assert!(!head.to_ascii_lowercase().contains("transfer-encoding"));
         assert!(body.is_empty());
     }
+    let response = exchange_h1("CONNECT", "/ok", "HTTP/1.1").await?;
+    let (head, body) = split_response(&response);
+    assert!(!head.to_ascii_lowercase().contains("transfer-encoding"));
+    assert_eq!(body, PREFIX);
+    let response = exchange_h1("POST", "/informational", "HTTP/1.1").await?;
+    let (informational, final_response) = split_response(&response);
+    assert!(informational.starts_with("HTTP/1.1 103"));
+    assert!(
+        !informational
+            .to_ascii_lowercase()
+            .contains("transfer-encoding")
+    );
+    let (head, body) = split_response(final_response);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    assert!(
+        head.to_ascii_lowercase()
+            .contains("transfer-encoding: chunked")
+    );
+    assert!(body.ends_with(b"0\r\n\r\n"));
     let response = exchange_h1("POST", "/ok", "HTTP/1.0").await?;
     let (head, body) = split_response(&response);
     assert!(!head.to_ascii_lowercase().contains("transfer-encoding"));
     assert_eq!(body, PREFIX);
+    Ok(())
+}
+
+#[tokio::test]
+async fn http11_completed_chunked_entities_allow_connection_reuse() -> Result<(), TestError> {
+    let _network_guard = NETWORK_TEST_LOCK.lock().await;
+    let port = reserve_tcp_port()?;
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let task = start_pingora_service(
+        port,
+        GatewayHttpApp::new(StreamingLifecycle::default()),
+        shutdown_rx,
+    );
+    wait_until_listening(address).await?;
+    let result = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut client = tokio::net::TcpStream::connect(address).await?;
+        let expected = format!(
+            "{:X}\r\n{}\r\n0\r\n\r\n",
+            PREFIX.len(),
+            std::str::from_utf8(PREFIX)?
+        );
+        for _ in 0..2 {
+            client
+                .write_all(b"POST /reuse HTTP/1.1\r\nHost: gateway.test\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n")
+                .await?;
+            let head = String::from_utf8(read_h1_head(&mut client).await?)?;
+            assert!(head.starts_with("HTTP/1.1 200"));
+            assert!(head.to_ascii_lowercase().contains("transfer-encoding: chunked"));
+            let mut body = vec![0; expected.len()];
+            client.read_exact(&mut body).await?;
+            assert_eq!(body, expected.as_bytes());
+        }
+        Ok::<_, TestError>(())
+    })
+    .await;
+    stop_pingora_service(shutdown_tx, task).await?;
+    result??;
     Ok(())
 }
 
