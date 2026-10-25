@@ -273,12 +273,16 @@ where
                 && self.reconcile_terminal_rollback(&operation).is_ok()
             {
                 operation.transition(OperationState::RolledBack)?;
-                self.control.finish_operation(&mut operation)?;
+                self.external
+                    .finish_local_operation(self.control, &mut operation)?;
                 self.external.finish_publication_activation(&operation)?;
+                self.control.complete_operation_finalization(&operation)?;
             }
             return Ok(operation);
         }
         if operation.state.is_terminal() {
+            self.external.finish_publication_activation(&operation)?;
+            self.control.complete_operation_finalization(&operation)?;
             return Ok(operation);
         }
         if operation.state == OperationState::RollingBack {
@@ -357,8 +361,10 @@ where
             }
         }
         operation.transition(OperationState::Succeeded)?;
-        self.control.finish_operation(&mut operation)?;
+        self.external
+            .finish_local_operation(self.control, &mut operation)?;
         self.external.finish_publication_activation(&operation)?;
+        self.control.complete_operation_finalization(&operation)?;
         Ok(operation)
     }
 
@@ -572,7 +578,8 @@ where
                     operation.transition(OperationState::NeedsAttention)?;
                     operation.safe_error_code =
                         Some("PUBLICATION_OWNERSHIP_UNCONFIRMED".to_owned());
-                    self.control.finish_operation(&mut operation)?;
+                    self.external
+                        .finish_local_operation(self.control, &mut operation)?;
                     return Ok(operation);
                 }
             }
@@ -648,8 +655,10 @@ where
         } else {
             operation.transition(OperationState::RolledBack)?;
         }
-        self.control.finish_operation(&mut operation)?;
+        self.external
+            .finish_local_operation(self.control, &mut operation)?;
         self.external.finish_publication_activation(&operation)?;
+        self.control.complete_operation_finalization(&operation)?;
         Ok(operation)
     }
 

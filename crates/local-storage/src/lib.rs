@@ -326,8 +326,16 @@ impl LocalStorageSet {
             migration.restore_after_failure(barrier, &live_root)?;
             return Err(error);
         }
-        if let Err(error) = migrations::validate_current_storage(&control, &runtime, &secrets)
-            .map_err(|error| error.at_upgrade_stage("current storage validation"))
+        let integrity = if migration.durable_set_prepared() {
+            // A first format conversion audits its complete source/target. Ordinary opens
+            // establish only the complete current dependency closure, not all-history health.
+            migrations::audit_current_storage(&control, &runtime, &secrets)
+                .and_then(|_| migrations::validate_current_storage(&control, &runtime, &secrets))
+        } else {
+            migrations::validate_current_storage(&control, &runtime, &secrets)
+        };
+        if let Err(error) =
+            integrity.map_err(|error| error.at_upgrade_stage("current storage validation"))
         {
             drop(secrets);
             drop(runtime);

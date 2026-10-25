@@ -75,10 +75,15 @@ impl LocalControlAdapter {
         publication: &GatewayPublicationV1,
         publication_digest: &CanonicalDigest,
     ) -> PortResult<()> {
-        let (operations, mut rejected) = self
-            .stores_lock()?
-            .control()
-            .agent_attribution_recovery_candidates(workspace)?;
+        let (operations, mut rejected) = {
+            let stores = self.stores_lock()?;
+            let owners = stores
+                .secrets()
+                .active_agent_grant_owner_operations(workspace)?;
+            stores
+                .control()
+                .agent_attribution_for_owners(workspace, &owners)?
+        };
         for operation in operations {
             let input = operation.agent_input();
             let effects = &operation.step(OperationStepKind::ApplySecrets).effects;

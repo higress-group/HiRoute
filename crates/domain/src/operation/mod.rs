@@ -1716,6 +1716,10 @@ pub trait ControlRepositoryPort {
     }
     /// Persists a terminal state and releases the durable single-writer claim when safe.
     fn finish_operation(&self, operation: &mut OperationV1) -> PortResult<u64>;
+    /// Clear durable post-commit work only after the real external finalizer succeeded.
+    fn complete_operation_finalization(&self, _operation: &OperationV1) -> PortResult<()> {
+        Ok(())
+    }
     /// Persists a non-terminal settings tail and atomically releases this operation's writer
     /// claim in the same control transaction. Fails when another operation holds the claim.
     fn save_operation_tail(&self, operation: &mut OperationV1) -> PortResult<()>;
@@ -1946,6 +1950,15 @@ pub trait ExternalEffectPort {
     }
     fn finish_publication_activation(&self, _operation: &OperationV1) -> PortResult<()> {
         Ok(())
+    }
+    /// Commit local terminal effects while the production owner retains the affected
+    /// admission guard. This is one control-store transaction, never a cross-store lock.
+    fn finish_local_operation(
+        &self,
+        control: &dyn ControlRepositoryPort,
+        operation: &mut OperationV1,
+    ) -> PortResult<u64> {
+        control.finish_operation(operation)
     }
     /// Persist adapter-owned activation metadata from the admitted plan. Runs under the
     /// existing writer, including replay of an artifact that is already applied.

@@ -155,6 +155,7 @@ impl PublicationRepositoryPort for ControlStore {
                 ],
             )
             .map_err(|_| port(PortErrorCode::Unavailable, "publication.prepare.insert"))?;
+        super::current_dependencies::record_publication_proofs(&transaction, &publication)?;
         transaction
             .commit()
             .map_err(|_| port(PortErrorCode::Unavailable, "publication.prepare.commit"))?;

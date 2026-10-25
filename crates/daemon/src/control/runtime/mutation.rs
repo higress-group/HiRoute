@@ -113,7 +113,7 @@ impl LocalControlAdapter {
         self.coordinator()
             .reconcile_startup_and_open()
             .and_then(|_| {
-                self.reconcile_plan_content_heads()
+                self.reconcile_pending_operation_finalization()
                     .map_err(TransactionError::Port)
             })
             .map_err(|error| {
@@ -354,6 +354,12 @@ impl ControlRepositoryPort for LocalControlAdapter {
 
     fn writer_recovery_required(&self) -> PortResult<bool> {
         self.stores_lock()?.control().writer_recovery_required()
+    }
+
+    fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()> {
+        self.stores_lock()?
+            .control()
+            .finish_operation_finalization(operation)
     }
 
     fn save_operation(&self, operation: &mut OperationV1) -> PortResult<()> {

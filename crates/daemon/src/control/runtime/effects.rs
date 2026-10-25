@@ -311,6 +311,34 @@ impl ExternalEffectPort for LocalControlAdapter {
     ) -> PortResult<OwnedEffectV1> {
         self.publication_abort_checkpoint(operation, effect)
     }
+    fn finish_local_operation(
+        &self,
+        control: &dyn hiroute_domain::ControlRepositoryPort,
+        operation: &mut hiroute_domain::OperationV1,
+    ) -> PortResult<u64> {
+        let Some(content) = operation
+            .plan
+            .plan_content_control()
+            .map_err(|_| invalid("plan.content.intent"))?
+        else {
+            return control.finish_operation(operation);
+        };
+        use hiroute_application::publication::admission::{AdmissionAction, AdmissionSubject};
+        let scope = std::collections::BTreeSet::from([AdmissionSubject::Plan(
+            content.plan_head.reference.plan_id,
+        )]);
+        let _guard = self
+            .plan_admission
+            .enter(
+                &operation.workspace_id,
+                &scope,
+                AdmissionAction::Recovery,
+                operation.operation_id.as_str(),
+            )
+            .map_err(|_| invalid("plan.content.admission"))?;
+        // The pending scope stays closed until the real post-commit activation finishes.
+        control.finish_operation(operation)
+    }
     fn finish_publication_activation(
         &self,
         operation: &hiroute_domain::OperationV1,

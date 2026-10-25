@@ -49,7 +49,6 @@ impl ControlStore {
         expected_head_revision: Option<u64>,
     ) -> Result<(), PlanVersionError> {
         head.validate()?;
-        let operation_id = &operation.operation_id;
         if operation.state != OperationState::Succeeded
             || operation.workspace_id != head.reference.workspace_id
             || operation.plan.control().get("plan_head")
@@ -67,69 +66,7 @@ impl ControlStore {
             return Err(PlanVersionError::Conflict);
         }
 
-        let mut old = head_in(&tx, &head.reference.workspace_id, &head.reference.plan_id)?;
-        if old.is_none() && expected_head_revision.is_some() {
-            let content = operation
-                .plan
-                .plan_content_control()
-                .map_err(|_| PlanVersionError::Invalid)?
-                .ok_or(PlanVersionError::Conflict)?;
-            let legacy = content.legacy_source.ok_or(PlanVersionError::Conflict)?;
-            let before = content.before_head.ok_or(PlanVersionError::Conflict)?;
-            if before.reference != legacy.reference {
-                return Err(PlanVersionError::Conflict);
-            }
-            tx.execute("UPDATE plan_versions SET state='published' WHERE workspace_id=?1 AND plan_id=?2 AND content_revision=?3 AND content_digest=?4 AND owner_operation_id=?5 AND state='prepared'",
-                params![legacy.reference.workspace_id.as_str(), legacy.reference.plan_id.as_str(), legacy.reference.content_revision,
-                    legacy.reference.content_digest.as_str(), operation_id.as_str()]).map_err(storage)?;
-            if lookup_in(&tx, &legacy.reference)? != legacy {
-                return Err(PlanVersionError::Conflict);
-            }
-            old = Some(before);
-        }
-        if old.as_ref() == Some(head) {
-            return Ok(());
-        }
-        if old.as_ref().map(|h| h.head_revision) != expected_head_revision
-            || expected_head_revision.unwrap_or(0).checked_add(1) != Some(head.head_revision)
-        {
-            return Err(PlanVersionError::Conflict);
-        }
-        if let Some(old) = old {
-            if old.status == PlanLifecycleV1::Deleted || old.model_alias != head.model_alias {
-                return Err(PlanVersionError::Conflict);
-            }
-            if old.reference != head.reference
-                && old.reference.content_revision.checked_add(1)
-                    != Some(head.reference.content_revision)
-            {
-                return Err(PlanVersionError::Conflict);
-            }
-        } else if head.reference.content_revision != 1 || head.status != PlanLifecycleV1::Enabled {
-            return Err(PlanVersionError::Conflict);
-        }
-        tx.execute("UPDATE plan_versions SET state='published' WHERE workspace_id=?1 AND plan_id=?2 AND content_revision=?3 AND content_digest=?4 AND owner_operation_id=?5", params![head.reference.workspace_id.as_str(),head.reference.plan_id.as_str(),head.reference.content_revision,head.reference.content_digest.as_str(),operation_id.as_str()]).map_err(storage)?;
-        let version = lookup_in(&tx, &head.reference)?;
-        if version.compiled.model_alias() != &head.model_alias {
-            return Err(PlanVersionError::Conflict);
-        }
-        tx.execute("INSERT INTO plan_heads(workspace_id,plan_id,head_revision,head_json) VALUES(?1,?2,?3,?4) ON CONFLICT(workspace_id,plan_id) DO UPDATE SET head_revision=excluded.head_revision,head_json=excluded.head_json", params![head.reference.workspace_id.as_str(),head.reference.plan_id.as_str(),head.head_revision,encode(head)?]).map_err(storage)?;
-        // Consume only the draft revision sealed into this operation. A newer saved draft lives.
-        if let Some(draft) = operation.plan.control().get("consumed_draft") {
-            let id = draft
-                .get("draft_id")
-                .and_then(|v| v.as_str())
-                .ok_or(PlanVersionError::Invalid)?;
-            let revision = draft
-                .get("revision")
-                .and_then(|v| v.as_u64())
-                .ok_or(PlanVersionError::Invalid)?;
-            tx.execute(
-                "DELETE FROM plan_drafts WHERE workspace_id=?1 AND draft_id=?2 AND revision=?3",
-                params![head.reference.workspace_id.as_str(), id, revision],
-            )
-            .map_err(storage)?;
-        }
+        commit_head_in(&tx, operation, head, expected_head_revision)?;
         tx.commit().map_err(storage)
     }
 
@@ -216,6 +153,120 @@ fn stage_version_in(
         }
     } else {
         tx.execute("INSERT INTO plan_versions(workspace_id,plan_id,content_revision,content_digest,version_json,state,owner_operation_id) VALUES(?1,?2,?3,?4,?5,'prepared',?6)", params![reference.workspace_id.as_str(),reference.plan_id.as_str(),reference.content_revision,reference.content_digest.as_str(),bytes,operation_id.as_str()]).map_err(storage)?;
+    }
+    Ok(())
+}
+
+/// Local head, version state and consumed draft share the terminal journal transaction.
+/// The outer writer/admission owner has verified installation; the journal generation
+/// CAS in the same transaction prevents a detached intent from committing this head.
+pub(super) fn finish_plan_operation(
+    tx: &Connection,
+    operation: &OperationV1,
+) -> Result<(), PlanVersionError> {
+    let Some(content) = operation
+        .plan
+        .plan_content_control()
+        .map_err(|_| PlanVersionError::Invalid)?
+    else {
+        return Ok(());
+    };
+    match operation.state {
+        OperationState::Succeeded => commit_head_in(
+            tx,
+            operation,
+            &content.plan_head,
+            content.before_head.as_ref().map(|head| head.head_revision),
+        ),
+        OperationState::RolledBack => {
+            tx.execute(
+                "DELETE FROM plan_versions WHERE state='prepared' AND owner_operation_id=?1",
+                [operation.operation_id.as_str()],
+            )
+            .map_err(storage)?;
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn commit_head_in(
+    tx: &Connection,
+    operation: &OperationV1,
+    head: &PlanHeadV1,
+    expected_head_revision: Option<u64>,
+) -> Result<(), PlanVersionError> {
+    head.validate()?;
+    if operation.state != OperationState::Succeeded
+        || operation.workspace_id != head.reference.workspace_id
+        || operation.plan.control().get("plan_head")
+            != Some(&serde_json::to_value(head).map_err(|_| PlanVersionError::Invalid)?)
+    {
+        return Err(PlanVersionError::Conflict);
+    }
+    let operation_id = &operation.operation_id;
+    let mut old = head_in(tx, &head.reference.workspace_id, &head.reference.plan_id)?;
+    if old.is_none() && expected_head_revision.is_some() {
+        let content = operation
+            .plan
+            .plan_content_control()
+            .map_err(|_| PlanVersionError::Invalid)?
+            .ok_or(PlanVersionError::Conflict)?;
+        let legacy = content.legacy_source.ok_or(PlanVersionError::Conflict)?;
+        let before = content.before_head.ok_or(PlanVersionError::Conflict)?;
+        if before.reference != legacy.reference {
+            return Err(PlanVersionError::Conflict);
+        }
+        tx.execute("UPDATE plan_versions SET state='published' WHERE workspace_id=?1 AND plan_id=?2 AND content_revision=?3 AND content_digest=?4 AND owner_operation_id=?5 AND state='prepared'",
+                params![legacy.reference.workspace_id.as_str(), legacy.reference.plan_id.as_str(), legacy.reference.content_revision,
+                    legacy.reference.content_digest.as_str(), operation_id.as_str()]).map_err(storage)?;
+        if lookup_in(tx, &legacy.reference)? != legacy {
+            return Err(PlanVersionError::Conflict);
+        }
+        old = Some(before);
+    }
+    if old.as_ref() == Some(head) {
+        return Ok(());
+    }
+    if old.as_ref().map(|h| h.head_revision) != expected_head_revision
+        || expected_head_revision.unwrap_or(0).checked_add(1) != Some(head.head_revision)
+    {
+        return Err(PlanVersionError::Conflict);
+    }
+    if let Some(old) = old {
+        if old.status == PlanLifecycleV1::Deleted || old.model_alias != head.model_alias {
+            return Err(PlanVersionError::Conflict);
+        }
+        if old.reference != head.reference
+            && old.reference.content_revision.checked_add(1)
+                != Some(head.reference.content_revision)
+        {
+            return Err(PlanVersionError::Conflict);
+        }
+    } else if head.reference.content_revision != 1 || head.status != PlanLifecycleV1::Enabled {
+        return Err(PlanVersionError::Conflict);
+    }
+    tx.execute("UPDATE plan_versions SET state='published' WHERE workspace_id=?1 AND plan_id=?2 AND content_revision=?3 AND content_digest=?4 AND owner_operation_id=?5", params![head.reference.workspace_id.as_str(),head.reference.plan_id.as_str(),head.reference.content_revision,head.reference.content_digest.as_str(),operation_id.as_str()]).map_err(storage)?;
+    let version = lookup_in(tx, &head.reference)?;
+    if version.compiled.model_alias() != &head.model_alias {
+        return Err(PlanVersionError::Conflict);
+    }
+    tx.execute("INSERT INTO plan_heads(workspace_id,plan_id,head_revision,head_json) VALUES(?1,?2,?3,?4) ON CONFLICT(workspace_id,plan_id) DO UPDATE SET head_revision=excluded.head_revision,head_json=excluded.head_json", params![head.reference.workspace_id.as_str(),head.reference.plan_id.as_str(),head.head_revision,encode(head)?]).map_err(storage)?;
+    // Consume only the draft revision sealed into this operation. A newer saved draft lives.
+    if let Some(draft) = operation.plan.control().get("consumed_draft") {
+        let id = draft
+            .get("draft_id")
+            .and_then(|v| v.as_str())
+            .ok_or(PlanVersionError::Invalid)?;
+        let revision = draft
+            .get("revision")
+            .and_then(|v| v.as_u64())
+            .ok_or(PlanVersionError::Invalid)?;
+        tx.execute(
+            "DELETE FROM plan_drafts WHERE workspace_id=?1 AND draft_id=?2 AND revision=?3",
+            params![head.reference.workspace_id.as_str(), id, revision],
+        )
+        .map_err(storage)?;
     }
     Ok(())
 }

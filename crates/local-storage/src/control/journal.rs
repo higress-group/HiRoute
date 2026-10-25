@@ -1,4 +1,4 @@
-//! Update mutable journal fields while retaining the current immutable Operation JSON format.
+//! Small mutable journal copies refer to separately retained immutable input/effect payloads.
 use super::*;
 
 pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> PortResult<u64> {
@@ -32,7 +32,7 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
                 )
             })?
             .into(),
-        update.plan_json.to_owned().into(),
+        payloads::plan(transaction, operation, false)?.into(),
         operation.request_digest.as_str().to_owned().into(),
         operation.accepted_digest.as_str().to_owned().into(),
         operation.workspace_id.as_str().to_owned().into(),
@@ -41,8 +41,13 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
         operation.idempotency.key.clone().into(),
     ];
     for step in &update.changed_steps {
-        let encoded = serde_json::to_string(step)
-            .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
+        let encoded = serde_json::to_string(&payloads::step(
+            transaction,
+            operation.operation_id.as_str(),
+            step,
+            true,
+        )?)
+        .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
         values.push(encoded.into());
         expression.push_str(&format!(
             ", '$.steps[{}]', json(?{})",
@@ -79,17 +84,41 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
     let checkpoint = operation
         .journal_update()
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.inputs"))?;
-    let steps = serde_json::to_string(&operation.steps)
+    // Earlier formats are decoded only while the coordinated converter still owns admission.
+    let version: u32 = connection
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .map_err(|_| port(PortErrorCode::Unavailable, "control.current.format"))?;
+    let projection = if version >= 32 {
+        (|| {
+            Ok::<_, PortError>((
+                payloads::plan(connection, operation, false)?,
+                operation
+                    .steps
+                    .iter()
+                    .map(|s| payloads::step(connection, operation.operation_id.as_str(), s, false))
+                    .collect::<PortResult<Vec<_>>>()?,
+            ))
+        })()
+    } else {
+        Ok((
+            checkpoint.plan_json.to_owned(),
+            serde_json::to_value(&operation.steps)
+                .map_err(|_| port(PortErrorCode::InvalidData, "control.current.steps"))?
+                .as_array()
+                .expect("steps array")
+                .clone(),
+        ))
+    };
+    let (plan_json, projected_steps) = match projection {
+        Ok(value) => value,
+        Err(error) if error.code == PortErrorCode::Corrupt => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    let steps = serde_json::to_string(&projected_steps)
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.steps"))?;
     let revisions = serde_json::to_string(&operation.expected_revisions)
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.revisions"))?;
-    // Current row production is canonical; historical rows may retain struct member order.
-    // Compare their exact JSON structure, without rewriting either stored journal copy.
-    let step_rows = hiroute_domain::canonicalize_json(
-        serde_json::to_value(&operation.steps)
-            .map_err(|_| port(PortErrorCode::InvalidData, "control.current.step-rows"))?,
-    )
-    .to_string();
+    let step_rows = hiroute_domain::canonicalize_json(Value::Array(projected_steps)).to_string();
     // A sealed settings service releases its writer claim while the native-file tail waits for
     // explicit retry. The coordinator verifies the receipt before doing any tail work and must
     // still be able to observe this exact committed journal during startup recovery.
@@ -136,7 +165,7 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
             params![
                 operation.operation_id.as_str(),
                 operation.generation,
-                checkpoint.plan_json,
+                plan_json,
                 operation.request_digest.as_str(),
                 operation.accepted_digest.as_str(),
                 operation.workspace_id.as_str(),
@@ -242,4 +271,12 @@ impl<'de> Deserialize<'de> for JournalObject<'de> {
         }
         deserializer.deserialize_map(JournalVisitor)
     }
+}
+
+/// Strict structure check shared by the versioned storage codec; no typed projection
+/// may silently discard duplicate fields or turn oversized numbers into rounded values.
+pub(super) fn validate_encoding(encoded: &str) -> PortResult<()> {
+    read_journal_json(encoded)
+        .map(|_| ())
+        .map_err(|_| port(PortErrorCode::Corrupt, "control.journal.encoding"))
 }

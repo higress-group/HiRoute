@@ -64,6 +64,8 @@ pub(super) fn decode_selected_agent(
     #[cfg(test)]
     DECODE_COUNT.with(|count| count.set(count.get() + 1));
     let invalid = || port(PortErrorCode::Corrupt, "control.agent-read.journal");
+    let expanded = payloads::expand(connection, encoded)?;
+    let encoded = expanded.as_str();
     let durable: DurableOperation = serde_json::from_str(encoded).map_err(|_| invalid())?;
     if selected.is_some_and(|row| !row.matches(&durable))
         || durable.schema_version != hiroute_domain::OPERATION_SCHEMA_VERSION
@@ -182,7 +184,8 @@ pub(super) fn decode_selected_agent(
     let mut count = 0;
     for row in rows {
         let (number, kind, state, encoded) = row.map_err(|_| invalid())?;
-        let step: Value = serde_json::from_str(&encoded).map_err(|_| invalid())?;
+        let step =
+            payloads::expand_step_record(connection, durable.operation_id.as_str(), &encoded)?;
         if number != count
             || number >= 6
             || step.as_object().is_none_or(|o| o.len() != 2)

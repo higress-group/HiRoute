@@ -110,6 +110,19 @@ impl AgentHistoryRow {
             }
             count += 1;
         }
+        let mut payloads = connection.prepare("SELECT digest,payload_json FROM operation_payloads WHERE operation_id=?1 ORDER BY digest")
+            .map_err(|_| unavailable())?;
+        for row in payloads
+            .query_map([&self.operation_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(|_| unavailable())?
+        {
+            let (digest, payload) = row.map_err(|_| corrupt())?;
+            frame(&mut hash, digest.as_bytes());
+            frame(&mut hash, payload.as_bytes());
+            bytes = bytes.saturating_add(payload.len());
+        }
         hash.update(count.to_be_bytes());
         // Invalid counts are rejected even before a cache lookup.
         if count != 6 {
@@ -133,6 +146,28 @@ fn corrupt() -> PortError {
 }
 
 impl AgentHistoryCache {
+    fn bind_store(&mut self, connection: &Connection) -> PortResult<()> {
+        let store: String = connection
+            .query_row(
+                "SELECT store_uuid FROM storage_meta WHERE singleton=1",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| unavailable())?;
+        if store.is_empty() {
+            return Err(corrupt());
+        }
+        let data_version = connection
+            .query_row("PRAGMA data_version", [], |r| r.get(0))
+            .map_err(|_| unavailable())?;
+        let identity = (store, data_version);
+        if self.store_identity.as_ref() != Some(&identity) {
+            self.entries.clear();
+            self.bytes = 0;
+            self.store_identity = Some(identity);
+        }
+        Ok(())
+    }
     fn remove(&mut self, id: &str) {
         if let Some(old) = self.entries.remove(id) {
             self.bytes -= old.bytes;
@@ -181,6 +216,63 @@ impl AgentHistoryCache {
 }
 
 impl ControlStore {
+    pub fn agent_attribution_for_owners(
+        &self,
+        workspace: &WorkspaceId,
+        owners: &[String],
+    ) -> PortResult<(Vec<SucceededAgentOperationV1>, u64)> {
+        let connection = self.connection.borrow();
+        let transaction = if connection.is_autocommit() {
+            Some(
+                connection
+                    .unchecked_transaction()
+                    .map_err(|_| unavailable())?,
+            )
+        } else {
+            None
+        };
+        let mut cache = self.agent_history_cache.borrow_mut();
+        cache.bind_store(&connection)?;
+        let mut facts = Vec::new();
+        let mut rejected = 0u64;
+        let mut statement = connection.prepare("SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json
+            FROM operations WHERE operation_id=?1 AND workspace_id=?2 AND state='succeeded'
+            AND operation_kind='ApplyAgentConnectionChange'")
+            .map_err(|_| unavailable())?;
+        for id in owners.iter().collect::<std::collections::BTreeSet<_>>() {
+            let row = statement
+                .query_row(params![id, workspace.as_str()], AgentHistoryRow::read)
+                .optional();
+            match row {
+                Ok(Some(row)) => match cache.read(&connection, &row) {
+                    Ok(fact) => facts.push((*fact).clone()),
+                    Err(error)
+                        if matches!(
+                            error.code,
+                            PortErrorCode::Corrupt | PortErrorCode::InvalidData
+                        ) =>
+                    {
+                        rejected = rejected.saturating_add(1)
+                    }
+                    Err(error) => return Err(error),
+                },
+                Ok(None) => rejected = rejected.saturating_add(1),
+                Err(
+                    rusqlite::Error::FromSqlConversionFailure(..)
+                    | rusqlite::Error::IntegralValueOutOfRange(..)
+                    | rusqlite::Error::InvalidColumnType(..)
+                    | rusqlite::Error::Utf8Error(..),
+                ) => rejected = rejected.saturating_add(1),
+                Err(_) => return Err(unavailable()),
+            }
+        }
+        drop(statement);
+        if let Some(transaction) = transaction {
+            transaction.commit().map_err(|_| unavailable())?;
+        }
+        Ok((facts, rejected))
+    }
+
     /// Exact current membership and raw dependency closure are always read in one
     /// SQLite snapshot. Only immutable facts are shared; callers still read native
     /// files, grants, pending operations and publication state on every request.
@@ -238,27 +330,7 @@ impl ControlStore {
             )
             .map_err(|_| unavailable())?;
         let mut cache = self.agent_history_cache.borrow_mut();
-        let store: String = connection
-            .query_row(
-                "SELECT store_uuid FROM storage_meta WHERE singleton=1",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|_| unavailable())?;
-        if store.is_empty() {
-            return Err(corrupt());
-        }
-        // This is only an additional invalidator for external writes. The
-        // transaction and complete raw fingerprint, not data_version, prove a hit.
-        let data_version = connection
-            .query_row("PRAGMA data_version", [], |row| row.get(0))
-            .map_err(|_| unavailable())?;
-        let identity = (store, data_version);
-        if cache.store_identity.as_ref() != Some(&identity) {
-            cache.entries.clear();
-            cache.bytes = 0;
-            cache.store_identity = Some(identity);
-        }
+        cache.bind_store(&connection)?;
         let mut facts = Vec::new();
         let mut rejected = 0_u64;
         let mut members = std::collections::BTreeSet::new();

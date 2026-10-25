@@ -48,7 +48,7 @@ fn retained_publications_are_visited_one_at_a_time_including_history() {
 }
 
 #[test]
-fn corrupt_historical_publication_is_rejected_even_without_active_grants() {
+fn unrelated_historical_damage_is_isolated_but_explicit_audit_rejects_it() {
     let root = crate::test_tempdir().unwrap();
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
     history(&stores, 3);
@@ -57,12 +57,12 @@ fn corrupt_historical_publication_is_rejected_even_without_active_grants() {
         "UPDATE gateway_publications SET digest='corrupted-history' WHERE publication_revision=1",
         [],
     ).unwrap();
-    assert!(
-        validate_current_storage(stores.control(), stores.runtime(), stores.secrets()).is_err()
-    );
-    assert!(stores.validate_recovered_grant_publications().is_err());
+    validate_current_storage(stores.control(), stores.runtime(), stores.secrets()).unwrap();
+    stores.validate_recovered_grant_publications().unwrap();
+    assert!(audit_current_storage(stores.control(), stores.runtime(), stores.secrets()).is_err());
+    assert!(visit_publications(&stores.control.connection.borrow(), |_| {}).is_err());
     drop(stores);
-    assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
+    LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
 }
 
 #[test]
@@ -123,6 +123,13 @@ fn recovered_grants_match_exact_material_and_generation_in_retained_history() {
             "UPDATE gateway_publications SET digest=?1, publication_bytes=?2 WHERE publication_revision=?3",
             rusqlite::params![record.digest.as_str(), record.bytes.as_slice(), revision],
         ).unwrap();
+        // Build the reference from the individually valid fixture record; lookup must
+        // still authenticate its exact bytes, generation, material and scope later.
+        crate::control::current_dependencies::record_publication_proofs(
+            &stores.control.connection.borrow(),
+            &record.verify().unwrap(),
+        )
+        .unwrap();
     }
     stores.validate_recovered_grant_publications().unwrap();
     stores
@@ -140,4 +147,63 @@ fn recovered_grants_match_exact_material_and_generation_in_retained_history() {
     drop(stores);
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
     assert!(stores.validate_recovered_grant_publications().is_err());
+}
+
+#[test]
+fn ordinary_startup_visits_current_publications_independent_of_history_size() {
+    for count in [10, 100, 1000] {
+        let root = crate::test_tempdir().unwrap();
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        history(&stores, 3);
+        {
+            let mut db = stores.control.connection.borrow_mut();
+            let tx = db.transaction().unwrap();
+            for revision in 4..count + 4 {
+                let publication = GatewayPublicationV1::new(
+                    WorkspaceId::default(),
+                    GatewayPublicationRevision::new(revision).unwrap(),
+                    AliasRegistryV1::default(),
+                    vec![],
+                )
+                .unwrap();
+                let record =
+                    PublicationRecordV1::from_publication(WorkspaceId::default(), &publication)
+                        .unwrap();
+                // Historical fixtures are valid immutable records, not current roots.
+                tx.execute("INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,?2,?3,?4,'historical',1,1)",
+                    params![record.workspace_id.as_str(),revision,record.digest.as_str(),record.bytes.as_slice()]).unwrap();
+            }
+            tx.commit().unwrap();
+        }
+        dependencies::PUBLICATION_READS.with(|v| v.set(0));
+        validate_current_storage(stores.control(), stores.runtime(), stores.secrets()).unwrap();
+        assert_eq!(
+            dependencies::PUBLICATION_READS.with(|v| v.get()),
+            2,
+            "history={count}"
+        );
+    }
+}
+
+#[test]
+fn active_and_lkg_damage_still_blocks_ordinary_startup() {
+    for revision in [2, 3] {
+        let root = crate::test_tempdir().unwrap();
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        history(&stores, 3);
+        stores
+            .control
+            .connection
+            .borrow()
+            .execute(
+                "UPDATE gateway_publications SET digest='corrupt' WHERE publication_revision=?1",
+                [revision],
+            )
+            .unwrap();
+        assert!(
+            validate_current_storage(stores.control(), stores.runtime(), stores.secrets()).is_err()
+        );
+        drop(stores);
+        assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
+    }
 }

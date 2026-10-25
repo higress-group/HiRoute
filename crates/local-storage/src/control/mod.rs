@@ -49,6 +49,7 @@ pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
 mod compute;
+pub(crate) mod current_dependencies;
 mod decision_services;
 mod journal;
 #[path = "../agents/native_artifacts.rs"]
@@ -58,6 +59,7 @@ mod native_directories;
 mod native_permissions;
 #[path = "../agents/native_reference.rs"]
 mod native_reference;
+pub(crate) mod payloads;
 use native_permissions::{
     current_artifact_aad, current_artifact_schema, desired_windows_permissions,
 };
@@ -415,7 +417,11 @@ impl ControlStore {
         for row in rows {
             let encoded =
                 row.map_err(|_| port(PortErrorCode::Corrupt, "control.operation.completed.row"))?;
-            operations.push(decode_operation(&self.diagnostics.borrow(), &encoded)?);
+            operations.push(decode_stored_operation(
+                &self.diagnostics.borrow(),
+                &connection,
+                &encoded,
+            )?);
         }
         Ok(operations)
     }
@@ -584,8 +590,7 @@ impl ControlStore {
             }
         }
 
-        let encoded = serde_json::to_string(operation)
-            .map_err(|_| port(PortErrorCode::InvalidData, "control.operation.encode"))?;
+        let encoded = payloads::encode(&transaction, operation)?;
         transaction
             .execute(
                 "INSERT INTO operations(
@@ -754,9 +759,10 @@ impl ControlRepositoryPort for ControlStore {
 
     fn recoverable_operations(&self) -> PortResult<Vec<OperationV1>> {
         let connection = self.connection.borrow();
+        current_dependencies::validate_recovery_members(&connection)?;
         let mut statement = connection
             .prepare(
-                "SELECT operation_json FROM operations
+                "SELECT operation_json FROM operation_recovery_members m JOIN operations USING(operation_id)
                  WHERE state NOT IN ('succeeded', 'rolled_back', 'needs_attention')
                     OR (state = 'needs_attention' AND operation_id =
                         (SELECT operation_id FROM writer_claim WHERE singleton = 1))
@@ -769,7 +775,11 @@ impl ControlRepositoryPort for ControlStore {
         let mut operations = Vec::new();
         for row in rows {
             let encoded = row.map_err(|_| port(PortErrorCode::Corrupt, "control.recovery.row"))?;
-            operations.push(decode_operation(&self.diagnostics.borrow(), &encoded)?);
+            operations.push(decode_stored_operation(
+                &self.diagnostics.borrow(),
+                &connection,
+                &encoded,
+            )?);
         }
         Ok(operations)
     }
@@ -1517,6 +1527,8 @@ impl ControlRepositoryPort for ControlStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.begin"))?;
         plans::finish_draft_operation(&transaction, operation)?;
+        plans::finish_plan_operation(&transaction, operation)
+            .map_err(|_| port(PortErrorCode::Conflict, "control.finish.plan-head"))?;
         decision_services::finish(&transaction, operation)?;
         compute::finish_save_handoff_in(&transaction, operation)?;
         let generation = journal::save(&transaction, operation)?;
@@ -1536,6 +1548,10 @@ impl ControlRepositoryPort for ControlStore {
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.commit"))?;
         operation.acknowledge_journal_commit(generation);
         read_control_head(&connection, &operation.workspace_id)
+    }
+
+    fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()> {
+        self.finish_operation_finalization(operation)
     }
 
     fn save_operation_tail(&self, operation: &mut OperationV1) -> PortResult<()> {
@@ -1750,7 +1766,7 @@ fn store_step(
 ) -> PortResult<()> {
     let encoded = serde_json::to_string(&hiroute_domain::canonicalize_json(json!({
         "schema": "hiroute.operation-step/v1",
-        "step": step,
+        "step": payloads::step(transaction, operation.operation_id.as_str(), step, true)?,
     })))
     .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
     transaction
@@ -1799,7 +1815,7 @@ fn load_operation_where<P: rusqlite::Params>(
         },
     )?;
     encoded
-        .map(|encoded| decode_operation(diagnostics, &encoded))
+        .map(|encoded| decode_stored_operation(diagnostics, connection, &encoded))
         .transpose()
 }
 
@@ -1818,6 +1834,14 @@ struct DurableOperation {
     generation: u64,
     steps: Vec<OperationStepV1>,
     safe_error_code: Option<String>,
+}
+
+fn decode_stored_operation(
+    diagnostics: &hiroute_diagnostics::DiagnosticsPort,
+    connection: &Connection,
+    encoded: &str,
+) -> PortResult<OperationV1> {
+    decode_operation(diagnostics, &payloads::expand(connection, encoded)?)
 }
 
 fn decode_operation(
