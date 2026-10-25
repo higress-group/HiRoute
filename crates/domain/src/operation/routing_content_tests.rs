@@ -119,7 +119,7 @@ fn restored_content_journal_encodes_unchanged_immutable_inputs_once() {
         CanonicalDigest::of_bytes(b"restore-content-accepted"),
         RevisionSetV1 {
             target: 0,
-            dependencies: BTreeMap::new(),
+            dependencies: std::collections::BTreeMap::new(),
         },
         plan,
     )
