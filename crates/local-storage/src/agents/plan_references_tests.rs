@@ -166,6 +166,7 @@ fn agent_plan_references_restore_and_workspace_ignore_retired_collaboration_allo
         step.status = OperationStepStatus::Applied;
     }
     operation.state = OperationState::Succeeded;
+    add_component_file_receipts(&mut operation);
     control.finish_operation(&mut operation).unwrap();
     let initial = control.agent_plan_references(&workspace, &plan).unwrap();
     assert_eq!(initial.references.len(), 2);
@@ -191,6 +192,7 @@ fn agent_plan_references_restore_and_workspace_ignore_retired_collaboration_allo
         step.status = OperationStepStatus::Applied;
     }
     restore.state = OperationState::Succeeded;
+    add_component_file_receipts(&mut restore);
     control.finish_operation(&mut restore).unwrap();
     let after = control.agent_plan_references(&workspace, &plan).unwrap();
     assert!(after.references.is_empty());
@@ -210,6 +212,7 @@ fn agent_plan_references_corrupt_projection_is_not_no_references() {
         step.status = OperationStepStatus::Applied;
     }
     operation.state = OperationState::Succeeded;
+    add_component_file_receipts(&mut operation);
     control.finish_operation(&mut operation).unwrap();
     control.with_connection(|db| {
         db.execute("UPDATE operations SET operation_json='{}'", [])

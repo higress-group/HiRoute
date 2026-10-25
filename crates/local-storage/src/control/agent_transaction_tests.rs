@@ -16,6 +16,35 @@ use super::{ArtifactBackupAad, ControlStore, ManagedArtifactStore};
 #[path = "artifact_dependency_tests.rs"]
 mod artifact_dependency_tests;
 
+// Narrow store fixtures do not run an external adapter. Supply its bound receipt;
+// real protected file execution remains covered by artifact_dependency_tests.
+fn add_component_file_receipts(operation: &mut OperationV1) {
+    // This history-reader fixture uses bound adapter receipts. File-byte/backup
+    // authentication is exercised separately by the artifact dependency scenarios.
+    let receipts = operation
+        .plan
+        .external()
+        .iter()
+        .filter(|intent| intent.kind() == hiroute_domain::OwnedEffectKind::AgentArtifact)
+        .map(|intent| hiroute_domain::OwnedEffectV1 {
+            effect_id: intent.effect_id().into(),
+            kind: intent.kind(),
+            target: intent.target().into(),
+            before_fingerprint: intent.before_fingerprint().cloned(),
+            after_fingerprint: Some(CanonicalDigest::of_bytes(b"component-file-receipt")),
+            compensation: json!({"schema":"hiroute.managed-artifact-compensation/v1",
+                "operation_id":operation.operation_id,"effect_id":intent.effect_id()})
+            .into(),
+        })
+        .collect();
+    operation
+        .steps
+        .iter_mut()
+        .find(|s| s.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
+        .unwrap()
+        .effects = receipts;
+}
+
 fn rewrite_marker_as_legacy(
     store: &ManagedArtifactStore,
     operation: &OperationId,

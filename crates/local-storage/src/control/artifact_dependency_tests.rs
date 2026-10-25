@@ -149,6 +149,17 @@ fn superseded_damage_is_outside_startup_but_strict_on_access() {
     control.connection.borrow().execute("UPDATE operations SET operation_json='damaged unrelated history' WHERE operation_id=?1",[old.operation_id.as_str()]).unwrap();
     drop(artifacts);
     drop(control);
+    // Negative control: the former production opener audited every retained marker.
+    // The identical data still fails that explicit full audit.
+    assert!(
+        ManagedArtifactStore::open_with_external_targets(
+            &crate::test_storage_authority(),
+            root.path().join("files"),
+            root.path().join("restore"),
+            []
+        )
+        .is_err()
+    );
     let (control, artifacts) = open(root.path());
     artifacts
         .validate_dependencies(&control.artifact_dependencies().unwrap())
@@ -164,7 +175,13 @@ fn superseded_damage_is_outside_startup_but_strict_on_access() {
 #[test]
 fn current_marker_backup_journal_and_coverage_damage_remain_fatal() {
     for damage in [
-        "marker", "backup", "journal", "head", "coverage", "identity",
+        "marker",
+        "backup",
+        "journal",
+        "generation",
+        "head",
+        "coverage",
+        "identity",
     ] {
         let root = tempdir().unwrap();
         let (control, artifacts) = open(root.path());
@@ -208,6 +225,16 @@ fn current_marker_backup_journal_and_coverage_damage_remain_fatal() {
                     .borrow()
                     .execute(
                         "UPDATE operations SET operation_json='corrupt' WHERE operation_id=?1",
+                        [current.operation_id.as_str()],
+                    )
+                    .unwrap();
+            }
+            "generation" => {
+                control
+                    .connection
+                    .borrow()
+                    .execute(
+                        "UPDATE operations SET generation=generation+1 WHERE operation_id=?1",
                         [current.operation_id.as_str()],
                     )
                     .unwrap();
@@ -415,5 +442,46 @@ fn successful_restore_retires_only_the_admitted_current_owner() {
             })
             .unwrap(),
         0
+    );
+}
+
+#[test]
+fn missing_success_receipt_cannot_replace_a_current_owner() {
+    let root = tempdir().unwrap();
+    let (control, artifacts) = open(root.path());
+    let current = complete(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Apply,
+        "owned",
+    );
+    let mut next = admit(
+        &control,
+        &artifacts,
+        AgentConnectionTransactionKindV1::Restore,
+        "no-receipt",
+    );
+    next.state = OperationState::Succeeded;
+    for step in &mut next.steps {
+        step.status = OperationStepStatus::Applied;
+    }
+    assert!(control.finish_operation(&mut next).is_err());
+    assert_eq!(
+        control
+            .connection
+            .borrow()
+            .query_row("SELECT owner_operation_id FROM artifact_heads", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .unwrap(),
+        current.operation_id.to_string()
+    );
+    assert!(
+        control
+            .load_operation(&next.operation_id)
+            .unwrap()
+            .unwrap()
+            .state
+            != OperationState::Succeeded
     );
 }

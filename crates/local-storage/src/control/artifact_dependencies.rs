@@ -11,7 +11,7 @@ pub(crate) struct Dependency {
 }
 type Dependencies = BTreeMap<(String, String), Dependency>;
 
-fn native_payload(intent: &ExternalEffectIntentV1) -> bool {
+pub(super) fn native_payload(intent: &ExternalEffectIntentV1) -> bool {
     matches!(
         intent.desired()["payload"]["schema"].as_str(),
         Some(
@@ -107,6 +107,7 @@ pub(super) fn add_predecessor(
     let previous = control.load_operation(&id)?.ok_or_else(invalid)?;
     if previous.workspace_id != operation.workspace_id
         || previous.state != OperationState::Succeeded
+        || !control.operation_is_current(&previous)?
     {
         return Err(invalid());
     }

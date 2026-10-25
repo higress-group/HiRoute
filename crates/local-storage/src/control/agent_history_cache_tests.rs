@@ -33,30 +33,7 @@ fn persist(control: &ControlStore, operation: &mut OperationV1) {
     for step in &mut operation.steps {
         step.status = hiroute_domain::OperationStepStatus::Applied;
     }
-    // This history-reader fixture uses bound adapter receipts. File-byte/backup
-    // authentication is exercised separately by the artifact dependency scenarios.
-    let receipts = operation
-        .plan
-        .external()
-        .iter()
-        .filter(|intent| intent.kind() == hiroute_domain::OwnedEffectKind::AgentArtifact)
-        .map(|intent| hiroute_domain::OwnedEffectV1 {
-            effect_id: intent.effect_id().into(),
-            kind: intent.kind(),
-            target: intent.target().into(),
-            before_fingerprint: intent.before_fingerprint().cloned(),
-            after_fingerprint: Some(CanonicalDigest::of_bytes(b"history-reader-fixture")),
-            compensation: json!({"schema":"hiroute.managed-artifact-compensation/v1",
-                "operation_id":operation.operation_id,"effect_id":intent.effect_id()})
-            .into(),
-        })
-        .collect();
-    operation
-        .steps
-        .iter_mut()
-        .find(|s| s.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
-        .unwrap()
-        .effects = receipts;
+    add_component_file_receipts(operation);
     control.finish_operation(operation).unwrap();
     // The component fixture has no external finalizer; mark its retained journal settled.
     control.complete_operation_finalization(operation).unwrap();
@@ -591,17 +568,27 @@ fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_refere
     // Reproduce the format initializer's one-time semantic phase on retained data;
     // remove only metadata it owns, retaining all immutable journal/payload bytes.
     let db = control.connection.borrow();
-    db.execute_batch(
+    for outcome in ["ROLLBACK", "COMMIT"] {
+        db.execute_batch(
         "BEGIN; DROP TRIGGER operation_recovery_insert; DROP TRIGGER operation_recovery_guard;
         DROP TRIGGER operation_recovery_update; DELETE FROM operation_recovery_members;
         DELETE FROM operation_recovery_coverage; DELETE FROM agent_native_target_heads;
-        DELETE FROM agent_native_target_coverage; DELETE FROM publication_grant_proofs;",
+        DELETE FROM agent_native_target_coverage; DELETE FROM publication_grant_proofs;
+        DELETE FROM artifact_head_transitions; DELETE FROM artifact_heads; DELETE FROM artifact_head_coverage;",
     )
     .unwrap();
-    super::super::current_dependencies::initialize(&db).unwrap();
-    db.execute_batch(crate::migrations::current_dependencies_v32::TRIGGERS)
-        .unwrap();
-    db.execute_batch("COMMIT").unwrap();
+        super::super::current_dependencies::initialize(&db).unwrap();
+        db.execute_batch(crate::migrations::current_dependencies_v32::TRIGGERS)
+            .unwrap();
+        db.execute_batch(outcome).unwrap();
+        assert_eq!(
+            db.query_row("SELECT head_count FROM artifact_head_coverage", [], |r| {
+                r.get::<_, usize>(0)
+            })
+            .unwrap(),
+            1
+        );
+    }
     assert_eq!(bytes(&db), before);
     drop(db);
     assert_eq!(

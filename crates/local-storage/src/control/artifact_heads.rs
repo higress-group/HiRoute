@@ -76,7 +76,8 @@ fn owner(operation: &OperationV1, intent: &ExternalEffectIntentV1) -> PortResult
 fn retires(intent: &ExternalEffectIntentV1) -> bool {
     let desired = intent.desired();
     desired["transaction"] == "restore"
-        || desired["payload"]["change"]["action"] == "restore"
+        || (artifact_dependencies::native_payload(intent)
+            && desired["payload"]["change"]["action"] == "restore")
         || (desired["payload"]["schema"] == "hiroute.settings-skill-file/v1"
             && desired["payload"]["action"] == "remove")
 }
@@ -89,17 +90,51 @@ pub(super) fn validate_coverage(db: &Connection) -> PortResult<()> {
 }
 
 fn current(db: &Connection, workspace: &WorkspaceId, target: &str) -> PortResult<Option<Owner>> {
-    let value: Option<String> = db
+    let value: Option<(String, String)> = db
         .query_row(
-            "SELECT owner_json FROM artifact_heads WHERE workspace_id=?1 AND target=?2",
+            "SELECT owner_json,owner_operation_id FROM artifact_heads WHERE workspace_id=?1 AND target=?2",
             params![workspace.as_str(), target],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?,r.get(1)?)),
         )
         .optional()
         .map_err(|_| invalid())?;
     value
-        .map(|v| serde_json::from_str(&v).map_err(|_| invalid()))
+        .map(|(v, id)| {
+            let owner: Owner = serde_json::from_str(&v).map_err(|_| invalid())?;
+            if owner.operation.as_str() != id {
+                return Err(invalid());
+            }
+            Ok(owner)
+        })
         .transpose()
+}
+
+fn authenticate_owner(
+    db: &Connection,
+    workspace: &WorkspaceId,
+    target: &str,
+    expected: &Owner,
+) -> PortResult<()> {
+    let operation = load_operation_where(
+        &Default::default(),
+        db,
+        "operation_id=?1",
+        [expected.operation.as_str()],
+    )?
+    .ok_or_else(invalid)?;
+    if operation.workspace_id != *workspace
+        || operation.state != OperationState::Succeeded
+        || !journal::is_current(db, &operation)?
+    {
+        return Err(invalid());
+    }
+    let intent = head_intents(&operation)
+        .find(|i| i.target() == target && i.effect_id() == expected.effect)
+        .ok_or_else(invalid)?;
+    if retires(intent) || owner(&operation, intent)? != *expected {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 fn replace(
@@ -134,6 +169,9 @@ pub(super) fn admit(db: &Connection, operation: &OperationV1) -> PortResult<()> 
     validate_coverage(db)?;
     for intent in head_intents(operation) {
         let before = current(db, &operation.workspace_id, intent.target())?;
+        if let Some(before) = &before {
+            authenticate_owner(db, &operation.workspace_id, intent.target(), before)?;
+        }
         db.execute("INSERT INTO artifact_head_transitions(operation_id,target,before_json) VALUES(?1,?2,?3)",
             params![operation.operation_id.as_str(), intent.target(), serde_json::to_string(&before).map_err(|_| invalid())?]).map_err(|_| invalid())?;
     }
@@ -165,6 +203,9 @@ pub(super) fn finish(db: &Connection, operation: &OperationV1) -> PortResult<()>
         let before: Option<Owner> = serde_json::from_str(&value).map_err(|_| invalid())?;
         if current(db, &operation.workspace_id, intent.target())? != before {
             return Err(invalid());
+        }
+        if let Some(before) = &before {
+            authenticate_owner(db, &operation.workspace_id, intent.target(), before)?;
         }
         if operation.state == OperationState::Succeeded {
             // A missing/foreign receipt cannot retire an existing recovery owner.
@@ -233,6 +274,7 @@ impl ControlStore {
             if expected.operation.as_str() != id
                 || operation.workspace_id.as_str() != workspace
                 || operation.state != OperationState::Succeeded
+                || !journal::is_current(&db, &operation)?
             {
                 return Err(invalid());
             }
