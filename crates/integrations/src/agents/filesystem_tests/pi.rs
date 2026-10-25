@@ -71,12 +71,43 @@ fn native_point_identity_includes_root_and_selected_credential_origin_without_ex
         "equal material from a different native selector is not the same binding"
     );
     assert_ne!(before.snapshot_digest, after.snapshot_digest);
-    let serialized = serde_json::to_string(&after.sources[0]).unwrap();
-    assert!(
-        !serialized.contains("point_binding")
-            && !serialized.contains("models.json/")
-            && !serialized.contains("4222")
-    );
+    let root = scanner.layout.pi_config_root.to_string_lossy();
+    let is_redacted = |public: &serde_json::Value| {
+        let serialized = serde_json::to_string(public).unwrap();
+        public.get("point_binding").is_none()
+            && [
+                "models.json/",
+                "auth.json/",
+                "127.0.0.1",
+                "provider-fallback",
+                root.as_ref(),
+            ]
+            .iter()
+            .all(|private| !serialized.contains(*private))
+    };
+    let public = serde_json::to_value(&after.sources[0]).unwrap();
+    assert!(is_redacted(&public));
+    // An opaque digest may contain the decimal port by chance. This serialization
+    // fixture is not a discovered source or an authentication proof.
+    let mut collision = after.sources[0].clone();
+    collision.evidence_digest = CanonicalDigest::of_bytes(b"pi-public-digest-751");
+    let collision = serde_json::to_value(collision).unwrap();
+    assert!(collision.to_string().contains("4222"));
+    assert!(is_redacted(&collision));
+    for (field, private) in [
+        ("point_binding", json!({})),
+        ("endpoint", json!("http://127.0.0.1:4222/v1")),
+        ("credential_value", json!("provider-fallback")),
+        ("native_root", json!(root.as_ref())),
+        (
+            "selector",
+            json!("models.json/providers/private-api/baseUrl"),
+        ),
+    ] {
+        let mut leaked = public.clone();
+        leaked[field] = private;
+        assert!(!is_redacted(&leaked), "must reject leaked {field}");
+    }
 }
 
 #[test]
