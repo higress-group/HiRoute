@@ -97,3 +97,65 @@ fn reused_content_proof_still_binds_control_and_cold_publication_bytes() {
     bytes[0] = json!((original + 1) % 256);
     assert!(stored.build().is_err());
 }
+
+#[test]
+fn restored_content_journal_encodes_unchanged_immutable_inputs_once() {
+    let plan = content_plan();
+    let equivalent = plan.clone();
+    let workspace = WorkspaceId::default();
+    let scope = IdempotencyScopeV1::new(
+        "interactive-user",
+        "ApplyAgentPlanChange",
+        "restore-content",
+    )
+    .unwrap();
+    let request = CanonicalDigest::of_bytes(b"restore-content-request");
+    stored::CANONICAL_PLAN_ENCODINGS.with(|count| count.set(0));
+    let mut operation = OperationV1::new(
+        OperationId::derive(&workspace, &scope, &request),
+        workspace,
+        scope,
+        request,
+        CanonicalDigest::of_bytes(b"restore-content-accepted"),
+        RevisionSetV1 {
+            target: 0,
+            dependencies: BTreeMap::new(),
+        },
+        plan,
+    )
+    .unwrap();
+    let steps = operation.steps.clone();
+    operation
+        .restore_durable_state(OperationState::Succeeded, 7, steps.clone(), None)
+        .unwrap();
+    assert!(operation.journal_is_committed().unwrap());
+    assert_eq!(
+        stored::CANONICAL_PLAN_ENCODINGS.with(std::cell::Cell::get),
+        1
+    );
+    let mut tampered = steps.clone();
+    tampered[3].deterministic_input_digest = CanonicalDigest::of_bytes(b"tampered-step");
+    assert!(
+        operation
+            .restore_durable_state(OperationState::Succeeded, 8, tampered, None)
+            .is_err()
+    );
+    // A detached plan must establish its own proof, even when its values compare equal.
+    operation.plan = std::sync::Arc::new(equivalent);
+    operation
+        .restore_durable_state(OperationState::Succeeded, 8, steps.clone(), None)
+        .unwrap();
+    assert_eq!(
+        stored::CANONICAL_PLAN_ENCODINGS.with(std::cell::Cell::get),
+        2
+    );
+    // The public identity fields are separately bound; they cannot inherit the checkpoint.
+    operation.accepted_digest = CanonicalDigest::of_bytes(b"different-accepted-identity");
+    operation
+        .restore_durable_state(OperationState::Succeeded, 9, steps, None)
+        .unwrap();
+    assert_eq!(
+        stored::CANONICAL_PLAN_ENCODINGS.with(std::cell::Cell::get),
+        3
+    );
+}
