@@ -18,6 +18,8 @@ use std::{collections::BTreeSet, fs, os::unix::fs::PermissionsExt};
 mod codex_cache;
 #[path = "native_model_lifecycle_tests.rs"]
 mod lifecycle;
+#[path = "settings_projection_tests.rs"]
+mod projection;
 #[path = "native_model_tests/recovery_admission.rs"]
 mod recovery_admission;
 
@@ -94,15 +96,31 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .publication_revision;
 
     let status = || {
-        adapter
-            .model_settings_status(&AgentSettingsStatusRequestV2 {
-                effective: None,
-                include_skills: false,
-                native_target: None,
-                schema_version: AGENT_SETTINGS_SCHEMA_V2,
-                context_id: context.clone(),
-            })
-            .unwrap()
+        let mut request = AgentSettingsStatusRequestV2 {
+            projection: Default::default(),
+            effective: None,
+            include_skills: false,
+            native_target: None,
+            schema_version: AGENT_SETTINGS_SCHEMA_V2,
+            context_id: context.clone(),
+        };
+        let full = adapter.model_settings_status(&request).unwrap();
+        request.projection = hiroute_application_api::AgentSettingsStatusProjectionV2::Model;
+        let narrow = adapter.model_settings_status(&request).unwrap();
+        assert!(
+            narrow.management_skill.is_none()
+                && narrow.collaboration.is_none()
+                && narrow.effective.is_none()
+        );
+        let mut expected = full.clone();
+        expected.management_skill = None;
+        expected.collaboration = None;
+        expected.effective = None;
+        assert_eq!(
+            narrow, expected,
+            "model-only preserves configured, drift, grant, surface and publication facts"
+        );
+        full
     };
     let result = |surface: AgentModelSurfaceV2,
                   state: AgentModelCheckStateV2,

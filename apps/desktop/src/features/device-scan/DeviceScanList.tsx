@@ -1,4 +1,5 @@
 import type { Agent } from '../../agents';
+export type DeviceScanAgent = Pick<Agent, 'agent_id' | 'configuration_state'>;
 import type { SubscriptionCandidate } from '../subscriptions/types';
 import { BrandIcon, UiIcon } from '../../ui';
 import { agentBrandFromId } from '../../ui/BrandIcon';
@@ -55,7 +56,7 @@ function configurationMessage(item: ComputeScanItem, language: 'zh' | 'en') {
   return language === 'zh' ? '已检测到配置，但当前无法安全复用。' : 'Configuration found, but it cannot be reused safely yet.';
 }
 
-function agentScanState(agent: Agent, language: 'zh' | 'en') {
+function agentScanState(agent: DeviceScanAgent, language: 'zh' | 'en') {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   if (agent.configuration_state === 'executable_not_runnable') {
     return {
@@ -117,7 +118,7 @@ export function DeviceScanList({
   language: 'zh' | 'en';
   subscriptions: SubscriptionCandidate[];
   computeItems: ComputeScanItem[];
-  agents: Agent[];
+  agents: DeviceScanAgent[];
   subscriptionScanFailed: boolean;
   subscriptionRuntimeUnavailable: boolean;
   computeScanFailed: boolean;

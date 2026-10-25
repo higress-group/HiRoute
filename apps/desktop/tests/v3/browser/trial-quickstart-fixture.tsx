@@ -4,6 +4,7 @@ import { NewModels } from '../../../src/features/trial/NewModels';
 import { readyDesktop, readyAgents, readyManagement, dailyPlan, mockProductInvoke } from './product-fixtures';
 import type { DesktopOperation, DesktopSnapshot } from '../../../src/product/home-projections';
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
+import { trialAgentRead } from './trial-agent-fixture';
 const desktop = structuredClone(readyDesktop); desktop.catalog = { plans: [], drafts: [] }; desktop.pending = null;
 const agents = structuredClone(readyAgents); agents.agents = [{...agents.agents.find(a=>a.agent_id==='agent_claude_default')!,context_id:'agent-context/claude/default',settings:{state:'not_configured',restore_point_ref:null,model_verified:false}}];agents.plans.plans=[];
 const additionalFamily = new URLSearchParams(location.search).get('agent-family');
@@ -24,7 +25,24 @@ export const trialModel = catalog.find(m=>m.binding_ids.includes('binding/bailia
 export const primaryModel = catalog.find(m=>m.binding_ids.includes('binding/codex/gpt-5.6-sol'))!;
 if (new URLSearchParams(location.search).has('feed-trial')) trialModel.origin = {kind:'feed',sequence:12,included_on:'2026-10-16'};
 Object.assign(window,{trialModel,primaryModel});
+const agentControl = {
+ hold: new URLSearchParams(location.search).has('agent-hold'), failNext: false,
+ pending: [] as { context: string; release(): void }[],
+ setClaudePlan(name: string) {
+  const agent = agents.agents[0];
+  agent.settings = {state:'configured',restore_point_ref:null,model_verified:false,current_selection:{mode:'claude_launcher',surfaces:['claude_cli'],fixed_models:[],preset_mappings:{opus:{kind:'plan',plan_id:name},sonnet:{kind:'preserve_native'},haiku:{kind:'preserve_native'}}}};
+  agents.plans.plans.push({...structuredClone(dailyPlan),agent_plan_id:name,desired:{...structuredClone(dailyPlan.desired),display_name:name}});
+ },
+};
+Object.assign(window,{trialAgentControl:agentControl});
 export async function quickStartInvoke(command:string,payload:any,params:URLSearchParams) {
+ if(command==='trial_agent_choices') return trialAgentRead(agents,command,payload);
+ if(command==='trial_agent_model') {
+  if(agentControl.failNext){agentControl.failNext=false;throw Error('AGENT_STATUS_UNAVAILABLE');}
+  const result=trialAgentRead(agents,command,payload);
+  if(agentControl.hold) await new Promise<void>(release=>agentControl.pending.push({context:payload.contextId,release}));
+  return result;
+ }
  if(command==='model_availability') return {featured:params.has('saved-only')?[]:featured,models:params.has('saved-only')?[]:catalog};
  if(command==='desktop_snapshot') return structuredClone(desktop);
  if(command==='model_feed_status') return structuredClone(feedStatus);

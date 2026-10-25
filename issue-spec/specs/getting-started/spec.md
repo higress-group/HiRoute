@@ -331,6 +331,16 @@ start a trial.
 Home and routing creation open one full-page, four-step flow for trial model, in-place connection,
 Primary model, decision connection, selected Agent/presets and review.
 
+Opening the flow SHALL discover Agent choices without reading every Agent's
+settings. Selecting a known choice SHALL read only that context's model settings,
+without repeating device discovery or reading management Skill/collaboration
+facets. Explicit rediscovery and a new flow lifetime refresh the choices. Choices
+are hints, not proof of editable or empty settings. Missing, failed or superseded
+details SHALL block review and offer retry; late responses after selection changes
+or closure SHALL NOT replace current details. Before mapping, the flow SHALL
+refresh discovery and the selected model settings, require review of any changed
+selection/context, and retain normal fresh Preview/Apply checks.
+
 A registered connection must observe the selected model before continuing. Protected
 input/check/save and native subscription import retain their existing authority.
 Primary is prefilled only from a recorded unambiguous fixed-model resolution; a
@@ -349,6 +359,11 @@ remain visible after later failures. A published Plan can be mapped from Routing
 after reload without recreating it.
 
 After this flow confirms that the Agent mapping applied successfully, it SHALL wait for matching Plan activity while the trial page and window remain visible. It SHALL query the existing sessions view from that confirmation time at a five-second cadence, skipping an in-flight read. The first matching candidate observed by the flow SHALL remain selectable through "Watch this session", which opens its live routing timeline only on user action. A Plan match SHALL NOT be described as proof of the Agent identity or a newly created, chronologically first session. Closing or hiding the flow stops reads; showing it resumes them. A read failure SHALL offer retry while retaining the model-performance and session-list actions.
+
+#### Scenario: Switch Agent while a previous read is pending
+
+- **WHEN** the user switches A to B and back to A while earlier detail reads remain pending
+- **THEN** only the latest A result may become editable; the switches do not rediscover other Agents or read their settings, and a failed read can be retried without inventing defaults.
 
 #### Scenario: Publication succeeds but its reply is lost
 

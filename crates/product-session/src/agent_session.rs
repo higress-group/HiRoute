@@ -36,6 +36,30 @@ pub struct AgentSnapshot {
     pub plans: AgentPlanCatalogViewV2,
     pub trusted_authority: bool,
 }
+/// Discovery is a choice, never evidence of editable or empty native settings.
+#[derive(Serialize)]
+pub struct TrialAgentChoice {
+    pub agent_id: String,
+    pub context_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_target: Option<hiroute_domain::AgentNativeTargetV1>,
+    pub version: String,
+    pub configuration_state: String,
+    pub available_surfaces: Vec<AgentModelSurfaceV2>,
+    pub native_model_catalog: Option<Value>,
+    pub codex_access: Option<Value>,
+}
+#[derive(Serialize)]
+pub struct TrialAgentChoices {
+    pub choices: Vec<TrialAgentChoice>,
+    pub trusted_authority: bool,
+}
+#[derive(Serialize)]
+pub struct TrialAgentModel {
+    pub settings: hiroute_application_api::AgentModelSettingsStatusV2,
+    pub plans: AgentPlanCatalogViewV2,
+    pub trusted_authority: bool,
+}
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub struct AgentResidentServicePreview {
     #[serde(default)]
@@ -576,6 +600,7 @@ impl Session {
                 &self.client,
                 "GetAgentConnectionStatus",
                 &AgentSettingsStatusRequestV2 {
+                    projection: Default::default(),
                     effective: None,
                     include_skills: true,
                     schema_version: AGENT_SETTINGS_SCHEMA_V2,

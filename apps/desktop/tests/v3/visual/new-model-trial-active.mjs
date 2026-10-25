@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { connectPage, evaluate, waitFor } from './cdp-client.mjs';
+import { trialAgentReadChecks } from './trial-agent-read-checks.mjs';
 const [port,base,output]=process.argv.slice(2);
 const client=await connectPage(Number(port));
 const keepAlive=setInterval(()=>{},1000);
@@ -74,11 +75,12 @@ async function additionalAgentMappings() {
  for (const lang of ['en','zh']) for (const [family,name] of [['dsh','DeepSeek Harness'],['pi','Pi'],['qoder','Qoder'],['opencode','OpenCode']]) {
   await open(`lang=${lang}&view=quickstart&agent-family=${family}`,755,600);
   await click('.new-models button',lang==='zh'?'试用':'Try');
-  await waitFor(client,`!!document.querySelector('.trial-agent-choice select')`);
+  await waitFor(client,`!!document.querySelector('.trial-agent-choice select') && !!document.querySelector('.trial-presets input:not(:disabled)')`);
   await evaluate(client,`(()=>{const el=[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name));el.click();return true;})()`);
   if(lang==='zh') await evaluate(client,`document.querySelector('.trial-presets input:checked').click()`);
   await evaluate(client,`(()=>{const el=document.querySelector('.trial-agent-choice select');el.value=${JSON.stringify(`agent_${family}_default`)};el.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
   await waitFor(client,`!document.querySelector('.trial-presets')`);
+  await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
   assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),false,'additional routing does not require Claude presets');
   await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
   await waitFor(client,`!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
@@ -94,8 +96,10 @@ async function additionalAgentMappings() {
  }
 }
 try {
- if(process.argv.includes('--timeline-pricing')) { await timelinePricingChecks(); }
+ if(process.argv.includes('--trial-agent-reads')) { await trialAgentReadChecks({client,open,click,shot,results}); }
+ else if(process.argv.includes('--timeline-pricing')) { await timelinePricingChecks(); }
  else {
+ await trialAgentReadChecks({client,open,click,shot,results});
  await additionalAgentMappings();
  for(const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',755,600],['en','dark',1200,813],['zh','light',1200,813]]) {
   await open(`lang=${lang}&theme=${theme}&view=feed-home`,width,height);
@@ -106,7 +110,7 @@ try {
   await shot(`feed-origin-home-${lang}-${theme}-${width}`);
   await open(`lang=${lang}&theme=${theme}&view=quickstart&feed-trial=1`,width,height);
   await click('.new-models button',lang==='zh'?'试用':'Try');
-  await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice')`);
+  await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice input:not(:disabled)')`);
   const wizardCopy=await evaluate(client,`document.querySelector('.trial-page').textContent`);
   assert.ok(wizardCopy.includes(lang==='zh'?'内容已校验':'content validated'));
   assert.doesNotMatch(wizardCopy,/signature|签名/i);
@@ -155,7 +159,7 @@ try {
   }
   await open(`${query}&view=quickstart`,width,height);
   await click('.new-models button',lang==='zh'?'试用':'Try');
-  await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice')`);
+  await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice input:not(:disabled)')`);
   await check('.trial-rule');
   await evaluate(client,`document.querySelector('.trial-rule').scrollIntoView({block:'center'});true`);
   await shot(`trial-protection-${native?'native':'custom'}-${lang}-${width}-${theme}`);
@@ -424,7 +428,7 @@ try {
  for(const [lang,theme,lost] of [['en','light',false],['zh','dark',true]]) {
   await open(`lang=${lang}&theme=${theme}&view=quickstart${lost?'&lost=1&saved-only=1':''}`,755,600);
   await click('.new-models button',lang==='zh'?'试用':'Try');
-  await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice')`);
+  await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice input:not(:disabled)')`);
   assert.equal(await evaluate(client,`document.querySelector('.trial-steps [aria-current=step]').textContent.includes(${JSON.stringify(lang==='zh'?'选择模型':'Choose models')})`),true);
   assert.equal(await evaluate(client,`[...document.querySelectorAll('.trial-presets input:checked')].length`),1);
   assert.equal(await evaluate(client,`document.querySelector('.trial-choice-list .trial-choice[aria-pressed=true]')`),null);
@@ -462,7 +466,7 @@ try {
   await open(`lang=${lang}&view=quickstart`,755,600);
   await waitFor(client,`[...document.querySelectorAll('.new-models button')].some(e=>e.textContent.includes(${JSON.stringify(lang==='zh'?'试用':'Try')}))`);
   await click('.new-models button',lang==='zh'?'试用':'Try');
-  await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice')`);
+  await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice input:not(:disabled)')`);
   await click('.trial-model-card','Kimi K3'); await click('.trial-connect-card button',lang==='zh'?'在此接入':'Connect here');
   await waitFor(client,`!!document.querySelector('.trial-inline-connection .connection-flow')`);
   await click('.trial-inline-connection button','Kimi');

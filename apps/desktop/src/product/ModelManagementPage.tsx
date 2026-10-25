@@ -34,7 +34,7 @@ import { agentDisplayName as discoveredAgentName } from '../features/agents/ecos
 import type { AgentNativeTarget } from '../features/agents/types';
 import type { PriceContext, PriceOutcome } from '../features/model-reference/types';
 import { agentBrandFromId, BrandIcon, Dialog, Disclosure, ProductPage, UiIcon } from '../ui';
-import type { Agent } from '../agents';
+import type { DeviceScanAgent } from '../features/device-scan/DeviceScanList';
 import type {
   CandidateRef,
   ManagedModel,
@@ -149,7 +149,7 @@ export function ModelManagementPage({
   onChanged(): void;
   refreshVersion?: number;
   plans?: Plan[];
-  agents?: Agent[];
+  agents?: DeviceScanAgent[];
   onOpenPlan?(planId: string): void;
   onTryModel?(modelId: string | undefined, bindingId: string): void;
   onCreatePlan?(bindingId: string): void;

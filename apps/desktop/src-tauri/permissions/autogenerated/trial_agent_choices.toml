@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-trial-agent-choices"
+description = "Enables the trial_agent_choices command without any pre-configured scope."
+commands.allow = ["trial_agent_choices"]
+
+[[permission]]
+identifier = "deny-trial-agent-choices"
+description = "Denies the trial_agent_choices command without any pre-configured scope."
+commands.deny = ["trial_agent_choices"]
