@@ -67,8 +67,6 @@ fn startup_primes_exact_secret_descriptors_without_informational_native_processe
     layout.pi_executable = executable.clone();
     layout.dsh_executable = executable.clone();
     layout.opencode_executable = executable;
-    layout.process_environment.clear();
-    layout.process_environment_presence.clear();
     layout.claude_managed_settings.clear();
     layout.claude_project_settings.clear();
     layout.claude_launch_settings = None;
@@ -87,7 +85,7 @@ fn startup_primes_exact_secret_descriptors_without_informational_native_processe
         layout,
         hiroute_integrations::ClaudeRegistrationIndexV1::from_verified_model_data(
             catalog.registry(),
-            catalog.current_release_model_data(),
+            &catalog.current_release_model_data().data,
         )
         .unwrap(),
     );
