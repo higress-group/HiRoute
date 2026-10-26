@@ -135,8 +135,12 @@ fn cancelled_turn_then_plaintext_error_recovery_keeps_one_complete_stage() {
         let a3 = continuation(begin(&store, &scope, &replay, &wire, allowance), &a);
         store.bind_request(&a3, "a3");
         accepted_output::text_output(&store, &a3, "An unfinished analysis");
+        // The production capture owner marks an interrupted open output as
+        // partial; changing the terminal status alone is not capture evidence.
+        store.mark_output_partial(&a3);
         let stopped = finish(&store, &a3, "a3", AgentTurnStatus::Interrupted, true).unwrap();
         assert_eq!(stopped.status, AgentTurnStatus::Interrupted);
+        assert!(stopped.history_partial);
         wire["input"].as_array_mut().unwrap().extend([
             json!({"role":"assistant","content":"An unfinished analysis"}),
             json!({"role":"user","content":"Read missing.txt; if absent read README.md."}),
