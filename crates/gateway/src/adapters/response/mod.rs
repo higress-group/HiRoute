@@ -16,9 +16,9 @@ mod search;
 mod wire;
 
 #[cfg(test)]
-mod chat_filtered_tests;
-#[cfg(test)]
 mod cache_usage_tests;
+#[cfg(test)]
+mod chat_filtered_tests;
 #[cfg(test)]
 mod chat_tool_delta_tests;
 #[cfg(test)]
