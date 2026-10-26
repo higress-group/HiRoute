@@ -124,6 +124,21 @@ fn publication_recovery_rejects_corrupt_markers_and_upgrades_verified_legacy() {
         .save_operation(&mut operation)
         .unwrap();
     let decodes = || super::super::super::publication::MARKER_DECODES.with(std::cell::Cell::get);
+    let produced = decodes();
+    assert!(matches!(
+        runtime
+            .adapter
+            .observe_external(&operation, &intent)
+            .unwrap(),
+        EffectReconciliation::Staged(_)
+    ));
+    assert_eq!(
+        decodes(),
+        produced,
+        "a locally encoded marker retains its authenticated record"
+    );
+    // A cold/reopened marker must still authenticate all stored bytes once.
+    *runtime.adapter.publication_marker_cache.lock().unwrap() = None;
     let before = decodes();
     for _ in 0..3 {
         assert!(matches!(

@@ -179,6 +179,7 @@ fn changed_dsh_mapping_compiles_each_grant_once() {
         plans.len() > 1,
         "exercise a real changed route set, not a no-op save"
     );
+    let mut last = None;
     for (key, selection) in [
         ("initial-mapping", vec![plans[0].clone()]),
         ("added-mapping", plans),
@@ -188,7 +189,7 @@ fn changed_dsh_mapping_compiles_each_grant_once() {
             crate::control::runtime::publication::SETTINGS_RECORD_BUILDS.with(std::cell::Cell::get)
         };
         let before = builds();
-        apply(&fixture.service, &fixture.runtime, spec.clone(), key);
+        last = Some(apply(&fixture.service, &fixture.runtime, spec.clone(), key));
         assert_eq!(model_status(&fixture)["state"], "configured");
         assert_eq!(
             builds() - before,
@@ -196,6 +197,67 @@ fn changed_dsh_mapping_compiles_each_grant_once() {
             "{key}: observing and applying the same authenticated grant must not recompile its publication"
         );
     }
+    let id = OperationId::parse(last.unwrap()["operation_id"].as_str().unwrap()).unwrap();
+    let mut operation = fixture
+        .runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .load_operation(&id)
+        .unwrap()
+        .unwrap();
+    // Exercise pre-journal computation with authenticated settings input. Execution
+    // still requires the current journal, independently of this pure candidate.
+    operation
+        .step_mut(OperationStepKind::CompilePublication)
+        .effects
+        .clear();
+    let intent = operation
+        .plan
+        .external()
+        .iter()
+        .find(|i| i.kind() == OwnedEffectKind::Publication)
+        .unwrap()
+        .clone();
+    let expected = fixture
+        .runtime
+        .adapter
+        .publication_record_from_operation(&operation, &intent)
+        .unwrap();
+    let mut changed = operation.clone();
+    changed.accepted_digest = CanonicalDigest::of_bytes(b"different-confirmation");
+    assert!(
+        fixture
+            .runtime
+            .adapter
+            .publication_record_from_operation(&changed, &intent)
+            .is_err()
+    );
+    changed = operation.clone();
+    changed.workspace_id = WorkspaceId::parse("workspace/other").unwrap();
+    assert!(
+        fixture
+            .runtime
+            .adapter
+            .publication_record_from_operation(&changed, &intent)
+            .is_err()
+    );
+    // Detached equal input must authenticate again instead of inheriting a pointer proof.
+    changed = operation.clone();
+    changed.plan = Arc::new((*operation.plan).clone());
+    let builds =
+        || crate::control::runtime::publication::SETTINGS_RECORD_BUILDS.with(std::cell::Cell::get);
+    let before = builds();
+    assert_eq!(
+        fixture
+            .runtime
+            .adapter
+            .publication_record_from_operation(&changed, &intent)
+            .unwrap(),
+        expected
+    );
+    assert_eq!(builds() - before, 1);
     let before = fs::read(&fixture.native_config).unwrap();
     let reopened = reopen(fixture);
     assert_eq!(model_status(&reopened)["state"], "configured");

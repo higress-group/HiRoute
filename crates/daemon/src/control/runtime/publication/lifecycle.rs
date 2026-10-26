@@ -126,11 +126,7 @@ impl LocalControlAdapter {
                 self.required_publication_target()?;
                 marker.schema = PUBLICATION_MARKER_SCHEMA.to_owned();
                 marker.decision = InstallationDecision::Install;
-                let mut checkpoint = effect.clone();
-                checkpoint.compensation = serde_json::to_value(marker)
-                    .map_err(|_| invalid("publication.checkpoint.encode"))?
-                    .into();
-                Ok(checkpoint)
+                self.encode_publication_marker(effect.clone(), marker)
             },
         )
     }
@@ -193,11 +189,7 @@ impl LocalControlAdapter {
                 }
                 marker.decision = InstallationDecision::Abort;
                 marker.schema = PUBLICATION_MARKER_SCHEMA.to_owned();
-                let mut checkpoint = effect.clone();
-                checkpoint.compensation = serde_json::to_value(marker)
-                    .map_err(|_| invalid("publication.abort.encode"))?
-                    .into();
-                Ok(checkpoint)
+                self.encode_publication_marker(effect.clone(), marker)
             },
         )
     }
