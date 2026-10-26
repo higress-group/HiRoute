@@ -98,6 +98,44 @@ const scenarios = [
       'Retry scanned unrelated Agents');
     assert(calls('agent_snapshot').at(-1).payload.nativeTargets.length === 0, 'Codex retry must not reread remembered Hermes profiles');
   }),
+  scenario('agent.readback.deferred-skill-edit', ['agent-readback'], 'Model confirmation does not claim skill state; opening a skill reads its current selection', async () => {
+    await fresh('registered'); await openEditor('model'); await save();
+    await until(() => c().mutations === 1 && !facet('model').disabled, 'Model confirmed');
+    assert(document.querySelector('[data-agent-skills-unverified]'), 'Missing explicit unrefreshed state');
+    assert(!document.querySelector('[data-agent-management] [role="switch"]'), 'Unread management state falsely claims off/on');
+    const selected = c().agents.agents.find(agent => agent.agent_id === 'agent_claude_default');
+    selected.settings.collaboration = { state: 'configured', restore_point_ref: 'restore/changed', current_selection: { trigger_mode: 'delegate_by_default' } };
+    const reads = calls('agent_snapshot').length;
+    await openEditor('collaboration');
+    assert(calls('agent_snapshot').length === reads + 1, 'Skill edit reused stale pre-model-save facts');
+    assert(dialog().querySelector('input[value="delegate_by_default"]').checked, 'Skill edit lost the newly observed selection');
+    assert(c().operations.length === 1, 'Reading the skill caused a second mutation');
+  }),
+  scenario('agent.readback.skill-selection-race', ['agent-readback'], 'A late skill read cannot reopen the old Agent after selection changes', async () => {
+    await fresh('registered'); await openEditor('model'); await save();
+    await until(() => c().mutations === 1 && !facet('model').disabled, 'Model confirmed');
+    let resolveRead;
+    c().handlers.agent_snapshot = () => new Promise(resolve => { resolveRead = resolve; });
+    facet('collaboration').click();
+    await until(() => resolveRead, 'Skill read waiting');
+    [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex')).click();
+    await tick();
+    delete c().handlers.agent_snapshot;
+    resolveRead(structuredClone(c().agents));
+    await until(() => document.querySelector('[data-agent-id="agent_codex_default"] .detail-hero') && !facet('model').disabled, 'New selection confirmed');
+    assert(!dialog(), 'The completed old skill read reopened its editor');
+  }),
+  scenario('agent.readback.model-failure', ['agent-readback'], 'Delayed or wrong-context model reads do not confirm a completed save', async () => {
+    await fresh('registered'); await openEditor('model');
+    let resolveRead;
+    c().handlers.trial_agent_model = () => new Promise(resolve => { resolveRead = resolve; });
+    submit().click();
+    await until(() => resolveRead && !dialog(), 'Submitted save awaits actual readback');
+    assert(facet('model').disabled && c().mutations === 0, 'Save became usable before its model proof');
+    resolveRead({ settings: { context_id: 'agent-context/unrelated', state: 'configured' }, plans: c().agents.plans, trusted_authority: true });
+    await until(() => document.querySelector('[data-error-code="AGENT_STATUS_UNAVAILABLE"]'), 'Wrong context rejected');
+    assert(facet('model').disabled, 'Wrong context was accepted as save confirmation');
+  }),
   scenario('hermes.discovery.brand-and-known-profile', ['hermes', 'agent-discovery'], 'Hermes shows its own mark and the discovered profile without a separate selection step', async () => {
     c().reset(); c().agents = c().hermesFresh(); await tick();
     const rows = () => [...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Hermes'));

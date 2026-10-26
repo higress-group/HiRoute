@@ -799,8 +799,15 @@ Source SPEC comments:
 
 ### Requirement: Selected Agent refresh reads only its current context
 
-Refreshing a known Agent after a save SHALL discover and read that exact context
-without scanning neighboring Agents or the caller's default Hermes directory.
+Refreshing a known Agent after a save SHALL verify that exact context without
+scanning neighboring Agents or the caller's default Hermes directory. A model-only
+save MAY use the fresh model projection without repeating version diagnostics or
+unmodified Skill reads. The current native file, grant and installed publication
+join remains required; a successful Apply receipt alone is not readback evidence.
+Unrefreshed Skill state SHALL remain explicit rather than appearing configured or
+disabled. Opening that Skill's normal editor SHALL read its current selection before
+seeding the draft. Codex root/profile/access metadata and explicit Hermes native
+targets retain their scoped full read where required to validate the selected target.
 `ScanAgents` MAY accept an optional `context_id` with its exact native target;
 omitting it retains the existing full-scan behavior. An invalid context, mismatched
 native target or changed selected Codex root/profile SHALL fail without rebinding
@@ -812,8 +819,8 @@ that settings or a saved operation are effective.
 #### Scenario: A save refresh has an unrelated installed Agent
 
 - **WHEN** the client refreshes the saved Agent's exact current context
-- **THEN** the selected Agent is discovered afresh and its settings are verified,
-  without launching or reading the unrelated Agent's configuration
+- **THEN** the affected settings are freshly verified, without launching or reading
+  the unrelated Agent's configuration
 - **AND** an external change to the selected context is reported for explicit recovery.
 
 ### Requirement: Supported Agent discovery preserves scope and remains actionable

@@ -7,11 +7,16 @@ to their production owners and executable contracts.
 
 ## Responsibilities and state
 
-After a mutation the page uses the optional exact `contextId` scope of
-`agent_snapshot`, with the same backend authority/revision fences. Other retained
-Agent settings become unverified and are read when selected. An inactive page
-defers global refresh invalidations until activation. The shell invalidates its
-background summaries rather than starting another full scan during confirmation.
+After a model or token mutation, the page uses the existing `trial_agent_model`
+exact-context model projection. Its fresh file/grant/publication join and service
+fences confirm the model state without repeating version diagnostics or reading
+unchanged Skills. Discovery metadata remains a hint. Unread Skill state is explicit;
+opening its ordinary editor performs the full scoped read before seeding the draft.
+Codex access-mode/root metadata and Hermes native targets retain the full scoped
+`agent_snapshot` path, as do Skill changes and explicit discovery. Other retained
+Agents become unverified and are read when selected. An inactive page defers global
+refresh invalidations until activation; background summaries do not scan during
+save confirmation.
 
 | Entry | Responsibility |
 | --- | --- |

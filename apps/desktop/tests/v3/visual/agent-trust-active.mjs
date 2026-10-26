@@ -53,6 +53,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(item => item.capabilities.includes('agent-readback'))) {
+        checks.push(...await (await import('./agent-readback-captures.mjs')).agentReadbackCaptures(client, baseUrl, outputRoot));
+      }
     }
     if (!agentsOnly && !shellOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
       await navigate(client, fixtureUrl('?page=routing&scenario=ready'), { width: 1280, height: 900 });

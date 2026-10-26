@@ -1,3 +1,4 @@
+import { trialAgentRead } from './trial-agent-fixture';
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from './host-mock';
@@ -201,6 +202,7 @@ mockIPC(async (command, payload) => {
   if (control.handlers[command]) return control.handlers[command](args);
   switch (command) {
     case 'cli_entry_status': return { state: 'valid', command_resolves_to_app_cli: true, path_contains_entry_directory: true };
+    case 'trial_agent_model': return trialAgentRead(control.agents, command, args);
     case 'agent_snapshot': {
       const result = structuredClone(control.agents);
       if (args.contextId) result.agents = result.agents.filter(agent => agent.context_id === args.contextId);

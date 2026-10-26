@@ -334,7 +334,11 @@ selected by `actual_windows_opencode_worker_native_history_and_cancellation` in
 public routing/Worker receipt oracle and Job cancellation assertions with existing
 Windows acceptance; it adds no alternative production lifecycle.
 
-Selected post-save discovery is owned by
+Model-only post-save confirmation reuses the exact model projection in
+[`trial_agents.rs`](../../crates/product-session/src/commands/trial_agents.rs);
+its authority fences remain independent of retained discovery hints. Unread Skills
+are read when their editor opens. Codex/Hermes target-sensitive reads and explicit
+selected discovery are owned by
 [`agent_discovery.rs`](../../crates/daemon/src/control/runtime/agent_discovery.rs)
 and the shared
 [`Agent snapshot reader`](../../crates/product-session/src/session/agent_snapshot.rs).

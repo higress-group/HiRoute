@@ -153,6 +153,8 @@ export type Agent = {
   available_surfaces?: AgentModelSurface[];
   native_model_catalog?: AgentNativeModelCatalog | null;
   settings: AgentSettingsStatus | null;
+  /** Model readback does not certify unchanged skill facets or rediscover metadata. */
+  settings_scope?: 'model';
   status_error: string | null;
 };
 export type AgentSnapshot = {

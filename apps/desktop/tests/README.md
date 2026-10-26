@@ -224,3 +224,11 @@ Remaining work outside this batch: Observation contract constants that compare t
 themselves need a producer/consumer oracle; duplicated Rust process harnesses need
 an ownership review before extraction. Those changes must preserve their unique
 cancellation, identity and cleanup assertions and do not belong in these UI fixtures.
+
+The focused Agent page checks run with `node tests/v3/visual/agent-trust.mjs
+<evidence-directory> --agents-only`. Optional `HIROUTE_BROWSER_SCENARIOS` selects
+explicit scenario IDs without dropping their completeness assertions. Model-save
+readback covers exact model proof, delayed/wrong-context responses, unrefreshed
+Skill states and fresh Skill editor selection. Readback captures use production
+styles in Chinese/dark and English/light at 1200×813 and 755×600. Native save
+confirmation and latency still require the normal Release app and real data.

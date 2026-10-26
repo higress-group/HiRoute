@@ -19,7 +19,7 @@ import { collaborationCheckFailureMessage } from './features/agents/collaboratio
 import { agentSettingsSpec, agentTokenSpec, prerequisiteCheck } from './features/agents/settings-request';
 import type {
   Agent, AgentSnapshot, AgentFacet as Facet, AgentCheckScope as CheckScope,
-  AgentCollaborationTriggerMode, AgentNativeTarget, Preview, Outcome,
+  AgentCollaborationTriggerMode, AgentNativeTarget, ModelStatus, Preview, Outcome,
 } from './features/agents/types';
 import { AgentTasks, type AgentTask, type AgentTaskRead } from './features/AgentTasks';
 import type { OperationReference } from './features/model-connections/types';
@@ -36,6 +36,11 @@ export type {
 } from './features/agents/types';
 
 type Editor = { context: string; facet: Facet };
+type ModelReadback = {
+  settings: ModelStatus & { context_id: string };
+  plans: AgentSnapshot['plans'];
+  trusted_authority: boolean;
+};
 
 export function desktopErrorCode(error: unknown): string {
   return safeDiagnosticCode(error, 'AGENT_UNAVAILABLE');
@@ -112,6 +117,8 @@ export function Agents({
   const [tokenEditing, setTokenEditing] = useState(false);
   const [tokenDraft, setTokenDraft] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(initialAgentId);
+  const selectedAgentRef = useRef(selectedAgent);
+  selectedAgentRef.current = selectedAgent;
   const [codexMode, setCodexMode] = useState<'profile' | 'root'>('profile');
   const [showAgentList, setShowAgentList] = useState(false);
   const [tab, setTab] = useState<'configuration' | 'tasks'>(initialTab);
@@ -145,13 +152,35 @@ export function Agents({
         if (target?.context_id) {
           const exact = result.agents.find(agent => agent.context_id === target.context_id
             && agentKey(agent) === agentKey(target));
-          if (!exact) throw new Error('AGENT_STATUS_UNAVAILABLE');
+          if (!exact) throw { code: 'AGENT_STATUS_UNAVAILABLE' };
           setSnapshot(current => ({ ...result, agents: (current?.agents ?? result.agents).map(agent =>
             agentKey(agent) === agentKey(target) ? exact
               : { ...agent, settings: null, status_error: 'AGENT_STATUS_UNVERIFIED' }) }));
         } else setSnapshot(result);
         setLoadError('');
+        return target && result.trusted_authority ? result.agents.find(agent => agent.context_id === target.context_id && agentKey(agent) === agentKey(target)) : undefined;
       }
+    } catch (caught) {
+      if (epoch === queryGeneration.current) setLoadError(desktopErrorCode(caught));
+    } finally { if (epoch === queryGeneration.current) setScanning(false); }
+  }
+  async function refreshModel(target: Agent) {
+    // Codex access-mode metadata and Hermes roots still need their full scoped read.
+    if (!target.context_id || target.codex_access || target.agent_id === 'agent_codex_default'
+      || target.native_target || target.agent_id === 'agent_hermes_default') return refresh(target);
+    const epoch = ++queryGeneration.current;
+    setScanning(true);
+    try {
+      // The existing model projection verifies current file/grant/publication and service
+      // fences. Discovery metadata is only a retained hint, never save confirmation.
+      const result = await invoke<ModelReadback>('trial_agent_model', { contextId: target.context_id });
+      if (epoch !== queryGeneration.current) return;
+      if (result.settings.context_id !== target.context_id) throw { code: 'AGENT_STATUS_UNAVAILABLE' };
+      setSnapshot(current => current && ({ ...current, plans: result.plans, trusted_authority: result.trusted_authority,
+        agents: current.agents.map(agent => agentKey(agent) === agentKey(target)
+          ? { ...agent, settings: result.settings, settings_scope: 'model', status_error: null }
+          : { ...agent, settings: null, status_error: 'AGENT_STATUS_UNVERIFIED' }) }));
+      setLoadError('');
     } catch (caught) {
       if (epoch === queryGeneration.current) setLoadError(desktopErrorCode(caught));
     } finally { if (epoch === queryGeneration.current) setScanning(false); }
@@ -247,6 +276,11 @@ export function Agents({
     if (!mutationAllowed || !snapshot?.trusted_authority || !agent.context_id || !agentEcosystem(agent.agent_id)
       || (facet === 'model' && (!agentSupportsModelRouting(agent.agent_id) || agentHasNoModelConnection(agent)))) return;
     if (dirty && !(await confirmDiscard(language))) return;
+    if (facet !== 'model' && agent.settings_scope === 'model') {
+      const current = await refresh(agent);
+      if (!current || selectedAgentRef.current !== agentKey(agent)) return;
+      agent = current;
+    }
     trigger.current = source;
     setActionError('');
     setNotice('');
@@ -254,6 +288,7 @@ export function Agents({
     setTokenEditing(false);
     setTokenDraft('');
     setSelectedAgent(agentKey(agent));
+    if (!agent.context_id) return;
     setEditor({ context: agent.context_id, facet });
     const { known, ...seed } = agentEditorSeed(agent, facet, enabledPlans.map(plan => plan.agent_plan_id));
     setSelectionKnown(known);
@@ -321,12 +356,12 @@ export function Agents({
       }
       // Complete this editor's exact readback before refreshing other pages.
       // Their independent discovery must not queue ahead of the result being saved.
-      await refresh(agent);
+      await (facet === 'model' ? refreshModel(agent) : refresh(agent));
       if (result.mutation) onMutation();
     } catch (caught) {
       setPreview(blockedByCheck);
       setActionFailure(caught);
-      await refresh(agent);
+      await (facet === 'model' ? refreshModel(agent) : refresh(agent));
       onMutation();
     } finally {
       setBusy(false);
@@ -365,11 +400,11 @@ export function Agents({
           setNotice(text('令牌变更已提交，完成后新请求会使用新令牌。', 'Token change submitted. New requests will use it when the operation completes.'));
         }
       }
-      await refresh(agent);
+      await refreshModel(agent);
       if (result.mutation) onMutation();
     } catch (caught) {
       setActionFailure(caught);
-      await refresh(agent);
+      await refreshModel(agent);
       onMutation();
     } finally {
       setBusy(false);
@@ -427,6 +462,7 @@ export function Agents({
     if (active && !busy && !scanning && !loadError && selected?.context_id
       && selected.status_error === 'AGENT_STATUS_UNVERIFIED') void refresh(selected);
   }, [active, busy, scanning, loadError, selected]);
+  const skillsUnverified = selected?.settings_scope === 'model';
   const selectedManagement = selected?.settings?.management_skill;
   const selectedCollaboration = selected?.settings?.collaboration;
   const selectedModel = agentModelStatus(selected);
@@ -593,12 +629,12 @@ export function Agents({
                   {modelSelection?.mode === 'claude_launcher' && <p className="field-help">{text('直接启动 claude，使用 Opus、Sonnet、Haiku 原生预设选择已映射路由；其他计划不会自动出现在模型菜单中。若未显式选择当前模型，Claude Default 取决于账号；预设映射不证明 Default 可用，请通过真实调用验证。', 'Start claude normally and use its native Opus, Sonnet, or Haiku preset for mapped routes. Other plans do not automatically appear in the model picker. Without an explicit model selection, Claude Default depends on the account; preset mappings do not prove it works. Verify with a live call.')}</p>}
                   {modelSelection?.mode === 'qoder_additional' && <p className="field-help">{text('重新启动 Qoder 后，在模型选择中选用已添加的 HiRoute 路由。原有模型、登录和默认选择保持不变。', 'Restart Qoder and select an added HiRoute route in its model choices. Existing models, sign-in and defaults stay unchanged.')}</p>}
                 </section>}
-                {agentSupportsCollaboration(selected.agent_id) && <section className="detail-section v3-agent-section" data-agent-collaboration>
-                  <div className="detail-section-head"><h3>{text('任务路由', 'Task routing')}</h3><button className="btn btn-quiet" data-agent-facet="collaboration" disabled={busy || !selected.context_id || !mutable} onClick={event => open(selected, 'collaboration', event.currentTarget)}>{taskSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button></div>
+                {agentSupportsCollaboration(selected.agent_id) && <section className="detail-section v3-agent-section" data-agent-collaboration data-agent-skills-unverified={skillsUnverified || undefined}>
+                  <div className="detail-section-head"><h3>{text('任务路由', 'Task routing')}</h3><button className="btn btn-quiet" data-agent-facet="collaboration" disabled={busy || !selected.context_id || !mutable} onClick={event => open(selected, 'collaboration', event.currentTarget)}>{skillsUnverified ? text('查看配置', 'View settings') : taskSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button></div>
                   {selected.agent_id === 'agent_qoder_default' && <div data-qoder-collaboration>
                     <p>{text('使用 Qoder 原有模型和登录配置，通过任务协作使用 HiRoute 计划。需要登录时，请在终端正常启动 Qoder CLI 并完成登录后重试。', 'Keep your Qoder models and sign-in configuration, and use HiRoute plans through task collaboration. If sign-in is needed, start Qoder CLI normally in a terminal, sign in, and retry.')}</p>
                   </div>}
-                  <p>{taskSelection?.trigger_mode === 'delegate_by_default'
+                  <p>{skillsUnverified ? text('状态尚未读取，打开配置时会重新核实。', 'Status has not been read. Opening settings will verify it again.') : taskSelection?.trigger_mode === 'delegate_by_default'
                     ? text('由此 Agent 判断何时将任务交给执行 Agent；你仍可明确要求只回答、不执行。', 'This Agent decides when to delegate work to an execution Agent; you can still explicitly ask it to answer without execution.')
                     : taskSelection
                       ? text('仅在你明确要求执行或委派任务时，将任务交给执行 Agent。', 'Delegate work to an execution Agent only when you explicitly ask for execution or delegation.')
@@ -607,10 +643,10 @@ export function Agents({
                   <p className="field-help">{text('启用后，可在对话中说：“使用 HiRoute，将当前任务委派给【路由名称】执行。”路由名称见“智能路由”，也可让 Agent 选择合适的路由。', 'After enabling, ask in conversation: “Use HiRoute to delegate this task to [route name].” Find route names under Smart routing, or ask the Agent to choose a suitable route.')}</p>
                 </section>}
                 {agentSupportsManagement(selected.agent_id) && <section className="detail-section v3-agent-section" data-agent-management data-hermes-management={agentEcosystem(selected.agent_id) === 'hermes' ? true : undefined}>
-                  <div className="detail-section-head"><h3>{text('HiRoute 管理', 'HiRoute management')}</h3><button className="btn btn-quiet" role="switch" aria-checked={selectedManagement?.state === 'configured'} data-agent-facet="management_skill" disabled={busy || !selected.context_id || !mutable || selectedManagement?.state === 'pending'} onClick={event => { if (selectedManagement?.state === 'configured' && selectedManagement.restore_point_ref) void change(selected, 'management_skill', true, event.currentTarget); else open(selected, 'management_skill', event.currentTarget); }}>{selectedManagement?.state === 'configured' ? text('停用', 'Disable') : text('启用', 'Enable')}</button></div>
+                  <div className="detail-section-head"><h3>{text('HiRoute 管理', 'HiRoute management')}</h3><button className="btn btn-quiet" role={skillsUnverified ? undefined : 'switch'} aria-checked={skillsUnverified ? undefined : selectedManagement?.state === 'configured'} data-agent-facet="management_skill" disabled={busy || !selected.context_id || !mutable || selectedManagement?.state === 'pending'} onClick={event => { if (selectedManagement?.state === 'configured' && selectedManagement.restore_point_ref) void change(selected, 'management_skill', true, event.currentTarget); else open(selected, 'management_skill', event.currentTarget); }}>{skillsUnverified ? text('查看配置', 'View settings') : selectedManagement?.state === 'configured' ? text('停用', 'Disable') : text('启用', 'Enable')}</button></div>
                   <p>{text('准备管理 Skill，让此 Agent 通过本机 CLI 管理模型来源和智能路由。可独立启用或恢复，无需先连接模型。', 'Prepare the management Skill so this Agent can manage model sources and smart routes through the local CLI. Enable or restore it independently, without model routing.')}</p>
                   {selectedManagement?.restore_point_ref && selectedManagement.state !== 'configured' && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'management_skill', true, event.currentTarget)}>{text('恢复管理 Skill', 'Restore management Skill')}</button>}
-                  <p>{selectedManagement?.state === 'configured' ? text('当前配置已启用。', 'Enabled for this configuration.') : selectedManagement?.state === 'restored' ? text('当前配置已停用；共享或外部安装的 Skill 文件可能仍然可用。', 'Disabled for this configuration; a shared or externally installed Skill may remain available.') : text('当前配置未启用。', 'Not enabled for this configuration.')}</p>
+                  <p>{skillsUnverified ? text('状态尚未读取，打开配置时会重新核实。', 'Status has not been read. Opening settings will verify it again.') : selectedManagement?.state === 'configured' ? text('当前配置已启用。', 'Enabled for this configuration.') : selectedManagement?.state === 'restored' ? text('当前配置已停用；共享或外部安装的 Skill 文件可能仍然可用。', 'Disabled for this configuration; a shared or externally installed Skill may remain available.') : text('当前配置未启用。', 'Not enabled for this configuration.')}</p>
                   {selectedManagement?.state === 'configured' && <button className="btn btn-quiet" type="button" disabled={busy || !mutable} onClick={event => open(selected, 'management_skill', event.currentTarget)}>{text('重新准备 Skill', 'Prepare Skill again')}</button>}
                   <AgentSkillDetails resource={selectedManagement?.resource} language={language} management />
                 </section>}
