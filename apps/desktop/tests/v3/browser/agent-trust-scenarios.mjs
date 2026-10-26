@@ -65,7 +65,8 @@ export async function showDshDesktopEditor() {
   c().agents.agents.push({ ...structuredClone(web), agent_id: 'agent_dsh_desktop',
     context_id: 'agent-context/dsh/desktop-fixture', available_surfaces: ['dsh_desktop'],
     settings: { state: 'not_configured', model_verified: false, restore_point_ref: null, current_selection: null } });
-  c().refresh(); await tick();
+  c().refresh();
+  await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('DeepSeek Harness Desktop')), 'Desktop entry loaded');
   [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('DeepSeek Harness Desktop')).click();
   await until(() => document.querySelector('[data-agent-id="agent_dsh_desktop"]'), 'Desktop selection');
   assert(!facet('collaboration') && !facet('management_skill'), 'Model support invented Desktop Skill support');

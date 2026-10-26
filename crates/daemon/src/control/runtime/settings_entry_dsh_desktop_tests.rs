@@ -125,3 +125,69 @@ fn desktop_and_web_models_install_independently_and_restore_after_reopen_without
     assert_eq!(fs::read(&web).unwrap(), configured_web);
     assert_eq!(fs::read(&web_adapter).unwrap(), configured_web_adapter);
 }
+
+#[test]
+fn desktop_runtime_change_invalidates_preview_even_when_new_composition_is_valid() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::native_model::tests::settings_entry_tests::qoder::dsh_desktop::desktop_runtime_change_invalidates_preview_even_when_new_composition_is_valid",
+    ) {
+        return;
+    }
+    let mut fixture = QoderFixture::with_desktop_models();
+    fixture.context = fixture
+        .runtime
+        .adapter
+        .settings_context_for_agent("agent_dsh_desktop")
+        .unwrap();
+    fixture.native_config = fixture.runtime.adapter.scanner.dsh_desktop_models_target();
+    let mut spec = model_spec(&fixture);
+    spec["model"]["settings"]["mode"] = json!("dsh_additional");
+    let preview = fixture.service.dispatch_wire(request(
+        "PreviewAgentConnectionChange",
+        json!({"spec":spec}),
+        None,
+    ));
+    assert!(preview.error.is_none(), "{preview:?}");
+    let preview = preview.data.unwrap();
+    let before = fs::read(&fixture.native_config).unwrap();
+    let executable = fixture
+        .runtime
+        .adapter
+        .scanner
+        .dsh_desktop_executable_target()
+        .unwrap();
+    let archive = executable
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("Resources/app.asar");
+    private_file(&archive, b"changed bundled runtime, same advertised module");
+    let rejected = fixture.service.dispatch_wire(request("ApplyAgentConnectionChange", json!({"spec":spec,
+        "accept_digest":preview["accept_digest"], "dependency_digest":preview["dependency_digest"],
+        "expected_revisions":preview["expected_revisions"], "idempotency_key":"desktop-runtime-changed"}), None));
+    assert!(
+        rejected.error.is_some() && rejected.operation.is_none(),
+        "stale runtime proof was accepted: {rejected:?}"
+    );
+    assert_eq!(fs::read(&fixture.native_config).unwrap(), before);
+    apply(
+        &fixture.service,
+        &fixture.runtime,
+        spec.clone(),
+        "desktop-runtime-fresh",
+    );
+    assert_eq!(model_status(&fixture)["state"], "configured");
+    let configured = fs::read(&fixture.native_config).unwrap();
+    spec["collaboration"] = json!({"intent":"configure","settings":{"trigger_mode":"explicit"}});
+    let denied = fixture.service.dispatch_wire(request(
+        "PreviewAgentConnectionChange",
+        json!({"spec":spec}),
+        None,
+    ));
+    assert!(
+        denied.error.is_some(),
+        "Desktop model capability must not confer Skill authority"
+    );
+    assert_eq!(fs::read(&fixture.native_config).unwrap(), configured);
+}
