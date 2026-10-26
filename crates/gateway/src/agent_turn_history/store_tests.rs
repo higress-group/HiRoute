@@ -26,6 +26,9 @@ mod opening_evidence;
 #[path = "boundary/reasoning_tests.rs"]
 mod reasoning_boundary;
 
+#[path = "boundary/plaintext_content_tests.rs"]
+mod plaintext_content_boundary;
+
 #[path = "boundary/encrypted_tests.rs"]
 mod encrypted_boundary;
 

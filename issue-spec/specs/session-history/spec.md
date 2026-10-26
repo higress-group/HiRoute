@@ -129,11 +129,12 @@ Recorded plan identity follows [route history](../request-routing-history/spec.m
 
 #### Scenario: Native reasoning replay and maintenance calls
 
-- **WHEN** a native client replays an accepted bounded plaintext reasoning summary
-  followed by visible output or a tool call
-- **THEN** exact accepted summary/output evidence may establish the response edge;
+- **WHEN** a native client replays an accepted bounded plaintext reasoning summary or native
+  `content` with one `reasoning_text` part, followed by visible output or a tool call
+- **THEN** exact accepted reasoning/output evidence may establish the response edge;
   empty summary/text placeholders do not manufacture a history rewrite. Changed
-  summaries, opaque provider state and unsupported fields remain unproven, and
+  text, simultaneous populated summary/content carriers, extra parts, opaque
+  provider state and unsupported fields remain unproven, and
   reasoning is never imported into competence-assessment content.
 - **AND** bounded comparison retains the same meaning when request content moves
   from inline strings into request-owned Replay backing, including after earlier
@@ -304,6 +305,12 @@ change the mean. Count a stage once using its latest complete valid score; valid
 zero counts, unrated/partial do not. Versions, categories, groups, and model/profiles
 remain separate. Failed candidates that did not serve the stage receive no score.
 Configured candidates without execution display no records, not zero.
+
+A fresh page SHALL return its consistent authorized read snapshot when ordinary
+ingestion commits concurrently; new records enter a later refresh. Visibility
+changes, including content or fact deletion, SHALL invalidate the in-flight read.
+Continuation cursors retain strict population-generation and reader/query bindings;
+a concurrent population change SHALL NOT silently mix summary and detail pages.
 
 Join configured positions by plan revision/category/group/published index and known
 reasoning, without demanding equality to today's materialized model ID. This only

@@ -312,11 +312,8 @@ pub(super) fn incoming_evidence(
                     .native_fields
                     .iter()
                     .any(|(key, value)| match key.as_str() {
-                        "summary" => false,
+                        "summary" | "content" => false,
                         "status" => !value.is_null(),
-                        "content" => {
-                            !value.is_null() && !value.as_array().is_some_and(Vec::is_empty)
-                        }
                         _ => true,
                     })
             {
@@ -335,17 +332,7 @@ pub(super) fn incoming_evidence(
                     None
                 };
             hash.reasoning = true;
-            let summary = history.native_fields.get("summary")?.as_array()?;
-            budget.items(summary.len())?;
-            if summary.len() > 1 {
-                return None;
-            }
-            if let Some(part) = summary.first() {
-                let part = part.as_object()?;
-                if part.len() != 2 || part.get("type")?.as_str()? != "summary_text" {
-                    return None;
-                }
-                let text = part.get("text")?.as_str()?;
+            if let Some(text) = reasoning_text(&history.native_fields, budget)? {
                 let digest = text_digest(text, Some(replay), budget)?;
                 if !text.is_empty() && !text.content_ref().is_some_and(|r| r.byte_len() == 0) {
                     hash.part(b"reasoning", digest);
@@ -448,6 +435,34 @@ pub(super) fn incoming_evidence(
         evidence.contextual = request.native_only;
         evidence
     })
+}
+
+/// Responses clients replay either the summary or the actual plaintext content.
+/// Compare the one retained text with accepted output; never prefer one populated
+/// carrier over another or silently discard unknown fields or additional parts.
+fn reasoning_text<'a>(
+    fields: &'a serde_json::Map<String, serde_json::Value>,
+    budget: &mut FingerprintBudget,
+) -> Option<Option<&'a str>> {
+    let mut text = None;
+    for (field, kind) in [("summary", "summary_text"), ("content", "reasoning_text")] {
+        let Some(value) = fields.get(field).filter(|value| !value.is_null()) else {
+            continue;
+        };
+        let parts = value.as_array()?;
+        budget.items(parts.len())?;
+        if parts.len() > 1 {
+            return None;
+        }
+        if let Some(part) = parts.first() {
+            let part = part.as_object()?;
+            if text.is_some() || part.len() != 2 || part.get("type")?.as_str()? != kind {
+                return None;
+            }
+            text = Some(part.get("text")?.as_str()?);
+        }
+    }
+    Some(text)
 }
 
 /// Bounded proofs of the same ordered output. Only the original full digest is

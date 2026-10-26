@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use super::{ObservationReaderContext, ObservationV2Error, QueryDeadline, identifier};
 use crate::LocalObservationStore;
 
+#[cfg(test)]
+#[path = "plan_quality_snapshot_tests.rs"]
+mod snapshot_tests;
+
 /// Both projections share the same scope and transaction. Detail filters never
 /// enter this CTE, so pagination and drill-down cannot change the full-scope mean.
 /// The small safe-event catalog excludes known unrelated payloads before opening
@@ -138,6 +142,16 @@ impl LocalObservationStore {
         query: &PlanQualitySamplesQuery,
         now_ms: i64,
     ) -> Result<PlanQualitySamplesPage, ObservationV2Error> {
+        self.plan_quality_samples_inner(reader, query, now_ms, || {})
+    }
+
+    fn plan_quality_samples_inner(
+        &self,
+        reader: &ObservationReaderContext,
+        query: &PlanQualitySamplesQuery,
+        now_ms: i64,
+        after_snapshot: impl FnOnce(),
+    ) -> Result<PlanQualitySamplesPage, ObservationV2Error> {
         reader.check(now_ms, false, false)?;
         validate(query)?;
         let _permit = self.query_permit()?;
@@ -150,12 +164,7 @@ impl LocalObservationStore {
             Connection::open_with_flags(&self.activity_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         let _deadline = QueryDeadline::start_for(&connection, reader)?;
         let transaction = connection.transaction()?;
-        let generation: u64 = transaction.query_row(
-            "SELECT CAST(value AS INTEGER) FROM observation_meta
-             WHERE key='plan_quality_generation'",
-            [],
-            |row| row.get(0),
-        )?;
+        let (generation, visibility) = generations(&transaction)?;
         let cursor = match &query.cursor {
             Some(encoded) => {
                 let cursor: Cursor = self.decode_observation_cursor(encoded)?;
@@ -293,13 +302,13 @@ impl LocalObservationStore {
             None
         };
         transaction.commit()?;
-        let current: u64 = connection.query_row(
-            "SELECT CAST(value AS INTEGER) FROM observation_meta
-             WHERE key='plan_quality_generation'",
-            [],
-            |row| row.get(0),
-        )?;
-        if current != generation {
+        after_snapshot();
+        // Fresh pages already have a consistent summary and detail snapshot.
+        // Ordinary ingestion must not invalidate that complete read. Visibility
+        // changes still fence every response; pagination keeps its strict
+        // generation contract so it cannot mix populations across pages.
+        let (current, current_visibility) = generations(&connection)?;
+        if current_visibility != visibility || (query.cursor.is_some() && current != generation) {
             return Err(ObservationV2Error::Stale);
         }
         reader.check(now_ms, false, false)?;
@@ -310,6 +319,15 @@ impl LocalObservationStore {
             next_cursor,
         })
     }
+}
+
+fn generations(connection: &Connection) -> rusqlite::Result<(u64, u64)> {
+    connection.query_row(
+        "SELECT (SELECT CAST(value AS INTEGER) FROM observation_meta WHERE key='plan_quality_generation'),
+                (SELECT CAST(value AS INTEGER) FROM observation_meta WHERE key='query_visibility_generation')",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
 }
 
 pub(super) fn summary_sql() -> String {

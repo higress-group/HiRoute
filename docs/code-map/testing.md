@@ -75,6 +75,7 @@ happy-path UI journey.
 
 Native reasoning replay is covered by the accepted-response
 [boundary regression](../../crates/gateway/src/agent_turn_history/boundary/reasoning_tests.rs),
+the [plaintext content and cancelled-turn recovery cases](../../crates/gateway/src/agent_turn_history/boundary/plaintext_content_tests.rs),
 the [encrypted replay cases](../../crates/gateway/src/agent_turn_history/boundary/encrypted_tests.rs),
 the [unsigned Messages tool-stage cases](../../crates/gateway/src/agent_turn_history/boundary/messages_tests.rs)
 and [current-window turn/continuation cases](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
@@ -86,6 +87,9 @@ The observation [timeline cases](../../crates/observation/src/store/tests/plan_q
 verify that explicit maintenance-purpose evidence excludes a user turn without
 removing the request, while unmarked retained records remain visible. These
 component assertions do not replace the real DSH Web/HiRoute acceptance.
+[Quality snapshot cases](../../crates/observation/src/query_v2/plan_quality_snapshot_tests.rs)
+exercise concurrent production ingestion, deletion fences and strict pagination
+without making ordinary appends invalidate a fresh summary/detail read.
 The [native encrypted listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_encrypted_continuation.rs)
 and [cross-protocol continuation cases](../../tools/e2e-harness/tests/p0_gateway_runtime/cross_protocol_encrypted_continuation.rs)
 exercise accepted-event delivery, repeated tool requests, complete assessment membership
