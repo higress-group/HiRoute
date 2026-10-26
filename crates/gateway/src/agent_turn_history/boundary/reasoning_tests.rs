@@ -156,12 +156,13 @@ fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membersh
     use super::super::*;
     use crate::server::core_runtime::model_ir::{ModelStreamEventV1, ToolKindV1};
 
-    for (inline_limit, null_fields, omitted) in
+    for (inline_limit, null_fields, omitted, plaintext_content) in
         [0, 8 * 1024, 64 * 1024].into_iter().flat_map(|limit| {
             [
-                (limit, false, false),
-                (limit, true, false),
-                (limit, false, true),
+                (limit, false, false, false),
+                (limit, true, false, false),
+                (limit, false, true, false),
+                (limit, true, false, true),
             ]
         })
     {
@@ -253,6 +254,11 @@ fn production_reasoning_tool_continuation_keeps_complete_frozen_request_membersh
             wire["input"][1]["encrypted_content"] = serde_json::Value::Null;
             wire["input"][1]["content"] = serde_json::Value::Null;
             wire["input"][1]["status"] = serde_json::Value::Null;
+        }
+        if plaintext_content {
+            wire["input"][1]["summary"] = json!([]);
+            wire["input"][1]["content"] =
+                json!([{"type":"reasoning_text","text":"Use the requested tool."}]);
         }
         if omitted {
             wire["input"].as_array_mut().unwrap().remove(1);
