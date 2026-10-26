@@ -202,6 +202,10 @@ fn timeline_tool_continuations_require_recorded_tool_inheritance() {
             };
             let selection = decision.complexity.as_mut().unwrap();
             selection.decision_source = source;
+            selection.decision_protocol = Some(DecisionProtocolV1::SystemOneC);
+            selection.complexity_score = None;
+            selection.threshold = None;
+            selection.classification_duration_micros = Some(1);
             selection.reason_codes = reason.into_iter().collect();
             if held {
                 decision.reason_ledger.push(ReasonLedgerEntryV1 {
@@ -217,14 +221,12 @@ fn timeline_tool_continuations_require_recorded_tool_inheritance() {
             .into_iter()
             .enumerate()
             {
-                assert!(matches!(
-                    offer_fact(
-                        &writer,
-                        &channel,
-                        fixture.fact(sequence as u64 + 1, fact, 1000 + sequence as i64)
-                    ),
-                    WriterCycleOutcome::Ack(_)
-                ));
+                let verdict = offer_fact(
+                    &writer,
+                    &channel,
+                    fixture.fact(sequence as u64 + 1, fact, 1000 + sequence as i64),
+                );
+                assert!(matches!(verdict, WriterCycleOutcome::Ack(_)), "{verdict:?}");
                 let page = store
                     .observed_routing_timeline(&reader(), &query, 5000)
                     .unwrap();
