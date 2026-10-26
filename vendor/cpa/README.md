@@ -67,6 +67,15 @@ deadline. Removal, disable, lost access and a different registration epoch canno
 request this handoff. Transport failure alone does not retry. Continued churn
 remains bounded and observable; an old account cannot populate a replacement.
 
+HiRoute's saved-source maintenance separately recovers an empty directory after a
+current, quiescent transient failure. It may issue one existing control PATCH after
+rechecking the exact enabled source, sharing the original 20-second control budget;
+CPA's five-second discovery deadline remains unchanged. Repeated failures back off
+from five seconds to one minute. Passive reads and inference do not initiate this
+retry. Authentication/authorization rejection, invalid catalogs, successful empty
+lists and missing diagnostics remain unavailable without an automatic refresh.
+This does not add a catalog cache, an OAuth refresh chain or a new polling owner.
+
 HiRoute's ordinary routing compilation and Codex preview read and verify the
 registered catalog without repeating an already-correct auth control PATCH.
 An explicit subscription check refreshes it; credential/version changes use the
