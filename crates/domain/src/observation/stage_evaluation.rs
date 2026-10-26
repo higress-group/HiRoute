@@ -32,7 +32,7 @@ impl StageEvaluationScopeV1 {
 
 /// Composite quality is retained as stage evidence, never as a model score.
 /// Existing single-model assessment records keep their original format.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StageAssessmentRecordedV1 {
     pub scope: StageEvaluationScopeV1,

@@ -194,7 +194,7 @@ pub(super) fn run_case(root: &Path) {
     wait_replay_clean(&root.join("replay"));
 }
 
-fn send(address: std::net::SocketAddr, input: &[Value], turn: &str) -> Vec<u8> {
+pub(super) fn send(address: std::net::SocketAddr, input: &[Value], turn: &str) -> Vec<u8> {
     let body =
         serde_json::to_vec(&json!({"model":"pre-attempt-alias","input":input,"stream":false}))
             .unwrap();

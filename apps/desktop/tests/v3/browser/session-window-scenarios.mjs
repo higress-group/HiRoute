@@ -1019,6 +1019,7 @@ const scenarios = [
     assert(document.querySelector('.routing-detail-head').textContent.includes('actual-primary-model'), 'Actual accepted executor was hidden');
     assert(document.querySelector('.routing-detail-facts').textContent.includes('1 次请求内接力'), 'Real relay was removed');
     assert(document.querySelector('.routing-turn-detail').textContent.includes('不计入单模型能力'), 'Composite quality was presented as one model capability');
+    document.querySelector('.routing-quote').scrollIntoView({ block: 'center' });
     await until(() => document.querySelector('.routing-quote')?.textContent.includes('The real opening question'), 'actual opening excerpt');
   }],
 

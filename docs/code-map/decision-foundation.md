@@ -188,6 +188,15 @@ response is not proof of logical task completion. Observation
 [timeline](../../crates/observation/src/query_v2/routing_timeline/projection.rs) and
 [quality receipts](../../crates/observation/src/receipt/plan_quality.rs) consume exact
 versioned request membership for new facts and retain the old reader for old bytes.
+[Composite evaluation](../../crates/gateway/src/agent_turn_history/store/evaluation.rs)
+keeps a common frozen rubric when one stage uses several models. Its
+[stage assessment](../../crates/domain/src/observation/stage_evaluation.rs) has no
+model identity and cannot credit a single-model capability aggregate. Missing
+attribution alone is not a capture gap. The request-owned
+[input position](../../crates/domain/src/observation/input_selection.rs) lets
+excerpt readers select the original input without reinterpreting late context.
+The [catalog reader](../../crates/observation/src/query_v2/input_selection.rs)
+authenticates this optional evidence within a bounded request-local read.
 [Admission identity](../../crates/gateway/src/agent_turn_history/store.rs)
 is emitted before classification and independently of affinity; the
 [pending-stage projection](../../crates/observation/src/query_v2/routing_timeline/admission.rs)

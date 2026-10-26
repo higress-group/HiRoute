@@ -36,6 +36,8 @@ use capture::{assert_capture, create_capture_session, wait_for_captured_request_
 #[path = "response_diagnostics_tests/request_projection.rs"]
 mod request_projection;
 
+#[path = "response_diagnostics_tests/composite_stage.rs"]
+mod composite_stage;
 #[path = "response_diagnostics_tests/native_retry.rs"]
 mod native_retry;
 #[path = "response_diagnostics_tests/pre_attempt_cancel.rs"]
@@ -358,6 +360,9 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
 }
 
 fn run_case(case: &str, root: &Path) {
+    if case == "composite_stage" {
+        return composite_stage::run_case(root);
+    }
     if case == "native_failed_retry" {
         return native_retry::run_case(root);
     }
