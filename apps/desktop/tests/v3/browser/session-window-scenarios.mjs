@@ -987,6 +987,24 @@ const scenarios = [
       assert(c().texts['time-supplement'].startsWith('Time sampled'), 'Original context was rewritten');
     }
   }],
+  ['joint quality stays scored without creating an individual model average', async () => {
+    await fresh(control => {
+      seedSimple(control);
+      control.views.plan_quality = () => ({ samples: [], next_cursor: null, summary: {
+        models: [{ execution: { plan_revision: 1, selected_branch_id: 'smart_saving',
+          executed_branch_id: null, group: null, candidate_index: null,
+          model_configuration_id: null, profile_digest: null, attribution: 'mixed' },
+          native_model: null, reasoning_profile_id: null, average_score: null,
+          scored_stage_count: 1, unrated_stage_count: 0 }],
+        scored_stage_count: 1, unrated_stage_count: 0, session_count: 1, available_revisions: [1],
+      } });
+    });
+    c().showQualityPlan();
+    await until(() => document.querySelector('.quality-model-average')?.textContent.includes('不归属单模型'), 'joint attribution remains explicit');
+    assert(document.querySelector('.quality-scope-meta').textContent.includes('1 已评分'), 'Joint stage was declared unrated');
+    assert(document.querySelector('.quality-model-name').textContent.includes('多个执行模型'), 'One model was invented');
+    assert(!document.querySelector('.quality-model-average strong'), 'Joint score became a model capability average');
+  }],
   ['initial decision stays Regular after an actual Primary relay and composite grading', async () => {
     const session = 'observation-session/initial-versus-actual';
     await fresh(control => {

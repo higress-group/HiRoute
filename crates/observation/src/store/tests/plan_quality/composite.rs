@@ -105,6 +105,11 @@ fn composite_score_roundtrips_membership_and_never_credits_one_model() {
             .iter()
             .all(|m| m.average_score.is_none())
     );
+    assert_eq!(
+        samples.summary.scored_stage_count, 1,
+        "joint quality remains a real stage score"
+    );
+    assert_eq!(samples.summary.unrated_stage_count, 0);
     let timeline = store
         .observed_routing_timeline(
             &reader(),

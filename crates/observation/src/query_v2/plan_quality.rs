@@ -26,7 +26,7 @@ pub(super) const SCOPE: &str = "
       json_extract(q.branch_execution_json,'$.candidate_index') AS candidate_index,
       json_extract(q.branch_execution_json,'$.policy') AS branch_policy,
       json_extract(q.branch_execution_json,'$.policy.floor_millis') AS floor_millis,
-      CASE WHEN q.assessment_partial=0 AND q.attribution='single'
+      CASE WHEN q.assessment_partial=0
         AND COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
         AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) THEN q.score END AS reliable_score,
@@ -339,7 +339,7 @@ pub(super) fn summary_sql() -> String {
            executed_branch_id,model_configuration_id,profile_digest,attribution,
            CASE WHEN COUNT(DISTINCT native_model)=1 THEN MAX(native_model) END,
            CASE WHEN COUNT(DISTINCT reasoning_profile_id)=1 THEN MAX(reasoning_profile_id) END,
-           COUNT(reliable_score),COUNT(*)-COUNT(reliable_score),AVG(reliable_score), execution_group, candidate_index, MAX(branch_policy)
+           COUNT(reliable_score),COUNT(*)-COUNT(reliable_score),AVG(CASE WHEN attribution='single' THEN reliable_score END), execution_group, candidate_index, MAX(branch_policy)
          FROM quality GROUP BY plan_revision,
            CASE WHEN executed_branch_id IS NULL THEN selected_branch_id END,
            executed_branch_id,model_configuration_id,profile_digest,attribution,execution_group,candidate_index

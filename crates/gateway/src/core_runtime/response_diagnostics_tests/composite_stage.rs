@@ -96,7 +96,7 @@ pub(super) fn run_case(root: &Path) {
             )
             .unwrap(),
         );
-        *saved = judgment;
+        *saved = Some(judgment);
         let ComplexityClassifierModeV1::DecisionService { service } = &mut classifier.mode else {
             unreachable!()
         };
@@ -192,7 +192,8 @@ pub(super) fn run_case(root: &Path) {
         );
     }
     let captured = wait_requests(&facts, 6);
-    gateway.stop().unwrap();
+    gateway.shutdown();
+    gateway.join(Duration::from_secs(5)).unwrap();
     let forwarded = upstream.join().unwrap();
     assert_eq!(forwarded.len(), 7);
     assert_eq!(forwarded[0]["model"], "physical-1");

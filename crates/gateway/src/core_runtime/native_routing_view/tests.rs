@@ -123,6 +123,31 @@ fn current_window_preserves_unlisted_users_and_binds_the_final_wire_scope() {
         view.current_input_position(),
         Some(CurrentInputPosition::Window { first: 2, last: 2 })
     );
+    let selection = view.excerpt_selection(&original, true);
+    assert_eq!(selection.message_ordinal, Some(2));
+    assert_eq!(
+        selection.evidence,
+        hiroute_domain::RequestInputSelectionEvidenceV1::NativeMatched
+    );
+    assert!(selection.source_unverified);
+    // Capture numbers instructions before message ordinals. The position must
+    // refer to that unchanged original capture, not to a filtered User list.
+    let instructed = adapters::decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"route","instructions":"native instruction","input":[
+            {"role":"user","content":"older actual input"},
+            {"role":"assistant","content":"actual output"},
+            {"role":"user","content":"current native event"},
+            {"role":"user","content":"later ambiguous notification"}]}),
+    )
+    .unwrap();
+    assert_eq!(
+        fixture
+            .view(&instructed, envelope.clone())
+            .excerpt_selection(&instructed, true)
+            .message_ordinal,
+        Some(3)
+    );
     let mut crossed = envelope.clone();
     crossed["input"]["messages"] = json!([
         {"index":0,"sha256":hashes[0]}, {"index":1,"sha256":hashes[1]}
@@ -134,6 +159,10 @@ fn current_window_preserves_unlisted_users_and_binds_the_final_wire_scope() {
         "a batch cannot bridge actual output"
     );
     assert!(rejected.current_input_position().is_none());
+    assert_eq!(
+        rejected.excerpt_selection(&original, true).evidence,
+        hiroute_domain::RequestInputSelectionEvidenceV1::Unavailable
+    );
     envelope["input"]["scope_digest"] = "0".repeat(64).into();
     let rejected = fixture.view(&original, envelope);
     assert_eq!(rejected.projection(), NativeInputProjection::WindowRejected);
