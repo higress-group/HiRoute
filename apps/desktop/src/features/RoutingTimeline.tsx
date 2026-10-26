@@ -293,9 +293,9 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         : text('覆盖范围包含当前已加载范围外或身份未确认的轮次', 'covers turns outside the loaded range or without a confirmed identity');
       const floor = turn.competence_floor_millis != null ? text(`，下限 ${fixed(turn.competence_floor_millis)}`, `, floor ${fixed(turn.competence_floor_millis)}`) : '';
       const protectedNext = turn.protected_turn_ids.length ? text('低于下限，下一轮交给主力。', ' Below the floor, so the next agent turn went to Primary.') : '';
-      const composite = !turn.model_configuration_id
-        ? text('多模型共同执行的整体评分，不计入单模型能力。', 'Overall score for a stage executed by multiple models; excluded from individual model capability.') : '';
-      return text(`阶段评分${covered}${floor}。${turn.assessment.partial ? '证据不完整。' : ''}${composite}${protectedNext}`, `This stage score ${covered}${floor}.${turn.assessment.partial ? ' Evidence is incomplete.' : ''}${composite}${protectedNext}`);
+      const attributionNote = !turn.model_configuration_id
+        ? text('整体阶段评分，不计入单模型能力。', ' Overall stage score; excluded from individual model capability.') : '';
+      return text(`阶段评分${covered}${floor}。${turn.assessment.partial ? '证据不完整。' : ''}${attributionNote}${protectedNext}`, `This stage score ${covered}${floor}.${turn.assessment.partial ? ' Evidence is incomplete.' : ''}${attributionNote}${protectedNext}`);
     }
     if (turn.status === 'running') return text('这一轮还在进行，结束后才评分。', 'This agent turn is still running; it is scored after it ends.');
     if (turn.assessment_state === 'pending') return text('下一轮开始后，根据你的反馈给这一轮评分。', 'Scored from your feedback once the next agent turn starts.');

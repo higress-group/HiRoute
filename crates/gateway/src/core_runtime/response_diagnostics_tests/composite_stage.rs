@@ -80,6 +80,9 @@ pub(super) fn run_case(root: &Path) {
         requests
     });
     let mut snapshot = classified_publication(&listener, endpoint.clone());
+    // The pre-attempt helper deliberately limits each request to one attempt.
+    // This scenario exercises the normal two-attempt precommit relay budget.
+    snapshot.aliases[0].max_attempts = 2;
     let mut judgment = JudgmentSettingsV1::default();
     let protocol = NativeProtocolV1::default();
     protocol.stock_assessment(&mut judgment);
@@ -155,7 +158,11 @@ pub(super) fn run_case(root: &Path) {
     let mut input = vec![json!({"role":"user","content":"A"})];
     for call in ["one", "two"] {
         let response = send(address, &input, "1");
-        assert!(response.starts_with(b"HTTP/1.1 200"));
+        assert!(
+            response.starts_with(b"HTTP/1.1 200"),
+            "tool {call}: {}",
+            String::from_utf8_lossy(&response)
+        );
         input.extend(
             response_body(&response)["output"]
                 .as_array()
