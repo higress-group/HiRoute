@@ -216,19 +216,36 @@ bridge uses that path. WebSocket inference is outside this metadata contract.
 
 Before the first downstream header/body/flush commit, a response-writer wrapper
 sets the reserved `X-HiRoute-CPA-Execution` header to
-`v1;<inference_attempts>;<http_401_responses>;<auth_recovery_attempts>;<auth_recovery_successes>`.
-Each count is at most 32; overflow is `v1;unknown`. The trace carries no account
+`v2;<inference_attempts>;<http_401_responses>;<auth_recovery_attempts>;<auth_recovery_successes>;<downstream_status>;<first>;<last>`.
+Each count is at most 32; overflow is `v2;unknown`. The trace carries no account
 identifier, token, prompt, provider error body or usage. The upstream header
 filter excludes this reserved name, and the local writer overwrites any supplied
 value at commit. The same rule covers success and error replies. The existing
 stream bootstrap recovery finishes before downstream commit; forwarded stream
 failures do not trigger this auth recovery.
 
+The fixed first/last slots contain `<ordinal>,<upstream_status>,<phase>,<reason>`;
+an absent slot is `-` and an unobserved upstream status is `0`. Ordinals correlate
+status and failure to the same transport attempt. Intermediate attempts contribute
+to the count without allocating more slots. Phases are `started`, `headers`,
+`transport` and `body`; reasons are the closed values `none`, `cancelled`, `timeout`,
+`eof`, `unexpected_eof`, `dns`, `tls`, `network` and `other`. Classification uses
+typed errors, never error text. The downstream status is the actual response
+writer status and must match the HTTP response seen by Gateway. An upstream 500,
+a transport failure without headers, and a 200 followed by a body read failure
+are therefore distinct observations. A 200 plus normal EOF does not establish
+successful protocol completion or identify a response-conversion failure.
+
+The snapshot freezes at the first downstream commit. Later stream failures and
+cancellations are outside this snapshot, even if another diagnostic observes
+them. No new polling endpoint or retained per-request ledger is introduced.
+
 Gateway trusts these facts only for a validated CPA connector whose current
 credential lease resolved to loopback. Other upstreams' identically named headers
 are ignored. Missing, malformed, duplicate, unsupported-version or overflow
 metadata is explicitly unknown, not zero or one. The typed `upstream_wire`
-diagnostic carries the counters under `cpa_execution`; the ordinary logical
+diagnostic carries the counters and optional inference observations under
+`cpa_execution`; the ordinary logical
 attempt/usage producer remains unchanged. Gateway reconstructs public response
 headers and does not forward the private bridge header.
 
@@ -239,7 +256,8 @@ mutex, before reading/updating credentials or invoking a refresher. The stock
 mutex wait itself remains non-interruptible; it can retain a canceled goroutine
 until the active refresher exits, but must not cause another refresh/send.
 
-The additive diagnostic field defaults to absent for historical records. No
+Gateway still reads the old four-counter `v1` header, without inventing inference
+detail. The additive diagnostic field defaults to absent for historical records. No
 persisted business-data migration or public response-contract change is needed;
 the private CPA handshake is delivered by the matching managed artifact version.
 
@@ -252,5 +270,7 @@ go test ./sdk/cliproxy/executor ./internal/runtime/executor/helps ./sdk/api/hand
 These cover the HTTP counter against a controlled upstream ledger, OAuth
 exclusion, spoofed/error response headers, metadata commit, pinned same-account
 401 recovery, no-refresh-token rejection, no recovery loop, canceled refresh
-waiters, and stream payload followed by 401 without replay. Controlled tests do
+waiters, stream payload followed by 401 without replay, real loopback HTTP/transport
+failures, truncated response bodies, cancellation, first/last attempt correlation
+and commit-time freezing. Controlled tests do
 not replace independent real-account expiry/refresh and restart acceptance.

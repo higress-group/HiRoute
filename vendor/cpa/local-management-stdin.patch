@@ -2299,7 +2299,7 @@ index 0000000..8b7ef41
 +}
 diff --git a/internal/runtime/executor/helps/hiroute_execution_test.go b/internal/runtime/executor/helps/hiroute_execution_test.go
 new file mode 100644
-index 0000000..09fe73b
+index 0000000..ae1717b
 --- /dev/null
 +++ b/internal/runtime/executor/helps/hiroute_execution_test.go
 @@ -0,0 +1,53 @@
@@ -2352,15 +2352,94 @@ index 0000000..09fe73b
 +		_, _ = io.Copy(io.Discard, resp.Body)
 +		_ = resp.Body.Close()
 +	}
-+	if sends.Load() != 3 || trace.Header() != "v1;2;1;0;0" {
++	if sends.Load() != 3 || trace.Header() != "v2;2;1;0;0;0;1,401,headers,none;2,200,headers,none" {
 +		t.Fatalf("actual HTTP=%d trace=%q", sends.Load(), trace.Header())
 +	}
 +}
+diff --git a/internal/runtime/executor/helps/hiroute_inference_test.go b/internal/runtime/executor/helps/hiroute_inference_test.go
+new file mode 100644
+index 0000000..149402c
+--- /dev/null
++++ b/internal/runtime/executor/helps/hiroute_inference_test.go
+@@ -0,0 +1,73 @@
++package helps
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
++)
++
++func TestHiRouteInferenceDistinguishesTransportAndUpstreamStatus(t *testing.T) {
++	for _, scenario := range []string{"http500", "body", "connection", "cancelled", "cancel_body"} {
++		t.Run(scenario, func(t *testing.T) {
++			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				if scenario == "cancel_body" {
++					w.WriteHeader(200)
++					w.(http.Flusher).Flush()
++					<-r.Context().Done()
++					return
++				}
++				if scenario == "body" {
++					w.Header().Set("Content-Length", "100")
++					_, _ = w.Write([]byte("x"))
++					return
++				}
++				w.WriteHeader(500)
++				_, _ = w.Write([]byte("private-provider-error-must-not-enter-trace"))
++			}))
++			defer server.Close()
++			if scenario == "connection" {
++				server.Close()
++			}
++			ctx, trace := coreexecutor.WithHiRouteExecution(context.Background())
++			ctx, cancel := context.WithCancel(ctx)
++			defer cancel()
++			if scenario == "cancelled" {
++				cancel()
++			}
++			client := NewUsageReporter(ctx, "codex", "fixture", nil).TrackHTTPClient(server.Client())
++			req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, nil)
++			if err != nil {
++				t.Fatal(err)
++			}
++			resp, sendErr := client.Do(req)
++			if scenario == "cancel_body" {
++				cancel()
++			}
++			var readErr error
++			if resp != nil {
++				_, readErr = io.Copy(io.Discard, resp.Body)
++				_ = resp.Body.Close()
++			}
++			want := map[string]string{
++				"http500":     "v2;1;0;0;0;0;1,500,headers,none;1,500,headers,none",
++				"body":        "v2;1;0;0;0;0;1,200,body,unexpected_eof;1,200,body,unexpected_eof",
++				"connection":  "v2;1;0;0;0;0;1,0,transport,network;1,0,transport,network",
++				"cancel_body": "v2;1;0;0;0;0;1,200,body,cancelled;1,200,body,cancelled",
++				"cancelled":   "v2;0;0;0;0;0;-;-",
++			}[scenario]
++			if trace.Header() != want {
++				t.Fatalf("trace=%q want=%q", trace.Header(), want)
++			}
++			if scenario == "body" && readErr != io.ErrUnexpectedEOF {
++				t.Fatalf("body error=%v", readErr)
++			}
++			if (scenario == "connection" || scenario == "cancelled") && sendErr == nil {
++				t.Fatal("expected transport refusal")
++			}
++		})
++	}
++}
 diff --git a/internal/runtime/executor/helps/usage_helpers.go b/internal/runtime/executor/helps/usage_helpers.go
-index 266012a..ef002b8 100644
+index 266012a..21f3122 100644
 --- a/internal/runtime/executor/helps/usage_helpers.go
 +++ b/internal/runtime/executor/helps/usage_helpers.go
-@@ -738,9 +738,16 @@ type usageTTFTRoundTripper struct {
+@@ -738,10 +738,22 @@ type usageTTFTRoundTripper struct {
  }
  
  func (t usageTTFTRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -2368,15 +2447,21 @@ index 266012a..ef002b8 100644
 +		return nil, errCtx
 +	}
  	cliproxyexecutor.MarkUpstreamAttempt(req.Context())
-+	cliproxyexecutor.HiRouteInferenceStarted(req.Context())
++	inferenceOrdinal := cliproxyexecutor.HiRouteInferenceStarted(req.Context())
  	t.reporter.StartResponseTTFT()
  	resp, errRoundTrip := t.base.RoundTrip(req)
 +	if resp != nil {
 +		cliproxyexecutor.HiRouteInferenceResponse(req.Context(), resp.StatusCode)
++		cliproxyexecutor.HiRouteInferenceResult(req.Context(), inferenceOrdinal, resp.StatusCode, errRoundTrip)
++		resp.Body = cliproxyexecutor.HiRouteObserveInferenceBody(req.Context(), inferenceOrdinal, resp.Body)
 +	}
  	if errRoundTrip != nil {
++		if resp == nil {
++			cliproxyexecutor.HiRouteInferenceResult(req.Context(), inferenceOrdinal, 0, errRoundTrip)
++		}
  		return resp, errRoundTrip
  	}
+ 	if t.packetOnly {
 diff --git a/internal/runtime/executor/helps/utls_client.go b/internal/runtime/executor/helps/utls_client.go
 index 4857bac..7247b85 100644
 --- a/internal/runtime/executor/helps/utls_client.go
@@ -2418,7 +2503,7 @@ index e724674..4889c35 100644
  // IsCPAReservedResponseHeader reports whether a downstream response header is managed by CPA.
 diff --git a/sdk/api/handlers/hiroute_execution.go b/sdk/api/handlers/hiroute_execution.go
 new file mode 100644
-index 0000000..15168d3
+index 0000000..d9ab967
 --- /dev/null
 +++ b/sdk/api/handlers/hiroute_execution.go
 @@ -0,0 +1,53 @@
@@ -2450,42 +2535,43 @@ index 0000000..15168d3
 +	trace *coreexecutor.HiRouteExecution
 +}
 +
-+func (w *hiRouteExecutionWriter) snapshot() {
++func (w *hiRouteExecutionWriter) snapshot(status int) {
 +	if !w.Written() {
-+		w.Header().Set(coreexecutor.HiRouteExecutionHeader, w.trace.Header())
++		w.Header().Set(coreexecutor.HiRouteExecutionHeader, w.trace.HeaderForStatus(status))
 +	}
 +}
 +func (w *hiRouteExecutionWriter) WriteHeader(code int) {
-+	w.snapshot()
++	w.snapshot(code)
 +	w.ResponseWriter.WriteHeader(code)
 +}
 +func (w *hiRouteExecutionWriter) WriteHeaderNow() {
-+	w.snapshot()
++	w.snapshot(w.Status())
 +	w.ResponseWriter.WriteHeaderNow()
 +}
 +func (w *hiRouteExecutionWriter) Write(data []byte) (int, error) {
-+	w.snapshot()
++	w.snapshot(w.Status())
 +	return w.ResponseWriter.Write(data)
 +}
 +func (w *hiRouteExecutionWriter) WriteString(data string) (int, error) {
-+	w.snapshot()
++	w.snapshot(w.Status())
 +	return w.ResponseWriter.WriteString(data)
 +}
 +func (w *hiRouteExecutionWriter) Flush() {
-+	w.snapshot()
++	w.snapshot(w.Status())
 +	w.ResponseWriter.Flush()
 +}
 diff --git a/sdk/api/handlers/hiroute_execution_test.go b/sdk/api/handlers/hiroute_execution_test.go
 new file mode 100644
-index 0000000..d052313
+index 0000000..46abb9e
 --- /dev/null
 +++ b/sdk/api/handlers/hiroute_execution_test.go
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,68 @@
 +package handlers
 +
 +import (
 +	"context"
 +	"errors"
++	"fmt"
 +	"github.com/gin-gonic/gin"
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
 +	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
@@ -2503,6 +2589,7 @@ index 0000000..d052313
 +		ctx := withHiRouteExecution(context.Background(), c)
 +		coreexecutor.HiRouteInferenceStarted(ctx)
 +		coreexecutor.HiRouteInferenceResponse(ctx, status)
++		coreexecutor.HiRouteInferenceResult(ctx, 1, status, nil)
 +		c.Writer.Header().Set(coreexecutor.HiRouteExecutionHeader, "untrusted-provider-text")
 +		if status == 200 {
 +			c.Writer.WriteHeader(status)
@@ -2512,10 +2599,11 @@ index 0000000..d052313
 +				StatusCode: status, Error: errors.New("fixture error"),
 +			})
 +		}
-+		expected := "v1;1;0;0;0"
++		unauthorized := 0
 +		if status == 401 {
-+			expected = "v1;1;1;0;0"
++			unauthorized = 1
 +		}
++		expected := fmt.Sprintf("v2;1;%d;0;0;%d;1,%d,headers,none;1,%d,headers,none", unauthorized, status, status, status)
 +		if got := recorder.Result().Header.Get(coreexecutor.HiRouteExecutionHeader); got != expected {
 +			t.Fatalf("status=%d trace=%q, want %q", status, got, expected)
 +		}
@@ -2532,14 +2620,17 @@ index 0000000..d052313
 +	ctx := withHiRouteExecution(context.Background(), c)
 +	coreexecutor.HiRouteInferenceStarted(ctx)
 +	coreexecutor.HiRouteInferenceResponse(ctx, 401)
++	coreexecutor.HiRouteInferenceResult(ctx, 1, 401, nil)
 +	coreexecutor.HiRouteAuthRecovery(ctx, false)
 +	coreexecutor.HiRouteAuthRecovery(ctx, true)
 +	coreexecutor.HiRouteInferenceStarted(ctx)
++	coreexecutor.HiRouteInferenceResult(ctx, 2, 200, nil)
 +	_, _ = c.Writer.WriteString("data: {}\n\n")
 +	c.Writer.Flush()
++	coreexecutor.HiRouteInferenceResult(ctx, 2, 200, context.Canceled)
 +	coreexecutor.HiRouteInferenceStarted(ctx)
 +	_, _ = c.Writer.WriteString("data: [DONE]\n\n")
-+	if got := recorder.Result().Header.Get(coreexecutor.HiRouteExecutionHeader); got != "v1;2;1;1;1" {
++	if got := recorder.Result().Header.Get(coreexecutor.HiRouteExecutionHeader); got != "v2;2;1;1;1;200;1,401,headers,none;2,200,headers,none" {
 +		t.Fatalf("stream commit trace=%q", got)
 +	}
 +}
@@ -2576,7 +2667,7 @@ index 4bf7fd1..18e48c6 100644
  	auth := m.auths[id]
 diff --git a/sdk/cliproxy/auth/hiroute_execution_test.go b/sdk/cliproxy/auth/hiroute_execution_test.go
 new file mode 100644
-index 0000000..4b729b4
+index 0000000..e3be1ab
 --- /dev/null
 +++ b/sdk/cliproxy/auth/hiroute_execution_test.go
 @@ -0,0 +1,118 @@
@@ -2626,9 +2717,9 @@ index 0000000..4b729b4
 +				if stream {
 +					calls = executor.StreamCalls()
 +				}
-+				wantCalls, wantRefresh, wantTrace := 2, 1, "v1;0;0;1;1"
++				wantCalls, wantRefresh, wantTrace := 2, 1, "v2;0;0;1;1;0;-;-"
 +				if mode == "borrowed" {
-+					wantCalls, wantRefresh, wantTrace = 1, 0, "v1;0;0;0;0"
++					wantCalls, wantRefresh, wantTrace = 1, 0, "v2;0;0;0;0;0;-;-"
 +				}
 +				if len(calls) != wantCalls || executor.RefreshCalls() != wantRefresh || trace.Header() != wantTrace {
 +					t.Fatalf("stream=%t calls=%v refresh=%d trace=%q", stream, calls, executor.RefreshCalls(), trace.Header())
@@ -2694,16 +2785,16 @@ index 0000000..4b729b4
 +			failures++
 +		}
 +	}
-+	if payloads != 1 || failures != 1 || len(executor.StreamCalls()) != 1 || executor.RefreshCalls() != 0 || trace.Header() != "v1;0;0;0;0" {
++	if payloads != 1 || failures != 1 || len(executor.StreamCalls()) != 1 || executor.RefreshCalls() != 0 || trace.Header() != "v2;0;0;0;0;0;-;-" {
 +		t.Fatalf("payloads=%d failures=%d calls=%v refresh=%d trace=%s", payloads, failures, executor.StreamCalls(), executor.RefreshCalls(), trace.Header())
 +	}
 +}
 diff --git a/sdk/cliproxy/executor/hiroute_execution.go b/sdk/cliproxy/executor/hiroute_execution.go
 new file mode 100644
-index 0000000..f896ccb
+index 0000000..50890eb
 --- /dev/null
 +++ b/sdk/cliproxy/executor/hiroute_execution.go
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,116 @@
 +package executor
 +
 +import (
@@ -2725,6 +2816,8 @@ index 0000000..f896ccb
 +	authRecoveryAttempts  uint32
 +	authRecoverySuccesses uint32
 +	overflow              bool
++	firstInference        hiRouteInference
++	lastInference         hiRouteInference
 +}
 +
 +// WithHiRouteExecution owns one downstream HTTP call across auth-manager child
@@ -2769,12 +2862,19 @@ index 0000000..f896ccb
 +
 +// HiRouteInferenceStarted is called at the actual HTTP RoundTrip boundary,
 +// rather than MarkUpstreamAttempt, which can run more than once per wire send.
-+func HiRouteInferenceStarted(ctx context.Context) {
++func HiRouteInferenceStarted(ctx context.Context) uint32 {
 +	if trace := hiRouteExecutionFrom(ctx); trace != nil {
 +		trace.mu.Lock()
 +		defer trace.mu.Unlock()
 +		trace.increment(&trace.inferenceAttempts)
++		a := hiRouteInference{ordinal: trace.inferenceAttempts, phase: "started", reason: "none"}
++		if trace.firstInference.ordinal == 0 {
++			trace.firstInference = a
++		}
++		trace.lastInference = a
++		return a.ordinal
 +	}
++	return 0
 +}
 +
 +func HiRouteInferenceResponse(ctx context.Context, status int) {
@@ -2800,17 +2900,20 @@ index 0000000..f896ccb
 +	}
 +}
 +
-+func (t *HiRouteExecution) Header() string {
++func (t *HiRouteExecution) Header() string { return t.HeaderForStatus(0) }
++
++// Called immediately before downstream commit; later stream failures are not included.
++func (t *HiRouteExecution) HeaderForStatus(downstreamStatus int) string {
 +	t.mu.Lock()
 +	defer t.mu.Unlock()
 +	if t.overflow {
-+		return "v1;unknown"
++		return "v2;unknown"
 +	}
-+	return fmt.Sprintf("v1;%d;%d;%d;%d", t.inferenceAttempts, t.unauthorizedResponses, t.authRecoveryAttempts, t.authRecoverySuccesses)
++	return fmt.Sprintf("v2;%d;%d;%d;%d;%d;%s;%s", t.inferenceAttempts, t.unauthorizedResponses, t.authRecoveryAttempts, t.authRecoverySuccesses, downstreamStatus, t.firstInference.wire(), t.lastInference.wire())
 +}
 diff --git a/sdk/cliproxy/executor/hiroute_execution_test.go b/sdk/cliproxy/executor/hiroute_execution_test.go
 new file mode 100644
-index 0000000..91db81d
+index 0000000..67138b0
 --- /dev/null
 +++ b/sdk/cliproxy/executor/hiroute_execution_test.go
 @@ -0,0 +1,16 @@
@@ -2826,8 +2929,189 @@ index 0000000..91db81d
 +	for i := 0; i < 33; i++ {
 +		HiRouteInferenceStarted(ctx)
 +	}
-+	if trace.Header() != "v1;unknown" {
++	if trace.Header() != "v2;unknown" {
 +		t.Fatalf("overflow trace=%q", trace.Header())
++	}
++}
+diff --git a/sdk/cliproxy/executor/hiroute_inference.go b/sdk/cliproxy/executor/hiroute_inference.go
+new file mode 100644
+index 0000000..8f1d9de
+--- /dev/null
++++ b/sdk/cliproxy/executor/hiroute_inference.go
+@@ -0,0 +1,121 @@
++package executor
++
++import (
++	"context"
++	"crypto/tls"
++	"crypto/x509"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++)
++
++// Fixed first/last observations, not a per-attempt ledger. Middle attempts keep
++// their count only. An ordinal never borrows status from another transport.
++type hiRouteInference struct {
++	ordinal uint32
++	status  int
++	phase   string
++	reason  string
++}
++
++func (a hiRouteInference) wire() string {
++	if a.ordinal == 0 {
++		return "-"
++	}
++	return fmt.Sprintf("%d,%d,%s,%s", a.ordinal, a.status, a.phase, a.reason)
++}
++
++func (t *HiRouteExecution) updateInference(ordinal uint32, apply func(*hiRouteInference)) {
++	if ordinal == 0 {
++		return
++	}
++	for _, a := range []*hiRouteInference{&t.firstInference, &t.lastInference} {
++		if a.ordinal == ordinal {
++			apply(a)
++		}
++	}
++}
++
++// These observations describe the wrapped RoundTrip, never request preparation.
++// A transport invocation is not proof of remote receipt or billable inference.
++func HiRouteInferenceResult(ctx context.Context, ordinal uint32, status int, err error) {
++	if trace := hiRouteExecutionFrom(ctx); trace != nil {
++		trace.mu.Lock()
++		defer trace.mu.Unlock()
++		trace.updateInference(ordinal, func(a *hiRouteInference) {
++			if status >= 100 && status <= 599 {
++				a.status = status
++				a.phase = "headers"
++			}
++			if err != nil {
++				a.phase = "transport"
++				a.reason = hiRouteErrorReason(err)
++			}
++		})
++	}
++}
++
++func hiRouteErrorReason(err error) string {
++	switch {
++	case errors.Is(err, context.Canceled):
++		return "cancelled"
++	case errors.Is(err, context.DeadlineExceeded):
++		return "timeout"
++	case errors.Is(err, io.ErrUnexpectedEOF):
++		return "unexpected_eof"
++	case errors.Is(err, io.EOF):
++		return "eof"
++	}
++	var network net.Error
++	if errors.As(err, &network) && network.Timeout() {
++		return "timeout"
++	}
++	var dns *net.DNSError
++	if errors.As(err, &dns) {
++		return "dns"
++	}
++	var verify *tls.CertificateVerificationError
++	var unknown x509.UnknownAuthorityError
++	var invalid x509.CertificateInvalidError
++	var hostname x509.HostnameError
++	if errors.As(err, &verify) || errors.As(err, &unknown) || errors.As(err, &invalid) || errors.As(err, &hostname) {
++		return "tls"
++	}
++	var op *net.OpError
++	if errors.As(err, &op) {
++		return "network"
++	}
++	return "other"
++}
++
++type hiRouteInferenceBody struct {
++	io.ReadCloser
++	trace   *HiRouteExecution
++	ordinal uint32
++}
++
++func HiRouteObserveInferenceBody(ctx context.Context, ordinal uint32, body io.ReadCloser) io.ReadCloser {
++	trace := hiRouteExecutionFrom(ctx)
++	if trace == nil || body == nil || ordinal == 0 {
++		return body
++	}
++	return &hiRouteInferenceBody{ReadCloser: body, trace: trace, ordinal: ordinal}
++}
++
++func (b *hiRouteInferenceBody) Read(p []byte) (int, error) {
++	n, err := b.ReadCloser.Read(p)
++	// Normal EOF is not proof of an application-level terminal event. The trace
++	// cannot diagnose missing completion or conversion from this transport alone.
++	if err != nil && err != io.EOF {
++		b.trace.mu.Lock()
++		b.trace.updateInference(b.ordinal, func(a *hiRouteInference) {
++			if a.reason == "none" {
++				a.phase = "body"
++				a.reason = hiRouteErrorReason(err)
++			}
++		})
++		b.trace.mu.Unlock()
++	}
++	return n, err
++}
+diff --git a/sdk/cliproxy/executor/hiroute_inference_test.go b/sdk/cliproxy/executor/hiroute_inference_test.go
+new file mode 100644
+index 0000000..023c699
+--- /dev/null
++++ b/sdk/cliproxy/executor/hiroute_inference_test.go
+@@ -0,0 +1,48 @@
++package executor
++
++import (
++	"context"
++	"io"
++	"strings"
++	"testing"
++)
++
++type hiRouteFailingBody struct{ io.Reader }
++
++func (hiRouteFailingBody) Close() error             { return nil }
++func (hiRouteFailingBody) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
++
++func TestHiRouteInferenceKeepsFirstAndLastAttemptIdentities(t *testing.T) {
++	ctx, trace := WithHiRouteExecution(context.Background())
++	first := HiRouteInferenceStarted(ctx)
++	HiRouteInferenceResult(ctx, first, 500, nil)
++	body := HiRouteObserveInferenceBody(ctx, first, hiRouteFailingBody{})
++	second := HiRouteInferenceStarted(ctx)
++	HiRouteInferenceResponse(ctx, 401)
++	HiRouteInferenceResult(ctx, second, 401, nil)
++	last := HiRouteInferenceStarted(ctx)
++	HiRouteInferenceResult(ctx, last, 200, nil)
++	// A late first-body error must not contaminate the latest successful response.
++	_, _ = body.Read(make([]byte, 1))
++	want := "v2;3;1;0;0;500;1,500,body,unexpected_eof;3,200,headers,none"
++	if got := trace.HeaderForStatus(500); got != want {
++		t.Fatalf("got=%q want=%q", got, want)
++	}
++}
++
++func TestHiRouteInferenceNormalEOFDoesNotAssertCompletion(t *testing.T) {
++	ctx, trace := WithHiRouteExecution(context.Background())
++	ordinal := HiRouteInferenceStarted(ctx)
++	HiRouteInferenceResult(ctx, ordinal, 200, nil)
++	body := HiRouteObserveInferenceBody(ctx, ordinal, io.NopCloser(strings.NewReader("")))
++	_, err := io.ReadAll(body)
++	if err != nil {
++		t.Fatal(err)
++	}
++	// A conversion or missing protocol terminal remains unobserved, even if CPA
++	// later returns 500. Do not relabel this as an actual upstream HTTP 500.
++	want := "v2;1;0;0;0;500;1,200,headers,none;1,200,headers,none"
++	if got := trace.HeaderForStatus(500); got != want {
++		t.Fatalf("got=%q want=%q", got, want)
 +	}
 +}
 diff --git a/sdk/cliproxy/service_auth.go b/sdk/cliproxy/service_auth.go
