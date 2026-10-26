@@ -52,6 +52,16 @@ fn read_content_chunk(reader: &mut impl Read, bytes: &mut [u8]) -> std::io::Resu
 }
 
 impl RequestObservation {
+    pub(crate) fn record_input_selection(
+        &self,
+        selection: hiroute_domain::RequestInputSelectionV1,
+    ) {
+        self.emit_execution(
+            super::super::schema::ExecutionFactV1::RequestInputSelection(selection),
+            None,
+        );
+    }
+
     /// Copies canonical request fields into the content producer before core
     /// execution starts. Replay references are opened and dropped inside this
     /// call; no observation task or queued envelope retains ReplayStore.

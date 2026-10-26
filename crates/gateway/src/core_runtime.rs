@@ -676,6 +676,9 @@ impl ProductionGatewayRuntime {
                 externalize_elapsed,
                 prevalidate_elapsed,
             );
+            request_observation.record_input_selection(
+                routing_view.excerpt_selection(&canonical_request, current_input_origin_unverified),
+            );
             request_observation.capture_request(&canonical_request, &replay);
             let mut hold_ticket;
             let mut agent_turn_guard = None;

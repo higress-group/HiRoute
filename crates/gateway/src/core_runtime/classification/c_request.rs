@@ -36,12 +36,8 @@ pub(super) fn request_template<'a>(
     let scope = history
         .assessment_target
         .as_ref()
-        .and_then(|t| match &t.attribution {
-            ExecutionAttribution::Single {
-                executed_branch_id, ..
-            } => protocol.scopes.get(executed_branch_id),
-            _ => None,
-        });
+        .and_then(|t| t.evaluation_policy())
+        .and_then(|(branch, _)| protocol.scopes.get(branch));
     if target.is_some() {
         let scope = scope.ok_or(CallFailure::RejectedInput)?;
         let id = question_id(&questions);
@@ -53,7 +49,13 @@ pub(super) fn request_template<'a>(
             .assessment_target
             .as_ref()
             .is_none_or(|t| t.target_partial);
-    if target.is_some() && !initially_partial {
+    if target.is_some()
+        && !initially_partial
+        && history
+            .assessment_target
+            .as_ref()
+            .is_some_and(|target| matches!(target.attribution, ExecutionAttribution::Single { .. }))
+    {
         let id = question_id(&questions);
         questions.insert(id.clone(), protocol.protocol.fixed.applicability.clone());
         bindings.applicability = Some(id);

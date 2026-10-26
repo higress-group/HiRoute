@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use super::super::adapters::{ProtocolAdapterError, ReplacementEncoding, RequestedReplacement};
 use super::super::model_ir::{ContentPart, ImageSource};
 use super::CallFailure;
-use crate::agent_turn_history::{AgentTurnHistorySnapshot, ExecutionAttribution};
+use crate::agent_turn_history::AgentTurnHistorySnapshot;
 use crate::content_ref::ContentValueExt;
 use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 
@@ -62,12 +62,8 @@ pub(super) fn assessment_definition_result(
         .assessment_from
         .filter(|i| *i < history.visible_conversation.len())
         .ok_or(E::InvalidBoundary)?;
-    let ExecutionAttribution::Single {
-        executed_branch_id, ..
-    } = &target.attribution
-    else {
-        return Err(E::AmbiguousAttribution);
-    };
+    let (executed_branch_id, frozen_policy) =
+        target.evaluation_policy().ok_or(E::AmbiguousAttribution)?;
     let (judgment, name) = if executed_branch_id == SMART_SAVING_SCOPE_ID {
         (
             authority.smart_judgment.as_ref().ok_or(E::Unrated)?,
@@ -77,7 +73,7 @@ pub(super) fn assessment_definition_result(
         let branch = authority
             .branch_policies
             .iter()
-            .find(|b| b.id == *executed_branch_id)
+            .find(|b| b.id == executed_branch_id)
             .ok_or(E::DifferentCategory)?;
         (
             branch.judgment.as_ref().ok_or(E::Unrated)?,
@@ -88,7 +84,7 @@ pub(super) fn assessment_definition_result(
         || judgment.execution_policy(name),
         |p| p.execution_policy(executed_branch_id, judgment, name),
     );
-    if target.branch_execution.as_ref().ok_or(E::Unrated)?.policy != policy {
+    if *frozen_policy != policy {
         return Err(E::DifferentPolicy);
     }
     Ok(AssessmentDefinition {

@@ -635,7 +635,8 @@ function MaintenanceStatus({ language }: { language: 'zh' | 'en' }) {
   return !status.running || !status.index_running || status.error_count > 0 ? <div className="callout warn session-page-feedback" role="status"><UiIcon name="clock" /><span>{language === 'zh' ? '部分会话仍在整理，搜索或清理结果可能稍后更新。' : 'Some sessions are still being prepared. Search or cleanup results may update shortly.'}</span></div> : null;
 }
 
-type TitleScanState = { sawContent: boolean; allDeleted: boolean; incomplete: boolean };
+type TitleScanState = { sawContent: boolean; allDeleted: boolean; incomplete: boolean; inputUnconfirmed?: boolean };
+type InputSelection = { version: number; evidence: 'native_matched' | 'wire_observed' | 'unavailable'; message_ordinal: number | null; source_unverified: boolean };
 const TITLE_CONTENT_LIMIT = 1024 * 1024;
 
 async function completeTitlePart(requestId: string, contentId: string, signal: AbortSignal): Promise<{ text: string | null; incomplete: boolean }> {
@@ -662,8 +663,12 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
   let cursor: string | null = null;
   const contents: Content[] = [];
   const seen = new Set<string>();
+  let selection: InputSelection | undefined;
+  let firstPage = true;
   do {
-    const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null } = await read('catalog', { request_id: requestId, limit: 200, cursor }, signal);
+    const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null; input_selection?: InputSelection } = await read('catalog', { request_id: requestId, limit: 200, cursor, ...(latest ? { include_input_selection: true } : {}) }, signal);
+    if (firstPage) selection = page.input_selection;
+    firstPage = false;
     contents.push(...page.contents);
     state.sawContent ||= page.contents.length > 0;
     state.allDeleted &&= page.contents.every(item => ['deleted', 'expired'].includes(item.state));
@@ -673,16 +678,25 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
     if (cursor) seen.add(cursor);
   } while (cursor && !signal.aborted);
 
+  if (latest && (!selection || selection.version !== 1 || !['native_matched', 'wire_observed'].includes(selection.evidence)
+    || !Number.isSafeInteger(selection.message_ordinal) || selection.message_ordinal === null
+    || selection.message_ordinal < 0 || selection.message_ordinal > 65_535)) {
+    // Older records did not retain a selected-input witness. The original
+    // transcript stays readable; a late User envelope is not a substitute.
+    state.inputUnconfirmed = true;
+    return null;
+  }
+
   const groups = new Map<string, Content[]>();
   for (const content of contents) {
     if (content.role !== 'user' || content.kind !== 'text' || ['deleted', 'expired', 'unavailable'].includes(content.state)) continue;
+    if (latest && (content.direction !== 'request_input' || content.message_ordinal !== selection?.message_ordinal)) continue;
     const key = `${content.direction}\u0000${content.fork_id ?? ''}\u0000${content.message_occurrence_id || content.content_id}`;
     const group = groups.get(key) ?? [];
     group.push(content);
     groups.set(key, group);
   }
   const messages = [...groups.values()].sort((left, right) => (left[0]?.message_ordinal ?? 0) - (right[0]?.message_ordinal ?? 0));
-  if (latest) messages.reverse();
   for (const message of messages) {
     message.sort((left, right) => (left.part_ordinal ?? 0) - (right.part_ordinal ?? 0));
     const parts: string[] = [];
@@ -700,11 +714,11 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
   return null;
 }
 
-/** `request` shows that request's latest user message, e.g. the message that opened an agent turn. */
+/** `request` uses the recorded selected-input position; it never guesses from late User context. */
 export function ContentExcerpt({ session, request, hit, language, fallback = '', limit = 160, revision = 0, active = true, contentCleared = false, onCompleteness, onContentState, onModel, onRoute }: { session?: string; request?: string; hit?: Hit; language: 'zh' | 'en'; fallback?: string; limit?: number; revision?: number | string; active?: boolean; contentCleared?: boolean; onCompleteness?: (incomplete: boolean) => void; onContentState?: (state: ContentState) => void; onModel?: (model: string) => void; onRoute?: (route: string) => void }) {
   const node = useRef<HTMLSpanElement>(null);
   const key = JSON.stringify([session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset, limit, revision]);
-  type ExcerptStatus = 'loading' | 'pending' | 'ready' | 'absent' | 'cleared' | 'error';
+  type ExcerptStatus = 'loading' | 'pending' | 'ready' | 'absent' | 'cleared' | 'error' | 'unconfirmed';
   const [result, setResult] = useState<{ key: string; value: string; status: ExcerptStatus }>({ key, value: '', status: 'loading' });
   const current = result.key === key ? result : { key, value: '', status: 'loading' as const };
   const { value, status } = current;
@@ -735,7 +749,7 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
       const cleared = state.sawContent && state.allDeleted && !state.incomplete;
       resolved = cleared || (state.sawContent && !state.incomplete);
       setValue(title === null ? '' : excerpt(title, limit));
-      setStatus(cleared ? 'cleared' : !resolved ? 'pending' : title !== null ? 'ready' : 'absent');
+      setStatus(cleared ? 'cleared' : !resolved ? 'pending' : state.inputUnconfirmed ? 'unconfirmed' : title !== null ? 'ready' : 'absent');
       callbacks.current.onCompleteness?.(!resolved);
       callbacks.current.onContentState?.(cleared ? 'cleared' : resolved ? 'recorded' : 'partial');
     }
@@ -826,6 +840,7 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
   const currentStatus = contentCleared ? 'cleared' : status;
   const directRequest = Boolean(request && !hit);
   const statusText = currentStatus === 'cleared' ? (language === 'zh' ? '正文已清理' : 'Content cleared')
+    : currentStatus === 'unconfirmed' ? (language === 'zh' ? '本轮输入位置未记录，可查看原始对话' : 'This turn’s input position was not recorded; view the original conversation')
     : currentStatus === 'loading' ? (language === 'zh' ? '正在读取消息…' : 'Loading message…')
       : directRequest && ['pending', 'error'].includes(currentStatus) ? (language === 'zh' ? '这一轮的消息暂不可用' : 'This turn’s message is unavailable')
         : currentStatus === 'error' ? (language === 'zh' ? '正文暂时无法读取' : 'Content is temporarily unavailable')

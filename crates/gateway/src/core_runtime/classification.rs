@@ -147,16 +147,8 @@ impl<'a> From<&'a ModelRequestIRV1> for DecisionInput<'a> {
 impl<'a> DecisionInput<'a> {
     fn parts(self) -> Option<&'a [ContentPart]> {
         self.current.or_else(|| {
-            self.request
-                .messages
-                .iter()
-                .rev()
-                .find(|message| {
-                    message.role == MessageRole::User
-                        && message.content.iter().any(|part| {
-                            matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. })
-                        })
-                })
+            super::native_routing_view::observed_input_index(self.request)
+                .and_then(|index| self.request.messages.get(index))
                 .map(|message| message.content.as_slice())
         })
     }

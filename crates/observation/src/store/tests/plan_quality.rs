@@ -9,6 +9,7 @@ use crate::query_v2::ObservationReaderContext;
 
 use super::support::{Fixture, fact_channel, offer_fact, open_store, writer};
 
+mod composite;
 mod history_membership;
 mod routing_observations;
 mod routing_observations_released;

@@ -32,9 +32,14 @@ impl crate::LocalObservationStore {
         if reader.allowed_runs().is_some() {
             relation::authorized_link(&tx, reader, &query.request_id, now_ms)?;
         }
-        let binding = CanonicalDigest::of(&(reader.binding()?, &query.request_id, query.limit))
-            .map_err(|_| ObservationV2Error::Invalid)?
-            .to_string();
+        let legacy_binding = (reader.binding()?, &query.request_id, query.limit);
+        let binding = if query.include_input_selection {
+            CanonicalDigest::of(&(legacy_binding, true))
+        } else {
+            CanonicalDigest::of(&legacy_binding)
+        }
+        .map_err(|_| ObservationV2Error::Invalid)?
+        .to_string();
         let visibility=tx.query_row("SELECT CAST(value AS INTEGER) FROM observation_meta WHERE key='query_visibility_generation'",[],|r|r.get(0))?;
         let cursor = match &query.cursor {
             Some(encoded) => {
@@ -142,6 +147,17 @@ impl crate::LocalObservationStore {
             .take(32)
             .map(|(root, _)| root)
             .collect();
+        let input_selection = query
+            .include_input_selection
+            .then(|| {
+                super::input_selection::read(
+                    &tx,
+                    reader.workspace().as_str(),
+                    query.request_id.as_str(),
+                    now_ms,
+                )
+            })
+            .flatten();
         tx.commit()?;
         check_visibility(&connection, visibility)?;
         Ok(ObservationCatalogPageV2 {
@@ -149,6 +165,7 @@ impl crate::LocalObservationStore {
             next_cursor,
             transcript_roots,
             roots_partial,
+            input_selection,
         })
     }
 

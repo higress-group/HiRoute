@@ -204,6 +204,7 @@
     "hiroute.diagnostic-status/v1",
     "hiroute.discovered-model-candidate/v1",
     "hiroute.dsh-additional-model/v1",
+    "hiroute.dsh-composition-facts/v1",
     "hiroute.dsh-native-restore/v2",
     "hiroute.dsh-public-native-resources/v1",
     "hiroute.empty-request/v1",
@@ -2100,6 +2101,20 @@
         "crates/local-storage/src/control/current_dependencies.rs",
         "crates/local-storage/src/control/plans/publication.rs",
         "crates/local-storage/src/control/legacy_finalization_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-stage/input-selection digest sha256:2babb083d6f0005ded11c5712f7b8183117b6ce06f87aa1892c6ad1aa891a481",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained immutable model assessments, membership, admission and extension facts. This old digest cannot authenticate stage_assessment_recorded or request_input_selection. Missing input position remains unrecorded; legacy rows gain no current-input, completeness or composite-evaluation proof. Live ingestion accepts only the current descriptor.",
+      "removal_condition": "Retire only after supported stores and backups retain no pre-stage/input-selection facts or an authenticated evidence-preserving conversion replaces the reader.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/stage_evaluation_tests.rs",
+        "crates/observation/src/query_v2/input_selection.rs"
       ]
     }
   ]

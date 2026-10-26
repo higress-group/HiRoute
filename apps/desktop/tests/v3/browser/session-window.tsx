@@ -22,6 +22,7 @@ const control = {
   language: 'zh' as 'zh' | 'en',
   requests: {} as Record<string, RequestRow[]>,
   catalog: {} as Record<string, any[]>,
+  inputSelections: {} as Record<string, { version: number; evidence: string; message_ordinal: number | null; source_unverified: boolean }>,
   texts: {} as Record<string, string>,
   hits: [] as Hit[],
   views: {} as Record<string, (query: Record<string, any>) => unknown>,
@@ -104,7 +105,8 @@ function observationRead(view: string, query: Record<string, any>) {
       const { page, next_cursor } = paginate(rows, query, digest);
       return { next_cursor, requests: page };
     }
-    case 'catalog': return { contents: control.catalog[query.request_id] ?? [], transcript_roots: [], roots_partial: false, next_cursor: null };
+    case 'catalog': return { contents: control.catalog[query.request_id] ?? [], transcript_roots: [], roots_partial: false, next_cursor: null,
+      ...(query.include_input_selection && control.inputSelections[query.request_id] ? { input_selection: control.inputSelections[query.request_id] } : {}) };
     case 'content': return { state: 'complete', chunks: [{ text: control.texts[query.content_id] ?? '', original_byte_offset: 0 }], next_cursor: null };
     case 'facts': return { facts: [], projection_partial: false, next_cursor: null };
     case 'plan_quality': return { samples: [], summary: { models: [], scored_stage_count: 0, unrated_stage_count: 0, session_count: 0, available_revisions: [] }, next_cursor: null };
@@ -169,6 +171,7 @@ function Harness() {
   control.reset = () => {
     control.requests = {};
     control.catalog = {};
+    control.inputSelections = {};
     control.texts = {};
     control.hits = [];
     control.views = {};

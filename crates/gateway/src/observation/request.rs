@@ -37,6 +37,8 @@ mod completion;
 mod emission;
 #[path = "request/planner.rs"]
 mod planner;
+#[path = "request/stage_assessment.rs"]
+mod stage_assessment;
 #[derive(Clone, Debug)]
 pub struct RequestObservationMetadata {
     pub workspace_id: String,
@@ -937,6 +939,10 @@ impl RequestObservation {
     }
 
     pub(crate) fn branch_assessment_recorded(&self, assessment: &BoundAssessment) {
+        if matches!(assessment.target.attribution, ExecutionAttribution::Mixed) {
+            self.record_composite_assessment(assessment);
+            return;
+        }
         let ExecutionAttribution::Single {
             model_configuration_id,
             profile_digest,

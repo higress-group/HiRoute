@@ -64,6 +64,9 @@ mod native_retry;
 #[path = "stage_closure_tests.rs"]
 mod stage_closure;
 
+#[path = "composite_stage_tests.rs"]
+mod composite_stage;
+
 struct TestRoot(PathBuf);
 
 impl TestRoot {

@@ -433,6 +433,7 @@ fn preceding_stage_requires_exact_plan_connection_and_actual_category() {
     authority.plan_identity = Some(("plan/test".into(), 7));
     let mut history = history(true);
     history.assessment_target = Some(AssessmentTarget {
+        evaluation_scope: None,
         segment_id: "private-stage".into(),
         history_membership: None,
         first_turn_id: "turn-1".into(),

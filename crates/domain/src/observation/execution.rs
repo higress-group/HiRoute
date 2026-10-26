@@ -31,7 +31,7 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:2babb083d6f0005ded11c5712f7b8183117b6ce06f87aa1892c6ad1aa891a481";
+    "sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295";
 
 /// Exact bounded membership of an immutable captured stage revision. Source
 /// uncertainty and association uncertainty do not mean execution is missing.
@@ -708,6 +708,7 @@ pub enum AgentTurnStatusV1 {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ExecutionFactV1 {
     AgentTurnAdmitted(super::AgentTurnAdmissionV1),
+    RequestInputSelection(super::RequestInputSelectionV1),
     RouteDecision(Box<RouteDecisionFactV1>),
     CandidateDecision(Box<CandidateDecisionFactV1>),
     CredentialLease {
@@ -821,6 +822,7 @@ pub enum ExecutionFactV1 {
         partial: bool,
         reason: Option<String>,
     },
+    StageAssessmentRecorded(super::StageAssessmentRecordedV1),
     /// Product-owned immutable value input. Gateway mapping never aggregates into this event.
     ValueSnapshot {
         traffic_kind: TrafficKind,

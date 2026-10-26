@@ -111,60 +111,44 @@ pub(super) fn close_active(
         .ok_or(AgentTurnHistoryError::TurnContextUnavailable)?;
     let selected_branch_id = decision.branch_id.clone();
     let attribution = execution_attribution(&entry.active.executions, &selected_branch_id);
-    let (segment_id, segment_partial) = match &attribution {
-        ExecutionAttribution::Single {
-            executed_branch_id,
-            model_configuration_id,
-            profile_digest,
-            ..
-        } => {
-            let segment_key = SegmentKey {
-                branch_execution: entry
-                    .active
-                    .executions
-                    .first()
-                    .and_then(|e| e.branch_execution.clone()),
-                plan: entry.active.plan.clone(),
-                selected_branch_id: selected_branch_id.clone(),
-                executed_branch_id: executed_branch_id.clone(),
-                model_configuration_id: model_configuration_id.clone(),
-                profile_digest: profile_digest.clone(),
-            };
-            if entry.current_segment.as_ref().is_some_and(|segment| {
-                segment.key == segment_key
-                        // Missing execution in an earlier task must not keep
-                        // independently captured future tasks partial forever.
-                        // A retry/reclassification ID alone is not a new input
-                        // boundary, and refinalizing the same turn cannot heal it.
-                        && !((segment.partial || segment_has_unproven_closure(entry, segment))
-                            && !entry.active.capture_partial
-                            && entry.active.opening_cause
-                                == hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
-                            && segment.through_turn_id != entry.active.agent_turn_id)
-            }) {
-                let segment = entry.current_segment.as_mut().expect("checked");
-                segment.through_turn_id = entry.active.agent_turn_id.clone();
-                segment.through_ordinal = entry.active.ordinal;
-                segment.partial |= entry.active.capture_partial;
-                (segment.segment_id.clone(), segment.partial)
-            } else {
-                let segment_id = next_segment_id;
-                entry.current_segment = Some(SegmentState {
-                    segment_id: segment_id.clone(),
-                    key: segment_key,
-                    first_turn_id: entry.active.agent_turn_id.clone(),
-                    through_turn_id: entry.active.agent_turn_id.clone(),
-                    first_ordinal: entry.active.ordinal,
-                    through_ordinal: entry.active.ordinal,
-                    partial: entry.active.capture_partial,
-                });
-                (segment_id, entry.active.capture_partial)
-            }
+    let key = super::evaluation::segment_key(&entry.active, &attribution);
+    let evaluation_scope = key.as_ref().and_then(|key| key.evaluation_scope.clone());
+    let (segment_id, segment_partial) = if let Some(segment_key) = key {
+        let reusable = entry.current_segment.as_ref().is_some_and(|segment| {
+            segment.key == segment_key
+                // A composite assessment covers this task only. It must not
+                // combine different tasks merely because they share a rubric.
+                && (evaluation_scope.is_none()
+                    || segment.through_turn_id == entry.active.agent_turn_id)
+                && !((segment.partial || segment_has_unproven_closure(entry, segment))
+                    && !entry.active.capture_partial
+                    && entry.active.opening_cause
+                        == hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
+                    && segment.through_turn_id != entry.active.agent_turn_id)
+        });
+        if reusable {
+            let segment = entry.current_segment.as_mut().expect("checked");
+            segment.through_turn_id = entry.active.agent_turn_id.clone();
+            segment.through_ordinal = entry.active.ordinal;
+            segment.partial |= entry.active.capture_partial;
+            (segment.segment_id.clone(), segment.partial)
+        } else {
+            let segment_id = next_segment_id;
+            entry.current_segment = Some(SegmentState {
+                segment_id: segment_id.clone(),
+                key: segment_key,
+                first_turn_id: entry.active.agent_turn_id.clone(),
+                through_turn_id: entry.active.agent_turn_id.clone(),
+                first_ordinal: entry.active.ordinal,
+                through_ordinal: entry.active.ordinal,
+                partial: entry.active.capture_partial,
+            });
+            (segment_id, entry.active.capture_partial)
         }
-        ExecutionAttribution::Mixed | ExecutionAttribution::Unknown => {
-            entry.current_segment = None;
-            (next_segment_id, true)
-        }
+    } else {
+        entry.current_segment = None;
+        // Missing executor/rubric attribution is not evidence of missing bytes.
+        (next_segment_id, entry.active.capture_partial)
     };
     let status = entry.active.last_request_status;
     let executed_branch_id = match &attribution {
@@ -181,6 +165,7 @@ pub(super) fn close_active(
         steps: std::mem::take(&mut entry.active.steps),
     });
     let completed = CompletedAgentTurn {
+        evaluation_scope,
         history_membership: Some(hiroute_domain::HistoryMembershipV1 {
             version: 1,
             branch_id: entry.branch_id.clone(),
@@ -289,19 +274,27 @@ pub(super) fn snapshot(
             .rev()
             .find(|turn| turn.completed.segment_id == segment.segment_id)?;
         match &last.completed.attribution {
-            ExecutionAttribution::Single { .. } => Some(AssessmentTarget {
-                history_membership: stage_membership(entry, segment),
-                branch_execution: last.completed.branch_execution.clone(),
-                segment_id: segment.segment_id.clone(),
-                first_turn_id: segment.first_turn_id.clone(),
-                through_turn_id: segment.through_turn_id.clone(),
-                first_ordinal: segment.first_ordinal,
-                through_ordinal: segment.through_ordinal,
-                target_partial: segment.partial || segment_has_unproven_closure(entry, segment),
-                plan: last.completed.plan.clone(),
-                attribution: last.completed.attribution.clone(),
-            }),
-            ExecutionAttribution::Mixed | ExecutionAttribution::Unknown => None,
+            ExecutionAttribution::Single { .. } | ExecutionAttribution::Mixed
+                if matches!(
+                    last.completed.attribution,
+                    ExecutionAttribution::Single { .. }
+                ) || last.completed.evaluation_scope.is_some() =>
+            {
+                Some(AssessmentTarget {
+                    evaluation_scope: last.completed.evaluation_scope.clone(),
+                    history_membership: stage_membership(entry, segment),
+                    branch_execution: last.completed.branch_execution.clone(),
+                    segment_id: segment.segment_id.clone(),
+                    first_turn_id: segment.first_turn_id.clone(),
+                    through_turn_id: segment.through_turn_id.clone(),
+                    first_ordinal: segment.first_ordinal,
+                    through_ordinal: segment.through_ordinal,
+                    target_partial: segment.partial || segment_has_unproven_closure(entry, segment),
+                    plan: last.completed.plan.clone(),
+                    attribution: last.completed.attribution.clone(),
+                })
+            }
+            _ => None,
         }
     });
     AgentTurnHistorySnapshot {
@@ -608,6 +601,7 @@ pub(super) fn completed_bytes(value: &CompletedAgentTurn) -> usize {
         + value.segment_id.capacity()
         + value.plan.plan_id.capacity()
         + value.selected_branch_id.capacity()
+        + super::evaluation::scope_bytes(&value.evaluation_scope)
         + attribution_bytes(&value.attribution)
         + value.first_request_id.as_ref().map_or(0, String::capacity)
         + value.last_request_id.as_ref().map_or(0, String::capacity)
@@ -643,8 +637,17 @@ pub(super) fn segment_bytes(value: &SegmentState) -> usize {
         + value.key.plan.plan_id.capacity()
         + value.key.selected_branch_id.capacity()
         + value.key.executed_branch_id.capacity()
-        + value.key.model_configuration_id.capacity()
-        + value.key.profile_digest.capacity()
+        + value
+            .key
+            .model_configuration_id
+            .as_ref()
+            .map_or(0, String::capacity)
+        + value
+            .key
+            .profile_digest
+            .as_ref()
+            .map_or(0, String::capacity)
+        + super::evaluation::scope_bytes(&value.key.evaluation_scope)
 }
 
 pub(super) fn store_fixed_bytes() -> usize {

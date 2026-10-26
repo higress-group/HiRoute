@@ -136,6 +136,7 @@ pub struct ExecutionFactEnvelopeV1 {
 #[allow(clippy::large_enum_variant)] // Stable wire fact enum; keep its typed payloads inline.
 pub enum ExecutionFactV1 {
     AgentTurnAdmitted(hiroute_domain::AgentTurnAdmissionV1),
+    RequestInputSelection(hiroute_domain::RequestInputSelectionV1),
     RouteDecision {
         planner_version: String,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -270,6 +271,7 @@ pub enum ExecutionFactV1 {
         partial: bool,
         reason: Option<String>,
     },
+    StageAssessmentRecorded(hiroute_domain::StageAssessmentRecordedV1),
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

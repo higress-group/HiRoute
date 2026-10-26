@@ -26,7 +26,7 @@ pub(super) const SCOPE: &str = "
       json_extract(q.branch_execution_json,'$.candidate_index') AS candidate_index,
       json_extract(q.branch_execution_json,'$.policy') AS branch_policy,
       json_extract(q.branch_execution_json,'$.policy.floor_millis') AS floor_millis,
-      CASE WHEN q.assessment_partial=0
+      CASE WHEN q.assessment_partial=0 AND q.attribution='single'
         AND COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
         AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) THEN q.score END AS reliable_score,

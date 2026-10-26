@@ -337,9 +337,9 @@ pub(super) fn project(
     // assessment with every turn. Positions include cross-turn dependencies.
     let mut assessments: BTreeMap<&str, Vec<&Fact>> = BTreeMap::new();
     for fact in facts {
-        if let ExecutionFactV1::BranchAssessmentRecorded { segment_id, .. } = &fact.value {
+        if let Some(assessment) = fact.value.assessment_record() {
             assessments
-                .entry(segment_id.as_str())
+                .entry(assessment.segment_id)
                 .or_default()
                 .push(fact);
         }
@@ -376,7 +376,10 @@ pub(super) fn project(
             .into_iter()
             .flatten()
             .filter(|fact| {
-                let ExecutionFactV1::BranchAssessmentRecorded {
+                let Some(assessment) = fact.value.assessment_record() else {
+                    return false;
+                };
+                let hiroute_domain::AssessmentRecordRef {
                     plan_id,
                     plan_revision,
                     history_membership,
@@ -384,14 +387,11 @@ pub(super) fn project(
                     target_from_ordinal,
                     target_through_ordinal,
                     ..
-                } = &fact.value
-                else {
-                    return false;
-                };
+                } = assessment;
                 base.view.plan_id.as_deref() == Some(plan_id.as_str())
-                    && base.view.plan_revision == Some(*plan_revision)
-                    && base.view.model_configuration_id.as_ref() == Some(model_configuration_id)
-                    && history_membership.as_ref().map_or_else(
+                    && base.view.plan_revision == Some(plan_revision)
+                    && base.view.model_configuration_id.as_deref() == model_configuration_id
+                    && history_membership.map_or_else(
                         || {
                             !base
                                 .view
@@ -399,7 +399,7 @@ pub(super) fn project(
                                 .iter()
                                 .any(|r| admissions.contains_key(r.request_id.as_str()))
                                 && ordinals.get(&base.view.turn_id).is_some_and(|n| {
-                                    n >= target_from_ordinal && n <= target_through_ordinal
+                                    *n >= target_from_ordinal && *n <= target_through_ordinal
                                 })
                         },
                         |membership| {
@@ -412,19 +412,22 @@ pub(super) fn project(
                         },
                     )
             })
-            .max_by_key(|fact| match &fact.value {
-                ExecutionFactV1::BranchAssessmentRecorded { assessed_at_ms, .. } => {
-                    (*assessed_at_ms, fact.position)
-                }
-                _ => unreachable!(),
+            .max_by_key(|fact| {
+                (
+                    fact.value
+                        .assessment_record()
+                        .expect("assessment candidate")
+                        .assessed_at_ms,
+                    fact.position,
+                )
             });
         if let Some(fact) = score {
             dependency.facts = dependency.facts.max(fact.position);
-            if let ExecutionFactV1::BranchAssessmentRecorded {
-                trigger_request_id, ..
-            } = &fact.value
-                && let Some(trigger) = requests.get(trigger_request_id.as_str())
-            {
+            let assessment = fact
+                .value
+                .assessment_record()
+                .expect("assessment candidate");
+            if let Some(trigger) = requests.get(assessment.trigger_request_id.as_str()) {
                 dependency.include(trigger.position);
             }
         }
@@ -477,7 +480,11 @@ pub(super) fn project(
         }
         .into();
         if let Some(fact) = score {
-            let ExecutionFactV1::BranchAssessmentRecorded {
+            let assessment = fact
+                .value
+                .assessment_record()
+                .expect("assessment candidate");
+            let hiroute_domain::AssessmentRecordRef {
                 trigger_request_id,
                 target_from_turn_id,
                 target_through_turn_id,
@@ -487,21 +494,18 @@ pub(super) fn project(
                 score,
                 partial,
                 ..
-            } = &fact.value
-            else {
-                unreachable!()
-            };
-            turn.view.assessment_state = if *partial { "partial" } else { "scored" }.into();
+            } = assessment;
+            turn.view.assessment_state = if partial { "partial" } else { "scored" }.into();
             turn.view.assessment = Some(PlanQualityAssessment {
                 event_id: fact.event_id.clone(),
                 trigger_request_id: trigger_request_id.to_string(),
-                assessed_at_ms: *assessed_at_ms as i64,
+                assessed_at_ms: assessed_at_ms as i64,
                 target_from_turn_id: target_from_turn_id.to_string(),
                 target_through_turn_id: target_through_turn_id.to_string(),
-                target_from_ordinal: *target_from_ordinal,
-                target_through_ordinal: *target_through_ordinal,
-                score: *score,
-                partial: *partial,
+                target_from_ordinal,
+                target_through_ordinal,
+                score,
+                partial,
                 reason: None,
                 evidence_available: requests.contains_key(trigger_request_id.as_str()),
             });

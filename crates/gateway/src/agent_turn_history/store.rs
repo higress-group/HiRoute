@@ -32,6 +32,8 @@ mod records;
 use records::*;
 #[path = "store/branches.rs"]
 mod branches;
+#[path = "store/evaluation.rs"]
+mod evaluation;
 #[path = "store/opening.rs"]
 mod opening;
 #[path = "store/retry.rs"]
@@ -179,8 +181,9 @@ struct SegmentKey {
     plan: PlanSnapshot,
     selected_branch_id: String,
     executed_branch_id: String,
-    model_configuration_id: String,
-    profile_digest: String,
+    model_configuration_id: Option<String>,
+    profile_digest: Option<String>,
+    evaluation_scope: Option<hiroute_domain::StageEvaluationScopeV1>,
 }
 
 impl Default for AgentTurnHistoryStore {

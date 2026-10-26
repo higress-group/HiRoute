@@ -10,6 +10,9 @@ mod agent_turn_admission_tests;
 #[path = "merged_contract_tests.rs"]
 mod merged_contract_tests;
 
+#[path = "stage_evaluation_tests.rs"]
+mod stage_evaluation_tests;
+
 #[test]
 fn credential_denial_extension_keeps_released_outcomes_and_rejects_unknown_values() {
     // The three original outcomes were verified at supported v0.2.0/v0.3.0/v0.3.1 sources.

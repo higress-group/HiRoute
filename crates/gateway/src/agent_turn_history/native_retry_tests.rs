@@ -1,7 +1,7 @@
 //! Measured retries use a native activation and complete request evidence, not a session lock.
 use super::*;
 
-fn begin(
+pub(super) fn begin(
     store: &AgentTurnHistoryStore,
     scope: &AgentTurnHistoryKey,
     request: &ModelRequestIRV1,

@@ -112,6 +112,7 @@ impl AgentTurnHistorySnapshot {
 #[derive(Clone, Debug)]
 pub(crate) struct AssessmentTarget {
     pub(crate) history_membership: Option<hiroute_domain::HistoryMembershipV1>,
+    pub(crate) evaluation_scope: Option<hiroute_domain::StageEvaluationScopeV1>,
     pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) segment_id: String,
     pub(crate) first_turn_id: String,
@@ -121,6 +122,23 @@ pub(crate) struct AssessmentTarget {
     pub(crate) target_partial: bool,
     pub(crate) plan: PlanSnapshot,
     pub(crate) attribution: ExecutionAttribution,
+}
+
+impl AssessmentTarget {
+    pub(crate) fn evaluation_policy(
+        &self,
+    ) -> Option<(&str, &hiroute_domain::BranchExecutionPolicyV1)> {
+        match &self.attribution {
+            ExecutionAttribution::Single {
+                executed_branch_id, ..
+            } => Some((executed_branch_id, &self.branch_execution.as_ref()?.policy)),
+            ExecutionAttribution::Mixed => {
+                let scope = self.evaluation_scope.as_ref()?;
+                Some((&scope.executed_branch_id, &scope.policy))
+            }
+            ExecutionAttribution::Unknown => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -202,6 +220,7 @@ pub(crate) struct AcceptedExecution {
 #[derive(Clone, Debug)]
 pub(crate) struct CompletedAgentTurn {
     pub(crate) history_membership: Option<hiroute_domain::HistoryMembershipV1>,
+    pub(crate) evaluation_scope: Option<hiroute_domain::StageEvaluationScopeV1>,
     pub(crate) opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) agent_turn_id: String,

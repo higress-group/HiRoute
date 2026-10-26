@@ -135,6 +135,40 @@ impl NativeRoutingView {
         self.current_input_unavailable
     }
 
+    pub(super) fn excerpt_selection(
+        &self,
+        request: &ModelRequestIRV1,
+        source_unverified: bool,
+    ) -> hiroute_domain::RequestInputSelectionV1 {
+        use hiroute_domain::RequestInputSelectionEvidenceV1 as E;
+        let position = if self.current_input_unavailable {
+            None
+        } else {
+            match self.current_input_position {
+                Some(CurrentInputPosition::Event(index)) => Some((index, E::NativeMatched)),
+                Some(CurrentInputPosition::Window { first, .. }) => Some((first, E::NativeMatched)),
+                None if self.projection == NativeInputProjection::Wire => {
+                    observed_input_index(request).map(|index| (index, E::WireObserved))
+                }
+                None => None,
+            }
+        };
+        let selected = position.and_then(|(index, evidence)| {
+            let message = request.messages.get(index)?;
+            if message.role != MessageRole::User {
+                return None;
+            }
+            let ordinal = u32::try_from(request.instructions.len().checked_add(index)?).ok()?;
+            (ordinal <= 65_535).then_some((ordinal, evidence))
+        });
+        hiroute_domain::RequestInputSelectionV1 {
+            version: 1,
+            evidence: selected.map_or(E::Unavailable, |(_, evidence)| evidence),
+            message_ordinal: selected.map(|(ordinal, _)| ordinal),
+            source_unverified,
+        }
+    }
+
     pub(super) fn request<'a>(&'a self, original: &'a ModelRequestIRV1) -> &'a ModelRequestIRV1 {
         original
     }
@@ -142,6 +176,16 @@ impl NativeRoutingView {
     pub(super) fn origin_unverified(&self) -> bool {
         self.origin_unverified
     }
+}
+
+pub(super) fn observed_input_index(request: &ModelRequestIRV1) -> Option<usize> {
+    request.messages.iter().rposition(|message| {
+        message.role == MessageRole::User
+            && message
+                .content
+                .iter()
+                .any(|part| matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. }))
+    })
 }
 
 fn window_input(

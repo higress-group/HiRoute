@@ -42,6 +42,7 @@ fn history(with_target: bool) -> AgentTurnHistorySnapshot {
         })],
         assessment_from: with_target.then_some(0),
         assessment_target: with_target.then(|| AssessmentTarget {
+            evaluation_scope: None,
             history_membership: None,
             branch_execution: Some(BranchExecutionV1 {
                 policy: judgment.execution_policy("Smart saving"),
@@ -181,6 +182,36 @@ fn c_authority() -> RestBranchClassifierAuthorityV1 {
         .unwrap(),
     );
     a
+}
+
+#[test]
+fn c_composite_stage_keeps_quality_question_without_single_model_protection() {
+    let authority = c_authority();
+    let mut history = c_history(&authority);
+    let target = history.assessment_target.as_mut().unwrap();
+    let policy = target.branch_execution.take().unwrap().policy;
+    target.attribution = ExecutionAttribution::Mixed;
+    target.evaluation_scope = Some(hiroute_domain::StageEvaluationScopeV1 {
+        version: 1,
+        executed_branch_id: SMART_SAVING_SCOPE_ID.into(),
+        policy,
+    });
+    let prepared = request_template(&authority, &diagnostic_request(), &history, true).unwrap();
+    let bindings = prepared.bindings.as_ref().unwrap();
+    assert!(
+        bindings.assessment.is_some(),
+        "joint work is still evaluated"
+    );
+    assert!(
+        bindings.applicability.is_none(),
+        "joint quality is not single-model protection"
+    );
+    let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
+    assert_eq!(
+        body["state"]["assessment_stage"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(body["state"]["history_partial"], false);
 }
 fn c_history(a: &RestBranchClassifierAuthorityV1) -> AgentTurnHistorySnapshot {
     let mut h = history(true);

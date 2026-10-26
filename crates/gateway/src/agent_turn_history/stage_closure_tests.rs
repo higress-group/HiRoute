@@ -32,7 +32,7 @@ fn measured(
         .0
 }
 
-fn accepted_tool(store: &AgentTurnHistoryStore, ticket: &AgentTurnTicket, id: &str) {
+pub(super) fn accepted_tool(store: &AgentTurnHistoryStore, ticket: &AgentTurnTicket, id: &str) {
     accepted_output::tool(store, ticket, id, "lookup");
     store.accept_output(
         ticket,

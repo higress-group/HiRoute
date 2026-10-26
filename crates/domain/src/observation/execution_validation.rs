@@ -16,8 +16,13 @@ impl ExecutionFactEnvelopeV1 {
     }
 
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
-        let current = self.schema_version == EXECUTION_FACT_SCHEMA_V2
+        let current_wire = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_pre_stage = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:2babb083d6f0005ded11c5712f7b8183117b6ce06f87aa1892c6ad1aa891a481";
+        let current = current_wire || persisted_pre_stage;
         let persisted_history = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
@@ -72,6 +77,15 @@ impl ExecutionFactEnvelopeV1 {
             || self.channel != ExecutionFactChannelV1::ExecutionFact
         {
             return Err(ExecutionFactError::UnsupportedSchema);
+        }
+        if !current_wire
+            && matches!(
+                self.fact,
+                ExecutionFactV1::RequestInputSelection(_)
+                    | ExecutionFactV1::StageAssessmentRecorded(_)
+            )
+        {
+            return Err(ExecutionFactError::InvalidFact);
         }
         if self.sequence == 0
             || self.occurred_at_unix_nanos == 0
@@ -203,12 +217,17 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if let ExecutionFactV1::BranchAssessmentRecorded {
-            trigger_request_id, ..
-        } = &self.fact
-            && trigger_request_id != &self.correlation.request_id
+        if let Some(assessment) = self.fact.assessment_record()
+            && assessment.trigger_request_id != &self.correlation.request_id
         {
             return Err(ExecutionFactError::InvalidFact);
+        }
+        if let ExecutionFactV1::StageAssessmentRecorded(assessment) = &self.fact
+            && (self.trust.agent_plan_id.as_ref() != Some(&assessment.plan_id)
+                || !matches!(&self.trust.route, crate::ModelRequestRouteV2::Plan { revision, .. }
+                    if *revision == assessment.plan_revision))
+        {
+            return Err(ExecutionFactError::InvalidTrustIdentity);
         }
         if let Some(pricing) = &self.pricing {
             if !(current
@@ -308,6 +327,8 @@ impl ExecutionFactV1 {
     pub fn validate(&self) -> Result<(), ExecutionFactError> {
         match self {
             Self::AgentTurnAdmitted(admission) => admission.validate(),
+            Self::RequestInputSelection(selection) => selection.validate(),
+            Self::StageAssessmentRecorded(assessment) => assessment.validate(),
             Self::RouteDecision(route) => route.validate(),
             Self::CandidateDecision(candidate) => candidate.validate(),
             Self::CredentialLease {

@@ -40,7 +40,8 @@ function seedLater(control, at) {
 }
 function seedUserText(control, request, textValue) {
   const contentId = `${request.request_id}/user`;
-  control.catalog[request.request_id] = [{ content_id: contentId, role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1, part_ordinal: 1 }];
+  control.catalog[request.request_id] = [{ content_id: contentId, role: 'user', kind: 'text', state: 'complete', direction: 'request_input', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1, part_ordinal: 1 }];
+  control.inputSelections[request.request_id] = { version: 1, evidence: 'native_matched', message_ordinal: 1, source_unverified: true };
   control.texts[contentId] = textValue;
 }
 
@@ -677,7 +678,8 @@ const scenarios = [
     c().showRequestExcerpt(id);
     await until(() => document.querySelector('.routing-quote')?.textContent.includes('正在读取消息'), 'pending quote is not missing or cleared');
     assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Pending quote claimed deletion');
-    pending.resolve({ contents: [{ content_id: 'quote-body', role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' }], roots_partial: false, next_cursor: null });
+    pending.resolve({ contents: [{ content_id: 'quote-body', role: 'user', kind: 'text', state: 'complete', direction: 'request_input', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1 }], roots_partial: false, next_cursor: null,
+      input_selection: { version: 1, evidence: 'native_matched', message_ordinal: 1, source_unverified: true } });
     await until(() => document.querySelector('.routing-quote')?.textContent.includes('后来读取到的真实消息'), 'loaded quote replaces pending state');
   }],
   ['request excerpt requires explicit deletion evidence for a cleared label', async () => {
@@ -954,6 +956,72 @@ const scenarios = [
     assert(!document.querySelector('.session-detail')?.innerText.includes('functions.exec'), 'Tool metadata expanded as an answer');
     assert(document.querySelector('.transcript-context'), 'Canonical tool fields lacked a context disclosure');
   }],
+  ['turn excerpt follows the retained input position and never a late context envelope', async () => {
+    for (const state of ['matched', 'literal-prefix', 'legacy', 'unavailable']) {
+      const id = `request/native-position-${state}`;
+      const question = state === 'literal-prefix'
+        ? 'Time sampled while preparing is text I want you to explain.' : 'Add --since to the export command.';
+      await fresh(control => {
+        seedSimple(control);
+        const item = (content_id, message_ordinal) => ({ content_id, message_ordinal,
+          message_occurrence_id: content_id, part_ordinal: 0, role: 'user', kind: 'text',
+          state: 'complete', direction: 'request_input', media_type: 'text/plain' });
+        const contents = [item('actual-question', 1), item('runtime-supplement', 2), item('time-supplement', 3)];
+        Object.assign(control.texts, { 'actual-question': question,
+          'runtime-supplement': 'Current runtime context. Current working directory: /work/example',
+          'time-supplement': 'Time sampled while preparing turn 1, step 1: Browser time zone: example' });
+        control.views.catalog = query => query.request_id !== id ? control.defaultRead('catalog', query) : {
+          contents, roots_partial: false, next_cursor: null,
+          ...(state === 'legacy' ? {} : { input_selection: { version: 1,
+            evidence: state === 'unavailable' ? 'unavailable' : 'native_matched',
+            message_ordinal: state === 'unavailable' ? null : 1, source_unverified: true } }),
+        };
+      });
+      c().showRequestExcerpt(id);
+      const expected = ['legacy', 'unavailable'].includes(state) ? '本轮输入位置未记录' : question;
+      await until(() => document.querySelector('.routing-quote')?.textContent.includes(expected), `excerpt ${state}`);
+      const quote = document.querySelector('.routing-quote').textContent;
+      assert(!quote.includes('Current runtime context') && !quote.includes('Browser time zone'), 'Supplement became the turn question');
+      assert(reads('catalog').some(call => queryOf(call).request_id === id && queryOf(call).include_input_selection === true), 'Position evidence was not explicitly requested');
+      assert(!reads('content').some(call => ['runtime-supplement', 'time-supplement'].includes(queryOf(call).content_id)), 'Excerpt read unrelated context bodies');
+      assert(c().texts['time-supplement'].startsWith('Time sampled'), 'Original context was rewritten');
+    }
+  }],
+  ['initial decision stays Regular after an actual Primary relay and composite grading', async () => {
+    const session = 'observation-session/initial-versus-actual';
+    await fresh(control => {
+      const request = control.makeRequest(session, 0, Date.now() - 1000,
+        { final_native_model: 'actual-primary-model', within_request_fallback: true });
+      control.requests[session] = [request];
+      seedUserText(control, request, 'The real opening question');
+      control.views.routing_timeline = () => ({ complete: true, watermark: 'mixed-grade', turns: [{
+        turn_id: request.request_id, agent_turn_id: 'turn/mixed', segment_id: 'segment/mixed',
+        started_at_ms: request.started_at_ms, finished_at_ms: Date.now(), boundary: 'new_user_message',
+        plan_id: 'plan/fixture', plan_revision: 1, branch_id: 'smart_saving', model_configuration_id: null,
+        reasoning_profile_id: null, group: null,
+        selection: { execution_group: 'regular', simple_probability: 1, simple_threshold_millis: 900,
+          selection_reason: 'simple_task', historical_protection: { outcome: 'suppressed', previous_score: 0.11,
+            competence_floor_millis: 500, applicability_probability: 0.26, applicability_boundary_millis: 500 } },
+        tool_continuations: 0, relays: [{ request_id: request.request_id, from_model: 'initial-regular-model', to_model: 'actual-primary-model' }],
+        assessment_state: 'scored', assessment: { score: 0.94, partial: false, target_from_turn_id: 'turn/mixed',
+          target_through_turn_id: 'turn/mixed', target_from_ordinal: 1, target_through_ordinal: 1 },
+        competence_floor_millis: 500, protected_turn_ids: [], status: 'completed',
+        requests: [{ request_id: request.request_id, started_at_ms: request.started_at_ms, duration_ms: 10,
+          native_model: 'actual-primary-model', input_tokens: 1, output_tokens: 1, cache_read_tokens: 0,
+          cache_read_share: 0, costs: [], outcome: 'accepted' }],
+        transitions: [], cost_by_model: [], evidence_partial: false, content_digest: 'mixed-membership',
+      }] });
+    });
+    await until(() => rows().length === 1, 'mixed session'); rows()[0].click();
+    await until(() => document.querySelector('.routing-judgments strong'), 'initial decision explanation');
+    const arrow = document.querySelector('.routing-judgments strong').textContent;
+    assert(arrow.includes('常规') && !arrow.includes('主力') && !arrow.includes('actual-primary-model'), 'Eventual execution overwrote the initial decision');
+    assert(document.querySelector('.routing-detail-head').textContent.includes('actual-primary-model'), 'Actual accepted executor was hidden');
+    assert(document.querySelector('.routing-detail-facts').textContent.includes('1 次请求内接力'), 'Real relay was removed');
+    assert(document.querySelector('.routing-turn-detail').textContent.includes('不计入单模型能力'), 'Composite quality was presented as one model capability');
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('The real opening question'), 'actual opening excerpt');
+  }],
+
 ];
 
 export const sessionWindowScenarioCount = scenarios.length;

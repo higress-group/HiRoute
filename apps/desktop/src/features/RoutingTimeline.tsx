@@ -19,7 +19,7 @@ export type TimelineTurn = {
   turn_id: string; agent_turn_id: string | null; segment_id: string | null; started_at_ms: number; finished_at_ms: number | null;
   boundary: 'new_user_message' | 'context_rebuilt' | 'unknown'; plan_id: string | null; plan_revision: number | null;
   branch_id: string | null; model_configuration_id: string | null; reasoning_profile_id: string | null; group: string | null;
-  selection: { extension_reason?: string; simple_probability: number | null; simple_threshold_millis: number | null; selection_reason: string; competence_trigger?: { score: number; floor_millis: number } | null; historical_protection?: TimelineProtection | null } | null;
+  selection: { execution_group?: 'regular' | 'primary'; extension_reason?: string; simple_probability: number | null; simple_threshold_millis: number | null; selection_reason: string; competence_trigger?: { score: number; floor_millis: number } | null; historical_protection?: TimelineProtection | null } | null;
   tool_continuations: number; relays: { request_id: string; from_model: string | null; to_model: string | null }[];
   assessment_state: string; assessment: { score: number; partial: boolean; target_from_turn_id?: string; target_through_turn_id?: string; target_from_ordinal: number; target_through_ordinal: number } | null;
   competence_floor_millis: number | null; protected_turn_ids: string[]; status: string; requests: TimelineRequest[];
@@ -193,6 +193,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   const boundary = (turn: TimelineTurn) => turn.boundary === 'new_user_message' ? text('新消息', 'New message') : turn.boundary === 'context_rebuilt' ? text('上下文重建', 'Context rebuilt') : text('边界未确认', 'Boundary unknown');
   const laneName = (lane: Lane) => lane === 'primary' ? text('主力', 'Primary') : lane === 'regular' ? text('常规', 'Regular') : text('分组未记录', 'Group unknown');
   const tone = (lane: Lane) => lane === 'regular' ? 'cyan' : lane === 'primary' ? 'purple' : '';
+  const selectedLane = (turn: TimelineTurn): Lane => turn.selection?.execution_group ?? 'unknown';
   const reason = (turn: TimelineTurn) => selectionReasonLabel(turn.selection?.selection_reason ?? '', language);
   const fixed = (millis: number | null | undefined) => millis == null ? '—' : (millis / 1000).toFixed(2);
   const probability = (turn: TimelineTurn) => turn.selection?.simple_probability == null ? text('简单概率未知', 'P(simple) unknown') : `${text('简单概率', 'P(simple)')} ${turn.selection.simple_probability.toFixed(2)}`;
@@ -264,12 +265,12 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
       <p>{text('当前工作：', 'Current task: ')}{task}{p != null && <> ({p.toFixed(2)}{threshold != null && <> {simple ? '≥' : '<'} {fixed(threshold)}</>})</>}</p>
       <p>{text('上一阶段：', 'Previous stage: ')}{history.previous_score == null ? text('评分未记录', 'Score not recorded') : history.previous_score.toFixed(2)} · {text('胜任下限 ', 'Competence floor ')}{fixed(history.competence_floor_millis)}</p>
       <p>{history.outcome === 'not_needed' && a != null ? <>{text('之前的问题相关概率 ', 'Earlier problem relevance ')}{a.toFixed(2)} · {applicability}</> : <>{applicability}{a != null && <> ({a.toFixed(2)})</>}</>}</p>
-      <strong>→ {laneName(laneOf(turn))} · {modelOf(turn) ?? text('模型未记录', 'Model unknown')}</strong>
+      <strong>→ {laneName(selectedLane(turn))}</strong>
     </div>;
   }
 
   function explanation(turn: TimelineTurn) {
-    const target = `${laneName(laneOf(turn))} · ${modelOf(turn) ?? text('模型未记录', 'model unknown')}`;
+    const target = laneName(selectedLane(turn));
     const p = turn.selection?.simple_probability, threshold = turn.selection?.simple_threshold_millis;
     const trigger = turn.selection?.competence_trigger;
     switch (turn.selection?.selection_reason) {
@@ -292,7 +293,9 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         : text('覆盖范围包含当前已加载范围外或身份未确认的轮次', 'covers turns outside the loaded range or without a confirmed identity');
       const floor = turn.competence_floor_millis != null ? text(`，下限 ${fixed(turn.competence_floor_millis)}`, `, floor ${fixed(turn.competence_floor_millis)}`) : '';
       const protectedNext = turn.protected_turn_ids.length ? text('低于下限，下一轮交给主力。', ' Below the floor, so the next agent turn went to Primary.') : '';
-      return text(`阶段评分${covered}${floor}。${turn.assessment.partial ? '证据不完整。' : ''}${protectedNext}`, `This stage score ${covered}${floor}.${turn.assessment.partial ? ' Evidence is incomplete.' : ''}${protectedNext}`);
+      const composite = !turn.model_configuration_id
+        ? text('多模型共同执行的整体评分，不计入单模型能力。', 'Overall score for a stage executed by multiple models; excluded from individual model capability.') : '';
+      return text(`阶段评分${covered}${floor}。${turn.assessment.partial ? '证据不完整。' : ''}${composite}${protectedNext}`, `This stage score ${covered}${floor}.${turn.assessment.partial ? ' Evidence is incomplete.' : ''}${composite}${protectedNext}`);
     }
     if (turn.status === 'running') return text('这一轮还在进行，结束后才评分。', 'This agent turn is still running; it is scored after it ends.');
     if (turn.assessment_state === 'pending') return text('下一轮开始后，根据你的反馈给这一轮评分。', 'Scored from your feedback once the next agent turn starts.');
