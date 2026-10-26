@@ -3,6 +3,9 @@ use super::*;
 #[path = "trust_cost_auxiliary_tests.rs"]
 mod auxiliary;
 
+#[path = "trust_cost_purpose_work_tests.rs"]
+mod purpose_work;
+
 fn trial_request(
     store: &LocalObservationStore,
     suffix: &str,
