@@ -37,7 +37,10 @@ impl LocalControlAdapter {
         }
         let kind = if class == SettingsAgentClass::OpenCode {
             hiroute_domain::AgentKindV1::OpenCode
-        } else if class == SettingsAgentClass::Dsh {
+        } else if matches!(
+            class,
+            SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop
+        ) {
             hiroute_domain::AgentKindV1::DeepseekHarness
         } else if class == SettingsAgentClass::Pi {
             hiroute_domain::AgentKindV1::Pi
@@ -425,6 +428,8 @@ impl LocalControlAdapter {
                 ingress: protocol,
                 available_surfaces: [if kind == hiroute_domain::AgentKindV1::OpenCode {
                     AgentModelSurfaceV2::OpenCodeCli
+                } else if class == SettingsAgentClass::DshDesktop {
+                    AgentModelSurfaceV2::DshDesktop
                 } else if kind == hiroute_domain::AgentKindV1::DeepseekHarness {
                     AgentModelSurfaceV2::DshCli
                 } else if kind == hiroute_domain::AgentKindV1::Pi {

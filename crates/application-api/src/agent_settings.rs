@@ -309,7 +309,10 @@ impl AgentModelSettingsStatusV2 {
             AgentModelSelectionV2::HermesDefault { .. } => {
                 *surface == AgentModelSurfaceV2::HermesCli
             }
-            AgentModelSelectionV2::DshAdditional { .. } => *surface == AgentModelSurfaceV2::DshCli,
+            AgentModelSelectionV2::DshAdditional { .. } => matches!(
+                surface,
+                AgentModelSurfaceV2::DshCli | AgentModelSurfaceV2::DshDesktop
+            ),
             AgentModelSelectionV2::OpenCodeAdditional { .. } => {
                 *surface == AgentModelSurfaceV2::OpenCodeCli
             }

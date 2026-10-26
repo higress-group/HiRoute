@@ -19,6 +19,7 @@ pub(super) fn is_settings_additional_model(intent: &ExternalEffectIntentV1) -> b
                 "agent_qoder_default"
                     | "agent_pi_default"
                     | "agent_dsh_default"
+                    | "agent_dsh_desktop"
                     | "agent_opencode_default"
             )
         )

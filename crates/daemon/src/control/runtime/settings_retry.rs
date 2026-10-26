@@ -19,6 +19,7 @@ impl LocalControlAdapter {
                                 | SettingsAgentClass::Qoder
                                 | SettingsAgentClass::Pi
                                 | SettingsAgentClass::Dsh
+                                | SettingsAgentClass::DshDesktop
                                 | SettingsAgentClass::OpenCode
                                 | SettingsAgentClass::Hermes
                         )
@@ -51,6 +52,7 @@ impl LocalControlAdapter {
                     SettingsAgentClass::Qoder
                         | SettingsAgentClass::Pi
                         | SettingsAgentClass::Dsh
+                        | SettingsAgentClass::DshDesktop
                         | SettingsAgentClass::OpenCode
                 )
             )

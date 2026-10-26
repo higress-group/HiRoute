@@ -465,6 +465,12 @@ impl ProductionControlRuntime {
             hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,
         )
         .map_err(|e| e.to_string())?;
+        let dsh_desktop_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent_dsh_desktop",
+            hiroute_integrations::DSH_PROFILE_ID_V1,
+            hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,
+        )
+        .map_err(|e| e.to_string())?;
         let opencode_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
             "agent_opencode_default",
             hiroute_integrations::OPENCODE_PROFILE_ID_V1,
@@ -535,6 +541,18 @@ impl ProductionControlRuntime {
                 ));
             }
         }
+        scoped_targets.push((
+            AgentConnectionEffectRoleV1::NativeRoutingAdapter
+                .target_for(&dsh_desktop_subject)
+                .map_err(|e| e.to_string())?,
+            scanner.dsh_desktop_routing_adapter_target(),
+        ));
+        scoped_targets.push((
+            AgentConnectionEffectRoleV1::ManagedConfiguration
+                .target_for(&dsh_desktop_subject)
+                .map_err(|e| e.to_string())?,
+            scanner.dsh_desktop_models_target(),
+        ));
         let mut external_targets = [
             (
                 opencode_model_target.clone(),

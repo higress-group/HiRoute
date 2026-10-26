@@ -103,13 +103,15 @@ impl LocalControlAdapter {
         } else {
             request.clone()
         };
+        let desktop = self.settings_agent_for_context(&request.context_id)
+            == Some(SettingsAgentClass::DshDesktop);
         let hermes = self.settings_agent_for_context(&request.context_id)
             == Some(SettingsAgentClass::Hermes);
-        if hermes || request.include_skills {
+        if !desktop && (hermes || request.include_skills) {
             status.management_skill =
                 Some(self.management_settings_status(&collaboration_request)?);
         }
-        if !hermes || request.include_skills {
+        if !desktop && (!hermes || request.include_skills) {
             status.collaboration =
                 Some(self.collaboration_settings_status(&collaboration_request)?);
         }
@@ -274,6 +276,7 @@ impl LocalControlAdapter {
                     SettingsAgentClass::Qoder
                         | SettingsAgentClass::Pi
                         | SettingsAgentClass::Dsh
+                        | SettingsAgentClass::DshDesktop
                         | SettingsAgentClass::OpenCode
                 ) {
                     let model_applied =
@@ -489,6 +492,10 @@ impl LocalControlAdapter {
                             SettingsAgentClass::Dsh,
                         ) => [hiroute_domain::AgentModelSurfaceV2::DshCli].into(),
                         (
+                            hiroute_domain::AgentModelSelectionV2::DshAdditional { .. },
+                            SettingsAgentClass::DshDesktop,
+                        ) => [hiroute_domain::AgentModelSurfaceV2::DshDesktop].into(),
+                        (
                             hiroute_domain::AgentModelSelectionV2::HermesDefault { .. },
                             SettingsAgentClass::Hermes,
                         ) => [hiroute_domain::AgentModelSurfaceV2::HermesCli].into(),
@@ -631,6 +638,7 @@ fn model_intent(
             super::settings_facts::SettingsAgentClass::Qoder
             | super::settings_facts::SettingsAgentClass::Pi
             | super::settings_facts::SettingsAgentClass::Dsh
+            | super::settings_facts::SettingsAgentClass::DshDesktop
             | super::settings_facts::SettingsAgentClass::OpenCode => {
                 super::native_additional_model::is_settings_additional_model(intent)
             }
@@ -647,7 +655,7 @@ fn model_action(
             hiroute_application::agent_connection::HermesModelFileAction::Configure { .. } => Ok(ModelAction::Configure),
             hiroute_application::agent_connection::HermesModelFileAction::Restore { .. } => Ok(ModelAction::Restore),
         },
-        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi | super::settings_facts::SettingsAgentClass::Dsh | super::settings_facts::SettingsAgentClass::OpenCode => {
+        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi | super::settings_facts::SettingsAgentClass::Dsh | super::settings_facts::SettingsAgentClass::DshDesktop | super::settings_facts::SettingsAgentClass::OpenCode => {
             match hiroute_application::agent_connection::settings_additional_model_file_for_operation(
                 operation, intent,
             )?
@@ -705,6 +713,7 @@ fn model_endpoint_matches_runtime(
         SettingsAgentClass::Qoder
         | SettingsAgentClass::Pi
         | SettingsAgentClass::Dsh
+        | SettingsAgentClass::DshDesktop
         | SettingsAgentClass::OpenCode => {
             let endpoint = super::native_additional_model::additional_model_endpoint(
                 additional_model_kind(intent)?,

@@ -416,6 +416,47 @@ never chooses a native default or takes over an unowned equal-name provider.
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258609244
 
+### Requirement: DSH Desktop owns an independent native model target
+
+The official macOS DSH Desktop installation SHALL be discoverable independently of
+an npm DSH CLI. Its model entry SHALL use `agent_dsh_desktop` and surface
+`dsh_desktop`, retaining the registered DSH integration profile. Existing
+`agent_dsh_default` Web settings and their restoration authority SHALL retain
+their identity and `profiles/web/cordis.patch.yml` target.
+
+Desktop configuration SHALL use the selected DSH_HOME's
+`profiles/desktop/cordis.patch.yml`. Provider mapping, bundled routing adapter and
+its native registration SHALL be installed through the ordinary protected
+settings transaction. The Desktop adapter SHALL be adjacent to that patch, with
+independent artifact ownership and access grants. Saving, rotating or restoring
+one profile SHALL preserve the other profile, native providers and unrelated
+user content. Restore SHALL remain available after the Desktop application is
+removed; missing or unsupported installation SHALL block new Configure attempts.
+
+Configure SHALL verify the installed app's bundled public CLI in an isolated
+HOME, DSH_HOME and working directory, without activating user plugins or models.
+The shipped Desktop profile uses the standard Web bundles; because upstream
+forbids a Desktop-profile CLI dump, admission SHALL combine the bundled CLI's
+standard Web composition with the actual Desktop manifest and static patches.
+Custom bundle/dependency composition SHALL be rejected rather than inferred from
+a default dump. Capture SHALL bind executable/archive identity, home patch,
+Desktop patch and manifest, and recheck them before returning. A Web-profile
+change SHALL NOT invalidate an independent Desktop proof.
+
+Desktop model support SHALL NOT imply Worker, collaboration Skill or management
+Skill support. Those operations remain unavailable until independently supported.
+A composition dump or fixture SHALL NOT establish actual Desktop loading or
+Gateway request provenance; those require native client evidence.
+
+#### Scenario: Desktop-only install and independent recovery
+
+- **GIVEN** the official Desktop app is installed without an npm DSH CLI
+- **WHEN** a user saves published routes in the Desktop entry
+- **THEN** the native Desktop model selector SHALL load those routes with the bundled routing adapter
+- **AND** Web configuration SHALL retain its previous content and ownership
+- **WHEN** HiRoute restarts and the Desktop app is removed
+- **THEN** the retained Desktop operation SHALL still restore only its owned model configuration and adapter.
+
 ### Requirement: DSH configuration uses public static composition
 
 DSH uses public CLI/ACP/config, no internal SDK/plugin/session decoder. Static scan

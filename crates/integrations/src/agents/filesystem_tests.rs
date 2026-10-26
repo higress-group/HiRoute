@@ -94,6 +94,7 @@ fn layout_with_claude_version(root: &Path, claude_version: &str) -> AgentFilesys
         pi_executable: root.join("bin/pi"),
         pi_config_root: root.join("home/.pi/agent"),
         dsh_executable: root.join("bin/dsh-not-installed"),
+        dsh_desktop_executable: None,
         dsh_config_root: root.join("home/.dsh"),
         qoder_home: home.clone(),
         qoder_config_root: home.join(".qoder"),
@@ -1062,3 +1063,7 @@ mod managed_launch_tests;
 
 #[path = "filesystem_tests/opencode.rs"]
 mod opencode_tests;
+
+#[cfg(unix)]
+#[path = "dsh_desktop_tests.rs"]
+mod dsh_desktop;

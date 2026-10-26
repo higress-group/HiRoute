@@ -39,7 +39,7 @@ export type CollaborationStatus = {
   restore_point_ref: string | null;
   current_selection?: { trigger_mode: AgentCollaborationTriggerMode } | null;
 };
-export type AgentModelSurface = 'codex_cli' | 'codex_desktop' | 'claude_cli' | 'qoder_cli' | 'pi_cli' | 'dsh_cli' | 'hermes_cli' | 'opencode_cli';
+export type AgentModelSurface = 'codex_cli' | 'codex_desktop' | 'claude_cli' | 'qoder_cli' | 'pi_cli' | 'dsh_cli' | 'dsh_desktop' | 'hermes_cli' | 'opencode_cli';
 export type AgentReasoningSelection =
   | { kind: 'profile'; profile: string }
   | { kind: 'toggle'; enabled: boolean }

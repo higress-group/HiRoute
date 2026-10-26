@@ -31,6 +31,8 @@ use super::{
 
 #[path = "filesystem/claude_settings.rs"]
 mod claude_settings;
+#[path = "dsh_desktop.rs"]
+mod dsh_desktop;
 #[path = "dsh_native.rs"]
 mod dsh_native;
 #[path = "claude_observation.rs"]
@@ -135,6 +137,8 @@ pub struct AgentFilesystemLayoutV1 {
     pub opencode_executable: PathBuf,
     pub opencode_context: Option<super::OpenCodeNativeContext>,
     pub dsh_executable: PathBuf,
+    /// Official macOS Desktop carrier, independently installed from the npm CLI.
+    pub dsh_desktop_executable: Option<PathBuf>,
     pub dsh_config_root: PathBuf,
     pub qoder_home: PathBuf,
     pub qoder_config_root: PathBuf,
@@ -183,6 +187,7 @@ impl AgentFilesystemLayoutV1 {
             qoder_executable: PathBuf::from("qoder"),
             pi_executable: PathBuf::from("pi"),
             dsh_executable: PathBuf::from("dsh"),
+            dsh_desktop_executable: dsh_desktop::installed_executable(home),
             opencode_executable: PathBuf::from("opencode"),
             opencode_context: super::OpenCodeNativeContext::from_environment(home).ok(),
             dsh_config_root: std::env::var_os("DSH_HOME")
@@ -441,6 +446,7 @@ impl FilesystemAgentScannerV1 {
             "agent_qoder_default",
             "agent_pi_default",
             "agent_dsh_default",
+            "agent_dsh_desktop",
             "agent_opencode_default",
             "agent_claude_default",
         ] {
@@ -452,6 +458,7 @@ impl FilesystemAgentScannerV1 {
                 "agent_qoder_default" => self.qoder_settings_discovery(false),
                 "agent_pi_default" => self.pi_settings_discovery(),
                 "agent_dsh_default" => self.scan_dsh(),
+                "agent_dsh_desktop" => self.scan_dsh_desktop(),
                 "agent_opencode_default" => self.opencode_settings_discovery(),
                 _ => match executable_probe(&self.layout.claude_executable) {
                     ExecutableProbe::Installed(executable) => {
@@ -637,6 +644,7 @@ impl FilesystemAgentScannerV1 {
             | hiroute_domain::AgentModelSurfaceV2::QoderCli
             | hiroute_domain::AgentModelSurfaceV2::PiCli
             | hiroute_domain::AgentModelSurfaceV2::DshCli
+            | hiroute_domain::AgentModelSurfaceV2::DshDesktop
             | hiroute_domain::AgentModelSurfaceV2::OpenCodeCli
             | hiroute_domain::AgentModelSurfaceV2::HermesCli => None,
         }
@@ -675,6 +683,9 @@ impl FilesystemAgentScannerV1 {
             }
             "agent_dsh_default" if self.dsh_executable_target().is_some() => {
                 [hiroute_domain::AgentModelSurfaceV2::DshCli].into()
+            }
+            "agent_dsh_desktop" if self.dsh_desktop_executable_target().is_some() => {
+                [hiroute_domain::AgentModelSurfaceV2::DshDesktop].into()
             }
             "agent_pi_default" if self.pi_executable_target().is_some() => {
                 [hiroute_domain::AgentModelSurfaceV2::PiCli].into()

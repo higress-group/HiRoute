@@ -103,7 +103,7 @@ pub fn decode_settings_native_plugin_file(
             .as_str()
             .and_then(|agent| match agent {
                 "agent_pi_default" => Some(("pi", "pi-responses-v1", "builtin/pi-responses/v1")),
-                "agent_dsh_default" => {
+                "agent_dsh_default" | "agent_dsh_desktop" => {
                     Some(("dsh", "dsh-responses-v1", "builtin/dsh-responses/v1"))
                 }
                 "agent_opencode_default" => Some((

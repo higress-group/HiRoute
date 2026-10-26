@@ -154,6 +154,17 @@ verification button or status badge.
 
 ## DSH static composition
 
+The Web and official macOS Desktop entries have separate subjects and native
+profiles. [Desktop admission](../dsh_desktop.rs) uses the app-owned Electron
+carrier and public bundled CLI, with standard Desktop manifest validation; it
+never changes the existing Web target or requires an npm CLI. Each profile owns
+its adjacent routing adapter and native registration through the same transaction.
+The bundled CLI cannot dump Desktop directly, so its standard Web dump is only
+composition evidence. Actual Desktop loading and provenance need native acceptance.
+Desktop Restore uses retained file ownership even when the app is gone; custom
+Desktop bundle/dependency composition blocks new Configure. Passive source import,
+Worker ACP and shared Skills remain under the existing Web/CLI entry.
+
 DSH uses the same per-provider ownership, protected grant, stale-preview and
 restore engine. Its leaf is [dsh_config.rs](../dsh_config.rs): bounded static YAML
 patch sequences, one affected `llm-pi-ai` row, public `baseURL` and

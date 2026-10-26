@@ -17,7 +17,7 @@ export function agentBrandFromId(agentId: string): BrandKind {
   if (normalized.includes('claude')) return 'claude-code';
   if (normalized.includes('qoder')) return 'qoder';
   if (normalized.includes('opencode')) return 'opencode';
-  if (normalized === 'agent_dsh_default') return 'dsh';
+  if (normalized === 'agent_dsh_default' || normalized === 'agent_dsh_desktop') return 'dsh';
   if (normalized === 'agent_pi_default') return 'pi';
   if (normalized === 'agent_hermes_default') return 'hermes';
   return 'agent';

@@ -83,6 +83,7 @@ pub enum AgentModelSurfaceV2 {
     QoderCli,
     PiCli,
     DshCli,
+    DshDesktop,
     #[serde(rename = "opencode_cli")]
     OpenCodeCli,
     HermesCli,

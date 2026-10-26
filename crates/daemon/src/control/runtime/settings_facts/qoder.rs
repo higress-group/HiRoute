@@ -10,6 +10,8 @@ impl LocalControlAdapter {
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         let discovery = if class == SettingsAgentClass::OpenCode {
             self.scanner.opencode_settings_discovery()
+        } else if class == SettingsAgentClass::DshDesktop {
+            self.scanner.dsh_desktop_settings_discovery()
         } else if class == SettingsAgentClass::Dsh {
             self.scanner.dsh_settings_discovery()
         } else if class == SettingsAgentClass::Pi {

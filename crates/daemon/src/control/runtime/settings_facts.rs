@@ -66,6 +66,7 @@ impl LocalControlAdapter {
             "agent_qoder_default" => SettingsAgentClass::Qoder,
             "agent_pi_default" => SettingsAgentClass::Pi,
             "agent_dsh_default" => SettingsAgentClass::Dsh,
+            "agent_dsh_desktop" => SettingsAgentClass::DshDesktop,
             "agent_opencode_default" => SettingsAgentClass::OpenCode,
             _ => return None,
         };
@@ -91,6 +92,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder,
             SettingsAgentClass::Pi,
             SettingsAgentClass::Dsh,
+            SettingsAgentClass::DshDesktop,
             SettingsAgentClass::OpenCode,
         ]
         .into_iter()
@@ -117,29 +119,41 @@ impl LocalControlAdapter {
             .settings_agent_for_context(&spec.context_id)
             .ok_or(ControlReadError::NotFound)?;
         self.check_codex_slot(spec, class)?;
+        // Desktop model access does not establish independent Skill/Worker support.
+        if class == SettingsAgentClass::DshDesktop && !spec.keeps_skills() {
+            return Err(ControlReadError::Denied);
+        }
         // Probe the installed composition once per facts capture, not once per
         // native-file snapshot. Apply captures again under the admission lock;
         // mutable configuration still participates in both snapshots below.
-        #[cfg(unix)]
-        let dsh_composition = if class == SettingsAgentClass::Dsh
-            && matches!(spec.model, AgentFacetIntent::Configure { .. })
+        #[cfg(any(unix, windows))]
+        let dsh_composition = if matches!(
+            class,
+            SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop
+        ) && matches!(spec.model, AgentFacetIntent::Configure { .. })
         {
             Some(
-                self.scanner
-                    .check_dsh_model_configuration()
-                    .map_err(|_| ControlReadError::Unavailable)?,
+                (if class == SettingsAgentClass::DshDesktop {
+                    self.scanner.check_dsh_desktop_model_configuration()
+                } else {
+                    self.scanner.check_dsh_model_configuration()
+                })
+                .map_err(|_| ControlReadError::Unavailable)?,
             )
         } else {
             None
         };
         let first = self.complete_settings_snapshot(spec, class)?;
         let second = self.complete_settings_snapshot(spec, class)?;
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         if let Some(checked) = dsh_composition
-            && !self
-                .scanner
-                .dsh_model_configuration_is_current(&checked)
-                .map_err(|_| ControlReadError::SnapshotChanged)?
+            && !(if class == SettingsAgentClass::DshDesktop {
+                self.scanner
+                    .dsh_desktop_model_configuration_is_current(&checked)
+            } else {
+                self.scanner.dsh_model_configuration_is_current(&checked)
+            })
+            .map_err(|_| ControlReadError::SnapshotChanged)?
         {
             return Err(ControlReadError::SnapshotChanged);
         }
@@ -159,6 +173,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
                 | SettingsAgentClass::Pi
                 | SettingsAgentClass::Dsh
+                | SettingsAgentClass::DshDesktop
                 | SettingsAgentClass::OpenCode
         ) {
             return self.attach_additional_model_facts(
@@ -376,6 +391,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::DshDesktop
             | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
@@ -445,7 +461,7 @@ impl LocalControlAdapter {
                 selected_collaboration_restore = Some(original.operation_id.clone());
             }
             let model = match class {
-                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh | SettingsAgentClass::Hermes | SettingsAgentClass::OpenCode => return Err(ControlReadError::Denied),
+                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop | SettingsAgentClass::Hermes | SettingsAgentClass::OpenCode => return Err(ControlReadError::Denied),
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => original
                     .plan
                     .external()
@@ -593,6 +609,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::DshDesktop
             | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
@@ -887,6 +904,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::DshDesktop
             | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);

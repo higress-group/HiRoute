@@ -243,6 +243,12 @@ not replace real native compaction, Continue or concurrent-route journeys.
 
 ### DeepSeek Harness
 
+[Official Desktop admission](../../crates/integrations/src/agents/dsh_desktop.rs)
+uses the app's bundled public CLI and independent `profiles/desktop` settings.
+The Web entry retains `profiles/web` ownership; both reuse protected additional
+provider effects and bundled routing registration. Desktop discovery does not
+require npm DSH, and its model support does not advertise Worker/Skill support.
+
 DSH uses public CLI/configuration and native ACP; there is no SDK import or native
 history decoder. [Static source/configuration rules](../../crates/integrations/src/agents/additional_native/README.md#dsh-static-composition)
 belong to the native leaf. [Local capability checks](../../crates/integrations/src/agents/dsh_native.rs)

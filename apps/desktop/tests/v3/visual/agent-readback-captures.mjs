@@ -35,3 +35,29 @@ export async function agentReadbackCaptures(client, baseUrl, output) {
   }
   return results;
 }
+
+
+export async function dshDesktopCaptures(client, baseUrl, output) {
+  const results = [];
+  for (const [language, theme] of [['zh', 'dark'], ['en', 'light']]) {
+    for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) {
+      await navigate(client, new URL(`agent-trust.html?language=${language}&theme=${theme}`, baseUrl).href, viewport);
+      await waitFor(client, 'Boolean(window.agentTrust && document.querySelector(".native-list .list-row"))');
+      await evaluate(client, `import('/agent-trust-scenarios.mjs').then(m => m.showDshDesktopEditor())`);
+      const geometry = await evaluate(client, `(() => {
+        const box = document.querySelector('[role=dialog]'), button = box.querySelector('button[type=submit]');
+        const a = button.getBoundingClientRect();
+        return { overflow: box.scrollWidth > box.clientWidth + 1,
+          bodyOverflow: document.documentElement.scrollWidth > innerWidth + 1,
+          actionVisible: a.left >= 0 && a.right <= innerWidth + 1 && a.top >= 0 && a.bottom <= innerHeight,
+          text: box.innerText };
+      })()`);
+      if (geometry.overflow || geometry.bodyOverflow || !geometry.actionVisible) throw Error(`DSH Desktop geometry: ${JSON.stringify({ language, viewport, geometry })}`);
+      const id = `dsh-desktop-${language}-${theme}-${viewport.width}`;
+      const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+      await writeFile(path.join(output, `${id}.png`), Buffer.from(shot.data, 'base64'));
+      results.push({ id, state: 'green', language, theme, viewport, geometry, screenshot: `${id}.png` });
+    }
+  }
+  return results;
+}
