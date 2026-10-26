@@ -156,8 +156,31 @@ pub(super) fn run_case(root: &Path) {
         .start_managed()
         .unwrap();
     let mut input = vec![json!({"role":"user","content":"A"})];
-    for call in ["one", "two"] {
+    for (index, call) in ["one", "two"].into_iter().enumerate() {
         let response = send(address, &input, "1");
+        if !response.starts_with(b"HTTP/1.1 200") {
+            let captured = wait_requests(&facts, index + 1);
+            let trace: Vec<_> = captured
+                .iter()
+                .filter(|event| {
+                    matches!(
+                        event["fact"]["kind"].as_str(),
+                        Some(
+                            "route_decision"
+                                | "candidate_decision"
+                                | "attempt_started"
+                                | "attempt_finished"
+                                | "request_finished"
+                        )
+                    )
+                })
+                .collect();
+            panic!(
+                "tool {call}: {}; execution trace: {}",
+                String::from_utf8_lossy(&response),
+                json!(trace)
+            );
+        }
         assert!(
             response.starts_with(b"HTTP/1.1 200"),
             "tool {call}: {}",
