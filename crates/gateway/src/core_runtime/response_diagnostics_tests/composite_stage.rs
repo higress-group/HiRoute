@@ -90,6 +90,7 @@ pub(super) fn run_case(root: &Path) {
         native_protocol,
         judgment: saved,
         classifier,
+        simple_groups,
         ..
     } = &mut snapshot.aliases[0].routing.as_mut().unwrap().request_owned
     {
@@ -102,6 +103,13 @@ pub(super) fn run_case(root: &Path) {
             .unwrap(),
         );
         *saved = Some(judgment);
+        // The source helper tests isolated groups. Declare the actual Regular
+        // then Primary exhaustion path rather than assuming group affinity
+        // implicitly authorizes a relay.
+        *simple_groups = vec![
+            crate::server::publication::AliasGroupIdV1::Economy,
+            crate::server::publication::AliasGroupIdV1::Primary,
+        ];
         let ComplexityClassifierModeV1::DecisionService { service } = &mut classifier.mode else {
             unreachable!()
         };
