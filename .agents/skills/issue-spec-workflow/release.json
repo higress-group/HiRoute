@@ -1,13 +1,13 @@
 {
   "schema": "issue-spec.generated-workflow/v1",
   "release": "development",
-  "source_revision": "6182e4fce4d42bae3a7cace03abc9d4c63967c04",
+  "source_revision": "d8aa3056e12678c4442349282a14d7bdbd0751f0",
   "requirements_skill_content_id": "sha256:35e55ba3b52b377acbd36ca4305cd958e3bd593008d576a7a82c9b06ab862ed1",
-  "content_digest": "sha256:3078d78d6f174a3a2233e6c96d3e4defca4c8dea852d449fca2c0915ef42039a",
+  "content_digest": "sha256:4f502aceff10a68c7422cdef062eb4b2fea56724c18488c79aa674fb43f55f55",
   "files": [
     {
       "path": ".agents/skills/issue-spec-apply/SKILL.md",
-      "sha256": "3abd84063d2b0968d97f10b997c2fe77b2ac63fc03c593137451c87312d6e148"
+      "sha256": "4824f499d6cf6014e58d5f28efd69295dffab267fe79117f57fb33d5a5ca07c8"
     },
     {
       "path": ".agents/skills/issue-spec-github/SKILL.md",
@@ -15,7 +15,7 @@
     },
     {
       "path": ".agents/skills/issue-spec-propose/SKILL.md",
-      "sha256": "618a3b0b8770bf43a9ef42afd243fee705bc18450c5021f892057413466b195b"
+      "sha256": "4532874b800cd897bfb3eb8b5b8f1aa6f62f861a1258f8b01c63362604e2a968"
     },
     {
       "path": ".agents/skills/issue-spec-workflow/SKILL.md",
@@ -23,15 +23,15 @@
     },
     {
       "path": ".agents/skills/issue-spec-workflow/references/durable-maintenance.md",
-      "sha256": "22c082a779ba0de7fa8ec50c90fd4aa4711c365166972ea9ff81707be012aa5c"
+      "sha256": "9bb0eebc211468f2a8d660fd25099a6025c581e6c8712154a624227a48a4a29a"
     },
     {
       "path": ".agents/skills/issue-spec-workflow/references/implementation-review.md",
-      "sha256": "448cfd953d847f0966aa12f0d880f603272abb73caba9a4709e4c6bf44ee5368"
+      "sha256": "1f818da4b1a1487ce44d99c1d5a24b7f5eb6685bd34a4aee4c1940685193e0a3"
     },
     {
       "path": ".agents/skills/issue-spec-workflow/references/planning-scope.md",
-      "sha256": "e61e7e754b3643c4fdaa4e7b7d485f024d66756f77cbbce28a3db6f05306cc1f"
+      "sha256": "67ae75e10c4d947567ac1569d57b285df565d2fa453618e38ecd2637ccefd35b"
     },
     {
       "path": ".agents/skills/issue-spec-workflow/references/progressive-reading.md",
