@@ -196,8 +196,9 @@ impl RequestObservation {
     ) {
         let mut event = wire_diagnostic::response(headers, status, &self.inner.context);
         if self.lock_state().managed_cpa {
-            event.cpa_execution =
-                Some(super::super::provider::cpa_execution::from_headers(headers));
+            event.cpa_execution = Some(super::super::provider::cpa_execution::from_headers(
+                headers, status,
+            ));
         }
         if let Some(error) = event.provider_error {
             self.lock_state().provider_error = Some(error);

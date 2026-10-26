@@ -155,6 +155,19 @@ Keep remote availability, local pin convergence and successful inference separat
 Do not infer the historical failing condition from the generic
 `control_pin_not_applied` code alone.
 
+For managed CPA inference failures, inspect the response `upstream_wire` event's
+`cpa_execution.inference` observation. It separates CPA's downstream HTTP status
+from the first and last actual transport attempts' upstream status and typed
+transport/body failure. Attempt ordinals prevent combining different retries.
+Middle attempts retain counts only. Request preparation is not proof of a send;
+a transport invocation is not proof of remote receipt or billing. A successful
+title request or model-directory check does not establish main-inference health.
+The private header freezes when downstream headers commit, so later stream
+failures are not included. An upstream 200 and normal body EOF cannot establish
+application completion or prove a conversion failure. Missing detail, including
+older counter-only records, remains unknown; a generic downstream 500 must not be
+reported as the provider's original error. No raw body or error text is retained.
+
 Inspect `protected_exchange` in both roles before attributing the original trigger.
 The event records a closed exchange family, phase, duration, failure category and
 HMAC registration correlation, with the authority-loss transition on the host.

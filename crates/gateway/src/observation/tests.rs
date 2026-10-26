@@ -1505,7 +1505,12 @@ fn cpa_execution_metadata_is_trusted_only_for_verified_managed_target() {
     use hiroute_diagnostics::event::CpaExecution;
     let observation = request(OtelContentPolicy::Disabled);
     let mut headers = http::HeaderMap::new();
-    headers.insert("x-hiroute-cpa-execution", "v1;2;1;1;1".parse().unwrap());
+    headers.insert(
+        "x-hiroute-cpa-execution",
+        "v2;2;1;1;1;200;1,401,headers,none;2,200,headers,none"
+            .parse()
+            .unwrap(),
+    );
     observation.response_head_diagnostic(&headers, 200);
     assert!(
         observation
@@ -1528,6 +1533,10 @@ fn cpa_execution_metadata_is_trusted_only_for_verified_managed_target() {
         Some(CpaExecution::Known {
             inference_attempts: 2,
             auth_recovery_successes: 1,
+            inference: Some(hiroute_diagnostics::event::CpaInferenceObservation {
+                downstream_status: 200,
+                ..
+            }),
             ..
         })
     ));
