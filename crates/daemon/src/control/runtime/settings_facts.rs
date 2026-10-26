@@ -144,14 +144,14 @@ impl LocalControlAdapter {
             None
         };
         let first = self.complete_settings_snapshot(spec, class)?;
-        let second = self.complete_settings_snapshot(spec, class)?;
+        let mut second = self.complete_settings_snapshot(spec, class)?;
         #[cfg(any(unix, windows))]
-        if let Some(checked) = dsh_composition
+        if let Some(checked) = dsh_composition.as_ref()
             && !(if class == SettingsAgentClass::DshDesktop {
                 self.scanner
-                    .dsh_desktop_model_configuration_is_current(&checked)
+                    .dsh_desktop_model_configuration_is_current(checked)
             } else {
-                self.scanner.dsh_model_configuration_is_current(&checked)
+                self.scanner.dsh_model_configuration_is_current(checked)
             })
             .map_err(|_| ControlReadError::SnapshotChanged)?
         {
@@ -159,6 +159,20 @@ impl LocalControlAdapter {
         }
         if first.facts.dependency_digest != second.facts.dependency_digest {
             return Err(ControlReadError::SnapshotChanged);
+        }
+        #[cfg(any(unix, windows))]
+        if let Some(checked) = dsh_composition {
+            // The admitted proof is part of Preview/Apply authority, not just a
+            // transient success check. A new valid runtime still needs fresh approval.
+            let previous = second.facts.dependency_digest.clone();
+            let digest =
+                CanonicalDigest::of(&("hiroute.dsh-composition-facts/v1", &previous, checked))
+                    .map_err(|_| ControlReadError::Corrupt)?;
+            second
+                .facts
+                .capabilities
+                .rebind_dependency(&previous, &digest);
+            second.facts.dependency_digest = digest;
         }
         Ok(second)
     }
