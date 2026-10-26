@@ -244,6 +244,16 @@ fn plaintext_content_requires_exact_accepted_text_and_closed_shape() {
             text: "Accepted thought.".into(),
             status: ResponseItemStatus::Completed,
         });
+        tool_capture.accept(&ModelEvent::ToolCallStarted {
+            index: 1,
+            logical_id: "call-1".into(),
+            native_id: "call-1".into(),
+            tool_kind: ToolKindV1::Function,
+            namespace: Some("functions".into()),
+            name: "read".into(),
+            owner: Box::new(accepted_output::owner()),
+            item_id: None,
+        });
         tool_capture.accept(&ModelEvent::ToolCallFinished {
             index: 1,
             logical_id: "call-1".into(),
