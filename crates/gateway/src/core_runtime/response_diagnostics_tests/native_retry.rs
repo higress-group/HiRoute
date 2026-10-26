@@ -101,13 +101,20 @@ pub(super) fn run_case(root: &Path) {
     let mut input = vec![json!({"role":"user","content":"actual A"})];
     let failed = send(address, &input, "1");
     assert!(!failed.starts_with(b"HTTP/1.1 200"));
-    wait_requests(&facts, 1);
+    let initial = wait_requests(&facts, 1);
+    let requests = named(&initial, "request_finished");
+    assert_eq!(requests[0]["fact"]["outcome"], "failed");
+    assert!(requests[0]["fact"]["accepted_attempt_ordinal"].is_null());
+    let failed_turns = named(&initial, "agent_turn_finished");
+    assert_eq!(failed_turns.len(), 1);
+    assert_eq!(failed_turns[0]["fact"]["status"], "failed");
+    assert_eq!(failed_turns[0]["fact"]["attribution"], "unknown");
     let retry = send(address, &input, "1");
     assert!(retry.starts_with(b"HTTP/1.1 200"));
     assert_eq!(
         calls.load(Ordering::SeqCst),
         1,
-        "the same native retry must not classify again"
+        "the same native retry must not classify again; initial facts: {initial:?}"
     );
     let a = response_body(&retry);
     assert_eq!(a["output"][0]["content"][0]["text"], "actual answer A");

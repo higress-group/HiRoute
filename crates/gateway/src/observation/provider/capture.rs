@@ -616,6 +616,13 @@ impl RequestObservation {
             }
             return;
         };
+        if !self.has_accepted_attempt() {
+            // Rejected upstream attempts have no delivered model output to
+            // capture. Retire their decoder without inventing an output gap;
+            // the failed request and unknown execution attribution remain facts.
+            capture.cancel_unless_terminal("agent_turn_no_accepted_response");
+            return;
+        }
         capture.cancel_unless_terminal("agent_turn_response_incomplete");
         // Only drain the existing bounded worker. A stuck decoder must never hold
         // the session lease indefinitely; late events are rejected by its ticket.
