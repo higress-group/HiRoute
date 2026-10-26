@@ -145,11 +145,13 @@ fn cache_usage_conversion_preserves_buckets_in_all_client_renderers() {
             for events in [&live_events, &events] {
                 let usage = events
                     .iter()
+                    .rev()
                     .find_map(|event| {
                         event
                             .data
                             .get("usage")
                             .or_else(|| event.data.get("response")?.get("usage"))
+                            .filter(|usage| usage.is_object())
                     })
                     .unwrap();
                 assert_write(usage, downstream, write);
