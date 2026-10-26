@@ -72,15 +72,17 @@ const scenarios = [
     const start = calls('agent_snapshot').length;
     await save();
     await until(() => c().mutations === 1 && !facet('model').disabled, 'Exact save readback');
-    const reads = calls('agent_snapshot').slice(start);
+    const reads = calls('trial_agent_model');
     assert(reads.length === 1 && reads[0].payload.contextId === selected.context_id,
-      'Saving queued an unrelated Agent scan ahead of confirmation');
-    assert(reads[0].payload.nativeTargets.length === 0, 'Non-Hermes save must not reread remembered Hermes profiles');
+      'Model Save must confirm its exact model without repeating native discovery and unrelated skill reads');
+    assert(calls('agent_snapshot').length === start, 'Model Save unexpectedly rescanned the installation');
+    assert(document.querySelector('[data-agent-skills-unverified]'), 'Unrefreshed skills were presented as current');
+    assert(!facet('model').disabled, 'Confirmed model should remain editable while skills await their own read');
     const codex = [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex'));
     let rejectRead;
     c().handlers.agent_snapshot = () => new Promise((_, reject) => { rejectRead = reject; });
     codex.click();
-    await until(() => calls('agent_snapshot').length === start + 2 && rejectRead, 'Invalidated next Agent starts its read');
+    await until(() => calls('agent_snapshot').length === start + 1 && rejectRead, 'Invalidated next Agent starts its read');
     assert(facet('model').disabled && facet('management_skill').disabled,
       'Unverified Agent became editable while its read was pending');
     assert(!text().includes('本机服务尚未就绪'), 'An ordinary read falsely warned that the service was down');
@@ -91,7 +93,7 @@ const scenarios = [
     assert(facet('model').disabled, 'Failed readback allowed writes against stale settings');
     delete c().handlers.agent_snapshot;
     document.querySelector('[data-error-code="AGENT_STATUS_UNAVAILABLE"] button').click();
-    await until(() => calls('agent_snapshot').length === start + 3 && !facet('model').disabled, 'Scoped retry confirms the selected Agent');
+    await until(() => calls('agent_snapshot').length === start + 2 && !facet('model').disabled, 'Scoped retry confirms the selected Agent');
     assert(calls('agent_snapshot').at(-1).payload.contextId === c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default').context_id,
       'Retry scanned unrelated Agents');
     assert(calls('agent_snapshot').at(-1).payload.nativeTargets.length === 0, 'Codex retry must not reread remembered Hermes profiles');
