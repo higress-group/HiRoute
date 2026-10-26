@@ -116,6 +116,13 @@ navigation, viewport tracking, keyboard access and live append. Use the same
 production-component scenarios with synthetic data; real protection/release
 records and native acceptance need their own evidence. Run browser suites serially.
 
+The [session scenarios](v3/browser/session-window-scenarios.mjs) also open the actual
+timeline-to-Plan-performance dialog without a supplied revision. They pair current,
+historical and all-version reads, retain a genuine zero despite small sample counts,
+recover failed active-revision resolution and reject late earlier trust/quality
+responses while respecting the production reader capacity. Unknown and genuinely
+mismatched evidence keep the existing unavailable-state assertions above.
+
 The [trial interaction refinements](v3/visual/new-model-trial-polish-active.mjs)
 run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --polish`.
 They cover cached trust-level replay, precise-value debounce, shared reason labels,

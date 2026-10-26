@@ -273,7 +273,14 @@ counts explicit tool-continuation reasons independently of model affinity;
 cover pending, closed and reopened views.
 The [protection evidence guard](../../apps/desktop/src/features/trust/protection-evidence.ts)
 checks complete matching Plan, revision, time and branch scope before placing a
-released-decision count beside protected stages. Product requirements belong to
+released-decision count beside protected stages.
+The shared [Plan performance component](../../apps/desktop/src/features/PlanQuality.tsx)
+pins both reads to a loaded publication or resolves the active revision for entries
+without one. Its [trust read](../../apps/desktop/src/features/trust/use-plan-trust.ts)
+exposes only the current request scope; pending resolution never means all versions.
+The [session entry regressions](../../apps/desktop/tests/v3/browser/session-window-scenarios.mjs)
+cover actual modal navigation, zero releases, revision changes and failed-read recovery.
+Product requirements belong to
 [smart-saving routing](../../issue-spec/specs/smart-saving-routing/spec.md) and
 [session history](../../issue-spec/specs/session-history/spec.md).
 

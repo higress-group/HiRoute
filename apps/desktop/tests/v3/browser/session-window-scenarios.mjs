@@ -48,7 +48,126 @@ function seedUserText(control, request, textValue) {
 const emptySummary = { models: [], scored_stage_count: 0, unrated_stage_count: 0, session_count: 0, available_revisions: [] };
 const openQuality = () => { const disclosure = document.querySelector('.session-model-performance summary'); if (disclosure && !disclosure.parentElement.open) disclosure.click(); };
 
+function qualityScope(query, activeRevision = 1) {
+  const revision = query.revision === 'active' ? activeRevision : query.revision === 'all' ? null : query.revision ?? query.plan_revision;
+  const suppressed = revision === 1 ? 0 : 3;
+  const counts = { executed: 2, complete: 2, meets_floor: 1, partial: 0, awaiting_assessment: 0, unscored: 0, sessions: 1 };
+  const branch = { branch_id: 'smart_saving', threshold_millis: 900, full_history: counts, upward_cohort: counts,
+    upward_from_ms: query.from_ms, suggestion: { kind: 'keep', missing: ['complete_stages', 'sessions'] },
+    replay: { included: 2, excluded_by_reason: {}, recorded_share_at_current: 1, estimate_only: true, thresholds: [] } };
+  const trust = { plan_id: query.plan_id, active_revision: activeRevision, revision: query.revision,
+    from_ms: query.from_ms, to_ms: query.to_ms, rows: [{ branch_id: 'smart_saving', group: 'regular',
+      model_configuration_id: 'model/flash', reasoning_profile_id: 'low', attribution: 'single', executor: null,
+      identity_stability: 'pinned', counts, competence_rate: .5, scoring_coverage: 1, execution_share: 1,
+      protections: [], availability_relays: 0, duration_p50_ms: null, duration_p90_ms: null, output_tokens_per_second: null }],
+    branches: [branch], sessions: [{ session_id: 'observation-session/simple', stages: 2 }], session_total: 1,
+    executors: [], announcements: [], cost: { kind: 'unavailable', reason: 'comparison basis not available' } };
+  const routing = { plan_id: query.plan_id, session_id: null, plan_revision: query.plan_revision,
+    requested_from_ms: query.from_ms, requested_to_ms: query.to_ms, covered_from_ms: query.from_ms, covered_to_ms: query.to_ms,
+    coverage: 'complete', scan_limited: false, retained_decisions: 11, known_non_c_decisions: 0,
+    legacy_or_unknown_decisions: 0, unknown_scope_decisions: 0, missing_projection_events: 0,
+    cohorts: [{ cohort: { protocol: 'system_one_c', scope_id: 'smart_saving', provider: 'fixture', model: 'jev',
+      standard: 'default', content_digest: 'sha256:fixture', bundle_digest: 'sha256:fixture' }, counts: {
+      c_decisions: 11, requested: 10, unavailable: 0, no_target_omissions: 1, partial_target_omissions: 0,
+      inherited: 0, required_question_missing: 0, gate_opportunities: suppressed, suppressed,
+      unavailable_per_requested: 0, suppressed_per_opportunity: suppressed ? 1 : null, suppressed_per_c_decision: suppressed / 11 } }] };
+  return { trust, page: { samples: [], summary: { ...emptySummary, scored_stage_count: 2, session_count: 1, available_revisions: [2, 1] },
+    routing_observations: routing, next_cursor: null } };
+}
+const versionSelect = () => [...document.querySelectorAll('.plan-quality select')].find(element => element.querySelector('option[value="current"]'));
+const selectVersion = async value => { const select = versionSelect(); assert(select, 'Route version selector missing'); select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })); await tick(); };
+
 const scenarios = [
+  ['session performance modal pairs active, historical and all-version evidence', async () => {
+    let activeRevision = 1;
+    await fresh(control => {
+      seedSimple(control);
+      const request = control.requests['observation-session/simple'][0];
+      seedUserText(control, request, 'The actual current question');
+      control.views.routing_timeline = () => ({ complete: true, watermark: 'fixture/current', turns: [{
+        turn_id: 'turn/current', agent_turn_id: 'turn/current', segment_id: 'stage/current',
+        plan_id: 'plan/quality', plan_revision: 1, branch_id: 'smart_saving', model_configuration_id: 'model/flash',
+        reasoning_profile_id: 'low', group: 'regular', started_at_ms: request.started_at_ms,
+        finished_at_ms: request.started_at_ms + 1, boundary: 'new_user_message', status: 'completed',
+        selection: { execution_group: 'regular', simple_probability: 1, simple_threshold_millis: 900, selection_reason: 'simple_task' },
+        tool_continuations: 0, relays: [], transitions: [], assessment_state: 'pending', assessment: null,
+        competence_floor_millis: 500, protected_turn_ids: [], evidence_partial: false, content_digest: 'fixture',
+        requests: [{ request_id: request.request_id, started_at_ms: request.started_at_ms, native_model: 'flash', outcome: 'accepted',
+          duration_ms: 1, input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_read_share: null, costs: [] }], cost_by_model: [],
+      }] });
+      control.views.plan_trust = query => qualityScope(query, activeRevision).trust;
+      control.views.plan_quality = query => qualityScope(query, activeRevision).page;
+    });
+    await until(() => rows().length === 1, 'session performance row');
+    rows()[0].click();
+    await until(() => button('查看模型表现'), 'actual session timeline performance entry');
+    button('查看模型表现').click();
+    await until(() => document.querySelector('[role="dialog"] .routing-observations'), 'modal routing evidence');
+    const release = () => document.querySelector('[role="dialog"] .trust-release');
+    assert(release()?.dataset.releaseState === 'available' && release().textContent.includes('解除 0 次'), 'One-version modal falsely reports a revision mismatch instead of actual zero');
+    assert(reads('plan_quality').filter(call => queryOf(call).plan_id === 'plan/quality').every(call => queryOf(call).plan_revision === 1), 'Active modal read all retained revisions');
+    activeRevision = 2; c().bumpRefresh();
+    await until(() => release()?.dataset.releaseState === 'available' && release().textContent.includes('解除 3 次'), 'refreshed active revision');
+    assert(queryOf(reads('plan_quality').at(-1)).plan_revision === 2, 'Active revision change did not reach quality query');
+    await selectVersion('1');
+    await until(() => release()?.dataset.releaseState === 'available' && release().textContent.includes('解除 0 次'), 'explicit historical revision');
+    assert(queryOf(reads('plan_trust').at(-1)).revision === 1 && queryOf(reads('plan_quality').at(-1)).plan_revision === 1, 'Historical reads have different scopes');
+    await selectVersion('all');
+    await until(() => release()?.dataset.releaseState === 'available' && release().textContent.includes('解除 3 次'), 'explicit retained versions');
+    assert(queryOf(reads('plan_trust').at(-1)).revision === 'all' && queryOf(reads('plan_quality').at(-1)).plan_revision === null, 'All-version reads have different scopes');
+  }],
+  ['known performance revision stays paired and late earlier responses cannot replace it', async () => {
+    await fresh(control => {
+      seedSimple(control);
+      control.views.plan_trust = query => qualityScope(query).trust;
+      control.views.plan_quality = query => qualityScope(query).page;
+    });
+    c().showQualityPlan();
+    await until(() => document.querySelector('.trust-release')?.dataset.releaseState === 'available', 'known revision evidence');
+    assert(queryOf(reads('plan_trust').at(-1)).revision === 1, 'Known version was paired with a moving active scope');
+    const oldTrust = deferred(); let trustQuery;
+    c().views.plan_trust = query => { trustQuery = query; return oldTrust.promise; };
+    c().bumpRefresh();
+    try {
+      // Keep one of the two production reader slots free for the replacement.
+      await until(() => trustQuery, 'old trust scope read in flight');
+      c().views.plan_trust = query => qualityScope(query, 2).trust;
+      c().views.plan_quality = query => qualityScope(query, 2).page;
+      c().qualityPlanRevision = 2; c().bumpRefresh();
+      await until(() => document.querySelector('.trust-release')?.textContent.includes('解除 3 次'), 'new explicit revision');
+    } finally { oldTrust.resolve(qualityScope(trustQuery).trust); }
+    await tick();
+    assert(document.querySelector('.trust-release')?.dataset.releaseState === 'available' && document.querySelector('.trust-release').textContent.includes('解除 3 次'), 'Late older trust scope overwrote paired evidence');
+    assert(queryOf(reads('plan_trust').at(-1)).revision === 2 && queryOf(reads('plan_quality').at(-1)).plan_revision === 2, 'Known version refresh drifted');
+    const oldQuality = deferred(); let qualityQuery;
+    c().views.plan_quality = query => { qualityQuery = query; return oldQuality.promise; };
+    c().bumpRefresh();
+    try {
+      await until(() => qualityQuery, 'old quality scope read in flight');
+      c().views.plan_quality = query => qualityScope(query).page;
+      c().views.plan_trust = query => qualityScope(query).trust;
+      c().qualityPlanRevision = 1; c().bumpRefresh();
+      await until(() => document.querySelector('.trust-release')?.dataset.releaseState === 'available' && document.querySelector('.trust-release').textContent.includes('解除 0 次'), 'replacement quality scope');
+    } finally { oldQuality.resolve(qualityScope(qualityQuery, 2).page); }
+    await tick();
+    assert(document.querySelector('.trust-release')?.dataset.releaseState === 'available' && document.querySelector('.trust-release').textContent.includes('解除 0 次'), 'Late older quality scope overwrote paired evidence');
+  }],
+  ['unresolved performance revision never broadens on lookup failure and retry recovers', async () => {
+    let fails = true;
+    await fresh(control => {
+      seedSimple(control); control.qualityPlanRevision = null;
+      control.views.plan_trust = query => { if (fails) throw { code: 'RECOVERY_REQUIRED' }; return qualityScope(query).trust; };
+      control.views.plan_quality = query => qualityScope(query).page;
+    });
+    c().showQualityPlan();
+    await until(() => document.querySelector('.plan-quality [data-error-code="RECOVERY_REQUIRED"]'), 'active-version lookup error');
+    assert(!reads('plan_quality').some(call => queryOf(call).plan_id === 'plan/quality'), 'Unknown active version silently broadened to all retained data');
+    assert(!document.querySelector('.trust-release[data-release-state="available"]'), 'Unknown evidence became zero');
+    fails = false;
+    document.querySelector('.plan-quality [data-error-code="RECOVERY_REQUIRED"] button').click();
+    await until(() => document.querySelector('.trust-release')?.dataset.releaseState === 'available', 'lookup retry without remount');
+    assert(document.querySelector('.trust-release').textContent.includes('解除 0 次') && queryOf(reads('plan_quality').at(-1)).plan_revision === 1, 'Recovered active scope failed to show actual zero');
+  }],
   ['supported Agent names appear in both the session list and selected heading', async () => {
     const agents = [
       ['codex', 'Codex'], ['claude', 'Claude Code'], ['dsh', 'DeepSeek Harness'],

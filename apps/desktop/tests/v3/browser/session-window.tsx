@@ -48,6 +48,7 @@ const control = {
   showQualityPlan: () => {},
   showRequestExcerpt: (_request: string) => {},
   qualityModels: [] as PlanQualityModel[],
+  qualityPlanRevision: 1 as number | null,
   reset: () => {},
 };
 
@@ -178,6 +179,7 @@ function Harness() {
     control.handlers = {};
     control.commands = [];
     control.qualityModels = [];
+    control.qualityPlanRevision = 1;
     control.language = 'zh';
     setQualityVisible(false);
     setHomeVisible(false);
@@ -208,7 +210,7 @@ function Harness() {
       <main className="main"><div>
         <p className="sr-only">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实数据。</p>
         {homeVisible && <Home language="zh" reads={homeReads} onAction={() => {}} />}
-        {qualityVisible && <PlanQuality key={'quality-' + generation} planId="plan/quality" planRevision={1} currentModels={control.qualityModels} active={!homeVisible} refreshVersion={refresh} language="zh" />}
+        {qualityVisible && <PlanQuality key={'quality-' + generation} planId="plan/quality" planRevision={control.qualityPlanRevision} currentModels={control.qualityModels} active={!homeVisible} refreshVersion={refresh} language={control.language} />}
         {requestExcerpt && <blockquote className="routing-quote"><ContentExcerpt request={requestExcerpt} language={control.language} fallback="这一轮的消息暂不可用" /></blockquote>}
         <div hidden={homeVisible || qualityVisible || requestExcerpt !== null}><Sessions key={generation} active={!homeVisible && !qualityVisible && requestExcerpt === null} language={control.language} refreshVersion={refresh} onOpenAgents={() => {}} /></div>
       </div></main>

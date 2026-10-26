@@ -59,13 +59,23 @@ export function PlanQuality({
   const window = useMemo(() => {
     return planQualityWindow(period, Date.now());
   }, [planId, sessionId, planRevision, period, version, refreshVersion, reload, active, groupBy]);
-  const pairedWindow = useRef<typeof window | null>(null);
-  const revision = version === 'current' ? planRevision || null : version === 'all' ? null : Number(version);
+  const trustScope = !compact && Boolean(planId) && !sessionId;
+  // A supplied revision pins the loaded Plan. Other entries resolve active once
+  // through the trust report; an unresolved active scope never means all versions.
+  const trust = usePlanTrust({ planId: trustScope ? planId : null,
+    revision: version === 'current' ? planRevision ?? 'active' : version === 'all' ? 'all' : Number(version),
+    fromMs: window.from, toMs: window.to, active, groupBy, reload });
+  const report = trust.report;
+  const activeRevision = planRevision ?? report?.active_revision ?? null;
+  const revision = version === 'current' ? activeRevision : version === 'all' ? null : Number(version);
+  const revisionReady = !trustScope || version !== 'current' || revision !== null;
+  const readScope = useMemo(() => ({ window, revision }), [window, revision]);
+  const pairedScope = useRef<typeof readScope | null>(null);
 
   async function load(next: string | null = null, captureRouting = false) {
-    if (!active || (!planId && !sessionId)) return;
+    if (!active || !revisionReady || (!planId && !sessionId)) return;
     const epoch = ++generation.current;
-    if (captureRouting) pairedWindow.current = window;
+    if (captureRouting) pairedScope.current = readScope;
     setBusy(true); setError('');
     try {
       const page = await observationRead<Page>('plan_quality', {
@@ -79,7 +89,7 @@ export function PlanQuality({
       });
       // Aggregate routing evidence belongs to the base read paired with PlanTrust.
       // Detail reads can be clipped by a later retention clock and must not replace it.
-      if (captureRouting && pairedWindow.current === window) setRoutingSummary(page.routing_observations ?? null);
+      if (captureRouting && pairedScope.current === readScope) setRoutingSummary(page.routing_observations ?? null);
       if (epoch !== generation.current) return;
       setSummary(page.summary);
       const stages = selected && !selected.execution && !selected.trustRow ? [] : page.samples;
@@ -106,18 +116,18 @@ export function PlanQuality({
   useEffect(() => {
     setSummary(EMPTY_SUMMARY);
     setRoutingSummary(null);
-    pairedWindow.current = null;
-    return () => { pairedWindow.current = null; };
-  }, [planId, sessionId, revision, window]);
+    pairedScope.current = null;
+    return () => { pairedScope.current = null; };
+  }, [planId, sessionId, readScope]);
 
   useEffect(() => {
-    if (!active) { generation.current++; setBusy(false); return; }
+    if (!active || !revisionReady) { generation.current++; setBusy(false); setLoaded(false); return; }
     setSamples([]); setExecutionModels({}); setCursor(null); setLoaded(false);
-    void load(null, pairedWindow.current !== window);
+    void load(null, pairedScope.current !== readScope);
     return () => { generation.current++; };
-  }, [planId, sessionId, revision, score, selected?.key, window, active]);
+  }, [planId, sessionId, readScope, revisionReady, score, selected?.key, active]);
 
-  const rows = qualityModelRows(revision === planRevision ? currentModels : [], summary.models);
+  const rows = qualityModelRows(revision !== null && revision === planRevision ? currentModels : [], summary.models);
   const groups = [...new Set(rows.map(qualityRowSection))];
   const selectedRow = rows.find(row => row.key === selected?.key);
   const rowName = (row: QualityModelRow) => row.summary?.execution.attribution === 'mixed' ? text('多个执行模型', 'Multiple execution models')
@@ -138,9 +148,6 @@ export function PlanQuality({
     <option value="unrated">{text('未评分', 'Unrated')}</option>
   </select></label>;
 
-  const trustScope = !compact && Boolean(planId) && !sessionId;
-  const trust = usePlanTrust({ planId: trustScope ? planId : null, revision: version === 'current' ? 'active' : version === 'all' ? 'all' : Number(version), fromMs: window.from, toMs: window.to, active, groupBy, reload });
-  const report = trust.report;
   const manualDivisionBranches = divisionBranches ?? report?.branches.map(branch => branch.branch_id) ?? [];
   const percent = (value: number | null | undefined) => value == null ? '—' : `${Math.round(value * 100)}%`;
   const seconds = (ms: number | null | undefined) => ms == null ? '—' : text(`${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} 秒`, `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`);
@@ -185,7 +192,7 @@ export function PlanQuality({
     {!compact && <div className="quality-stage-heading"><div><h4>{selected?.label ?? (selectedRow ? rowName(selectedRow) : text('执行阶段', 'Execution stages'))}</h4><span>{text('按实际执行模型与推理配置查看', 'Stages for the actual execution and reasoning configuration')}</span></div><div className="quality-filters">{filter}<button type="button" className="btn btn-quiet" onClick={resetDetail}>{text('收起', 'Close')}</button></div></div>}
     {compact && stageCount > 20 && <div className="quality-filters">{filter}</div>}
     {loaded && !busy && !error && samples.length === 0 && <p className="oc-meta">{text('没有符合筛选条件的执行阶段。', 'No execution stages match this filter.')}</p>}
-    <div className="quality-list">{samples.map(sample => <PlanQualityStage key={sample.segment_id} sample={sample} modelName={sampleName(sample)} activeRevision={planRevision} language={language} onOpenEvidence={onOpenEvidence} />)}</div>
+    <div className="quality-list">{samples.map(sample => <PlanQualityStage key={sample.segment_id} sample={sample} modelName={sampleName(sample)} activeRevision={activeRevision} language={language} onOpenEvidence={onOpenEvidence} />)}</div>
     {cursor && <button className="btn quality-more" type="button" disabled={busy} onClick={() => void load(cursor)}>{text('加载更多阶段', 'Load more stages')}</button>}
   </section>;
 
@@ -196,9 +203,9 @@ export function PlanQuality({
         {!compact && <label><span className="sr-only">{text('时间范围', 'Time range')}</span><select className="select" value={period} onChange={event => { resetDetail(); setPeriod(event.target.value as Period); }}>
           <option value="seven_days">{text('最近 7 天', 'Last 7 days')}</option><option value="one_day">{text('最近 24 小时', 'Last 24 hours')}</option><option value="all">{text('全部保留期', 'All retained')}</option>
         </select></label>}
-        {!compact && planRevision && <label><span className="sr-only">{text('路由版本', 'Route version')}</span><select className="select" value={version} onChange={event => { resetDetail(); setVersion(event.target.value); }}>
+        {!compact && planId && <label><span className="sr-only">{text('路由版本', 'Route version')}</span><select className="select" value={version} onChange={event => { resetDetail(); setVersion(event.target.value); }}>
           <option value="current">{text('当前生效版本', 'Active version')}</option>
-          {summary.available_revisions.filter(value => value !== planRevision).map(value => <option key={value} value={String(value)}>{text('历史版本 ' + value, 'Earlier version ' + value)}</option>)}
+          {summary.available_revisions.filter(value => value !== activeRevision).map(value => <option key={value} value={String(value)}>{text('历史版本 ' + value, 'Earlier version ' + value)}</option>)}
           <option value="all">{text('全部保留版本', 'All retained versions')}</option>
         </select></label>}
         <button className="btn btn-quiet quality-refresh" type="button" disabled={busy} onClick={() => setReload(value => value + 1)}><UiIcon name="refresh" />{text('刷新', 'Refresh')}</button>
