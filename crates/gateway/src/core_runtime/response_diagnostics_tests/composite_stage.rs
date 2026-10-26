@@ -70,6 +70,8 @@ pub(super) fn run_case(root: &Path) {
             for id in questions.keys() {
                 answers.insert(id.clone(),if id=="q0" {
                     json!({"type":"score","probabilities":{"0":if index==2 {0.1} else {1.0},"1":if index==2 {0.9} else {0.0}}})
+                } else if id == "q2" {
+                    json!({"type":"choice","probabilities":{"applicable":1,"not_established":0}})
                 } else { json!({"type":"score","score":1.8,"probabilities":{"0":0,"1":0,"2":1}}) });
             }
             requests.push(request);
@@ -228,6 +230,7 @@ pub(super) fn run_case(root: &Path) {
         stages[1]["fact"]["history_membership"]["request_ids"]
     );
     assert_eq!(joint[0]["fact"]["partial"], false);
+    assert_eq!(joint[0]["fact"]["score"], 0.9);
     assert_eq!(
         joint[0]["fact"]["history_membership"]["source_unverified"],
         true

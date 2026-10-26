@@ -110,3 +110,15 @@ fn selected_input_is_a_bounded_position_not_proof_of_authorship() {
     value.message_ordinal = Some(0);
     assert!(value.validate().is_err());
 }
+
+#[test]
+fn old_catalog_calls_and_responses_keep_their_exact_json_shape() {
+    let call = serde_json::json!({"request_id":"request-1","limit":10,"cursor":null});
+    let query: ObservationCatalogQueryV2 = serde_json::from_value(call.clone()).unwrap();
+    assert!(!query.include_input_selection);
+    assert_eq!(serde_json::to_value(query).unwrap(), call);
+    let page = serde_json::json!({"contents":[],"next_cursor":null,"transcript_roots":[],"roots_partial":false});
+    let value: ObservationCatalogPageV2 = serde_json::from_value(page.clone()).unwrap();
+    assert!(value.input_selection.is_none());
+    assert_eq!(serde_json::to_value(value).unwrap(), page);
+}

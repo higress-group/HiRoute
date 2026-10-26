@@ -62,16 +62,11 @@ pub(super) fn assessment_definition_result(
         .assessment_from
         .filter(|i| *i < history.visible_conversation.len())
         .ok_or(E::InvalidBoundary)?;
-    let (executed_branch_id, frozen_policy) = target.evaluation_policy().ok_or_else(|| {
-        if matches!(
-            target.attribution,
-            crate::agent_turn_history::ExecutionAttribution::Single { .. }
-        ) {
-            E::Unrated
-        } else {
-            E::AmbiguousAttribution
-        }
-    })?;
+    let missing_scope = match &target.attribution {
+        crate::agent_turn_history::ExecutionAttribution::Single { .. } => E::Unrated,
+        _ => E::AmbiguousAttribution,
+    };
+    let (executed_branch_id, frozen_policy) = target.evaluation_policy().ok_or(missing_scope)?;
     let (judgment, name) = if executed_branch_id == SMART_SAVING_SCOPE_ID {
         (
             authority.smart_judgment.as_ref().ok_or(E::Unrated)?,

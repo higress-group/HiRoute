@@ -56,6 +56,7 @@ fn composite_score_roundtrips_membership_and_never_credits_one_model() {
         );
         if let ExecutionFactV1::AgentTurnFinished {
             attribution,
+            executed_branch_id,
             model_configuration_id,
             profile_digest,
             history_membership,
@@ -63,6 +64,7 @@ fn composite_score_roundtrips_membership_and_never_credits_one_model() {
         } = &mut completed
         {
             *attribution = AgentTurnAttributionV1::Mixed;
+            *executed_branch_id = None;
             *model_configuration_id = None;
             *profile_digest = None;
             *history_membership = Some(membership);

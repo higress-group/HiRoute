@@ -121,3 +121,84 @@ fn excess_request_local_metadata_does_not_fall_back_to_unbounded_history() {
         .is_none()
     );
 }
+
+#[test]
+fn reopened_input_position_honors_content_deletion_and_retention() {
+    let directory = tempfile::tempdir().unwrap();
+    let fixture = Fixture::new("input-selection-reopen");
+    {
+        let store = open_store(directory.path());
+        let channel = fact_channel(&fixture, 256 * 1024);
+        assert!(matches!(
+            offer_fact(
+                &writer(&store),
+                &channel,
+                fixture.fact(
+                    1,
+                    ExecutionFactV1::RequestInputSelection(RequestInputSelectionV1 {
+                        version: 1,
+                        evidence: RequestInputSelectionEvidenceV1::WireObserved,
+                        message_ordinal: Some(0),
+                        source_unverified: true
+                    }),
+                    1000
+                )
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    let store = open_store(directory.path());
+    let query = ObservationCatalogQueryV2 {
+        request_id: fixture.request.clone(),
+        limit: 10,
+        cursor: None,
+        include_input_selection: true,
+    };
+    assert_eq!(
+        store
+            .observed_catalog(&reader(true), &query, 5000)
+            .unwrap()
+            .input_selection
+            .unwrap()
+            .message_ordinal,
+        Some(0)
+    );
+    // The same authenticated metadata cannot outlive its retained request.
+    let db = store.connection.lock();
+    let tx = db.unchecked_transaction().unwrap();
+    assert!(
+        read(
+            &tx,
+            fixture.workspace.as_str(),
+            fixture.request.as_str(),
+            crate::managed_text::RETENTION_MS + 2000
+        )
+        .is_none()
+    );
+    tx.rollback().unwrap();
+    drop(db);
+    let principal = ObservationPrincipalV1::local_user(fixture.workspace.clone());
+    let spec = SessionDeletionSpecV1 {
+        workspace_id: fixture.workspace.clone(),
+        session_id: fixture.session.clone(),
+        data_class: DeletionDataClass::ContentOnly,
+        delete_rollups: false,
+    };
+    let preview = store.preview_session_deletion(&principal, &spec).unwrap();
+    store
+        .apply_session_deletion(
+            &principal,
+            &spec,
+            preview.store_revision,
+            &preview.change_digest,
+            5000,
+        )
+        .unwrap();
+    assert!(
+        store
+            .observed_catalog(&reader(true), &query, 5000)
+            .unwrap()
+            .input_selection
+            .is_none()
+    );
+}
