@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "trust_cost_auxiliary_tests.rs"]
+mod auxiliary;
+
 fn trial_request(
     store: &LocalObservationStore,
     suffix: &str,
