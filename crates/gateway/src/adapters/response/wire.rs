@@ -16,7 +16,11 @@ pub(super) fn decode_responses_usage(value: &Value) -> Result<ModelUsage, Protoc
             "output_tokens_details",
         ],
     )?;
-    allow_optional_object(object, "input_tokens_details", &["cached_tokens"])?;
+    allow_optional_object(
+        object,
+        "input_tokens_details",
+        &["cached_tokens", "cache_write_tokens"],
+    )?;
     allow_optional_object(object, "output_tokens_details", &["reasoning_tokens"])?;
     validate_total(object, "input_tokens", "output_tokens")?;
     Ok(ModelUsage {
@@ -24,7 +28,7 @@ pub(super) fn decode_responses_usage(value: &Value) -> Result<ModelUsage, Protoc
         output_tokens: optional_u64(object, "output_tokens")?,
         reasoning_tokens: nested_u64(object, "output_tokens_details", "reasoning_tokens"),
         cache_read_tokens: nested_u64(object, "input_tokens_details", "cached_tokens"),
-        cache_write_tokens: None,
+        cache_write_tokens: nested_u64(object, "input_tokens_details", "cache_write_tokens"),
     })
 }
 
@@ -40,14 +44,18 @@ pub(super) fn decode_chat_usage(value: &Value) -> Result<ModelUsage, ProtocolAda
             "completion_tokens_details",
         ],
     )?;
-    allow_optional_object(object, "prompt_tokens_details", &["cached_tokens"])?;
+    allow_optional_object(
+        object,
+        "prompt_tokens_details",
+        &["cached_tokens", "cache_write_tokens"],
+    )?;
     allow_optional_object(object, "completion_tokens_details", &["reasoning_tokens"])?;
     validate_total(object, "prompt_tokens", "completion_tokens")?;
     Ok(ModelUsage {
         input_tokens: optional_u64(object, "prompt_tokens")?,
         output_tokens: optional_u64(object, "completion_tokens")?,
         cache_read_tokens: nested_u64(object, "prompt_tokens_details", "cached_tokens"),
-        cache_write_tokens: None,
+        cache_write_tokens: nested_u64(object, "prompt_tokens_details", "cache_write_tokens"),
         reasoning_tokens: nested_u64(object, "completion_tokens_details", "reasoning_tokens"),
     })
 }

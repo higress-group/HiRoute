@@ -7,7 +7,7 @@ use hiroute_domain::{
 use rusqlite::{Connection, OpenFlags, params};
 use serde::{Deserialize, Serialize};
 
-mod purpose;
+use crate::request_purpose as purpose;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -224,7 +224,7 @@ impl LocalObservationStore {
         };
         let more = rows.len() > usize::from(query.limit);
         let mut requests = Vec::with_capacity(usize::from(query.limit));
-        let mut purpose_bytes = purpose::PAGE_CARRIER_BYTES;
+        let mut purpose_bytes = purpose::QUERY_CARRIER_BYTES;
         for (mut request, link_body, receipt_body, receipt_digest, safe_fact_body) in
             rows.into_iter().take(usize::from(query.limit))
         {

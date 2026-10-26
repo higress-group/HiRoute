@@ -1137,12 +1137,9 @@ fn responses_usage(usage: &ModelUsage) -> Result<Value, ProtocolAdapterError> {
     let output = usage
         .output_tokens
         .ok_or_else(|| unrepresentable("Responses output usage"))?;
-    if usage.cache_write_tokens.is_some() {
-        return Err(unrepresentable("Responses cache-write usage"));
-    }
     let mut value = json!({"input_tokens":input,"output_tokens":output,"total_tokens":input.saturating_add(output)});
-    if let Some(cache) = usage.cache_read_tokens {
-        value["input_tokens_details"] = json!({"cached_tokens":cache});
+    if let Some(details) = super::render::openai_cache_details(usage) {
+        value["input_tokens_details"] = details;
     }
     if let Some(reasoning) = usage.reasoning_tokens {
         value["output_tokens_details"] = json!({"reasoning_tokens":reasoning});
@@ -1157,12 +1154,9 @@ fn chat_usage(usage: &ModelUsage) -> Result<Value, ProtocolAdapterError> {
     let output = usage
         .output_tokens
         .ok_or_else(|| unrepresentable("Chat output usage"))?;
-    if usage.cache_write_tokens.is_some() {
-        return Err(unrepresentable("Chat cache-write usage"));
-    }
     let mut value = json!({"prompt_tokens":input,"completion_tokens":output,"total_tokens":input.saturating_add(output)});
-    if let Some(cache) = usage.cache_read_tokens {
-        value["prompt_tokens_details"] = json!({"cached_tokens":cache});
+    if let Some(details) = super::render::openai_cache_details(usage) {
+        value["prompt_tokens_details"] = details;
     }
     if let Some(reasoning) = usage.reasoning_tokens {
         value["completion_tokens_details"] = json!({"reasoning_tokens":reasoning});

@@ -1203,7 +1203,11 @@ impl ProjectionState {
                     "input_tokens_details",
                     "cached_tokens",
                 ),
-                cache_write_tokens: None,
+                cache_write_tokens: nested_u64_value(
+                    object,
+                    "input_tokens_details",
+                    "cache_write_tokens",
+                ),
                 reasoning_tokens: nested_u64_value(
                     object,
                     "output_tokens_details",
@@ -1218,7 +1222,11 @@ impl ProjectionState {
                     "prompt_tokens_details",
                     "cached_tokens",
                 ),
-                cache_write_tokens: None,
+                cache_write_tokens: nested_u64_value(
+                    object,
+                    "prompt_tokens_details",
+                    "cache_write_tokens",
+                ),
                 reasoning_tokens: nested_u64_value(
                     object,
                     "completion_tokens_details",

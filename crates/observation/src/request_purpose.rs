@@ -1,12 +1,12 @@
-//! Optional request-view evidence from the original authenticated route fact.
+//! Bounded affirmative request-purpose evidence shared by views and trial scope.
 use hiroute_domain::{CanonicalDigest, ExecutionFactEnvelopeV1, ExecutionFactV1};
-use rusqlite::{Transaction, params};
+use rusqlite::{Connection, params};
 
-pub(super) const PAGE_CARRIER_BYTES: usize = 1024 * 1024;
+pub(crate) const QUERY_CARRIER_BYTES: usize = 1024 * 1024;
 const CARRIER_BYTES: usize = 64 * 1024;
 
-pub(super) fn native_auxiliary(
-    transaction: &Transaction<'_>,
+pub(crate) fn native_auxiliary(
+    transaction: &Connection,
     workspace: &str,
     session: &str,
     request: &str,

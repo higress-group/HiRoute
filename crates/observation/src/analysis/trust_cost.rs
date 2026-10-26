@@ -5,6 +5,7 @@ use super::{
     schema,
 };
 use crate::query_v2::ObservationV2Error as Error;
+use crate::request_purpose;
 use hiroute_domain::*;
 use rusqlite::{Connection, named_params};
 
@@ -62,18 +63,42 @@ pub(crate) fn trust_comparison(
     let args = named_params! {":workspace":reader.workspace().as_str(),":plan":scope.plan_id,":revision":scope.revision,":branch":scope.branch_id,":group":group,":from":scope.from_ms.max(retained),":to":scope.to_ms,":idle":now.saturating_sub(UNRESOLVED_AFTER_MS)};
     // Unknown membership stays in the conservative trial denominator. Only an
     // actual catch-up or a recent unclosed turn holds the entire result pending.
-    let (pending, gaps): (bool, u64) = db.query_row(
-        &format!(
-            "{SCOPE} SELECT COALESCE(MAX(dirty OR projected IS NULL
-            OR (segment_id IS NULL AND updated_at_ms>idle_before)),0),
-            COALESCE(SUM(NOT matched),0) FROM scoped WHERE NOT outside"
-        ),
-        args,
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )?;
-    if pending {
-        return Err(Error::Unavailable);
+    let mut statement = db.prepare(&format!(
+        "{SCOPE} SELECT matched, dirty OR projected IS NULL
+            OR (segment_id IS NULL AND updated_at_ms>idle_before), request_id, session_id,
+            segment_id IS NULL AND conflict=0
+            FROM scoped WHERE NOT outside"
+    ))?;
+    let mut rows = statement.query(args)?;
+    let mut purpose_bytes = request_purpose::QUERY_CARRIER_BYTES;
+    let mut gaps = 0;
+    while let Some(row) = rows.next()? {
+        let matched: bool = row.get(0)?;
+        if !matched {
+            let request: String = row.get(2)?;
+            let session: String = row.get(3)?;
+            // A retained native maintenance purpose rules this request out of
+            // user stages, including while it is recent. It still belongs to
+            // generic cost/accounting. No proof means the existing gap rules.
+            if row.get::<_, bool>(4)?
+                && request_purpose::native_auxiliary(
+                    db,
+                    reader.workspace().as_str(),
+                    &session,
+                    &request,
+                    &mut purpose_bytes,
+                ) == Some(true)
+            {
+                continue;
+            }
+            gaps += 1;
+        }
+        if row.get::<_, bool>(1)? {
+            return Err(Error::Unavailable);
+        }
     }
+    drop(rows);
+    drop(statement);
     let selected = format!("{SCOPE}, selected AS (SELECT a.*,c.session_id AS anchor_id FROM scoped c
         JOIN observation_analysis_requests_v1 a ON a.workspace_id=c.workspace_id AND a.request_id=c.request_id
         WHERE c.matched AND a.revision=(SELECT MAX(latest.revision) FROM observation_analysis_requests_v1 latest

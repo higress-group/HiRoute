@@ -128,8 +128,20 @@ async fn completed_facts(
     ingress: IngressProtocol,
     with_usage: bool,
 ) -> ProviderClassificationFacts {
+    completed_facts_with_write(ingress, with_usage, None).await
+}
+
+async fn completed_facts_with_write(
+    ingress: IngressProtocol,
+    with_usage: bool,
+    write: Option<u64>,
+) -> ProviderClassificationFacts {
     let mut state = attempt_state(ingress).await;
-    let bytes = serde_json::to_vec(&chat_response(with_usage)).unwrap();
+    let mut response = chat_response(with_usage);
+    if let Some(write) = write {
+        response["usage"]["prompt_tokens_details"]["cache_write_tokens"] = json!(write);
+    }
+    let bytes = serde_json::to_vec(&response).unwrap();
     let body_bytes = bytes.len() as u64;
     let input =
         ChargedBytes::copy_from_opaque(&state.budget, MemoryRole::ResponsePrefix, &bytes).unwrap();
@@ -192,6 +204,24 @@ async fn completed_facts(
         "response_complete"
     );
     facts
+}
+
+#[tokio::test]
+async fn nonstream_cache_write_evidence_reaches_gateway_completion_facts() {
+    for ingress in [
+        IngressProtocol::Responses,
+        IngressProtocol::Messages,
+        IngressProtocol::ChatCompletions,
+    ] {
+        for write in [0, 7] {
+            let facts = completed_facts_with_write(ingress, true, Some(write)).await;
+            assert!(facts.error_class.is_none(), "{ingress:?}: {facts:?}");
+            assert_eq!(
+                facts.usage.unwrap().cache_write,
+                UsageDimension::reported(write)
+            );
+        }
+    }
 }
 
 #[tokio::test]

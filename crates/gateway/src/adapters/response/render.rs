@@ -695,16 +695,24 @@ fn collect_refusal(response: &ModelResponseIRV1) -> String {
         .collect()
 }
 
+pub(super) fn openai_cache_details(usage: &ModelUsage) -> Option<Value> {
+    let mut details = Map::new();
+    if let Some(tokens) = usage.cache_read_tokens {
+        details.insert("cached_tokens".into(), tokens.into());
+    }
+    if let Some(tokens) = usage.cache_write_tokens {
+        details.insert("cache_write_tokens".into(), tokens.into());
+    }
+    (!details.is_empty()).then_some(Value::Object(details))
+}
+
 fn responses_usage(usage: &ModelUsage) -> Value {
     let mut value = json!({"input_tokens":usage.input_tokens.unwrap_or(0),"output_tokens":usage.output_tokens.unwrap_or(0),"total_tokens":usage.input_tokens.unwrap_or(0).saturating_add(usage.output_tokens.unwrap_or(0))});
     let object = value
         .as_object_mut()
         .expect("Responses usage renderer creates an object");
-    if let Some(tokens) = usage.cache_read_tokens {
-        object.insert(
-            "input_tokens_details".into(),
-            json!({"cached_tokens":tokens}),
-        );
+    if let Some(details) = openai_cache_details(usage) {
+        object.insert("input_tokens_details".into(), details);
     }
     if let Some(tokens) = usage.reasoning_tokens {
         object.insert(
@@ -720,11 +728,8 @@ fn chat_usage(usage: &ModelUsage) -> Value {
     let object = value
         .as_object_mut()
         .expect("Chat usage renderer creates an object");
-    if let Some(tokens) = usage.cache_read_tokens {
-        object.insert(
-            "prompt_tokens_details".into(),
-            json!({"cached_tokens":tokens}),
-        );
+    if let Some(details) = openai_cache_details(usage) {
+        object.insert("prompt_tokens_details".into(), details);
     }
     if let Some(tokens) = usage.reasoning_tokens {
         object.insert(
@@ -948,19 +953,6 @@ fn validate_projection(
         return Err(ProtocolAdapterError::ClientUnrepresentable(
             "P0 client projection requires exact input and output usage".into(),
         ));
-    }
-    match protocol {
-        IngressProtocol::Responses | IngressProtocol::ChatCompletions
-            if response.usage.cache_write_tokens.is_some() =>
-        {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "client protocol cannot represent cache-write usage".into(),
-            ));
-        }
-        // Messages has no separate reasoning-token counter. As in the
-        // incremental renderer, retain the billable output total; the canonical
-        // usage still records its reasoning breakdown for observation.
-        _ => {}
     }
     if protocol == IngressProtocol::ChatCompletions {
         let reasoning_blocks = response
