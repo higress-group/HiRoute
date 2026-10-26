@@ -258,6 +258,10 @@ answer quality; acceptance records must identify the actual revision and scenari
 
 The session timeline uses a [read-specific selection](../../crates/domain/src/observation/routing_timeline.rs)
 to expose opening historical-protection evidence while preserving the stored decision.
+Its [projection](../../crates/observation/src/query_v2/routing_timeline/projection.rs)
+counts explicit tool-continuation reasons independently of model affinity;
+[retained timeline checks](../../crates/observation/src/store/tests/plan_quality/routing_timeline_protection.rs)
+cover pending, closed and reopened views.
 The [protection evidence guard](../../apps/desktop/src/features/trust/protection-evidence.ts)
 checks complete matching Plan, revision, time and branch scope before placing a
 released-decision count beside protected stages. Product requirements belong to

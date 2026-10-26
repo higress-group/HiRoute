@@ -619,14 +619,15 @@ fn make_turn(members: &[&Request]) -> Result<Projected, ObservationV2Error> {
             tool_continuations: members
                 .iter()
                 .filter(|r| {
-                    held(r, LedgerReasonCodeV1::ContextHoldApplied)
-                        || r.decision
-                            .as_ref()
-                            .and_then(|d| d.complexity.as_ref())
-                            .is_some_and(|d| {
-                                d.reason_codes
-                                    .contains(&ComplexityReasonCodeV1::InheritedToolContinuation)
-                            })
+                    // Model affinity also applies to freshly classified user messages.
+                    // Only the recorded inheritance reason proves a tool continuation.
+                    r.decision
+                        .as_ref()
+                        .and_then(|d| d.complexity.as_ref())
+                        .is_some_and(|d| {
+                            d.reason_codes
+                                .contains(&ComplexityReasonCodeV1::InheritedToolContinuation)
+                        })
                 })
                 .count() as u64,
             relays,
