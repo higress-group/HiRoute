@@ -138,6 +138,70 @@ fn dsh_save_checks_composition_once_per_capture_and_again_at_admission() {
     );
 }
 
+#[test]
+fn changed_dsh_mapping_compiles_each_grant_once() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::native_model::tests::settings_entry_tests::qoder::native_routing::changed_dsh_mapping_compiles_each_grant_once",
+    ) {
+        return;
+    }
+    let mut fixture = QoderFixture::with_all_models();
+    fixture.context = fixture
+        .runtime
+        .adapter
+        .settings_context_for_agent("agent_dsh_default")
+        .unwrap();
+    fixture.native_config = fixture.runtime.adapter.scanner.dsh_user_models_target();
+    let mut spec = model_spec(&fixture);
+    spec["model"]["settings"]["mode"] = json!("dsh_additional");
+    let plans = fixture
+        .runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .active_publication(&WorkspaceId::default())
+        .unwrap()
+        .unwrap()
+        .verify()
+        .unwrap()
+        .published_agent_plans()
+        .unwrap()
+        .into_iter()
+        .filter(|p| {
+            p.active
+                && p.supported_ingress
+                    .contains(&AgentIngressProtocolV1::Responses)
+        })
+        .map(|p| p.agent_plan_id)
+        .collect::<Vec<_>>();
+    assert!(
+        plans.len() > 1,
+        "exercise a real changed route set, not a no-op save"
+    );
+    for (key, selection) in [
+        ("initial-mapping", vec![plans[0].clone()]),
+        ("added-mapping", plans),
+    ] {
+        spec["model"]["settings"]["allowed_plan_ids"] = json!(selection);
+        let builds = || {
+            crate::control::runtime::publication::SETTINGS_RECORD_BUILDS.with(std::cell::Cell::get)
+        };
+        let before = builds();
+        apply(&fixture.service, &fixture.runtime, spec.clone(), key);
+        assert_eq!(model_status(&fixture)["state"], "configured");
+        assert_eq!(
+            builds() - before,
+            1,
+            "{key}: observing and applying the same authenticated grant must not recompile its publication"
+        );
+    }
+    let before = fs::read(&fixture.native_config).unwrap();
+    let reopened = reopen(fixture);
+    assert_eq!(model_status(&reopened)["state"], "configured");
+    assert_eq!(fs::read(&reopened.native_config).unwrap(), before);
+}
+
 pub(super) fn reopen(fixture: QoderFixture) -> QoderFixture {
     let scanner = fixture.runtime.adapter.scanner.clone();
     let QoderFixture {

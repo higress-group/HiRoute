@@ -23,6 +23,8 @@ const LEGACY_MARKER_SCHEMA: &str = "hiroute.product-publication-marker/v1";
 
 #[cfg(test)]
 thread_local! { pub(super) static MARKER_DECODES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+#[cfg(test)]
+thread_local! { pub(super) static SETTINGS_RECORD_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 
 mod lifecycle;
 use lifecycle::target_error;
@@ -193,6 +195,8 @@ impl LocalControlAdapter {
             .find(|record| Some(&record.digest) == intent.before_fingerprint())
             .ok_or_else(|| PortError::new(PortErrorCode::Conflict, "publication.agent.base"))?;
         if settings {
+            #[cfg(test)]
+            SETTINGS_RECORD_BUILDS.with(|count| count.set(count.get() + 1));
             return hiroute_domain::settings_model_publication_record(
                 operation,
                 intent,
