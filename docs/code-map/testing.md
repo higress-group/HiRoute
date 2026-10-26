@@ -81,6 +81,11 @@ the [unsigned Messages tool-stage cases](../../crates/gateway/src/agent_turn_his
 and [current-window turn/continuation cases](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
 [Stage closure cases](../../crates/gateway/src/agent_turn_history/stage_closure_tests.rs)
 distinguish captured membership, provider outcomes and closure proof; the
+[native retry listener case](../../crates/gateway/src/core_runtime/response_diagnostics_tests/native_retry.rs)
+exercises upstream failure, same-activation retry, subsequent classification,
+model-group switching and assessment membership through the real Gateway;
+[retry boundary cases](../../crates/gateway/src/agent_turn_history/native_retry_tests.rs)
+reject ambiguous siblings, changed input/setup, capture gaps and accepted output. The
 [request JSON observation cases](../../crates/gateway/src/observation/content/request_json_replay_tests.rs)
 verify Replay expansion, integrity and bounded storage without leaking locators.
 The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)

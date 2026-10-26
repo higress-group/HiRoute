@@ -67,6 +67,38 @@ test("DSH managed main and auxiliary calls retain metadata in an isolated LLM sc
   }, { isolatedLlm: true, events: [turn(1), event(current)] });
 });
 
+test("DSH Desktop 0.2.1-rc.3 keeps its real input before native skill and time context", async () => {
+  const current = user("current", "Inspect the export service");
+  const context = [user("runtime", "WORKSPACE", "runtime-context"),
+    user("skills", "AVAILABLE SKILLS", "skill-catalog"), user("clock", "CURRENT TIME", "time-context")];
+  await fixture(async ({ request, send }) => {
+    const messages = [{ role: "system", content: [text("SYSTEM")] }, current, ...context];
+    const wire = messages.slice(1).map(message => ({ role: "user", content: message.content }));
+    for (let retry = 0; retry < 2; ++retry) {
+      const observed = await send(request(messages), wire);
+      assert.deepEqual(observed.input?.messages, [{ index: 0, sha256: hash(["Inspect the export service"]) }]);
+      assert.equal(observed.input.scope_digest, hash(wire.map(message => hash(message.content.map(p => p.text)))));
+    }
+    const unknown = user("unknown", "LATE NOTICE", "future-context");
+    assert.equal((await send(request([...messages, unknown]), [...wire, { role: "user", content: "LATE NOTICE" }])).input, undefined);
+  }, { isolatedLlm: true, events: [turn(1), event(current), ...context.map(event)] });
+});
+
+test("DSH current and older instruction-role projections require the complete wire User scope", async () => {
+  const current = user("current", "CURRENT");
+  await fixture(async ({ request, send }) => {
+    const instruction = { role: "developer", content: [text("UPDATE")] };
+    const messages = [current, instruction];
+    const modern = [{ role: "user", content: "CURRENT" }, { role: "developer", content: "UPDATE" }];
+    const legacy = [{ role: "user", content: "CURRENT" }, { role: "user", content: "UPDATE" }];
+    for (const wire of [modern, legacy]) {
+      const proof = (await send(request(messages), wire)).input;
+      assert.deepEqual(proof.messages, [{ index: 0, sha256: hash(["CURRENT"]) }]);
+      assert.equal((await send(request(messages), [...wire, { role: "user", content: "UNKNOWN" }])).input, undefined);
+    }
+  }, { events: [turn(1), event(current)] });
+});
+
 test("DSH v2 purpose/session survive every optional lookup and later recover", async () => {
   const current = user("current", "CURRENT");
   await fixture(async ({ ctx, hook, request, send, sent }) => {

@@ -34,6 +34,8 @@ use records::*;
 mod branches;
 #[path = "store/opening.rs"]
 mod opening;
+#[path = "store/retry.rs"]
+mod retry;
 
 pub(crate) const DEFAULT_MAX_MEMORY_BYTES: usize = 500_000_000;
 pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
@@ -114,6 +116,7 @@ struct TranscriptCheckpoint {
     active_user_index: usize,
     message_count: usize,
     digest: Option<[u8; 32]>,
+    retry_setup: Option<[u8; 32]>,
 }
 
 struct CaptureAdmission {
@@ -143,6 +146,7 @@ struct ActiveTurn {
     first_request_id: Option<String>,
     last_request_id: Option<String>,
     last_request_status: AgentTurnStatus,
+    request_output_accepted: bool,
     // Provider outcomes are facts about every actual request, independent of
     // whether the routing stage is still waiting for a tool continuation.
     provider_outcomes_known: bool,
@@ -432,6 +436,7 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
+                request_output_accepted: false,
                 provider_outcomes_known: true,
                 capture_partial: missing_current_output,
                 finalized: false,
@@ -440,6 +445,7 @@ impl AgentTurnHistoryStore {
                 active_user_index: latest.user_index,
                 message_count: analyzed.message_count,
                 digest: analyzed.anchors.as_ref().map(|a| a.complete),
+                retry_setup: analyzed.retry_setup,
             };
             let mut entry = SessionEntry {
                 scope: scope.clone(),
@@ -639,10 +645,12 @@ impl AgentTurnHistoryStore {
                 entry.active.boundary = Default::default();
                 entry.response_boundary = None;
                 entry.active.last_request_status = AgentTurnStatus::Unknown;
+                entry.active.request_output_accepted = false;
                 entry.checkpoint = TranscriptCheckpoint {
                     active_user_index: latest.user_index,
                     message_count: analyzed.message_count,
                     digest: analyzed.anchors.as_ref().map(|a| a.complete),
+                    retry_setup: analyzed.retry_setup,
                 };
                 let ticket = AgentTurnTicket {
                     key: key.clone(),
@@ -791,6 +799,7 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
+                request_output_accepted: false,
                 provider_outcomes_known: true,
                 capture_partial: false,
                 finalized: false,
@@ -799,6 +808,7 @@ impl AgentTurnHistoryStore {
                 active_user_index: latest.user_index,
                 message_count: analyzed.message_count,
                 digest: analyzed.anchors.as_ref().map(|a| a.complete),
+                retry_setup: analyzed.retry_setup,
             };
             let ticket = AgentTurnTicket {
                 key: key.clone(),

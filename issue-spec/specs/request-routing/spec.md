@@ -431,6 +431,17 @@ capture completeness. It SHALL NOT manufacture executions from client assistant
 messages, summaries, equal text or later successful retries. Restart does not add
 a persistence or reconstruction promise for discarded in-memory content.
 
+A terminal failed request with no accepted downstream events may retry in the
+same routing stage when its scoped native activation, complete comparable input
+and effective instruction/tool setup all match exactly. All equal native-request
+branches participate in ambiguity detection, including in-flight siblings. A
+capture gap, unknown/interrupted outcome, changed setup, new activation, accepted
+output or ambiguous match SHALL NOT establish this retry association. This narrow
+association reuses the stage decision while preserving every failed and successful
+request and frozen assessment. It remains contextual and source uncertainty is
+retained; it does not establish an accepted-response edge or provider affinity.
+Later real input still classifies and evaluates the preceding actual execution.
+
 Gateway admission SHALL record request-to-stage identity independently of routing
 decisions, model affinity and stage closure. The producer epoch, Gateway stage,
 branch and admission revision identify this association; native session IDs and

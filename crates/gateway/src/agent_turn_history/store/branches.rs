@@ -29,6 +29,7 @@ pub(super) struct BranchAdmission {
     pub(super) scope: AgentTurnHistoryKey,
     pub(super) relation: HistoryRelation,
     projected: bool,
+    retry: bool,
     pub(super) inputs: TurnDecisionInputs,
     seed: VecDeque<ClosedTurn>,
     segment: Option<SegmentState>,
@@ -61,6 +62,12 @@ impl AgentTurnHistoryStore {
         positions.dedup();
         let mut analyzed = analyze_request(request, replay)?;
         analyzed.measured = true;
+        analyzed.retry_setup = crate::context_hold::observed_history_with_replay(
+            request,
+            &self.instance_nonce,
+            Some(replay),
+        )
+        .map(|history| history.instruction_digest);
         let mut boundary_budget = crate::context_hold::fingerprint::FingerprintBudget::default();
         analyzed.boundaries = positions
             .iter()
@@ -141,11 +148,28 @@ impl AgentTurnHistoryStore {
                     && entry.checkpoint.message_count == analyzed.message_count
             })
         };
+        let native_retries = candidates
+            .iter()
+            .filter(|candidate| {
+                super::retry::same_native_request(
+                    &inner.entries[&candidate.0],
+                    analyzed,
+                    inputs.native_turn,
+                )
+            })
+            .map(|candidate| candidate.0.clone())
+            .collect::<Vec<_>>();
+        // Count every matching branch, including active or unobserved siblings.
+        // Native turn identity cannot select among ambiguous equal requests.
+        let retry_key = (native_retries.len() == 1)
+            .then(|| &native_retries[0])
+            .filter(|key| super::retry::failed_before_output(&inner.entries[*key]));
         // Admission order breaks equally plausible ties, not response completion.
         candidates.sort_by(|a, b| {
             (
                 b.1,
                 b.1.then_some(b.2),
+                retry_key == Some(&b.0),
                 retry_matches(&b.0),
                 b.3,
                 b.4,
@@ -156,6 +180,7 @@ impl AgentTurnHistoryStore {
                 .cmp(&(
                     a.1,
                     a.1.then_some(a.2),
+                    retry_key == Some(&a.0),
                     retry_matches(&a.0),
                     a.3,
                     a.4,
@@ -166,6 +191,7 @@ impl AgentTurnHistoryStore {
         });
         let selected = candidates.first();
         let exact = selected.is_some_and(|c| c.1);
+        let retry = !exact && selected.is_some_and(|c| retry_key == Some(&c.0));
         let ambiguous = selected.is_some_and(|first| {
             first.1
                 && candidates.iter().skip(1).any(|c| {
@@ -182,7 +208,7 @@ impl AgentTurnHistoryStore {
         let reusable = selected_entry.is_some_and(|entry| {
             entry.pending_request.is_none()
                 && (entry.active.source_unverified || !analyzed.user_origin_unverified)
-        }) && (exact && !ambiguous || legacy_exact);
+        }) && (exact && !ambiguous || retry || legacy_exact);
         let opening_cause = (analyzed.measured && !reusable).then(|| {
             super::opening::fork_opening_cause(
                 inner.scope_entries(scope).map(|(_, entry)| entry),
@@ -192,7 +218,9 @@ impl AgentTurnHistoryStore {
         if let Some(entry) = selected_entry
             && analyzed.measured
         {
-            inputs.history_continuity = if exact && !ambiguous {
+            inputs.history_continuity = if retry {
+                HistoryContinuity::NativeSameTurn
+            } else if exact && !ambiguous {
                 if inputs.native_turn.is_some()
                     && inputs.native_turn == entry.active.native_turn
                     && !super::opening::has_appended_input(&entry.checkpoint, analyzed)
@@ -295,6 +323,7 @@ impl AgentTurnHistoryStore {
             scope: scope.clone(),
             relation,
             projected,
+            retry,
             inputs,
             seed,
             segment,
@@ -335,7 +364,7 @@ impl AgentTurnHistoryStore {
             .ok_or(AgentTurnHistoryError::Resource)?;
         entry.scope = selection.scope.clone();
         entry.branch_relation = selection.relation;
-        entry.active.association_unverified |= selection.projected;
+        entry.active.association_unverified |= selection.projected || selection.retry;
         let ticket = match begin {
             AgentTurnBegin::NewTurn {
                 ticket, history, ..
@@ -362,7 +391,7 @@ impl AgentTurnHistoryStore {
         };
         // A visible projection is enough for actual-stage capture, never for
         // provider affinity or provider-state cleanup authorization.
-        ticket.allow_affinity = !selection.projected;
+        ticket.allow_affinity = !selection.projected && !selection.retry;
         if !selection.forked || selection.seed.is_empty() {
             return Ok(());
         }

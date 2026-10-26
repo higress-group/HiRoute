@@ -11,7 +11,9 @@ const MAX_USER_MESSAGES = 128;
 const MAX_CURRENT_MESSAGES = 32;
 const MAX_EVENTS = 512;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const SUPPLEMENTAL_SOURCES = new Set(["runtime-context", "compact-checkpoint"]);
+// Native context producers supplement an activation; peers and unknown producers
+// still invalidate its current-input proof. Desktop also installs these two.
+const SUPPLEMENTAL_SOURCES = new Set(["runtime-context", "compact-checkpoint", "skill-catalog", "time-context"]);
 const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 function textPart(part, native) {
@@ -60,7 +62,7 @@ function currentTurn(session) {
   }
 }
 
-function nativeUsers(options, current) {
+function nativeUsers(options, current, instructionUsers) {
   const messages = options.messages;
   if (!current?.messages.size || !Array.isArray(messages) || messages.length > MAX_MESSAGES) return;
   const users = [];
@@ -69,10 +71,11 @@ function nativeUsers(options, current) {
   let lastCurrent = -1;
   for (let i = 0; i < messages.length; ++i) {
     const message = messages[i];
-    // Only a leading system message supplies pi-ai's separate system slot.
-    // Later system/developer messages become User envelopes and remain in scope.
-    if (!["user", "developer", "system"].includes(message.role) ||
-        (message.role === "system" && i === 0 && options.system === undefined)) continue;
+    // Older pi-ai bridges projected in-history instructions as User envelopes;
+    // 0.2.1-rc.3 preserves their role. Match either complete final User scope,
+    // never choose a client version or discard a mismatching wire envelope.
+    if (message.role !== "user" && (!instructionUsers || !["developer", "system"].includes(message.role)) ||
+        (instructionUsers && message.role === "system" && i === 0 && options.system === undefined)) continue;
     const fingerprint = textDigest(message.content, true);
     if (!fingerprint || (bytes += fingerprint.bytes) > MAX_BODY_BYTES || users.length >= MAX_USER_MESSAGES) return;
     const selected = message.role === "user" && message.source?.kind === "user" && current.messages.has(message.id);
@@ -109,9 +112,11 @@ function userProof(context, init) {
     if (!fingerprint || wire.length >= MAX_USER_MESSAGES) return;
     wire.push(fingerprint.sha256);
   }
-  if (wire.length !== context.users.length || wire.some((value, i) => value !== context.users[i].sha256)) return;
+  const users = context.users.find(candidate => wire.length === candidate.length &&
+    wire.every((value, i) => value === candidate[i].sha256));
+  if (!users) return;
   return { kind: "native_messages", event_id: context.wire.turn_id, coverage: "window",
-    messages: context.users.flatMap((user, index) => user.selected ? [{ index, sha256: wire[index] }] : []),
+    messages: users.flatMap((user, index) => user.selected ? [{ index, sha256: wire[index] }] : []),
     scope_digest: digest(wire) };
 }
 
@@ -171,7 +176,10 @@ function requestContext(ctx, options) {
       if (id(checkpoint)) wire.checkpoint = checkpoint;
     }
   } catch { /* Optional checkpoint cannot erase explicit purpose. */ }
-  try { if (purpose === "main") users = nativeUsers(options, current); } catch { /* Optional current-event proof. */ }
+  try {
+    if (purpose === "main") users = Object.freeze([false, true]
+      .map(instructionUsers => nativeUsers(options, current, instructionUsers)).filter(Boolean));
+  } catch { /* Optional current-event proof. */ }
   return Object.freeze({ minimum, wire: Object.freeze(wire), parent, users });
 }
 

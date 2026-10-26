@@ -103,6 +103,12 @@ impl AgentTurnHistoryStore {
         if matching_entry_mut(&mut inner, ticket).is_err() {
             return;
         }
+        if !events.is_empty() {
+            matching_entry_mut(&mut inner, ticket)
+                .expect("checked request")
+                .active
+                .request_output_accepted = true;
+        }
         for event in events {
             // Reserve the bounded digest state before accepting any block.
             inner.evict_to_budget(

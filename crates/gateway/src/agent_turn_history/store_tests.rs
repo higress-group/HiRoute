@@ -59,6 +59,8 @@ mod capture_gap;
 #[path = "concurrent_requests_tests.rs"]
 mod concurrent_requests;
 
+#[path = "native_retry_tests.rs"]
+mod native_retry;
 #[path = "stage_closure_tests.rs"]
 mod stage_closure;
 

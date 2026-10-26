@@ -334,14 +334,14 @@ fn assert_recovery(facts: &[Value]) {
     }
 }
 
-fn named<'a>(facts: &'a [Value], kind: &str) -> Vec<&'a Value> {
+pub(super) fn named<'a>(facts: &'a [Value], kind: &str) -> Vec<&'a Value> {
     facts
         .iter()
         .filter(|event| event["fact"]["kind"] == kind)
         .collect()
 }
 
-fn wait_requests(facts: &Facts, count: usize) -> Vec<Value> {
+pub(super) fn wait_requests(facts: &Facts, count: usize) -> Vec<Value> {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let captured = facts.0.lock().unwrap().clone();
@@ -381,12 +381,12 @@ fn send(address: std::net::SocketAddr, input: &[Value]) -> Value {
     response_body(&response)
 }
 
-fn request_body(raw: &[u8]) -> Value {
+pub(super) fn request_body(raw: &[u8]) -> Value {
     let start = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
     serde_json::from_slice(&raw[start..]).unwrap()
 }
 
-fn response_body(raw: &[u8]) -> Value {
+pub(super) fn response_body(raw: &[u8]) -> Value {
     let start = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
     let head = std::str::from_utf8(&raw[..start]).unwrap();
     let mut remaining = &raw[start..];
@@ -442,14 +442,14 @@ fn response_reader_requires_complete_entity_before_accepting_valid_json() {
     }
 }
 
-fn reply(stream: &mut impl Write, body: &Value) {
+pub(super) fn reply(stream: &mut impl Write, body: &Value) {
     let body = serde_json::to_vec(body).unwrap();
     write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
     stream.write_all(&body).unwrap();
     stream.flush().unwrap();
 }
 
-fn classified_publication(
+pub(super) fn classified_publication(
     provider: &TestTlsListener,
     endpoint: String,
 ) -> GatewayPublicationSnapshotV3 {
