@@ -7,6 +7,7 @@ pub(super) const MARKER_SQL: &str = "CREATE TABLE stable_storage_format(singleto
 #[cfg(unix)]
 pub(crate) struct StartupLock {
     file: std::fs::File,
+    owner_pid: u32,
 }
 
 #[cfg(unix)]
@@ -15,7 +16,9 @@ impl Drop for StartupLock {
         // The shared guard outlives every actual store, including into_parts.
         // An incidental fork/dup descriptor must not extend that ownership
         // until its eventual close/exec. File close remains the fallback.
-        let _ = fs2::FileExt::unlock(&self.file);
+        if self.owner_pid == std::process::id() {
+            let _ = fs2::FileExt::unlock(&self.file);
+        }
     }
 }
 
@@ -87,7 +90,10 @@ pub(crate) fn acquire_startup_lock(root: &Path) -> Result<StartupLock, LocalStor
     })?;
     #[cfg(unix)]
     {
-        Ok(StartupLock { file })
+        Ok(StartupLock {
+            file,
+            owner_pid: std::process::id(),
+        })
     }
     #[cfg(not(unix))]
     {

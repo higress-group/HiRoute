@@ -1,5 +1,6 @@
 use super::*;
 use crate::LocalStorageSet;
+use std::os::unix::process::CommandExt;
 
 fn locked(root: &Path) {
     assert!(
@@ -22,6 +23,27 @@ fn duplicate_os_handle_does_not_extend_released_startup_ownership() {
     drop(inherited);
     locked(root.path());
     drop(next);
+    assert!(acquire_startup_lock(root.path()).is_ok());
+}
+
+#[test]
+fn child_cleanup_cannot_unlock_the_parent_owner() {
+    let root = tempfile::tempdir().unwrap();
+    let mut owner = Some(acquire_startup_lock(root.path()).unwrap());
+    let mut command = std::process::Command::new("/bin/true");
+    // SAFETY: child cleanup drops only a file and its PID. It performs no
+    // allocation, mutex access or SQLite work before exec.
+    unsafe {
+        command.pre_exec(move || {
+            drop(owner.take());
+            Ok(())
+        });
+    }
+    assert!(command.status().unwrap().success());
+    // The Command still owns the parent's guard after the child has closed
+    // its inherited copy. The child must never release the parent's flock.
+    locked(root.path());
+    drop(command);
     assert!(acquire_startup_lock(root.path()).is_ok());
 }
 
