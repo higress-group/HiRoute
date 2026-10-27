@@ -467,6 +467,11 @@ HiRoute SHALL allow the local installation owner to save or disable one durable 
 - **WHEN** continued writes, contention or failed or ineffective release keeps usage above the threshold
 - **THEN** maintenance yields and backs off between bounded passes, reports pending/blocked overage, and never continuously consumes CPU or drops acknowledged writes to force the limit.
 
+#### Scenario: Logical retirement precedes physical cleanup
+
+- **WHEN** capacity retention commits a request's logical retirement and its physical cleanup is interrupted or deferred, including across restart
+- **THEN** fresh Plan-quality reads immediately omit stages ending in that request and omit assessments triggered by it from samples, filters and summary scores; existing quality cursors become stale, while unrelated retained evidence remains unchanged and physical cleanup resumes in bounded passes.
+
 #### Scenario: Physical release is reported honestly
 
 - **WHEN** retired detail is hidden but shared survivors or reusable database pages prevent immediate file shrink
