@@ -3,6 +3,7 @@ mod blob_gc;
 mod content_v2;
 mod fact_regression;
 mod failure_isolation;
+mod gap_lookup;
 mod incremental_completeness;
 mod plan_quality;
 mod request_purpose;

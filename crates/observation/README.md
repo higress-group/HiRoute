@@ -12,6 +12,12 @@
 
 Observation gaps must remain visible without changing the model request's execution result. Historical identity and price facts must not be inferred from current configuration. Deleted content remains unavailable through search, old references, and replay.
 
+`store/gap` resolves an arriving sequence within its exact channel, producer,
+epoch and stream. The stream/end-sequence index skips unrelated streams and
+already-ended gaps; every overlapping gap still retains its scope, loss status
+and reason when split. Current-store reopen installs this derived index without
+rewriting evidence, resetting history or changing the physical format version.
+
 `StageAssessmentRecordedV1` retains joint quality under one frozen native rubric
 without assigning a model or profile. It uses the existing nullable stage projection
 and immutable history membership. Complete joint assessments count as scored stages;

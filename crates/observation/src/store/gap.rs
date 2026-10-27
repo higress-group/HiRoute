@@ -5,6 +5,13 @@ use rusqlite::{Transaction, params};
 
 use crate::writer::ObservationStoreError;
 
+// Seek past gaps that ended before this event, within its exact producer stream.
+pub(super) const RESOLVE_SEQUENCE_SQL: &str =
+    "SELECT gap_id, first_sequence, last_sequence, known_loss, workspace_id,
+            session_id, reason FROM observation_gaps
+     WHERE channel=?1 AND producer_id=?2 AND producer_epoch=?3 AND stream_id=?4
+       AND first_sequence<=?5 AND last_sequence>=?5";
+
 pub(super) fn record(
     transaction: &Transaction<'_>,
     channel: ObservationChannel,
@@ -105,12 +112,7 @@ pub(super) fn resolve_sequence(
     let sequence = as_i64(sequence)?;
     let rows = {
         let mut statement = transaction
-            .prepare(
-                "SELECT gap_id, first_sequence, last_sequence, known_loss, workspace_id,
-                        session_id, reason FROM observation_gaps
-                 WHERE channel=?1 AND producer_id=?2 AND producer_epoch=?3 AND stream_id=?4
-                   AND first_sequence<=?5 AND last_sequence>=?5",
-            )
+            .prepare(RESOLVE_SEQUENCE_SQL)
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
         statement
             .query_map(
