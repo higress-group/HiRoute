@@ -112,6 +112,11 @@ component assertions do not replace the real DSH Web/HiRoute acceptance.
 [Quality snapshot cases](../../crates/observation/src/query_v2/plan_quality_snapshot_tests.rs)
 exercise concurrent production ingestion, deletion fences and strict pagination
 without making ordinary appends invalidate a fresh summary/detail read.
+[Cost presentation cases](../../apps/desktop/tests/trust-cost-presentation.test.mjs)
+exercise safe integer amounts, full-scope bounds and invalid evidence; the
+[production-style browser scenarios](../../apps/desktop/tests/v3/visual/trust-cost-presentation.mjs)
+cover the card, tiles, suggestion populations, disclosures and supported layouts
+with controlled IPC. Real retained-data and native acceptance remain separate.
 The [native encrypted listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_encrypted_continuation.rs)
 and [cross-protocol continuation cases](../../tools/e2e-harness/tests/p0_gateway_runtime/cross_protocol_encrypted_continuation.rs)
 exercise accepted-event delivery, repeated tool requests, complete assessment membership

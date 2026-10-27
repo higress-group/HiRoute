@@ -198,7 +198,7 @@ export function PlanQuality({
 
   return <div className={'plan-quality' + (compact ? ' compact' : '')}>
     <div className="quality-toolbar">
-      <div className="quality-scope-meta">{text(`${stageCount} 个执行阶段 · ${summary.scored_stage_count} 已评分 · ${summary.unrated_stage_count} 未评分${report ? ` · 证据来自 ${report.session_total} 个会话` : ''}`, `${stageCount} stages · ${summary.scored_stage_count} scored · ${summary.unrated_stage_count} unrated${report ? ` · evidence from ${report.session_total} sessions` : ''}`)}</div>
+      <div className="quality-scope-meta">{text(`所选范围：${stageCount} 个阶段 · ${summary.scored_stage_count} 已评分 · ${summary.unrated_stage_count} 未评分${report ? ` · 证据来自 ${report.session_total} 个会话` : ''}`, `Selected scope: ${stageCount} stages · ${summary.scored_stage_count} scored · ${summary.unrated_stage_count} unrated${report ? ` · evidence from ${report.session_total} sessions` : ''}`)}</div>
       <div className="quality-filters">
         {!compact && <label><span className="sr-only">{text('时间范围', 'Time range')}</span><select className="select" value={period} onChange={event => { resetDetail(); setPeriod(event.target.value as Period); }}>
           <option value="seven_days">{text('最近 7 天', 'Last 7 days')}</option><option value="one_day">{text('最近 24 小时', 'Last 24 hours')}</option><option value="all">{text('全部保留期', 'All retained')}</option>
@@ -213,7 +213,7 @@ export function PlanQuality({
     </div>
     {trust.error && <div className="callout warn" role="alert" data-error-code={trust.error}><span>{trust.error.toLowerCase().includes('scope_too_large') ? text('证据超过读取上限。建议需要本版本的全部保留记录；缩短显示时间不一定能减少建议计算范围。', 'Evidence exceeds the read limit. Suggestions need the full retained version; narrowing the displayed window may not reduce that scope.') : text('证据暂时无法读取，当前档位未改变。', 'Evidence is unavailable. Your trust level has not changed.')}</span><button className="btn" type="button" onClick={() => setReload(value => value + 1)}>{text('重试', 'Retry')}</button></div>}
     {trustScope && !report && !trust.error && <p className="quality-status" role="status">{text('正在读取完整范围的证据…', 'Reading the complete evidence scope…')}</p>}
-    {report && <TrustSuggestions report={report} language={language} onThreshold={onThreshold} onDivision={onDivision} onOpenAgent={onOpenAgent} />}
+    {report && <TrustSuggestions report={report} currentModels={currentModels} language={language} onThreshold={onThreshold} onDivision={onDivision} onOpenAgent={onOpenAgent} />}
     {report && groupBy === 'model' && <TrustTiles report={report} language={language} />}
     {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{text('模型表现暂时无法读取。', 'Model performance is temporarily unavailable.')}</span><button className="btn" type="button" onClick={() => setReload(value => value + 1)}>{text('重试', 'Retry')}</button></div>}
     {!loaded && busy && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('正在读取模型表现…', 'Reading model performance…')}</p></div>}
