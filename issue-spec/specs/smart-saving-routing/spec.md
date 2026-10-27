@@ -23,15 +23,15 @@ while retaining their parked edits. Custom extensions directly select regular or
 
 Related source specifications:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6236473660
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
-#### Scenario: Existing route uses the Familiar threshold
+#### Scenario: Existing route retains its exact threshold
 
 - **WHEN** using a built-in decision connection, a saved smart-saving route with threshold 0.80 is opened
-- **THEN** the editor MUST display Difficulty routing and Familiar without changing
-  the stored mode, candidate ordering or selected decision source.
+- **THEN** the editor displays Difficulty routing and the continuous control with threshold 0.80, without changing stored mode, candidate ordering or selected decision source.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
+- https://github.com/higress-group/HiRoute/issues/227#issuecomment-6446412837
 
 ### Requirement: Degree and competence thresholds are independent
 
@@ -115,41 +115,47 @@ coverage, and drill-down follow [session history](../session-history/spec.md).
 
 ### Requirement: Trust levels express a routing choice, separately from evidence
 
-Built-in difficulty routing and two-group categories MUST offer Trial 0.90, Familiar 0.80,
-Trusted 0.65 and Hands-off 0.50 from one shared level definition. The existing 0.80
-threshold displays Familiar. A nonmatching value remains an exact Custom value;
-reading or opening an editor MUST NOT round it. Heuristic routing and custom extensions offer no trust
-levels. The stored mode remains `smart_saving`, the editor keeps its `economy` candidate field,
-and the execution group remains `regular`. Existing Economy references name this same group.
-
-Changing a level changes only the simple-probability threshold. It MUST NOT alter
-competence floors, permissions, tool approvals or sandbox settings. The editor
-states the active revision's evidence separately and explicitly identifies zero
-samples. Keeping a level is a normal choice, not incomplete onboarding.
-
-The safety-net explanation follows the selected judgment settings. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Custom extensions own their decision policy; HiRoute does not apply low-score protection to their decisions. Published routing follows its frozen settings; editor explanations describe the next publication.
+Built-in difficulty routing and two-group categories MUST expose continuous manual trust adjustment over the entire finite simple-probability threshold range 0..1, using the existing integer-millisecond precision without snapping to named presets. More trust lowers the threshold; the maximum-trust endpoint is exactly zero. The control retains directly clickable presets Trial 0.90, Familiar 0.80, Trusted 0.65 and Hands-off 0.50, and adds Entrusted 0.00. The zero endpoint is labelled Entrusted. Preset clicks set the exact value in the draft; the slider remains continuously adjustable between and beyond presets without snapping. Only an exact preset match is selected; intermediate values do not highlight a nearest preset. One live numeric simple-probability threshold appears below the slider; presets use short names without per-preset explanations, repeated numeric captions or a Custom-value badge. Existing values remain exact on read/open/save until explicitly edited. Default thresholds remain 0.80 for ordinary authoring and 0.90 for trial authoring. Heuristic routing and custom extensions expose no trust threshold controls. Stored smart_saving mode, economy candidate field and regular execution identity are unchanged.
+Changing trust changes only the simple-probability threshold, never competence floors, judgment prompts, permissions, tool approvals, sandbox settings or automatic publication. At zero, every valid simple probability satisfies the difficulty threshold, but applicable low-score protection, unavailable judgment handling and availability relay remain independently effective. The maximum-trust label must not promise bypassing these safeguards. Evidence is separate from the chosen threshold; zero samples are explicit and retaining any value is a normal choice.
+The protection explanation follows the selected decision settings: System One retains protection for an eligible complete low score while the prior problem remains applicable, conservatively retains it when applicability is unavailable, and releases it for fixed/unrelated history. The affected model need not be Regular. Custom extensions own their policy and receive no HiRoute low-score protection. Published behavior follows frozen settings; editor explanations describe the next publication.
+Existing evidence-based recommendation anchors and eligibility rules remain unchanged; they are optional proposed numeric values, not the manual slider range or snap points. A missing recommendation neighbour cannot invent a jump to zero. Manual presets reuse the existing names and values plus the explicit zero shortcut; this does not add zero to evidence-based recommendation anchors or change their eligibility. Replay remains historical, backend-computed, scoped and model-free; rapid edits must not issue a request for every movement or display stale results as belonging to the latest threshold.
 
 Related source specifications:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235185303
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
-#### Scenario: Custom threshold and adjacent suggestions
+#### Scenario: Exact continuous editing and endpoints
 
-- **WHEN** using a built-in decision connection, a route has threshold 0.72
-- **THEN** it displays Custom 0.72 until an explicit edit; an upward suggestion is
-  0.65 and a downward suggestion is 0.80, without silently replacing the value.
+- **WHEN** an editor opens saved 0.723, then the user moves the slider to maximum trust and to the opposite endpoint
+- **THEN** opening preserves 0.723 exactly; maximum trust is 0 and the opposite endpoint is 1; the numeric caption updates immediately, without snapping, automatic save or publication; no preset is selected at 0.723.
 
-#### Scenario: Native safety-net explanation
+#### Scenario: Zero retains independent protection
 
-- **WHEN** using a built-in decision connection, the selected decision connection is System One
-- **THEN** the editor explains that relevant low-score history protects the next turn, unavailable applicability retains protection, and fixed or unrelated history allows simple tasks to remain with Regular.
+- **WHEN** a built-in route uses threshold zero with valid probability zero
+- **THEN** difficulty eligibility includes Regular at equality; an applicable complete low score still selects Primary through the unchanged protection policy, and unavailable judgments are not fabricated as zero.
 
-#### Scenario: Custom extension has no HiRoute safety net
+#### Scenario: Default and unsupported modes
 
-- **WHEN** the selected decision connection is a custom extension
-- **THEN** the editor explains direct extension group selection and observation-only scores, with no HiRoute threshold or low-score protection controls.
+- **WHEN** ordinary/trial authoring opens or a heuristic/custom-extension decision source is selected
+- **THEN** ordinary and trial defaults remain 0.80 and 0.90; unsupported modes hide the control while preserving parked values and custom policy authority.
+
+#### Scenario: Optional recommendations are not manual stops
+
+- **WHEN** a route at 0.72 receives an evidence-qualified recommendation
+- **THEN** existing neighbouring recommendation values remain 0.65 and 0.80; manual editing accepts other thousandths including zero without qualification, and recommendations require explicit acceptance.
+
+#### Scenario: Accessible bounded replay
+
+- **WHEN** pointer or keyboard edits rapidly select multiple thresholds on a published route
+- **THEN** keyboard endpoints and incremental editing work, accessible values describe the actual threshold and direction, replay requests are debounced and superseded work cancelled/ignored, stale scope or threshold results are never presented as current, and no model call occurs.
+
+#### Scenario: Preset clicks coexist with continuous editing
+
+- **WHEN** the user clicks Trial, Familiar, Trusted, Hands-off or Entrusted, then drags to 0.723
+- **THEN** the draft and slider first select exactly 0.90, 0.80, 0.65, 0.50 or 0.00 respectively; dragging preserves 0.723 with no selected preset, while the single threshold caption updates immediately. All presets are keyboard-accessible buttons; no save, publication or policy change occurs until explicitly requested.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
+- https://github.com/higress-group/HiRoute/issues/227#issuecomment-6446412837
 
 ### Requirement: Threshold replay previews recorded stages
 

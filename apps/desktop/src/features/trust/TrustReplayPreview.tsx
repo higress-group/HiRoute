@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { observationRead } from '../observation-client';
 import { selectionReasonLabel } from '../selection-reasons';
-import { trustLevels } from './levels';
 import type { TrustReplay } from './types';
 
 export type ReplayScope = { planId: string; revision: number; branchId: string; savedThreshold: number; active: boolean };
@@ -13,27 +12,34 @@ export function TrustReplayPreview({ scope, threshold, language }: { scope: Repl
   const [failed, setFailed] = useState('');
   const [retry, setRetry] = useState(0);
   const [visible, setVisible] = useState(document.visibilityState === 'visible');
-  const scopeKey = `${scope.planId}/${scope.revision}/${scope.branchId}/${scope.savedThreshold}`;
-  const key = `${scopeKey}/${threshold}`;
-  const data = result?.key === scopeKey ? result.entries.get(threshold) : undefined;
+  const scopeKey = JSON.stringify([scope.planId, scope.revision, scope.branchId, scope.savedThreshold]);
+  const key = JSON.stringify([scopeKey, threshold]);
+  const latest = useRef({ scopeKey, threshold, active: scope.active });
+  latest.current = { scopeKey, threshold, active: scope.active };
+  const data = scope.active && visible && result?.key === scopeKey ? result.entries.get(threshold) : undefined;
   const loadedScope = result?.key === scopeKey;
   const cachedThreshold = Boolean(data);
   useEffect(() => { const update = () => setVisible(document.visibilityState === 'visible'); document.addEventListener('visibilitychange', update); return () => document.removeEventListener('visibilitychange', update); }, []);
-  // Prefetch the saved value and every level once, independently of slider movement.
+  // One window belongs to the scope, even if a hidden or failed read is retried.
   useEffect(() => {
-    if (!scope.active || !visible || cache.current?.key === scopeKey) return;
+    if (!scope.active || !visible) return;
+    if (cache.current?.key !== scopeKey) {
+      const to_ms = Date.now();
+      cache.current = { key: scopeKey, window: { from_ms: to_ms - 7 * 86_400_000, to_ms }, entries: new Map() };
+    }
+    if (cache.current.entries.has(scope.savedThreshold)) return;
+    if (!Number.isInteger(scope.savedThreshold) || scope.savedThreshold < 0 || scope.savedThreshold > 1000) return;
     let current = true;
     const abort = new AbortController();
-    const to_ms = Date.now(), evidenceWindow = { from_ms: to_ms - 7 * 86_400_000, to_ms };
-    const thresholds_millis = [...new Set([...trustLevels.map(level => level.threshold_millis), scope.savedThreshold])].filter(value => Number.isInteger(value) && value >= 0 && value <= 1000);
+    const evidenceWindow = cache.current.window;
     setFailed('');
-    observationRead<TrustReplay>('plan_trust_replay', { plan_id: scope.planId, revision: scope.revision, branch_id: scope.branchId, ...evidenceWindow, thresholds_millis }, abort.signal)
+    observationRead<TrustReplay>('plan_trust_replay', { plan_id: scope.planId, revision: scope.revision, branch_id: scope.branchId, ...evidenceWindow, thresholds_millis: [scope.savedThreshold] }, abort.signal)
       .then(data => {
-        if (!current) return;
-        const next = { key: scopeKey, window: evidenceWindow, entries: new Map(data.thresholds.map(row => [row.threshold_millis, data])) };
+        if (!current || !latest.current.active || latest.current.scopeKey !== scopeKey || document.visibilityState !== 'visible' || cache.current?.key !== scopeKey) return;
+        const next = { ...cache.current, entries: new Map([[scope.savedThreshold, data]]) };
         cache.current = next; setResult(next);
       })
-      .catch(() => { if (current) setFailed(scopeKey); });
+      .catch(() => { if (current && latest.current.active && latest.current.scopeKey === scopeKey && document.visibilityState === 'visible') setFailed(scopeKey); });
     return () => { current = false; abort.abort(); };
   }, [scopeKey, scope.planId, scope.revision, scope.branchId, scope.savedThreshold, scope.active, retry, visible]);
   useEffect(() => {
@@ -46,23 +52,28 @@ export function TrustReplayPreview({ scope, threshold, language }: { scope: Repl
       if (previous?.key !== scopeKey) return;
       observationRead<TrustReplay>('plan_trust_replay', { plan_id: scope.planId, revision: scope.revision, branch_id: scope.branchId, ...previous.window, thresholds_millis: [threshold] }, abort.signal)
         .then(data => {
-          if (!current || cache.current?.key !== scopeKey) return;
+          if (!current || !latest.current.active || latest.current.scopeKey !== scopeKey || latest.current.threshold !== threshold || document.visibilityState !== 'visible' || cache.current?.key !== scopeKey) return;
           const entries = new Map(cache.current.entries);
           entries.set(threshold, data);
+          while (entries.size > 32) {
+            const oldest = [...entries.keys()].find(value => value !== scope.savedThreshold);
+            if (oldest === undefined) break;
+            entries.delete(oldest);
+          }
           const next = { ...cache.current, entries };
           cache.current = next; setResult(next);
         })
-        .catch(() => { if (current) setFailed(key); });
+        .catch(() => { if (current && latest.current.active && latest.current.scopeKey === scopeKey && latest.current.threshold === threshold && document.visibilityState === 'visible') setFailed(key); });
     }, 300);
     return () => { current = false; abort.abort(); window.clearTimeout(timer); };
-  }, [scopeKey, key, scope.planId, scope.revision, scope.branchId, scope.active, threshold, loadedScope, cachedThreshold, retry, visible]);
+  }, [scopeKey, key, scope.planId, scope.revision, scope.branchId, scope.savedThreshold, scope.active, threshold, loadedScope, cachedThreshold, retry, visible]);
   const row = data?.thresholds.find(r => r.threshold_millis === threshold);
   const share = (n: number | null | undefined) => n == null ? '—' : `${Math.round(n * 100)}%`;
   const bar = (n: number | null | undefined) => Math.max(0, Math.min(100, (n ?? 0) * 100));
   const excluded = Object.entries(data?.excluded_by_reason ?? {}).filter(([, count]) => count > 0);
   const excludedTotal = excluded.reduce((sum, [, count]) => sum + count, 0);
-  return <div className="trust-replay" aria-live="polite">
-    <div className="trust-replay-head"><strong>{t('用你的记录回放这一档', 'Replay this level on your records')}</strong><span>{t(`当前发布的版本 · 最近 7 天${data ? ` · ${data.included + excludedTotal} 个阶段` : ''}`, `Active version · last 7 days${data ? ` · ${data.included + excludedTotal} stages` : ''}`)}</span></div>
+  return <div className="trust-replay">
+    <div className="trust-replay-head"><strong>{t('用你的记录回放此设置', 'Replay this setting on your records')}</strong><span>{t(`当前发布的版本 · 最近 7 天${data ? ` · ${data.included + excludedTotal} 个阶段` : ''}`, `Active version · last 7 days${data ? ` · ${data.included + excludedTotal} stages` : ''}`)}</span></div>
     {failed === key || failed === scopeKey ? <p className="trust-replay-state" role="alert">{t('暂时无法读取回放。', 'Replay could not be read.')} <button type="button" className="btn btn-quiet" onClick={() => setRetry(n => n + 1)}>{t('重试', 'Retry')}</button></p>
       : !data || !row ? <p className="trust-replay-state">{t('正在读取回放…', 'Reading replay…')}</p>
       : data.included === 0 ? <p className="trust-replay-state">{t('没有可用于回放的记录，不估算占比。', 'No usable recorded evidence; shares are not estimated.')}</p>
@@ -71,7 +82,7 @@ export function TrustReplayPreview({ scope, threshold, language }: { scope: Repl
         <div className="trust-replay-legend">
           <span><i className="regular" />{t('常规', 'Regular')} <strong>{share(row.regular_share)}</strong> <span>{t(`（${row.regular} 个）`, `(${row.regular})`)}</span></span>
           <span><i className="primary" />{t('主力', 'Primary')} <strong>{share(row.primary_share)}</strong> <span>{t(`（${row.primary} 个）`, `(${row.primary})`)}</span></span>
-          <span className="muted">{t(`当前档位实际 ${share(data.recorded_share_at_current)} 交给常规`, `Recorded at the current level: ${share(data.recorded_share_at_current)} Regular`)}</span>
+          <span className="muted">{t(`当前设置实际 ${share(data.recorded_share_at_current)} 交给常规`, `Recorded at the current setting: ${share(data.recorded_share_at_current)} Regular`)}</span>
         </div>
       </>}
     {data && row && data.included > 0 && <p className="field-help">{[

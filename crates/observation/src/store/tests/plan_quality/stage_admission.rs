@@ -54,6 +54,7 @@ fn pending_admission_keeps_interleaved_stages_separate_without_affinity_and_surv
         f.fact_stream = first.fact_stream.clone();
     }
     let query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -161,6 +162,7 @@ fn later_admission_reopens_display_without_expanding_frozen_assessment() {
     write(&first, closure, 1010);
     write(&scoring, score, 1020);
     let query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -245,6 +247,7 @@ fn conflicting_admission_is_not_resolved_by_routing_or_native_id_guessing() {
             .observed_routing_timeline(
                 &reader(),
                 &RoutingTimelineQueryV1 {
+                    include_presentation: false,
                     session_id: f.session.to_string(),
                     after_watermark: None,
                     limit: 50
@@ -305,6 +308,7 @@ fn finished_request_without_stage_closure_cannot_remain_running_or_claim_task_co
             .observed_routing_timeline(
                 &reader(),
                 &RoutingTimelineQueryV1 {
+                    include_presentation: false,
                     session_id: f.session.to_string(),
                     after_watermark: None,
                     limit: 50,
@@ -315,4 +319,414 @@ fn finished_request_without_stage_closure_cannot_remain_running_or_claim_task_co
         assert_eq!(page.turns[0].status, expected);
         assert!(page.turns[0].segment_id.is_none() && page.turns[0].finished_at_ms.is_none());
     }
+}
+
+#[test]
+fn presentation_is_opt_in_and_transitions_follow_recorded_facts() {
+    use super::super::support;
+    use hiroute_domain::{AgentTurnAttributionV1, RoutingTimelineGroupStateV1 as State};
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let f = Fixture::new("presentation-admission");
+    let channel = fact_channel(&f, 256 * 1024);
+    let writer = writer(&store);
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            f.fact(1, admitted("turn-a", "branch-a", 1), 1000)
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let mut legacy: RoutingTimelineQueryV1 = serde_json::from_value(
+        serde_json::json!({"session_id":f.session.to_string(),"after_watermark":null,"limit":50}),
+    )
+    .unwrap();
+    assert!(!legacy.include_presentation);
+    assert!(
+        serde_json::to_value(&legacy)
+            .unwrap()
+            .get("include_presentation")
+            .is_none()
+    );
+    let old = store
+        .observed_routing_timeline(&reader(), &legacy, 5000)
+        .unwrap();
+    let old_json = serde_json::to_value(&old.turns[0]).unwrap();
+    assert!(old_json.get("presentation").is_none());
+    let old_id = old.turns[0].turn_id.clone();
+    let mut rich = RoutingTimelineQueryV1 {
+        include_presentation: true,
+        ..legacy.clone()
+    };
+    let page = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    let presentation = page.turns[0].presentation.as_ref().unwrap();
+    assert_eq!(presentation.group_state, State::Pending);
+    assert_eq!(
+        presentation.execution_attribution,
+        AgentTurnAttributionV1::Unknown
+    );
+    assert_eq!(presentation.request_models[0].model_configuration_id, None);
+    assert_eq!(page.turns[0].turn_id, old_id);
+    rich.after_watermark = Some(old.watermark.clone());
+    assert!(matches!(
+        store.observed_routing_timeline(&reader(), &rich, 5000),
+        Err(crate::query_v2::ObservationV2Error::Stale)
+    ));
+    rich.after_watermark = Some(page.watermark.clone());
+    legacy.after_watermark = Some(page.watermark);
+    assert!(matches!(
+        store.observed_routing_timeline(&reader(), &legacy, 5000),
+        Err(crate::query_v2::ObservationV2Error::Stale)
+    ));
+    legacy.after_watermark = Some(old.watermark);
+    assert!(
+        store
+            .observed_routing_timeline(&reader(), &legacy, 5000)
+            .unwrap()
+            .turns
+            .is_empty()
+    );
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            f.fact(2, support::route_decision(PLAN), 1010)
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let routed = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    assert_eq!(routed.turns[0].turn_id, old_id);
+    assert_eq!(
+        routed.turns[0].presentation.as_ref().unwrap().group_state,
+        State::Resolved
+    );
+    rich.after_watermark = Some(routed.watermark);
+    let mut relay_candidate = support::candidate("model/relay");
+    if let ExecutionFactV1::CandidateDecision(candidate) = &mut relay_candidate {
+        candidate.candidate_id = "candidate-relay".into();
+        candidate.stable_binding_id = "binding-relay".into();
+    }
+    for (sequence, candidate) in [support::candidate("model/actual"), relay_candidate]
+        .into_iter()
+        .enumerate()
+    {
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                f.fact(sequence as u64 + 3, candidate, 1015)
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            f.attempt_fact(
+                5,
+                "attempt/actual",
+                support::attempt_started("model/actual"),
+                1020,
+                PLAN
+            )
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let actual = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    let display = actual.turns[0].presentation.as_ref().unwrap();
+    assert_eq!(
+        display.execution_attribution,
+        AgentTurnAttributionV1::Single
+    );
+    assert_eq!(
+        display.request_models[0].model_configuration_id.as_deref(),
+        Some("model/actual")
+    );
+    rich.after_watermark = Some(actual.watermark);
+    let mut key_relay = support::attempt_started("model/actual");
+    if let ExecutionFactV1::AttemptStarted {
+        ordinal, key_id, ..
+    } = &mut key_relay
+    {
+        *ordinal = 2;
+        *key_id = "another-key".into();
+    }
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            f.attempt_fact(6, "attempt/key-relay", key_relay, 1030, PLAN)
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let same = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    assert_eq!(
+        same.turns[0]
+            .presentation
+            .as_ref()
+            .unwrap()
+            .execution_attribution,
+        AgentTurnAttributionV1::Single
+    );
+    rich.after_watermark = Some(same.watermark);
+    let mut relay = support::attempt_started("model/relay");
+    if let ExecutionFactV1::AttemptStarted {
+        ordinal,
+        candidate_id,
+        stable_binding_id,
+        ..
+    } = &mut relay
+    {
+        *ordinal = 3;
+        *candidate_id = "candidate-relay".into();
+        *stable_binding_id = "binding-relay".into();
+    }
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            f.attempt_fact(7, "attempt/model-relay", relay, 1040, PLAN)
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let mixed = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    let display = mixed.turns[0].presentation.as_ref().unwrap();
+    assert_eq!(display.group_state, State::Resolved);
+    assert_eq!(display.execution_attribution, AgentTurnAttributionV1::Mixed);
+    assert_eq!(
+        display.request_models[0].model_configuration_id.as_deref(),
+        Some("model/relay")
+    );
+    rich.after_watermark = Some(mixed.watermark);
+    let mut accepted_attempt = support::attempt_finished();
+    if let ExecutionFactV1::AttemptFinished(fact) = &mut accepted_attempt {
+        fact.ordinal = 2;
+    }
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            f.attempt_fact(8, "attempt/key-relay", accepted_attempt, 1045, PLAN)
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let finished = ExecutionFactV1::RequestFinished {
+        outcome: hiroute_domain::ExecutionRequestOutcomeV1::Accepted,
+        attempts_started: 3,
+        attempts_finished: 1,
+        accepted_attempt_ordinal: Some(2),
+        facts_completeness: hiroute_domain::FactsCompleteness::Complete,
+    };
+    assert!(matches!(
+        offer_fact(&writer, &channel, f.fact(9, finished, 1050)),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let accepted = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    assert_eq!(
+        accepted.turns[0]
+            .presentation
+            .as_ref()
+            .unwrap()
+            .request_models[0]
+            .model_configuration_id
+            .as_deref(),
+        Some("model/actual")
+    );
+    legacy.after_watermark = None;
+    let legacy_again = store
+        .observed_routing_timeline(&reader(), &legacy, 5000)
+        .unwrap();
+    assert!(
+        serde_json::to_value(&legacy_again.turns[0])
+            .unwrap()
+            .get("presentation")
+            .is_none()
+    );
+    assert_eq!(legacy_again.turns[0].turn_id, old_id);
+}
+
+#[test]
+fn missing_or_partial_terminal_evidence_is_not_pending() {
+    use hiroute_domain::{AgentTurnAttributionV1, RoutingTimelineGroupStateV1 as State};
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let f = Fixture::new("presentation-finished");
+    let channel = fact_channel(&f, 256 * 1024);
+    let writer = writer(&store);
+    let mut close = closed(&f, &f, 1, &[&f]);
+    if let ExecutionFactV1::AgentTurnFinished {
+        attribution,
+        history_partial,
+        executed_branch_id,
+        model_configuration_id,
+        profile_digest,
+        ..
+    } = &mut close
+    {
+        *attribution = AgentTurnAttributionV1::Mixed;
+        *history_partial = true;
+        *executed_branch_id = None;
+        *model_configuration_id = None;
+        *profile_digest = None;
+    }
+    for (n, fact) in [admitted("turn-a", "branch-a", 1), close]
+        .into_iter()
+        .enumerate()
+    {
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                f.fact(n as u64 + 1, fact, 1000 + n as i64)
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    let query = RoutingTimelineQueryV1 {
+        include_presentation: true,
+        session_id: f.session.to_string(),
+        after_watermark: None,
+        limit: 50,
+    };
+    let page = store
+        .observed_routing_timeline(&reader(), &query, 5000)
+        .unwrap();
+    let turn = &page.turns[0];
+    assert!(turn.evidence_partial);
+    assert_eq!(
+        turn.presentation.as_ref().unwrap().execution_attribution,
+        AgentTurnAttributionV1::Mixed
+    );
+    assert_eq!(
+        turn.presentation.as_ref().unwrap().group_state,
+        State::Mixed
+    );
+}
+
+#[test]
+fn presentation_modes_isolate_frozen_pages_and_incremental_updates() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let first = Fixture::new("presentation-page-a");
+    let mut second = Fixture::new("presentation-page-b");
+    second.session = first.session.clone();
+    second.fact_stream = first.fact_stream.clone();
+    let channel = fact_channel(&first, 256 * 1024);
+    let writer = writer(&store);
+    for (n, (f, stage)) in [(&first, "turn-a"), (&second, "turn-b")]
+        .into_iter()
+        .enumerate()
+    {
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                f.fact(
+                    n as u64 + 1,
+                    admitted(stage, "branch-a", 1),
+                    1000 + n as i64
+                )
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    let mut legacy = RoutingTimelineQueryV1 {
+        include_presentation: false,
+        session_id: first.session.to_string(),
+        after_watermark: None,
+        limit: 1,
+    };
+    let mut rich = RoutingTimelineQueryV1 {
+        include_presentation: true,
+        ..legacy.clone()
+    };
+    let old_first = store
+        .observed_routing_timeline(&reader(), &legacy, 5000)
+        .unwrap();
+    let rich_first = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    assert!(!old_first.complete && !rich_first.complete);
+    assert_eq!(old_first.turns[0].turn_id, rich_first.turns[0].turn_id);
+    legacy.after_watermark = Some(rich_first.watermark.clone());
+    assert!(matches!(
+        store.observed_routing_timeline(&reader(), &legacy, 5000),
+        Err(crate::query_v2::ObservationV2Error::Stale)
+    ));
+    legacy.after_watermark = Some(old_first.watermark);
+    rich.after_watermark = Some(rich_first.watermark);
+    let old_second = store
+        .observed_routing_timeline(&reader(), &legacy, 5000)
+        .unwrap();
+    let rich_second = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    assert!(old_second.complete && rich_second.complete);
+    assert_eq!(old_second.turns[0].turn_id, rich_second.turns[0].turn_id);
+    assert!(old_second.turns[0].presentation.is_none());
+    assert!(rich_second.turns[0].presentation.is_some());
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            first.fact(3, super::super::support::route_decision(PLAN), 1020)
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
+    legacy.after_watermark = Some(old_second.watermark);
+    rich.after_watermark = Some(rich_second.watermark);
+    let old_update = store
+        .observed_routing_timeline(&reader(), &legacy, 5000)
+        .unwrap();
+    let rich_update = store
+        .observed_routing_timeline(&reader(), &rich, 5000)
+        .unwrap();
+    assert_eq!(old_update.turns[0].turn_id, first.request.as_str());
+    assert_eq!(rich_update.turns[0].turn_id, first.request.as_str());
+    assert!(old_update.turns[0].presentation.is_none());
+    assert!(rich_update.turns[0].presentation.is_some());
+}
+
+#[test]
+fn frozen_baseline_timeline_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let f = Fixture::new("presentation-baseline");
+    let channel = fact_channel(&f, 256 * 1024);
+    let writer = writer(&store);
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            f.fact(1, admitted("turn-a", "branch-a", 1), 1000)
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let query = RoutingTimelineQueryV1 {
+        include_presentation: false,
+        session_id: f.session.to_string(),
+        after_watermark: None,
+        limit: 50,
+    };
+    let page = store
+        .observed_routing_timeline(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(
+        serde_json::to_string(&page.turns[0]).unwrap(),
+        include_str!("../fixtures/routing-timeline-base-952917.json").trim_end()
+    );
 }

@@ -774,6 +774,82 @@ Above the routing lanes, session detail MUST provide a compact overview with one
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253019758
 
+### Requirement: Routing model labels preserve execution identity
+
+Desktop routing timelines SHALL prefer a readable current configuration name only through an unambiguous exact configuration-ID match. Original configuration/native identities remain inspectable and determine routing, pricing and scoring independently of display names. Unknown/deleted/conflicting names fall back without guessing by prefix, group or similar display name. Actual per-request identity and mixed execution remain visible; a last model cannot represent a mixed turn. Label lookup is bounded to the current authorized page lifecycle/explicit invalidation, does not block timeline/content on failure and is not repeated for polling, turn selection or pagination. Equal display names remain visibly distinguishable using proven current source labels; ambiguous/missing source evidence is explicit and distinct configuration identifiers remain accessible and visible when needed. A current source label is not proof of the historical executing Binding. Qualify a lane label as Latest only when multiple known model identities appear in the loaded/displayed lane; pagination does not prove the unseen history used one model. Mixed and unknown execution remain explicit.
+
+#### Scenario: Readable exact identity
+
+- **WHEN** a retained request has an exact current configuration with a display name
+- **THEN** the name is shown with original identity available in details and no execution or price reinterpretation.
+
+#### Scenario: Conflicting and mixed identities
+
+- **WHEN** same-name configurations differ or a turn relays across models
+- **THEN** no name-based merge occurs; request identities and mixed execution remain distinct.
+
+#### Scenario: Label read fails
+
+- **WHEN** candidate lookup fails or returns after the page/connection changes
+- **THEN** facts remain readable using fallback and stale names do not cross the lifecycle boundary.
+
+#### Scenario: One visible model, several models and duplicate names
+
+- **WHEN** a loaded lane first contains one known model, later contains another, or different exact configurations share a name
+- **THEN** a single model needs no Latest prefix; multiple known models qualify the latest identity within the displayed scope; duplicate names show proven current source or explicit unconfirmed/multiple-source text plus a distinct configuration identifier without guessing the executed Binding.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/227#issuecomment-6440843097
+
+### Requirement: Timeline presentation distinguishes pending facts from missing evidence
+
+An explicitly requested timeline presentation SHALL distinguish proven pending, resolved, mixed and unavailable group state from independent execution attribution. Pending requires validated opening admission and absence of route/execution/terminal/conflicting evidence; running alone is insufficient. Terminal attribution and actual request identities retain their original authority. Existing callers without opt-in retain response shape and cursor semantics; rich and legacy reads cannot corrupt each other's cache or miss updates. Live transitions preserve one turn, request membership, focus and selection. Content loading, running pending, terminal incomplete, error and privacy-cleared states remain distinct; missing usage never becomes zero.
+
+#### Scenario: Opening progresses
+
+- **WHEN** validated admission is followed by route, attempts, finish and a late score
+- **THEN** the same turn transitions from neutral pending to its actual lane and late evidence updates without duplicates or lost focus.
+
+#### Scenario: Running is not proof
+
+- **WHEN** a running turn already has mixed/conflicting execution evidence or a terminal turn lacks group
+- **THEN** it is mixed/unavailable with the real gap rather than pending.
+
+#### Scenario: Legacy and rich readers interleave
+
+- **WHEN** absent/false and true presentation queries use caches and exchange watermarks
+- **THEN** old output remains unchanged; shape-crossing watermarks are stale and each reader sees its correct updates.
+
+#### Scenario: Content is cleared during a read
+
+- **WHEN** a late body result arrives after privacy invalidation
+- **THEN** cleared content stays hidden; loading/error/incomplete remain distinguishable.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/227#issuecomment-6440844648
+
+### Requirement: Timeline detail explains business state without hiding evidence
+
+Timeline primary explanations SHALL use one low-score-protection and competence-floor vocabulary, readable reasoning settings and concise fresh-decision text. Raw boundary/protection evidence remains available; unknown or rebuilt boundaries retain visible distinction. A missing prior assessment target is not a claim that the first visible row is the session's first turn. A released protection does not promise Regular, and special unavailable/partial reasons remain truthful. The timeline overview retains one roving keyboard stop and focus through provisional-turn absorption.
+
+#### Scenario: Retained tail has no target
+
+- **WHEN** the first visible turn is a retained tail without an assessment target
+- **THEN** the UI states no prior stage is available, not that the session is beginning.
+
+#### Scenario: Protection and reasoning
+
+- **WHEN** the reason is low_competence with provider-default reasoning, or suppression on complex work
+- **THEN** one protection name and a readable default label appear; actual group/reason/raw scores remain inspectable.
+
+#### Scenario: Keyboard transition
+
+- **WHEN** a focused provisional turn is absorbed into a completed turn
+- **THEN** focus and selection move to its corresponding completed control; unrelated focus remains unchanged.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/227#issuecomment-6440846153
+
 ## Implementation references
 
 - [Native identity resolver](../../../crates/gateway/src/context_hold/identity.rs) and

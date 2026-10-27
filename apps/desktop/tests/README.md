@@ -91,6 +91,12 @@ Run the focused production-component cases with
 or `--presentation` from the Desktop directory. They use production styles and
 controlled IPC; they do not establish native persistence or real model outcomes.
 
+`--routing-presentation` exercises evidence-backed pending-to-resolved layout,
+focus and bounded exact-name/source reads. `--trust-continuous` exercises exact
+slider/preset interaction and bounded replay across the supported language, theme
+and window combinations. Both use production components and styles with controlled
+IPC; native execution and actual saved/reopened data remain separate checks.
+
 The focused timeline pricing checks run with
 `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --timeline-pricing`.
 They also run in the default trial suite. Production components must remove a

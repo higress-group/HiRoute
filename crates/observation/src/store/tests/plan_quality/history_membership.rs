@@ -26,6 +26,7 @@ fn interleaved_branches_use_exact_membership_and_late_execution_cannot_extend_a_
         f.fact_stream = first.fact_stream.clone();
     }
     let query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,

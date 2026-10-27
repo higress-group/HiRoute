@@ -48,6 +48,10 @@ pub(super) fn hydrate(requests: &mut BTreeMap<String, Request>, facts: &[Fact]) 
                 let identity = (model_configuration_id.clone(), reasoning);
                 attempted.insert((fact.request_id.as_str(), *ordinal), identity.clone());
                 request.candidate = Some(identity);
+                request.identities.insert((
+                    model_configuration_id.clone(),
+                    profile_digest.as_str().to_owned(),
+                ));
                 request.models.insert(*ordinal, request_model.clone());
                 request
                     .credentials
@@ -55,8 +59,16 @@ pub(super) fn hydrate(requests: &mut BTreeMap<String, Request>, facts: &[Fact]) 
             }
             ExecutionFactV1::RequestFinished {
                 accepted_attempt_ordinal,
+                attempts_started,
+                facts_completeness,
                 ..
             } => {
+                request.request_finished = true;
+                request.identity_gap = *facts_completeness != FactsCompleteness::Complete
+                    || usize::try_from(*attempts_started)
+                        .ok()
+                        .is_none_or(|n| n != request.models.len())
+                    || accepted_attempt_ordinal.is_some_and(|n| !request.models.contains_key(&n));
                 request.view.native_model =
                     accepted_attempt_ordinal.and_then(|n| request.models.get(&n).cloned());
                 if let Some(ordinal) = accepted_attempt_ordinal {
@@ -65,6 +77,7 @@ pub(super) fn hydrate(requests: &mut BTreeMap<String, Request>, facts: &[Fact]) 
                         .cloned();
                 }
             }
+            ExecutionFactV1::AgentTurnFinished { .. } => request.stage_finished = true,
             _ => {}
         }
     }
@@ -85,6 +98,7 @@ pub(super) fn project(
     previous: Position,
     bases: &mut BTreeMap<String, Arc<Projected>>,
     old: &[Arc<Projected>],
+    include_presentation: bool,
 ) -> Result<Vec<Arc<Projected>>, ObservationV2Error> {
     let old: BTreeMap<_, _> = old.iter().map(|t| (t.view.turn_id.as_str(), t)).collect();
     let mut next_bases = BTreeMap::new();
@@ -138,6 +152,10 @@ pub(super) fn project(
             }
         }
     }
+    let finished_stages: BTreeMap<_, _> = finished
+        .iter()
+        .map(|(&(epoch, id), (_, fact))| ((epoch.as_str(), id.as_str()), fact.position))
+        .collect();
     for (_, fact) in finished.into_values() {
         let ExecutionFactV1::AgentTurnFinished {
             agent_turn_id,
@@ -157,6 +175,7 @@ pub(super) fn project(
             first_request_id,
             last_request_id,
             history_partial,
+            attribution,
             ..
         } = &fact.value
         else {
@@ -307,6 +326,13 @@ pub(super) fn project(
             .ok_or(ObservationV2Error::Unavailable)?
             .into();
         turn.view.evidence_partial |= *history_partial || missing_members;
+        turn.view.presentation = Some(presentation(
+            members,
+            turn.view.group,
+            Some(*attribution),
+            false,
+            !missing_members,
+        ));
         ordinals.insert(turn.view.turn_id.clone(), *ordinal);
         let turn = Arc::new(turn);
         next_bases.insert(turn.view.turn_id.clone(), turn.clone());
@@ -314,7 +340,32 @@ pub(super) fn project(
     }
     for pending in admission::pending(&ordered, &covered, &admissions) {
         let mut turn = base_turn(&pending, previous, bases, &mut next_bases)?;
-        if let Some(admission) = admissions.get(pending[0].view.request_id.as_str()) {
+        let opening_admission = admissions.get(pending[0].view.request_id.as_str());
+        if include_presentation
+            && let Some(position) = opening_admission.and_then(|admission| {
+                finished_stages.get(&(admission.epoch, admission.value.agent_turn_id.as_str()))
+            })
+            && *position > turn.position.facts
+        {
+            Arc::make_mut(&mut turn).position.facts = *position;
+        }
+        if turn.position.newer_than(previous) || turn.view.presentation.is_none() {
+            let view = &mut Arc::make_mut(&mut turn).view;
+            let unclosed_opening = opening_admission.is_some_and(|admission| {
+                !finished_stages
+                    .contains_key(&(admission.epoch, admission.value.agent_turn_id.as_str()))
+            });
+            view.presentation = Some(presentation(
+                &pending,
+                view.group,
+                None,
+                unclosed_opening,
+                pending
+                    .iter()
+                    .all(|request| admissions.contains_key(request.view.request_id.as_str())),
+            ));
+        }
+        if let Some(admission) = opening_admission {
             let id = turn.view.turn_id.clone();
             if turn.view.agent_turn_id.as_ref() != Some(&admission.value.agent_turn_id) {
                 let view = &mut Arc::make_mut(&mut turn).view;
@@ -326,8 +377,8 @@ pub(super) fn project(
                 id.clone(),
                 (admission.value.ordinal, admission.epoch.to_owned()),
             );
-            next_bases.insert(id, turn.clone());
         }
+        next_bases.insert(turn.view.turn_id.clone(), turn.clone());
         result.push(turn);
     }
     result.sort_by(|a, b| {
@@ -524,7 +575,11 @@ pub(super) fn project(
                 .map(|i| (&result[i].view, identities.get(&result[i].view.turn_id))),
             requests,
         );
-        turn.view.content_digest = CanonicalDigest::of(&turn.view)
+        let mut digest_view = turn.view.clone();
+        if !include_presentation {
+            digest_view.presentation = None;
+        }
+        turn.view.content_digest = CanonicalDigest::of(&digest_view)
             .map_err(|_| ObservationV2Error::Unavailable)?
             .to_string();
         output.push(Arc::new(turn));
@@ -654,7 +709,63 @@ fn make_turn(members: &[&Request]) -> Result<Projected, ObservationV2Error> {
             requests: members.iter().map(|r| r.view.clone()).collect(),
             cost_by_model: costs.into_values().collect(),
             evidence_partial: members.iter().any(|r| r.partial),
+            presentation: None,
             content_digest: String::new(),
         },
     })
+}
+
+fn presentation(
+    members: &[&Request],
+    group: Option<ExecutionGroupV1>,
+    finished_attribution: Option<AgentTurnAttributionV1>,
+    admitted_opening: bool,
+    membership_known: bool,
+) -> RoutingTimelinePresentationV1 {
+    let identities: std::collections::BTreeSet<_> = members
+        .iter()
+        .flat_map(|request| request.identities.iter())
+        .collect();
+    let attribution = finished_attribution.unwrap_or_else(|| {
+        if identities.len() >= 2 {
+            AgentTurnAttributionV1::Mixed
+        } else if identities.len() == 1
+            && membership_known
+            && members.iter().all(|r| !r.partial && !r.identity_gap)
+            && identities
+                .iter()
+                .all(|identity| identity.1.as_str() != "unknown")
+        {
+            AgentTurnAttributionV1::Single
+        } else {
+            AgentTurnAttributionV1::Unknown
+        }
+    });
+    let pending = admitted_opening
+        && members
+            .first()
+            .is_some_and(|opening| opening.decision.is_none() && opening.view.outcome.is_none())
+        && members.iter().all(|r| {
+            !r.partial && r.identities.is_empty() && !r.request_finished && !r.stage_finished
+        });
+    let group_state = if group.is_some() {
+        RoutingTimelineGroupStateV1::Resolved
+    } else if attribution == AgentTurnAttributionV1::Mixed {
+        RoutingTimelineGroupStateV1::Mixed
+    } else if pending {
+        RoutingTimelineGroupStateV1::Pending
+    } else {
+        RoutingTimelineGroupStateV1::Unavailable
+    };
+    RoutingTimelinePresentationV1 {
+        group_state,
+        execution_attribution: attribution,
+        request_models: members
+            .iter()
+            .map(|r| RoutingTimelineRequestModelV1 {
+                request_id: r.view.request_id.clone(),
+                model_configuration_id: r.candidate.as_ref().map(|candidate| candidate.0.clone()),
+            })
+            .collect(),
+    }
 }

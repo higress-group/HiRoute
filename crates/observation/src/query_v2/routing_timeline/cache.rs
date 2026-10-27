@@ -61,11 +61,12 @@ impl Snapshot {
         &mut self,
         tx: &rusqlite::Transaction<'_>,
         reader: &ObservationReaderContext,
-        session: &str,
+        query: &RoutingTimelineQueryV1,
         target: Position,
         now: i64,
         changed: Option<&BTreeSet<String>>,
     ) -> Result<(), ObservationV2Error> {
+        let session = query.session_id.as_str();
         if changed.is_some_and(BTreeSet::is_empty) {
             self.position = Some(target);
             return Ok(());
@@ -127,6 +128,7 @@ impl Snapshot {
             previous,
             &mut self.bases,
             &self.turns,
+            query.include_presentation,
         )?;
         let old: BTreeMap<_, _> = self.turns.iter().map(|t| (&t.view.turn_id, t)).collect();
         self.projected_turns += turns
