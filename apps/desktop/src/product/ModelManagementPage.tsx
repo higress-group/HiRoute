@@ -194,6 +194,7 @@ export function ModelManagementPage({
     contexts: PriceContext[];
     writable: boolean;
   } | null>(null);
+  const [priceRefresh, setPriceRefresh] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const addButton = useRef<HTMLButtonElement | null>(null);
@@ -1045,7 +1046,17 @@ export function ModelManagementPage({
       onRefresh={async () => { await refreshManagement(); onChanged(); }}
       onOperation={(outcome: PriceOutcome) => { if (outcome.operation) onOperation(outcome.operation); }}
       onClose={() => setPriceTarget(null)}
-      onSaved={() => { setPriceTarget(null); setModelNotice(language === 'zh' ? '价格已保存。' : 'Pricing saved.'); }}
+      onSaved={() => {
+        // Each binding keeps its token when another price save completes.
+        const key = JSON.stringify([priceTarget.source.source_id, priceTarget.model.binding_id]);
+        setPriceRefresh(current => {
+          const next = new Map(current);
+          next.set(key, (next.get(key) ?? 0) + 1);
+          return next;
+        });
+        setPriceTarget(null);
+        setModelNotice(language === 'zh' ? '价格已保存。' : 'Pricing saved.');
+      }}
     />}
     <Dialog
       open={adding && addStage === 'choose'}
@@ -1196,6 +1207,7 @@ export function ModelManagementPage({
       onTryModel={onTryModel}
       onCreatePlan={onCreatePlan}
       onEditPrice={openPrice}
+      priceRefresh={priceRefresh}
       onReauthorize={repairSubscription}
       onManageSubscriptionLogin={() => { setAdding(true); setAddStage('subscription-login'); }}
       onRecheck={recheckSavedSource}

@@ -43,6 +43,7 @@ type Props = {
   onTryModel?(modelId: string | undefined, bindingId: string): void;
   onCreatePlan?(bindingId: string): void;
   onEditPrice?(source: ManagedSource, model: ManagedModel): void;
+  priceRefresh?: ReadonlyMap<string, number>;
   onReauthorize?(sourceId: string): void;
   onManageSubscriptionLogin?(): void;
   onRecheck?(source: ManagedSource, checkId: string, editRevision: number): Promise<'saved' | 'uncertain'>;
@@ -430,7 +431,8 @@ export function Models(props: Props) {
 
           {model && <section className="detail-section">
             <div className="detail-section-head"><h3>{text('费用', 'Cost')}</h3>{canEditPrice && <button className="btn btn-quiet" type="button" onClick={() => props.onEditPrice?.(source, model)}>{text('调整价格', 'Edit pricing')}</button>}</div>
-            <ModelPriceSummary language={props.language} model={model} billing={billing} contexts={priceContexts} />
+            <ModelPriceSummary language={props.language} model={model} billing={billing} contexts={priceContexts}
+              refreshVersion={props.priceRefresh?.get(JSON.stringify([source.source_id, model.binding_id])) ?? 0} />
           </section>}
 
           {model && <section className="detail-section">
@@ -494,11 +496,12 @@ function StatusBadge({ value, reason, subscription = false, compact = false, lan
   return <span className={`badge ${tone}${compact ? ' no-dot' : ''}`}>{subscriptionLabel ?? label}</span>;
 }
 
-function ModelPriceSummary({ language, model, billing, contexts }: {
+function ModelPriceSummary({ language, model, billing, contexts, refreshVersion }: {
   language: 'zh' | 'en';
   model: ManagedModel;
   billing: 'free' | 'subscription' | 'paid' | 'unknown';
   contexts: NonNullable<ManagedModel['presentation']>['price_contexts'];
+  refreshVersion: number;
 }) {
   const zh = language === 'zh';
   // The compact model detail describes estimated usage cost. Prefer that
@@ -532,7 +535,7 @@ function ModelPriceSummary({ language, model, billing, contexts }: {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [target, billing, revision]);
+  }, [target, billing, revision, refreshVersion]);
   if (billing === 'subscription') return <div className="v3-price"><strong>{zh ? '订阅权益' : 'Subscription'}</strong><span>{zh ? '使用已有订阅权益，实际费用以供应商账单为准' : 'Uses your existing subscription; actual cost follows the provider bill'}</span></div>;
   if (billing === 'free') return <div className="v3-price"><strong>{zh ? '免费' : 'Free'}</strong><span>{zh ? '免费资格来自当前接入，不由手工费率决定' : 'Free eligibility comes from the connection, not a manual rate'}</span></div>;
   if (!context) return <div className="v3-price"><strong>{zh ? '未计价' : 'Unpriced'}</strong><span>{zh ? '没有可核实的目录价格或人工费率' : 'No verified catalog or manual rate is available'}</span></div>;
