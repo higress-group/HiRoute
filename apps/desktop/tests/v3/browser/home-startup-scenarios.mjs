@@ -79,6 +79,22 @@ export function homeStartupScenarios({ until, control }) {
         await until(() => health()?.textContent.includes('只读连接') && routeButton().disabled, 'new connection result');
       } finally { c.reset(); for (const resolve of pending) resolve(structuredClone(c.desktop)); await settled(); }
     }),
+    scenario('desktop.home.settings-service-refresh', ['home-startup'], 'Settings and navigation agree while the service display refreshes', async () => {
+      const c = control(); let release;
+      const badge = () => [...document.querySelectorAll('.settings-group')].find(group => group.querySelector('h2')?.textContent === '服务')?.querySelector('.badge');
+      try {
+        await readyRoute(c);
+        document.querySelector('button[aria-label="设置"]').click();
+        await until(() => badge()?.classList.contains('good'), 'ready Settings service badge');
+        c.handlers.desktop_snapshot = () => new Promise(resolve => { release = resolve; });
+        window.dispatchEvent(new Event('focus'));
+        await until(() => release && health()?.textContent.includes('正在更新'), 'held Settings refresh');
+        assert(badge().classList.contains('good') && badge().textContent.includes('正在更新'), 'Settings showed a warning during a healthy refresh');
+        const uncomposed = structuredClone(c.desktop); uncomposed.service.gateway = 'not_composed';
+        release(uncomposed);
+        await until(() => badge()?.classList.contains('warn') && badge().textContent.includes('状态待核实'), 'actual uncomposed Settings state');
+      } finally { c.reset(); release?.(structuredClone(c.desktop)); await settled(); }
+    }),
     scenario('desktop.home.stale-startup-poll', ['home-startup'], 'An earlier startup poll cannot clear a newer read failure report', async () => {
       const c = control();
       let releasePoll; let reports = 0;

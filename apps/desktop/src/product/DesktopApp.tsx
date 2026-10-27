@@ -217,9 +217,9 @@ export function DesktopApp() {
     : servicePresentation.refreshing
       ? `${navigationBaseLabel} · ${language === 'zh' ? '正在更新' : 'Updating'}`
       : navigationBaseLabel;
-  const settingsServiceLabel = serviceOperational
-    ? language === 'zh' ? '可用' : 'Available'
-    : serviceLabel;
+  const settingsServiceLabel = servicePresentation.state === 'ready'
+    ? `${language === 'zh' ? '可用' : 'Available'}${servicePresentation.refreshing ? language === 'zh' ? ' · 正在更新' : ' · Updating' : ''}`
+    : navigationLabel;
 
   useEffect(() => {
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
@@ -866,7 +866,7 @@ export function DesktopApp() {
           languagePreference={preferences.languagePreference}
           theme={preferences.theme}
           serviceLabel={settingsServiceLabel}
-          serviceReady={serviceOperational}
+          serviceReady={servicePresentation.state === 'ready'}
           onServiceChanged={home.refreshDesktop}
           onLanguageChange={preferences.setLanguage}
           onThemeChange={preferences.setTheme}
