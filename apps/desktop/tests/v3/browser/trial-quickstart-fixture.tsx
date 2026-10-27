@@ -21,6 +21,8 @@ if (additionalFamily === 'codex') agents.agents.push({
 const decision = {id:'decision/trial',revision:1,name:'Saved decision model',connection:{kind:'custom',endpoint:'https://decision.example.test',timeout_ms:10000}};
 let observed:DesktopOperation|null=null;
 let publishLost=false;
+const trialWrites = { pending: [] as { action: string; release(): void }[] };
+Object.assign(window, { trialWrites });
 const feedStatus: ModelFeedStatus = {retrieval_enabled:true,held:{sequence:12,issued_at:'2026-10-16T00:00:00Z',retrieved_at:1792108800000},highest_accepted_sequence:12,last_attempt:{at:1792108800000,result:'ok',reason:null},verification:{kind:'validated'},counts:{descriptive_records:2,qualified_models:2,restricted_models:0},next_automatic_attempt_at:null,disclosure:'Model information is retrieved automatically from hiroute.ai without account or usage identifiers.',disclosure_acknowledged:false};
 const catalog: { model_configuration_id: string; display_name: string; binding_ids: string[]; [key: string]: unknown }[] = [
  ...readyManagement.sources.flatMap(source=>source.models.map(model=>({model_configuration_id:model.catalog_configuration_id??model.upstream_model_id,display_name:model.display_name,origin:{kind:'embedded',client_version:'0.3.1'},identity_stability:'rolling-alias',availability:{kind:'executable'},binding_ids:[model.binding_id],facts:{publisher_id:model.binding_id.includes('qwen')?'publisher.alibaba':'publisher.openai',context_tokens:262144,tool:true,vision:false,reasoning:{kind:'toggle'}}}))),
@@ -66,13 +68,20 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  if(command==='agent_snapshot') return structuredClone(agents);
  if(command==='decision_services') return {services:[params.has('native')?{...decision,connection:{kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:10000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}}}:decision]};
  if(command==='plan_editor_options') {
-  const value = await mockProductInvoke(command,payload,'ready');
+  const value:any = await mockProductInvoke(command,payload,'ready');
+  const primary = value.candidates.find((candidate:any) => candidate.binding_id === 'binding/codex/gpt-5.6-sol');
+  if (primary?.reasoning.kind === 'discrete' && !params.has('no-reasoning-default')) primary.reasoning.default_profile = 'high';
+  if (payload?.input?.preview_agent === 'dsh') {
+   value.codex_capabilities=null; value.claude_capabilities=null;
+   if (payload.input.editor) value.dsh_capabilities={state:'available',protocol:'responses',context_window:64000,max_output_tokens:4096};
+  }
   if (!('quickStartAuthoringJudgment' in window)) Object.assign(window, { quickStartAuthoringJudgment: structuredClone((value as any).authoring.editor.smart.judgment) });
   return value;
  }
  if(command==='observe_operation') return observed;
  if(command==='preview_plan_editor') {
   const i=payload.input;
+  if (params.has('hold-writes')) await new Promise<void>(release => trialWrites.pending.push({ action:i.action, release }));
   observed={operation_id:`operation/${i.action}`,state:'succeeded',sequence:1,cancellable:false,safe_error_code:null};
   desktop.pending={plan_id:i.plan_id??i.draft_id,operation_id:observed.operation_id,idempotency_key:'fixture'};
   if(i.action==='save_draft') desktop.catalog.drafts=[{draft_id:i.draft_id,revision:1,editor:structuredClone(i.editor)}];

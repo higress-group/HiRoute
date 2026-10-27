@@ -18,6 +18,9 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
  assert.equal(await count('trial_agent_model'),1,'only the preferred Agent is read');
  await choosePrimary();
  await select('agent_dsh_default');
+ await waitFor(client, `!!document.querySelector('.trial-choice-list .trial-choice') && !document.querySelector('.trial-agent-choice [role=alert]')`);
+ assert.equal(await evaluate(client, `document.querySelector('.trial-footer .btn-primary').disabled`),true,'an Agent switch clears the previous Primary provenance');
+ await choosePrimary();
  await waitFor(client, `!document.querySelector('.trial-footer .btn-primary').disabled`);
  assert.equal(await count('trial_agent_choices'),1,'switching a known choice does not scan all CLIs');
  assert.equal(await count('trial_agent_model'),2);
@@ -30,6 +33,8 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
  await evaluate(client,`document.querySelector('.trial-agent-choice').scrollIntoView({block:'center'});true`);
  await shot('trial-agent-error-en-light-755');
  await click('.trial-agent-choice button','Retry');
+ await waitFor(client, `!!document.querySelector('.trial-choice-list .trial-choice')`);
+ await choosePrimary();
  await waitFor(client, `!document.querySelector('.trial-footer .btn-primary').disabled`);
  assert.equal(await count('trial_agent_choices'),1,'detail retry does not rediscover');
  results.push({id:'quickstart.agent-reads.narrow-switch-and-retry',status:'passed'});

@@ -76,7 +76,7 @@ try {
     ['--protection', 'new-model-trial-protection-active.mjs'],
     ['--polish', 'new-model-trial-polish-active.mjs'],
   ].find(([flag]) => process.argv.includes(flag))?.[1] ?? 'new-model-trial-active.mjs';
-  const runner = spawn(process.execPath, [path.join(here, selectedRunner), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...['--timeline-pricing','--trial-agent-reads'].filter(flag=>process.argv.includes(flag))], { cwd: desktopRoot, stdio: 'inherit' });
+  const runner = spawn(process.execPath, [path.join(here, selectedRunner), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...['--timeline-pricing','--trial-agent-reads','--trial-identity'].filter(flag=>process.argv.includes(flag))], { cwd: desktopRoot, stdio: 'inherit' });
   const outcome = await waitForExit(runner);
   if (outcome.code !== 0) process.exitCode = outcome.code ?? 1;
 } finally {

@@ -1,5 +1,6 @@
 import type { TrustSuggestionsRead } from './use-trust-suggestions';
 import { trustLevelLabel } from './levels';
+import { Disclosure } from '../../ui';
 import './trust.css';
 
 const rollingStability = ['rolling-alias', 'dynamic-route', 'unknown'];
@@ -36,7 +37,6 @@ export function TrustAttention({ read, language, names, onOpen, onAct }: { read:
       const replayText = replay?.regular_share != null ? text(`按你的记录回放，这一档约 ${Math.round(replay.regular_share * 100)}% 的阶段会交给常规模型。`, `Replaying your records, this level would give about ${Math.round(replay.regular_share * 100)}% of stages to Regular.`) : '';
       const scope = [
         upward && plan.announcements.length > 0 && branch.upward_from_ms > 0 ? text(`只看 ${new Date(branch.upward_from_ms).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 模型更新公告之后的记录`, `Only records after the ${new Date(branch.upward_from_ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} model update announcement`) : '',
-        branch.identity_stabilities.some(stability => rollingStability.includes(stability)) ? text('同名模型可能被供应商更新，记录可能混合多个版本', 'The provider may update this model name; records may mix versions') : '',
       ].filter(Boolean).join(' · ');
       return <article key={`${plan.plan_id}/${branch.branch_id}`} className="trust-attention-item">
         <div className="trust-attention-main">
@@ -48,5 +48,6 @@ export function TrustAttention({ read, language, names, onOpen, onAct }: { read:
         <div className="trust-attention-actions"><button className="btn" disabled={read.status !== 'ready'} onClick={() => onOpen(plan.plan_id)}>{text('查看依据', 'View evidence')}</button>{onAct && <button className="btn btn-primary" disabled={read.status !== 'ready'} onClick={() => onAct(plan.plan_id, branch.branch_id)}>{kind[3]}</button>}</div>
       </article>;
     })}
+    {items.some(({ branch }) => branch.identity_stabilities.some(stability => rollingStability.includes(stability))) && <Disclosure className="native-details" label={text('版本与来源', 'Version and source')} language={language}><p className="field-help">{text('同名模型可能被供应商更新，记录可能混合多个版本；公告日期不能证明实际部署的版本。', 'Providers may update a model behind the same name, so records may mix versions; an announcement date does not prove the version deployed.')}</p></Disclosure>}
   </section>;
 }

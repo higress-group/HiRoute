@@ -63,6 +63,8 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.home.service-refresh-authority',
+  'desktop.home.service-disconnect-generation',
   'desktop.home.stale-startup-failure',
   'desktop.home.stale-startup-success',
   'desktop.home.stale-startup-poll',

@@ -17,9 +17,9 @@ import { routingEditorEntries } from '../routing-editor-entries';
 
 export type RoutingEditorIntent = { key: string; plan?: Plan; draft?: Draft; staleDraft?: boolean; initialBindingId?: string; initialContent?: Editor; editingMemory?: PlanEditorMemory; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string };
 
-export function RoutingPage({ language, active = true, refreshVersion = 0, snapshot, agentSnapshot, operation, loading, busy, suggestionPlanIds = [], initialEditor = null, notice, onRefresh, onOperation, onOpenAgent, onOpenSession, onOpenSessions, onOpenServices, onTryModel }: {
+export function RoutingPage({ language, active = true, refreshVersion = 0, snapshot, agentSnapshot, operation, loading, busy, mutationAllowed, suggestionPlanIds = [], initialEditor = null, notice, onRefresh, onOperation, onOpenAgent, onOpenSession, onOpenSessions, onOpenServices, onTryModel }: {
   language: 'zh' | 'en'; snapshot: DesktopSnapshot | null; agentSnapshot?: AgentSnapshot | null; loading: boolean; busy: boolean;
-  active?: boolean; refreshVersion?: number; suggestionPlanIds?: string[];
+  active?: boolean; refreshVersion?: number; mutationAllowed: boolean; suggestionPlanIds?: string[];
   operation?: DesktopOperation | null;
   initialEditor?: RoutingEditorIntent | null; notice?: string; onRefresh(): Promise<void>;
   onTryModel?(): void; onOperation(operation: DesktopOperation | null): void; onOpenAgent?(agentId: string): void; onOpenSession?(sessionId: string, requestId: string): void; onOpenServices?: OpenDecisionConnection;
@@ -42,7 +42,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
   const planEditor = useRef<PlanEditorHandle>(null);
   const plans = snapshot?.catalog.plans ?? [];
   const drafts = snapshot?.catalog.drafts ?? [];
-  const mutable = !!snapshot?.trusted_authority && snapshot.service.mutation_available;
+  const mutable = mutationAllowed && !!snapshot?.trusted_authority && snapshot.service.mutation_available;
   const modes = { custom_branches: text('自定义分支', 'Custom branches'), fixed_model: text('固定模型', 'Fixed model'), smart_saving: text('按难度分流', 'Difficulty routing'), free_first: text('免费优先', 'Free first') };
   const entries: RoutingEditorIntent[] = routingEditorEntries(plans, drafts);
   const creating = Boolean(editor && !editor.plan && !editor.draft);

@@ -118,40 +118,68 @@ pub(super) fn dispatch(
             .editor
             .as_ref()
             .or_else(|| authoring.as_ref().map(|value| &value.editor));
-        let (codex_capabilities, claude_capabilities, context_window) = if let Some(reference) =
-            &payload.published_plan
-        {
-            let publication = state
-                .active_publication
-                .as_ref()
-                .ok_or(ErrorCode::ResourceNotFound)?;
-            let plan = published_preview_plan(publication, reference)?;
-            let upper = plan
-                .body
-                .materialized
-                .context_window_upper_bound()
-                .map_err(|_| ErrorCode::CapabilityDenied)?;
-            (
-                Some(
-                    port.codex_client_capability_preview(&plan)
-                        .map_err(map_control_error)?,
-                ),
-                Some(
-                    port.claude_client_capability_preview(&plan)
-                        .map_err(map_control_error)?,
-                ),
-                Some(PlanContextWindowPreviewV1 {
-                    maximum_tokens: upper,
-                    default_tokens: upper.min(hiroute_domain::DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS),
-                }),
-            )
-        } else {
-            (
-                codex_capabilities(editor, &state.facts, port.as_ref())?,
-                claude_capabilities(editor, &state.facts, port.as_ref()),
-                context_window_preview(editor, &state.facts),
-            )
-        };
+        let dsh_requested = payload.preview_agent == Some(PlanPreviewAgentV1::Dsh);
+        let (codex_capabilities, claude_capabilities, dsh_capabilities, context_window) =
+            if let Some(reference) = &payload.published_plan {
+                let publication = state
+                    .active_publication
+                    .as_ref()
+                    .ok_or(ErrorCode::ResourceNotFound)?;
+                let plan = published_preview_plan(publication, reference)?;
+                let upper = plan
+                    .body
+                    .materialized
+                    .context_window_upper_bound()
+                    .map_err(|_| ErrorCode::CapabilityDenied)?;
+                let (codex, claude, dsh) = if dsh_requested {
+                    (
+                        None,
+                        None,
+                        Some(
+                            port.dsh_client_capability_preview(&plan)
+                                .map_err(map_control_error)?,
+                        ),
+                    )
+                } else {
+                    (
+                        Some(
+                            port.codex_client_capability_preview(&plan)
+                                .map_err(map_control_error)?,
+                        ),
+                        Some(
+                            port.claude_client_capability_preview(&plan)
+                                .map_err(map_control_error)?,
+                        ),
+                        None,
+                    )
+                };
+                (
+                    codex,
+                    claude,
+                    dsh,
+                    Some(PlanContextWindowPreviewV1 {
+                        maximum_tokens: upper,
+                        default_tokens: upper
+                            .min(hiroute_domain::DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS),
+                    }),
+                )
+            } else {
+                if dsh_requested {
+                    (
+                        None,
+                        None,
+                        dsh_capabilities(payload.editor.as_ref(), &state.facts, port.as_ref())?,
+                        context_window_preview(payload.editor.as_ref(), &state.facts),
+                    )
+                } else {
+                    (
+                        codex_capabilities(editor, &state.facts, port.as_ref())?,
+                        claude_capabilities(editor, &state.facts, port.as_ref()),
+                        None,
+                        context_window_preview(editor, &state.facts),
+                    )
+                }
+            };
         let unavailable_candidate_count = (payload.include_unavailable
             && state.unavailable_candidates.len() > MAX_RATING_QUERY_ITEMS)
             .then_some(state.unavailable_candidates.len());
@@ -174,6 +202,7 @@ pub(super) fn dispatch(
             ratings,
             free_suggestions,
             codex_capabilities,
+            dsh_capabilities,
             revisions: state.expected_revisions,
         })
     })();
@@ -181,6 +210,38 @@ pub(super) fn dispatch(
         Ok(value) => succeeded(value, request.request_id),
         Err(error) => failed(error, request.request_id),
     }
+}
+
+fn dsh_capabilities(
+    editor: Option<&PlanEditorStateV2>,
+    facts: &crate::compiler::AgentPlanCompilationFactsV1,
+    port: &dyn crate::control::RoutingFactsPort,
+) -> Result<Option<DshClientCapabilityPreviewV1>, ErrorCode> {
+    let Some(editor) = editor else {
+        return Ok(None);
+    };
+    let invalid = || {
+        Some(DshClientCapabilityPreviewV1::Unavailable {
+            reason: DshCapabilityUnavailableReasonV1::InvalidPlan,
+        })
+    };
+    let Ok(configuration) = editor.effective() else {
+        return Ok(invalid());
+    };
+    let identity = AgentPlanIdentityV1 {
+        agent_plan_id: AgentPlanId::parse("plan/dsh-capability-preview")
+            .map_err(|_| ErrorCode::Internal)?,
+        model_alias: ModelAlias::parse("hiroute-dsh-capability-preview")
+            .map_err(|_| ErrorCode::Internal)?,
+        display_name: configuration.display_name.clone(),
+        purpose: configuration.purpose.clone(),
+    };
+    let Ok(plan) = compile_agent_plan_v2(identity, 1, &configuration, facts) else {
+        return Ok(invalid());
+    };
+    port.dsh_client_capability_preview(&plan)
+        .map(Some)
+        .map_err(map_control_error)
 }
 
 fn codex_capabilities(
@@ -317,6 +378,7 @@ mod tests {
     #[derive(Default)]
     struct PreviewPort {
         calls: AtomicUsize,
+        dsh_calls: AtomicUsize,
     }
 
     impl crate::control::RoutingFactsPort for PreviewPort {
@@ -339,6 +401,18 @@ mod tests {
             _workspace_id: &WorkspaceId,
         ) -> Result<RoutingCompilationSnapshotV1, ControlReadError> {
             Err(ControlReadError::Unavailable)
+        }
+
+        fn dsh_client_capability_preview(
+            &self,
+            _plan: &hiroute_domain::CompiledAgentPlanV1,
+        ) -> Result<DshClientCapabilityPreviewV1, ControlReadError> {
+            self.dsh_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(DshClientCapabilityPreviewV1::Available {
+                protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
+                context_window: 64_000,
+                max_output_tokens: 4096,
+            })
         }
     }
 
@@ -443,6 +517,33 @@ mod tests {
             codex_capabilities(Some(&editor), &compilation_facts(), &port).unwrap(),
             None
         );
+        assert_eq!(port.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn dsh_preview_requires_a_real_editor_and_compiles_only_valid_edits() {
+        let port = PreviewPort::default();
+        let facts = compilation_facts();
+        assert_eq!(dsh_capabilities(None, &facts, &port).unwrap(), None);
+        let mut incomplete = editor();
+        incomplete.display_name.clear();
+        assert_eq!(
+            dsh_capabilities(Some(&incomplete), &facts, &port).unwrap(),
+            Some(DshClientCapabilityPreviewV1::Unavailable {
+                reason: DshCapabilityUnavailableReasonV1::InvalidPlan
+            })
+        );
+        assert_eq!(port.dsh_calls.load(Ordering::SeqCst), 0);
+        let preview = dsh_capabilities(Some(&editor()), &facts, &port).unwrap();
+        assert!(matches!(
+            preview,
+            Some(DshClientCapabilityPreviewV1::Available {
+                context_window: 64_000,
+                max_output_tokens: 4096,
+                ..
+            })
+        ));
+        assert_eq!(port.dsh_calls.load(Ordering::SeqCst), 1);
         assert_eq!(port.calls.load(Ordering::SeqCst), 0);
     }
 

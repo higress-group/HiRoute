@@ -60,6 +60,10 @@
 .trial-preset span { color: var(--text-muted); font-size: calc(12px * var(--hr-text-scale)); }
 .trial-level { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 0; font-size: calc(13px * var(--hr-text-scale)); font-variant-numeric: tabular-nums; }
 .trial-criteria p { margin: 0 0 8px; color: var(--text-soft); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; }
+.trial-publication-status { min-height: 28px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.trial-publication-status p { margin: 0; }
+.trial-review-actions { padding-block: 8px; }
+.trial-review-actions .btn-primary { min-width: 220px; max-width: 100%; }
 .trial-footer { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-inline: -4px; margin-top: 112px; padding: 12px 4px; border-top: 1px solid var(--divider); background: var(--bg); }
 .trial-footer-hint { flex: 1 1 200px; min-width: 0; color: var(--text-muted); font-size: calc(13px * var(--hr-text-scale)); text-align: right; }
 .trial-review-card .plan-editor { min-width: 0; }

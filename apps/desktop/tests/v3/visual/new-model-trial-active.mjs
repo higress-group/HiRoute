@@ -80,6 +80,7 @@ async function additionalAgentMappings() {
   if(lang==='zh') await evaluate(client,`document.querySelector('.trial-presets input:checked').click()`);
   await evaluate(client,`(()=>{const el=document.querySelector('.trial-agent-choice select');el.value=${JSON.stringify(`agent_${family}_default`)};el.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
   await waitFor(client,`!document.querySelector('.trial-presets')`);
+  await evaluate(client,`(()=>{const el=[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name));el.click();return true;})()`);
   await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
   assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),false,'additional routing does not require Claude presets');
   await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
@@ -95,8 +96,54 @@ async function additionalAgentMappings() {
   results.push({id:`quickstart.${family}.${lang}.no-claude-presets`,status:'passed'});
  }
 }
+async function trialIdentityChecks() {
+ let criterion;
+ for (const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',755,600],['en','dark',1200,813],['zh','light',1200,813]]) {
+  await open(`lang=${lang}&theme=${theme}&view=quickstart&agent-family=dsh&no-reasoning-default=1&hold-writes=1`,width,height);
+  await click('.new-models button',lang==='zh'?'试用':'Try');
+  await waitFor(client,`!!document.querySelector('.trial-agent-choice select')`);
+  await evaluate(client,`(()=>{const e=document.querySelector('.trial-agent-choice select');e.value='agent_dsh_default';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+  await waitFor(client,`!!document.querySelector('.trial-choice-list .trial-choice')`);
+  await evaluate(client,`[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name)).click();true`);
+  assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),true,'a selectable binding without a supported default needs an explicit choice');
+  await click('.trial-column .trial-reasoning button',lang==='zh'?'请选择':'Choose');
+  await click('[role=dialog] .segment','low');
+  await click('[role=dialog] .btn-primary',lang==='zh'?'应用':'Apply');
+  await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
+  assert.match(await evaluate(client,`document.querySelector('.trial-page').textContent`),/trial-qwen3-coder-plus-[0-9a-f]{8}/);
+  await shot(`trial-selection-${lang}-${theme}-${width}`);
+  for(const node of await geometry('.trial-card,.trial-reasoning')) assert.ok(node.scroll<=node.width+1,`horizontal overflow: ${JSON.stringify(node)}`);
+  await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
+  await waitFor(client,`!!document.querySelector('[data-dsh-capability-state="available"]') && !!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+  assert.equal(await evaluate(client,`document.querySelector('[data-codex-capability-state]')`),null,'DSH never shows Codex capability results');
+  assert.ok(await evaluate(client,`trialTrace.some(x=>x.command==='plan_editor_options'&&x.payload.input.preview_agent==='dsh'&&x.payload.input.editor)`));
+  await shot(`trial-review-${lang}-${theme}-${width}`);
+  await evaluate(client,`document.querySelector('.trial-review > .actions .btn-primary').scrollIntoView({block:'center'});true`);
+  await shot(`trial-review-action-${lang}-${theme}-${width}`);
+  const before=await evaluate(client,`(()=>{const r=document.querySelector('.trial-review > .actions .btn-primary').getBoundingClientRect();return {left:r.left,top:r.top};})()`);
+  await click('.trial-review > .actions button',lang==='zh'?'保存并发布路由':'Save and publish route');
+  await waitFor(client,`trialWrites.pending.length===1`);
+  const during=await evaluate(client,`(()=>{const r=document.querySelector('.trial-review > .actions .btn-primary').getBoundingClientRect();return {left:r.left,top:r.top};})()`);
+  assert.ok(Math.abs(before.left-during.left)<=2 && Math.abs(before.top-during.top)<=2,`saving moved the action: ${JSON.stringify({before,during})}`);
+  await evaluate(client,`trialWrites.pending[0].release();true`);
+  await waitFor(client,`trialWrites.pending.length===2`);
+  assert.equal(await evaluate(client,`trialWrites.pending[1].action`),'publish');
+  await evaluate(client,`trialWrites.pending[1].release();true`);
+  await waitFor(client,`!!document.querySelector('.trial-mapping')`);
+  const writes=await evaluate(client,`trialTrace.filter(x=>x.command==='preview_plan_editor').map(x=>x.payload.input)`);
+  assert.deepEqual(writes.map(write=>write.action),['save_draft','publish']);
+  assert.equal(writes[0].editor.smart.primary[0].reasoning.profile,'low');
+  assert.equal(writes[1].editor.smart.primary[0].reasoning.profile,'low');
+  assert.equal(writes[0].editor.smart.judgment.competence.standard,'custom');
+  const current=writes[0].editor.smart.judgment.competence.criteria[0];
+  assert.match(current,/clear user dissatisfaction/);
+  if (criterion === undefined) criterion=current; else assert.equal(current,criterion,'the stored model-facing criterion is identical in both UI languages');
+  results.push({id:`quickstart.identity-preview-publication.${lang}.${theme}.${width}`,status:'passed'});
+ }
+}
 try {
- if(process.argv.includes('--trial-agent-reads')) { await trialAgentReadChecks({client,open,click,shot,results}); }
+ if(process.argv.includes('--trial-identity')) { await trialIdentityChecks(); }
+ else if(process.argv.includes('--trial-agent-reads')) { await trialAgentReadChecks({client,open,click,shot,results}); }
  else if(process.argv.includes('--timeline-pricing')) { await timelinePricingChecks(); }
  else {
  await trialAgentReadChecks({client,open,click,shot,results});
@@ -193,6 +240,8 @@ try {
   await waitFor(client,`trialTrace.some(x=>x.command==='observation_read' && x.payload.request.intent.view==='sessions')`);
   assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='observation_read').payload.request.intent.query.from_ms===readCostState.confirmed`),true);
   assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='observation_read').payload.request.intent.query.plan_id`),'plan/trial');
+  assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='observation_read').payload.request.intent.query.agent_id`),null,'a Plan match does not require Agent attribution');
+  assert.equal(await evaluate(client,`!!document.querySelector('.trial-session-handoff .btn-primary')`),false,'activity before confirmation is excluded');
   await shot(`handoff-waiting-${lang}-755`);
   await evaluate(client,`hideReadCost(true);tickReadCost(5000);true`);
   assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='observation_read').length`),1);
@@ -213,6 +262,15 @@ try {
  await open('lang=en&view=handoff');await waitFor(client,`trialTrace.some(x=>x.command==='observation_read')`);await click('button','Close waiting');
  const closedReads=await evaluate(client,`trialTrace.length`);await evaluate(client,`tickReadCost(5000);true`);assert.equal(await evaluate(client,`trialTrace.length`),closedReads);
  results.push({id:'handoff.close-stops-reads',status:'passed'});
+ await open('lang=en&view=handoff&hold-session-read=1');
+ await waitFor(client,`readCostState.pending.length===1`);
+ await evaluate(client,`tickReadCost(5000);tickReadCost(5000);true`);
+ assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='observation_read').length`),1,'a pending session read is never overlapped by the five-second timer');
+ await evaluate(client,`readCostState.hold=false;readCostState.pending[0]();true`);
+ await waitFor(client,`readCostState.completed===1`);
+ await evaluate(client,`tickReadCost(5000);true`);
+ await waitFor(client,`trialTrace.filter(x=>x.command==='observation_read').length===2`);
+ results.push({id:'handoff.single-in-flight-five-second-cadence',status:'passed'});
  await open('lang=en&view=suggestion-cadence');await waitFor(client,`!!document.querySelector('.trust-attention-item')`);
  const suggestionReads=()=>evaluate(client,`trialTrace.filter(x=>x.command==='observation_read' && x.payload.request.intent.view==='plan_trust_suggestions').length`);
  assert.equal(await suggestionReads(),1);await evaluate(client,`tickReadCost(30000);true`);assert.equal(await suggestionReads(),1);
@@ -467,6 +525,7 @@ try {
   await click('.trial-review button',lang==='zh'?'保存并发布路由':'Save and publish route');
   if(lost) {
    await waitFor(client,`trialTrace.some(x=>x.command==='preview_plan_editor'&&x.payload.input.action==='publish')`);
+   await waitFor(client,`document.querySelector('.trial-publication-status')?.textContent.includes('正在确认发布结果')`);
    await click('.trial-review button',lang==='zh'?'刷新结果':'Refresh result');
   }
   await waitFor(client,`!!document.querySelector('.trial-mapping .trial-agent-choice')`);
