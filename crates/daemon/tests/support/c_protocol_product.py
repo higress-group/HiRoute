@@ -22,8 +22,10 @@ def native_protocol(repository):
     stock = json.loads((repository / 'crates/domain/src/routing/fixtures/system_one_c_v1.json').read_text())
     assert digest(stock) == 'sha256:4dbab2f53954eb2176b6aa8d31b97808c4fee15ebb2fae337012eba348aef3c7'
     wrapper, suffix = stock['q1']['instructions'].split(' Distinguish those meanings', 1)
+    guidance = json.loads((repository / 'assets/decision-services/default-assessment-guidance.json').read_text())
     return {'prior_context_max_turns': 8}, {
-            'instructions': 'Distinguish those meanings' + suffix, 'criteria': stock['q1']['criteria']}
+            'instructions': 'Distinguish those meanings' + suffix + ' ' + guidance['feedback'],
+            'criteria': stock['q1']['criteria']}
 
 
 
@@ -49,7 +51,7 @@ def frozen_from(preview):
 
 
 def exercise(product, cli, service, endpoint, selection):
-    _, stock = native_protocol(product.repo)
+    _, current = native_protocol(product.repo)
     smart = copy.deepcopy(product.editor['smart'])
     released = json.loads((product.repo / 'crates/domain/src/routing/authoring/fixtures/released-default-assessment.v1.json').read_text())
     smart['judgment']['competence'].update(released['assessment'])
@@ -82,10 +84,13 @@ def exercise(product, cli, service, endpoint, selection):
     frozen = frozen_from(preview)
     assert frozen['protocol']['schema'] == C and frozen['protocol']['prior_context_max_turns'] == 8
     assert frozen['scopes']['smart_saving']['standard'] == 'default'
+    assessment = frozen['scopes']['smart_saving']['assessment']
+    assert assessment['instructions'] == frozen['protocol']['fixed']['assessment_wrapper'] + ' ' + current['instructions']
+    assert assessment['criteria'] == current['criteria']
     assert judgment(saved)['degree'] == original['degree']
     assert judgment(saved)['competence']['floor_millis'] == 317
-    assert judgment(saved)['competence']['instructions'] == stock['instructions']
-    assert judgment(saved)['competence']['criteria'] == stock['criteria']
+    assert judgment(saved)['competence']['instructions'] == current['instructions']
+    assert judgment(saved)['competence']['criteria'] == current['criteria']
     assert not any(field in editor['smart'] for field in ['native_protocol', 'historical_applicability', 'prior_context_max_turns'])
     for field in ['native_protocol', 'historical_applicability', 'prior_context_max_turns']:
         invalid = copy.deepcopy(editor)
@@ -144,8 +149,8 @@ def exercise(product, cli, service, endpoint, selection):
     assert len(endpoint.requests[-1][1]['questions']) == 19
     smart['judgment']['competence']['standard'] = 'default'
     _, reset = publish(editor, 'native-reset-default')
-    assert judgment(reset)['competence']['instructions'] == stock['instructions']
-    assert judgment(reset)['competence']['criteria'] == stock['criteria']
+    assert judgment(reset)['competence']['instructions'] == current['instructions']
+    assert judgment(reset)['competence']['criteria'] == current['criteria']
     assert judgment(reset)['degree'] == original['degree']
     assert judgment(reset)['competence']['floor_millis'] == 317
     endpoint.c_vectors = False
