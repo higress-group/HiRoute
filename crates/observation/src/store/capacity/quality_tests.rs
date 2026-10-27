@@ -5,8 +5,8 @@ use crate::query_v2::ObservationReaderContext;
 use crate::store::tests::support::*;
 use hiroute_domain::{
     AgentPlanId, AgentTurnAttributionV1, AgentTurnStatusV1, CanonicalDigest, DeletionDataClass,
-    ExecutionFactV1, ObservationPrincipalV1, ObservationQueryPort, ObservedProfileDigestV1,
-    PlanQualitySamplesQuery, SessionDeletionSpecV1, TrustPopulationQueryV1, TurnId,
+    ExecutionFactV1, ObservationPrincipalV1, ObservedProfileDigestV1, PlanQualitySamplesQuery,
+    SessionDeletionSpecV1, TrustPopulationQueryV1, TurnId,
 };
 
 fn stage(fixture: &Fixture, segment: &str) -> ExecutionFactV1 {
