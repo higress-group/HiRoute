@@ -276,10 +276,11 @@ continuations/replays inherit within continuous history. Changing instructions,
 tool declarations, or stable provider state invalidates candidate preference but
 alone does not reclassify an existing turn. History replacement rejudges even when
 latest-user text is unchanged; no compaction detector or unfinished-task heuristic
-controls the boundary. Heuristics read full latest-user input. Turn-history analysis
-materializes only the latest real user input needed by that decision; older supplied
-user text stays Replay-backed. Message/user boundaries, tool-result status, partial
-history, continuity validation and accepted execution attribution retain their meaning.
+controls the boundary. Heuristics read the full current input selected by the existing
+protocol boundary, including its admitted input window. Turn-history analysis
+materializes only that input; older supplied user text stays Replay-backed. Input
+window membership, message/user boundaries, tool-result status, partial history,
+continuity validation and accepted execution attribution retain their meaning.
 
 Planner consumes frozen decision, groups, current eligibility, and bounded relay;
 it cannot call the decision service, reread conversation, or parse service responses.
