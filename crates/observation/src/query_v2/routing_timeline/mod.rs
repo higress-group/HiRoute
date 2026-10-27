@@ -181,15 +181,7 @@ impl crate::LocalObservationStore {
             } else {
                 None
             };
-            state.refresh(
-                &tx,
-                reader,
-                &query.session_id,
-                target,
-                now_ms,
-                changed.as_ref(),
-                query.include_presentation,
-            )?;
+            state.refresh(&tx, reader, query, target, now_ms, changed.as_ref())?;
         }
         state.visibility = visibility;
         cursor.expires_at = state.expires_at;
