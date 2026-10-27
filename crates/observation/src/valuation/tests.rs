@@ -67,6 +67,53 @@ fn unknown_cache_semantics_keep_known_output_and_explicit_partial_coverage() {
 }
 
 #[test]
+fn unknown_write_bounds_require_known_exclusive_usage_and_do_not_rewrite_it() {
+    let semantics = UsageSemanticsV1 {
+        frame_kind: UsageFrameKindV1::Cumulative,
+        input: InputUsageMeaningV1::IncludesExclusiveCache,
+        output: OutputUsageMeaningV1::IncludesReasoning,
+        cache_buckets_exclusive: true,
+    };
+    let raw = RawUsage {
+        input: Some(100),
+        output: Some(25),
+        read: Some(40),
+        write: None,
+        reasoning: None,
+    };
+    let original = serde_json::to_value(&raw).unwrap();
+    assert_eq!(
+        reference_bounds_semantics(semantics, &raw, &quote()),
+        Some((114, 144))
+    );
+    assert_eq!(serde_json::to_value(&raw).unwrap(), original);
+
+    let mut cheaper_write = quote();
+    cheaper_write.rates.cache_write = TokenRateV1::known(500_000);
+    assert_eq!(
+        reference_bounds_semantics(semantics, &raw, &cheaper_write),
+        Some((84, 114))
+    );
+    let mut missing = raw.clone();
+    missing.read = None;
+    assert_eq!(
+        reference_bounds_semantics(semantics, &missing, &quote()),
+        None
+    );
+    missing.read = Some(101);
+    assert_eq!(
+        reference_bounds_semantics(semantics, &missing, &quote()),
+        None
+    );
+    let mut ambiguous = semantics;
+    ambiguous.cache_buckets_exclusive = false;
+    assert_eq!(reference_bounds_semantics(ambiguous, &raw, &quote()), None);
+    let mut unpriced = quote();
+    unpriced.rates.cache_write = TokenRateV1::unknown(PriceUnknownReasonV1::CacheRateNotCollected);
+    assert_eq!(reference_bounds_semantics(semantics, &raw, &unpriced), None);
+}
+
+#[test]
 fn rounding_happens_once_after_all_attempt_components() {
     let mut price = quote();
     price.rates = TokenRatesV1 {

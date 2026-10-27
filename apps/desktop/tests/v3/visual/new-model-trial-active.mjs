@@ -271,6 +271,27 @@ try {
   await shot(`trust-cost-gaps-${kind}-${lang}-${width}`);
   results.push({id:`trust.cost-gaps.${kind}.${lang}.${width}`,status:'passed'});
  }
+ for (const lang of ['en','zh']) for (const width of [755,1200]) {
+  await open(`lang=${lang}&view=editor&cost-routed-only=1`,width,width===755?600:813);
+  await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`);
+  await click('[role=tab]',lang==='zh'?'模型表现':'Model performance');
+  const label=lang==='zh'?'常规组成本对比':'Regular cost comparison';
+  await waitFor(client,`!!document.querySelector('[aria-label="${label}"]')`);
+  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('[aria-label="${label}"]').scrollIntoView({block:'center'});return true;})()`);
+  const text=await evaluate(client,`document.querySelector('[aria-label="${label}"]').textContent`);
+  assert.ok(text.includes('0.0180'));
+  assert.ok(text.includes(lang==='zh'?'完整范围的差额未知':'The full-scope difference is unknown'));
+  assert.ok(text.includes('0/1'));
+  assert.ok(text.includes(lang==='zh'?'可完整比较':'Fully comparable'));
+  assert.ok(text.includes(lang==='zh'?'主力参考费用范围':'Primary reference cost range'));
+  assert.ok(text.includes(lang==='zh'?'估算差额范围':'Estimated difference range'));
+  assert.ok(text.includes('0.0929') && text.includes('0.1157'));
+  assert.ok(text.includes(lang==='zh'?'未上报的缓存写入量':'unreported cache writes'));
+  assert.equal(text.includes(lang==='zh'?'仅完整配对请求的小计':'Paired complete-request subtotals'),false);
+  for(const g of await geometry())assert.ok(g.scroll<=g.width+2,JSON.stringify(g));
+  await shot(`trust-cost-routed-only-${lang}-${width}`);
+  results.push({id:`trust.cost-routed-only.${lang}.${width}`,status:'passed'});
+ }
 
  for(const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',755,600],['en','dark',1200,813],['zh','light',1200,813]]){
   await open(`lang=${lang}&theme=${theme}`,width,height);

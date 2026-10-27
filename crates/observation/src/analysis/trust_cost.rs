@@ -136,5 +136,9 @@ pub(crate) fn trust_comparison(
     // difference without changing the shared report or numeric engine.
     result.total += gaps;
     result.excluded += gaps;
+    if gaps != 0 {
+        result.routed_full = None;
+        result.reference_bounds = None;
+    }
     Ok(result)
 }

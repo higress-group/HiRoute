@@ -5,7 +5,9 @@ mod arithmetic;
 mod comparison;
 mod reference_usage;
 pub use comparison::{ReferenceComparisonV2, compare_reference};
-pub(crate) use reference_usage::{reference_usage, reference_usage_semantics};
+pub(crate) use reference_usage::{
+    reference_bounds_semantics, reference_usage, reference_usage_semantics,
+};
 mod ingest;
 mod retention;
 mod schema;

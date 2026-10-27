@@ -4,7 +4,8 @@ use super::projection::{PricingIdentity, model_key};
 use crate::{
     query_v2::ObservationV2Error as Error,
     valuation::{
-        MetricCoverage, RawUsage, ValuationMissingReason, amount_only, reference_usage_semantics,
+        MetricCoverage, RawUsage, ValuationMissingReason, amount_only, reference_bounds_semantics,
+        reference_usage_semantics,
     },
 };
 use hiroute_domain::*;
@@ -23,6 +24,7 @@ pub(super) struct RequestCost {
     pub missing_usage: u64,
     pub pending: bool,
     pub reference: Option<u64>,
+    pub reference_bounds: Option<(u64, u64)>,
 }
 
 pub(super) struct Comparison {
@@ -169,6 +171,11 @@ pub(super) fn evaluate(
                 (a.coverage == MetricCoverage::Complete)
                     .then_some(a.known_sum_micros)
                     .flatten()
+            });
+            c.reference_bounds = c.reference.map(|amount| (amount, amount)).or_else(|| {
+                reference
+                    .zip(identity)
+                    .and_then(|(p, (i, _))| reference_bounds_semantics(i.semantics, &raw, &p.quote))
             });
         }
     }
