@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 
 use runtime_support::*;
 
+#[path = "p0_gateway_replay/ingress.rs"]
+mod ingress;
+
 #[path = "p0_gateway_replay/literal_locator.rs"]
 mod literal_locator;
 

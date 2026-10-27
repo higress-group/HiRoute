@@ -152,15 +152,28 @@ impl BodyPlanExecutor {
 
     /// Admits one transport/body frame before it is copied or retained.
     pub fn admit_chunk(&mut self, bytes: usize) -> Result<(), BodyError> {
+        self.admit_prefix(bytes, bytes)
+    }
+
+    /// Accounts for an already-spooled prefix without retaining its frame sizes.
+    /// The total and largest original frame preserve both cumulative and frame limits.
+    pub fn admit_prefix(
+        &mut self,
+        bytes: usize,
+        largest_chunk_bytes: usize,
+    ) -> Result<(), BodyError> {
         if self.eos {
             return Err(BodyError::BodyAfterEos);
+        }
+        if largest_chunk_bytes > bytes || (bytes > 0 && largest_chunk_bytes == 0) {
+            return Err(BodyError::InvalidPlanLimit);
         }
         match &self.plan {
             BodyPlan::PassThrough { max_chunk_bytes }
             | BodyPlan::StreamingReplay {
                 max_chunk_bytes, ..
             } => {
-                if bytes > *max_chunk_bytes {
+                if largest_chunk_bytes > *max_chunk_bytes {
                     return Err(BodyError::BodyLimitExceeded);
                 }
             }

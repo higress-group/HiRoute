@@ -47,6 +47,12 @@ renderers omit foreign reasoning without inventing signatures. The
 [production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
 covers the listener boundary, including tool continuation.
 
+Authenticated request intake uses the same request-owned [Replay backing](src/replay.rs)
+before and after alias selection. The [model locator](src/dispatch/selector.rs)
+retains only bounded lexical state and the alias; canonical JSON/protocol validation
+still runs before Provider admission. [Real listener regressions](../../tools/e2e-harness/tests/p0_gateway_replay/ingress.rs)
+cover large model-last bodies across all ingress protocols and partial-owner cleanup.
+
 ## Native session correlation
 
 [context_hold/identity.rs](src/context_hold/identity.rs) resolves one identity for
