@@ -668,6 +668,14 @@ fn c_answer(smart: bool, applicable: bool) -> &'static [u8] {
         (false,false) => br#"{"answers":{"q0":{"type":"choice","choice":"code"},"q1":{"type":"score","probabilities":{"0":0.9,"1":0.1}},"q2":{"type":"score","score":0.2},"q3":{"type":"choice","probabilities":{"applicable":0.1,"not_established":0.9}}}}"#,
     }
 }
+fn c_complex_answer(smart: bool, applicable: bool) -> &'static [u8] {
+    match (smart, applicable) {
+        (true, true) => br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.7,"1":0.3}},"q1":{"type":"score","score":0.2},"q2":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#,
+        (true, false) => br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.7,"1":0.3}},"q1":{"type":"score","score":0.2},"q2":{"type":"choice","probabilities":{"applicable":0.1,"not_established":0.9}}}}"#,
+        (false, true) => br#"{"answers":{"q0":{"type":"choice","choice":"code"},"q1":{"type":"score","probabilities":{"0":0.7,"1":0.3}},"q2":{"type":"score","score":0.2},"q3":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#,
+        (false, false) => br#"{"answers":{"q0":{"type":"choice","choice":"code"},"q1":{"type":"score","probabilities":{"0":0.7,"1":0.3}},"q2":{"type":"score","score":0.2},"q3":{"type":"choice","probabilities":{"applicable":0.1,"not_established":0.9}}}}"#,
+    }
+}
 #[test]
 fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_listeners() {
     for smart in [true, false] {
@@ -677,12 +685,14 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
             br#"{"answers":{"q0":{"type":"choice","choice":"code"},"q1":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#
         };
         let regular = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
-        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
+        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
         let decider = NativeProvider::start(vec![
             reply(plain),
             reply(c_answer(smart, true)),
             reply(c_answer(smart, false)),
             reply(c_answer(smart, true)),
+            reply(c_complex_answer(smart, false)),
+            reply(c_complex_answer(smart, true)),
         ]);
         let fixture =
             RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], smart);
@@ -693,6 +703,8 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
             "The title is still missing. Deliver it now.",
             "I saved the corrected title. Now correct an unrelated typo.",
             "The same required constraint is still not satisfied. Retry the required work.",
+            "I fixed the issue. Now carry out the complex follow-up.",
+            "That result is still unsatisfactory. Retry the complex follow-up.",
         ]
         .iter()
         .enumerate()
@@ -717,7 +729,14 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
                 "{}",
                 String::from_utf8_lossy(&response.body)
             );
-            let expected = [(1, 0, 1), (1, 1, 2), (2, 1, 3), (2, 2, 4)][index];
+            let expected = [
+                (1, 0, 1),
+                (1, 1, 2),
+                (2, 1, 3),
+                (2, 2, 4),
+                (2, 3, 5),
+                (2, 4, 6),
+            ][index];
             assert_eq!(
                 (regular.calls(), primary.calls(), decider.calls()),
                 expected
@@ -754,7 +773,7 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
             let applicability = if smart { "q2" } else { "q3" };
             assert_eq!(body["questions"].get(applicability).is_some(), i > 0);
         }
-        let facts = wait_execution_facts(&fixture, 4);
+        let facts = wait_execution_facts(&fixture, 6);
         let actions: Vec<_> = facts
             .iter()
             .filter_map(|f| {
@@ -764,8 +783,32 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
             .collect();
         assert_eq!(
             actions,
-            ["not_considered", "applied", "suppressed", "applied"]
+            [
+                "not_considered",
+                "applied",
+                "suppressed",
+                "applied",
+                "suppressed",
+                "applied"
+            ]
         );
+        let decisions: Vec<_> = facts
+            .iter()
+            .filter_map(|f| {
+                f.pointer("/fact/complexity/routing_observation/protection_action")
+                    .map(|_| &f["fact"]["complexity"])
+            })
+            .collect();
+        assert_eq!(decisions[4]["execution_group"], "primary");
+        assert_eq!(decisions[4]["selection_reason"], "complex_task");
+        assert!(
+            decisions[4]
+                .get("competence_trigger")
+                .is_none_or(Value::is_null)
+        );
+        assert_eq!(decisions[5]["execution_group"], "primary");
+        assert_eq!(decisions[5]["selection_reason"], "low_competence");
+        assert_eq!(decisions[5]["competence_trigger"]["from_group"], "primary");
         assert!(
             facts
                 .iter()
