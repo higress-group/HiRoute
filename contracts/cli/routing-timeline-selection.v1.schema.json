@@ -357,7 +357,7 @@
         },
         "outcome": {
           "$ref": "#/$defs/HistoricalProtectionActionV1",
-          "description": "Recorded historical protection action. Suppression removes only that constraint; the current difficulty can still select Primary."
+          "description": "Recorded historical protection action. Suppression removes only that constraint;\nthe current difficulty can still select Primary."
         },
         "previous_score": {
           "type": [
