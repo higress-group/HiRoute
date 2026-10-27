@@ -29,6 +29,12 @@ try {
         const query = new URLSearchParams({ page, scale: String(scale), warning: String(warning) });
         await navigate(client, `${base}/tests/v3/browser/list-scroll.html?${query}`, { width, height: 800 });
         await waitFor(client, `document.querySelectorAll('.master-list > .list-row').length === 40 && document.querySelector('.hr-ui').dataset.textScale === '${scale}'`);
+        if (page === 'routing') {
+          const authority = await evaluate(client, `(()=>{const button=[...document.querySelectorAll('.page-toolbar button')].find(e=>e.textContent.includes('New smart routing'));return {present:!!button,disabled:button?.disabled,notice:document.body.innerText.includes('Routes are viewable but cannot be changed')};})()`);
+          assert.equal(authority.present, true, 'Route creation action must remain visible');
+          assert.equal(authority.disabled, warning, 'Route creation must follow the fixture authority');
+          assert.equal(authority.notice, warning, 'Only the warning state is read-only');
+        }
         const before = await evaluate(client, measure);
         assert(before.height > 62 && before.content > before.height, 'Long list needs a bounded scroll viewport');
         assert(before.bottom <= before.viewport + 1, 'List viewport must fit below notices');
@@ -53,6 +59,10 @@ try {
         await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...last, button: 'left', clickCount: 1 });
         await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...last, button: 'left', clickCount: 1 });
         await waitFor(client, `document.querySelector('.master-list > .list-row:last-child').getAttribute('aria-current') === 'page'`);
+        if (page === 'routing') {
+          await waitFor(client, `!!document.querySelector('.detail-fieldset')`);
+          assert.equal(await evaluate(client, `document.querySelector('.detail-fieldset').disabled`), warning, 'Selected routing editor must follow the fixture authority');
+        }
         await waitFor(client, page === 'models'
           ? `document.querySelector('.detail-pane h2')?.textContent === 'Scroll model 40'`
           : `[...document.querySelectorAll('.detail-pane input')].some(input => input.value === 'Scroll route 40')`);

@@ -359,7 +359,7 @@ function Harness() {
       <button className="btn" disabled={running || results.length > 0} onClick={() => void run()}>运行智能路由交互检查</button>
       <output aria-live="polite" data-ux-results>{results.length > 0 && JSON.stringify({ tests: results.length, passed: results.filter(result => result.state === 'green').length, results })}</output>
     </aside>
-    <RoutingPage language={authoringChecks ? authoringLanguage : "zh"} snapshot={snapshot} initialEditor={{ key: plan.agent_plan_id, plan }} loading={false} busy={false} onRefresh={async () => setSnapshot(structuredClone(savedSnapshot))} onOperation={() => {}} />
+    <RoutingPage language={authoringChecks ? authoringLanguage : "zh"} snapshot={snapshot} initialEditor={{ key: plan.agent_plan_id, plan }} loading={false} busy={false} mutationAllowed={Boolean(snapshot.trusted_authority && snapshot.service.mutation_available)} onRefresh={async () => setSnapshot(structuredClone(savedSnapshot))} onOperation={() => {}} />
   </PresentationRoot>;
 }
 createRoot(document.getElementById('root')!).render(<Harness />);
