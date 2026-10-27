@@ -465,7 +465,8 @@ try {
   await shot(`quickstart-actions-${lang}-${theme}`);
   await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
   await waitFor(client,`!!document.querySelector('.trial-review .trust-control')`);
-  assert.ok(await evaluate(client,`document.querySelector('.trial-review .trust-levels [aria-pressed=true]').textContent.includes('0.9')`));
+  assert.equal(await evaluate(client,`document.querySelector('.trial-review .trust-levels [aria-pressed=true]').textContent.trim()`),lang==='zh'?'试用':'Trial');
+  assert.equal(await evaluate(client,`document.querySelector('.trial-review [data-decision-field$="-simple-threshold"]').value`),'0.9');
   await waitFor(client,`!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
   await click('.trial-review button',lang==='zh'?'保存并发布路由':'Save and publish route');
   if(lost) {

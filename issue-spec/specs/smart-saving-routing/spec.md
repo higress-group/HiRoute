@@ -21,6 +21,10 @@ Heuristic classification uses the existing deterministic English/Chinese policy,
 generates no model-derived competence score, and hides probability/rubric controls
 while retaining their parked edits. Custom extensions directly select regular or primary and hide judgment controls while preserving parked edits. Built-in connections use the published thresholds and rubric of the shared [decision policy](../decision-services/spec.md); provider-specific hidden thresholds cannot override them.
 
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6236473660
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
+
 #### Scenario: Existing route retains its exact threshold
 
 - **WHEN** using a built-in decision connection, a saved smart-saving route with threshold 0.80 is opened
@@ -115,6 +119,10 @@ Built-in difficulty routing and two-group categories MUST expose continuous manu
 Changing trust changes only the simple-probability threshold, never competence floors, judgment prompts, permissions, tool approvals, sandbox settings or automatic publication. At zero, every valid simple probability satisfies the difficulty threshold, but applicable low-score protection, unavailable judgment handling and availability relay remain independently effective. The maximum-trust label must not promise bypassing these safeguards. Evidence is separate from the chosen threshold; zero samples are explicit and retaining any value is a normal choice.
 The protection explanation follows the selected decision settings: System One retains protection for an eligible complete low score while the prior problem remains applicable, conservatively retains it when applicability is unavailable, and releases it for fixed/unrelated history. The affected model need not be Regular. Custom extensions own their policy and receive no HiRoute low-score protection. Published behavior follows frozen settings; editor explanations describe the next publication.
 Existing evidence-based recommendation anchors and eligibility rules remain unchanged; they are optional proposed numeric values, not the manual slider range or snap points. A missing recommendation neighbour cannot invent a jump to zero. Manual presets reuse the existing names and values plus the explicit zero shortcut; this does not add zero to evidence-based recommendation anchors or change their eligibility. Replay remains historical, backend-computed, scoped and model-free; rapid edits must not issue a request for every movement or display stale results as belonging to the latest threshold.
+
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235185303
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
 #### Scenario: Exact continuous editing and endpoints
 
