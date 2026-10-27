@@ -4,7 +4,7 @@ use hiroute_application_api::{
 };
 use hiroute_domain::{
     AgentIngressProtocolV1, AgentKindV1, AgentModelGrantV2, GatewayCriticalFactV1,
-    GatewayPublicationV1, UpstreamProtocol,
+    GatewayNativeReasoningRenderV1, GatewayPublicationV1, UpstreamProtocol,
 };
 
 #[test]
@@ -67,6 +67,17 @@ fn preview_uses_the_frozen_plan_budget_used_by_dsh_native_mapping() {
         for profile in &mut candidate.protocol_profiles {
             if profile.ingress_protocol == UpstreamProtocol::Responses {
                 profile.capability.upstream_protocol = UpstreamProtocol::Messages;
+                // Keep the selected native reasoning rendering consistent with
+                // the converted upstream protocol when exercising this seam.
+                for reasoning in &mut profile.capability.reasoning_profiles {
+                    match &mut reasoning.render {
+                        GatewayNativeReasoningRenderV1::ExactFields { protocol, .. }
+                        | GatewayNativeReasoningRenderV1::ExactBudget { protocol, .. } => {
+                            *protocol = UpstreamProtocol::Messages;
+                        }
+                        GatewayNativeReasoningRenderV1::NoControlParameter => {}
+                    }
+                }
             }
         }
     }
