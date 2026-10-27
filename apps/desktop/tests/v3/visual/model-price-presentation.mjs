@@ -66,6 +66,43 @@ try {
     }
   };
   const save = async lang => click('[role="dialog"] button', lang === 'zh' ? '保存价格' : 'Save pricing');
+  const sequentialFailures = [];
+  for (const scope of ['same', 'other']) {
+    await open(`lang=en&stateful=1&rates=unknown&two=${scope}`, 1200, 813);
+    const selected = await evaluate(client, `document.querySelector('.detail-identity h2').innerText`);
+    await edit('en'); await manual('en', '0.30', '1.20'); await save('en');
+    await waitFor(client, `!document.querySelector('[role="dialog"]') && ${price}.includes('$0.3 / $1.2')`);
+    await evaluate(client, `document.querySelectorAll('.models-feature .master-list .list-row')[1].click();true`);
+    await waitFor(client, `document.querySelector('.detail-identity h2')?.innerText==='Other fixture model' && ${price}.includes('$9 / $10')`);
+    await edit('en'); await manual('en', '2.50', '5');
+    await evaluate(client, `window.modelPriceFixture.outcome='hold'`); await save('en');
+    await waitFor(client, `typeof window.modelPriceFixture.releaseSave==='function'`);
+    await evaluate(client, `document.querySelectorAll('.models-feature .master-list .list-row')[0].click();true`);
+    await waitFor(client, `document.querySelector('.detail-identity h2')?.innerText===${JSON.stringify(selected)} && ${price}.includes('$0.3 / $1.2')`);
+    const primaryReads = `${detailReads}.filter(r=>r.payload.input.targets[0].target_locator.binding_id===window.modelPriceFixture.primaryBinding).length`;
+    const before = await evaluate(client, primaryReads);
+    await evaluate(client, `window.modelPriceFixture.releaseSave();true`);
+    await waitFor(client, `!document.querySelector('[role="dialog"]') && window.modelPriceFixture.quotes['binding/fixture/other'].revision===7`);
+    await evaluate(client, `new Promise(resolve=>setTimeout(()=>resolve(true),150))`);
+    const after = await evaluate(client, primaryReads);
+    const state = await evaluate(client, `({selected:document.querySelector('.detail-identity h2').innerText,price:${price},primary:window.modelPriceFixture.quotes[window.modelPriceFixture.primaryBinding],other:window.modelPriceFixture.quotes['binding/fixture/other']})`);
+    assert.equal(state.selected, selected);
+    assert.ok(state.price.includes('$0.3 / $1.2'));
+    assert.deepEqual(state.primary.rates, ['0.30', '1.20', null, null]);
+    assert.deepEqual(state.other.rates, ['2.50', '5', null, null]);
+    if (after !== before) {
+      sequentialFailures.push({ scope, before, after, state });
+      const shot = await client.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(path.join(output, `cross-binding-failure-${scope}.png`), Buffer.from(shot.data, 'base64'));
+    }
+    await evaluate(client, `document.querySelectorAll('.models-feature .master-list .list-row')[1].click();true`);
+    await waitFor(client, `document.querySelector('.detail-identity h2')?.innerText==='Other fixture model' && ${price}.includes('$2.5 / $5')`);
+    results.push({ scenario: `sequential-save-preserves-other-summary-${scope}-source`, status: after === before ? 'passed' : 'failed' });
+  }
+  if (sequentialFailures.length) {
+    await writeFile(path.join(output, 'cross-binding-failures.json'), JSON.stringify(sequentialFailures, null, 2));
+    assert.equal(sequentialFailures.length, 0, 'Saving another binding must not re-read a previously refreshed summary');
+  }
   for (const lang of ['en', 'zh']) for (const width of [755, 1200]) {
     await open(`lang=${lang}&theme=${width === 755 ? 'dark' : 'light'}&stateful=1&rates=unknown`, width, width === 755 ? 600 : 813);
     const selected = await evaluate(client, `document.querySelector('.detail-identity h2').innerText`);

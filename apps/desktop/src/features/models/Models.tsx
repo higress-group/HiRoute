@@ -43,7 +43,7 @@ type Props = {
   onTryModel?(modelId: string | undefined, bindingId: string): void;
   onCreatePlan?(bindingId: string): void;
   onEditPrice?(source: ManagedSource, model: ManagedModel): void;
-  priceRefresh?: { sourceId: string; bindingId: string; version: number } | null;
+  priceRefresh?: ReadonlyMap<string, number>;
   onReauthorize?(sourceId: string): void;
   onManageSubscriptionLogin?(): void;
   onRecheck?(source: ManagedSource, checkId: string, editRevision: number): Promise<'saved' | 'uncertain'>;
@@ -432,7 +432,7 @@ export function Models(props: Props) {
           {model && <section className="detail-section">
             <div className="detail-section-head"><h3>{text('费用', 'Cost')}</h3>{canEditPrice && <button className="btn btn-quiet" type="button" onClick={() => props.onEditPrice?.(source, model)}>{text('调整价格', 'Edit pricing')}</button>}</div>
             <ModelPriceSummary language={props.language} model={model} billing={billing} contexts={priceContexts}
-              refreshVersion={props.priceRefresh?.sourceId === source.source_id && props.priceRefresh.bindingId === model.binding_id ? props.priceRefresh.version : 0} />
+              refreshVersion={props.priceRefresh?.get(JSON.stringify([source.source_id, model.binding_id])) ?? 0} />
           </section>}
 
           {model && <section className="detail-section">

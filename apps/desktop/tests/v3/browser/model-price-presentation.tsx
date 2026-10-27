@@ -39,8 +39,14 @@ const rateCases: Record<string, [string | null, string | null, string | null, st
   known_cache: ['0.8', '2', '0.05', '0.01'],
 };
 const rates = rateCases[params.get('rates') ?? 'unknown'];
+const primaryBinding = source.models[0].binding_id;
+const quotes: Record<string, { rates: (string | null)[]; origin: string; revision: number }> = {
+  [primaryBinding]: { rates: [...rates], origin: 'catalog', revision: 6 },
+  'binding/fixture/other': { rates: ['9', '10', null, null], origin: 'catalog', revision: 6 },
+};
 const fixture = { requests: [] as { command: string; payload: any }[], failNext: params.has('fail'),
-  rates: [...rates], origin: 'catalog', revision: 6, outcome: 'success',
+  primaryBinding, quotes, get rates() { return quotes[primaryBinding].rates; },
+  get revision() { return quotes[primaryBinding].revision; }, outcome: 'success',
   releaseSave: null as null | (() => void) };
 Object.assign(window, { modelPriceFixture: fixture });
 mockIPC((command, payload: any) => {
@@ -48,14 +54,13 @@ mockIPC((command, payload: any) => {
   if (command === 'compute_management_snapshot') return structuredClone(management);
   if (command === 'effective_price_query') {
     if (fixture.failNext) { fixture.failNext = false; throw new Error('PRICE_QUERY_UNAVAILABLE'); }
-    const isOther = payload.input.targets[0]?.target_locator?.binding_id === 'binding/fixture/other';
     return {
       result: { pending_activation: false, evaluated_at: 1, generation_ref: null,
         items: payload.input.targets.map((target: any) => ({ query_id: target.query_id,
-          quote: { origin: params.has('stateful') && !isOther ? fixture.origin : 'catalog', quote_digest: 'sha256:fixture', unknown_reasons: [] },
+          quote: { origin: params.has('stateful') ? quotes[target.target_locator.binding_id].origin : 'catalog', quote_digest: 'sha256:fixture', unknown_reasons: [] },
           edit_context: { target_locator: target.target_locator, expected_source_revision: source.revision,
-            expected_binding_revision: source.models[0].revision, expected_override_revision: fixture.revision } })) },
-      display_rates: payload.input.targets.map(() => isOther ? ['9', '10', null, null] : fixture.rates),
+            expected_binding_revision: source.models[0].revision, expected_override_revision: quotes[target.target_locator.binding_id].revision } })) },
+      display_rates: payload.input.targets.map((target: any) => quotes[target.target_locator.binding_id].rates),
     };
   }
   if (command === 'preview_price_change' && params.has('stateful')) {
@@ -66,10 +71,11 @@ mockIPC((command, payload: any) => {
     };
     const complete = () => {
       const action = payload.input.action;
-      fixture.rates = action.kind === 'follow_catalog' ? [null, null, null, null]
+      const quote = quotes[payload.input.target_locator.binding_id];
+      quote.rates = action.kind === 'follow_catalog' ? [null, null, null, null]
         : [action.input_uncached, action.output, action.cache_read, action.cache_write];
-      fixture.origin = action.kind === 'follow_catalog' ? 'catalog' : 'manual';
-      fixture.revision += 1;
+      quote.origin = action.kind === 'follow_catalog' ? 'catalog' : 'manual';
+      quote.revision += 1;
       return { state: 'applied', operation: { operation_id: 'operation/fixture', state: 'succeeded', sequence: 2, cancellable: false } };
     };
     if (fixture.outcome === 'hold') return new Promise(resolve => { fixture.releaseSave = () => { fixture.releaseSave = null; resolve(complete()); }; });
