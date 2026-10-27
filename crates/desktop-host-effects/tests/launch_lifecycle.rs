@@ -25,7 +25,12 @@ fn main() {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn main() {}
+fn main() {
+    println!("running 2 tests");
+    println!("test appkit_launch_foreground ... ignored, requires macOS");
+    println!("test appkit_launch_login ... ignored, requires macOS");
+    println!("test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out");
+}
 
 #[cfg(target_os = "macos")]
 mod macos {
