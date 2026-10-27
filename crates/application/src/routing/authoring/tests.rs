@@ -284,6 +284,10 @@ fn retained_v1_native_operation_reconstructs_its_sealed_publication() {
     assert_complete_content_operation(false, None, true);
 }
 
+pub(crate) fn retained_v1_operation_plan() -> TransactionPlanV1 {
+    assert_complete_content_operation(false, None, true)
+}
+
 #[test]
 fn current_custom_operations_preserve_parked_source_and_reject_sealed_input_tampering() {
     for mode in [PlanEditorMode::SmartSaving, PlanEditorMode::CustomBranches] {
@@ -295,7 +299,7 @@ fn assert_complete_content_operation(
     legacy_native: bool,
     custom_mode: Option<PlanEditorMode>,
     sealed_v1: bool,
-) {
+) -> TransactionPlanV1 {
     let mut change = change();
     let mut state = state();
     if legacy_native || sealed_v1 {
@@ -577,6 +581,7 @@ fn assert_complete_content_operation(
         )
         .is_err()
     );
+    plan
 }
 
 #[test]

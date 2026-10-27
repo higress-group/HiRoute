@@ -209,9 +209,12 @@ fixture. Pure composition logic may be shared. Disposable unreleased C encodings
 need no support adapter; supported released data and retained authenticated
 historical evidence preserve their existing compatibility treatment.
 
-New native authoring seals `hiroute.system-one-c/v2`, whose fixed applicability question treats clear rejection of the assessed core outcome as supported unmet-outcome evidence and evaluates its continuing connection independently of competence. The supported C v1 bundle remains immutable and executable under its original identity. C v2 keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
+New native authoring seals hiroute.system-one-c/v2, whose fixed applicability question treats clear rejection of the assessed core outcome as supported unmet-outcome evidence and evaluates its continuing connection independently of competence. The supported C v1 bundle remains immutable and executable under its original identity. C v2 keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
 
 Current readers accept authenticated v1 and v2 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier may also accept the explicitly supplied supported v2 protocol. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
+
+Related source specification:
+- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
 
 #### Scenario: Frozen C questions
 
@@ -249,7 +252,6 @@ Current readers accept authenticated v1 and v2 publications, retained Operations
 - **THEN** observations keep their original authenticated protocol/content identities and remain readable without a rewrite, cohorts do not imply equivalence across identities, and diagnostics use exactly the supplied supported bundle under the unchanged protected request/result carrier.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
 - https://github.com/higress-group/HiRoute/issues/226#issuecomment-6448880209
 
 ### Requirement: Conservative fallback preserves a valid selected category

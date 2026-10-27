@@ -437,7 +437,14 @@ fn supported_v1_and_v2_observations_remain_readable_in_distinct_cohorts() {
         )
         .unwrap();
     assert_eq!(
-        serde_json::to_vec(facts.facts[0].routing_observation.as_ref().unwrap()).unwrap(),
+        serde_json::to_vec(
+            &facts.facts[0]
+                .routing_observation
+                .as_ref()
+                .unwrap()
+                .observation
+        )
+        .unwrap(),
         old_bytes
     );
     let mut unsupported = new;
