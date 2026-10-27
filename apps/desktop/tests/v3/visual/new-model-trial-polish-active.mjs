@@ -62,6 +62,31 @@ try {
       await click('.new-model-card button', lang === 'zh' ? '查看模型表现' : 'View model performance');
       assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='open-plan').length`), 1);
     });
+    for (const [scenario, from] of [['unrelated', Date.UTC(2026, 9, 20, 12, 34, 56)], ['retention', Date.UTC(2026, 9, 24, 12, 34, 56)], ['no-announcement', Date.UTC(2026, 9, 20, 12, 34, 56)]]) {
+      await check(`home-scope-${scenario}-${suffix}`, async () => {
+        await open(`view=home&home-scope=${scenario}`, width, height, theme, lang);
+        await waitFor(client, `!!document.querySelector('.trust-attention-item')`);
+        const row = await evaluate(client, `(()=>{const e=document.querySelector('.trust-attention-item');const s=e.querySelector('.trust-attention-scope');return {text:e.textContent,scope:s?.textContent??'',buttons:[...e.querySelectorAll('button')].map(b=>b.textContent),overflow:e.scrollWidth>e.clientWidth+1};})()`);
+        const expectedStart = await evaluate(client, `new Date(${from}).toLocaleString(${JSON.stringify(lang === 'zh' ? 'zh-CN' : 'en-US')},{dateStyle:'medium',timeStyle:'medium'})`);
+        assert.ok(row.scope.includes(expectedStart), `effective start missing: ${row.scope}`);
+        assert.ok(row.scope.includes(lang === 'zh' ? '保留记录' : 'retained records'), row.scope);
+        assert.ok(row.scope.includes(lang === 'zh' ? '可能' : 'may'), row.scope);
+        assert.ok(!row.scope.includes(lang === 'zh' ? '模型更新公告之后' : 'model update announcement'), row.scope);
+        for (const value of ['90%', '37', '41', '9', '2']) assert.ok(row.text.includes(value), value);
+        assert.ok(row.text.includes(lang === 'zh' ? '自定义 0.72' : 'Custom 0.72'));
+        assert.deepEqual(row.buttons, lang === 'zh' ? ['查看依据', '打开调整草稿'] : ['View evidence', 'Open change draft']);
+        assert.equal(row.overflow, false);
+        await evaluate(client, `document.querySelector('.trust-attention-item').scrollIntoView({block:'center'});true`);
+        await shot(`home-scope-${scenario}-${suffix}`);
+        await click('.trust-attention-item button', lang === 'zh' ? '查看依据' : 'View evidence');
+        await click('.trust-attention-item button', lang === 'zh' ? '打开调整草稿' : 'Open change draft');
+        const actions = await evaluate(client, `trialTrace.filter(x=>x.command==='review-trust'||x.command==='review-trust-action').map(({command,payload})=>({command,payload}))`);
+        assert.deepEqual(actions, [
+          {command:'review-trust',payload:{planId:'plan/daily-coding'}},
+          {command:'review-trust-action',payload:{planId:'plan/daily-coding',branchId:'smart_saving'}},
+        ]);
+      });
+    }
     await check(`replay-cache-${suffix}`, async () => {
       await open('view=editor&native=1', width, height, theme, lang);
       await waitFor(client, `!!document.querySelector('.trust-replay-bar')`);

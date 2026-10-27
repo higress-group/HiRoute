@@ -1012,6 +1012,28 @@ HiRoute MUST configure explicitly selected published Plan aliases as supplementa
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258609244
 
+### Requirement: Trial capability preview follows the selected Agent
+
+Trial review SHALL preview the selected Agent's actual current candidate combination. DSH preview is explicitly opted in, reuses the same Responses-ingress and token-budget facts as native mapping, and reports unavailable/invalid inputs honestly. Converted upstream protocols are not mistaken for missing Responses ingress. A published preview uses the exact referenced revision, not a newer same-name Plan. Old callers without opt-in keep their serialized contract. Preview does not authorize mapping/publication or replace compatibility/grant checks. Unsupported Agents receive a neutral no-preview explanation, not another client's warnings. Requests remain bounded and stale-target results cannot replace the current preview.
+
+#### Scenario: DSH plan supports converted Responses
+
+- **WHEN** all actual candidates expose Responses ingress and the shared budget is available
+- **THEN** the DSH preview context/output equals native mapping for that frozen Plan; no Codex/Claude warnings are shown.
+
+#### Scenario: Invalid, unsupported or stale preview
+
+- **WHEN** an editor is invalid, a candidate lacks ingress/budget, or the target changes during a read
+- **THEN** the precise unavailable state is shown and no stale success is used; mapping checks remain authoritative.
+
+#### Scenario: Legacy and narrow readers
+
+- **WHEN** preview_agent is absent, or candidates are requested without an editor/published Plan
+- **THEN** existing fields/shape remain unchanged and no unsupported preview is inferred or additional client compilation performed.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/228#issuecomment-6440851627
+
 ## Implementation references
 
 - [Shared settings transaction](../../../crates/application/src/agent_connection/settings/transaction.rs)

@@ -594,6 +594,13 @@ pub trait RoutingFactsPort: Send + Sync {
         Err(ControlReadError::Unavailable)
     }
 
+    fn dsh_client_capability_preview(
+        &self,
+        _plan: &hiroute_domain::CompiledAgentPlanV1,
+    ) -> Result<hiroute_application_api::DshClientCapabilityPreviewV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+
     fn plan_draft_snapshot(
         &self,
         _workspace: &WorkspaceId,

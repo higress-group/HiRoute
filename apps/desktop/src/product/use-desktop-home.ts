@@ -70,11 +70,26 @@ export function useDesktopHome() {
   const requestId = useCallback((domain: keyof HomeReads) =>
     `home/${domain}/${++sequence.current}`, []);
 
+  const invalidateService = useCallback((connectionLost = false) => {
+    activeDesktopRequest.current = null;
+    setService({
+      requestId: null,
+      targetKey: HOME_TARGET,
+      read: connectionLost
+        ? { status: 'ready', data: { daemon: 'unavailable', gateway: 'unknown', recoveryReady: false, nativeConnectionLost: true } }
+        : { status: 'loading' },
+    });
+  }, []);
+
   const refreshDesktop = useCallback(async () => {
     const serviceRequest = requestId('service');
     const plansRequest = requestId('plans');
     activeDesktopRequest.current = serviceRequest;
-    setService(current => beginDomainRead(current, serviceRequest, HOME_TARGET));
+    setService(current => beginDomainRead(
+      current.read.status === 'error' ? { ...current, read: { status: 'loading' } } : current,
+      serviceRequest,
+      HOME_TARGET,
+    ));
     setPlans(current => beginDomainRead(current, plansRequest, HOME_TARGET));
     try {
       const snapshot = await invoke<DesktopSnapshot>('desktop_snapshot');
@@ -306,6 +321,7 @@ export function useDesktopHome() {
     agentSnapshot,
     refreshAll,
     refreshDesktop,
+    invalidateService,
     refreshCompute,
     refreshAgents,
     refreshActivity,

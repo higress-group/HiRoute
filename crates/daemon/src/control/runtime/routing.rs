@@ -18,6 +18,47 @@ use hiroute_application_api::PlanCandidateUnavailableReasonV1 as UnavailableReas
 mod candidates;
 use candidates::CandidateDiagnostics;
 
+#[cfg(test)]
+#[path = "routing_dsh_preview_tests.rs"]
+mod dsh_preview_tests;
+
+fn dsh_capability_preview(
+    plan: &hiroute_domain::CompiledAgentPlanV1,
+) -> hiroute_application_api::DshClientCapabilityPreviewV1 {
+    use hiroute_application_api::{
+        DshCapabilityUnavailableReasonV1 as Reason, DshClientCapabilityPreviewV1 as Preview,
+    };
+    let candidates: Vec<_> = plan
+        .body
+        .materialized
+        .attempt_owned
+        .groups
+        .iter()
+        .flat_map(|group| &group.candidates)
+        .collect();
+    if candidates.is_empty()
+        || candidates.iter().any(|candidate| {
+            !candidate.protocol_profiles.iter().any(|profile| {
+                profile.ingress_protocol == hiroute_domain::UpstreamProtocol::Responses
+            })
+        })
+    {
+        return Preview::Unavailable {
+            reason: Reason::ResponsesUnavailable,
+        };
+    }
+    match hiroute_integrations::pi_plan_token_budget(&plan.body.materialized) {
+        Ok(budget) => Preview::Available {
+            protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
+            context_window: budget.context_window_tokens,
+            max_output_tokens: budget.max_output_tokens,
+        },
+        Err(_) => Preview::Unavailable {
+            reason: Reason::BudgetUnavailable,
+        },
+    }
+}
+
 impl RoutingFactsPort for LocalControlAdapter {
     fn try_active_publication(
         &self,
@@ -203,6 +244,13 @@ impl RoutingFactsPort for LocalControlAdapter {
         Ok(hiroute_integrations::agents::codex_plan_capability_preview(
             plan,
         ))
+    }
+
+    fn dsh_client_capability_preview(
+        &self,
+        plan: &hiroute_domain::CompiledAgentPlanV1,
+    ) -> Result<hiroute_application_api::DshClientCapabilityPreviewV1, ControlReadError> {
+        Ok(dsh_capability_preview(plan))
     }
 
     fn plan_draft_snapshot(

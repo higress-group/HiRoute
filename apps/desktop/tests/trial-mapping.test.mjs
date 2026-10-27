@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { currentPrimary, trialMappingValues, initialTrialMapping } from '../src/features/trial/model.ts';
+import { createTrialAlias, currentPrimary, trialMappingValues, initialTrialMapping, trialSelection } from '../src/features/trial/model.ts';
 import { agentEditorSeed, editorFingerprint } from '../src/features/agents/editor-state.ts';
 import { selectedTrialSnapshot, trialModelChoices } from '../src/features/trial/agent-read.ts';
 const native = { agent_id:'agent_claude_default', context_id:'claude/context', status_error:null, settings:{state:'not_configured'} };
@@ -52,4 +52,29 @@ test('Primary defaults only from a unique enabled fixed-plan resolution, never a
  assert.equal(currentPrimary(configured,[{...plan,head:{status:'disabled'}}]),undefined);
  assert.equal(currentPrimary(configured,[{...plan,desired:{...plan.desired,strategy:{candidates:[{binding_id:'a'},{binding_id:'b'}]}}}]),undefined);
  assert.deepEqual(initialTrialMapping({choices:[native],selected:native,plans:{plans:[]}}),{agentId:'agent_claude_default',presets:['opus']});
+});
+
+test('trial reasoning uses only the selected binding default and retains explicit choices',()=>{
+ const candidate={binding_id:'flash',reasoning:{kind:'discrete',parameter:'effort',profiles:['low','high','max'],default_profile:'high'}};
+ assert.deepEqual(trialSelection(candidate),{state:'selected',selection:{binding_id:'flash',reasoning:{kind:'profile',profile:'high'}}});
+ assert.deepEqual(trialSelection(candidate,{binding_id:'flash',reasoning:{kind:'profile',profile:'low'}}),{state:'selected',selection:{binding_id:'flash',reasoning:{kind:'profile',profile:'low'}}});
+ assert.equal(trialSelection({...candidate,reasoning:{...candidate.reasoning,default_profile:undefined}}).state,'choice_required');
+ assert.equal(trialSelection({...candidate,reasoning:{...candidate.reasoning,default_profile:'unsupported'}}).state,'invalid');
+ assert.equal(trialSelection(candidate,{binding_id:'flash',reasoning:{kind:'profile',profile:'removed'}}).state,'invalid');
+ assert.equal(trialSelection({...candidate,reasoning:{kind:'fixed',profile:'fixed'}}).state,'selected');
+ assert.equal(trialSelection({...candidate,reasoning:{kind:'toggle',parameter:'thinking'}}).state,'choice_required');
+ assert.equal(trialSelection({...candidate,reasoning:{kind:'budget',parameter:'budget',minimum_tokens:10,maximum_tokens:100,step_tokens:10}}).state,'choice_required');
+});
+
+test('a DSH allowlist is not evidence of its current Primary',()=>{
+ const dsh={...native,agent_id:'agent_dsh_default',settings:{state:'configured',current_selection:{mode:'dsh_additional',allowed_plan_ids:['primary'],plan_protocols:{primary:'responses'}}}};
+ const plan={agent_plan_id:'primary',head:{status:'enabled'},desired:{mode:'fixed_model',strategy:{candidates:[{binding_id:'b'}]}}};
+ assert.equal(currentPrimary(dsh,[plan]),undefined);
+});
+
+test('new aliases are bounded, readable and deterministic for the flow nonce',()=>{
+ assert.equal(createTrialAlias('Example Flash!', '12ab34cd'),'trial-example-flash-12ab34cd');
+ assert.equal(createTrialAlias('中文 !!', '12ab34cd'),'trial-model-12ab34cd');
+ assert.equal(createTrialAlias('A'.repeat(100), '12ab34cd'),`trial-${'a'.repeat(40)}-12ab34cd`);
+ assert.throws(()=>createTrialAlias('Model','bad'),/INVALID_TRIAL_NONCE/);
 });

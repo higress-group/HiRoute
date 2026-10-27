@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { operationLabel } from '../../../src/features/home/copy.ts';
+import * as homeState from '../../../src/features/home/state.ts';
 import {
   acceptOperation,
   beginDomainRead,
@@ -52,11 +53,31 @@ test('late query results cannot overwrite the current target', () => {
 });
 
 test('one failed refresh keeps that domain previous data', () => {
-  let slot: DomainReadSlot<string[]> = { requestId: null, targetKey: null, read: { status: 'ready', data: ['known'] } };
+  let slot: DomainReadSlot<string[]> = { requestId: null, targetKey: 'workspace-a', read: { status: 'ready', data: ['known'] } };
   slot = beginDomainRead(slot, 'request-3', 'workspace-a');
   slot = failDomainRead(slot, 'request-3', 'workspace-a', 'READ_FAILED');
   assert.deepEqual(visibleData(slot.read), ['known']);
   assert.equal(slot.read.status, 'error');
+});
+
+test('service refresh keeps only same-target confirmed display without gaining write authority', () => {
+  const ready = {daemon:'running' as const, gateway:'empty' as const, recoveryReady:true};
+  let slot: DomainReadSlot<typeof ready> = {requestId:null,targetKey:'a',read:{status:'ready',data:ready}};
+  slot = beginDomainRead(slot,'refresh','a');
+  assert.deepEqual(homeState.deriveHomeServicePresentation(slot.read),{state:'ready',refreshing:true,checkFailed:false});
+  assert.equal(homeState.deriveHomeServiceStatus(slot.read).operational,false);
+  const different=beginDomainRead(slot,'switch','b');
+  assert.equal(different.read.status,'loading');
+  assert.equal(visibleData(different.read),undefined);
+  assert.deepEqual(homeState.deriveHomeServicePresentation({status:'error',code:'AUTHORITY_LOST',previous:ready}),{state:'unknown',refreshing:false,checkFailed:true});
+  assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,gateway:'unknown'}}),{state:'unknown',refreshing:false,checkFailed:false});
+  assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,nativeConnectionLost:true}}),{state:'connection_lost',refreshing:false,checkFailed:false});
+  assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,daemon:'read_only'}}),{state:'read_only',refreshing:false,checkFailed:false});
+  assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,recoveryReady:false}}),{state:'unknown',refreshing:false,checkFailed:false});
+  assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,gateway:'unavailable'}}),{state:'unavailable',refreshing:false,checkFailed:false});
+  assert.equal(homeState.deriveHomeServiceStatus({status:'ready',data:{...ready,daemon:'read_only'}}).operational,false);
+  assert.equal(homeState.deriveHomeServiceStatus({status:'ready',data:{...ready,recoveryReady:false}}).operational,false);
+  assert.equal(homeState.deriveHomeServiceStatus({status:'ready',data:{...ready,gateway:'unknown'}}).operational,false);
 });
 
 test('operation observations never regress within one operation', () => {

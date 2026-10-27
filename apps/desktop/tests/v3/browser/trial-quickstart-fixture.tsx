@@ -21,6 +21,8 @@ if (additionalFamily === 'codex') agents.agents.push({
 const decision = {id:'decision/trial',revision:1,name:'Saved decision model',connection:{kind:'custom',endpoint:'https://decision.example.test',timeout_ms:10000}};
 let observed:DesktopOperation|null=null;
 let publishLost=false;
+const trialWrites = { pending: [] as { action: string; release(): void }[] };
+Object.assign(window, { trialWrites });
 const feedStatus: ModelFeedStatus = {retrieval_enabled:true,held:{sequence:12,issued_at:'2026-10-16T00:00:00Z',retrieved_at:1792108800000},highest_accepted_sequence:12,last_attempt:{at:1792108800000,result:'ok',reason:null},verification:{kind:'validated'},counts:{descriptive_records:2,qualified_models:2,restricted_models:0},next_automatic_attempt_at:null,disclosure:'Model information is retrieved automatically from hiroute.ai without account or usage identifiers.',disclosure_acknowledged:false};
 const catalog: { model_configuration_id: string; display_name: string; binding_ids: string[]; [key: string]: unknown }[] = [
  ...readyManagement.sources.flatMap(source=>source.models.map(model=>({model_configuration_id:model.catalog_configuration_id??model.upstream_model_id,display_name:model.display_name,origin:{kind:'embedded',client_version:'0.3.1'},identity_stability:'rolling-alias',availability:{kind:'executable'},binding_ids:[model.binding_id],facts:{publisher_id:model.binding_id.includes('qwen')?'publisher.alibaba':'publisher.openai',context_tokens:262144,tool:true,vision:false,reasoning:{kind:'toggle'}}}))),
@@ -30,6 +32,21 @@ const catalog: { model_configuration_id: string; display_name: string; binding_i
 const featured = ['model.trial','model.openai.gpt-6-luna'].map(id=>({id:`featured/${id}`,kind:'new_model',model_configuration_id:id,headline:{en:id,zh:id},note:{en:'',zh:''},links:[],included_on:'2026-10-16'}));
 export const trialModel = catalog.find(m=>m.binding_ids.includes('binding/bailian/qwen-coder'))!;
 export const primaryModel = catalog.find(m=>m.binding_ids.includes('binding/codex/gpt-5.6-sol'))!;
+const sameNames = new URLSearchParams(location.search).has('same-names');
+const trialManagement = structuredClone(readyManagement);
+if (sameNames) {
+ const duplicate = structuredClone(trialManagement.sources[0]);
+ duplicate.source_id = 'source/second';
+ duplicate.display_name = 'A second provider with a deliberately long connection name';
+ duplicate.models = [{...duplicate.models[0], model_ref:'model-ref/second', binding_id:'binding/second/same-name', catalog_configuration_id:'model.same-name'}];
+ trialManagement.sources.push(duplicate);
+ const sameSource = structuredClone(trialManagement.sources[1]);
+ sameSource.source_id = 'source/bailian/second';
+ sameSource.models = [{...sameSource.models[0], model_ref:'model-ref/qwen-second', binding_id:'binding/bailian/qwen-second'}];
+ trialManagement.sources.push(sameSource);
+ catalog.push({...structuredClone(primaryModel),model_configuration_id:'model.same-name',binding_ids:['binding/second/same-name']});
+ trialModel.binding_ids.push('binding/bailian/qwen-second');
+}
 if (new URLSearchParams(location.search).has('feed-trial')) trialModel.origin = {kind:'feed',sequence:12,included_on:'2026-10-16'};
 Object.assign(window,{trialModel,primaryModel});
 const agentControl = {
@@ -61,18 +78,31 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  }
  if(command==='model_availability') return {featured:params.has('saved-only')?[]:featured,models:params.has('saved-only')?[]:catalog};
  if(command==='desktop_snapshot') return structuredClone(desktop);
+ if(command==='compute_management_snapshot') return structuredClone(trialManagement);
  if(command==='model_feed_status') return structuredClone(feedStatus);
  if(command==='model_feed_settings_apply') {if(payload.input.retrieval_enabled!==undefined) feedStatus.retrieval_enabled=payload.input.retrieval_enabled; if(payload.input.acknowledge_disclosure) feedStatus.disclosure_acknowledged=true; return structuredClone(feedStatus);}
  if(command==='agent_snapshot') return structuredClone(agents);
  if(command==='decision_services') return {services:[params.has('native')?{...decision,connection:{kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:10000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}}}:decision]};
  if(command==='plan_editor_options') {
-  const value = await mockProductInvoke(command,payload,'ready');
+  const value:any = await mockProductInvoke(command,payload,'ready');
+  const primary = value.candidates.find((candidate:any) => candidate.binding_id === 'binding/codex/gpt-5.6-sol');
+  if (primary?.reasoning.kind === 'discrete' && !params.has('no-reasoning-default')) primary.reasoning.default_profile = 'high';
+  if (sameNames) {
+   value.candidates.push({...structuredClone(primary),binding_id:'binding/second/same-name',model_configuration_id:'model.same-name'});
+   const trial = value.candidates.find((candidate:any) => candidate.binding_id === 'binding/bailian/qwen-coder');
+   value.candidates.push({...structuredClone(trial),binding_id:'binding/bailian/qwen-second'});
+  }
+  if (payload?.input?.preview_agent === 'dsh') {
+   value.codex_capabilities=null; value.claude_capabilities=null;
+   if (payload.input.editor) value.dsh_capabilities={state:'available',protocol:'responses',context_window:64000,max_output_tokens:4096};
+  }
   if (!('quickStartAuthoringJudgment' in window)) Object.assign(window, { quickStartAuthoringJudgment: structuredClone((value as any).authoring.editor.smart.judgment) });
   return value;
  }
  if(command==='observe_operation') return observed;
  if(command==='preview_plan_editor') {
   const i=payload.input;
+  if (params.has('hold-writes')) await new Promise<void>(release => trialWrites.pending.push({ action:i.action, release }));
   observed={operation_id:`operation/${i.action}`,state:'succeeded',sequence:1,cancellable:false,safe_error_code:null};
   desktop.pending={plan_id:i.plan_id??i.draft_id,operation_id:observed.operation_id,idempotency_key:'fixture'};
   if(i.action==='save_draft') desktop.catalog.drafts=[{draft_id:i.draft_id,revision:1,editor:structuredClone(i.editor)}];
