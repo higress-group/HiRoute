@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { formatMoney } from '../ui';
+import { formatEstimateMoney } from './estimate-money';
 import { safeDiagnosticCode } from '../error-code';
 import { observationBusyRetryMs } from './observation-failure';
 import { observationRead } from './observation-client';
@@ -201,7 +201,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   const scoreTone = (turn: TimelineTurn) => turn.assessment ? below(turn) ? 'bad' : turn.assessment.partial ? 'warn' : 'good' : '';
   const score = (turn: TimelineTurn) => turn.assessment ? `${turn.assessment.partial ? text('部分评分', 'Partial') : text('评分', 'Score')} ${turn.assessment.score.toFixed(2)}`
     : turn.status === 'running' ? text('进行中…', 'Running…') : turn.assessment_state === 'pending' ? text('等待评分', 'Awaiting score') : text('未评分', 'Unscored');
-  const amount = (micros: number | null, currency: string | null) => micros === null || !currency ? text('金额未知', 'Amount unknown') : formatMoney(currency, (micros / 1_000_000).toFixed(micros >= 10_000 ? 3 : 4));
+  const amount = (micros: number | null, currency: string | null) => formatEstimateMoney(micros, currency, language) ?? text('金额未知', 'Amount unknown');
   const costBasis = (cost: Cost) => cost.valuation_kind === 'api_equivalent' ? text('API 等价估算', 'API equivalent estimate') : text('估算', 'estimate');
   const costAmount = (cost: Cost) => `${cost.valuation_kind === 'api_equivalent' ? `${costBasis(cost)} ` : ''}${amount(cost.known_micros, cost.currency)}${cost.unknown_contributions ? text(' + 未知部分', ' + unknown') : ''}`;
   const percent = (share: number | null) => share === null ? text('未知', 'unknown') : `${Math.round(share * 100)}%`;

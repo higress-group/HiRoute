@@ -169,6 +169,13 @@ Session quality names come from the exact retained execution request (same sessi
 
 `plan-quality-models.test.mjs` protects evidence identity, missing evidence and request deduplication. The session-window browser scenarios exercise the real Sessions/PlanQuality wiring, both model stages, coverage flags, unrated copy and evidence navigation; these are mock IPC checks, not native or model-quality evidence.
 
+`trust-cost-presentation.test.mjs` checks exact/range/unknown selection, currency,
+safe integer rounding and invalid or incomplete evidence. Run
+`node tests/v3/visual/trust-cost-presentation.mjs /path/to/evidence` for the
+production-style cost card, tiles, selected and step-up scopes, keyboard disclosures,
+and Chinese/English light/dark layouts at both supported window sizes. The browser
+uses controlled IPC; retained-data readback and native user journeys remain separate.
+
 ## Run levels
 
 Custom API transport and error presentation use the production form in
