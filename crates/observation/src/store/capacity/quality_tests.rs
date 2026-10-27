@@ -67,13 +67,15 @@ fn retirement_barrier(retire_trigger: bool) {
     for fixture in [&execution, &trigger, &control] {
         let channel = fact_channel(fixture, 512 * 1024);
         let attempt = format!("attempt-{}", fixture.request);
-        for event in request_facts(fixture, &attempt, finished(&attempt), 100) {
+        let mut events = request_facts(fixture, &attempt, finished(&attempt), 100);
+        let request_finished = events.pop().unwrap().fact;
+        for event in events {
             assert!(matches!(
                 offer_fact(&writer, &channel, event),
                 WriterCycleOutcome::Ack(_)
             ));
         }
-        let facts = if fixture.request == execution.request {
+        let mut facts = if fixture.request == execution.request {
             vec![stage(fixture, "retiring-stage")]
         } else if fixture.request == trigger.request {
             vec![assessment(fixture, "retiring-stage", 0.6)]
@@ -83,15 +85,14 @@ fn retirement_barrier(retire_trigger: bool) {
                 assessment(fixture, "retained-stage", 0.9),
             ]
         };
+        facts.push(request_finished);
         for (index, fact) in facts.into_iter().enumerate() {
-            assert!(matches!(
-                offer_fact(
-                    &writer,
-                    &channel,
-                    fixture.fact(11 + index as u64, fact, 1200 + index as i64)
-                ),
-                WriterCycleOutcome::Ack(_)
-            ));
+            let outcome = offer_fact(
+                &writer,
+                &channel,
+                fixture.fact(10 + index as u64, fact, 1200 + index as i64),
+            );
+            assert!(matches!(outcome, WriterCycleOutcome::Ack(_)), "{outcome:?}");
         }
     }
     drop(writer);
@@ -280,15 +281,15 @@ fn content_only_tombstone_preserves_quality_and_trust_after_reopen() {
     let writer = writer(&store);
     let channel = fact_channel(&fixture, 512 * 1024);
     let mut events = request_facts(&fixture, "content-only", finished("content-only"), 100);
+    let request_finished = events.pop().unwrap().fact;
     events.extend([
-        fixture.fact(11, stage(&fixture, "retained-stage"), 1100),
-        fixture.fact(12, assessment(&fixture, "retained-stage", 0.6), 1200),
+        fixture.fact(10, stage(&fixture, "retained-stage"), 1100),
+        fixture.fact(11, assessment(&fixture, "retained-stage", 0.6), 1200),
+        fixture.fact(12, request_finished, 1201),
     ]);
     for event in events {
-        assert!(matches!(
-            offer_fact(&writer, &channel, event),
-            WriterCycleOutcome::Ack(_)
-        ));
+        let outcome = offer_fact(&writer, &channel, event);
+        assert!(matches!(outcome, WriterCycleOutcome::Ack(_)), "{outcome:?}");
     }
     install_content(&store, &fixture, b"delete only these bytes", 1300);
     drop(writer);
