@@ -34,3 +34,15 @@ test('duplicate names use only proven source membership and unique ID prefixes',
   labels = buildModelLabelIndex([...candidates, { ...candidates[0], binding_id:'missing' }], [{ source_id:'one', display_name:'First', binding_ids:['a'] }]);
   assert.match(modelLabel('abcdefgh-one', null, labels, 'en').text, /Source unconfirmed/);
 });
+
+test('many same-name configurations retain distinct visible identities', () => {
+  const candidates = Array.from({ length: 400 }, (_, index) => ({
+    model_configuration_id: `shared-prefix-${String(index).padStart(4, '0')}`,
+    binding_id: `binding-${index}`,
+    display_name: 'Shared name',
+  }));
+  const labels = buildModelLabelIndex(candidates);
+  const visible = candidates.map(candidate => modelLabel(candidate.model_configuration_id, null, labels, 'en').text);
+  assert.equal(new Set(visible).size, candidates.length);
+  assert.ok(visible.every(label => label.includes('Source unconfirmed')));
+});

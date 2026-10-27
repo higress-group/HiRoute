@@ -339,7 +339,9 @@ try {
   assert.equal(await evaluate(client,`document.querySelectorAll('.routing-turn-head .badge').length`),1,'unknown boundaries have no heading badge');
   assert.equal(await evaluate(client,`/After compaction|压缩后/.test(document.querySelector('.routing-timeline').textContent)`),false);
   await evaluate(client,`document.querySelectorAll('.routing-turn')[0].click();true`);
-  assert.ok(await evaluate(client,`document.querySelector('.routing-boundary-basis').textContent.includes(${JSON.stringify(lang==='zh'?'后台消息':'background messages')})`));
+  assert.ok(await evaluate(client,`document.querySelector('.routing-boundary-basis').textContent.includes(${JSON.stringify(lang==='zh'?'本轮重新判断':'A fresh decision for this turn')})`));
+  await click('.routing-turn-detail .disclosure summary',lang==='zh'?'查看边界依据':'View boundary evidence');
+  assert.ok(await evaluate(client,`document.querySelector('.routing-turn-detail .disclosure-body').textContent.includes(${JSON.stringify(lang==='zh'?'后台消息':'background messages')})`));
 
   assert.ok(await evaluate(client,`trialTrace.filter(x=>x.command==='observation_read'&&x.payload.request.intent.view==='routing_timeline')[1].payload.request.intent.query.after_watermark==='watermark-1'`));
   await click('button',lang==='zh'?'紧凑视图':'Compact view');
@@ -358,10 +360,11 @@ try {
   await waitFor(client,`document.querySelectorAll('.routing-turn').length===2`);
   await evaluate(client,`document.querySelectorAll('.routing-turn')[1].click();true`);
   assert.ok(await evaluate(client,`document.querySelector('.routing-detail-head').textContent.includes(${JSON.stringify(lang==='zh'?'上下文重建':'Context rebuilt')})`));
-  assert.ok(await evaluate(client,`document.querySelector('.routing-boundary-basis').textContent.includes(${JSON.stringify(lang==='zh'?'消息步骤比上一份可比较记录少':'fewer message steps')})`));
+  await click('.routing-turn-detail .disclosure summary',lang==='zh'?'查看边界依据':'View boundary evidence');
+  assert.ok(await evaluate(client,`document.querySelector('.routing-turn-detail .disclosure-body').textContent.includes(${JSON.stringify(lang==='zh'?'消息步骤比上一份可比较记录少':'fewer message steps')})`));
   assert.ok(await evaluate(client,`document.querySelector('.routing-legend').textContent.includes(${JSON.stringify(lang==='zh'?'新消息或上下文重建':'new message or rebuilt context')})`));
-  await evaluate(client,`document.querySelector('.routing-boundary-basis').scrollIntoView({block:'center'});true`);
-  const basis=await evaluate(client,`(()=>{const e=document.querySelector('.routing-boundary-basis'),r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight,scroll:e.scrollWidth,width:e.clientWidth};})()`);
+  await evaluate(client,`document.querySelector('.routing-turn-detail .disclosure-body').scrollIntoView({block:'center'});true`);
+  const basis=await evaluate(client,`(()=>{const e=document.querySelector('.routing-turn-detail .disclosure-body'),r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight,scroll:e.scrollWidth,width:e.clientWidth};})()`);
   assert.ok(basis.top>=0&&basis.bottom<=basis.height&&basis.scroll<=basis.width+1,JSON.stringify(basis));
   for (const g of await geometry()) assert.ok(g.scroll<=g.width+1,JSON.stringify(g));
   await shot(`timeline-rebuilt-${lang}-${width}-${theme}`);
