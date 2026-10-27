@@ -1,6 +1,6 @@
 // Reviewed capability gates. New discovered scenarios run in full mode automatically.
 // Retire a required ID only with an explicit replacement of its unique guarantee.
-export const agentTrustRequired = ['codex.restore.conflict-active',
+export const agentTrustRequired = ['dsh.desktop.independent-model-settings','codex.restore.conflict-active',
   'hermes.discovery.parallel-entry',
   'agent.discovery.remember-and-revalidate',
   'agent.management.all-supported-families',
@@ -63,6 +63,13 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.home.stale-startup-failure',
+  'desktop.home.stale-startup-success',
+  'desktop.home.stale-startup-poll',
+  'desktop.home.trust-waits-for-recovery',
+  'desktop.home.trust-pending-continues',
+  'desktop.home.trust-error-and-legacy-retry',
+  'desktop.routing.recovered-mapping-session',
   'desktop.connection.unowned-service',
   'desktop.connection.loss-retry-recovery',
   'desktop.connection.pending-and-failed-recovery',
@@ -103,6 +110,9 @@ export const productShellRequired = [
   'desktop.operation.dismiss-observes',
   'desktop.operation.identity-retry-converges',
   'desktop.operation.repeated-submission',
+  'desktop.operation.unknown-hint-converges',
+  'desktop.operation.stale-hint-converges',
+  'desktop.operation.next-hint-remains-observable',
   'desktop.models.documentation-retains-input',
   'desktop.routing.reactivation-models',
   'desktop.routing.qoder-budget-checkpoint',

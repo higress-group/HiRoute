@@ -200,87 +200,76 @@ pub(crate) fn apply(
     let Some(port) = ports.agent_connection.as_ref() else {
         return failed(ErrorCode::DaemonUnavailable, request.request_id);
     };
-    let input = match port.settings_facts(&payload.spec) {
-        Ok(input) => input,
-        Err(error) => return settings_read_failure(error, request.request_id),
-    };
-    if !input
-        .facts
-        .model
-        .as_ref()
-        .is_some_and(|model| model.common.login_item_removal_required)
-        && payload.login_item.is_some()
-    {
-        // New saves do not own startup state; an unsolicited host declaration must not be
-        // silently accepted after an older Desktop has changed the system login item.
-        return failed(ErrorCode::InvalidArguments, request.request_id);
-    }
-    if input
-        .facts
-        .model
-        .as_ref()
-        .is_some_and(|model| model.common.login_item_removal_required)
-        && !payload
-            .login_item
-            .as_ref()
-            .is_some_and(|declaration| declaration.removes_resident_service())
-    {
-        // Releasing the last managed connection must also release the login item this
-        // feature owns; a restore that leaves it registered never completes.
-        return failed(ErrorCode::GatewayUnavailable, request.request_id);
-    }
-    if input.expected_revisions != payload.expected_revisions {
-        return failed(ErrorCode::ChangePreviewStale, request.request_id);
-    }
-    let confirmed = match confirm_agent_settings(payload.clone(), &input.facts) {
-        Ok(confirmed) => confirmed,
-        Err(error) => return failed(confirmation_error(error), request.request_id),
-    };
-    let plan = match input.seal_settings(&confirmed) {
-        Ok(plan) => plan,
-        Err(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
-    };
     let apply = ApplyRequestV1 {
         schema_version: CHANGE_SPEC_SCHEMA_V1,
-        spec: plan.spec().clone(),
+        spec: hiroute_domain::ChangeSpecV1 {
+            schema_version: CHANGE_SPEC_SCHEMA_V1,
+            command_id: "agents.settings.apply".into(),
+            resource_id: Some(payload.spec.context_id.clone()),
+            desired_state: match serde_json::to_value(&payload.spec) {
+                Ok(value) => value,
+                Err(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
+            },
+        },
         accept_digest: payload.accept_digest.clone(),
         expected_revisions: payload.expected_revisions.clone(),
         idempotency_key: payload.idempotency_key.clone(),
         apply_capability: None,
     };
-    let expected_plan = plan.clone();
     let port = port.clone();
-    let admission = if restore {
-        crate::PreparedTransactionV1::for_agent_settings_restore(
-            apply,
-            payload.accept_digest.clone(),
-            plan,
-        )
-    } else {
-        crate::PreparedTransactionV1::for_setup(apply, payload.accept_digest.clone(), plan)
-    };
-    let prepared = match admission {
-        Ok(prepared) => prepared.with_revalidation(move || {
-            let stale = || crate::TransactionError::ChangePreviewStale;
-            let fresh = port.settings_facts(&payload.spec).map_err(|_| stale())?;
-            if fresh.expected_revisions != payload.expected_revisions {
-                return Err(stale());
-            }
-            let confirmed = confirm_agent_settings(payload, &fresh.facts).map_err(|_| stale())?;
-            if fresh.seal_settings(&confirmed).map_err(|_| stale())? != expected_plan {
-                return Err(stale());
-            }
-            Ok(())
-        }),
-        Err(error) => return failed(error.error_code(), request.request_id),
-    };
+    let prepared =
+        match crate::PreparedTransactionV1::for_current_agent_settings(apply, move || {
+            prepare_current_settings(port.as_ref(), payload)
+        }) {
+            Ok(prepared) => prepared,
+            Err(error) => return failed(error.error_code(), request.request_id),
+        };
     let Some(mutation) = ports.mutation.as_deref() else {
         return failed(ErrorCode::DaemonUnavailable, request.request_id);
     };
     match mutation.apply_local_prepared_change(prepared) {
         Ok(operation) => super::accepted_apply(operation, request.request_id),
+        Err(crate::TransactionError::AgentSettingsRead(error)) => {
+            settings_read_failure(error, request.request_id)
+        }
         Err(error) => failed(error.error_code(), request.request_id),
     }
+}
+
+fn prepare_current_settings(
+    port: &dyn crate::control::AgentConnectionControlPort,
+    payload: AgentSettingsApplyV2,
+) -> Result<hiroute_domain::TransactionPlanV1, crate::TransactionError> {
+    use crate::TransactionError;
+    let input = port
+        .settings_facts(&payload.spec)
+        .map_err(TransactionError::AgentSettingsRead)?;
+    let removal_required = input
+        .facts
+        .model
+        .as_ref()
+        .is_some_and(|model| model.common.login_item_removal_required);
+    if !removal_required && payload.login_item.is_some() {
+        return Err(TransactionError::AgentSettings(ErrorCode::InvalidArguments));
+    }
+    if removal_required
+        && !payload
+            .login_item
+            .as_ref()
+            .is_some_and(|declaration| declaration.removes_resident_service())
+    {
+        return Err(TransactionError::AgentSettings(
+            ErrorCode::GatewayUnavailable,
+        ));
+    }
+    if input.expected_revisions != payload.expected_revisions {
+        return Err(TransactionError::ChangePreviewStale);
+    }
+    let confirmed = confirm_agent_settings(payload, &input.facts)
+        .map_err(|error| TransactionError::AgentSettings(confirmation_error(error)))?;
+    input
+        .seal_settings(&confirmed)
+        .map_err(|_| TransactionError::AgentSettings(ErrorCode::InvalidArguments))
 }
 fn confirmation_error(error: SettingsConfirmationError) -> ErrorCode {
     match error {
@@ -325,6 +314,9 @@ pub(crate) fn status(
         ) {
             Ok(payload)
                 if payload.schema_version == hiroute_application_api::AGENT_SETTINGS_SCHEMA_V2
+                    && (payload.projection
+                        != hiroute_application_api::AgentSettingsStatusProjectionV2::Model
+                        || (!payload.include_skills && payload.effective.is_none()))
                     && payload
                         .effective
                         .as_ref()

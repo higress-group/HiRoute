@@ -35,6 +35,8 @@ fn outcome(
         facts: input.classification_facts.clone().unwrap(),
         assessment: score.map(|score| BoundAssessment {
             target: AssessmentTarget {
+                evaluation_scope: None,
+                history_membership: None,
                 branch_execution: Some(hiroute_domain::BranchExecutionV1 {
                     policy,
                     group: ExecutionGroupV1::Regular,

@@ -393,6 +393,64 @@ class Runner(unittest.TestCase):
                  self.assertRaisesRegex(RuntimeError, 'turn and exact answer'):
                 self.native_codex_inference('codex-inference', completed, answer)
 
+    def native_codex_two_turn(self, first_thread, second_thread, second_answer=True):
+        home = self.root / 'two-turn-home'
+        config = home / '.codex/hiroute.config.toml'
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text('saved test profile')
+        binary = self.root / 'two-turn-codex.exe'
+        binary.write_bytes(b'measured native client')
+        run_id = 'b' * 32
+        request = dict(run_id=run_id, desktop_action='codex-two-turn', codex_profile='hiroute',
+                       config=dict(environment={'HIROUTE_WORKER_CODEX_BINARY':str(binary)}, path=[]))
+        parser = types.SimpleNamespace(loads=lambda text: dict(model_provider='hiroute',
+            model_providers={'hiroute':{'base_url':'http://127.0.0.1:65140/v1'}}))
+        def completed(thread, suffix, answer=True):
+            events = ([{'type':'thread.started','thread_id':thread}] if thread else [])
+            events += [{'type':'item.completed','item':{'type':'agent_message',
+                       'text':'HiRoute-Windows-' + run_id + suffix if answer else 'unexpected'}},
+                       {'type':'turn.completed'}]
+            return desktop.subprocess.CompletedProcess([], 0,
+                ('\n'.join(json.dumps(event) for event in events)).encode(), b'')
+        version = desktop.subprocess.CompletedProcess([], 0, b'codex-cli test\n', b'')
+        first = completed(first_thread, '-a:ok')
+        second = completed(second_thread, '-b:ok', second_answer)
+        with patch.dict(os.environ, {'PATH':os.defpath}, clear=True), \
+             patch.dict(sys.modules, {'tomllib':parser}), \
+             patch.object(desktop.Path, 'home', return_value=home), \
+             patch.object(desktop.subprocess, 'run', side_effect=[version, first, second]) as execute:
+            try:
+                result = desktop.codex_call(self.root, request, profiles)
+            except Exception as error:
+                return error, execute.call_args_list
+            return result, execute.call_args_list
+
+    def test_two_turn_reuses_the_observed_native_session_and_retains_both_streams(self):
+        thread = '01234567-89ab-cdef-0123-456789abcdef'
+        result, calls = self.native_codex_two_turn(thread, thread)
+        self.assertEqual(result['scope'], 'two_turn_inference')
+        self.assertEqual(result['thread_id'], thread)
+        self.assertTrue(result['first']['answer'] and result['second']['answer'])
+        self.assertEqual(len(calls), 3)  # Version plus two actual client invocations.
+        first, second = calls[1].args[0], calls[2].args[0]
+        self.assertNotIn('resume', first)
+        self.assertEqual(second[second.index('resume') + 1], thread)
+        self.assertIn('previous reply was correct', second[-1])
+        self.assertEqual(calls[1].kwargs['cwd'], calls[2].kwargs['cwd'])
+        for name in ('codex-a.stdout', 'codex-a.stderr', 'codex-b.stdout', 'codex-b.stderr', 'codex-two-turn.json'):
+            self.assertTrue((self.root / name).is_file(), name)
+
+    def test_two_turn_refuses_unproved_or_changed_session_and_incomplete_followup(self):
+        thread = '01234567-89ab-cdef-0123-456789abcdef'
+        for first, second, answer, expected_calls in [
+                (None, thread, True, 2),
+                (thread, 'fedcba98-7654-3210-fedc-ba9876543210', True, 3),
+                (thread, thread, False, 3)]:
+            with self.subTest(first=first, second=second, answer=answer):
+                result, calls = self.native_codex_two_turn(first, second, answer)
+                self.assertIsInstance(result, (ValueError, RuntimeError))
+                self.assertEqual(len(calls), expected_calls)
+
     def test_inspection_keeps_bounded_transaction_and_diagnostic_evidence_without_mutation(self):
         home = self.root / 'home'
         local = self.root / 'local'

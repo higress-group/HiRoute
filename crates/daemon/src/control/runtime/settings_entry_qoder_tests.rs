@@ -25,14 +25,18 @@ impl QoderFixture {
     }
 
     fn with_kind(models: bool, kind: AgentKindV1) -> Self {
-        Self::with_agents(models, kind, false)
+        Self::with_agents(models, kind, false, false)
     }
 
     fn with_all_models() -> Self {
-        Self::with_agents(true, AgentKindV1::Qoder, true)
+        Self::with_agents(true, AgentKindV1::Qoder, true, false)
     }
 
-    fn with_agents(models: bool, kind: AgentKindV1, all: bool) -> Self {
+    fn with_desktop_models() -> Self {
+        Self::with_agents(true, AgentKindV1::Qoder, true, true)
+    }
+
+    fn with_agents(models: bool, kind: AgentKindV1, all: bool, desktop: bool) -> Self {
         let pi = kind == AgentKindV1::Pi;
         let opencode = kind == AgentKindV1::OpenCode;
         let root = tempfile::tempdir().unwrap();
@@ -54,6 +58,7 @@ impl QoderFixture {
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
         let mut layout = AgentFilesystemLayoutV1::from_process(&home, root.path());
         layout.codex_executable = root.path().join("missing-codex");
+        layout.dsh_desktop_executable = None;
         layout.claude_executable = root.path().join("missing-claude");
         if pi {
             let package = root.path().join("selected-pi-package");
@@ -114,6 +119,23 @@ impl QoderFixture {
             fs::set_permissions(&layout.dsh_executable, fs::Permissions::from_mode(0o700)).unwrap();
             layout.dsh_config_root = home.join("budget-dsh");
             private_file(&layout.dsh_config_root.join("cordis.patch.yml"), b"[]\n");
+        }
+        if desktop {
+            let contents = root.path().join("DSH.app/Contents");
+            let executable = contents.join("MacOS/DeepSeek Harness");
+            private_file(&executable, b"#!/bin/sh\n[ \"$ELECTRON_RUN_AS_NODE\" = 1 ] || exit 96\n[ \"$1\" = --expose-internals ] || exit 95\ncase \"$2\" in */app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js) ;; *) exit 94;; esac\nshift 2\nif [ \"$1\" = --version ]; then echo 0.2.1-rc.3; else printf '%s\\n' '- id: llm-pi-ai'; fi\n");
+            fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+            private_file(
+                &contents.join("Resources/app.asar"),
+                b"controlled bundled runtime",
+            );
+            layout.dsh_desktop_executable = Some(executable);
+            private_file(
+                &layout
+                    .dsh_config_root
+                    .join("profiles/desktop/cordis.patch.yml"),
+                b"# keep Desktop comment\n[]\n",
+            );
         }
         let registry = serde_json::from_slice(include_bytes!(
             "../../../../../assets/connector-registry/current/registry-seed.json"
@@ -730,3 +752,12 @@ mod opencode;
 
 #[path = "settings_entry_model_budget_tests.rs"]
 mod budget_tests;
+
+#[path = "settings_entry_native_routing_tests.rs"]
+mod native_routing;
+
+#[path = "settings_entry_opencode_metadata_tests.rs"]
+mod opencode_metadata;
+
+#[path = "settings_entry_dsh_desktop_tests.rs"]
+mod dsh_desktop;

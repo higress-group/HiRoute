@@ -44,6 +44,15 @@ pub fn validate_additional_configuration(
     } else {
         port.read_native_target(target)?
     };
+    if kind == AgentKindV1::DeepseekHarness {
+        let path = port.native_target_path(target)?;
+        additional_native::attach_routing_adapter(
+            current.as_deref().map_or(b"[]\n", Vec::as_slice),
+            &path,
+            None,
+        )
+        .map_err(fields_error)?;
+    }
     additional_native::validate_configuration(
         kind,
         current.as_deref().map(Vec::as_slice),
@@ -144,11 +153,11 @@ fn stage(
     let kind = match intent.desired()["subject"]["agent_id"].as_str() {
         Some("agent_qoder_default") => AgentKindV1::Qoder,
         Some("agent_pi_default") => AgentKindV1::Pi,
-        Some("agent_dsh_default") => AgentKindV1::DeepseekHarness,
+        Some("agent_dsh_default" | "agent_dsh_desktop") => AgentKindV1::DeepseekHarness,
         Some("agent_opencode_default") => AgentKindV1::OpenCode,
         _ => return Err(error(PortErrorCode::InvalidData, "additional.native.kind")),
     };
-    let edit = additional_native::configure(
+    let mut edit = additional_native::configure(
         kind,
         current.as_deref().map(Vec::as_slice),
         configuration.provider_id,
@@ -158,6 +167,24 @@ fn stage(
         previous,
     )
     .map_err(fields_error)?;
+    if kind == AgentKindV1::DeepseekHarness {
+        let path = port.native_target_path(intent.target())?;
+        if let Some(previous) = previous {
+            // Provider-only removal preserves unrelated user edits, including
+            // the previous adapter insert. Carry its original ownership forward
+            // instead of adopting our own insert as user-owned configuration.
+            edit.restore.original = additional_native::attach_routing_adapter(
+                &edit.restore.original,
+                &path,
+                Some(&previous.original),
+            )
+            .map_err(fields_error)?
+            .to_vec();
+        }
+        edit.bytes = additional_native::attach_routing_adapter(&edit.bytes, &path, None)
+            .map_err(fields_error)?;
+        edit.restore.rendered_digest = CanonicalDigest::of_bytes(&edit.bytes);
+    }
     let record = edit
         .restore
         .encode()
@@ -182,9 +209,18 @@ pub fn stage_additional_restoration(
     }
     let restore = load(port, original_operation, original_intent)?;
     let current = port.read_native_target(intent.target())?;
-    let restored = restore
+    let mut restored = restore
         .restore(current.as_deref().map(Vec::as_slice))
         .map_err(fields_error)?;
+    if restore.kind().map_err(fields_error)? == AgentKindV1::DeepseekHarness
+        && let Some(bytes) = &restored
+    {
+        let path = port.native_target_path(intent.target())?;
+        restored = Some(
+            additional_native::attach_routing_adapter(bytes, &path, Some(&restore.original))
+                .map_err(fields_error)?,
+        );
+    }
     port.stage_native_target(
         operation,
         intent,

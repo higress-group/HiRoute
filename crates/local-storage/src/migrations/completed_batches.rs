@@ -1,6 +1,40 @@
 //! Completed backups belong to one migration batch, including after manual old-data recovery.
 use super::*;
 
+pub(super) fn admit_current(
+    backup_root: &Path,
+    live_root: &Path,
+    binding: Option<&MigrationSecretBinding>,
+) -> Result<bool, LocalStorageError> {
+    let Some(sources) = BackupSet::completed_current_sources(backup_root, LATEST_SCHEMA_VERSION)?
+    else {
+        return Ok(false);
+    };
+    let binding = binding.ok_or(LocalStorageError::Locked)?;
+    if sources[2].store_uuid != binding.store_uuid
+        || sources[2].key_id.as_deref() != Some(binding.key_id.as_str())
+    {
+        return Err(LocalStorageError::InvalidData);
+    }
+    for (index, path) in live_database_paths(live_root).iter().enumerate() {
+        validate_owner_file(path)?;
+        let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let version: u32 = db.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        let sql = if index == 2 {
+            "SELECT store_uuid FROM secret_store_meta WHERE singleton=1"
+        } else {
+            "SELECT store_uuid FROM storage_meta WHERE singleton=1"
+        };
+        let identity: String = db.query_row(sql, [], |row| row.get(0))?;
+        if version != LATEST_SCHEMA_VERSION || identity != sources[index].store_uuid {
+            return Err(LocalStorageError::InvalidData);
+        }
+    }
+    // The caller still opens all three stores and validates the complete current
+    // dependency closure. This neither audits old content nor authorizes Restore.
+    Ok(true)
+}
+
 pub(super) fn archive_if_needed(
     previous: &BackupSet,
     paths: &[PathBuf; 3],

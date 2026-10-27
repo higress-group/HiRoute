@@ -5,7 +5,6 @@ use hiroute_application::publication::admission::{AdmissionAction, AdmissionSubj
 use hiroute_diagnostics::publication::{PublicationStage, measure};
 use hiroute_domain::{
     OperationState, OperationV1, PortError, PortErrorCode, PortResult, PublicationRepositoryPort,
-    WorkspaceId,
 };
 use std::collections::BTreeSet;
 
@@ -185,11 +184,11 @@ impl LocalControlAdapter {
         guard.complete_recovery().map_err(|_| unavailable())
     }
 
-    pub(super) fn reconcile_plan_content_heads(&self) -> PortResult<()> {
+    pub(super) fn reconcile_pending_operation_finalization(&self) -> PortResult<()> {
         let mut operations = self
             .stores_lock()?
             .control()
-            .succeeded_operations_for_kind(&WorkspaceId::default(), "ApplyAgentPlanChange")?;
+            .pending_finalization_operations()?;
         operations.sort_by_key(|operation| {
             operation
                 .plan
@@ -200,7 +199,12 @@ impl LocalControlAdapter {
                 .unwrap_or(0)
         });
         for operation in operations {
-            self.finish_plan_content_activation(&operation)?;
+            <Self as hiroute_domain::ExternalEffectPort>::finish_publication_activation(
+                self, &operation,
+            )?;
+            self.stores_lock()?
+                .control()
+                .finish_operation_finalization(&operation)?;
         }
         Ok(())
     }

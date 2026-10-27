@@ -30,6 +30,8 @@ pub struct PreparedNativeTemplate {
     pub decoder_revision: String,
     pub reasoning_profile_id: String,
     pub(crate) chat_tool_projection: Option<ChatToolProjection>,
+    pub(crate) function_encoding_projection: super::super::FunctionEncodingProjection,
+    pub(crate) request_projection_loss: super::RequestProjectionLoss,
 }
 
 /// Structural JSON plus replay-backed substitutions shared by provider and
@@ -78,6 +80,7 @@ impl PreparedNativeTemplate {
                 None => 0,
             },
             4 * std::mem::size_of::<usize>(),
+            std::mem::size_of::<super::RequestProjectionLoss>(),
         ]
         .into_iter()
         .try_fold(0_usize, usize::checked_add)
@@ -118,9 +121,11 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
     let reasoning = profile.validate(&requirements)?;
     let native = request.native_body.is_some()
         && request.ingress_protocol == profile.capability.upstream_protocol;
-    if !native {
-        validate_message_shapes(request, profile.capability.upstream_protocol)?;
-    }
+    let request_projection_loss = if native {
+        super::RequestProjectionLoss::default()
+    } else {
+        validate_message_shapes(request, profile.capability.upstream_protocol)?
+    };
     let chat_tool_projection =
         if !native && profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
             Some(ChatToolProjection::for_request(request)?)
@@ -148,7 +153,8 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
             }
         }
     };
-    let body = super::native::project(request, profile, body, omit_reasoning_prefix)?;
+    let (body, function_encoding_projection) =
+        super::native::project(request, profile, body, omit_reasoning_prefix)?;
     let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
     {
@@ -203,6 +209,8 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         decoder_revision: profile.decoder_revision.clone(),
         reasoning_profile_id: reasoning.profile_id.clone(),
         chat_tool_projection,
+        function_encoding_projection,
+        request_projection_loss,
     })
 }
 
@@ -234,67 +242,76 @@ pub(crate) fn prepare_replay_json_template(
         }
     }
     let mut replacements = Vec::with_capacity(expected.len());
-    let mut cursor = 0_usize;
-    while let Some(relative) = find_subslice(&bytes[cursor..], MARKER_PREFIX.as_bytes()) {
-        let marker_start = cursor + relative;
-        let suffix_start = marker_start + MARKER_PREFIX.len();
-        let suffix = find_subslice(&bytes[suffix_start..], b"__").ok_or_else(|| {
-            ProtocolAdapterError::Serialization("ContentRef marker is not terminated".into())
-        })?;
-        let marker_end = suffix_start + suffix + 2;
-        let marker = std::str::from_utf8(&bytes[marker_start..marker_end]).map_err(|_| {
-            ProtocolAdapterError::Serialization("ContentRef marker is not ASCII".into())
-        })?;
-        let content = ContentRef::from_wire_marker(marker).ok_or_else(|| {
-            ProtocolAdapterError::Serialization("ContentRef marker is malformed".into())
-        })?;
-        let (encoding, count) = expected.get_mut(&content).ok_or_else(|| {
-            ProtocolAdapterError::Serialization(
-                "ContentRef marker collides with inline content".into(),
-            )
-        })?;
-        if *count == 0 {
-            return Err(ProtocolAdapterError::Serialization(
-                "ContentRef marker occurs more often than requested".into(),
-            ));
-        }
-        *count -= 1;
-        let encoding = *encoding;
-        let (start, end) = match encoding {
-            ReplacementEncoding::JsonString => (marker_start, marker_end),
-            ReplacementEncoding::RawJson => {
-                if marker_start == 0
-                    || marker_end >= bytes.len()
-                    || bytes[marker_start - 1] != b'"'
-                    || bytes[marker_end] != b'"'
-                {
-                    return Err(ProtocolAdapterError::Serialization(
-                        "raw ContentRef is not a complete JSON string placeholder".into(),
-                    ));
-                }
-                (marker_start - 1, marker_end + 1)
+    // serde owns the JSON bytes. Only value strings may contain references;
+    // object keys are literal structure even when they equal a registered marker.
+    for value in super::template_json::value_strings(&bytes) {
+        let mut cursor = value.start;
+        while let Some(relative) =
+            find_subslice(&bytes[cursor..value.end], MARKER_PREFIX.as_bytes())
+        {
+            let marker_start = cursor + relative;
+            let suffix_start = marker_start + MARKER_PREFIX.len();
+            let suffix =
+                find_subslice(&bytes[suffix_start..value.end], b"__").ok_or_else(|| {
+                    ProtocolAdapterError::Serialization(
+                        "ContentRef marker is not terminated".into(),
+                    )
+                })?;
+            let marker_end = suffix_start + suffix + 2;
+            let marker = std::str::from_utf8(&bytes[marker_start..marker_end]).map_err(|_| {
+                ProtocolAdapterError::Serialization("ContentRef marker is not ASCII".into())
+            })?;
+            let content = ContentRef::from_wire_marker(marker).ok_or_else(|| {
+                ProtocolAdapterError::Serialization("ContentRef marker is malformed".into())
+            })?;
+            let (encoding, count) = expected.get_mut(&content).ok_or_else(|| {
+                ProtocolAdapterError::Serialization(
+                    "ContentRef marker collides with inline content".into(),
+                )
+            })?;
+            if *count == 0 {
+                return Err(ProtocolAdapterError::Serialization(
+                    "ContentRef marker occurs more often than requested".into(),
+                ));
             }
-            ReplacementEncoding::RawJsonInJsonString => {
-                if marker_start < 2
-                    || marker_end + 1 >= bytes.len()
-                    || &bytes[marker_start - 2..marker_start] != b"\\\""
-                    || &bytes[marker_end..marker_end + 2] != b"\\\""
-                {
-                    return Err(ProtocolAdapterError::Serialization(
+            *count -= 1;
+            let encoding = *encoding;
+            let (start, end) = match encoding {
+                ReplacementEncoding::JsonString => (marker_start, marker_end),
+                ReplacementEncoding::RawJson => {
+                    if marker_start == 0
+                        || marker_end >= bytes.len()
+                        || bytes[marker_start - 1] != b'"'
+                        || bytes[marker_end] != b'"'
+                    {
+                        return Err(ProtocolAdapterError::Serialization(
+                            "raw ContentRef is not a complete JSON string placeholder".into(),
+                        ));
+                    }
+                    (marker_start - 1, marker_end + 1)
+                }
+                ReplacementEncoding::RawJsonInJsonString => {
+                    if marker_start < 2
+                        || marker_end + 1 >= bytes.len()
+                        || &bytes[marker_start - 2..marker_start] != b"\\\""
+                        || &bytes[marker_end..marker_end + 2] != b"\\\""
+                    {
+                        return Err(ProtocolAdapterError::Serialization(
                         "nested raw ContentRef is not a complete escaped JSON string placeholder"
                             .into(),
                     ));
+                    }
+                    (marker_start - 2, marker_end + 2)
                 }
-                (marker_start - 2, marker_end + 2)
-            }
-        };
-        replacements.push(TemplateReplacement {
-            start,
-            end,
-            content,
-            encoding,
-        });
-        cursor = end;
+            };
+            replacements.push(TemplateReplacement {
+                start,
+                end,
+                content,
+                encoding,
+            });
+            cursor = marker_end;
+        }
     }
     if expected.values().any(|(_, count)| *count != 0) {
         return Err(ProtocolAdapterError::Serialization(
@@ -418,7 +435,7 @@ fn request_content_refs(
     for tool in &request.tools {
         collect_string_ref(tool.description.as_deref(), &mut refs);
         if let Some(schema) = &tool.input_schema {
-            collect_json_ref(schema, ReplacementEncoding::RawJson, &mut refs);
+            collect_nested_json_refs(schema, &mut refs);
         }
         if let Some(format) = &tool.format {
             collect_json_ref(format, ReplacementEncoding::RawJson, &mut refs);
@@ -431,7 +448,7 @@ fn request_content_refs(
         for tool in &namespace.tools {
             collect_string_ref(tool.description.as_deref(), &mut refs);
             if let Some(schema) = &tool.input_schema {
-                collect_json_ref(schema, ReplacementEncoding::RawJson, &mut refs);
+                collect_nested_json_refs(schema, &mut refs);
             }
             if let Some(format) = &tool.format {
                 collect_json_ref(format, ReplacementEncoding::RawJson, &mut refs);

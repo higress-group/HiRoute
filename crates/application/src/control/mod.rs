@@ -199,6 +199,13 @@ pub trait AgentDiscoveryPort: Send + Sync {
         self.discover()
     }
     fn discover(&self) -> Result<Vec<DiscoveredAgentV1>, ControlReadError>;
+    fn discover_context(
+        &self,
+        _context_id: &str,
+        _target: Option<&hiroute_domain::AgentNativeTargetV1>,
+    ) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn discover_target(
         &self,
         _target: &hiroute_domain::AgentNativeTargetV1,

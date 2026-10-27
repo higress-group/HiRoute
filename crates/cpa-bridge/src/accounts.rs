@@ -245,6 +245,8 @@ pub(crate) enum AccountDiscoveryError {
     AuthenticationRequired,
     #[error("CPA exposed an unmanaged account for a managed provider")]
     UnexpectedManagedAccount,
+    #[error("CPA current model directory is temporarily unavailable")]
+    TransientModelCatalog { process_id: u32 },
     #[error("CPA exact account prefix/retry pin was not applied")]
     PinNotApplied,
     #[error("CPA account is inactive")]
@@ -279,7 +281,9 @@ impl AccountDiscoveryError {
             Self::ManagementAuthentication | Self::DownstreamAuthentication => {
                 CpaFailureCode::ControlAuthentication
             }
-            Self::PinNotApplied => CpaFailureCode::ControlPinNotApplied,
+            Self::PinNotApplied | Self::TransientModelCatalog { .. } => {
+                CpaFailureCode::ControlPinNotApplied
+            }
             _ => CpaFailureCode::ControlRejected,
         }
     }

@@ -79,6 +79,7 @@ pub(super) fn restore(layout: &hiroute_host_runtime::StandaloneLayout) -> io::Re
             &client,
             "GetAgentConnectionStatus",
             json!(AgentSettingsStatusRequestV2 {
+                projection: Default::default(),
                 schema_version: AGENT_SETTINGS_SCHEMA_V2,
                 context_id: context.id.clone(),
                 native_target: context.native_target.clone(),

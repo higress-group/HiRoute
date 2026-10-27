@@ -13,7 +13,21 @@ fn stamp(s: &NativeProofObservationV1) -> bool {
     identifier(&s.observer_id) && s.sequence > 0 && s.observed_at_ms >= 0 && s.age_ms <= 3_600_000
 }
 
-fn read(headers: &HeaderMap, current: &str) -> Option<HermesCompressionLineageV1> {
+fn object_shapes(bytes: &[u8]) -> Option<()> {
+    // Struct deserialization also accepts positional arrays. Check the bounded
+    // wire shape first, then decode the original bytes to retain duplicate checks.
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let proof = value.as_object()?;
+    proof.get("proof_observation")?.as_object()?;
+    for field in ["current_state", "invalid_edges"] {
+        if let Some(nested) = proof.get(field).filter(|value| !value.is_null()) {
+            nested.as_object()?.get("observation")?.as_object()?;
+        }
+    }
+    Some(())
+}
+
+pub(crate) fn read(headers: &HeaderMap, current: &str) -> Option<HermesCompressionLineageV1> {
     if headers
         .get_all("x-hermes-compression-lineage")
         .iter()
@@ -26,6 +40,7 @@ fn read(headers: &HeaderMap, current: &str) -> Option<HermesCompressionLineageV1
     if value.len() > 8192 {
         return None;
     }
+    object_shapes(value)?;
     let proof: HermesCompressionLineageV1 = serde_json::from_slice(value).ok()?;
     if proof.version != 1
         || proof.ids.is_empty()
@@ -174,6 +189,87 @@ impl GatewayObservation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn read_json(value: &serde_json::Value) -> Option<HermesCompressionLineageV1> {
+        read_raw(&value.to_string())
+    }
+
+    fn read_raw(value: &str) -> Option<HermesCompressionLineageV1> {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-hermes-compression-lineage",
+            http::HeaderValue::from_str(value).unwrap(),
+        );
+        read(&headers, "s")
+    }
+
+    #[test]
+    fn only_objects_can_supply_optional_lineage_evidence() {
+        let stamp = serde_json::json!({
+            "observer_id":"o", "sequence":1, "observed_at_ms":10, "age_ms":0
+        });
+        let state = serde_json::json!({
+            "value":"open", "observation":stamp, "started_at_ms":5
+        });
+        let negative = serde_json::json!({"edges":[["a","other"]], "observation":stamp});
+        let proof = serde_json::json!({
+            "version":1, "ids":["a","s"], "complete":true,
+            "proof_observation":stamp, "current_state":state, "invalid_edges":negative
+        });
+        assert!(
+            read_json(&proof).is_some(),
+            "valid nested objects retain evidence"
+        );
+        assert!(
+            read_json(&serde_json::json!([
+                1,
+                ["a", "s"],
+                true,
+                stamp,
+                state,
+                negative
+            ]))
+            .is_none()
+        );
+        let positional_stamp = serde_json::json!(["o", 1, 10, 0]);
+        for (path, positional) in [
+            ("/proof_observation", positional_stamp.clone()),
+            ("/current_state", serde_json::json!(["open", stamp, 5])),
+            ("/current_state/observation", positional_stamp.clone()),
+            (
+                "/invalid_edges",
+                serde_json::json!([[["a", "other"]], stamp]),
+            ),
+            ("/invalid_edges/observation", positional_stamp),
+        ] {
+            let mut malformed = proof.clone();
+            *malformed.pointer_mut(path).unwrap() = positional;
+            assert!(
+                read_json(&malformed).is_none(),
+                "positional struct at {path}"
+            );
+        }
+        let mut optional_null = proof;
+        optional_null["current_state"] = serde_json::Value::Null;
+        optional_null["invalid_edges"] = serde_json::Value::Null;
+        assert!(
+            read_json(&optional_null).is_some(),
+            "optional nulls remain supported"
+        );
+    }
+
+    #[test]
+    fn shape_checks_preserve_duplicate_field_rejection() {
+        let proof = r#"{"version":1,"ids":["a","s"],"complete":true,"proof_observation":{"observer_id":"o","sequence":1,"observed_at_ms":10,"age_ms":0}}"#;
+        assert!(read_raw(proof).is_some());
+        for (from, to) in [
+            (r#""version":1"#, r#""version":1,"version":1"#),
+            (r#""sequence":1"#, r#""sequence":1,"sequence":1"#),
+        ] {
+            assert!(read_raw(&proof.replacen(from, to, 1)).is_none());
+        }
+    }
+
     #[test]
     fn malformed_optional_headers_never_become_evidence() {
         let mut h = HeaderMap::new();

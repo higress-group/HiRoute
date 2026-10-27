@@ -124,6 +124,28 @@ pub fn begin(stores: &LocalStorageSet, key: &str) -> OperationV1 {
     operation
 }
 pub fn finish(stores: &LocalStorageSet, mut operation: OperationV1) {
+    // This authority-only fixture does not execute native files. Model the exact
+    // adapter receipt required by its declared file intent; file authentication
+    // is covered by the real artifact and publication-process scenarios.
+    let receipts = operation
+        .plan
+        .external()
+        .iter()
+        .filter(|intent| intent.kind() == OwnedEffectKind::AgentArtifact)
+        .map(|intent| OwnedEffectV1 {
+            effect_id: intent.effect_id().into(),
+            kind: intent.kind(),
+            target: intent.target().into(),
+            before_fingerprint: intent.before_fingerprint().cloned(),
+            after_fingerprint: Some(CanonicalDigest::of_bytes(b"authority-fixture-file")),
+            compensation: json!({"schema":"hiroute.managed-artifact-compensation/v1",
+                "operation_id":operation.operation_id,"effect_id":intent.effect_id()})
+            .into(),
+        })
+        .collect();
+    let files = operation.step_mut(OperationStepKind::ApplyAgentArtifacts);
+    files.effects = receipts;
+    files.status = OperationStepStatus::Applied;
     operation.state = OperationState::Succeeded;
     stores.control().finish_operation(&mut operation).unwrap();
 }

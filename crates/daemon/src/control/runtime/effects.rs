@@ -285,8 +285,8 @@ impl ExternalEffectPort for LocalControlAdapter {
         }
         // Resolve known native adapters before a capability is consumed or an Operation exists.
         self.native_claude_change(intent)?;
-        if hiroute_application::agent_connection::is_settings_hermes_plugin(intent) {
-            hiroute_application::agent_connection::decode_settings_hermes_plugin_file(intent)?;
+        if hiroute_application::agent_connection::is_settings_native_plugin(intent) {
+            hiroute_application::agent_connection::decode_settings_native_plugin_file(intent)?;
         }
         self.permission_intent(intent)?;
         self.validate_publication_admission(intent)
@@ -311,6 +311,37 @@ impl ExternalEffectPort for LocalControlAdapter {
     ) -> PortResult<OwnedEffectV1> {
         self.publication_abort_checkpoint(operation, effect)
     }
+    fn finish_local_operation(
+        &self,
+        control: &dyn hiroute_domain::ControlRepositoryPort,
+        operation: &mut hiroute_domain::OperationV1,
+    ) -> PortResult<u64> {
+        let Some(content) = operation
+            .plan
+            .plan_content_control()
+            .map_err(|_| invalid("plan.content.intent"))?
+        else {
+            return control.finish_operation(operation);
+        };
+        use hiroute_application::publication::admission::{AdmissionAction, AdmissionSubject};
+        let scope = std::collections::BTreeSet::from([AdmissionSubject::Plan(
+            content.plan_head.reference.plan_id,
+        )]);
+        let _guard = self
+            .plan_admission
+            .enter(
+                &operation.workspace_id,
+                &scope,
+                AdmissionAction::Recovery,
+                operation.operation_id.as_str(),
+            )
+            .map_err(|_| invalid("plan.content.admission"))?;
+        // The pending scope stays closed until the real post-commit activation finishes.
+        crate::publication_failpoint::crash("before_local_finish");
+        let generation = control.finish_operation(operation)?;
+        crate::publication_failpoint::crash("after_local_finish");
+        Ok(generation)
+    }
     fn finish_publication_activation(
         &self,
         operation: &hiroute_domain::OperationV1,
@@ -320,8 +351,8 @@ impl ExternalEffectPort for LocalControlAdapter {
             return Ok(());
         }
         for intent in operation.plan.external() {
-            if hiroute_application::agent_connection::is_settings_hermes_plugin(intent)
-                && matches!(hiroute_application::agent_connection::settings_hermes_plugin_file_for_operation(operation, intent)?.change, hiroute_application::agent_connection::HermesPluginFileAction::Restore { .. })
+            if hiroute_application::agent_connection::is_settings_native_plugin(intent)
+                && matches!(hiroute_application::agent_connection::settings_native_plugin_file_for_operation(operation, intent)?.change, hiroute_application::agent_connection::NativePluginFileAction::Restore { .. })
                 && self.artifacts.read_native_target(intent.target())?.is_none() {
                 self.artifacts.cleanup_native_parents(&operation.operation_id, intent)?;
             }
@@ -418,7 +449,7 @@ impl ExternalEffectPort for LocalControlAdapter {
         if hiroute_application::agent_connection::is_settings_hermes_model(intent) {
             return self.stage_settings_hermes_model(operation, intent);
         }
-        if hiroute_application::agent_connection::is_settings_hermes_plugin(intent) {
+        if hiroute_application::agent_connection::is_settings_native_plugin(intent) {
             return self.stage_settings_hermes_plugin(operation, intent);
         }
         let Some(permission) = self.permission_intent(intent)? else {

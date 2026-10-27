@@ -13,7 +13,7 @@ const shot = async (name, settle = true) => {
   await writeFile(path.join(output, `${name}.png`), Buffer.from(value.data, 'base64'));
 };
 async function open(query, width, height, theme, lang) {
-  const url = `${base}new-model-trial.html?polish=1&lang=${lang}&theme=${theme}&${query}${transport === 'console' ? '&transport=console' : ''}`;
+  const url = `${base}new-model-trial.html?polish=1&native=1&lang=${lang}&theme=${theme}&${query}${transport === 'console' ? '&transport=console' : ''}`;
   await client.send('Page.enable');
   await client.send('Runtime.enable');
   await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });

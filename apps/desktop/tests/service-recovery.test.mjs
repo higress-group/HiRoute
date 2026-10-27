@@ -16,7 +16,7 @@ test('failed recovery refresh preserves previous data without claiming a healthy
   assert.deepEqual(deriveHomeServiceStatus(slot.read), { state: 'unknown', operational: false });
   slot = failDomainRead(slot, 'recovery/1', 'desktop/local', 'RESIDENT_UNAVAILABLE');
   assert.deepEqual(visibleData(slot.read), running);
-  assert.deepEqual(deriveHomeServiceStatus(slot.read), { state: 'unavailable', operational: false });
+  assert.deepEqual(deriveHomeServiceStatus(slot.read), { state: 'unknown', operational: false });
   slot = beginDomainRead(slot, 'recovery/2', 'desktop/local');
   slot = resolveDomainRead(slot, 'recovery/2', 'desktop/local', running);
   assert.deepEqual(deriveHomeServiceStatus(slot.read), { state: 'ready', operational: true });
@@ -30,4 +30,8 @@ test('current empty, read-only and unrecovered service facts retain their distin
     { state: 'ready', operational: false });
   assert.deepEqual(deriveHomeServiceStatus(read({ daemon: 'read_only', gateway: 'ready', recoveryReady: true })),
     { state: 'read_only', operational: false });
+  assert.deepEqual(deriveHomeServiceStatus(read({ daemon: 'unavailable', gateway: 'unknown', recoveryReady: false })),
+    { state: 'unavailable', operational: false });
+  assert.deepEqual(deriveHomeServiceStatus(read({ daemon: 'running', gateway: 'ready', recoveryReady: true, nativeConnectionLost: true })),
+    { state: 'connection_lost', operational: false });
 });

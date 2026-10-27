@@ -1,3 +1,7 @@
+#[cfg(feature = "desktop-runtime")]
+#[path = "src/cpa_manifest.rs"]
+mod cpa_manifest;
+
 fn main() {
     println!("cargo:rerun-if-env-changed=HIROUTE_CPA_MANIFEST");
     let manifest = match std::env::var_os("HIROUTE_CPA_MANIFEST") {
@@ -11,6 +15,19 @@ fn main() {
         None => panic!("release Desktop requires HIROUTE_CPA_MANIFEST from package-desktop.py"),
     };
     println!("cargo:rerun-if-changed={}", manifest.display());
+    #[cfg(feature = "desktop-runtime")]
+    if std::env::var("PROFILE").as_deref() != Ok("debug") {
+        let json = std::fs::read_to_string(&manifest).expect("read selected Desktop CPA manifest");
+        cpa_manifest::artifact_for(
+            &json,
+            &std::env::var("CARGO_CFG_TARGET_OS").expect("Desktop target OS"),
+            &std::env::var("CARGO_CFG_TARGET_ARCH").expect("Desktop target architecture"),
+            false,
+        )
+        .unwrap_or_else(|code| {
+            panic!("release Desktop CPA manifest rejected: {code}; use the measured manifest from package-desktop.py")
+        });
+    }
     let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     std::fs::copy(&manifest, output.join("cpa-artifacts.json"))
         .expect("read selected Desktop CPA manifest");
@@ -70,6 +87,8 @@ fn main() {
             "web_confirmation_snapshot",
             "resolve_web_confirmation",
             "agent_snapshot",
+            "trial_agent_choices",
+            "trial_agent_model",
             "preview_agent_previous_routing",
             "preview_agent_settings",
             "retry_agent_settings",

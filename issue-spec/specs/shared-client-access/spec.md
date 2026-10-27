@@ -181,6 +181,61 @@ If an automatically generated key's response is uncertain, the result exposes th
 original key for explicit query/retry; there is no automatic new-key replay. Titles
 are lookup aids, not deduplication authority.
 
+### Requirement: Native Desktop presents the intended launch
+
+A normal macOS application launch SHALL show the first host's main window and
+load its initial Home without another open action or a manual read retry. The
+host SHALL obtain the native launch reason through the platform lifecycle,
+retain an early result until window setup completes, and preserve the framework's
+handling of that event. A proven login-item launch or
+explicit background start SHALL initialize the service without flashing a
+window. A duplicate host SHALL hand off without presenting a second window.
+An explicit later reopen SHALL show the existing window normally.
+
+Ordinary reads SHALL validate the originating client's continued existence and
+authority, current session and publication consistency independently of whether
+its window is shown. Hiding a live native window SHALL NOT turn a successful read
+into a service failure. A destroyed or revoked client SHALL NOT receive a late
+result. UI request identity SHALL prevent superseded results replacing current
+page state. A failed page read SHALL NOT by itself label the daemon unavailable.
+
+Protected confirmations SHALL retain the originating context, exact operation
+and revision, expiry and explicit user decision. An invisible or invalid native
+window SHALL NOT accept a pending confirmation. Already admitted operations
+SHALL retain their backend operation identity and observable terminal result
+when the user hides or closes the window; reopening SHALL NOT resubmit them.
+
+#### Scenario: Foreground launch event precedes window setup
+
+- **WHEN** the native open event arrives before Desktop's presentation state exists
+- **THEN** its foreground reason SHALL survive setup, the main window SHALL become
+  visible, and its initial Home SHALL load without user retry.
+
+#### Scenario: Login or background service starts without presentation
+
+- **WHEN** the launch is proven to be a login item or explicitly requests background mode
+- **THEN** startup SHALL not show a window; a later explicit reopen may present it,
+  while reads from a destroyed or invalidated client retain their rejection.
+
+#### Scenario: A live hidden window finishes an ordinary read
+
+- **WHEN** a valid Home, session or trial-configuration read completes while the
+  originating native window is hidden
+- **THEN** the result remains usable under the current authority and publication
+  checks, and showing the window does not require repairing a service connection.
+
+#### Scenario: Client authority expires during a read
+
+- **WHEN** the originating client is destroyed or revoked while a read is pending
+- **THEN** the late result SHALL be rejected even if another window is visible.
+
+#### Scenario: A window is hidden while confirmation is pending
+
+- **WHEN** a protected action awaits confirmation and its native window becomes
+  invisible or its context expires
+- **THEN** the action SHALL not be newly admitted from that confirmation; already
+  admitted operations remain queryable by their original identity.
+
 ### Requirement: Installed CLI resolves one explicit service instance
 
 On macOS, CLI defaults to the current user's Desktop runtime. Absolute

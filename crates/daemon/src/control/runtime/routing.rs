@@ -309,17 +309,7 @@ impl RoutingFactsPort for LocalControlAdapter {
         &self,
         workspace_id: &WorkspaceId,
     ) -> Result<RoutingCompilationSnapshotV1, ControlReadError> {
-        let first = self.routing_snapshot(workspace_id)?;
-        let second = self.routing_snapshot(workspace_id)?;
-        // Both reads are independent. Compare the complete inputs without temporary encoding.
-        if first.unavailable_candidates != second.unavailable_candidates
-            || first.facts != second.facts
-            || first.expected_revisions != second.expected_revisions
-            || first.active_publication != second.active_publication
-        {
-            return Err(ControlReadError::SnapshotChanged);
-        }
-        Ok(second)
+        self.routing_snapshot(workspace_id)
     }
 }
 
@@ -343,6 +333,16 @@ impl LocalControlAdapter {
         Ok(ratings)
     }
 
+    pub(super) fn routing_read_stamp(
+        &self,
+    ) -> Result<hiroute_local_storage::ControlReadStamp, ControlReadError> {
+        self.stores_lock()
+            .map_err(super::map_port)?
+            .control()
+            .read_stamp()
+            .map_err(super::map_port)
+    }
+
     fn routing_snapshot(
         &self,
         workspace_id: &WorkspaceId,
@@ -357,6 +357,7 @@ impl LocalControlAdapter {
             None,
             None,
             || {
+                let local_before = self.routing_read_stamp()?;
                 let catalog = self
                     .current_catalog()
                     .ok_or(ControlReadError::SnapshotChanged)?;
@@ -819,6 +820,16 @@ impl LocalControlAdapter {
                 drop(stores);
                 if let Some(batch) = cpa_batch
                     && !batch.finish().unwrap_or(false)
+                {
+                    return Err(ControlReadError::SnapshotChanged);
+                }
+                // The local fence covers every captured local row, not only published
+                // revisions. CPA batch.finish above still validates actual external facts;
+                // a metadata feed replacement also invalidates this composed snapshot.
+                if local_before != self.routing_read_stamp()?
+                    || !self
+                        .current_catalog()
+                        .is_some_and(|current| std::sync::Arc::ptr_eq(&catalog, &current))
                 {
                     return Err(ControlReadError::SnapshotChanged);
                 }

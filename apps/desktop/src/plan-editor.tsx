@@ -1,4 +1,5 @@
 import { DivisionDraftDialog } from './features/trust/DivisionDraftDialog';
+import { divisionSource } from './features/trust/division-draft';
 import { ProtectionSummary } from './features/trust/ProtectionSummary';
 import { useTrustEvidence } from './features/trust/use-trust-evidence';
 import { TrustLevelControl } from './features/trust/TrustLevelControl';
@@ -138,6 +139,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const [baseline, setBaseline] = useState(() => initialContent ? '' : JSON.stringify(editor));
   const [notice, setNotice] = useState('');
   const [divisionBranch, setDivisionBranch] = useState<string | null>(initialDivisionBranch ?? null);
+  const divisionBranches = draft ? [] : (initialEditor.mode === 'smart_saving' ? ['smart_saving'] : initialEditor.mode === 'custom_branches' ? initialEditor.branch_routing?.branches.map(branch => branch.id) ?? [] : []).filter(id => divisionSource(initialEditor, id));
   const [view, setView] = useState<'configuration' | 'performance'>(initialView);
   const trustEvidence = useTrustEvidence(plan?.agent_plan_id, active && view === 'configuration', refreshVersion);
   const [services, setServices] = useState<DecisionService[]>([]);
@@ -148,6 +150,8 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const memory = useRef(editingMemory ?? {}).current;
   const [moreSettingsOpen, setMoreSettingsOpen] = useState(editor.delegation_enabled);
   const [optionsError, setOptionsError] = useState('');
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [sourcesState, setSourcesState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [optionsErrorCode, setOptionsErrorCode] = useState('');
   const [optionsRetry, setOptionsRetry] = useState(0);
   const [effort, setEffort] = useState<{ name: string; native: Native; value: Selection['reasoning']; apply: (value: Selection['reasoning']) => void } | null>(null);
@@ -181,16 +185,19 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   useEffect(() => {
     if (!active) return;
     let current = true;
+    setSourcesState('loading');
     void invoke<{ sources: { source_id: string; display_name: string; display_template_id?: string | null; connection_identity?: { connection_option_id: string | null }; models: { binding_id: string }[] }[] }>('compute_management_snapshot').then(v => {
       if (!current) return;
+      setSourcesState('ready');
       setSources(Object.fromEntries(v.sources.flatMap(source => source.models.map(m => [m.binding_id, v.sources.filter(other => other.display_name === source.display_name).length > 1 ? `${source.display_name} · ${source.source_id.slice(-8)}` : source.display_name]))));
       setSourceOptions(Object.fromEntries(v.sources.flatMap(source => source.models.map(m => [m.binding_id, source.display_template_id ?? source.connection_identity?.connection_option_id ?? null]))));
-    }).catch(() => {});
+    }).catch(() => { if (current) setSourcesState('error'); });
     return () => { current = false; };
   }, [active, language]);
   useEffect(() => {
     if (!active) return;
     let current = true;
+    setOptionsLoading(true);
     const timer = setTimeout(async () => {
       try {
         const value = await invoke<Options>('plan_editor_options', { input: { display_name: editor.display_name, requirements: editor.requirements, editor, authoring: {}, include_unavailable: true } });
@@ -198,11 +205,11 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
         if (current) { setOptions(value); setOptionsError(''); setOptionsErrorCode(''); }
       } catch (cause) {
         if (current) {
-          setOptions(null);
+          // Keep the last successful labels while exposing the current read failure.
           setOptionsError(planErrorMessage(cause, language));
           setOptionsErrorCode(planErrorCode(cause));
         }
-      }
+      } finally { if (current) setOptionsLoading(false); }
     }, 200);
     return () => { current = false; clearTimeout(timer); };
   }, [active, editor, language, optionsRetry]);
@@ -229,6 +236,9 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
       return { field: 'alias', message: text('接入模型名只能使用小写字母、数字和连字符。', 'The connection model name may contain lowercase letters, numbers, and hyphens only.') };
     }
     if (timeoutValidationError) return { field: 'request_timeout', message: timeoutValidationError };
+    if (optionsError) return { message: optionsError };
+    // A background refresh after an edit retains the last successful hints. The
+    // actual preview/admission validates the exact edited input and current facts.
     if (!options) return { message: text('模型信息仍在读取，请稍后再试。', 'Model information is still loading. Try again shortly.') };
     const windowError = contextWindowError(editor.limits.context_window_tokens, options.context_window, language);
     if (windowError) return { field: 'context_window', message: windowError };
@@ -313,7 +323,6 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
       if (action === 'save_draft' || action === 'publish') {
 
         onPersisted?.(null, action, identity, outcome.operation);
-        await onDone();
         const snapshot = await invoke<{ catalog: { drafts: Draft[]; plans: Plan[] } }>('desktop_snapshot');
         persisted = resolvePersistedEditor(action, snapshot.catalog, identity, {
           operationId: outcome.operation?.operation_id ?? null,
@@ -321,6 +330,9 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
         });
         if (persisted) setBaseline(JSON.stringify(editor));
         onPersisted?.(persisted, action, identity, outcome.operation);
+        // The exact operation/revision readback above decides success. Refresh unrelated
+        // pages independently; their discovery latency is not part of saving this editor.
+        void onDone().catch(reportError);
       } else await onDone();
       if ((action === 'save_draft' || action === 'publish') ? Boolean(persisted) : outcome.operation?.state === 'succeeded') {
         if (action === 'save_draft' || action === 'publish') {
@@ -366,7 +378,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
       : selection.reasoning?.kind === 'toggle' ? (selection.reasoning.enabled ? text('思考开启', 'Reasoning on') : text('思考关闭', 'Reasoning off'))
       : selection.reasoning?.kind === 'budget' ? `${selection.reasoning.tokens} tokens` : text('设置思考强度', 'Set reasoning');
     if (native?.kind === 'fixed') return <span className="effort-select">{text('供应商默认', 'Provider default')}</span>;
-    if (!native) return <span className="effort-select">{text('思考设置未取得', 'Reasoning unavailable')}</span>;
+    if (!native) return <span className="effort-select">{!options && optionsLoading ? text('正在读取思考设置…', 'Loading reasoning…') : text('思考设置未取得', 'Reasoning unavailable')}</span>;
     return <button type="button" className="effort-select" aria-label={`${candidate.display_name} · ${text('思考强度', 'Reasoning')}`} onClick={() => setEffort({ name: candidate.display_name, native, value: selection.reasoning, apply })}>{labeled ? `${text('思考强度', 'Reasoning')}: ${reasoningLabel}` : reasoningLabel}</button>;
   }
   function changeMode(mode: Mode) {
@@ -418,7 +430,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
         <span className="drag-handle" aria-hidden="true"><UiIcon name="grip" /></span>
         <span className="candidate-index">{index + 1}</span>
         <ProviderIcon optionId={sourceOptions[s.binding_id]} language={language} />
-        <div className="candidate-main"><strong>{displayName}</strong><span>{billing(c?.billing_class)} · {sources[s.binding_id] ?? text('来源暂不可得', 'Source unavailable')}{c && !c.routable ? text(' · 当前不可用', ' · Unavailable') : ''}</span>{issue && <span className="oc-inline-error">{candidateUnavailableMessage(issue.reason, language)}</span>}</div>
+        <div className="candidate-main"><strong>{displayName}</strong><span>{!c && !options && optionsLoading ? text('正在读取价格…', 'Loading pricing…') : billing(c?.billing_class)} · {sources[s.binding_id] ?? (sourcesState === 'loading' ? text('正在读取来源…', 'Loading source…') : text('来源暂不可得', 'Source unavailable'))}{c && !c.routable ? text(' · 当前不可用', ' · Unavailable') : ''}</span>{issue && <span className="oc-inline-error">{candidateUnavailableMessage(issue.reason, language)}</span>}</div>
         {reasoningControl(s, c, put)}
         <div className="candidate-controls"><button type="button" className="icon-btn" disabled={index === 0} aria-label={text('上移', 'Move up')} onClick={() => move(index, -1)}><UiIcon name="arrowUp" /></button><button type="button" className="icon-btn" disabled={index === values.length - 1} aria-label={text('下移', 'Move down')} onClick={() => move(index, 1)}><UiIcon name="arrowDown" /></button><button type="button" className="icon-btn" aria-label={text('删除', 'Remove')} onClick={() => replace(values.filter((_, i) => i !== index))}><UiIcon name="trash" /></button></div>
       </div>;
@@ -468,7 +480,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
 
     {(base.expected_draft_revision !== null || plan) && <div className="editor-actions editor-footer">{base.expected_draft_revision !== null && <button className="btn" type="button" onClick={() => void act('discard_draft')}>{text('丢弃草稿', 'Discard draft')}</button>}{plan && <Disclosure className="native-details" label={text('更多操作', 'More actions')} language={language}><button className="btn" type="button" onClick={() => void act(plan.head.status === 'disabled' ? 'enable' : 'disable')}>{plan.head.status === 'disabled' ? text('恢复调用', 'Enable') : text('停用路由', 'Disable')}</button><button className="btn btn-danger" type="button" onClick={() => void act('delete')}>{text('删除路由', 'Delete')}</button></Disclosure>}</div>}
     </div>
-    {plan && <section className="editor-section quality-performance-panel" hidden={view !== 'performance'} role="tabpanel" aria-label={text('模型表现', 'Model performance')}><PlanQuality planId={plan.agent_plan_id} planRevision={plan.agent_plan_revision} currentModels={activePlanQualityModels(plan, options?.candidates ?? [])} language={language} active={active && view === 'performance'} refreshVersion={refreshVersion} onOpenEvidence={onOpenSession} onOpenAgent={onOpenAgent} onDivision={onCreateDraft ? setDivisionBranch : undefined} onThreshold={(branch, threshold) => {
+    {plan && <section className="editor-section quality-performance-panel" hidden={view !== 'performance'} role="tabpanel" aria-label={text('模型表现', 'Model performance')}><PlanQuality planId={plan.agent_plan_id} planRevision={plan.agent_plan_revision} currentModels={activePlanQualityModels(plan, options?.candidates ?? [])} language={language} active={active && view === 'performance'} refreshVersion={refreshVersion} onOpenEvidence={onOpenSession} onOpenAgent={onOpenAgent} onDivision={onCreateDraft ? setDivisionBranch : undefined} divisionBranches={divisionBranches} onThreshold={(branch, threshold) => {
       if (editor.mode === 'smart_saving' && branch === 'smart_saving') update({ smart: { ...editor.smart, judgment: { ...editor.smart.judgment, degree: { ...editor.smart.judgment.degree, simple_threshold_millis: threshold } } } });
       else if (editor.branch_routing) update({ branch_routing: { ...editor.branch_routing, branches: editor.branch_routing.branches.map(item => {
         if (item.id !== branch) return item;

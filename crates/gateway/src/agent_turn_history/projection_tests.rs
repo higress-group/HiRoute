@@ -22,8 +22,9 @@ fn long_history_projects_only_latest_real_user_without_losing_boundaries_or_tool
     replay.release_stream(&old).unwrap();
     let analyzed = analyze_request(&request, &replay).unwrap();
     assert_eq!(analyzed.message_count, 2_004);
-    assert_eq!(analyzed.user_count, 2_001);
-    let latest = analyzed.latest_turn.unwrap();
+    assert_eq!(analyzed.turns.len(), 2_001);
+    let latest = analyzed.turns.last().unwrap();
+    assert!(analyzed.turns[..2_000].iter().all(|turn| turn.user.is_empty()));
     assert_eq!(latest.user_index, 2_000);
     assert_eq!(
         latest.user,
@@ -60,9 +61,9 @@ fn image_user_input_and_tool_only_messages_keep_existing_user_definition() {
         &replay,
     )
     .unwrap();
-    assert_eq!(analyzed.user_count, 1);
+    assert_eq!(analyzed.turns.len(), 1);
     assert_eq!(
-        analyzed.latest_turn.unwrap().user,
+        analyzed.turns.last().unwrap().user,
         vec![
             VisibleContentPart::Text {
                 text: "current".into()
@@ -73,6 +74,6 @@ fn image_user_input_and_tool_only_messages_keep_existing_user_definition() {
         ]
     );
     let analyzed = analyze_request(&request(vec![tool_result("only", false)]), &replay).unwrap();
-    assert_eq!(analyzed.user_count, 0);
-    assert!(analyzed.latest_turn.is_none());
+    assert_eq!(analyzed.turns.len(), 0);
+    assert!(analyzed.turns.is_empty());
 }

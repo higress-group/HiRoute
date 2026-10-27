@@ -6,15 +6,13 @@ import { Dialog, Disclosure, ProductPage, UiIcon } from '../../ui';
 import { requestEditorReplacement } from '../../ui/discard-guard';
 import { type Editor, type Options, type Plan, type Selection } from '../../plan-editor';
 import type { DesktopOperation, DesktopSnapshot } from '../../product/home-projections';
-import { ModelManagementPage } from '../../product/ModelManagementPage';
 import type { ManagementSnapshot } from '../models/types';
 import type { OperationReference } from '../model-connections/types';
 import type { AvailableModel, ModelAvailabilityResult } from '../model-feed/types';
-import type { AgentSnapshot } from '../agents/types';
 import { agentDisplayName } from '../agents/ecosystems';
 import { DecisionSelector } from '../decision-services/DecisionSelector';
 import { DecisionServicesPage } from '../decision-services/DecisionServicesPage';
-import { emptyService, type Classifier, type DecisionService } from '../decision-services/types';
+import { emptyService, isCustomExtension, type Classifier, type DecisionService } from '../decision-services/types';
 import type { DecisionIntent, OpenDecisionConnection } from '../decision-services/presentation';
 import { trustLevels } from '../trust/levels';
 import { agentEcosystem } from '../agents/ecosystems';
@@ -26,6 +24,9 @@ import { FeedDisclosure } from '../model-feed/FeedDisclosure';
 import { factTags, originLabel, publisherName, rollingIdentity, shortDate } from '../model-feed/presentation';
 import './trial.css';
 import { protectionExplanation } from '../trust/protection-copy';
+import { agentEditorSeed } from '../agents/editor-state';
+import { useTrialAgents } from './useTrialAgents';
+import { ModelManagementPage } from '../../product/ModelManagementPage';
 import { modelAnnouncements } from '../model-feed/announcements';
 
 export function TrialQuickStart({ initialModelId, initialBindingId, language, mutable, snapshot, operation, onOperation, onRefresh, onClose, onOpenAgent, onOpenPerformance, onOpenSessions }: {
@@ -34,13 +35,15 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   onOperation(operation: DesktopOperation | null): void; onRefresh(): Promise<void>; onClose(): void; onOpenAgent(id: string): void;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
-  const [data, setData] = useState<{ availability: ModelAvailabilityResult; options: Options; management: ManagementSnapshot; agents: AgentSnapshot } | null>(null);
+  const [data, setData] = useState<{ availability: ModelAvailabilityResult; options: Options; management: ManagementSnapshot } | null>(null);
   const [trialId, setTrialId] = useState(initialModelId ?? '');
   const [primaryId, setPrimaryId] = useState('');
   const [primarySelection, setPrimarySelection] = useState<Selection>();
   const [trialBinding, setTrialBinding] = useState(''), [primaryBinding, setPrimaryBinding] = useState('');
   const [mapping, setMapping] = useState<TrialMapping>({ agentId: '', presets: ['opus'] });
+  const agentRead = useTrialAgents(mapping.agentId);
   const [classifier, setClassifier] = useState<Classifier>(() => ({ kind: 'decision_service', service: emptyService() }));
+  const custom = isCustomExtension(classifier);
   const [services, setServices] = useState<DecisionService[]>([]);
   const [connect, setConnect] = useState<AvailableModel | null>(null), [subscriptions, setSubscriptions] = useState(false);
   const [decision, setDecision] = useState<DecisionIntent | null>(null);
@@ -48,39 +51,54 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const [savedConnections, setSavedConnections] = useState<string[]>([]);
   const [persistencePending, setPersistencePending] = useState(false);
   const [review, setReview] = useState<Editor | null>(null), [published, setPublished] = useState<Plan | null>(null);
-  const [loading, setLoading] = useState(true), [error, setError] = useState('');
+  const [catalogLoading, setLoading] = useState(true), [error, setError] = useState('');
+  const loading = catalogLoading || !agentRead.ready;
   const [name, setName] = useState<string | null>(null);
   const [choosingPrimary, setChoosingPrimary] = useState(false), [allPrimary, setAllPrimary] = useState(false);
   const [mapped, setMapped] = useState(false);
   const initialized = useRef(false);
   const inFlight = useRef(false);
   const [alias] = useState(() => `trial-${randomId().replaceAll('-', '').slice(0, 16)}`);
-  async function refresh() {
+  async function refresh(rediscover = false) {
     if (inFlight.current) return;
     inFlight.current = true; setLoading(true); setError('');
     try {
-      const [availability, options, management, agents, decisions] = await readCurrentCatalog(() => Promise.all([
+      if (rediscover) void agentRead.refresh(true);
+      const [availability, options, management, decisions] = await readCurrentCatalog(() => Promise.all([
         invoke<ModelAvailabilityResult>('model_availability'),
         invoke<Options>('plan_editor_options', { input: { authoring: {}, requirements: {}, native_selections: {}, suggest_free: false } }),
-        invoke<ManagementSnapshot>('compute_management_snapshot'), invoke<AgentSnapshot>('agent_snapshot'),
+        invoke<ManagementSnapshot>('compute_management_snapshot'),
         invoke<{ services: DecisionService[] }>('decision_services'),
       ]));
-      setData({ availability, options, management, agents }); setServices(decisions.services);
+      setData({ availability, options, management }); setServices(decisions.services);
       if (!initialized.current) {
         initialized.current = true;
         const requested = options.candidates.find(c => c.binding_id === initialBindingId && c.routable);
         if (requested) { setTrialId(requested.model_configuration_id); setTrialBinding(requested.binding_id); }
-        const target = initialTrialMapping(agents); setMapping(target);
-        const current = currentPrimary(agents.agents.find(a => a.agent_id === target.agentId), agents.plans.plans);
-        const candidate = options.candidates.find(c => c.binding_id === current?.binding_id && c.routable);
-        if (candidate) { setPrimaryId(candidate.model_configuration_id); setPrimaryBinding(candidate.binding_id); setPrimarySelection(current); }
         if (decisions.services.length === 1) setClassifier({ kind: 'decision_service', service: decisions.services[0] });
       }
-      return { availability, options, management, agents };
+      return { availability, options, management };
     } catch { setError(t('试用所需信息暂时无法读取。请重试，已完成的配置仍保留。', 'Trial setup information could not be read. Retry; completed configuration is retained.')); }
     finally { inFlight.current = false; setLoading(false); }
   }
   useEffect(() => { void refresh(); }, []);
+  const mappingInitialized = useRef(false);
+  const primaryInitialized = useRef(false);
+  useEffect(() => {
+    const agents = agentRead.snapshot;
+    if (!data || !agentRead.ready || !agents) return;
+    // Choosing Primary while details load must not suppress the default Agent;
+    // choosing an Agent explicitly must not be undone by a late default read.
+    if (!mappingInitialized.current) {
+      mappingInitialized.current = true;
+      setMapping(value => value.agentId ? value : initialTrialMapping(agents));
+    }
+    if (primaryInitialized.current) return;
+    primaryInitialized.current = true;
+    const current = currentPrimary(agents.selected ?? undefined, agents.plans.plans);
+    const candidate = data.options.candidates.find(c => c.binding_id === current?.binding_id && c.routable);
+    if (candidate) { setPrimaryId(candidate.model_configuration_id); setPrimaryBinding(candidate.binding_id); setPrimarySelection(current); }
+  }, [data, agentRead.ready, agentRead.snapshot]);
   const openDecision: OpenDecisionConnection = (kind, select) => { decisionSelect.current = select; setDecision({ key: randomId(), kind }); };
   const operationRef = (value: OperationReference) => onOperation({ ...value, safe_error_code: null });
   type TrialModel = Pick<AvailableModel, 'model_configuration_id' | 'display_name' | 'identity_stability' | 'availability'> & { catalog?: AvailableModel };
@@ -93,7 +111,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const trialCandidates = candidates(trialId), primaryCandidates = candidates(primaryId);
   const selectedTrial = trialCandidates.find(c => c.binding_id === trialBinding) ?? (trialCandidates.length === 1 ? trialCandidates[0] : undefined);
   const selectedPrimary = primaryCandidates.find(c => c.binding_id === primaryBinding) ?? (primaryCandidates.length === 1 ? primaryCandidates[0] : undefined);
-  const ready = !!data?.options.authoring && !!selectedTrial && !!selectedPrimary && trialId !== primaryId && classifier.kind === 'decision_service' && !!classifier.service.name && !!mapping.agentId && mapping.presets.length > 0 && !loading && !error;
+  const ready = !!data?.options.authoring && !!selectedTrial && !!selectedPrimary && trialId !== primaryId && classifier.kind === 'decision_service' && !!classifier.service.name && !!mapping.agentId && !!agentRead.snapshot?.selected && agentEditorSeed(agentRead.snapshot.selected, 'model', []).known && agentRead.snapshot.trusted_authority && (agentEcosystem(mapping.agentId) !== 'claude' || mapping.presets.length > 0) && !loading && !error;
   // The inline connection form owns protected input; its guard confirms, then releases and closes it.
   const releaseConnection = async () => !connect || await requestEditorReplacement('models');
   const leave = () => void (async () => { if (persistencePending || (await releaseConnection() && await requestEditorReplacement('routing'))) onClose(); })();
@@ -105,7 +123,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const others = models.filter(m => !cards.includes(m));
   const primaryOptions = models.filter(m => m.model_configuration_id !== trialId && candidates(m.model_configuration_id).length > 0);
   const source = (binding?: string) => data?.management.sources.find(s => s.models.some(m => m.binding_id === binding))?.display_name;
-  const mappedAgent = data?.agents.agents.find(a => a.agent_id === mapping.agentId);
+  const mappedAgent = agentRead.snapshot?.selected;
   const floor = (review?.smart.judgment.competence.floor_millis ?? data?.options.authoring?.editor.smart.judgment.competence.floor_millis ?? 500) / 1000;
   const missing = loading ? '' : !trialId ? t('先选择要试用的模型', 'Choose a model to try')
     : !selectedTrial ? trial?.availability.kind === 'needs_newer_client' ? t('这个模型需要更新 HiRoute', 'This model needs a newer HiRoute') : trialCandidates.length > 1 ? t('选择试用模型使用的接入', 'Choose the connection for the trial model') : t(`先接入 ${trial?.display_name ?? ''}`, `Connect ${trial?.display_name ?? ''} first`)
@@ -122,7 +140,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     const available = role === 'trial' ? trialCandidates : primaryCandidates;
     const selected = role === 'trial' ? selectedTrial : selectedPrimary;
     if (available.length < 2) return null;
-    return <label className="field trial-connection-field"><span className="field-label">{t('使用的接入', 'Connection')}</span><select className="input" value={selected?.binding_id ?? ''} onChange={e => role === 'trial' ? setTrialBinding(e.target.value) : (setPrimaryBinding(e.target.value), setPrimarySelection(undefined))}><option value="">{t('请选择', 'Select')}</option>{available.map(c => <option key={c.binding_id} value={c.binding_id}>{source(c.binding_id) ?? c.display_name} · {c.billing_class}</option>)}</select></label>;
+    return <label className="field trial-connection-field"><span className="field-label">{t('使用的接入', 'Connection')}</span><select className="input" value={selected?.binding_id ?? ''} onChange={e => role === 'trial' ? setTrialBinding(e.target.value) : (primaryInitialized.current = true, setPrimaryBinding(e.target.value), setPrimarySelection(undefined))}><option value="">{t('请选择', 'Select')}</option>{available.map(c => <option key={c.binding_id} value={c.binding_id}>{source(c.binding_id) ?? c.display_name} · {c.billing_class}</option>)}</select></label>;
   }
   const chooseTrial = (id: string) => void (async () => {
     if (id === trialId || !(await releaseConnection())) return;
@@ -130,7 +148,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   })();
   const step = mapped ? 4 : published ? 3 : review ? 2 : 1;
   const steps = [t('选择模型', 'Choose models'), t('核对并发布', 'Review and publish'), t('映射 Agent', 'Map the Agent'), t('开始使用', 'Start using it')];
-  const setup = data && <fieldset disabled={loading || !mutable} className="trial-setup">
+  const setup = data && <fieldset disabled={catalogLoading || !mutable} className="trial-setup">
     <section className="trial-card">
       <div className="trial-card-head"><h3>{t('要试用的模型', 'Model to try')}</h3>{featured.length > 0 && <span>{t('来自 hiroute.ai 模型目录和内置目录', 'From the hiroute.ai model directory and the built-in catalog')}</span>}</div>
       <div className="trial-model-grid" role="group" aria-label={t('要试用的模型', 'Model to try')}>{cards.map(model => { const state = cardState(model); const facts = model.catalog?.facts ?? null; return <button type="button" key={model.model_configuration_id} className={`trial-model-card${trialId === model.model_configuration_id ? ' selected' : ''}`} aria-pressed={trialId === model.model_configuration_id} disabled={model.availability.kind === 'needs_newer_client'} onClick={() => chooseTrial(model.model_configuration_id)}>
@@ -149,60 +167,60 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       {trial?.catalog && !trialCandidates.length && trial.availability.kind !== 'needs_newer_client' && data && (connect?.model_configuration_id === trial.model_configuration_id
         ? <div className="trial-connect-card"><TrialConnectModel key={connect.model_configuration_id} model={connect} language={language} management={data.management} mutable={mutable} onOperation={operationRef} onBack={() => { setConnect(null); void refresh(); }} onSaved={(_result, model) => { setSavedConnections(values => [...new Set([...values, model.display_name])]); setConnect(null); void refresh(); void onRefresh(); }} /></div>
         : <div className="trial-connect-card"><div><strong>{t(`先接入 ${trial.display_name}`, `Connect ${trial.display_name} first`)}</strong><p className="field-help">{t('只读取这个服务的模型目录，不会发起付费推理。API Key 保存在本机。', 'Only the service model list is read; no paid inference runs. The API key stays on this device.')}</p></div><button type="button" className="btn btn-primary" onClick={() => setConnect(trial.catalog!)}>{t('在此接入', 'Connect here')}</button></div>)}
-      <div className="callout trial-rule"><UiIcon name="info" /><span>{t('新模型先放进常规组。', 'The new model starts in Regular. ')}{protectionExplanation(classifier, language)}{t('主力拿到低分不会再回退。熟悉之后，可以用分工把难的任务交给新模型。', ' Primary does not fall back after a low score. Once you know the new model, divide work to give it harder tasks.')}</span></div>
+      <div className="callout trial-rule"><UiIcon name="info" /><span>{t('新模型先放进常规组。', 'The new model starts in Regular. ')}{protectionExplanation(classifier, language)}{!custom && t('主力拿到低分不会再回退。熟悉之后，可以用分工把难的任务交给新模型。', ' Primary does not fall back after a low score. Once you know the new model, divide work to give it harder tasks.')}</span></div>
     </section>
     <section className="trial-card trial-card-pair">
       <div className="trial-column">
         <h3>{t('主力模型', 'Primary model')}</h3>
         {selectedPrimary && primary && !choosingPrimary ? <button type="button" className="trial-choice selected" aria-expanded={false} onClick={() => setChoosingPrimary(true)}><strong>{primary.display_name}</strong><span>{[source(selectedPrimary.binding_id), primarySelection && mappedAgent ? t(`来自 ${agentDisplayName(mappedAgent.agent_id, language)} 现在使用的模型`, `What ${agentDisplayName(mappedAgent.agent_id, language)} uses now`) : ''].filter(Boolean).join(' · ')}</span><em>{t('更换', 'Change')}</em></button>
-          : <div className="trial-choice-list" role="group" aria-label={t('主力模型', 'Primary model')}>{(allPrimary ? primaryOptions : primaryOptions.slice(0, 4)).map(model => <button type="button" key={model.model_configuration_id} className={`trial-choice${primaryId === model.model_configuration_id ? ' selected' : ''}`} aria-pressed={primaryId === model.model_configuration_id} onClick={() => { setPrimaryId(model.model_configuration_id); setPrimaryBinding(''); setPrimarySelection(undefined); setChoosingPrimary(false); }}><strong>{model.display_name}</strong><span>{[...new Set(candidates(model.model_configuration_id).map(c => source(c.binding_id)).filter(Boolean))].join(' · ')}</span></button>)}{!allPrimary && primaryOptions.length > 4 && <button type="button" className="btn btn-quiet trial-inline-action" onClick={() => setAllPrimary(true)}>{t(`显示全部 ${primaryOptions.length} 个已连接模型`, `Show all ${primaryOptions.length} connected models`)}</button>}{!primaryOptions.length && <p className="field-help">{t('还没有其他已连接的模型。', 'No other connected model yet.')}</p>}</div>}
+          : <div className="trial-choice-list" role="group" aria-label={t('主力模型', 'Primary model')}>{(allPrimary ? primaryOptions : primaryOptions.slice(0, 4)).map(model => <button type="button" key={model.model_configuration_id} className={`trial-choice${primaryId === model.model_configuration_id ? ' selected' : ''}`} aria-pressed={primaryId === model.model_configuration_id} onClick={() => { primaryInitialized.current = true; setPrimaryId(model.model_configuration_id); setPrimaryBinding(''); setPrimarySelection(undefined); setChoosingPrimary(false); }}><strong>{model.display_name}</strong><span>{[...new Set(candidates(model.model_configuration_id).map(c => source(c.binding_id)).filter(Boolean))].join(' · ')}</span></button>)}{!allPrimary && primaryOptions.length > 4 && <button type="button" className="btn btn-quiet trial-inline-action" onClick={() => setAllPrimary(true)}>{t(`显示全部 ${primaryOptions.length} 个已连接模型`, `Show all ${primaryOptions.length} connected models`)}</button>}{!primaryOptions.length && <p className="field-help">{t('还没有其他已连接的模型。', 'No other connected model yet.')}</p>}</div>}
         {connectionPicker('primary')}
-        <p className="field-help">{t('负责复杂任务和需要保护的轮次。仅在已保存配置明确指向单个模型时，才自动填入当前主力。', 'It takes complex tasks and turns that need protection. It is prefilled only when saved settings identify a single model.')}</p>
+        <p className="field-help">{custom ? t('扩展选择主力组时使用此模型。仅在已保存配置明确指向单个模型时，才自动填入当前主力。', 'This model is used when the extension selects Primary. It is prefilled only when saved settings identify a single model.') : t('负责复杂任务和需要保护的轮次。仅在已保存配置明确指向单个模型时，才自动填入当前主力。', 'It takes complex tasks and turns that need protection. It is prefilled only when saved settings identify a single model.')}</p>
         <button type="button" className="btn btn-quiet trial-inline-action" onClick={() => setSubscriptions(true)}>{t('复用本机订阅', 'Reuse a local subscription')}</button>
       </div>
       <div className="trial-column trial-decision">
         <DecisionSelector classifier={classifier} smart allowHeuristic={false} services={services} language={language} onChange={setClassifier} onOpenServices={openDecision} />
-        <p className="field-help">{t('试用需要给每个阶段打胜任分，所以不提供启发式规则。', 'A trial needs a competence score for every stage, so heuristic rules are not offered.')}</p>
+        <p className="field-help">{custom ? t('扩展直接选择执行组，可以提供仅用于观察的评分。', 'The extension selects the execution group directly and may provide scores for observation.') : t('试用需要给每个阶段打胜任分，所以不提供启发式规则。', 'A trial needs a competence score for every stage, so heuristic rules are not offered.')}</p>
       </div>
     </section>
     <section className="trial-card trial-card-pair">
-      <div className="trial-column"><h3>{t('接入的 Agent', 'Agent')}</h3><TrialAgentChoice snapshot={data.agents} value={mapping} onChange={setMapping} language={language} /></div>
+      <div className="trial-column"><h3>{t('接入的 Agent', 'Agent')}</h3>{agentRead.snapshot && <TrialAgentChoice snapshot={agentRead.snapshot} value={mapping} onChange={value => { mappingInitialized.current = true; if (value.agentId !== mapping.agentId) setPrimarySelection(undefined); setMapping(value); }} language={language} loading={agentRead.loading} onRetry={() => void agentRead.refresh()} />}{agentRead.error && !mapping.agentId && <p role="alert">{t('Agent 配置暂时无法读取，请重试。', 'Agent settings could not be read. Retry.')}<button className="btn btn-quiet" onClick={() => void agentRead.refresh(true)}>{t('重试', 'Retry')}</button></p>}</div>
       <div className="trial-column">
-        <h3>{t('名称与起始信任度', 'Name and starting trust')}</h3>
+        <h3>{custom ? t('路由名称', 'Route name') : t('名称与起始信任度', 'Name and starting trust')}</h3>
         <label className="field"><span className="field-label">{t('路由名称', 'Route name')}</span><input className="input" value={name ?? defaultName} placeholder={t('选好模型后自动填写', 'Filled in after choosing models')} maxLength={80} onChange={e => setName(e.target.value)} /></label>
-        <p className="trial-level"><span className="badge no-dot cyan">{trustLevels[0].label[language]}</span>{t(`简单概率 ≥ ${(trustLevels[0].threshold_millis / 1000).toFixed(2)} · 安全网 ${floor}`, `P(simple) ≥ ${(trustLevels[0].threshold_millis / 1000).toFixed(2)} · safety net ${floor}`)}</p>
+        {!custom && <><p className="trial-level"><span className="badge no-dot cyan">{trustLevels[0].label[language]}</span>{t(`简单概率 ≥ ${(trustLevels[0].threshold_millis / 1000).toFixed(2)} · 安全网 ${floor}`, `P(simple) ≥ ${(trustLevels[0].threshold_millis / 1000).toFixed(2)} · safety net ${floor}`)}</p>
         <p className="field-help">{t('评分完整的阶段、评分覆盖和会话分布会影响升档建议；保持这一档也是正常结果。', 'Fully scored stages, scoring coverage and session spread inform suggestions to step up. Staying at this level is a normal outcome.')}</p>
-        <Disclosure className="trial-criteria" label={t('胜任评分标准', 'Competence criteria')} language={language}><p>{criteria}</p><p className="field-help">{t('下一步核对时可以修改。', 'You can edit it in the next step.')}</p></Disclosure>
+        <Disclosure className="trial-criteria" label={t('胜任评分标准', 'Competence criteria')} language={language}><p>{criteria}</p><p className="field-help">{t('下一步核对时可以修改。', 'You can edit it in the next step.')}</p></Disclosure></>}
       </div>
     </section>
     <div className="trial-footer">
       <span className="trial-footer-hint" role="status">{missing}</span>
-      <button type="button" className="btn btn-quiet" onClick={() => void refresh()}>{t('刷新可用状态', 'Refresh availability')}</button>
+      <button type="button" className="btn btn-quiet" onClick={() => void refresh(true)}>{t('刷新可用状态', 'Refresh availability')}</button>
       <button type="button" className="btn" onClick={leave}>{t('取消', 'Cancel')}</button>
       <button type="button" className="btn btn-primary" disabled={!ready} onClick={() => {
         if (!ready || !selectedTrial || !selectedPrimary || classifier.kind !== 'decision_service') return;
         if (!data?.options.authoring) return;
         const editor = structuredClone(data.options.authoring.editor); editor.mode = 'smart_saving'; editor.custom_alias = alias;
         editor.display_name = (name ?? defaultName).trim() || defaultName;
-        editor.purpose = t('在主力保护下试用新模型，根据自己的任务证据调整路由。', 'Try a new model with Primary protection and adjust routing using evidence from your own tasks.');
+        editor.purpose = custom ? t('由自定义扩展选择执行组，观察新模型在自己任务中的表现。', 'Let the custom extension choose the execution group and observe the new model on your own tasks.') : t('在主力保护下试用新模型，根据自己的任务证据调整路由。', 'Try a new model with Primary protection and adjust routing using evidence from your own tasks.');
         editor.smart.economy = [trialSelection(selectedTrial)]; editor.smart.primary = [primarySelection?.binding_id === selectedPrimary.binding_id ? primarySelection : trialSelection(selectedPrimary)];
-        editor.smart.judgment.competence.criteria[0] = criteria;
-        editor.smart.classifier = structuredClone(classifier); editor.smart.judgment.degree.simple_threshold_millis = trustLevels[0].threshold_millis;
+        editor.smart.classifier = structuredClone(classifier);
+        if (!custom) { editor.smart.judgment.competence.criteria[0] = criteria; editor.smart.judgment.degree.simple_threshold_millis = trustLevels[0].threshold_millis; }
         setReview(editor);
       }}>{t('检查改动', 'Review changes')}</button>
     </div>
   </fieldset>;
-  return <ProductPage className="trial-page" title={t('试用新模型', 'Try a new model')} subtitle={t('新模型先上，主力兜底。发布前会列出全部改动。', 'The new model goes first and Primary catches what it misses. Every change is listed before publishing.')} actions={<button type="button" className="btn btn-quiet" onClick={leave}><UiIcon name="arrowLeft" />{t('返回', 'Back')}</button>}>
+  return <ProductPage className="trial-page" title={t('试用新模型', 'Try a new model')} subtitle={custom ? t('由自定义扩展选择执行组。发布前会列出全部改动。', 'Your custom extension chooses the execution group. Every change is listed before publishing.') : t('新模型先上，主力兜底。发布前会列出全部改动。', 'The new model goes first and Primary catches what it misses. Every change is listed before publishing.')} actions={<button type="button" className="btn btn-quiet" onClick={leave}><UiIcon name="arrowLeft" />{t('返回', 'Back')}</button>}>
     <div className="trial-wizard">
       <ol className="trial-steps" aria-label={t('试用步骤', 'Trial steps')}>{steps.map((label, i) => <li key={label} className={i + 1 < step ? 'done' : i + 1 === step ? 'current' : undefined} aria-current={i + 1 === step ? 'step' : undefined}><span>{i + 1}</span>{label}</li>)}</ol>
       {data?.availability.models.some(model => model.origin.kind === 'feed') && <FeedDisclosure language={language} mutable={mutable} />}
       {error && <div className="callout warn" role="alert"><p>{error}</p><button className="btn" onClick={() => void refresh()}>{t('重试', 'Retry')}</button></div>}
       {savedConnections.length > 0 && <p className="trial-saved" role="status">{t('本次已保存接入：', 'Connections saved in this flow: ')}{savedConnections.join(' · ')}</p>}
-      {published ? <section className="trial-card"><TrialAgentMapping onConfirmed={() => setMapped(true)} onOpenPerformance={() => onOpenPerformance?.(published)} onOpenSessions={onOpenSessions} plan={published} initial={mapping} language={language} mutable={mutable} onOperation={operationRef} onChanged={() => void onRefresh()} onOpenAgent={onOpenAgent} /></section>
+      {published ? <section className="trial-card"><TrialAgentMapping onConfirmed={() => setMapped(true)} onOpenPerformance={() => onOpenPerformance?.(published)} onOpenSessions={onOpenSessions} plan={published} initial={mapping} initialChoices={agentRead.snapshot} language={language} mutable={mutable} onOperation={operationRef} onChanged={() => void onRefresh()} onOpenAgent={onOpenAgent} /></section>
         : review ? <section className="trial-card trial-review-card"><div className="trial-card-head"><h3>{t('核对改动', 'Review changes')}</h3><span>{t('将映射', 'Mapping to review')}: {agentDisplayName(mapping.agentId, language)}{agentEcosystem(mapping.agentId) === 'claude' ? ` · ${mapping.presets.join(', ')}` : ''}</span></div><TrialReview editor={review} language={language} mutable={mutable} snapshot={snapshot} operation={operation} onOperation={onOperation} onRefresh={onRefresh} onPublished={setPublished} onPendingChange={setPersistencePending} onClose={onClose} onOpenServices={openDecision} /></section>
         : setup || (!error && <p role="status">{t('正在读取配置…', 'Reading configuration…')}</p>)}
     </div>
     {decision && <Dialog open title={t('接入决策连接', 'Connect a decision service')} closeLabel={t('返回试用', 'Back to trial')} onClose={() => void (async () => { if (await requestEditorReplacement('decisions')) setDecision(null); })()} className="trial-dialog"><DecisionServicesPage language={language} active mutable={mutable} intent={decision} plans={snapshot?.catalog.plans} drafts={snapshot?.catalog.drafts} onChanged={() => void refresh()} onReturn={() => setDecision(null)} onUse={service => { decisionSelect.current?.(service); setDecision(null); void refresh(); }} /></Dialog>}
-    {subscriptions && <Dialog open title={t('复用本机订阅', 'Reuse a local subscription')} closeLabel={t('返回试用', 'Back to trial')} onClose={() => void (async () => { if (await requestEditorReplacement('models')) { setSubscriptions(false); void refresh(); } })()} className="trial-dialog"><ModelManagementPage language={language} active trustedAuthority={mutable} startScanning onOperation={operationRef} onRecoveryRefresh={() => void refresh()} onChanged={() => { void refresh(); void onRefresh(); }} plans={snapshot?.catalog.plans} agents={data?.agents.agents} /></Dialog>}
+    {subscriptions && <Dialog open title={t('复用本机订阅', 'Reuse a local subscription')} closeLabel={t('返回试用', 'Back to trial')} onClose={() => void (async () => { if (await requestEditorReplacement('models')) { setSubscriptions(false); void refresh(); } })()} className="trial-dialog"><ModelManagementPage agents={agentRead.snapshot?.choices} language={language} active trustedAuthority={mutable} startScanning onOperation={operationRef} onRecoveryRefresh={() => void refresh()} onChanged={() => { void refresh(); void onRefresh(); }} plans={snapshot?.catalog.plans} /></Dialog>}
   </ProductPage>;
 }

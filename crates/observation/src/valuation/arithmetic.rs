@@ -1,5 +1,5 @@
 use super::*;
-use hiroute_domain::{FrozenPriceQuoteV1, TokenRateV1};
+use hiroute_domain::{ExecutionPricingEvidenceV1, FrozenPriceQuoteV1, TokenRateV1};
 
 pub fn value_attempt(
     quote: &FrozenPriceQuoteV1,
@@ -30,6 +30,29 @@ pub fn value_attempt(
         coverage: amount.coverage,
         components,
     })
+}
+
+/// Value the recorded attempt using only its frozen quote and reported usage.
+/// Equal-rate buckets can establish an amount even when their individual token
+/// counts are unknown. Preserve the original component evidence in the result.
+pub(crate) fn value_recorded_attempt(
+    pricing: &ExecutionPricingEvidenceV1,
+    raw: &RawUsage,
+) -> Result<AttemptValuationV2, ValuationError> {
+    let quote = pricing
+        .quote
+        .as_ref()
+        .ok_or(ValuationError::InvalidEvidence)?;
+    let observed = worker::normalize(pricing, raw);
+    let mut result = value_attempt(quote, &observed)?;
+    let combined = reference_usage(pricing, raw, quote);
+    if combined != observed {
+        let amount = amount_only(quote, &combined);
+        result.algorithm = EQUAL_RATE_VALUATION_ALGORITHM.into();
+        result.known_sum_micros = amount.known_sum_micros;
+        result.coverage = amount.coverage;
+    }
+    Ok(result)
 }
 
 pub(crate) fn validate_quote(quote: &FrozenPriceQuoteV1) -> Result<(), ValuationError> {

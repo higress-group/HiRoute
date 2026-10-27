@@ -1,4 +1,5 @@
 //! Preserve native payloads; only routing and configured controls belong to us.
+use super::super::FunctionEncodingProjection;
 use super::*;
 
 pub(super) fn controls(
@@ -31,7 +32,26 @@ pub(super) fn project(
     profile: &CandidateProtocolProfile,
     canonical: Value,
     omit_prefix: Option<usize>,
-) -> Result<Value, ProtocolAdapterError> {
+) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
+    // Ingress classifies this carrier before Replay externalization. Use the
+    // retained canonical range, not presence or shifted indexes in a native tree.
+    if super::super::responses_dialect::standard_json(profile)
+        && request
+            .messages
+            .iter()
+            .enumerate()
+            .skip(omit_prefix.unwrap_or(0))
+            .any(|(index, message)| {
+                request.responses_reasoning_history.get(&index).is_some_and(|history| {
+                    history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque
+                }) || message.content.iter().any(|part| {
+                    // Legacy canonical callers may have no reasoning sidecar.
+                    matches!(part, ContentPart::ProviderState { state } if state.kind == "encrypted_content")
+                })
+            })
+    {
+        return Err(ModelIrError::ProviderStateNotPortable.into());
+    }
     if request.ingress_protocol != profile.capability.upstream_protocol {
         if request.native_only {
             return Err(ProtocolAdapterError::ClientUnrepresentable(
@@ -39,15 +59,34 @@ pub(super) fn project(
             ));
         }
         let mut canonical = canonical;
+        let negotiated = if request.ingress_protocol == IngressProtocol::Responses {
+            super::super::responses_dialect::project_portable_tools(
+                &mut canonical,
+                profile.capability.upstream_protocol,
+            )?
+        } else {
+            false
+        };
         super::super::structured_output::project_messages_format(
             request,
             profile.capability.upstream_protocol,
             &mut canonical,
         );
-        return Ok(canonical);
+        normalize_codex_replay(&mut canonical, profile, request);
+        return project_dialect(
+            canonical,
+            profile,
+            if negotiated {
+                FunctionEncodingProjection::Plaintext
+            } else {
+                FunctionEncodingProjection::Preserve
+            },
+        );
     }
     let Some(original) = &request.native_body else {
-        return Ok(canonical);
+        let mut canonical = canonical;
+        normalize_codex_replay(&mut canonical, profile, request);
+        return project_dialect(canonical, profile, FunctionEncodingProjection::Preserve);
     };
     let mut body = original.clone();
     let object = body.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
@@ -143,6 +182,9 @@ pub(super) fn project(
         messages.retain(|m| !matches!(m["role"].as_str(), Some("system" | "developer")));
         object.insert("system".into(), Value::Array(system));
     }
+    // Status sidecars use the original canonical indexes. Normalize before
+    // prefix cleanup removes reasoning items and shifts later native positions.
+    normalize_codex_replay(&mut body, profile, request);
     if let Some(end) = omit_prefix {
         if request.native_only {
             return Err(ProtocolAdapterError::ClientUnrepresentable(
@@ -151,7 +193,67 @@ pub(super) fn project(
         }
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
-    Ok(body)
+    project_dialect(body, profile, FunctionEncodingProjection::Preserve)
+}
+
+fn project_dialect(
+    mut body: Value,
+    profile: &CandidateProtocolProfile,
+    mut projection: FunctionEncodingProjection,
+) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
+    if super::super::responses_dialect::standard_json(profile) {
+        projection = super::super::responses_dialect::project_request(&mut body)?;
+    }
+    Ok((body, projection))
+}
+
+/// Codex subscription input rejects the output-only reasoning status, including
+/// explicit null. Omit only completed or null: null carries no completion proof,
+/// and unfinished states are never normalized into completed history. Keep the
+/// original request and every other field; other endpoints retain native status.
+fn normalize_codex_replay(
+    body: &mut Value,
+    profile: &CandidateProtocolProfile,
+    request: &ModelRequestIRV1,
+) {
+    if profile.capability.upstream_protocol != IngressProtocol::Responses
+        || profile.connector.connector_id != "connector.cpa.codex"
+    {
+        return;
+    }
+    let Some(input) = body.get_mut("input").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for (index, item) in input
+        .iter_mut()
+        // Tool declarations do not occupy canonical message positions.
+        .filter(|item| item.get("type").and_then(Value::as_str) != Some("additional_tools"))
+        .enumerate()
+    {
+        // Native leaves may already be Replay refs. Lifecycle admission retains
+        // the bounded status beside the original canonical message; never inspect
+        // a marker string as if it were the original status.
+        let status = if request.ingress_protocol == IngressProtocol::Responses
+            && request.native_body.is_some()
+        {
+            request
+                .responses_item_statuses
+                .get(&index)
+                .map(String::as_str)
+        } else {
+            item.get("status").and_then(Value::as_str)
+        };
+        // JSON null cannot become a Replay marker. Unlike status strings it
+        // remains directly distinguishable from an absent field after backing.
+        let null_status = item.get("status").is_some_and(Value::is_null);
+        if item.get("type").and_then(Value::as_str) == Some("reasoning")
+            && (status == Some("completed") || null_status)
+        {
+            item.as_object_mut()
+                .expect("typed item is an object")
+                .remove("status");
+        }
+    }
 }
 
 fn normalize_messages_thinking(

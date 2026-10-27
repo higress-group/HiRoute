@@ -23,6 +23,35 @@ use records::{
 const AAD_SCHEMA: &str = "hiroute.agent-access-grant-entry/v1";
 const GRANT_ID_RANDOM_BYTES: usize = 16;
 
+impl LocalSecretStore {
+    /// Provenance lookup only: callers still authenticate the exact publication/effect
+    /// join. The latest head may reuse a version created by a different operation;
+    /// consider both bounded owners, rather than replaying every historical ensure.
+    pub fn active_agent_grant_owner_operations(
+        &self,
+        workspace: &hiroute_domain::WorkspaceId,
+    ) -> PortResult<Vec<String>> {
+        let connection = self.connection.borrow();
+        let mut statement = connection
+            .prepare(
+                "SELECT h.owner_operation_id
+            FROM agent_access_grant_heads h JOIN agent_access_grant_versions v
+            ON v.connection_id=h.connection_id AND v.generation=h.active_version_generation
+            WHERE v.owner_scope=?1
+            UNION SELECT v.owner_operation_id
+            FROM agent_access_grant_heads h JOIN agent_access_grant_versions v
+            ON v.connection_id=h.connection_id AND v.generation=h.active_version_generation
+            WHERE v.owner_scope=?1",
+            )
+            .map_err(|_| port(PortErrorCode::Unavailable, "secret.grant.provenance"))?;
+        statement
+            .query_map([workspace.as_str()], |r| r.get::<_, String>(0))
+            .map_err(|_| port(PortErrorCode::Unavailable, "secret.grant.provenance"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| port(PortErrorCode::Corrupt, "secret.grant.provenance"))
+    }
+}
+
 pub(super) fn inspect(
     store: &LocalSecretStore,
     owner_scope: &str,

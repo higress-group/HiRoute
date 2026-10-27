@@ -68,7 +68,9 @@ export function deriveHomeServiceStatus(read: HomeRead<HomeService>): {
   operational: boolean;
 } {
   if (read.status !== 'ready') {
-    return { state: read.status === 'error' ? 'unavailable' : 'unknown', operational: false };
+    // A failed page read does not establish that the service stopped. Only an
+    // actual service response may describe it as unavailable.
+    return { state: 'unknown', operational: false };
   }
   const service = read.data;
   const running = service.daemon === 'running'

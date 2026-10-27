@@ -5,6 +5,7 @@ mod fact_regression;
 mod failure_isolation;
 mod incremental_completeness;
 mod plan_quality;
+mod request_purpose;
 mod retention;
 mod retention_matrix;
 mod store_flow;

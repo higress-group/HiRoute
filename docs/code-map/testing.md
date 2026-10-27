@@ -1,5 +1,14 @@
 # Tests as product documentation
 
+Native acceptance uses [isolated scopes](../../scripts/native-agent-scope.py) and
+the [macOS session supervisor](../../scripts/native-agent-supervisor.py). Its live
+anchor preserves ownership after a client exits, and its private lease closes on
+guardian death. Native exit and cleanup outcomes remain separate. It covers the
+anchored session; detached sessions are not an inferred cleanup authority.
+An optional private command pipe dispatches native SIGINT through the live anchor;
+its EOF revokes the session. Dispatch is separate from native Stop acknowledgement
+and Gateway cancellation evidence. Interrupting the guardian requests cleanup only.
+
 [Code map](README.md) · [Desktop scenarios](../../apps/desktop/tests/README.md) ·
 [Agent/Worker scenarios](worker-context.md#representative-scenarios)
 
@@ -81,6 +90,35 @@ happy-path UI journey.
 | Native Desktop / installed Agent / live provider | The selected real integration path and independently observed outcome | Bound to its exact environment, revision and executed scenarios |
 | Frozen compatibility / expected-red / oracle fixture | A historical reader, intended rejection or test oracle | Not current product completion |
 
+Native reasoning replay is covered by the accepted-response
+[boundary regression](../../crates/gateway/src/agent_turn_history/boundary/reasoning_tests.rs),
+the [plaintext content and cancelled-turn recovery cases](../../crates/gateway/src/agent_turn_history/boundary/plaintext_content_tests.rs),
+the [encrypted replay cases](../../crates/gateway/src/agent_turn_history/boundary/encrypted_tests.rs),
+the [unsigned Messages tool-stage cases](../../crates/gateway/src/agent_turn_history/boundary/messages_tests.rs)
+and [current-window turn/continuation cases](../../crates/gateway/src/core_runtime/decision_history/window_event_tests.rs).
+[Stage closure cases](../../crates/gateway/src/agent_turn_history/stage_closure_tests.rs)
+distinguish captured membership, provider outcomes and closure proof; the
+[native retry listener case](../../crates/gateway/src/core_runtime/response_diagnostics_tests/native_retry.rs)
+exercises upstream failure, same-activation retry, subsequent classification,
+model-group switching and assessment membership through the real Gateway;
+[retry boundary cases](../../crates/gateway/src/agent_turn_history/native_retry_tests.rs)
+reject ambiguous siblings, changed input/setup, capture gaps and accepted output. The
+[request JSON observation cases](../../crates/gateway/src/observation/content/request_json_replay_tests.rs)
+verify Replay expansion, integrity and bounded storage without leaking locators.
+The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
+verify that explicit maintenance-purpose evidence excludes a user turn without
+removing the request, while unmarked retained records remain visible. These
+component assertions do not replace the real DSH Web/HiRoute acceptance.
+[Quality snapshot cases](../../crates/observation/src/query_v2/plan_quality_snapshot_tests.rs)
+exercise concurrent production ingestion, deletion fences and strict pagination
+without making ordinary appends invalidate a fresh summary/detail read.
+The [native encrypted listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_encrypted_continuation.rs)
+and [cross-protocol continuation cases](../../tools/e2e-harness/tests/p0_gateway_runtime/cross_protocol_encrypted_continuation.rs)
+exercise accepted-event delivery, repeated tool requests, complete assessment membership
+and retained-content policy through the production Gateway listener. Protocol-owned
+[projection tests](../../crates/gateway/src/adapters/response/client_projection_tests.rs)
+distinguish intentionally omitted content from deferred client output.
+
 Start with the representative cases in the [capability map](README.md). A file
 named `product`, a golden containing `green`, or a zero process exit does not prove
 execution. In `tools/product-e2e`, [transaction recovery](../../tools/product-e2e/tests/transaction_recovery.rs)
@@ -99,17 +137,27 @@ trust root or transport override. The test does not establish live production si
 
 | Need | Reuse / preserve |
 | --- | --- |
+| Prepare bounded control smoke prerequisites | [Control storage preparation](../../tools/product-e2e/src/smoke/control_preparation.rs) runs the same verified daemon on fresh storage before ordinary control/CLI watchdogs; [clock boundary tests](../../tools/product-e2e/src/smoke/control_preparation_tests.rs) cover admission and timing, while [smoke CLI](../../tools/product-e2e/tests/smoke_cli.rs) checks actual initialization and business steps |
+| Diagnose a real Gateway listener assertion | [RuntimeFixture](../../tools/e2e-harness/tests/runtime_support/mod.rs): use the diagnostics-enabled REST-classified variant when boot/request evidence is needed; the Gateway's [test-control feature](../../crates/gateway/Cargo.toml) binds the separate SUT to the shipped daemon's JSON map-order feature. Unexpected panics retain the private fixture root for [failure diagnosis](../diagnostic-troubleshooting.md#gateway-listener-fixture-failures) |
+| Check provider-state cleanup authority | [ContextHold cleanup](../../tools/e2e-harness/tests/p0_gateway_context_hold/cleanup.rs): free-first successful/failed cleanup and bounded prefix reuse; a classified contextual history cannot authorize deleting opaque state, while later accepted execution permits ordinary routing recovery |
 | Prepare a daemon's current sources, grants and plans | [Publication Product](../../crates/daemon/tests/support/publication_product.py): its `Product.cli` is internal Local Control notation, not the standalone CLI; protected input belongs to that fixture's daemon |
 | Save an explicit HTTP model source or correct its target | [Custom HTTP journey](../../crates/daemon/tests/support/custom_http_product.py): real control/save/restart/recheck with synthetic literal/hostname targets and no directory; [connection form browser checks](../../apps/desktop/tests/v3/visual/connection-flow-active.mjs) separately cover plaintext notices, localized errors and retained input |
 | Configure a real native Agent | [Agent product support](../../crates/daemon/tests/support/agent_product_support.py): shared Preview → Apply → status and bounded process capture; native argv/ownership/result interpretation remain in the leaf |
 | Prove saved model configuration | [Additional-model journey](../../crates/daemon/tests/support/additional_model_product.py), [Windows Pi/DSH journey](../../crates/daemon/tests/support/windows_user_models.rs), [Windows Qoder account journey](../../crates/daemon/tests/support/windows_qoder_user_models.rs): ordinary native startup reads saved settings without provider/endpoint/credential overrides; `agent-user-models` and protected `account-qoder-user-models` remain separate from Worker profiles |
+| Prove ordinary plugin activation and optional history | [Native history journey](../../crates/daemon/tests/support/additional_native_history_product.py): Pi/OpenCode auto-discovery, real multi-turn decision history, missing-plugin output, capture gaps, Gateway restart and restored native startup; Worker pure-mode success cannot replace these assertions |
 | Observe native routing and rejected attempts | [NativeContextUpstream](../../crates/daemon/tests/support/native_context_fixture.py): count every model POST, including rejected endpoints/models/credentials; keep the ledger for positive route/history assertions |
 | Prove exact Continue, concurrent routes and cancellation | [Native context](../../crates/daemon/tests/support/native_context_product.py), [boundary journey](../../crates/daemon/tests/support/native_context_boundaries.py), [boundary oracle guide](../../crates/daemon/tests/support/NATIVE_CONTEXT_BOUNDARIES.md) |
 | Prove restoration of old durable state | [Frozen producer fixtures](../../crates/local-storage/src/migrations/fixtures/README.md), [crash-boundary tests](../../crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs): old bytes through the current consumer, not a new serializer pretending to be history |
 | Upgrade connected Agents from a released package | [Released grant upgrade](../../crates/daemon/tests/support/released_grant_upgrade.py): pass the repository and checksum-pinned v0.3.1 Linux archive, with current binaries in `HIROUTE_VALIDATION_PRODUCT_BIN_DIR`; released transactions create both connections, current startup preserves grants/native files, and real requests plus public session queries prove attribution across restart. Native probes and the upstream are bounded fixtures. |
 | Recover interrupted Agent settings before the service receipt | [Publication process](../../crates/daemon/tests/publication_process.rs) runs [Agent recovery](../../crates/daemon/tests/support/publication_agent_recovery.py) at `after_target` and `after_active`; startup completes the journal before Apply replay, authenticated requests acquire the Agent, user native files remain byte-identical, and the recovered managed profile is stable across restart. |
+| Drain before upgrade replacement | [Gateway upgrade journey](../../crates/daemon/tests/support/upgrade_requests.py) pauses admission and observes Status until both call/task counts are zero before replacing the process. [Harness protocol checks](../../scripts/test-upgrade-drain-product.py) retain response-tail, task-tail, deadline and unexpected-resume failures; receiving an HTTP response alone is not a server-side drain acknowledgement. |
+| Keep session reads responsive during discovery, catalog and body reads | [Product-session transport barriers](../../crates/product-session/src/commands/agent_snapshot/tests.rs) prove observation reads and cursor updates proceed before a delayed Agent scan, trial choice/model read, catalog read or body read completes. Live hidden clients may read; revocation during transport rejects publication. Narrow trial reads retain the same replaced Session/epoch, changed revisions/publication/recovery/authority and cancellation checks. The old locked path is a negative control. |
+| Reuse verified Agent history | [History cache regressions](../../crates/local-storage/src/control/agent_history_cache_tests.rs) cover large cold/warm histories, selected-row identity and strict versus best-effort reads. [Snapshot reuse](../../crates/local-storage/src/control/agent_history_epoch_tests.rs) checks local/schema/external invalidation, commits during an established snapshot, rollback/savepoints and failed caller reads. Native response latency remains a separate measurement. |
+| Reuse completed provenance without caching authority | [Completed decoder checks](../../crates/local-storage/src/control/completed_operation_cache_tests.rs) cover repeated decode, mutable returned copies, external payload damage, exact current receipts, reopen and savepoint rollback. [Publication marker recovery](../../crates/daemon/src/control/runtime/effects/tests/publication_validation.rs) checks warm reuse plus changed identities/content and legacy normalization. |
+| Reconstruct a full-content publication once | [Cold reconstruction regressions](../../crates/domain/src/operation/routing_content_tests.rs) count authentication through the real stored-input reader, retain the separate control join and reject changed publication bytes. Startup and publish latency remain native product measurements. |
 | Locate recovery material while the service is down | [Shared presentation](../../apps/desktop/tests/storage-recovery.test.mjs), [production-style geometry](../../apps/desktop/tests/v3/visual/storage-recovery-scenarios.mjs), [offline CLI formatter](../../crates/cli/src/service.rs): verified batch and source location, platform folder route and guide names; unsafe/absent locations remain unverified. Native opening/restoration needs its own installed evidence. |
 | Preserve native probe failure classification | [Pi probe tests](../../crates/integrations/src/agents/pi_runtime_tests.rs), [immutable launcher](../../crates/integrations/tests/fixtures/pi-node-launcher.sh): mutable test bodies are interpreter inputs; executable availability and version/output failures have separate assertions |
+| Keep Claude authentication checks inside owned roots | [Native probe](../../crates/integrations/src/agents/native_claude_ingress_probe.rs), [launch environment regression](../../crates/integrations/src/agents/native_claude_probe_environment_tests.rs): the actual child receives owned HOME/configuration/workspace/temporary selectors; ambient overrides, unauthenticated completion and failed native exit cannot prove authentication |
 | Exercise actual Desktop controls | [Browser scenario map](../../apps/desktop/tests/README.md) and native acceptance: select stable scenario IDs and require every declared outcome |
 
 The publication fixture leases its listener address across daemon restarts; do
@@ -147,6 +195,10 @@ through the production Hyper connection owner and shared confirmation broker.
 Browser scenarios
 run through both host transports; their production CSS screenshots include the
 console and Windows startup/update pages, without establishing native effects.
+The [Home startup scenarios](../../apps/desktop/tests/v3/browser/home-startup-scenarios.mjs)
+exercise delayed snapshot and startup-status results through the production
+[Home reader](../../apps/desktop/src/product/use-desktop-home.ts); stale replies
+cannot replace newer service evidence or clear the current failure.
 
 The [Rust installation journal](../../crates/host-runtime/src/standalone_install/journal/tests.rs)
 covers current-schema interruption recovery. Package tests verify x64 and ARM64
@@ -194,6 +246,9 @@ for explicit inputs, writable roots, required outcomes and cleanup. Report a
 preparation/cleanup failure separately while retaining the first product failure.
 Process exit, successful setup or the model's success text cannot replace a
 Gateway receipt and an independent tool artifact.
+The [native preparation and recovery contract](../test-selection.md#native-preparation-and-recovery-evidence)
+keeps actual preparation before model admission, cancellation causality, uncertain
+Apply recovery and independent cleanup results explicit.
 
 ## Keep assertions independent of implementation layout
 
@@ -221,6 +276,16 @@ cases even when happy paths overlap. For a broken gate, demonstrate that a reali
 bad case fails. For managed native overrides, retain a positive control showing
 that the conflicting native setting would otherwise be consumed.
 
+[Codex subscription replay](../../crates/gateway/src/adapters/tests/codex_replay.rs)
+checks endpoint-specific output-status normalization while preserving the original
+history and public API fields, including nullable reasoning states and Replay.
+[Completed commentary history](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches/responses_chat_history.rs)
+exercises candidate-local [history projection](../../crates/gateway/src/adapters/request/history.rs),
+independent live rendering, model-group changes, concurrent requests and restart
+assessment through the listener. [Projection diagnostics](../../crates/diagnostics/src/event/request_projection.rs)
+describe preflight or materialization without claiming provider execution.
+[Response lifecycle tests](../../crates/gateway/src/adapters/response/client_stream_tests.rs)
+check response-scoped synthetic IDs across incremental, buffered and terminal output.
 Protocol changes reuse saved-route and native-context journeys across Responses
 and Messages. Assert actual request paths, trusted receipt identity, rotation and
 independent restore. A removed-route witness uses its previously working protocol
@@ -249,6 +314,8 @@ configured repository/jobs and Desktop origin-fetch admission.
 
 1. Run `python3 scripts/test-plan.py --base <exact-base>`; use `--integration` for
    branch integration. Review affected consumers and explain semantic adjustments.
+   Observation port changes select the [current boundary golden check](../../tools/product-e2e/tests/local_observation.rs)
+   early; retained historical observations remain separate compatibility inputs.
 2. Follow the selected commands and [CI definitions](../github-actions-validation.md).
    Use `scripts/validation.py` for configured hosts, exact committed Rust candidates,
    feature plan, phase and related runs. Compile affected native consumers early;
@@ -278,11 +345,22 @@ Ordinary local/SSH totals and module reports share Cargo-target attribution in
 [runner regressions](../../scripts/test-remote-rust.py) exercise worker results and
 compact waits with nested child summaries, failed and unfinished parents, and multiple targets.
 
+Actual native Gateway obligations stay separate from backend and Worker success
+in [test selection](../test-selection.md#explicit-native-agent-product-gates).
+The shared [native command scope](../../scripts/native-agent-scope.py) prepares
+independent native roots and contains the complete acceptance driver; its exact-PID
+observer belongs to the trusted controller. Client drivers retain business oracles,
+port ownership and cleanup. [Offline regressions](../../scripts/test-native-agent-scope.py)
+do not establish native execution or DSH Web/Cordis scope coverage.
 The [control-shell startup fixture](../../tools/product-e2e/tests/control_shell_support/startup.rs)
 retains bounded private failure evidence before temporary-root cleanup; its
 [regressions](../../tools/product-e2e/tests/control_shell_support/startup_tests.rs)
 cover timeout, early exit, normal readiness and incomplete diagnostics. Follow the
 [diagnostic guide](../diagnostic-troubleshooting.md) for retention and interpretation.
+The [product read boundary](../../crates/product-session/src/commands/read_context.rs)
+reports post-transport Home rejections; its [command tests](../../crates/product-session/src/commands/read_context/tests.rs)
+and [closed event checks](../../crates/diagnostics/tests/product_read.rs) distinguish
+actual final failures from successful control calls without logging payloads.
 
 Shared private filesystem behavior has one [platform contract suite](../../crates/platform/src/private_fs/tests.rs): exclusive creation, protected handle reads, permission preservation and identity-bound cleanup. Storage and Worker tests keep domain errors, recovery and lifecycle assertions; the native Windows cases additionally exercise ACLs and held handles.
 
@@ -435,6 +513,16 @@ The [owned capture reader](../../crates/integrations/src/agents/native_probe_pro
 reads the retained file only after its native process scope stops, preserving
 exclusive Windows sharing and the exact byte limit. Its native causal control
 uses the production private-file creator; borrowed files keep their path reader.
+Unix process controls also prove that an exited leader skips termination grace,
+a running leader retains it, and a TERM-ignoring descendant cannot remain active.
+The [recovery-read transaction tests](../../crates/local-storage/src/control/current_dependencies_tests.rs)
+prove exact current-journal exclusion without redundant decoding, retain other
+parked operations, and reject stale current facts, indexed-step damage and missing
+membership coverage. Publication process tests retain activation/recovery behavior.
+The [trial Agent browser controls](../../apps/desktop/tests/v3/visual/trial-agent-read-checks.mjs)
+also cover an external Codex root-to-profile change: stale Apply cannot overwrite
+the new target, explicit refresh discovers it and replaces stale authority, and
+only a subsequent user confirmation maps the refreshed context.
 The [actual Git Bash control](../../crates/integrations/src/agents/qoder_probe_windows_cli.rs)
 executes the selected candidate CLI, including literal special-character drive paths,
 and retains exact output equality. Its required native recipe selects an explicit
@@ -492,3 +580,54 @@ Directory scenarios use real generated inferred and observed records, including
 snapshot-bound provenance reads and retry; IPC is mocked, not native acceptance.
 The installed HTTPS lifecycle uses complete v2 publications, exact documented cache components,
 frozen main/Worker/Continue execution, removal, restart and embedded absorption.
+
+Current dependency startup and journal partition regressions live in
+[`current_dependencies_tests.rs`](../../crates/local-storage/src/control/current_dependencies_tests.rs)
+and [`current_storage/tests.rs`](../../crates/local-storage/src/migrations/current_storage/tests.rs):
+retained-history growth, active/LKG damage, missing membership/coverage, rollback,
+pending terminal finalization and payload substitution. These component cases do
+not establish native startup timing or same-data Debug/Release completion.
+
+The `plan_content_process.py` production process suite interrupts before and after the local terminal commit: the latter already has the exact Plan head/version while remaining durably pending until the real finalizer finishes. `control::read_stamp` rejects missing revision guards and observes committed writes from either connection; the daemon routing lock test proves native read-grant registration remains independent of the routing-input fence.
+
+Explicit native-target discovery tests in `control::agent_history_cache_tests`
+count only current target-owner reads as history grows, keep pending targets
+strict, reject missing coverage/current owners, and preserve inline legacy journal
+bytes during one-time target-reference initialization. Superseded unrelated
+corruption remains visible to the strict history reader without blocking discovery.
+
+[Artifact dependency regressions](../../crates/local-storage/src/control/artifact_dependency_tests.rs)
+use real protected files and journal transactions to distinguish superseded damage
+from current or unfinished recovery damage. They cover missing coverage, exact
+admission-owner CAS, successful retirement, rollback retention and failure between
+owner update and terminal commit. Legacy marker tests authenticate V2/V3 backups on
+individual access as well as explicit full audit. These are storage assertions,
+not a substitute for process interruption/restart or native latency acceptance.
+
+Current model consumers use the same bounded owner set: the daemon
+[`settings_entry_model_budget_tests.rs`](../../crates/daemon/src/control/runtime/settings_entry_model_budget_tests.rs)
+publication-admission scenario and
+[`settings_profile_tests.rs`](../../crates/daemon/src/control/runtime/settings_profile_tests.rs)
+active Codex access scenario retain replaced journal damage and missing optional
+completed-service rows without bypassing current budget/native-file checks.
+The storage dependency cases separately reject a missing required grant step.
+Historical Restore is exercised after restoring the exact damaged fixture bytes.
+
+[Legacy Plan completion discovery](../../crates/local-storage/src/control/legacy_finalization_tests.rs)
+exercises the actual initializer over retained inline journals. Exact committed heads
+and published content avoid reopening finalization; missing/different heads, prepared
+content and foreign owners retain recovery, while malformed published content is
+rejected. Journal bytes remain unchanged. These storage cases do not replace a
+released-package upgrade or native performance measurement.
+
+Current Agent readback coverage: `agent.readback.active-and-exact` and `desktop.operation.hidden-summaries-defer` exercise scoped saves and deferred hidden reads. The storage `agent_history_cache_tests` and `agent_history_epoch_tests` retain full closure corruption, snapshot/rollback and bounded-projection assertions; `commands/agent_snapshot/tests.rs` applies the existing authority fences to exact-context reads.
+
+Selected Agent refresh and settings admission: the production adapter scenarios in
+[`settings_entry_native_routing_tests.rs`](../../crates/daemon/src/control/runtime/settings_entry_native_routing_tests.rs)
+prove two independent DSH composition checks (Preview and locked Apply), exact-context
+selection, rejection of mismatched targets and absence of neighboring CLI probes.
+[`settings_tail.rs`](../../crates/application/src/operations/tests/settings_tail.rs)
+checks authorization/revision before preparation, replay without rebuilding and
+separate Restore authority. Shared transport tests in
+[`agent_snapshot/tests.rs`](../../crates/product-session/src/commands/agent_snapshot/tests.rs)
+retain all publication/authority/lifetime fences for selected reads.

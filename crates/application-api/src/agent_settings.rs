@@ -101,6 +101,11 @@ pub struct AgentSettingsPreviewRequestV2 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsStatusRequestV2 {
+    #[serde(
+        default,
+        skip_serializing_if = "AgentSettingsStatusProjectionV2::is_full"
+    )]
+    pub projection: AgentSettingsStatusProjectionV2,
     #[serde(default, skip_serializing_if = "is_false")]
     pub include_skills: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,6 +114,23 @@ pub struct AgentSettingsStatusRequestV2 {
     pub context_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effective: Option<crate::AgentEffectiveStateRequestV1>,
+}
+
+/// A narrow read reuses the same model proof without evaluating unrelated facets.
+/// Omission preserves the published V2 aggregate behavior, including include_skills.
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSettingsStatusProjectionV2 {
+    #[default]
+    Full,
+    Model,
+}
+impl AgentSettingsStatusProjectionV2 {
+    fn is_full(&self) -> bool {
+        *self == Self::Full
+    }
 }
 
 fn is_false(value: &bool) -> bool {
@@ -287,7 +309,10 @@ impl AgentModelSettingsStatusV2 {
             AgentModelSelectionV2::HermesDefault { .. } => {
                 *surface == AgentModelSurfaceV2::HermesCli
             }
-            AgentModelSelectionV2::DshAdditional { .. } => *surface == AgentModelSurfaceV2::DshCli,
+            AgentModelSelectionV2::DshAdditional { .. } => matches!(
+                surface,
+                AgentModelSurfaceV2::DshCli | AgentModelSurfaceV2::DshDesktop
+            ),
             AgentModelSelectionV2::OpenCodeAdditional { .. } => {
                 *surface == AgentModelSurfaceV2::OpenCodeCli
             }

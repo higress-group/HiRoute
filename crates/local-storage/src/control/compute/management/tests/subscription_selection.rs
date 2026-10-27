@@ -79,9 +79,9 @@ fn register_verified_subscription(
                 "INSERT INTO operations(
                     operation_id,workspace_id,principal,operation_kind,idempotency_key,
                     request_digest,accepted_change_digest,state,generation,operation_json,
-                    created_at,updated_at
+                    created_at,updated_at,finalization_pending
                  ) VALUES(?1,'personal/default','local-control','ApplySubscriptionCheck',?2,
-                          'sha256:request','sha256:accepted','succeeded',1,'{}',1,1)",
+                          'sha256:request','sha256:accepted','succeeded',1,'{}',1,1,0)",
                 rusqlite::params![validation.approval_operation.operation_id, key],
             )
             .unwrap();

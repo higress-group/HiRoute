@@ -8,7 +8,7 @@ use hiroute_domain::{
     OperationId, PortErrorCode, ProtectedSecret, SecretStorePort,
 };
 
-use super::LocalSecretStore;
+use super::{LocalSecretStore, validate_current_grants, validate_stable_grants};
 
 const CONNECTION_ID: &str = "agent-connection/claude-code";
 const OWNER_SCOPE: &str = "principal/local-owner";
@@ -573,7 +573,7 @@ fn compensated_grant_receipts_survive_startup_and_never_authorize_reused_generat
 }
 
 #[test]
-fn uncompensated_revoked_grant_still_requires_its_exact_historical_version_at_startup() {
+fn settled_revoked_grant_is_historical_but_pending_recovery_keeps_it_strict() {
     use crate::LocalStorageSet;
     let root = tempdir().unwrap();
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
@@ -599,8 +599,12 @@ fn uncompensated_revoked_grant_still_requires_its_exact_historical_version_at_st
             .execute("DELETE FROM agent_access_grant_versions", [])
             .unwrap();
     });
+    // The settled, revoked grant is no longer a current dependency. Audit and
+    // any still-pending revoke must authenticate its retained before-version.
+    assert!(validate_stable_grants(stores.secrets()).is_err());
+    assert!(validate_current_grants(stores.secrets(), &[operation_id('2').to_string()]).is_err());
     drop(stores);
-    assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
+    LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
 }
 
 #[test]

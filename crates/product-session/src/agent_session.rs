@@ -36,6 +36,30 @@ pub struct AgentSnapshot {
     pub plans: AgentPlanCatalogViewV2,
     pub trusted_authority: bool,
 }
+/// Discovery is a choice, never evidence of editable or empty native settings.
+#[derive(Serialize)]
+pub struct TrialAgentChoice {
+    pub agent_id: String,
+    pub context_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_target: Option<hiroute_domain::AgentNativeTargetV1>,
+    pub version: String,
+    pub configuration_state: String,
+    pub available_surfaces: Vec<AgentModelSurfaceV2>,
+    pub native_model_catalog: Option<Value>,
+    pub codex_access: Option<Value>,
+}
+#[derive(Serialize)]
+pub struct TrialAgentChoices {
+    pub choices: Vec<TrialAgentChoice>,
+    pub trusted_authority: bool,
+}
+#[derive(Serialize)]
+pub struct TrialAgentModel {
+    pub settings: hiroute_application_api::AgentModelSettingsStatusV2,
+    pub plans: AgentPlanCatalogViewV2,
+    pub trusted_authority: bool,
+}
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub struct AgentResidentServicePreview {
     #[serde(default)]
@@ -426,79 +450,13 @@ impl Session {
         &mut self,
         targets: Vec<hiroute_domain::AgentNativeTargetV1>,
     ) -> Result<AgentSnapshot, DesktopFailure> {
-        if targets.len() > 128 || targets.iter().any(|target| target.validate().is_err()) {
-            return Err("AGENT_INPUT_INVALID".into());
-        }
-        #[derive(Deserialize)]
-        struct Scan {
-            agents: Vec<AgentEntry>,
-        }
-        let mut scan: Scan = query(&self.client, "ListAgents", &ClientEmptyRequestV1 {}).await?;
-        let automatic = targets.is_empty();
-        let targets = if automatic {
-            match super::agent_discovery::default_hermes_profile() {
-                super::agent_discovery::ProfileDiscovery::Found(target) => vec![target],
-                super::agent_discovery::ProfileDiscovery::Missing => Vec::new(),
-                super::agent_discovery::ProfileDiscovery::Unavailable { target, reason } => {
-                    super::agent_discovery::merge_entry(
-                        &mut scan.agents,
-                        super::agent_discovery::unavailable_hermes(target, reason),
-                    );
-                    Vec::new()
-                }
-            }
-        } else {
-            targets
-        };
-        for target in targets {
-            let selected: Result<Scan, DesktopFailure> = query(
-                &self.client,
-                "ScanAgents",
-                &hiroute_application_api::AgentScanRequestV1 {
-                    native_target: Some(target.clone()),
-                },
-            )
-            .await;
-            let selected = match selected {
-                Ok(selected) => selected,
-                Err(_) => {
-                    super::agent_discovery::merge_entry(
-                        &mut scan.agents,
-                        super::agent_discovery::unreadable_hermes(target),
-                    );
-                    continue;
-                }
-            };
-            for agent in selected.agents {
-                super::agent_discovery::merge_entry(&mut scan.agents, agent);
-            }
-        }
-        for agent in &mut scan.agents {
-            if let Some(context_id) = &agent.context_id {
-                match query(
-                    &self.client,
-                    "GetAgentConnectionStatus",
-                    &AgentSettingsStatusRequestV2 {
-                        effective: None,
-                        include_skills: true,
-                        schema_version: AGENT_SETTINGS_SCHEMA_V2,
-                        context_id: context_id.clone(),
-                        native_target: agent.native_target.clone(),
-                    },
-                )
-                .await
-                {
-                    Ok(status) => agent.settings = Some(status),
-                    Err(_) => agent.status_error = Some("AGENT_STATUS_UNAVAILABLE".into()),
-                }
-            }
-        }
+        let agents = super::agent_snapshot::read_agent_entries(&self.client, targets).await?;
         let snapshot = self.snapshot().await?;
         if let Some(error) = snapshot.catalog_error {
             return Err(error);
         }
         Ok(AgentSnapshot {
-            agents: scan.agents,
+            agents,
             plans: snapshot.catalog,
             // Peer authority also permits same-operation recovery while new writes are closed.
             trusted_authority: snapshot.trusted_authority,
@@ -642,6 +600,7 @@ impl Session {
                 &self.client,
                 "GetAgentConnectionStatus",
                 &AgentSettingsStatusRequestV2 {
+                    projection: Default::default(),
                     effective: None,
                     include_skills: true,
                     schema_version: AGENT_SETTINGS_SCHEMA_V2,

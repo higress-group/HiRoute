@@ -1,9 +1,9 @@
 //! Hermes native effects use original accepted scopes and the existing journal.
 use super::LocalControlAdapter;
 use hiroute_application::agent_connection::{
-    HermesModelFileAction, HermesPluginFileAction, is_settings_hermes_model,
-    is_settings_hermes_plugin, settings_hermes_model_file_for_operation,
-    settings_hermes_plugin_file_for_operation,
+    HermesModelFileAction, NativePluginFileAction, is_settings_hermes_model,
+    is_settings_native_plugin, settings_hermes_model_file_for_operation,
+    settings_native_plugin_file_for_operation,
 };
 use hiroute_domain::{
     AgentAccessGrantRefV1, AgentSettingsSpecV2, ControlRepositoryPort, ExternalEffectIntentV1,
@@ -154,13 +154,15 @@ impl LocalControlAdapter {
         if operation.state != OperationState::ApplyingAgentArtifacts {
             return Err(conflict("hermes.plugin.phase"));
         }
-        self.register_hermes_operation_target(operation)?;
-        let payload = settings_hermes_plugin_file_for_operation(operation, intent)?;
+        if intent.effect_id() != "agent-connection-native-routing-adapter" {
+            self.register_hermes_operation_target(operation)?;
+        }
+        let payload = settings_native_plugin_file_for_operation(operation, intent)?;
         let original_id = match &payload.change {
-            HermesPluginFileAction::Configure {
+            NativePluginFileAction::Configure {
                 previous_operation, ..
             } => previous_operation.as_ref(),
-            HermesPluginFileAction::Restore { original_operation } => Some(original_operation),
+            NativePluginFileAction::Restore { original_operation } => Some(original_operation),
         };
         let previous = if let Some(id) = original_id {
             let original = self
@@ -168,14 +170,31 @@ impl LocalControlAdapter {
                 .control()
                 .load_operation(id)?
                 .ok_or_else(|| invalid("hermes.plugin.previous"))?;
-            let old_intent = original_intent(&original, operation, intent, true)?;
-            Some((original, old_intent))
+            if intent.effect_id() == "agent-connection-native-routing-adapter"
+                && matches!(&payload.change, NativePluginFileAction::Configure { .. })
+                && !original
+                    .plan
+                    .external()
+                    .iter()
+                    .any(|i| i.effect_id() == "agent-connection-native-routing-adapter")
+            {
+                if original.workspace_id != operation.workspace_id
+                    || original.state != OperationState::Succeeded
+                    || original.plan.spec().resource_id != operation.plan.spec().resource_id
+                {
+                    return Err(invalid("native.plugin.previous.owner"));
+                }
+                None
+            } else {
+                let old_intent = original_intent(&original, operation, intent, true)?;
+                Some((original, old_intent))
+            }
         } else {
             None
         };
         match &payload.change {
-            HermesPluginFileAction::Configure { content, .. } => {
-                hiroute_integrations::stage_hermes_plugin_configuration(
+            NativePluginFileAction::Configure { content, .. } => {
+                hiroute_integrations::stage_native_plugin_configuration(
                     &self.artifacts,
                     &operation.operation_id,
                     intent,
@@ -184,11 +203,11 @@ impl LocalControlAdapter {
                     previous.as_ref().map(|(op, i)| (&op.operation_id, i)),
                 )
             }
-            HermesPluginFileAction::Restore { original_operation } => {
+            NativePluginFileAction::Restore { original_operation } => {
                 let (_, original) = previous
                     .as_ref()
                     .ok_or_else(|| invalid("hermes.plugin.restore.original"))?;
-                hiroute_integrations::stage_hermes_plugin_restoration(
+                hiroute_integrations::stage_native_plugin_restoration(
                     &self.artifacts,
                     &operation.operation_id,
                     intent,
@@ -223,14 +242,14 @@ impl LocalControlAdapter {
             .agent_input()
             .external
             .iter()
-            .filter(|i| is_settings_hermes_plugin(i))
+            .filter(|i| is_settings_native_plugin(i))
             .collect();
         if plugins.len() != 2 {
             return Err(invalid("hermes.plugin.files.count"));
         }
         for plugin in plugins {
-            settings_hermes_plugin_file_for_operation(operation, plugin)?;
-            if !hiroute_integrations::hermes_plugin_is_applied(
+            settings_native_plugin_file_for_operation(operation, plugin)?;
+            if !hiroute_integrations::native_plugin_is_applied(
                 &self.artifacts,
                 operation.operation_id(),
                 plugin,
@@ -261,17 +280,17 @@ fn original_intent(
         .find(|i| {
             i.target() == intent.target()
                 && if plugin {
-                    is_settings_hermes_plugin(i)
+                    is_settings_native_plugin(i)
                 } else {
                     is_settings_hermes_model(i)
                 }
         })
         .ok_or_else(|| invalid("hermes.original.intent"))?;
     if plugin {
-        let before = settings_hermes_plugin_file_for_operation(original, original_intent)?;
-        let after = settings_hermes_plugin_file_for_operation(operation, intent)?;
+        let before = settings_native_plugin_file_for_operation(original, original_intent)?;
+        let after = settings_native_plugin_file_for_operation(operation, intent)?;
         if before.context_id != after.context_id
-            || !matches!(before.change, HermesPluginFileAction::Configure { .. })
+            || !matches!(before.change, NativePluginFileAction::Configure { .. })
         {
             return Err(invalid("hermes.original.context"));
         }

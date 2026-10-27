@@ -727,6 +727,8 @@ mod tests {
                 hiroute_application::prices::PriceSnapshotSlot::default(),
             ),
             publication_diagnostics: Mutex::new(Default::default()),
+            publication_marker_cache: Mutex::new(None),
+            settings_publication_candidate: Mutex::new(None),
             stores: Mutex::new(stores),
             delegation_digest_authority: hiroute_observation::DigestAuthority::new([7; 32]),
             delegation_observation: Arc::new(

@@ -60,11 +60,28 @@ def scenario(repository, boundary):
                                                 {'change': change}, 'content-two', crash=bool(boundary))
         if boundary:
             product.stop(crash=True)
+            if boundary in ('before_local_finish', 'after_local_finish'):
+                with sqlite3.connect(f'file:{product.storage}/live/control.db?mode=ro', uri=True) as db:
+                    state, pending, member = db.execute("""SELECT state,finalization_pending,
+                        EXISTS(SELECT 1 FROM operation_recovery_members m WHERE m.operation_id=o.operation_id)
+                        FROM operations o WHERE idempotency_key='content-two'""").fetchone()
+                    assert pending == 1 and member == 1, (state, pending, member)
+                    crash_head, crash_versions = read_content(product)
+                    if boundary == 'after_local_finish':
+                        assert state == 'succeeded' and crash_head == preview['plan_head']
+                        assert crash_versions[-1] == preview['plan_version']
+                    else:
+                        assert state != 'succeeded' and crash_head == head
             product.start()
             result = product.cli('routing apply', body, capability)[1]
         replay = product.cli('routing apply', body, capability)[1]
         assert replay['data'] == result['data'] and replay['data']['state'] == 'succeeded'
         assert operation_count(product) == operations_before + 1, 'recovery or retry duplicated the Operation'
+        with sqlite3.connect(f'file:{product.storage}/live/control.db?mode=ro', uri=True) as db:
+            assert db.execute("""SELECT finalization_pending FROM operations
+                WHERE idempotency_key='content-two'""").fetchone() == (0,)
+            assert db.execute('SELECT count(*) FROM operation_recovery_members').fetchone() == (0,)
+
         head, versions = read_content(product)
         assert head['head_revision'] == 2 and len(versions) == 2
         assert versions[0] == old, 'old full content changed'
@@ -263,7 +280,7 @@ def invalid_confirmation_does_not_create_operation(repository):
 
 if __name__ == '__main__':
     invalid_confirmation_does_not_create_operation(sys.argv[1])
-    for boundary in (None, 'before_install', 'after_target', 'after_gateway_durable', 'after_terminal'):
+    for boundary in (None, 'before_install', 'after_target', 'after_gateway_durable', 'before_local_finish', 'after_local_finish', 'after_terminal'):
         scenario(sys.argv[1], boundary)
 
     draft_scenario(sys.argv[1])

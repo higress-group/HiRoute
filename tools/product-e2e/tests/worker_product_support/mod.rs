@@ -243,10 +243,16 @@ fn assert_scenario(output: Output, scenario: &str, harness: &str, candidate: &st
             "agent.collaboration.public-worker-delegation",
             "agent.collaboration.disable-owned-skill",
         ],
-        "qoder-persisted-model-routes"
-        | "pi-persisted-model-routes"
-        | "dsh-persisted-model-routes"
-        | "opencode-persisted-model-routes" => &[
+        "pi-persisted-model-routes" | "opencode-persisted-model-routes" => &[
+            "agent.models.persisted-routes",
+            "agent.models.credential-rotation",
+            "agent.models.independent-restore",
+            "agent.models.default-reference-guard",
+            "agent.models.native-adapter-autoload-history",
+            "agent.models.native-adapter-missing-observed-recovery",
+            "agent.models.native-adapter-restart-recovery",
+        ],
+        "qoder-persisted-model-routes" | "dsh-persisted-model-routes" => &[
             "agent.models.persisted-routes",
             "agent.models.credential-rotation",
             "agent.models.independent-restore",

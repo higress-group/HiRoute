@@ -19,7 +19,7 @@ Ordinary native correlation uses these current inputs:
 
 | Client | Recognized identity |
 | --- | --- |
-| Claude Code | `X-Claude-Code-Session-Id`; Messages JSON session inside `metadata.user_id` |
+| Claude Code | Coherent `X-Claude-Code-Session-Id` / Messages JSON session inside `metadata.user_id`, plus the optional actual `X-Claude-Code-Agent-Id` |
 | Codex | `thread-id` / `session-id` and coherent Responses `client_metadata` dimensions |
 | Qoder | `session-id` in its existing namespace |
 | Pi / branded pi-ai | Native Responses `x-client-request-id` / optional `session_id`, or configured `x-session-id` / Messages `x-session-affinity` |
@@ -41,6 +41,13 @@ Absent native fields use conservative complete-first-real-user inference when le
 empty/unreliable/incomplete/generic wrapper input remains request-scoped. Raw native
 IDs are not persisted. Equal content cannot merge distinct native IDs; rewriting
 content does not change an established native session.
+
+Claude session header and Messages metadata use the same released session
+namespace and SHALL agree when both are present. Duplicate session claims inside
+the metadata JSON are invalid, even when equal. An actual native agent ID adds a
+separate scope dimension for children or teammates. Missing agent identity keeps
+the supplied session with source/association uncertainty; prompt IDs, request
+classes and notification text SHALL NOT invent that missing dimension.
 
 Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connection/authorization. Equal raw native IDs under distinct connections cannot merge conversations. For a trusted registered Hermes consumer, absent or invalid native identity remains request-scoped without first-user content inference. A caller-supplied header or user-agent does not establish managed-consumer authority; session identity itself grants no model or management access. Native cache/root affinity is not Hermes conversation proof.
 
@@ -120,6 +127,25 @@ Recorded plan identity follows [route history](../request-routing-history/spec.m
 - **THEN** the view MUST preserve both requests, tool context, actual models, and
   final answer without inferring that the first request completed the whole task.
 
+#### Scenario: Native reasoning replay and maintenance calls
+
+- **WHEN** a native client replays an accepted bounded plaintext reasoning summary or native
+  `content` with one `reasoning_text` part, followed by visible output or a tool call
+- **THEN** exact accepted reasoning/output evidence may establish the response edge;
+  empty summary/text placeholders do not manufacture a history rewrite. Changed
+  text, simultaneous populated summary/content carriers, extra parts, opaque
+  provider state and unsupported fields remain unproven, and
+  reasoning is never imported into competence-assessment content.
+- **AND** bounded comparison retains the same meaning when request content moves
+  from inline strings into request-owned Replay backing, including after earlier
+  fields consume the aggregate inline allowance. A matching tool continuation and
+  its accepted final answer retain one exact frozen request membership for the
+  next input's assessment.
+- **AND** recognized native title/compaction requests retain immutable receipts
+  and monetary accounting while their explicit auxiliary marker excludes them
+  from user-turn projection. Historical records without that marker remain
+  unclassified; missing purpose evidence cannot hide an ordinary request.
+
 ### Requirement: Titles and folded context do not rewrite recorded content
 
 Session title comes from the first readable real user input in request/message
@@ -129,6 +155,20 @@ plain mentions, or trailing real text are not. Complete leading Claude
 `<system-reminder>...</system-reminder>` blocks may be skipped to expose the remaining
 question. Context-only sessions use a neutral title and update when later real input
 becomes readable, including across fixed-range pagination and home activity refresh.
+
+Session title scans skip only requests with affirmative retained native auxiliary
+purpose evidence, including when those requests precede the first main request or
+fill a timeline page. The same selection supplies the preview's model and route.
+Raw request lists, direct request excerpts, search hits, receipts and costs retain
+auxiliary calls. Missing, legacy, deleted or conflicting purpose evidence remains
+unclassified and cannot hide a request or prove human origin. Auxiliary-only
+sessions use a neutral title; this is not evidence of content cleanup.
+
+Request excerpts show a pending state before visibility-triggered reads and while
+loading. Empty or failed reads are unavailable, not deleted. A cleared-content
+label requires explicit deleted content evidence with no unresolved catalog gap.
+These presentation states do not claim that a particular historical request lost
+its body or that all session content is complete.
 
 Complete leading Codex setup blocks, including recommended_plugins and an exact
 `# AGENTS.md instructions` heading (optionally naming a path) followed by a complete
@@ -265,6 +305,12 @@ change the mean. Count a stage once using its latest complete valid score; valid
 zero counts, unrated/partial do not. Versions, categories, groups, and model/profiles
 remain separate. Failed candidates that did not serve the stage receive no score.
 Configured candidates without execution display no records, not zero.
+
+A fresh page SHALL return its consistent authorized read snapshot when ordinary
+ingestion commits concurrently; new records enter a later refresh. Visibility
+changes, including content or fact deletion, SHALL invalidate the in-flight read.
+Continuation cursors retain strict population-generation and reader/query bindings;
+a concurrent population change SHALL NOT silently mix summary and detail pages.
 
 Join configured positions by plan revision/category/group/published index and known
 reasoning, without demanding equality to today's materialized model ID. This only
@@ -485,7 +531,7 @@ completion without a complete score remains unscored. Different executors are no
 ranked because their task populations differ. Unavailable cost comparisons are
 explicitly unavailable, never zero or a claimed saving.
 
-The cost comparison SHALL select requests by the disclosed Plan revision, category and Regular group through retained stage identity and reuse the existing per-attempt API-equivalent calculation. Missing/nonunique Primary or saved currency and genuinely dirty/missing request projections make it unavailable until ready; known out-of-scope membership cannot block the selected scope. Partial history alone does not invalidate proven membership; request-level usage and price completeness still apply. Closed mixed/unknown/conflicting membership is an explicit gap. A request without closed-turn membership remains pending while its physical session has retained activity within five minutes; after five minutes without activity it becomes unresolved evidence, without asserting task completion. Late facts reclassify the request on the next read, including after reopen. Unresolved normal requests in the Plan/time window that cannot be ruled out of the selected scope remain in its conservative denominator without an invented revision/group. They count once as missing and excluded (excluded stage gaps are a subset of missing), prevent complete coverage and full-scope amounts/difference, and allow only paired complete-request subtotals. No compared evidence is unknown, never zero. Decision traffic remains outside this population; generic comparison and settlement meanings stay unchanged. The view SHALL disclose the conservative denominator and overlapping missing/excluded counts, and SHALL NOT imply cash savings.
+The cost comparison SHALL select requests by the disclosed Plan revision, category and Regular group through retained stage identity and reuse the existing per-attempt API-equivalent calculation. Missing/nonunique Primary or saved currency and genuinely dirty/missing request projections make it unavailable until ready; known out-of-scope membership cannot block the selected scope. A retained authenticated native maintenance purpose also rules a request out of user-stage scope without removing its generic costs or receipts. Missing, deleted, ambiguous or invalid purpose evidence does not prove exclusion. Purpose verification has per-query byte and lookup budgets; unchecked evidence stays unresolved and in the full denominator. These budgets do not truncate the request population. Partial history alone does not invalidate proven membership; request-level usage and price completeness still apply. Closed mixed/unknown/conflicting membership is an explicit gap. A request without closed-turn membership remains pending while its physical session has retained activity within five minutes; after five minutes without activity it becomes unresolved evidence, without asserting task completion. Late facts reclassify the request on the next read, including after reopen. Unresolved normal requests in the Plan/time window that cannot be ruled out of the selected scope remain in its conservative denominator without an invented revision/group. They count once as missing and excluded (excluded stage gaps are a subset of missing), prevent complete coverage and full-scope amounts/difference, and allow only paired complete-request subtotals. No compared evidence is unknown, never zero. Decision traffic remains outside this population; generic comparison and settlement meanings stay unchanged. The view SHALL disclose the conservative denominator and overlapping missing/excluded counts, and SHALL NOT imply cash savings.
 
 Related source specifications:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235188590
@@ -506,11 +552,15 @@ Source SPEC comments:
 
 ### Requirement: The routing timeline re-emits late evidence without duplicates
 
-Session detail MUST show actual agent-turn selection, boundary, group, model/reasoning, probability/threshold, continuations, relays, assessments and request usage/cost beside retained conversation. New AgentTurnFinished writes SHALL record an optional opening cause, preserved across tool continuation and completion: continuing message history with an appended user message means UserMessage, independently of whether the prior decision can be inherited; fewer canonical messages than an existing comparable checkpoint means HistoryShortened; an equal or greater count with a changed prefix means HistoryRewrite; absent checkpoints (first entry, expiry, eviction, contention or disabled tracking) mean NoComparableHistory; other boundaries, including a Plan change without an appended user message, mean Other. System/developer instructions are excluded from the message count; changing only those instructions does not rewrite message history even if it invalidates a hold preference.
+The tool-continuation count SHALL use the recorded `InheritedToolContinuation` decision reason. `ContextHoldApplied` records candidate affinity, which may also apply to a freshly classified user message, and SHALL NOT count as tool-continuation evidence. Task-root inheritance or a retained decision without an explicit tool-continuation reason SHALL NOT invent that evidence. Pending, closed and reopened timelines SHALL apply the same rule without rewriting retained execution facts.
+
+Session detail MUST show actual agent-turn selection, boundary, group, model/reasoning, probability/threshold, continuations, relays, assessments and request usage/cost beside retained conversation. New AgentTurnFinished writes SHALL record an optional opening cause, preserved across tool continuation and completion: continuing message history with an appended user message means UserMessage, independently of whether the prior decision can be inherited; fewer canonical messages than an existing comparable checkpoint means HistoryShortened; an equal or greater count with a changed prefix means HistoryRewrite; absent checkpoints (first entry, expiry, eviction, contention or disabled tracking) mean NoComparableHistory; other boundaries, including a Plan change without an appended user message, mean Other. System/developer instructions are excluded from the message count. Changed instructions or model/tool setup invalidate exact execution inheritance even when conversation text is unchanged; that invalidation alone does not establish compaction.
 
 Explicit causes override legacy hints. UserMessage displays New message. HistoryShortened displays Context rebuilt and is attributed to compaction by the owner-selected step-count heuristic. A step is one canonical request message, not a token, tool or timeline turn. Details disclose that a shorter rewind or shared-scope background/subagent request can also satisfy this heuristic. HistoryRewrite and Other remain unknown. NoComparableHistory displays New message only for the first session turn. Without the field, legacy inference displays New message for the first session turn or a fresh opening decision (not inherited) with ContextHoldApplied or ContextHoldInvalidated. A retained tail with a known later ordinal is not the first session turn. Invalidation alone never proves compaction. Unknown headings omit the badge and details disclose the gap. Supported old bytes and authenticated digests remain readable unchanged; unreleased experimental digests are not admitted.
 
-The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools and timing SHALL NOT establish native provenance. Issue #185 separately tracks shared-history background/subagent isolation and active-turn conflicts; this repair does not infer subdialog identity or claim isolation is fixed. The legend states that a turn keeps its model to preserve cache and new messages or rebuilt context trigger fresh judgment.
+Opening causes SHALL distinguish the observed request-input boundary from accepted-response association. Reused branches SHALL also require actual current input after the prior request before treating a native activation-identifier change as a new input. An exact tool continuation with no appended current input SHALL NOT be reclassified, closed or assessed merely because that identifier changes. On an independent branch, a fully matched prior request prefix and an actual current input entirely after that request may establish UserMessage without a complete intervening response. Comparable candidate boundaries must agree; a newer ingress retry, overlapping input window or explicitly unavailable current input cannot be overridden by an older matching prefix. A reused native identifier SHALL NOT hide an actually appended current input. Explicit continuation evidence selects the saved input by making the current input unavailable; the identifier alone does not establish that meaning. Missing digests or a checkpoint position not measured before concurrent advancement mean Other, not proven HistoryRewrite. A changed comparable request prefix retains HistoryRewrite. This evidence grants no predecessor reuse, affinity, completion or stronger assessment association; the interrupted or unknown prior stage and its frozen partial target remain unchanged. The independent branch captures its own actual execution and starts its own assessment segment.
+
+The view SHALL disclose that client background messages can satisfy the new-message rule, so continuity does not prove human authorship. Aliases, tools, native activation/window identifiers and cache presence SHALL NOT establish native provenance. Concurrent execution membership follows the independent branch contract below; an unknown main/child relationship remains explicitly uncertain. The legend states that an eligible exact continuation keeps its model and new messages or rebuilt context trigger fresh judgment.
 
 The opening request supplies stable display identity before completion. Late assessments and valuations update that turn. When late authoritative request membership absorbs provisional rows into a completed turn, Desktop SHALL remove the absorbed rows by their exact opening-request identities, transfer their selection/focus to the owning turn, and reconcile overview, request and turn counts. Names, timing or model similarity SHALL NOT infer membership. Incremental cursors MUST be authenticated and bound to reader, session, page size and retained visibility; pagination freezes fact, valuation and link positions until its changed page is consumed. Reconnect deduplicates equal content digests. Cleared or expired scope invalidates the cursor. Unknown usage/cost remains unknown; per-model currency and valuation basis are preserved. A per-model sum SHALL retain available known amounts when another contribution is unknown, disclose that it is a known subtotal and retain the missing contribution. No known contribution means amount unknown, not zero. Frozen API-equivalent amounts SHALL be labeled estimates in summary and request detail.
 
@@ -586,6 +636,29 @@ Timeline transition summaries SHALL distinguish a completed turn comparison from
 
 - **WHEN** an old turn without an opening-cause field has a fresh opening decision recording ContextHoldApplied or ContextHoldInvalidated
 - **THEN** the turn shows a new-message boundary; a group change is never labelled as compaction.
+
+#### Scenario: A new input follows an interrupted tool stream
+
+- **WHEN** the old request prefix is unchanged, the client replays delivered text but omits an unfinished tool call, and an actual new input follows the complete old request
+- **THEN** its independent admission records a new-message boundary while the old stage remains interrupted and partial; no old response edge, decision inheritance or affinity is invented.
+- **AND** subsequent complete execution and assessment use only the new branch's actual members, including when both branches execute on the same model and group.
+
+#### Scenario: A changed native identifier does not end a tool stage
+
+- **WHEN** a request exactly replays a captured tool call and its result, its validated input window still selects the prior input, and only its native activation identifier changes
+- **THEN** the request continues the same stage and decision without an intermediate closure or assessment.
+- **AND** a later actual new input may open a new stage and assess the prior stage's complete, frozen request membership.
+
+#### Scenario: A repeated native identifier does not hide a new input
+
+- **WHEN** a request has a matched prior request prefix and a validated current-input window entirely after that prefix, even though its native activation identifier is unchanged
+- **THEN** it opens a new input stage and requests a fresh decision under the configured new-input policy.
+- **AND** only a separately proven response association permits reuse of the prior stage's frozen assessment membership; explicit continuation evidence with no current input does not satisfy this rule.
+
+#### Scenario: A missing comparison is not a changed prefix
+
+- **WHEN** a bounded digest is unavailable or a concurrent checkpoint advances beyond measured positions
+- **THEN** the independent opening remains unknown rather than claiming a history rewrite; routing and capture continue with the existing association limits.
 
 #### Scenario: Unknown and retained-tail boundaries
 
@@ -710,3 +783,33 @@ Source SPEC comments:
   [receipt scenarios](../../../crates/observation/src/store/tests/store_flow.rs).
 - [Quality aggregation scenarios](../../../crates/observation/src/store/tests/plan_quality/summary.rs)
   and [Desktop quality identity](../../../apps/desktop/src/features/plan-quality-state.ts).
+
+### Requirement: New routing stages retain exact execution membership
+
+Current AgentTurnFinished and BranchAssessmentRecorded facts SHALL carry optional
+versioned `history_membership`: version 1, opaque execution branch ID, immutable
+revision, up to 128 exact Gateway request IDs, an explicit clipped flag, relation
+kind and separate source/association/capture uncertainty. Relation kinds are root,
+exact_prefix, ambiguous_prefix and contextual. Producer/native request IDs cannot
+replace Gateway IDs. Current writes use the single current envelope descriptor;
+a registered previous descriptor remains read-only and cannot authenticate the new
+field. Old authenticated bytes/digests remain unchanged.
+
+For facts with membership, analysis, timeline, quality and cost consumers SHALL use
+those members, never an inclusive ordinal or first/last-time interval across
+concurrent branches. Missing/clipped membership is explicit incomplete evidence.
+Later stage extensions cannot broaden an earlier assessment's frozen membership.
+Facts without membership retain their supported historical reader semantics.
+Rebuildable projections MAY be refreshed through a versioned migration; original
+facts, sensitive carriers and their digests SHALL NOT be reset or rewritten.
+Matched ordinary reopen SHALL not repeatedly rebuild current projections.
+
+#### Scenario: Interleaved branches and a late stage extension
+
+- **WHEN** A1, B1 and A2 interleave in one session and an assessment was frozen before A2
+- **THEN** A contains only A1/A2, B only B1, and the earlier assessment does not claim to assess A2, including after the observation store reopens.
+
+#### Scenario: Previous producer envelope is retained
+
+- **WHEN** a supported pre-membership envelope is read after upgrading
+- **THEN** its original digest and bytes still authenticate, historical projections remain readable, and adding new membership to that old descriptor is rejected.

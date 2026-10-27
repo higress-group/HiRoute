@@ -36,6 +36,7 @@ const CASES: &[Case] = &[
         owner: "TASK-142003",
         steps: &[
             "control_build",
+            "control_storage_prepare",
             "control_ready",
             "system_status",
             "client_service_status",
@@ -56,6 +57,7 @@ const CASES: &[Case] = &[
         owner: "TASK-142003",
         steps: &[
             "control_build",
+            "control_storage_prepare",
             "embedded_catalog_ready",
             "storage_catalog_ignored",
             "embedded_catalog_cleanup",

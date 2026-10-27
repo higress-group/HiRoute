@@ -450,6 +450,72 @@ fn dsh_admission_uses_required_public_modules_not_cli_version() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn dsh_settings_read_has_no_version_process_and_scanning_keeps_diagnostics() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    let cli = &scanner.layout.dsh_executable;
+    let calls = root.path().join("calls");
+    fs::write(
+        cli,
+        format!(
+            "#!/bin/sh\necho version >> '{}'\necho 'DSH 0.2.0'\n",
+            calls.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(cli, fs::Permissions::from_mode(0o700)).unwrap();
+    for _ in 0..4 {
+        let AgentDiscoveryOutcomeV1::Supported { installation } =
+            scanner.dsh_settings_discovery().outcome
+        else {
+            panic!("current executable and files remain available");
+        };
+        assert_eq!(installation.version, "not-probed");
+    }
+    assert!(
+        !calls.exists(),
+        "configuration facts must not start version probes"
+    );
+    let AgentDiscoveryOutcomeV1::Supported { installation } = scanner.scan_dsh().outcome else {
+        panic!("diagnostic scan")
+    };
+    assert_eq!(installation.version, "0.2.0");
+    assert_eq!(fs::read_to_string(calls).unwrap(), "version\n");
+    fs::set_permissions(cli, fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(matches!(
+        scanner.dsh_settings_discovery().outcome,
+        AgentDiscoveryOutcomeV1::ReportOnly { .. }
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn dsh_composition_proof_is_scoped_to_exact_current_configuration() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    let cli = &scanner.layout.dsh_executable;
+    fs::write(cli, "#!/bin/sh\nprintf '%s\\n' '- id: llm-pi-ai'\n").unwrap();
+    fs::set_permissions(cli, fs::Permissions::from_mode(0o700)).unwrap();
+    let proof = scanner.check_dsh_model_configuration().unwrap();
+    assert!(scanner.dsh_model_configuration_is_current(&proof).unwrap());
+    write_patch(&scanner.dsh_user_models_target(), json!([]));
+    assert!(!scanner.dsh_model_configuration_is_current(&proof).unwrap());
+    let proof = scanner.check_dsh_model_configuration().unwrap();
+    fs::write(cli, "#!/bin/sh\nprintf '%s\\n' '- id: different-module'\n").unwrap();
+    assert!(!scanner.dsh_model_configuration_is_current(&proof).unwrap());
+    assert!(scanner.check_dsh_model_configuration().is_err());
+    // Mutation by the probe itself must not produce a valid capability proof.
+    fs::write(cli, format!("#!/bin/sh\nprintf '%s\\n' '# changed during probe' >> '{}'\nprintf '%s\\n' '- id: llm-pi-ai'\n", scanner.dsh_user_models_target().display())).unwrap();
+    assert!(matches!(
+        scanner.check_dsh_model_configuration(),
+        Err(AgentFilesystemScanError::SourceChanged)
+    ));
+}
+
 #[test]
 fn dsh_home_default_guards_web_removal_without_requiring_cli() {
     let root = tempfile::tempdir().unwrap();

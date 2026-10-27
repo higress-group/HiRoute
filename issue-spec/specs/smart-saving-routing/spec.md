@@ -208,6 +208,14 @@ MUST NOT appear as no suggestion. Home, navigation and Plan-list indicators use
 the same suggestion result. Applying a suggestion opens an ordinary editable
 change; it never silently publishes.
 
+Work deferred by the bounded suggestion-read budget MUST be disclosed as pending,
+separately from actual unavailable/oversized reads and a complete empty result.
+The visible view SHALL continue pending reads automatically with bounded backoff,
+retaining the normal budget, current-evidence checks and actionable real errors.
+Completed work may be reused only under the existing reader, revision, visibility
+and evidence bindings. Hidden clients and inactive suggestion subscriptions SHALL
+NOT continue polling.
+
 #### Scenario: High rate with incomplete coverage or only old-version evidence
 
 - **WHEN** historical competence is high but coverage is below 60%, fewer than
@@ -256,6 +264,18 @@ The Plan model-performance protection card MUST show how many historical low-sco
 The view MUST offer last-24-hours, default last-seven-days and all-retained scopes. For every period, the stage and routing-decision reads MUST use the same captured explicit interval with its lower bound inside the retention boundary and a bounded read margin. Reads taken at different instants MUST NOT make an otherwise complete matching release count unavailable at the normal seven-day edge. Actual effective-interval mismatches still show unavailable. Changing the displayed period does not narrow the full active-revision evidence used for suggestions.
 
 The routing release aggregate SHALL remain the result of the base read paired with the trust report. Later detail score/model filters and pagination SHALL NOT replace it with a separately clipped aggregate, even after the bounded read margin has elapsed. A grouping, period or revision change, explicit refresh or retry SHALL capture a fresh interval and reread both sources together. Actual scope mismatches remain unavailable.
+
+Every Plan-performance entry SHALL use the same publication selection for both reads. A loaded publication revision pins both reads to that revision. An entry without it SHALL resolve the active revision before reading current-version quality; unresolved active selection SHALL NOT silently mean all retained versions. Explicit historical and all-version selections retain their own scopes. Responses from an earlier revision or refresh SHALL NOT populate the replacement scope, including its base routing aggregate.
+
+#### Scenario: Session entry has no loaded publication revision
+
+- **WHEN** the session timeline opens Plan performance without a loaded revision and the active publication has complete matching observations with zero releases
+- **THEN** the entry resolves that publication, reads its exact quality scope and displays zero; a failed active-revision read stays unavailable and retry can recover without recreating the view or broadening its scope.
+
+#### Scenario: Publication and retained-version changes preserve pairing
+
+- **WHEN** the loaded or resolved active revision changes, the user selects a historical revision or all retained versions, or an earlier read finishes after refresh
+- **THEN** quality and trust evidence use the selected common revision scope and interval; earlier responses cannot replace the new scope, and genuine revision mismatches remain unavailable.
 
 #### Scenario: Inspect every period inside the retention boundary
 

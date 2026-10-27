@@ -82,8 +82,10 @@ impl LocalObservationStore {
              LEFT JOIN valuation_attempt_inputs_v2 u ON u.workspace_id=v.workspace_id AND u.request_id=v.request_id AND u.ordinal=v.accepted_ordinal
              WHERE r.workspace_id=q.workspace_id AND r.session_id=q.session_id AND v.plan_id=q.plan_id
                AND json_extract(r.route_json,'$.revision')=q.plan_revision
-               AND r.started_at_ms >= (SELECT first.started_at_ms FROM logical_requests first WHERE first.workspace_id=q.workspace_id AND first.request_id=q.first_request_id)
-               AND r.started_at_ms <= (SELECT last.started_at_ms FROM logical_requests last WHERE last.workspace_id=q.workspace_id AND last.request_id=q.last_request_id)
+               AND ((q.history_membership_json IS NOT NULL AND EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') member WHERE member.value=r.request_id))
+                 OR (q.history_membership_json IS NULL
+                   AND r.started_at_ms >= (SELECT first.started_at_ms FROM logical_requests first WHERE first.workspace_id=q.workspace_id AND first.request_id=q.first_request_id)
+                   AND r.started_at_ms <= (SELECT last.started_at_ms FROM logical_requests last WHERE last.workspace_id=q.workspace_id AND last.request_id=q.last_request_id)))
                AND r.finished_at_ms>=r.started_at_ms) AS performance
             FROM quality q");
         let projection = if lean {
@@ -93,7 +95,7 @@ impl LocalObservationStore {
         };
         let scope = if lean {
             format!(
-                "SELECT q.*, NULL AS native_model, NULL AS reasoning_profile_id {}",
+                "SELECT q.*, (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) AS assessment_covers_stage, NULL AS native_model, NULL AS reasoning_profile_id {}",
                 &SCOPE[SCOPE
                     .find("FROM plan_quality_segments q")
                     .expect("scope owner")..]

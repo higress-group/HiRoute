@@ -675,15 +675,34 @@ pub async fn dispatch(
             let value = effective_price_query(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
+        "trial_agent_choices" => {
+            let _input: ClientEmptyRequestV1 = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = trial_agent_choices(window, state).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "trial_agent_model" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                context_id: String,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = trial_agent_model(window, state, input.context_id).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "agent_snapshot" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
             struct Arguments {
                 native_targets: Option<Vec<hiroute_domain::AgentNativeTargetV1>>,
+                context_id: Option<String>,
             }
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
-            let value = agent_snapshot(window, state, input.native_targets).await?;
+            let value =
+                agent_snapshot(window, state, input.native_targets, input.context_id).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "retry_agent_settings" => {

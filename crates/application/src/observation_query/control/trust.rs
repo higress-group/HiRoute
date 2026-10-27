@@ -37,6 +37,7 @@ impl ObservationControl {
         }
         let mut suggestions = Vec::new();
         let mut unavailable = Vec::new();
+        let mut pending = Vec::new();
         let mut deferred = None;
         for (index, plan_id) in ids.iter().enumerate() {
             let result = (|| {
@@ -59,12 +60,12 @@ impl ObservationControl {
                     if CanonicalDigest::of(&runs).map_err(|_| ObservationQueryError::Corrupt)?
                         == entry.runs
                     {
-                        return Ok(entry.value.clone());
+                        return Ok(Some(entry.value.clone()));
                     }
                 }
                 if started.elapsed() >= std::time::Duration::from_millis(800) {
                     deferred.get_or_insert(index);
-                    return Err(ObservationQueryError::Unavailable);
+                    return Ok(None);
                 }
                 let query = PlanTrustQueryV1 {
                     plan_id: plan_id.clone(),
@@ -156,13 +157,14 @@ impl ObservationControl {
                         },
                     );
                 }
-                Ok(value)
+                Ok(Some(value))
             })();
             match result {
-                Ok(value) if value["branches"].as_array().is_some_and(|b| !b.is_empty()) => {
+                Ok(Some(value)) if value["branches"].as_array().is_some_and(|b| !b.is_empty()) => {
                     suggestions.push(value)
                 }
-                Ok(_) => {}
+                Ok(Some(_)) => {}
+                Ok(None) => pending.push(plan_id.clone()),
                 Err(error) => {
                     cache.entries.remove(plan_id);
                     unavailable.push(json!({"plan_id":plan_id,"reason":match error { ObservationQueryError::ScopeTooLarge => "scope_too_large", ObservationQueryError::StalePreview => "stale", _ => "unavailable" }}));
@@ -190,7 +192,7 @@ impl ObservationControl {
             guard.entries.retain(|id, _| ids.contains(id));
             guard.next = cache.next;
         }
-        Ok(json!({"suggestions":suggestions,"unavailable":unavailable}))
+        Ok(json!({"suggestions":suggestions,"unavailable":unavailable,"pending":pending}))
     }
 
     pub(super) fn trust_result(

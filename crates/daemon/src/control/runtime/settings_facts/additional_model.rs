@@ -37,7 +37,10 @@ impl LocalControlAdapter {
         }
         let kind = if class == SettingsAgentClass::OpenCode {
             hiroute_domain::AgentKindV1::OpenCode
-        } else if class == SettingsAgentClass::Dsh {
+        } else if matches!(
+            class,
+            SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop
+        ) {
             hiroute_domain::AgentKindV1::DeepseekHarness
         } else if class == SettingsAgentClass::Pi {
             hiroute_domain::AgentKindV1::Pi
@@ -51,14 +54,6 @@ impl LocalControlAdapter {
         {
             self.scanner
                 .check_pi_model_configuration()
-                .map_err(|_| ControlReadError::Unavailable)?;
-        }
-        #[cfg(unix)]
-        if kind == hiroute_domain::AgentKindV1::DeepseekHarness
-            && matches!(spec.model, AgentFacetIntent::Configure { .. })
-        {
-            self.scanner
-                .check_dsh_model_configuration()
                 .map_err(|_| ControlReadError::Unavailable)?;
         }
         let pi_settings = if kind == hiroute_domain::AgentKindV1::Pi {
@@ -133,48 +128,64 @@ impl LocalControlAdapter {
             _ => return Err(ControlReadError::Denied),
         };
         let previous = if let Some(reference) = &current_grant {
-            let mut found = None;
-            for operation in stores
+            let found = stores
                 .control()
-                .succeeded_agent_operations_for_kind(&workspace, "ApplyAgentConnectionChange")
+                .find_verified_agent_operation(
+                    &workspace,
+                    &["ApplyAgentConnectionChange"],
+                    |operation| {
+                        let invalid = || {
+                            hiroute_domain::PortError::new(
+                                hiroute_domain::PortErrorCode::Corrupt,
+                                "agent.model.current-grant",
+                            )
+                        };
+                        if operation.plan.spec().resource_id.as_deref() != Some(&spec.context_id) {
+                            return Ok(false);
+                        }
+                        let Some(intent) = operation
+                            .plan
+                            .external()
+                            .iter()
+                            .find(|intent| {
+                                super::super::native_additional_model::is_settings_additional_model(
+                                    intent,
+                                )
+                            })
+                            .cloned()
+                        else {
+                            return Ok(false);
+                        };
+                        let payload =
+                            settings_additional_model_file_for_operation(operation, &intent)?;
+                        if !matches!(payload.change, AdditionalModelFileAction::Configure { .. }) {
+                            return Err(invalid());
+                        }
+                        let [mutation] = operation.plan.agent_access_grants() else {
+                            return Err(invalid());
+                        };
+                        let effect = operation
+                            .grant_effects()
+                            .iter()
+                            .find(|effect| is_agent_access_grant_effect(effect))
+                            .ok_or_else(invalid)?;
+                        let original = AgentAccessGrantRefV1::from_ensure_effect(effect, mutation)
+                            .map_err(|_| invalid())?;
+                        Ok(&original == reference)
+                    },
+                )
                 .map_err(super::super::map_port)?
-            {
-                if operation.plan.spec().resource_id.as_deref() != Some(&spec.context_id) {
-                    continue;
-                }
-                let Some(intent) = operation
-                    .plan
-                    .external()
-                    .iter()
-                    .find(|intent| {
-                        super::super::native_additional_model::is_settings_additional_model(intent)
-                    })
-                    .cloned()
-                else {
-                    continue;
-                };
-                let payload = settings_additional_model_file_for_operation(&operation, &intent)
-                    .map_err(super::super::map_port)?;
-                if !matches!(payload.change, AdditionalModelFileAction::Configure { .. }) {
-                    return Err(ControlReadError::Corrupt);
-                }
-                let [mutation] = operation.plan.agent_access_grants() else {
-                    return Err(ControlReadError::Corrupt);
-                };
-                let effect = operation
-                    .step(hiroute_domain::OperationStepKind::ApplySecrets)
-                    .effects
-                    .iter()
-                    .find(|effect| is_agent_access_grant_effect(effect))
-                    .ok_or(ControlReadError::Corrupt)?;
-                let original = AgentAccessGrantRefV1::from_ensure_effect(effect, mutation)
-                    .map_err(|_| ControlReadError::Corrupt)?;
-                if &original == reference {
-                    found = Some((operation, intent));
-                    break;
-                }
-            }
-            Some(found.ok_or(ControlReadError::Corrupt)?)
+                .ok_or(ControlReadError::Corrupt)?;
+            let intent = found
+                .plan
+                .external()
+                .iter()
+                .find(|intent| {
+                    super::super::native_additional_model::is_settings_additional_model(intent)
+                })
+                .cloned()
+                .ok_or(ControlReadError::Corrupt)?;
+            Some((found, intent))
         } else {
             None
         };
@@ -269,7 +280,7 @@ impl LocalControlAdapter {
                 .scanner
                 .dsh_web_default_in_use(&provider_id, &models)
                 .map_err(|_| ControlReadError::Denied)?;
-        let qoder_model_conflict = if opencode_default_in_use || dsh_default_in_use
+        let mut qoder_model_conflict = if opencode_default_in_use || dsh_default_in_use
             || pi_settings
                 .as_ref()
                 .is_some_and(|settings| settings.removes_default(&provider_id, &models))
@@ -283,12 +294,91 @@ impl LocalControlAdapter {
         } else {
             qoder_model_conflict
         };
-        let dependency_digest = CanonicalDigest::of(&serde_json::json!({
-            "schema":"qoder-model-facts/v1", "collaboration":input.facts.dependency_digest,
+        let routing_adapter =
+            if let Some(content) = hiroute_integrations::native_routing_adapter(kind) {
+                use hiroute_application::agent_connection::NativePluginFileFacts;
+                let role = AgentConnectionEffectRoleV1::NativeRoutingAdapter;
+                let file_target = role
+                    .settings_target_for(&input.subject)
+                    .map_err(|_| ControlReadError::Corrupt)?;
+                let before_fingerprint = self
+                    .artifacts
+                    .current_external_fingerprint(&file_target)
+                    .map_err(super::super::map_port)?;
+                let bytes = self
+                    .artifacts
+                    .read_native_target(&file_target)
+                    .map_err(super::super::map_port)?;
+                let expected_content =
+                    CanonicalDigest::of_bytes(bytes.as_deref().map_or(&[], Vec::as_slice));
+                let old = previous.as_ref().and_then(|(operation, _)| {
+                    operation
+                        .plan
+                        .external()
+                        .iter()
+                        .find(|i| i.effect_id() == "agent-connection-native-routing-adapter")
+                        .map(|i| (&operation.operation_id, i))
+                });
+                if matches!(&spec.model, AgentFacetIntent::Configure { settings }
+                    if !settings.installs_native_routing_metadata())
+                {
+                    // Do not strand an owned adapter by dropping its effect from the next
+                    // Operation. Normal Restore releases its journal before this explicit
+                    // no-plugin configuration. A foreign/borrowed file is never deleted.
+                    use hiroute_application::agent_connection::SettingsBlockReason;
+                    let blocker = if old.is_some() {
+                        Some(SettingsBlockReason::NativeRoutingAdapterRestoreRequired)
+                    } else if bytes.is_some() {
+                        Some(SettingsBlockReason::NativeRoutingAdapterExternalResource)
+                    } else {
+                        None
+                    };
+                    qoder_model_conflict = qoder_model_conflict.or(blocker);
+                    None
+                } else if matches!(spec.model, AgentFacetIntent::Configure { .. }) {
+                    hiroute_integrations::validate_native_plugin_configuration(
+                        &self.artifacts,
+                        &file_target,
+                        content.as_bytes(),
+                        old,
+                    )
+                    .map_err(super::super::map_port)?;
+                    Some(NativePluginFileFacts {
+                        role,
+                        before_fingerprint,
+                        expected_content,
+                        content,
+                    })
+                } else if let Some((operation, intent)) = old {
+                    hiroute_integrations::validate_native_plugin_restoration(
+                        &self.artifacts,
+                        &file_target,
+                        operation,
+                        intent,
+                    )
+                    .map_err(super::super::map_port)?;
+                    Some(NativePluginFileFacts {
+                        role,
+                        before_fingerprint,
+                        expected_content,
+                        content,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+        let dependency_facts = serde_json::json!({
+            "schema":"qoder-model-facts/v1", "routing_adapter":routing_adapter.as_ref().map(|r| (&r.expected_content, &r.before_fingerprint, CanonicalDigest::of_bytes(r.content.as_bytes()))), "collaboration":input.facts.dependency_digest,
             "content":expected_content,"fingerprint":before_fingerprint,"publication":publication.digest,
             "grant":current_grant,"token":token_input_fingerprint,"provider":provider_id,"endpoint":endpoint,
             "conflict":qoder_model_conflict,"models":models,"additional_dependencies":additional_dependencies,"kind":kind,"pi_settings":pi_settings,"previous":previous.as_ref().map(|(op,_)| &op.operation_id),"restore":restore,
-        })).map_err(|_| ControlReadError::Corrupt)?;
+        });
+        #[cfg(test)]
+        diagnostics::record("additional_model", &dependency_facts);
+        let dependency_digest =
+            CanonicalDigest::of(&dependency_facts).map_err(|_| ControlReadError::Corrupt)?;
         let old_digest = input.facts.dependency_digest.clone();
         let mut capabilities = [
             AgentCapability::EffectiveConfiguration,
@@ -338,6 +428,8 @@ impl LocalControlAdapter {
                 ingress: protocol,
                 available_surfaces: [if kind == hiroute_domain::AgentKindV1::OpenCode {
                     AgentModelSurfaceV2::OpenCodeCli
+                } else if class == SettingsAgentClass::DshDesktop {
+                    AgentModelSurfaceV2::DshDesktop
                 } else if kind == hiroute_domain::AgentKindV1::DeepseekHarness {
                     AgentModelSurfaceV2::DshCli
                 } else if kind == hiroute_domain::AgentKindV1::Pi {
@@ -367,6 +459,7 @@ impl LocalControlAdapter {
                 kind,
                 pi_settings_content: pi_settings.map(|settings| settings.content_digest),
                 additional_dependencies,
+                routing_adapter,
                 provider_id,
                 endpoint,
                 models,

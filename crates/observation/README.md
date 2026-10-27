@@ -12,6 +12,19 @@
 
 Observation gaps must remain visible without changing the model request's execution result. Historical identity and price facts must not be inferred from current configuration. Deleted content remains unavailable through search, old references, and replay.
 
+`StageAssessmentRecordedV1` retains joint quality under one frozen native rubric
+without assigning a model or profile. It uses the existing nullable stage projection
+and immutable history membership. Complete joint assessments count as scored stages;
+single-model capability averages exclude them. The earlier model assessment format
+and authenticated historical fact readers retain their meaning.
+
+Catalog queries may opt in to `include_input_selection`. The request-local reader
+authenticates at most 128 metadata facts and a 64 KiB original carrier; missing,
+ambiguous, corrupt or deleted evidence yields no position. Existing calls omit this
+field and retain their cursor binding. No startup backfill or session-history scan
+is needed. Position evidence does not prove human authorship or complete input-batch
+coverage, and never changes stored conversation content.
+
 Managed content implementation details are described in
 [managed_text/README.md](src/managed_text/README.md). The executable storage, query,
 deletion and retention expectations are covered by this crate's tests and the product E2E

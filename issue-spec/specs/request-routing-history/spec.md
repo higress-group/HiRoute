@@ -7,6 +7,61 @@ plan names, and surviving content cannot substitute for execution evidence.
 
 ## Requirements
 
+### Requirement: Composite stage quality is independent of model attribution
+
+An actually captured stage MAY use several models or execution groups. When all
+accepted executions share a frozen Plan revision, branch and assessment rubric,
+the next normal classification SHALL retain an overall stage quality question
+bound to the immutable actual request membership. This assessment SHALL contain
+no single-model or profile identity and SHALL NOT contribute to a single-model
+capability average or competence upgrade. A missing common rubric withdraws this
+optional assessment, without declaring missing captured output or disabling
+classification of later input. Custom extensions retain their own rubric contract.
+
+Capture completeness, source uncertainty, association uncertainty and executor
+attribution SHALL remain separate facts. A successful retry may extend a new stage
+revision; it SHALL NOT rewrite an earlier failed revision or an existing assessment's
+membership. A later clean single-model stage SHALL again support its normal
+single-model quality evaluation.
+
+#### Scenario: Relay, failure and exact retry precede a new question
+
+- **WHEN** one task accepts work from a Regular model and a Primary relay, then
+  encounters a temporary upstream failure and completes after an exact native retry
+- **THEN** the failed snapshot remains unchanged, actual accepted output and failed
+  request membership are retained, and the next question can assess the joint
+  result under its common rubric without fabricating single-model credit.
+
+### Requirement: Excerpts use the recorded input position
+
+New requests SHALL record a bounded original canonical message position when
+current-input selection is established, independently of optional retained history.
+This position identifies the first selected input message, not the complete input
+batch or human authorship. Source uncertainty SHALL remain explicit. Invalid or
+unavailable selection SHALL retain that uncertainty rather than choose a late
+User-role envelope heuristically.
+
+Catalog readers SHALL opt in to position metadata. Existing calls and cursor
+bindings without that option SHALL retain their original shape. Evidence lookup
+SHALL remain bounded to the authorized retained request, authenticate its original
+carrier and digest, and honor deletion. Missing legacy evidence SHALL be shown as
+unrecorded while the original conversation remains readable. Ordinary startup and
+session reads SHALL NOT scan all historical facts to backfill positions.
+
+#### Scenario: Native context follows the actual input
+
+- **WHEN** a client appends runtime context or a time envelope after its selected
+  input, or a historical record has no retained selected-input position
+- **THEN** the excerpt selects only the recorded position or declares it unrecorded;
+  original context is neither deleted nor presented as the new question.
+
+### Requirement: Initial choice and actual relay are displayed separately
+
+The stage-start explanation SHALL use its recorded selection group. The accepted
+model and any request relay SHALL remain separately visible. Missing selection
+evidence SHALL be explicit; the final executor or probability alone SHALL NOT
+reconstruct an initial group.
+
 ### Requirement: Request summaries preserve admitted routing identity safely
 
 Each ObservedRequestSummary MUST return routing-context state and, when proven,

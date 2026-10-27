@@ -34,6 +34,8 @@ mod additional_model;
 mod codex_association;
 #[path = "settings_facts/codex_models.rs"]
 mod codex_models;
+#[cfg(test)]
+pub(crate) mod diagnostics;
 mod hermes;
 mod hermes_model;
 mod qoder;
@@ -64,6 +66,7 @@ impl LocalControlAdapter {
             "agent_qoder_default" => SettingsAgentClass::Qoder,
             "agent_pi_default" => SettingsAgentClass::Pi,
             "agent_dsh_default" => SettingsAgentClass::Dsh,
+            "agent_dsh_desktop" => SettingsAgentClass::DshDesktop,
             "agent_opencode_default" => SettingsAgentClass::OpenCode,
             _ => return None,
         };
@@ -89,6 +92,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder,
             SettingsAgentClass::Pi,
             SettingsAgentClass::Dsh,
+            SettingsAgentClass::DshDesktop,
             SettingsAgentClass::OpenCode,
         ]
         .into_iter()
@@ -115,10 +119,60 @@ impl LocalControlAdapter {
             .settings_agent_for_context(&spec.context_id)
             .ok_or(ControlReadError::NotFound)?;
         self.check_codex_slot(spec, class)?;
+        // Desktop model access does not establish independent Skill/Worker support.
+        if class == SettingsAgentClass::DshDesktop && !spec.keeps_skills() {
+            return Err(ControlReadError::Denied);
+        }
+        // Probe the installed composition once per facts capture, not once per
+        // native-file snapshot. Apply captures again under the admission lock;
+        // mutable configuration still participates in both snapshots below.
+        #[cfg(any(unix, windows))]
+        let dsh_composition = if matches!(
+            class,
+            SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop
+        ) && matches!(spec.model, AgentFacetIntent::Configure { .. })
+        {
+            Some(
+                (if class == SettingsAgentClass::DshDesktop {
+                    self.scanner.check_dsh_desktop_model_configuration()
+                } else {
+                    self.scanner.check_dsh_model_configuration()
+                })
+                .map_err(|_| ControlReadError::Unavailable)?,
+            )
+        } else {
+            None
+        };
         let first = self.complete_settings_snapshot(spec, class)?;
-        let second = self.complete_settings_snapshot(spec, class)?;
+        let mut second = self.complete_settings_snapshot(spec, class)?;
+        #[cfg(any(unix, windows))]
+        if let Some(checked) = dsh_composition.as_ref()
+            && !(if class == SettingsAgentClass::DshDesktop {
+                self.scanner
+                    .dsh_desktop_model_configuration_is_current(checked)
+            } else {
+                self.scanner.dsh_model_configuration_is_current(checked)
+            })
+            .map_err(|_| ControlReadError::SnapshotChanged)?
+        {
+            return Err(ControlReadError::SnapshotChanged);
+        }
         if first.facts.dependency_digest != second.facts.dependency_digest {
             return Err(ControlReadError::SnapshotChanged);
+        }
+        #[cfg(any(unix, windows))]
+        if let Some(checked) = dsh_composition {
+            // The admitted proof is part of Preview/Apply authority, not just a
+            // transient success check. A new valid runtime still needs fresh approval.
+            let previous = second.facts.dependency_digest.clone();
+            let digest =
+                CanonicalDigest::of(&("hiroute.dsh-composition-facts/v1", &previous, checked))
+                    .map_err(|_| ControlReadError::Corrupt)?;
+            second
+                .facts
+                .capabilities
+                .rebind_dependency(&previous, &digest);
+            second.facts.dependency_digest = digest;
         }
         Ok(second)
     }
@@ -133,6 +187,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
                 | SettingsAgentClass::Pi
                 | SettingsAgentClass::Dsh
+                | SettingsAgentClass::DshDesktop
                 | SettingsAgentClass::OpenCode
         ) {
             return self.attach_additional_model_facts(
@@ -350,6 +405,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::DshDesktop
             | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
@@ -419,7 +475,7 @@ impl LocalControlAdapter {
                 selected_collaboration_restore = Some(original.operation_id.clone());
             }
             let model = match class {
-                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh | SettingsAgentClass::Hermes | SettingsAgentClass::OpenCode => return Err(ControlReadError::Denied),
+                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop | SettingsAgentClass::Hermes | SettingsAgentClass::OpenCode => return Err(ControlReadError::Denied),
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => original
                     .plan
                     .external()
@@ -453,8 +509,7 @@ impl LocalControlAdapter {
                 return Err(ControlReadError::Corrupt);
             };
             let effect = original
-                .step(hiroute_domain::OperationStepKind::ApplySecrets)
-                .effects
+                .grant_effects()
                 .iter()
                 .find(|effect| is_agent_access_grant_effect(effect))
                 .ok_or(ControlReadError::Corrupt)?;
@@ -568,6 +623,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::DshDesktop
             | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
@@ -862,6 +918,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::DshDesktop
             | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
@@ -967,23 +1024,23 @@ fn login_item_owned_by_this_feature(
     stores: &hiroute_local_storage::LocalStorageSet,
     workspace: &WorkspaceId,
 ) -> Result<bool, ControlReadError> {
-    for original in stores
+    let original = stores
         .control()
-        .succeeded_agent_operations_for_kinds(
+        .find_verified_agent_operation(
             workspace,
             &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
+            |operation| Ok(operation.plan.external().iter().any(is_settings_login_item)),
         )
-        .map_err(super::map_port)?
-    {
-        if let Some(intent) = original
+        .map_err(super::map_port)?;
+    if let Some(original) = original
+        && let Some(intent) = original
             .plan
             .external()
             .iter()
             .find(|intent| is_settings_login_item(intent))
-        {
-            let payload = decode_settings_login_item(intent).map_err(super::map_port)?;
-            return Ok(payload.created());
-        }
+    {
+        let payload = decode_settings_login_item(intent).map_err(super::map_port)?;
+        return Ok(payload.created());
     }
     Ok(false)
 }

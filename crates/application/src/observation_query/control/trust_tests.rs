@@ -22,6 +22,7 @@ struct Ports {
     reads: AtomicUsize,
     stages: AtomicUsize,
     worker_state: AtomicUsize,
+    population_delay_once_ms: AtomicU64,
     fail_first: Mutex<bool>,
 }
 impl ControlStatePort for Ports {
@@ -115,6 +116,9 @@ impl ObservationQueryPort for Ports {
         _: i64,
     ) -> Result<TrustPopulationV1, ObservationQueryError> {
         self.reads.fetch_add(1, Ordering::Relaxed);
+        std::thread::sleep(std::time::Duration::from_millis(
+            self.population_delay_once_ms.swap(0, Ordering::Relaxed),
+        ));
         if q.plan_id == "plan/oversized" && *self.fail_first.lock().unwrap() {
             return Err(ObservationQueryError::ScopeTooLarge);
         }
@@ -198,6 +202,41 @@ fn trust_suggestion_cache_rechecks_all_mutation_inputs_and_time() {
     reader.cancel();
     assert!(control.trust_suggestions(&reader, 5000).is_err());
 }
+#[test]
+fn trust_suggestion_budget_defers_work_without_reporting_a_plan_failure() {
+    let ports = Arc::new(Ports::default());
+    ports.population_delay_once_ms.store(850, Ordering::Relaxed);
+    let control =
+        ObservationControl::new(ports.clone(), ports.clone(), ports.clone(), ports.clone());
+    let reader = ObservationReaderContext::local_user(
+        WorkspaceId::default(),
+        "user".into(),
+        1,
+        20_000,
+        false,
+        false,
+    )
+    .unwrap();
+    let first = control.trust_suggestions(&reader, 5000).unwrap();
+    assert_eq!(first["suggestions"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        first["unavailable"],
+        json!([]),
+        "Deferred work is not a failed read"
+    );
+    assert_eq!(first["pending"], json!(["plan/a"]));
+    assert_eq!(ports.reads.load(Ordering::Relaxed), 1);
+    let completed = control.trust_suggestions(&reader, 5001).unwrap();
+    assert_eq!(completed["suggestions"].as_array().unwrap().len(), 2);
+    assert_eq!(completed["pending"], json!([]));
+    assert_eq!(completed["unavailable"], json!([]));
+    assert_eq!(
+        ports.reads.load(Ordering::Relaxed),
+        2,
+        "Continuation re-read completed populations"
+    );
+}
+
 #[test]
 fn trust_suggestion_oversized_plan_keeps_healthy_plan_available() {
     let ports = Arc::new(Ports::default());

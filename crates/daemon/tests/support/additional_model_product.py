@@ -25,6 +25,8 @@ from collaboration_product import apply_collaboration, check_collaboration as _c
 from additional_model_fixture import (CASES, OwnedModelSettings, PersistedRouteOracle,
                                  read_persisted_route, select_model_context, persisted_plan_provider)
 import qoder_native_context
+from copy import deepcopy
+from additional_native_history_product import HISTORY_CASES
 
 HARNESS = "qoder"
 AGENT = "agent_qoder_default"
@@ -171,8 +173,9 @@ def run(repository, candidate):
     model_active = skill_active = False
     before_skill = None
     stage = 'dedicated-model-context'
+    required_cases = list(CASES) + (list(HISTORY_CASES) if HARNESS in ('pi', 'opencode') else [])
     report = dict(scenario=HARNESS + '-persisted-model-routes', candidate=candidate, worker_harness=HARNESS,
-                  required_cases=list(CASES), selected_cases=list(CASES), cases=[], native_reads=[],
+                  required_cases=required_cases, selected_cases=required_cases, cases=[], native_reads=[],
                   evidence_limit=f'Real persisted settings/native {HARNESS}/Gateway; controlled sources; no Desktop verdict')
     failed = False
     cleanup_errors = []
@@ -196,6 +199,8 @@ def run(repository, candidate):
             sources.append(source)
             oracles.append(oracle)
             plans.append(publish_source_plan(product, source, index))
+            if index == 0:
+                first_editor = deepcopy(product.editor)
         agent = next(item for item in product.preview('agents scan')['agents'] if item['agent_id'] == AGENT)
         context = agent['context_id']
         product.agent_connection = 'agent-connection/' + context
@@ -215,6 +220,16 @@ def run(repository, candidate):
         for index, plan in enumerate(plans):
             report['native_reads'].append(read_persisted_route(product, binary, persisted_plan_provider(settings, provider, plan['alias']) + '/' + plan['alias'],
                 sources[index], oracles[index], 'persisted-' + str(index)))
+        if HARNESS in ('pi', 'opencode'):
+            from decision_services_product import native_history_decisions
+            from additional_native_history_product import exercise_native_history
+            stage = 'ordinary-native-adapter-history'
+            selector = persisted_plan_provider(settings, provider, plans[0]['alias']) + '/' + plans[0]['alias']
+            with native_history_decisions(product, plans[0]['plan_id'], first_editor) as decisions:
+                history = exercise_native_history(product, binary, node, selector, oracles[0], decisions, HARNESS)
+            report['cases'].extend(history['cases'])
+            report['native_routing_receipts'] = history['routing_receipts']
+            stage = 'persist-model-routes'
         product.stop()
         product.start()
         report['native_reads'].append(read_persisted_route(product, binary, persisted_plan_provider(settings, provider, plans[0]['alias']) + '/' + plans[0]['alias'],
@@ -269,6 +284,17 @@ def run(repository, candidate):
         restore_models(product, context)
         model_active = False
         assert settings.read() == settings.baseline, 'model Restore did not preserve unrelated user edits'
+        if HARNESS == 'dsh':
+            settings.assert_restored()
+            from native_acp_client import prompt as acp_prompt
+            saved = Path(product.env['DSH_HOME']) / 'profiles/web/cordis.patch.yml'
+            before = [source.request_count() for source in sources]
+            _, session_id = acp_prompt(product, [str(binary), '--profile', 'acp', '--patch', str(saved)], None)
+            assert [source.request_count() for source in sources] == before, 'native restore startup made an unexpected model request'
+            report['native_restore_startup'] = {'state':'green', 'session_created':bool(session_id), 'model_requests':0}
+        if HARNESS in ('pi', 'opencode'):
+            from additional_native_history_product import assert_default_startup_after_restore
+            report['native_restore_startup'] = assert_default_startup_after_restore(product, binary, node, settings, HARNESS)
         assert digest(skill) == skill_digest, 'model Restore changed the independent Skill'
         remaining = settings_status(product, context)['collaboration']
         assert remaining['state'] == 'configured' and remaining['restore_point_ref'] == collaboration['restore_point_ref']

@@ -61,6 +61,7 @@ fn session(now: Instant, candidates: Vec<DecisionCandidateAuthority>) -> Product
         earliest_retry_at: None,
         non_temporary_block_seen: false,
         upstream_attempted: false,
+        last_context_overflow: false,
         preparation_failure: None,
     }
 }
@@ -243,6 +244,53 @@ fn provisional_reply_does_not_override_a_previous_formal_attempt() {
 }
 
 #[test]
+fn overflow_reply_requires_a_real_last_response_and_cannot_outlive_deadline_or_later_failure() {
+    let now = Instant::now();
+    let realtime = RealtimeRoutingFacts::default();
+    let failure = materialization_failure(now, "source_disabled", None);
+    let overflow = ProviderClassificationFacts {
+        error_class: Some(ObservationLabel::new("context_length").unwrap()),
+        retryability: RetryabilityFact::Retryable,
+        ..ProviderClassificationFacts::default()
+    };
+    for promoted in [false, true] {
+        let mut session = session(now, vec![candidate(1, &["a"]), candidate(2, &["b"])]);
+        let mut selected = session
+            .select_next(selection_request(now, 1, 2, &realtime))
+            .unwrap()
+            .unwrap();
+        if promoted {
+            selected.attempt_id = AttemptId(1);
+        }
+        assert_eq!(
+            session
+                .decide(&selected, &overflow, &failure.transport)
+                .unwrap(),
+            Disposition::Continue
+        );
+        assert_eq!(
+            session.exhaustion_local_reply(now).unwrap().is_some(),
+            promoted
+        );
+        assert!(
+            session
+                .exhaustion_local_reply(session.overall_deadline)
+                .unwrap()
+                .is_none()
+        );
+        let next = session
+            .select_next(selection_request(now, 2, 1, &realtime))
+            .unwrap()
+            .unwrap();
+        session.decide_failure(&next, &failure).unwrap();
+        assert!(!session.last_context_overflow);
+        if promoted {
+            assert!(session.exhaustion_local_reply(now).unwrap().is_none());
+        }
+    }
+}
+
+#[test]
 fn retryable_quota_advances_exact_credential_before_binding() {
     let now = Instant::now();
     let realtime_facts = RealtimeRoutingFacts::default();
@@ -276,6 +324,7 @@ fn retryable_quota_advances_exact_credential_before_binding() {
         earliest_retry_at: None,
         non_temporary_block_seen: false,
         upstream_attempted: false,
+        last_context_overflow: false,
         preparation_failure: None,
     };
     let first = session
@@ -496,6 +545,7 @@ fn unknown_or_nonretryable_materialization_never_advances_selection() {
         earliest_retry_at: None,
         non_temporary_block_seen: false,
         upstream_attempted: false,
+        last_context_overflow: false,
         preparation_failure: None,
     };
     for retryability in [RetryabilityFact::Unknown, RetryabilityFact::NonRetryable] {

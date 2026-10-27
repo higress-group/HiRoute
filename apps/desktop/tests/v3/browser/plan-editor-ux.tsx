@@ -18,6 +18,10 @@ let rejectAuthoring: ((reason: unknown) => void) | undefined;
 const workerChecks = new URLSearchParams(location.search).get('checks') === 'workers';
 const availabilityChecks = new URLSearchParams(location.search).get('checks') === 'availability';
 let availabilityFailure = false;
+let releaseInitialOptions: (() => void) | null = null;
+let releaseInitialSources: (() => void) | null = null;
+let initialOptionsHeld = false;
+let initialSourcesHeld = false;
 let availabilityEmpty = false;
 let unavailableRequested = false;
 const plan = structuredClone(dailyPlan);
@@ -44,11 +48,15 @@ mockIPC((command, payload) => {
     }
     return { ...mockProductInvoke(command, payload as Record<string, unknown>, 'ready') as object, authoring };
   }
+  if (command === 'compute_management_snapshot' && availabilityChecks && !initialSourcesHeld) {
+    initialSourcesHeld = true;
+    return new Promise(resolve => { releaseInitialSources = () => resolve(mockProductInvoke(command, payload as Record<string, unknown>, 'ready')); });
+  }
   if (command === 'plan_editor_options' && availabilityChecks) {
     unavailableRequested = (payload as { input?: { include_unavailable?: boolean } }).input?.include_unavailable === true;
     if (availabilityFailure) throw { source: 'backend', envelope: { error: { code: 'DAEMON_UNAVAILABLE', private: 'provider-secret-debug' } } };
     const current = mockProductInvoke(command, payload as Record<string, unknown>, 'ready') as Record<string, unknown>;
-    return { ...current,
+    const response = { ...current,
       ...(availabilityEmpty ? { candidates: [] } : {}),
       unavailable_candidates: availabilityEmpty ? [] : [
         { binding_id: 'binding/invalid-retained', display_name: '错误模型', reason: 'invalid_model_id' },
@@ -56,6 +64,11 @@ mockIPC((command, payload) => {
       ],
       ...(availabilityEmpty ? {} : { unavailable_candidate_count: 257 }),
     };
+    if (!initialOptionsHeld) {
+      initialOptionsHeld = true;
+      return new Promise(resolve => { releaseInitialOptions = () => resolve(response); });
+    }
+    return response;
   }
   if (command === 'preview_plan_editor') {
     fixtureTrace.commands.push(command);
@@ -210,6 +223,14 @@ const checks: [string, () => Promise<void>][] = [
 ];
 
 const availabilityCases: [string, () => Promise<void>][] = [
+  ['routing.options.loading: pending metadata does not invent unavailable warnings', async () => {
+    try {
+      await until(() => Boolean(releaseInitialOptions && releaseInitialSources && document.querySelector('.route-candidate')), 'blocked initial metadata reads');
+      const text = [...document.querySelectorAll('.route-candidate')].map(row => row.textContent).join(' ');
+      assert(text.includes('正在读取来源') && text.includes('正在读取价格') && text.includes('正在读取思考设置'), 'Initial reads were not identified as loading');
+      assert(!text.includes('来源暂不可得') && !text.includes('价格未记录') && !text.includes('思考设置未取得'), 'Loading metadata was presented as a failed configuration');
+    } finally { releaseInitialOptions?.(); releaseInitialSources?.(); }
+  }],
   ['routing.options.id-safety: ASCII manual entry preserves exact existing and observed Unicode IDs', async () => {
     for (const id of ['gpt-6.1-sol', 'Vendor/Model@2026?revision#1', 'Model A', 'x'.repeat(512)]) {
       assert(manualModelError(blankModel(id, '中文名称')) === '', `ASCII ID was rejected: ${JSON.stringify(id)}`);
@@ -273,6 +294,7 @@ const authoringCases: [string, () => Promise<void>][] = [
     assert(document.documentElement.scrollWidth <= innerWidth, 'Loading page overflowed');
   }],
   ['routing.authoring.failure: retry preserves selected plan and hides raw errors', async () => {
+    await until(() => Boolean(rejectAuthoring), 'pending authoring request before failure injection');
     rejectAuthoring!({ source: 'backend', envelope: { error: { code: 'DAEMON_UNAVAILABLE', private: 'private-provider-message' } } });
     await until(() => Boolean(document.querySelector('[role="alert"]')), 'authoring failure');
     assert(!document.body.textContent?.includes('private-provider-message'), 'Raw service error leaked');

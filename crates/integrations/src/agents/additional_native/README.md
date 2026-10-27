@@ -14,10 +14,64 @@ See the [Agent map](../../../../../docs/code-map/README.md) before changing owne
 | Ordinary Gateway authentication | Dedicated `/_hiroute/qoder/v1` bearer channel | `/v1`, fixed `X-HiRoute-Token` header; saved native auth may override ordinary Bearer | Fixed `X-HiRoute-Token` header; Responses base ends in `/v1`, Messages base does not | Both SDKs use `/v1` and fixed `X-HiRoute-Token`; inert SDK API-key placeholder |
 | Actual native acceptance | [Qoder journeys](../../../../../tools/product-e2e/tests/QODER_DELEGATION.md) | [Pi journeys](../../../../../tools/product-e2e/tests/PI_INTEGRATION.md) | [DSH journeys](../../../../../tools/product-e2e/tests/DSH_INTEGRATION.md) | [OpenCode journeys](../../../../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md) |
 
-Main-Agent configuration adds only selected Plan aliases. It leaves native defaults,
-purpose routing, extensions, hooks, MCP and Skills to their existing owners. The
+Main-Agent configuration adds selected Plan aliases and, for Pi/DSH/OpenCode, one
+bundled routing adapter. It preserves native defaults, MCP and unrelated Skills. The
 Worker uses a different transient profile with one frozen route and exact budgets.
 A native provider name alone never grants ownership of an existing user entry.
+
+Native protocol selection and the upstream binding are separate contracts.
+`plan_protocols[plan_id]` selects the native Responses or Messages provider through
+the ordinary settings transaction. Changing only an upstream binding cannot make
+native controls portable: for example, Responses
+`include: ["reasoning.encrypted_content"]` cannot be expressed by a Chat Completions
+target. The [request adapter](../../../../gateway/src/adapters/request.rs) rejects
+that conversion before dispatch. A supported native Messages selection can produce
+a different, representable request; it must retain the original session and actual
+history, preserve the saved default, and pass complete Restore and native inference.
+Do not remove requested controls or edit retained history to obtain compatibility.
+
+A provider's remote MCP result does not establish execution of a declared local
+function tool, even when its response says completed. Keep each protocol's actual
+call/result identity and native execution evidence. Do not rename remote calls into
+local functions, synthesize tool results, or retry an already delivered response
+automatically. Verify the chosen model and protocol with actual native tool
+continuation; successful text-only inference does not establish this capability.
+
+[Routing adapters](../routing_adapters.rs) use protected file effects with exact
+content ownership, borrowing, rollback and restore. Pi auto-loads
+`extensions/hiroute-routing.js`; its native directory discovery skips `.mjs` files.
+DSH inserts a public Cordis middleware next to the selected patch; OpenCode loads
+`plugins/hiroute-routing.js` from its selected resource root; its automatic scan
+also excludes `.mjs`. The hooks only annotate managed model
+calls. Missing native identity keeps request scope; missing source proof retains
+observed classification, capture and evaluation. Pi managed-provider
+warming is disabled because it lacks a separate native request purpose. DSH reads
+at most 512 existing event positions, and OpenCode's optional session lookup has a
+50 ms deadline and a 128-message bound. Huge/unknown native histories may therefore
+lose verified continuity without globally disabling smart routing. Restart/reload is needed for an existing process to load new
+resources; installed files alone are not proof of live activation.
+
+DSH's wire user role also carries runtime context. The adapter therefore binds
+native `source.kind=user` events to exact serialized text positions; Gateway's
+[optional semantic view](../../../../gateway/src/core_runtime/native_routing_view.rs)
+checks the bounded proof before routing. It leaves the execution body unchanged.
+The native pi-ai leaf concatenates pure text blocks within each user envelope;
+the adapter verifies that projection before hashing the final wire blocks, without
+joining separate messages or inferring user input from unknown sources.
+Unknown content, missing proof or exhausted projection capacity uses the separate
+observed lane with explicit source uncertainty. A relay/settlement following the
+latest real input cannot acquire its proof merely by arriving in the same native
+turn. The verified main lane records a capture gap rather than a complete-history
+claim; later actual new inputs can recover full capture and evaluation.
+
+Pi custom/unknown projected input remains observed; a known compacted continuation
+requires saved input. Pending compaction ends at a new native user/checkpoint even
+if its completion hook failed. OpenCode records prompt creation IDs and identifies
+known compaction continuations through the pinned producer's typed part marker and
+summary-parent relation. Overflow replay copies and unbound late child input stay
+observed instead of acquiring the newer main task. A cold plugin without prompt
+creation evidence keeps routing available; the next native prompt supplies it.
+These mechanisms do not establish semantic scoring accuracy.
 
 ## Shared transaction and native leaves
 
@@ -79,6 +133,9 @@ to its exact former bytes; an edited file loses only the owned provider member.
 New untouched files are removed, and harmless empty containers can remain to
 preserve comments. Selecting an alias as the user default blocks removal until
 that reference changes; retaining the alias while rotating a token remains valid.
+For DSH, the provider restore baseline also retains the original ownership of the
+Cordis adapter insert across unrelated edits and reconfiguration. Removing an owned
+adapter file removes its owned insert; a genuinely borrowed file/insert survives.
 A late dependency change blocks the file switch. A restore rejected before that
 switch rolls back safely and needs a fresh operation. An operation whose service
 activation was already sealed keeps its pending tail for retry.
@@ -96,6 +153,17 @@ protocol differences nor backend capability evidence require an extra user-facin
 verification button or status badge.
 
 ## DSH static composition
+
+The Web and official macOS Desktop entries have separate subjects and native
+profiles. [Desktop admission](../dsh_desktop.rs) uses the app-owned Electron
+carrier and public bundled CLI, with standard Desktop manifest validation; it
+never changes the existing Web target or requires an npm CLI. Each profile owns
+its adjacent routing adapter and native registration through the same transaction.
+The bundled CLI cannot dump Desktop directly, so its standard Web dump is only
+composition evidence. Actual Desktop loading and provenance need native acceptance.
+Desktop Restore uses retained file ownership even when the app is gone; custom
+Desktop bundle/dependency composition blocks new Configure. Passive source import,
+Worker ACP and shared Skills remain under the existing Web/CLI entry.
 
 DSH uses the same per-provider ownership, protected grant, stale-preview and
 restore engine. Its leaf is [dsh_config.rs](../dsh_config.rs): bounded static YAML
@@ -124,6 +192,8 @@ Disabled/replaced modules, unsupported composition and relative/tilde paths fail
 without guessing from HiRoute's working directory or HOME. Only the effective
 credential file is validated/read. Prepared evidence binds configuration, active
 credential path/bytes and the selected environment secret; Save rechecks it.
+The single exact bundled routing insert is recognized passively by path and bytes;
+other executable composition remains outside this reader's proven boundary.
 
 The [shared Agent/Worker map](../../../../../docs/code-map/worker-context.md#deepseek-harness)
 locates collaboration and execution separately. The

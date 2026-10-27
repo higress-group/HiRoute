@@ -1,7 +1,7 @@
 //! Model facts bind the selected profile, publication, grant and bundled resources.
 use super::*;
 use hiroute_application::agent_connection::{
-    HermesModelFileAction, HermesPluginFileFacts, SettingsBlockReason,
+    HermesModelFileAction, NativePluginFileFacts, SettingsBlockReason,
     additional_model_provider_id, is_settings_hermes_model,
     settings_hermes_model_file_for_operation,
 };
@@ -107,8 +107,7 @@ impl LocalControlAdapter {
                     return Err(ControlReadError::Corrupt);
                 };
                 let effect = operation
-                    .step(hiroute_domain::OperationStepKind::ApplySecrets)
-                    .effects
+                    .grant_effects()
                     .iter()
                     .find(|effect| is_agent_access_grant_effect(effect))
                     .ok_or(ControlReadError::Corrupt)?;
@@ -239,12 +238,12 @@ impl LocalControlAdapter {
             }
             let original = previous.as_ref().map(|(op, _)| {
                 let intent = op.plan.external().iter().find(|i| i.target() == file_target).ok_or(ControlReadError::Corrupt)?;
-                hiroute_application::agent_connection::settings_hermes_plugin_file_for_operation(op, intent).map_err(super::super::map_port)?;
+                hiroute_application::agent_connection::settings_native_plugin_file_for_operation(op, intent).map_err(super::super::map_port)?;
                 Ok::<_, ControlReadError>((&op.operation_id, intent))
             }).transpose()?;
             let result = match &spec.model {
                 AgentFacetIntent::Configure { .. } => {
-                    hiroute_integrations::validate_hermes_plugin_configuration(
+                    hiroute_integrations::validate_native_plugin_configuration(
                         &self.artifacts,
                         &file_target,
                         content.as_bytes(),
@@ -253,7 +252,7 @@ impl LocalControlAdapter {
                 }
                 AgentFacetIntent::Restore { .. } => {
                     let (op, intent) = original.ok_or(ControlReadError::Corrupt)?;
-                    hiroute_integrations::validate_hermes_plugin_restoration(
+                    hiroute_integrations::validate_native_plugin_restoration(
                         &self.artifacts,
                         &file_target,
                         op,
@@ -263,7 +262,7 @@ impl LocalControlAdapter {
                 _ => unreachable!(),
             };
             conflict = conflict.or(native_conflict(result)?);
-            plugins.push(HermesPluginFileFacts {
+            plugins.push(NativePluginFileFacts {
                 role,
                 before_fingerprint: fingerprint,
                 expected_content: digest,

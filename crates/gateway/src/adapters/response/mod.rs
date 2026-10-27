@@ -4,20 +4,32 @@ mod body_buffer;
 mod client_stream;
 mod completion;
 mod decoder;
+mod function_encoding;
 mod messages;
 mod native_passthrough;
 mod native_passthrough_sse;
 mod protocols;
 mod render;
 mod responses_lifecycle;
+mod responses_sideband;
 mod search;
 mod wire;
 
+#[cfg(test)]
+mod cache_usage_tests;
+#[cfg(test)]
+mod chat_filtered_tests;
+#[cfg(test)]
+mod chat_tool_delta_tests;
+#[cfg(test)]
+mod moderation_metadata_tests;
 #[cfg(test)]
 #[path = "native_passthrough_tests.rs"]
 mod native_passthrough_tests;
 #[cfg(test)]
 mod native_reasoning_tests;
+#[cfg(test)]
+mod native_transport_tests;
 #[cfg(test)]
 mod service_tier_tests;
 
@@ -32,6 +44,7 @@ pub(super) fn test_tool_projection() -> super::continuation::ToolIdProjection {
 }
 
 pub use decoder::{DecodedNativeResponse, NativeResponseDecoder, ResponseDecodeStatus};
+mod diagnostic_shape;
 pub(crate) use native_passthrough::{NativeResponseProjector, NativeTerminalOutcome};
 pub use render::{ClientResponseRenderer, RenderedClientResponse, RenderedSseEvent};
 
@@ -47,14 +60,9 @@ use crate::server::core_runtime::model_ir::{
 use crate::server::core_runtime::profiles::NativeProviderStateEmission;
 use crate::server::request_plan::IngressProtocol;
 
-use super::ProtocolAdapterError;
-
-/// Responses labels its ordinary assistant answer with `final_answer`. Messages and Chat
-/// Completions have only that assistant-output channel, so the label is losslessly implicit in
-/// those protocols. Every other named phase remains Responses-only and must fail closed.
-fn client_can_represent_message_phase(protocol: IngressProtocol, phase: Option<&str>) -> bool {
-    phase.is_none() || protocol == IngressProtocol::Responses || phase == Some("final_answer")
-}
+use super::{
+    ProtocolAdapterError, can_represent_live_message_phase as client_can_represent_message_phase,
+};
 
 struct ResponsesTerminalProjection {
     event: &'static str,
@@ -101,6 +109,10 @@ enum NativeBlockKind {
 
 #[derive(Clone, Debug)]
 struct DecoderCore {
+    standard_responses_json: bool,
+    function_encoding_projection: super::FunctionEncodingProjection,
+    responses_client: bool,
+    function_encodings: BTreeMap<u32, (Option<Vec<String>>, bool)>,
     owner: ExactProviderPathV1,
     tool_id_projection: Option<super::continuation::ToolIdProjection>,
     provider_state_emission: NativeProviderStateEmission,
@@ -126,6 +138,10 @@ impl DecoderCore {
         tool_id_projection: Option<super::continuation::ToolIdProjection>,
     ) -> Self {
         Self {
+            standard_responses_json: false,
+            function_encoding_projection: Default::default(),
+            responses_client: false,
+            function_encodings: BTreeMap::new(),
             owner,
             tool_id_projection,
             provider_state_emission,
@@ -410,8 +426,13 @@ impl DecoderCore {
                 .as_ref()
                 .map_or(0, String::len)
                 .saturating_add(error.message.as_ref().map_or(0, String::len)),
+            ModelEvent::ToolCallFinished {
+                encrypted_function_args,
+                ..
+            } => encrypted_function_args
+                .as_ref()
+                .map_or(0, |paths| paths.iter().map(|path| 24 + path.len()).sum()),
             ModelEvent::ContentBlockStarted { .. }
-            | ModelEvent::ToolCallFinished { .. }
             | ModelEvent::UsageUpdated { .. }
             | ModelEvent::FinishReason { .. }
             | ModelEvent::ResponseCompleted { .. } => 0,
@@ -612,6 +633,7 @@ impl DecoderCore {
                     return Err(ModelIrError::MissingToolIdentity(logical_id.clone()).into());
                 }
                 let block = MutableResponseBlock::ToolCall {
+                    encrypted_function_args: None,
                     logical_id: logical_id.clone(),
                     native_id: native_id.clone(),
                     tool_kind: *tool_kind,
@@ -643,6 +665,7 @@ impl DecoderCore {
                 _ => return Err(invalid_block(*index, "tool argument delta")),
             },
             ModelEvent::ToolCallFinished {
+                encrypted_function_args,
                 index,
                 logical_id,
                 tool_kind,
@@ -658,6 +681,7 @@ impl DecoderCore {
                         namespace: current_namespace,
                         name: current_name,
                         arguments: current_arguments,
+                        encrypted_function_args: current_encoding,
                         finished,
                         ..
                     }) if current_id == logical_id
@@ -675,6 +699,7 @@ impl DecoderCore {
                             .into());
                         }
                         *finished = true;
+                        *current_encoding = encrypted_function_args.clone();
                     }
                     _ => return Err(invalid_block(*index, "tool completion")),
                 }
@@ -699,19 +724,10 @@ impl DecoderCore {
                     )
                     .into());
                 }
-                if reason == &FinishReason::Refusal
-                    && !self
-                        .accumulator
-                        .blocks
-                        .values()
-                        .any(|block| matches!(block, MutableResponseBlock::Refusal(_)))
-                {
-                    for block in self.accumulator.blocks.values_mut() {
-                        if let MutableResponseBlock::Text(text) = block {
-                            *block = MutableResponseBlock::Refusal(std::mem::take(text));
-                        }
-                    }
-                }
+                // A terminal content filter describes omitted output; it cannot
+                // reclassify text that earlier canonical events already emitted.
+                // Explicit refusal fields and Messages terminal classification
+                // establish refusal blocks before their content enters this owner.
             }
             ModelEvent::ResponseCompleted { output } => {
                 let mut expected = self.accumulator.clone();
@@ -1184,6 +1200,20 @@ impl DecoderCore {
         }
         self.emit(
             ModelEvent::ToolCallFinished {
+                encrypted_function_args: if kind == ToolKindV1::Function {
+                    self.function_encodings
+                        .get(&native_index)
+                        .and_then(|(value, _)| value.clone())
+                        .or_else(|| {
+                            (self.function_encoding_projection
+                                == super::FunctionEncodingProjection::Plaintext
+                                && self.responses_client
+                                && self.owner.upstream_protocol != IngressProtocol::Responses)
+                                .then(Vec::new)
+                        })
+                } else {
+                    None
+                },
                 index,
                 logical_id,
                 tool_kind: kind,
@@ -1406,3 +1436,16 @@ fn invalid_block(index: u32, operation: &str) -> ProtocolAdapterError {
     .into()
 }
 pub use client_stream::IncrementalClientSseRenderer;
+
+/// Provider-native IDs stay exact. Portable protocols lack item IDs, so derive
+/// them from the response identity and block index, rather than reusing msg_0
+/// (etc.) in every response. All projections share this bounded, deterministic ID.
+fn synthetic_responses_item_id(response_id: &str, prefix: &str, index: u32) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(response_id.as_bytes());
+    let scope: String = digest[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("{prefix}_{scope}_{index}")
+}

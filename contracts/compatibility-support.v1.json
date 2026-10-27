@@ -204,6 +204,7 @@
     "hiroute.diagnostic-status/v1",
     "hiroute.discovered-model-candidate/v1",
     "hiroute.dsh-additional-model/v1",
+    "hiroute.dsh-composition-facts/v1",
     "hiroute.dsh-native-restore/v2",
     "hiroute.dsh-public-native-resources/v1",
     "hiroute.empty-request/v1",
@@ -284,6 +285,7 @@
     "hiroute.native-files/v1",
     "hiroute.native-launch/v1",
     "hiroute.native-observation/v2",
+    "hiroute.native-plugin-restore/v1",
     "hiroute.native-protocol-diagnostic/v1",
     "hiroute.native-restoration-ack/v1",
     "hiroute.observation-retention/v1",
@@ -313,6 +315,7 @@
     "hiroute.operation-idempotency-result/v1",
     "hiroute.operation-input/v1",
     "hiroute.operation-lookup/v1",
+    "hiroute.operation-payload/v1",
     "hiroute.operation-step-input/v1",
     "hiroute.operation-step/v1",
     "hiroute.operation-view/v1",
@@ -401,6 +404,7 @@
     "hiroute.settings-hermes-plugin-file/v1",
     "hiroute.settings-login-item/v1",
     "hiroute.settings-model-publication/v1",
+    "hiroute.settings-native-plugin-file/v1",
     "hiroute.settings-opencode-model-file/v1",
     "hiroute.settings-pi-model-file/v1",
     "hiroute.settings-qoder-model-file/v1",
@@ -594,6 +598,7 @@
           "allowed_paths": [
             "crates/domain/src/observation/execution_validation.rs",
             "crates/domain/src/observation/execution_tests.rs",
+            "crates/domain/src/observation/agent_turn_admission_tests.rs",
             "e2e/golden/p0-gateway-golden.json",
             "e2e/schema/p0-execution-fact.schema.json",
             "tools/e2e-harness/src/p0/types.rs"
@@ -796,9 +801,10 @@
           "mode": "recovery_read_only",
           "owner": "local-storage",
           "reason": "Authenticate legacy exists/write compensation and migrate its marker metadata to V4 before recovery.",
-          "removal_condition": "Remove only when every active restore directory contains zero V2 markers after open-time migration and each still-supported backup either restores through V4 successfully or is explicitly retired.",
+          "removal_condition": "Remove only when every active restore directory contains zero V2 markers after authenticated on-access or explicit full-audit conversion and each still-supported backup either restores through V4 successfully or is explicitly retired.",
           "allowed_paths": [
             "crates/local-storage/src/control/mod.rs",
+            "crates/local-storage/src/control/artifact_validation.rs",
             "crates/local-storage/src/control/agent_transaction_tests.rs"
           ]
         },
@@ -807,9 +813,10 @@
           "mode": "recovery_read_only",
           "owner": "local-storage",
           "reason": "Authenticate legacy delete compensation and migrate its marker metadata to V4 before recovery.",
-          "removal_condition": "Remove only when every active restore directory contains zero V3 markers after open-time migration and each still-supported backup either restores through V4 successfully or is explicitly retired.",
+          "removal_condition": "Remove only when every active restore directory contains zero V3 markers after authenticated on-access or explicit full-audit conversion and each still-supported backup either restores through V4 successfully or is explicitly retired.",
           "allowed_paths": [
             "crates/local-storage/src/control/mod.rs",
+            "crates/local-storage/src/control/artifact_validation.rs",
             "crates/local-storage/src/control/agent_transaction_tests.rs"
           ]
         }
@@ -1600,12 +1607,13 @@
       "contract": "hiroute.diagnostic-event/v1",
       "mode": "recovery_read_only",
       "owner": "runtime-diagnostics",
-      "reason": "Read retained V1 diagnostic records without the newer optional model, reasoning, HTTP protocol, failure, model terminal result and commit facts. Missing fields remain unknown. Transport completion is separate from unknown model completion evidence; current producers emit observed facts and never rewrite historical logs.",
-      "removal_condition": "Remove when retained V1 log support no longer includes records produced before the Bailian wire diagnostic extension.",
+      "reason": "Read retained V1 diagnostic records without the newer optional model, reasoning, HTTP protocol, failure, model terminal result, commit and CPA inference facts. Retain the private CPA counter-only v1 header reader without inventing first/last transport detail. Missing fields remain unknown. Transport completion is separate from unknown model completion evidence; current producers emit observed facts and never rewrite historical logs.",
+      "removal_condition": "Remove when supported retained V1 logs and managed CPA inputs no longer include records or headers produced before these diagnostic extensions.",
       "allowed_paths": [
         "crates/diagnostics/src/event/model.rs",
         "crates/diagnostics/src/record.rs",
-        "crates/diagnostics/src/runtime.rs"
+        "crates/diagnostics/src/runtime.rs",
+        "crates/gateway/src/observation/provider/cpa_execution.rs"
       ],
       "field": "optional model, reasoning, HTTP protocol, provider error and model terminal result, target and commit facts in retained V1 logs"
     },
@@ -1614,10 +1622,23 @@
       "field": "ResponseFailure payload before detailed response reason, field and decoder position extension",
       "mode": "frozen_fixture",
       "owner": "diagnostics",
-      "reason": "The current diagnostic reader accepts supported v0.2.0 ResponseFailure bytes from released producer d625e653048b2306c88da07826d52027e9891675, defaulting absent optional attempt correlation, field and position. New writers emit the current closed event contract; old readers are not promised forward compatibility.",
+      "reason": "The current diagnostic reader accepts supported v0.2.0 ResponseFailure bytes from released producer d625e653048b2306c88da07826d52027e9891675, defaulting absent optional attempt correlation, field, position and observation-side capture shape. New writers emit the current closed event contract; old readers are not promised forward compatibility.",
       "removal_condition": "Retire only when v0.2.0 diagnostic records are outside the supported source and retention policy.",
       "allowed_paths": [
         "crates/diagnostics/tests/response_failure_compatibility.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.model-request-ir/v1",
+      "field": "DSH 0.2.0-rc.2 and pi-ai 0.87.1 Responses commentary, tool and final history projection",
+      "mode": "frozen_fixture",
+      "owner": "gateway/adapters/request",
+      "reason": "Synthetic native Responses lifecycle output was consumed by the pinned installed pi-ai parser, saved through DSH replay metadata and a JSON native-session round trip, then serialized by the installed DSH/session/pi-ai producer functions. The fixture freezes the external input to current canonical ingress and candidate projection, with package versions, source hashes, zero network calls and explicit proof limits; it is not regenerated by the current Gateway serializer.",
+      "removal_condition": "Retire only with an explicit end to this native producer support and replacement evidence preserving phase, order and tool identity across mixed-protocol history replay.",
+      "allowed_paths": [
+        "tools/e2e-harness/tests/fixtures/dsh-commentary/replayed-input.json",
+        "tools/e2e-harness/tests/fixtures/dsh-commentary/README.md",
+        "tools/e2e-harness/tests/p0_gateway_runtime/decision_branches/responses_chat_history.rs"
       ]
     },
     {
@@ -1960,15 +1981,140 @@
       ]
     },
     {
+      "contract": "hiroute.observation.native-continuation/v1",
+      "field": "Hermes 0.20 public SessionDB row and unique-live-child API producer",
+      "mode": "legacy_adapter",
+      "owner": "agent-integrations/hermes",
+      "reason": "Compatible installed Hermes 0.20 exposes get_compression_lineage with unbounded descendant enumeration. The optional producer instead verifies at most 32 ancestor rows, compression closures, non-fork child provenance and the unique live child through public read-only SDK methods. Current SDKs use their bounded canonical chain API. Missing or failed native reads suppress continuity without failing model calls. Public whole-turn hooks also receive synthetic async notifications and cannot prove fresh-user origin. Current and older Hermes metadata never establish human origin through a freshness flag. Usable requests retain observed-input classification, actual execution history and cross-turn evaluation with explicit source uncertainty; known auxiliaries remain detached. Missing optional hooks retain authorization and native execution. Retained observed-input v1 headers remain diagnostic and non-authoritative. The current producer emits the v2 observed_batch with native session, turn and API request IDs; it never relocates input by text hash or demotes later User messages. Older SDKs without the optional whole-turn hook retain middleware authorization and native execution. Missing or malformed optional metadata loses only its enrichment, without disabling classification, capture or cross-turn evaluation. Native API compatibility does not establish scoring accuracy.",
+      "removal_condition": "Remove only when the supported native Hermes interface floor deliberately excludes the 0.20 row API, with updated connection guidance and native compression acceptance.",
+      "allowed_paths": [
+        "assets/agents/hermes/__init__.py",
+        "scripts/tests/test_hermes_lineage.py",
+        "scripts/tests/test_hermes_turn_input.py"
+      ]
+    },
+    {
+      "contract": "hiroute.codex-native-responses/v1",
+      "field": "Codex 0.147 persistent native window metadata for optional history",
+      "mode": "legacy_adapter",
+      "owner": "gateway/native-routing",
+      "reason": "The verified rust-v0.147.0 producer be6e8eac029b183056b7e4402879f15d2c85f61b emits thread-prefixed u64 window counters on every request and reconstructs them on resume/fork/rollback. Known producer names and coherent window channels provide bounded continuity evidence; positive cold windows, regressing counters and unknown producers cannot prove human origin. They permit observed-input routing and newly captured actual execution with explicit uncertainty, rather than permanently disabling classification, history or evaluation. These process-local checks never grant execution or provider-cache authority.",
+      "removal_condition": "Replace or retire only after a supported original-user producer supersedes this window adapter or the native client support floor deliberately changes, with independent real-question recovery and compressed-restart regression evidence.",
+      "allowed_paths": [
+        "crates/gateway/src/context_hold/routing/codex.rs",
+        "crates/gateway/src/context_hold/routing/codex_tests.rs",
+        "crates/gateway/src/context_hold/continuity.rs",
+        "crates/gateway/src/context_hold/continuity_tests.rs"
+      ]
+    },
+    {
       "contract": "hiroute.observation.product-execution-envelope/v2",
-      "field": "Pre-extension decision digest sha256:806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069",
+      "field": "Pre-membership digest 806871b6b7a3c1a563e2e214e9af5f0a0b18d1f704e093494c2e1b2316b08069 without history_membership",
       "mode": "recovery_read_only",
       "owner": "observation-storage",
-      "reason": "Authenticate retained facts with their original threshold policy and canonical bytes. Prior digests cannot authenticate extension policy identity, missing competence floor, extension reason or direct-selection reason; live ingestion uses only the current digest.",
-      "removal_condition": "Retire only after supported stores and backups no longer contain these facts or a verified authenticated conversion preserves their evidence.",
+      "reason": "Authenticate retained exact bytes without inventing branch membership. New facts carry bounded request membership; older facts retain conservative range inference and cannot authenticate the added field.",
+      "removal_condition": "Retire only when supported stores and backups no longer retain pre-membership facts or an authenticated conversion preserves the original evidence.",
       "allowed_paths": [
         "crates/domain/src/observation/execution_validation.rs",
         "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-auxiliary digest 3cb9b100385c1f05a92097c2f28eb5c47d61ca495d32d41a8528b7227c81a465 without native_auxiliary",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained pre-auxiliary records and preserve their canonical bytes and history membership. Missing purpose evidence remains unknown; old records cannot authenticate a true native_auxiliary marker or enter live ingestion. The optional request-view marker is absent when no retained supported carrier authenticates the native purpose; absence never proves human origin.",
+      "removal_condition": "Retire only when supported stores and backups no longer retain pre-auxiliary facts or an authenticated conversion preserves their original evidence.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/observation/src/query_v2/requests/purpose.rs",
+        "crates/observation/src/store/tests/request_purpose.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "pre-admission digest 57592f8645e74ed2c13a968d8b782bde1819f5f1aa8729b2b5fefa9f5f8d20e6 from retained 968d3abb3003b55cc03cc594c366d4625fd19801",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained pre-admission Product facts with their original bytes and digest, including opening cause, exact history membership, native auxiliary and optional pricing. Missing admission remains unrecorded and never gains identity from an inherited decision or affinity. No older contract may authenticate AgentTurnAdmitted, and live ingestion accepts only the current descriptor. The frozen synthetic 968 storage fixture exercises the original shape without claiming a real provider run.",
+      "removal_condition": "Remove only after all supported activity stores and backups have no pre-admission facts, or an authenticated evidence-preserving conversion replaces this reader.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/agent_turn_admission_tests.rs",
+        "crates/domain/src/observation/fixtures/pre-admission-968-finished.json"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-extension history/admission digest sha256:857e4f2b42278ac3877e34f2188eeecc7c1d188832316b23f577f3bc0b82b1ac",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Preserve actual history membership, auxiliary markers and admission identities; this digest cannot authenticate extension identities, direct group selection or extension reasons. Live ingestion accepts only the current combined contract.",
+      "removal_condition": "Remove only when supported stores and backups no longer retain these exact facts or an authenticated conversion preserves their original evidence.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/merged_contract_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-history extension digest sha256:5f42929cdb812799e4e4a10885324debb21e6489bde5e935599de57b54b8ab23",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Preserve extension policies and decisions; this digest cannot authenticate history membership, native auxiliary markers or admission facts. Live ingestion accepts only the current combined contract.",
+      "removal_condition": "Remove only when supported stores and backups no longer retain these exact facts or an authenticated conversion preserves their original evidence.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/merged_contract_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.stored-plan/v1",
+      "field": "responses_dialect absent and retained Token Plan native Responses adapter choice",
+      "mode": "legacy_adapter",
+      "owner": "gateway/protocol-adapters and daemon/model-connections",
+      "reason": "Retained plans without responses_dialect rebuild the original native Responses semantics and preserve their bytes. Existing registered Token Plan sources with the former additional Responses adapter keep that exact adapter and credential destination; a current registry default never upgrades an existing conversation to plaintext negotiation. Newly confirmed registered sources select the standard JSON translator explicitly. Explicitly encrypted function encoding and encrypted peer content cannot cross that dialect boundary. Standard Responses historical function replay may omit vendor encoding metadata even when tool-schema negotiation is active; the original native absent/empty/nonempty states remain distinct and absence acquires no trusted origin.",
+      "removal_condition": "Retire only after the supported stored plans, source configurations and backups no longer contain the old adapter/absent choice, or an explicit user-confirmed migration preserves native history and credential authority.",
+      "allowed_paths": [
+        "crates/domain/src/routing/stored.rs",
+        "crates/daemon/src/control/runtime/model_connections.rs",
+        "crates/daemon/src/control/runtime/registered_management_candidate.rs",
+        "crates/daemon/src/control/runtime/model_connections/registered_token_plan_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.operation-input/v1",
+      "field": "inline operation_json plan and large step compensation in supported pre-schema32 journals",
+      "mode": "recovery_read_only",
+      "owner": "local-storage",
+      "reason": "Schema32 new journals partition immutable input and large compensation payloads from mutable progress using authenticated operation-owned references. Supported retained inline journals keep their original bytes and typed validation, including their existing recovery writer when unfinished; startup conversion establishes complete recovery membership without rewriting them. A fully authenticated successful legacy Plan whose exact head and published version are already committed, with the required owner and no prepared residue, does not acquire a redundant finalization obligation; incomplete or different local state retains recovery. Current Gateway installation and grant validation remain independent mandatory checks. Current producers never emit inline plans. The coordinated source backup and matching-version recovery preserve the entire old representation.",
+      "removal_condition": "End inline journal support only through an explicit compatibility decision preserving supported recovery and historical reads.",
+      "allowed_paths": [
+        "crates/local-storage/src/control/payloads.rs",
+        "crates/local-storage/src/control/journal.rs",
+        "crates/local-storage/src/control/mod.rs",
+        "crates/local-storage/src/migrations/current_dependencies_v32.rs",
+        "crates/local-storage/src/control/current_dependencies.rs",
+        "crates/local-storage/src/control/plans/publication.rs",
+        "crates/local-storage/src/control/legacy_finalization_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "Pre-stage/input-selection digest sha256:2babb083d6f0005ded11c5712f7b8183117b6ce06f87aa1892c6ad1aa891a481",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained immutable model assessments, membership, admission and extension facts. This old digest cannot authenticate stage_assessment_recorded or request_input_selection. Missing input position remains unrecorded; legacy rows gain no current-input, completeness or composite-evaluation proof. Live ingestion accepts only the current descriptor.",
+      "removal_condition": "Retire only after supported stores and backups retain no pre-stage/input-selection facts or an authenticated evidence-preserving conversion replaces the reader.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/stage_evaluation_tests.rs",
+        "crates/observation/src/query_v2/input_selection.rs"
       ]
     }
   ]

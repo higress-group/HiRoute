@@ -20,7 +20,7 @@ pub use agents::*;
 pub use backup::{BackupSet, SingleWriterBackupBarrier, SqliteBackup};
 pub use control::{
     ApplyCapabilityRegistrar, ApplyCapabilityRegistrationV1, ComputeSubscriptionValidationRecordV1,
-    ComputeSubscriptionValidationStateV1, ControlStore, ManagedArtifactStore,
+    ComputeSubscriptionValidationStateV1, ControlReadStamp, ControlStore, ManagedArtifactStore,
     SucceededAgentOperationV1,
 };
 pub use runtime::RuntimeStore;
@@ -44,8 +44,7 @@ pub struct StorageStartupOptions {
     pub preserve_observation_source: bool,
     /// An admitted old package retained by the installer/operator for recovery.
     pub recovery_package: Option<std::path::PathBuf>,
-    pub upgrade_progress:
-        Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageUpgradePhase>>,
+    pub upgrade_progress: Option<hiroute_host_runtime::StorageUpgradeProgress>,
     /// Per-attempt typed facts also reach the caller when admission cannot
     /// acquire the writer lock or write a recovery file.
     pub startup_failure: Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageRecovery>>,
@@ -226,12 +225,13 @@ impl LocalStorageSet {
         let runtime_path = live_root.join("runtime.db");
         let secrets_path = live_root.join("secrets.db");
         let secret_binding = LocalSecretStore::migration_binding(&secrets_path, &master_key_path)?;
-        let mut migration = migrations::MigrationSetCoordinator::prepare(
+        let mut migration = migrations::MigrationSetCoordinator::prepare_with_progress(
             authority,
             barrier,
             &live_root,
             &backup_root,
             secret_binding.as_ref(),
+            options.and_then(|options| options.upgrade_progress.as_ref()),
         )?;
         if let Some(options) = options {
             migration.preserve_complete_source(
@@ -244,6 +244,12 @@ impl LocalStorageSet {
             )?;
         }
         let target_schema_version = migration.target_schema_version();
+        if (migration.durable_set_prepared()
+            || options.is_some_and(|options| options.preserve_observation_source))
+            && let Some(progress) = options.and_then(|options| options.upgrade_progress.as_ref())
+        {
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::Conversion);
+        }
         let control_result = if migration.durable_set_prepared() {
             ControlStore::open_from_migration_set(
                 authority,
@@ -326,8 +332,22 @@ impl LocalStorageSet {
             migration.restore_after_failure(barrier, &live_root)?;
             return Err(error);
         }
-        if let Err(error) = migrations::validate_current_storage(&control, &runtime, &secrets)
-            .map_err(|error| error.at_upgrade_stage("current storage validation"))
+        if migration.durable_set_prepared()
+            && target_schema_version == migrations::LATEST_SCHEMA_VERSION
+            && let Some(progress) = options.and_then(|options| options.upgrade_progress.as_ref())
+        {
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
+        }
+        let integrity = if migration.durable_set_prepared() {
+            // A first format conversion audits its complete source/target. Ordinary opens
+            // establish only the complete current dependency closure, not all-history health.
+            migrations::audit_current_storage(&control, &runtime, &secrets)
+                .and_then(|_| migrations::validate_current_storage(&control, &runtime, &secrets))
+        } else {
+            migrations::validate_current_storage(&control, &runtime, &secrets)
+        };
+        if let Err(error) =
+            integrity.map_err(|error| error.at_upgrade_stage("current storage validation"))
         {
             drop(secrets);
             drop(runtime);
@@ -408,20 +428,26 @@ impl LocalStorageSet {
         ManagedArtifactStore::open(&daemon_storage_authority(), root, restore_root)
     }
 
-    /// Register every native target together, before validating any persisted effect marker.
-    /// Sequential single-target opening cannot recover a store containing both Agent families.
+    /// Register all native targets, then authenticate current recovery roots and unresolved
+    /// work. Optional historical restore records are authenticated on explicit access.
     pub fn open_managed_artifacts_with_external_targets(
         &self,
         root: impl AsRef<Path>,
         restore_root: impl AsRef<Path>,
         targets: impl IntoIterator<Item = (String, std::path::PathBuf)>,
     ) -> Result<ManagedArtifactStore, LocalStorageError> {
-        ManagedArtifactStore::open_with_external_targets(
+        let dependencies = self
+            .control
+            .artifact_dependencies()
+            .map_err(|_| LocalStorageError::InvalidData)?;
+        let store = ManagedArtifactStore::open_registered(
             &daemon_storage_authority(),
             root,
             restore_root,
             targets,
-        )
+        )?;
+        store.validate_dependencies(&dependencies)?;
+        Ok(store)
     }
 
     /// Restart-safe factory for a registered native Agent configuration target. Its exact path

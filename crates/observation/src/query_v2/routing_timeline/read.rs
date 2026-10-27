@@ -1,5 +1,15 @@
 use super::*;
+use crate::valuation::{
+    EQUAL_RATE_VALUATION_ALGORITHM, MetricCoverage, RawUsage, VALUATION_ALGORITHM,
+    ValuationRecordV2, value_recorded_attempt,
+};
 use rusqlite::{Transaction, named_params};
+
+struct RetainedValuation {
+    record: ValuationRecordV2,
+    inputs: Vec<(ExecutionPricingEvidenceV1, RawUsage)>,
+    valid: bool,
+}
 
 pub(super) fn position(tx: &Transaction<'_>) -> Result<Position, ObservationV2Error> {
     Ok(Position {
@@ -43,6 +53,7 @@ pub(super) fn read(
         .saturating_add(1)
         .max(0);
     let mut requests = BTreeMap::new();
+    let mut retained_valuations = BTreeMap::new();
     let mut statement = tx.prepare("SELECT r.request_id,r.started_at_ms,r.finished_at_ms,r.outcome,CASE WHEN length(CAST(l.body_json AS BLOB))<=1048576 THEN l.body_json END,l.conflicted,
         COALESCE((SELECT MAX(e.rowid) FROM observation_link_events e WHERE e.workspace_id=r.workspace_id AND e.request_id=r.request_id AND e.rowid<=:links),0),
         (SELECT CASE WHEN length(CAST(v.body_json AS BLOB))<=1048576 THEN v.body_json END FROM valuation_records_v2 v WHERE v.workspace_id=r.workspace_id AND v.request_id=r.request_id AND v.rowid<=:values ORDER BY v.revision DESC LIMIT 1),
@@ -97,11 +108,39 @@ pub(super) fn read(
                     )
                     .valid()
             });
+        let record = if traffic == "normal" {
+            valuation
+                .as_deref()
+                .map(serde_json::from_str::<ValuationRecordV2>)
+                .transpose()
+                .map_err(|_| ObservationV2Error::Unavailable)?
+        } else {
+            None
+        };
         let costs = if traffic == "normal" {
-            costs(valuation.as_deref())?
+            costs(record.as_ref())?
         } else {
             vec![]
         };
+        if traffic == "normal"
+            && let Some(record) = record
+            && record.terminal_observed
+            && !record.facts_partial
+            && record.unknown_attempt_count == 0
+            && record.attempts.iter().any(|attempt| {
+                attempt.coverage != MetricCoverage::Complete
+                    && attempt.algorithm == VALUATION_ALGORITHM
+            })
+        {
+            retained_valuations.insert(
+                id.clone(),
+                RetainedValuation {
+                    record,
+                    inputs: Vec::new(),
+                    valid: true,
+                },
+            );
+        }
         requests.insert(
             id.clone(),
             Request {
@@ -187,14 +226,24 @@ pub(super) fn read(
     }
     // Reuse the valuation owner's cumulative/delta normalization. Unknown usage
     // remains unknown rather than silently turning a partial sum into a total.
-    let mut statement = tx.prepare("SELECT i.request_id,CASE WHEN length(CAST(i.usage_json AS BLOB))<=65536 THEN i.usage_json END,COALESCE(length(CAST(i.usage_json AS BLOB)),0)>65536 FROM valuation_attempt_inputs_v2 i JOIN logical_requests r ON r.workspace_id=i.workspace_id AND r.request_id=i.request_id WHERE r.workspace_id=?1 AND r.session_id=?2 AND (?3 IS NULL OR r.request_id IN(SELECT value FROM json_each(?3))) ORDER BY i.request_id,i.ordinal LIMIT 50001")?;
+    let revaluation_ids = serde_json::to_string(&retained_valuations.keys().collect::<Vec<_>>())
+        .map_err(|_| ObservationV2Error::Invalid)?;
+    let mut statement = tx.prepare("SELECT i.request_id,CASE WHEN length(CAST(i.usage_json AS BLOB))<=65536 THEN i.usage_json END,COALESCE(length(CAST(i.usage_json AS BLOB)),0)>65536,CASE WHEN i.request_id IN(SELECT value FROM json_each(?4)) AND length(CAST(i.pricing_json AS BLOB))<=65536 THEN i.pricing_json END,v.input_digest,v.input_revision FROM valuation_attempt_inputs_v2 i JOIN logical_requests r ON r.workspace_id=i.workspace_id AND r.request_id=i.request_id LEFT JOIN valuation_requests_v2 v ON v.workspace_id=i.workspace_id AND v.request_id=i.request_id WHERE r.workspace_id=?1 AND r.session_id=?2 AND (?3 IS NULL OR r.request_id IN(SELECT value FROM json_each(?3))) ORDER BY i.request_id,i.ordinal LIMIT 50001")?;
     let rows = statement.query_map(
-        rusqlite::params![reader.workspace().as_str(), session, selected],
+        rusqlite::params![
+            reader.workspace().as_str(),
+            session,
+            selected,
+            revaluation_ids
+        ],
         |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<String>>(1)?,
                 r.get::<_, bool>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<u64>>(5)?,
             ))
         },
     )?;
@@ -203,7 +252,7 @@ pub(super) fn read(
         if index >= 50_000 {
             return Err(ObservationV2Error::ScopeTooLarge);
         }
-        let (id, body, oversized) = row?;
+        let (id, body, oversized, pricing, input_digest, input_revision) = row?;
         if !requests.contains_key(&id) {
             continue;
         }
@@ -219,6 +268,29 @@ pub(super) fn read(
             return Err(ObservationV2Error::ScopeTooLarge);
         }
         let value = body.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+        if let Some(retained) = retained_valuations.get_mut(&id) {
+            let extra_bytes = pricing.as_ref().map_or(0, String::len);
+            let within_budget = bytes
+                .checked_add(extra_bytes)
+                .filter(|total| *total <= 32 * 1024 * 1024);
+            let inputs = within_budget
+                .and(pricing.as_deref())
+                .and_then(|json| serde_json::from_str::<ExecutionPricingEvidenceV1>(json).ok())
+                .zip(
+                    value
+                        .as_ref()
+                        .and_then(|json| serde_json::from_value::<RawUsage>(json.clone()).ok()),
+                );
+            if input_digest.as_deref() != Some(retained.record.input_digest.as_str())
+                || input_revision != Some(retained.record.input_revision)
+                || inputs.is_none()
+            {
+                retained.valid = false;
+            } else if let Some(inputs) = inputs {
+                bytes = within_budget.expect("inputs require bounded pricing");
+                retained.inputs.push(inputs);
+            }
+        }
         let sums = usage.entry(id).or_insert([Some(0); 3]);
         for (sum, key) in sums.iter_mut().zip(["input", "output", "read"]) {
             *sum = sum
@@ -238,23 +310,56 @@ pub(super) fn read(
             .filter(|(i, r)| *i > 0 && r <= i)
             .map(|(i, r)| r as f64 / i as f64);
     }
+    // Older settlement records remain immutable. Recompute an amount only for
+    // an exact, fully retained input revision and the same frozen attempt quote.
+    // This is a bounded read projection; it never fills in missing token facts.
+    for (id, mut retained) in retained_valuations {
+        if !retained.valid || retained.inputs.len() != retained.record.attempts.len() {
+            continue;
+        }
+        let mut changed = false;
+        for (attempt, (pricing, raw)) in retained.record.attempts.iter_mut().zip(&retained.inputs) {
+            if pricing.quote.as_ref() != Some(&attempt.quote) {
+                retained.valid = false;
+                break;
+            }
+            let Ok(derived) = value_recorded_attempt(pricing, raw) else {
+                retained.valid = false;
+                break;
+            };
+            if derived.algorithm == EQUAL_RATE_VALUATION_ALGORITHM
+                && attempt.algorithm == VALUATION_ALGORITHM
+            {
+                *attempt = derived;
+                changed = true;
+            }
+        }
+        if retained.valid
+            && changed
+            && let Some(request) = requests.get_mut(&id)
+        {
+            request.view.costs = costs(Some(&retained.record))?;
+        }
+    }
     projection::hydrate(&mut requests, &facts);
     Ok((requests, facts))
 }
 
-fn costs(value: Option<&str>) -> Result<Vec<RoutingTimelineCostV1>, ObservationV2Error> {
-    let Some(value) = value else {
+fn costs(
+    record: Option<&ValuationRecordV2>,
+) -> Result<Vec<RoutingTimelineCostV1>, ObservationV2Error> {
+    let Some(record) = record else {
         return Ok(vec![unknown(1)]);
     };
-    let record: crate::valuation::ValuationRecordV2 =
-        serde_json::from_str(value).map_err(|_| ObservationV2Error::Unavailable)?;
     let mut result = Vec::new();
-    for attempt in record.attempts {
+    for attempt in &record.attempts {
         result.push(RoutingTimelineCostV1 {
-            model_configuration_id: Some(match attempt.quote.exact_target.model_identity {
-                PriceModelIdentityV1::CatalogModel(id) | PriceModelIdentityV1::LocalModel(id) => id,
+            model_configuration_id: Some(match &attempt.quote.exact_target.model_identity {
+                PriceModelIdentityV1::CatalogModel(id) | PriceModelIdentityV1::LocalModel(id) => {
+                    id.clone()
+                }
             }),
-            currency: Some(attempt.currency),
+            currency: Some(attempt.currency.clone()),
             valuation_kind: Some(
                 serde_json::to_value(attempt.valuation_kind)
                     .map_err(|_| ObservationV2Error::Unavailable)?

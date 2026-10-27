@@ -1,10 +1,11 @@
-//! Update mutable journal fields while retaining the current immutable Operation JSON format.
+//! Small mutable journal copies refer to separately retained immutable input/effect payloads.
 use super::*;
 
 pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> PortResult<u64> {
     let update = operation
         .journal_update()
         .map_err(|_| port(PortErrorCode::InvalidData, "control.journal.inputs"))?;
+    let partitioned = payloads::partitioned(transaction, operation.operation_id.as_str())?;
     let mut expression = String::from(
         "json_set(operation_json, '$.state', ?2, '$.generation', ?3, '$.safe_error_code', ?4",
     );
@@ -32,7 +33,12 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
                 )
             })?
             .into(),
-        update.plan_json.to_owned().into(),
+        (if partitioned {
+            payloads::plan(transaction, operation, false)?
+        } else {
+            update.plan_json.to_owned()
+        })
+        .into(),
         operation.request_digest.as_str().to_owned().into(),
         operation.accepted_digest.as_str().to_owned().into(),
         operation.workspace_id.as_str().to_owned().into(),
@@ -41,7 +47,13 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
         operation.idempotency.key.clone().into(),
     ];
     for step in &update.changed_steps {
-        let encoded = serde_json::to_string(step)
+        let projection = if partitioned {
+            payloads::step(transaction, operation.operation_id.as_str(), step, true)?
+        } else {
+            serde_json::to_value(step)
+                .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?
+        };
+        let encoded = serde_json::to_string(&projection)
             .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
         values.push(encoded.into());
         expression.push_str(&format!(
@@ -70,6 +82,46 @@ pub(super) fn save(transaction: &Transaction<'_>, operation: &OperationV1) -> Po
 }
 
 pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> PortResult<bool> {
+    is_current_in_scope(connection, operation, None)
+}
+
+/// Current file roots require their original input and exact file receipt. Optional
+/// grant-attribution proof in another step cannot disable an otherwise valid file
+/// restore dependency. Executing/recovering an operation still uses the full check.
+pub(super) fn is_current_artifact_step(
+    connection: &Connection,
+    operation: &OperationV1,
+) -> PortResult<bool> {
+    let Some(step) = operation
+        .steps
+        .iter()
+        .find(|step| step.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
+    else {
+        return Ok(false);
+    };
+    is_current_in_scope(connection, operation, Some(step.sequence))
+}
+
+/// Active native model checks also consume the original grant Ensure receipt. Other
+/// completed steps (including optional attribution) are not authority for this read.
+pub(super) fn is_current_grant_step(
+    connection: &Connection,
+    operation: &OperationV1,
+) -> PortResult<bool> {
+    let Some(step) = operation.steps.iter().find(|step| {
+        step.kind == hiroute_domain::OperationStepKind::ApplySecrets
+            && step.status == hiroute_domain::OperationStepStatus::Applied
+    }) else {
+        return Ok(false);
+    };
+    is_current_in_scope(connection, operation, Some(step.sequence))
+}
+
+fn is_current_in_scope(
+    connection: &Connection,
+    operation: &OperationV1,
+    selected: Option<u16>,
+) -> PortResult<bool> {
     if !operation
         .journal_is_committed()
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.checkpoint"))?
@@ -79,17 +131,46 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
     let checkpoint = operation
         .journal_update()
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.inputs"))?;
-    let steps = serde_json::to_string(&operation.steps)
+    // A supported retained inline journal keeps its original immutable bytes.
+    let partitioned = payloads::partitioned(connection, operation.operation_id.as_str())?;
+    let projection = if partitioned {
+        (|| {
+            Ok::<_, PortError>((
+                payloads::plan(connection, operation, false)?,
+                operation
+                    .steps
+                    .iter()
+                    .filter(|s| selected.is_none_or(|sequence| s.sequence == sequence))
+                    .map(|s| payloads::step(connection, operation.operation_id.as_str(), s, false))
+                    .collect::<PortResult<Vec<_>>>()?,
+            ))
+        })()
+    } else {
+        Ok((
+            checkpoint.plan_json.to_owned(),
+            serde_json::to_value(
+                operation
+                    .steps
+                    .iter()
+                    .filter(|s| selected.is_none_or(|sequence| s.sequence == sequence))
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|_| port(PortErrorCode::InvalidData, "control.current.steps"))?
+            .as_array()
+            .expect("steps array")
+            .clone(),
+        ))
+    };
+    let (plan_json, projected_steps) = match projection {
+        Ok(value) => value,
+        Err(error) if error.code == PortErrorCode::Corrupt => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    let steps = serde_json::to_string(&projected_steps)
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.steps"))?;
     let revisions = serde_json::to_string(&operation.expected_revisions)
         .map_err(|_| port(PortErrorCode::InvalidData, "control.current.revisions"))?;
-    // Current row production is canonical; historical rows may retain struct member order.
-    // Compare their exact JSON structure, without rewriting either stored journal copy.
-    let step_rows = hiroute_domain::canonicalize_json(
-        serde_json::to_value(&operation.steps)
-            .map_err(|_| port(PortErrorCode::InvalidData, "control.current.step-rows"))?,
-    )
-    .to_string();
+    let step_rows = hiroute_domain::canonicalize_json(Value::Array(projected_steps)).to_string();
     // A sealed settings service releases its writer claim while the native-file tail waits for
     // explicit retry. The coordinator verifies the receipt before doing any tail work and must
     // still be able to observe this exact committed journal during startup recovery.
@@ -104,10 +185,11 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
     // accidentally approve an old generation after another connection commits a new one.
     let copies: Option<(String, String)> = connection
         .query_row(
-            "SELECT json_extract(operation_json, '$.steps'),
+            "SELECT CASE WHEN ?16 IS NULL THEN json_extract(operation_json, '$.steps')
+                ELSE json_array(json_extract(operation_json, '$.steps['||?16||']')) END,
                 (SELECT json_group_array(json(step)) FROM (
                     SELECT json_extract(step_json, '$.step') AS step FROM operation_steps
-                    WHERE operation_id=?1 ORDER BY step_no))
+                    WHERE operation_id=?1 AND (?16 IS NULL OR step_no=?16) ORDER BY step_no))
          FROM operations WHERE operation_id=?1 AND generation=?2
          AND json_extract(operation_json, '$.plan')=?3 AND request_digest=?4
          AND accepted_change_digest=?5 AND workspace_id=?6 AND principal=?7
@@ -128,15 +210,16 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
          AND (state IN ('succeeded', 'rolled_back', 'needs_attention')
               OR EXISTS(SELECT 1 FROM writer_claim WHERE operation_id=?1)
               OR (?15 AND NOT EXISTS(SELECT 1 FROM writer_claim)))
-         AND (SELECT count(*) FROM operation_steps WHERE operation_id=?1)=?14
-         AND NOT EXISTS(SELECT 1 FROM operation_steps s WHERE s.operation_id=?1
+         AND (SELECT count(*) FROM operation_steps WHERE operation_id=?1
+              AND (?16 IS NULL OR step_no=?16))=CASE WHEN ?16 IS NULL THEN ?14 ELSE 1 END
+         AND NOT EXISTS(SELECT 1 FROM operation_steps s WHERE s.operation_id=?1 AND (?16 IS NULL OR s.step_no=?16)
              AND (s.step_no IS NOT json_extract(s.step_json, '$.step.sequence')
                   OR s.step_kind IS NOT json_extract(s.step_json, '$.step.kind')
                   OR s.state IS NOT json_extract(s.step_json, '$.step.status')))",
             params![
                 operation.operation_id.as_str(),
                 operation.generation,
-                checkpoint.plan_json,
+                plan_json,
                 operation.request_digest.as_str(),
                 operation.accepted_digest.as_str(),
                 operation.workspace_id.as_str(),
@@ -149,6 +232,7 @@ pub(super) fn is_current(connection: &Connection, operation: &OperationV1) -> Po
                 operation.schema_version,
                 operation.steps.len() as u64,
                 parked_settings_tail,
+                selected,
             ],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -242,4 +326,12 @@ impl<'de> Deserialize<'de> for JournalObject<'de> {
         }
         deserializer.deserialize_map(JournalVisitor)
     }
+}
+
+/// Strict structure check shared by the versioned storage codec; no typed projection
+/// may silently discard duplicate fields or turn oversized numbers into rounded values.
+pub(super) fn validate_encoding(encoded: &str) -> PortResult<()> {
+    read_journal_json(encoded)
+        .map(|_| ())
+        .map_err(|_| port(PortErrorCode::Corrupt, "control.journal.encoding"))
 }

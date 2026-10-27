@@ -14,16 +14,19 @@ mod agent_surface_checks_v22;
 mod agent_surface_checks_v25;
 #[cfg(test)]
 mod agent_surface_checks_v25_tests;
+pub(crate) mod current_dependencies_v32;
 mod current_storage;
 mod observation_source;
 mod recovery_package;
+pub(crate) mod routing_read_v32;
 mod startup_format;
 pub(crate) mod startup_recovery;
 pub(crate) use startup_format::validate_startup_format;
 #[cfg(test)]
 mod stopped_read_tests;
 pub(crate) use current_storage::{
-    acquire_startup_lock, validate_current_storage, validate_recovered_grant_publications,
+    acquire_startup_lock, audit_current_storage, validate_current_storage,
+    validate_recovered_grant_publications,
 };
 mod collaboration_dependency;
 mod completed_batches;
@@ -56,7 +59,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 31;
+pub const LATEST_SCHEMA_VERSION: u32 = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -172,6 +175,7 @@ fn open_database_internal(
         migration_backup_root,
         key_id,
         secret_binding,
+        expected_store_uuid,
         durable_set_target,
     )?;
     if kind != DatabaseKind::Secrets {
@@ -273,6 +277,9 @@ fn set_owner_file_permissions(path: &Path) -> Result<(), LocalStorageError> {
     validate_owner_file(path)
 }
 
+// Keep source/key and target-identity checks explicit at this migration boundary,
+// as in open_database_internal; neither identity can substitute for the other.
+#[allow(clippy::too_many_arguments)]
 fn migrate(
     connection: &mut Connection,
     path: &Path,
@@ -280,6 +287,7 @@ fn migrate(
     backup_root: &Path,
     key_id: Option<&CanonicalDigest>,
     secret_binding: Option<&MigrationSecretBinding>,
+    expected_store_uuid: Option<&str>,
     durable_set_target: Option<u32>,
 ) -> Result<(), LocalStorageError> {
     let target = durable_set_target.unwrap_or(LATEST_SCHEMA_VERSION);
@@ -299,6 +307,10 @@ fn migrate(
         transaction.execute_batch(migration_sql(kind, version)?)?;
         if kind == DatabaseKind::Control && version == 8 {
             compute_v8::migrate_semantic_identities(&transaction)?;
+        }
+        if kind == DatabaseKind::Control && version == 32 {
+            initialize_storage_meta(&transaction, expected_store_uuid)?;
+            current_dependencies_v32::initialize(&transaction)?;
         }
         if kind == DatabaseKind::Secrets && version == 15 {
             convergence_v15::ensure_collaboration_preparation_column(&transaction)?;
@@ -363,6 +375,7 @@ pub(crate) struct MigrationSetCoordinator {
 }
 
 impl MigrationSetCoordinator {
+    #[cfg(test)]
     pub(crate) fn prepare(
         authority: &DaemonStorageAuthority,
         barrier: &SingleWriterBackupBarrier,
@@ -370,7 +383,35 @@ impl MigrationSetCoordinator {
         backup_root: &Path,
         secret_binding: Option<&MigrationSecretBinding>,
     ) -> Result<Self, LocalStorageError> {
+        Self::prepare_with_progress(
+            authority,
+            barrier,
+            live_root,
+            backup_root,
+            secret_binding,
+            None,
+        )
+    }
+
+    pub(crate) fn prepare_with_progress(
+        authority: &DaemonStorageAuthority,
+        barrier: &SingleWriterBackupBarrier,
+        live_root: &Path,
+        backup_root: &Path,
+        secret_binding: Option<&MigrationSecretBinding>,
+        progress: Option<&hiroute_host_runtime::StorageUpgradeProgress>,
+    ) -> Result<Self, LocalStorageError> {
         if BackupSet::durable_manifest_present(backup_root)? {
+            if completed_batches::admit_current(backup_root, live_root, secret_binding)? {
+                return Ok(Self {
+                    set: None,
+                    control_store_uuid: None,
+                    runtime_store_uuid: None,
+                });
+            }
+            if let Some(progress) = progress {
+                progress.report(hiroute_host_runtime::StorageUpgradePhase::SourceCheck);
+            }
             let previous = BackupSet::open(authority, backup_root)?;
             completed_batches::archive_if_needed(
                 &previous,
@@ -461,6 +502,10 @@ impl MigrationSetCoordinator {
             let control = open_existing_for_snapshot(&paths[0])?;
             let runtime = open_existing_for_snapshot(&paths[1])?;
             let secrets = open_existing_for_snapshot(&paths[2])?;
+            if let Some(progress) = progress {
+                progress.report(hiroute_host_runtime::StorageUpgradePhase::SourceCheck);
+                progress.report(hiroute_host_runtime::StorageUpgradePhase::Backup);
+            }
             BackupSet::create_migration(
                 barrier,
                 backup_root,
@@ -473,7 +518,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | 31 | LATEST_SCHEMA_VERSION
         ) || (set.target_schema_version() == 24
             && [
                 set.control.manifest(),
@@ -873,6 +918,8 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 31) => Ok(NOOP_V9),
         (DatabaseKind::Control, 30) => Ok(worker_dependencies_v30::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 30) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 32) => Ok(current_dependencies_v32::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 32) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }

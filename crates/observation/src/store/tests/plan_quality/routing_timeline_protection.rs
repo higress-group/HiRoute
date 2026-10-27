@@ -55,8 +55,11 @@ fn timeline_preserves_opening_protection_and_keeps_later_scores_separate() {
         continuation.request = LogicalRequestId::parse(format!("continuation-{variant}")).unwrap();
         let mut inherited = route.clone();
         if let ExecutionFactV1::RouteDecision(decision) = &mut inherited {
-            decision.complexity.as_mut().unwrap().decision_source =
-                ComplexityDecisionSourceV1::Inherited;
+            let selection = decision.complexity.as_mut().unwrap();
+            selection.decision_source = ComplexityDecisionSourceV1::Inherited;
+            selection
+                .reason_codes
+                .push(ComplexityReasonCodeV1::InheritedToolContinuation);
             decision.reason_ledger.push(ReasonLedgerEntryV1 {
                 ordinal: 1,
                 code: LedgerReasonCodeV1::ContextHoldApplied,
@@ -167,6 +170,82 @@ fn timeline_preserves_opening_protection_and_keeps_later_scores_separate() {
         let encoded = serde_json::to_value(turn).unwrap();
         let decoded: RoutingTimelineTurnV1 = serde_json::from_value(encoded).unwrap();
         assert_eq!(decoded.selection.as_ref().unwrap(), selection);
+    }
+}
+
+#[test]
+fn timeline_tool_continuations_require_recorded_tool_inheritance() {
+    use ComplexityDecisionSourceV1::{ExternalClassifier, Inherited};
+    use ComplexityReasonCodeV1::{InheritedTaskRoot, InheritedToolContinuation};
+    let cases = [
+        (ExternalClassifier, None, true, 0),
+        (Inherited, Some(InheritedTaskRoot), true, 0),
+        (Inherited, None, true, 0),
+        (Inherited, Some(InheritedToolContinuation), false, 1),
+        (Inherited, Some(InheritedToolContinuation), true, 1),
+    ];
+    for (index, (source, reason, held, expected)) in cases.into_iter().enumerate() {
+        let directory = tempfile::tempdir().unwrap();
+        let fixture = Fixture::new(&format!("tool-continuation-{index}"));
+        let query = RoutingTimelineQueryV1 {
+            session_id: fixture.session.to_string(),
+            after_watermark: None,
+            limit: 50,
+        };
+        {
+            let store = open_store(directory.path());
+            let channel = fact_channel(&fixture, 256 * 1024);
+            let writer = writer(&store);
+            let mut route = route_decision(PLAN);
+            let ExecutionFactV1::RouteDecision(decision) = &mut route else {
+                unreachable!()
+            };
+            let selection = decision.complexity.as_mut().unwrap();
+            selection.decision_source = source;
+            selection.decision_protocol = Some(DecisionProtocolV1::SystemOneC);
+            selection.complexity_score = None;
+            selection.threshold = None;
+            selection.classification_duration_micros = Some(1);
+            selection.reason_codes = reason.into_iter().collect();
+            if held {
+                decision.reason_ledger.push(ReasonLedgerEntryV1 {
+                    ordinal: 1,
+                    code: LedgerReasonCodeV1::ContextHoldApplied,
+                    group_id: None,
+                });
+            }
+            for (sequence, fact) in [
+                route,
+                finished(&fixture, "stage", "turn", 1, SMART_SAVING_SCOPE_ID, 1000),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let verdict = offer_fact(
+                    &writer,
+                    &channel,
+                    fixture.fact(sequence as u64 + 1, fact, 1000 + sequence as i64),
+                );
+                assert!(matches!(verdict, WriterCycleOutcome::Ack(_)), "{verdict:?}");
+                let page = store
+                    .observed_routing_timeline(&reader(), &query, 5000)
+                    .unwrap();
+                assert_eq!(page.turns.len(), 1);
+                assert_eq!(page.turns[0].requests.len(), 1);
+                assert_eq!(
+                    page.turns[0].tool_continuations,
+                    expected,
+                    "case {index}, closing fact recorded: {}",
+                    sequence == 1
+                );
+            }
+        }
+        let reopened = open_store(directory.path());
+        let page = reopened
+            .observed_routing_timeline(&reader(), &query, 5000)
+            .unwrap();
+        assert_eq!(page.turns[0].tool_continuations, expected);
+        assert_eq!(page.turns[0].status, "completed");
     }
 }
 

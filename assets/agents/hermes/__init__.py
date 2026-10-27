@@ -28,7 +28,7 @@ def _native_row(row, session):
 class _LineageReader:
     """One bounded/coalescing worker per selected profile, using public SDK reads.
 
-    Contract pinned to Hermes d923a5eb: SessionDB(read_only=True), get_session,
+    Contracts: Hermes 0.20 bounded ancestry and d923a5eb: SessionDB(read_only=True), get_session,
     get_compression_chain (native forward cap 1000), find_live_compression_child.
     Missing APIs disable this optional metadata, never the model adapter.
     """
@@ -145,7 +145,7 @@ class _LineageReader:
         reader = self.factory(db_path=self.path, read_only=True)
         try:
             if not getattr(reader, "read_only", False) or not all(callable(getattr(reader, k, None)) for k in (
-                    "get_session", "get_compression_chain", "find_live_compression_child")):
+                    "get_session", "find_live_compression_child")):
                 return
             row = reader.get_session(current)
             if not _native_row(row, current):
@@ -159,7 +159,6 @@ class _LineageReader:
                               and not isinstance(started, bool)
                               and 0 <= started <= observed["observed_at_ms"] / 1000 else None)
                 ticket["sample"] = (_state(row), observed, started_ms)
-                ticket["ready"].set()
             candidates, rows = [current], {current: row}
             complete = False
             for _ in range(31):  # the own-row probe is the first of <=32 reads
@@ -177,8 +176,19 @@ class _LineageReader:
             if not row.get("parent_session_id"):
                 complete = True
             candidates.reverse()
-            canonical = reader.get_compression_chain(candidates[0])  # exactly once
-            confirmed = (current in canonical and canonical[:canonical.index(current) + 1] == candidates)
+            chain_reader = getattr(reader, "get_compression_chain", None)
+            if callable(chain_reader):
+                canonical = chain_reader(candidates[0])  # native cap: 1000
+                confirmed = (current in canonical and canonical[:canonical.index(current) + 1] == candidates)
+            elif callable(getattr(reader, "get_compression_lineage", None)):
+                # Hermes 0.20's public lineage method performs unbounded child
+                # enumeration. Validate only this <=32-row ancestry instead.
+                canonical = candidates
+                confirmed = all(_state(rows[parent]) == "compression_closed"
+                                and _compression_child(rows[child])
+                                for parent, child in zip(candidates, candidates[1:]))
+            else:
+                return
             ambiguous = False
             if confirmed and len(candidates) > 1 and rows[current].get("ended_at") is None:
                 child = reader.find_live_compression_child(candidates[-2])
@@ -206,6 +216,20 @@ class _LineageReader:
                     self.cache.popitem(last=False)
         finally:
             reader.close()
+
+
+def _compression_child(row):
+    if row.get("source") == "tool":
+        return False
+    config = row.get("model_config")
+    try:
+        if isinstance(config, str) and len(config) > 16384:
+            return False
+        config = json.loads(config) if isinstance(config, str) else (config or {})
+    except (ValueError, TypeError):
+        return False
+    return (isinstance(config, Mapping) and config.get("_branched_from") is None
+            and config.get("_delegate_from") is None)
 
 
 def _lineage_header(session):
@@ -288,15 +312,31 @@ def _adapter(config):
         # Case-insensitive replacement avoids duplicate identity or authorization headers.
         headers = {
             k: v for k, v in (existing or {}).items()
-            if not isinstance(k, str) or k.lower() not in ("x-hiroute-token", "x-hermes-session-id", "x-hermes-compression-lineage")
+            if not isinstance(k, str) or k.lower() not in ("x-hiroute-token", "x-hermes-session-id", "x-hermes-compression-lineage", "x-hiroute-agent", "x-hiroute-routing-context", "x-hermes-observed-input")
         }
         headers["X-HiRoute-Token"] = bearer
+        headers["X-HiRoute-Agent"] = "hermes"
         session = context.get("session_id")
         if _identity(session):
             headers["X-Hermes-Session-Id"] = session
-            lineage = _lineage_header(session)
-            if lineage:
-                headers["X-Hermes-Compression-Lineage"] = lineage
+            turn = context.get("turn_id")
+            request_id = context.get("api_request_id")
+            # Whole-turn callbacks precede native memory/reminder composition
+            # and also receive async notifications. Only the final observed
+            # batch is available; equal clean text cannot identify its instance.
+            headers["X-HiRoute-Routing-Context"] = json.dumps({
+                "version": 2, "agent": "hermes", "session_id": session, "purpose": "main",
+                **({"turn_id": turn} if _identity(turn) else {}),
+                **({"request_id": request_id} if _identity(request_id) else {}),
+                "input": {"kind": "observed_batch",
+                          **({"event_id": turn} if _identity(turn) else {})},
+            }, separators=(",", ":"))
+            try:
+                lineage = _lineage_header(session)
+                if lineage:
+                    headers["X-Hermes-Compression-Lineage"] = lineage
+            except Exception:
+                pass  # Optional lineage never removes minimal context or auth.
         return {"request": {**request, "extra_headers": headers}, "source": "hiroute"}
 
     return llm_request

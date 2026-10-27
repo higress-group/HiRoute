@@ -31,25 +31,30 @@ pub fn initialize_current_storage(
         .arg(isolated.path().join("runtime"))
         .args(["--diagnostic-level-override", "debug"]);
     let mut child = super::process::Process::spawn(&mut command, logs, cancel)?;
-    loop {
-        if let Err(error) = child.check() {
-            let (_, stderr) = child.output(16 * 1024)?;
-            eprintln!(
-                "initial storage daemon: {}",
-                String::from_utf8_lossy(&stderr)
-            );
-            return Err(error);
+    let outcome = (|| {
+        loop {
+            if let Err(error) = child.check() {
+                let (_, stderr) = child.output(16 * 1024)?;
+                eprintln!(
+                    "initial storage daemon: {}",
+                    String::from_utf8_lossy(&stderr)
+                );
+                return Err(error);
+            }
+            require(
+                std::time::Instant::now() < deadline,
+                "initial_storage_ready_timeout",
+            )?;
+            if fs::symlink_metadata(&endpoint).is_ok_and(|m| m.file_type().is_socket()) {
+                return Ok(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        if fs::symlink_metadata(&endpoint).is_ok_and(|m| m.file_type().is_socket()) {
-            break;
-        }
-        require(
-            std::time::Instant::now() < deadline,
-            "initial_storage_ready_timeout",
-        )?;
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    })();
+    // Finish owned cleanup before returning either readiness or a failed
+    // prerequisite. Drop remains a final guard if the explicit stop fails.
     child.stop()?;
+    outcome?;
     let (_, stderr) = child.output(1024 * 1024)?;
     require(stderr.is_empty(), "initial_storage_unexpected_stderr")
 }
@@ -129,6 +134,40 @@ pub fn discovery(root: &Path, secret: &str) -> Result<(PathBuf, PathBuf)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn initial_storage_timeout_reaps_its_owned_process_before_returning() {
+        // A controlled child tests timeout/cleanup only; it cannot establish
+        // successful storage setup or substitute for the real smoke daemon.
+        let root = tempfile::tempdir().unwrap();
+        let launcher = root.path().join("waiting-child");
+        fs::write(&launcher, "#!/bin/sh\nexec /bin/sleep 60\n").unwrap();
+        fs::set_permissions(&launcher, fs::Permissions::from_mode(0o700)).unwrap();
+        let logs = root.path().join("initialize");
+        let error = initialize_current_storage(
+            &launcher,
+            &root.path().join("storage"),
+            &logs,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            std::time::Instant::now(),
+        )
+        .unwrap_err();
+        assert_eq!(error.0, "initial_storage_ready_timeout");
+        let identity: Value =
+            serde_json::from_slice(&fs::read(logs.with_extension("process.json")).unwrap())
+                .unwrap();
+        let pid = nix::unistd::Pid::from_raw(identity["pid"].as_i64().unwrap() as i32);
+        assert_eq!(
+            nix::sys::signal::kill(pid, None),
+            Err(nix::errno::Errno::ESRCH),
+            "initializer must finish owned-child cleanup before admitting another phase"
+        );
+        assert_eq!(
+            nix::sys::signal::killpg(pid, None),
+            Err(nix::errno::Errno::ESRCH)
+        );
+        assert!(!root.path().join("storage").exists());
+    }
 
     #[test]
     fn discovery_fixture_removes_group_writable_agent_parents() {

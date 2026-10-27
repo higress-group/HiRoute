@@ -1,0 +1,89 @@
+{
+  "kind": "installed-producer-synthetic-session-replay",
+  "not_original_http_wire": true,
+  "network_calls": 0,
+  "replay_degraded": 0,
+  "source_sha256": {
+    "@deepseek-ai/dsh-llm-pi-ai/lib/index.js": "d46dbc30aeb3414190000e6f8aeaaf994246b5e5c651de07639f4a7e92de37ef",
+    "@deepseek-ai/dsh-session/lib/index.js": "87ea85e2fb5318bf1f826db9a1c88c1b26d3ea328027a7f32b211880c4d62b9d",
+    "@earendil-works/pi-ai/dist/api/openai-responses-shared.js": "7846279b34c2a569bda2b0753c8b083f8b976204b4fdd7586095ebbb6a643410",
+    "@earendil-works/pi-ai/dist/utils/transcript.js": "cd63514661b4036c3bcdda11a108f6be853f790a01216bf30fa80121e4fd320f"
+  },
+  "input": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Check both records with tools."
+        }
+      ]
+    },
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "I will check the record.",
+          "annotations": []
+        }
+      ],
+      "status": "completed",
+      "id": "msg-commentary",
+      "phase": "commentary"
+    },
+    {
+      "type": "function_call",
+      "id": "fc_lookup",
+      "call_id": "lookup-call",
+      "name": "lookup",
+      "arguments": "{\"key\":\"alpha\"}"
+    },
+    {
+      "type": "function_call",
+      "id": "fc_check",
+      "call_id": "check-call",
+      "name": "check",
+      "arguments": "{\"key\":\"beta\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "lookup-call",
+      "output": "alpha=valid"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "check-call",
+      "output": "beta=valid"
+    },
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Both records are valid.",
+          "annotations": []
+        }
+      ],
+      "status": "completed",
+      "id": "msg-final",
+      "phase": "final_answer"
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Now answer a simple question."
+        }
+      ]
+    }
+  ],
+  "producer_versions": {
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session": "0.2.0-rc.2",
+    "@earendil-works/pi-ai": "0.87.1"
+  }
+}

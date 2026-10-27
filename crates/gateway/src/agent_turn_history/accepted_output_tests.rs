@@ -36,7 +36,7 @@ pub(super) fn tool(store: &AgentTurnHistoryStore, ticket: &AgentTurnTicket, id: 
     );
 }
 
-fn owner() -> ExactProviderPathV1 {
+pub(super) fn owner() -> ExactProviderPathV1 {
     ExactProviderPathV1 {
         provider_id: "p".into(),
         endpoint_id: "e".into(),
@@ -162,6 +162,7 @@ fn accepted_text_survives_client_rewrite_and_history_rebuild_without_terminal_du
                 &input,
                 &replay,
                 TurnDecisionInputs {
+                    native_turn: None,
                     history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
@@ -223,6 +224,7 @@ fn interrupted_output_is_preserved_and_late_events_cannot_touch_the_next_request
                 &request(vec![text(MessageRole::User, "second")]),
                 &replay,
                 TurnDecisionInputs {
+                    native_turn: None,
                     history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
@@ -240,6 +242,104 @@ fn interrupted_output_is_preserved_and_late_events_cannot_touch_the_next_request
     );
     assert!(store.inner.lock().entries[&key].active.steps.is_empty());
     store.abort(&next);
+}
+
+#[test]
+fn resumed_interrupted_stage_retains_tool_identity_without_changing_frozen_output() {
+    let (_dir, replay) = replay();
+    let store = AgentTurnHistoryStore::default();
+    let key = store.scope_key("w", "resume-tool").unwrap();
+    let now = Instant::now();
+    let user = text(MessageRole::User, "lookup");
+    let (ticket, _) = new_turn(
+        store
+            .begin(
+                key.clone(),
+                plan(1),
+                &request(vec![user.clone()]),
+                &replay,
+                now,
+            )
+            .unwrap(),
+    );
+    store.commit_decision(&ticket, decision("simple")).unwrap();
+    tool(&store, &ticket, "call-1", "lookup");
+    let closed = store
+        .finish_request(
+            &ticket,
+            "r1".into(),
+            AgentTurnStatus::Interrupted,
+            vec![execution("m", "p", "simple", "r1")],
+            true,
+            now,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(closed.status, AgentTurnStatus::Interrupted);
+    let frozen = store
+        .inner
+        .lock()
+        .entries
+        .get(&ticket.key)
+        .unwrap()
+        .closed
+        .back()
+        .unwrap()
+        .wire
+        .clone();
+    let next = store
+        .begin(
+            key,
+            plan(1),
+            &request(vec![
+                user,
+                tool_call("call-1", "lookup"),
+                tool_result("call-1", true),
+            ]),
+            &replay,
+            now,
+        )
+        .unwrap();
+    let AgentTurnBegin::Continuation { ticket: next, .. } = next else {
+        panic!("same-stage explicit continuation")
+    };
+    assert_eq!(next.agent_turn_id, ticket.agent_turn_id);
+    let completed = store
+        .finish_request(
+            &next,
+            "r2".into(),
+            AgentTurnStatus::Completed,
+            vec![execution("m", "p", "simple", "r2")],
+            true,
+            now,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(completed.status, AgentTurnStatus::Completed);
+    let inner = store.inner.lock();
+    let current = &inner
+        .entries
+        .get(&next.key)
+        .unwrap()
+        .closed
+        .back()
+        .unwrap()
+        .wire;
+    assert!(matches!(
+        &current.steps[0][0],
+        VisibleContentPart::ToolActivity {
+            status: ToolStatus::Failed,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &frozen.steps[0][0],
+        VisibleContentPart::ToolActivity {
+            status: ToolStatus::Unknown,
+            ..
+        }
+    ));
+    assert_eq!(closed.history_membership.unwrap().request_ids, vec!["r1"]);
 }
 
 #[test]
@@ -272,6 +372,7 @@ fn dropped_request_marks_its_accepted_prefix_partial_and_rejects_queued_events()
                 &request(vec![text(MessageRole::User, "next")]),
                 &replay,
                 TurnDecisionInputs {
+                    native_turn: None,
                     history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },
@@ -332,6 +433,7 @@ fn retry_of_finalized_request_retains_original_user_and_both_accepted_answers() 
                 &request(vec![text(MessageRole::User, "new question")]),
                 &replay,
                 TurnDecisionInputs {
+                    native_turn: None,
                     history_continuity: crate::context_hold::HistoryContinuity::Rewritten,
                     reselect_on_user_message: true,
                 },

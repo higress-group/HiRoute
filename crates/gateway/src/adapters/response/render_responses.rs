@@ -13,9 +13,9 @@ pub(super) fn render_responses_json(
     let mut output = response
         .blocks
         .iter()
-        .map(render_responses_block)
+        .map(|block| render_responses_block(&response.response_id, block))
         .collect::<Result<Vec<_>, _>>()?;
-    append_responses_state(&mut output, &response.provider_state)?;
+    append_responses_state(&response.response_id, &mut output, &response.provider_state)?;
     let mut rendered = json!({
         "id": response.response_id,
         "object": "response",
@@ -64,9 +64,13 @@ pub(super) fn render_responses_stream(
     let mut final_items = response
         .blocks
         .iter()
-        .map(render_responses_block)
+        .map(|block| render_responses_block(&response.response_id, block))
         .collect::<Result<Vec<_>, _>>()?;
-    append_responses_state(&mut final_items, &response.provider_state)?;
+    append_responses_state(
+        &response.response_id,
+        &mut final_items,
+        &response.provider_state,
+    )?;
     for (position, block) in response.blocks.iter().enumerate() {
         let output_index = block.index();
         let final_item = &final_items[position];
@@ -94,7 +98,7 @@ pub(super) fn render_responses_stream(
                 annotations,
                 ..
             } => {
-                let item_id = response_item_id(item_id, "msg", output_index);
+                let item_id = response_item_id(&response.response_id, item_id, "msg", output_index);
                 let mut start_item = final_item.clone();
                 start_item["status"] = "in_progress".into();
                 start_item["content"] = json!([]);
@@ -147,7 +151,7 @@ pub(super) fn render_responses_stream(
                 );
             }
             ResponseBlock::Reasoning { item_id, text, .. } => {
-                let item_id = response_item_id(item_id, "rs", output_index);
+                let item_id = response_item_id(&response.response_id, item_id, "rs", output_index);
                 let mut start_item = final_item.clone();
                 start_item["status"] = "in_progress".into();
                 start_item["summary"] = json!([]);
@@ -191,7 +195,7 @@ pub(super) fn render_responses_stream(
                 );
             }
             ResponseBlock::Refusal { item_id, text, .. } => {
-                let item_id = response_item_id(item_id, "msg", output_index);
+                let item_id = response_item_id(&response.response_id, item_id, "msg", output_index);
                 let mut start_item = final_item.clone();
                 start_item["status"] = "in_progress".into();
                 start_item["content"] = json!([]);
@@ -271,7 +275,8 @@ pub(super) fn render_responses_stream(
                                 .to_owned(),
                         ),
                     };
-                let item_id = response_item_id(item_id, prefix, output_index);
+                let item_id =
+                    response_item_id(&response.response_id, item_id, prefix, output_index);
                 let mut added_item = json!({"type":item_type,"id":item_id,"call_id":logical_id,"name":name,"status":"in_progress"});
                 added_item[payload_field] = Value::String(String::new());
                 if let Some(namespace) = namespace {
@@ -319,7 +324,10 @@ pub(super) fn render_responses_stream(
     Ok(events)
 }
 
-pub(super) fn render_responses_block(block: &ResponseBlock) -> Result<Value, ProtocolAdapterError> {
+pub(super) fn render_responses_block(
+    response_id: &str,
+    block: &ResponseBlock,
+) -> Result<Value, ProtocolAdapterError> {
     Ok(match block {
         ResponseBlock::WebSearch { item, .. } => item.wire_value(),
         ResponseBlock::Text {
@@ -330,7 +338,7 @@ pub(super) fn render_responses_block(block: &ResponseBlock) -> Result<Value, Pro
             annotations,
             status,
         } => {
-            let mut item = json!({"type":"message","id":response_item_id(item_id, "msg", *index),"status":status.as_str(),"role":"assistant","content":[{"type":"output_text","text":text,"annotations":annotations}]});
+            let mut item = json!({"type":"message","id":response_item_id(response_id, item_id, "msg", *index),"status":status.as_str(),"role":"assistant","content":[{"type":"output_text","text":text,"annotations":annotations}]});
             if let Some(phase) = phase {
                 item["phase"] = Value::String(phase.clone());
             }
@@ -342,7 +350,7 @@ pub(super) fn render_responses_block(block: &ResponseBlock) -> Result<Value, Pro
             text,
             status,
         } => {
-            json!({"type":"reasoning","id":response_item_id(item_id, "rs", *index),"status":status.as_str(),"summary":[{"type":"summary_text","text":text}]})
+            json!({"type":"reasoning","id":response_item_id(response_id, item_id, "rs", *index),"status":status.as_str(),"summary":[{"type":"summary_text","text":text}]})
         }
         ResponseBlock::Refusal {
             index,
@@ -351,13 +359,14 @@ pub(super) fn render_responses_block(block: &ResponseBlock) -> Result<Value, Pro
             text,
             status,
         } => {
-            let mut item = json!({"type":"message","id":response_item_id(item_id, "msg", *index),"status":status.as_str(),"role":"assistant","content":[{"type":"refusal","refusal":text}]});
+            let mut item = json!({"type":"message","id":response_item_id(response_id, item_id, "msg", *index),"status":status.as_str(),"role":"assistant","content":[{"type":"refusal","refusal":text}]});
             if let Some(phase) = phase {
                 item["phase"] = Value::String(phase.clone());
             }
             item
         }
         ResponseBlock::ToolCall {
+            encrypted_function_args,
             index,
             item_id,
             logical_id,
@@ -389,8 +398,11 @@ pub(super) fn render_responses_block(block: &ResponseBlock) -> Result<Value, Pro
                         .to_owned(),
                 ),
             };
-            let mut item = json!({"type":item_type,"id":response_item_id(item_id, prefix, *index),"call_id":logical_id,"name":name,"status":status.as_str()});
+            let mut item = json!({"type":item_type,"id":response_item_id(response_id, item_id, prefix, *index),"call_id":logical_id,"name":name,"status":status.as_str()});
             item[payload_field] = Value::String(payload);
+            if let Some(encoding) = encrypted_function_args {
+                item["encrypted_function_args"] = json!(encoding);
+            }
             if let Some(namespace) = namespace {
                 item["namespace"] = Value::String(namespace.clone());
             }
@@ -399,10 +411,15 @@ pub(super) fn render_responses_block(block: &ResponseBlock) -> Result<Value, Pro
     })
 }
 
-fn response_item_id(item_id: &Option<String>, prefix: &str, index: u32) -> String {
+fn response_item_id(
+    response_id: &str,
+    item_id: &Option<String>,
+    prefix: &str,
+    index: u32,
+) -> String {
     item_id
         .clone()
-        .unwrap_or_else(|| format!("{prefix}_{index}"))
+        .unwrap_or_else(|| synthetic_responses_item_id(response_id, prefix, index))
 }
 
 fn push_responses_event(

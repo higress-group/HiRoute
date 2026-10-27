@@ -107,6 +107,7 @@ fn v15_and_both_experimental_v16_layouts_converge_without_losing_data_or_keys() 
             .unwrap();
             if index == 0 {
                 // Reconstruct the historical layout before entering the real upgrade path.
+                current_dependencies_v32::remove_test_shape(&conn);
                 conn.execute_batch("DROP TABLE compute_source_defaults; ALTER TABLE compute_management_effects DROP COLUMN preferences_before; ALTER TABLE compute_management_effects DROP COLUMN preferences_after;").unwrap();
                 conn.execute_batch(
                     "DROP TABLE decision_service_operations;

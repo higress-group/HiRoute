@@ -31,17 +31,25 @@
   </a>
 </p>
 
-Keep using Codex, Claude Code, Qoder, Pi or DeepSeek Harness. With a difficulty-routing plan, HiRoute
-judges each new message: routine work such as reading code or gathering facts can go to an
+Keep using Codex, Claude Code, Qoder, Pi, OpenCode, Hermes or DeepSeek Harness. With a difficulty-routing plan, HiRoute
+judges verified native user input: routine work such as reading code or gathering facts can go to an
 economical model, while design decisions and difficult fixes stay with your subscription or
 primary model. Subscriptions, API keys and local models are managed in one place, and each
 session shows which model actually ran, its usage and its cost. Independent tasks can also be
 delegated to other agents.
 
 Tool calls within a turn usually keep that turn's decision, so the growing context prefix stays
-cacheable. HiRoute decides again on a new user message, or when a context rebuild breaks the
-previous continuation, and may keep the same model; cache reuse depends on the provider. HiRoute
-runs locally as a Desktop application or a headless CLI and daemon.
+cacheable when continuity and the captured decision remain valid. HiRoute decides again when a
+usable new task input arrives, and may keep the same model; cache reuse depends on the provider.
+HiRoute runs locally as a Desktop application or a headless CLI and daemon.
+
+Classification, history capture and cross-turn evaluation remain available when a native client
+cannot prove input origin. Such input carries explicit uncertainty; missing captured execution
+stays partial. Codex compressed sessions can recover on new questions after a Gateway restart
+without creating a new conversation. Claude, Hermes and Qoder retain smart routing while task
+association and scoring may be inaccurate. Qoder's shared main/child identity is an accepted
+limitation. Known auxiliary summaries stay outside main history. Successful output alone does
+not establish routing or scoring accuracy. See the [routing and recovery limits](apps/website/content/guides/model-routing.en.md).
 
 ## News
 

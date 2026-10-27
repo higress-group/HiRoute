@@ -217,27 +217,41 @@ pub(super) fn apply(
             }
             true
         }
-        ExecutionFactV1::BranchAssessmentRecorded {
-            segment_id,
-            plan_id,
-            plan_revision,
-            model_configuration_id,
-            profile_digest,
-            trigger_request_id,
-            target_from_turn_id,
-            target_through_turn_id,
-            target_from_ordinal,
-            target_through_ordinal,
-            assessed_at_ms,
-            score,
-            partial,
-            reason,
-        } => {
+        ExecutionFactV1::BranchAssessmentRecorded { .. }
+        | ExecutionFactV1::StageAssessmentRecorded(_) => {
+            let assessment = envelope
+                .fact
+                .assessment_record()
+                .expect("assessment variant");
+            let hiroute_domain::AssessmentRecordRef {
+                segment_id,
+                plan_id,
+                model_configuration_id,
+                trigger_request_id,
+                target_from_turn_id,
+                target_through_turn_id,
+                reason,
+                ..
+            } = assessment;
+            let profile_digest = assessment.profile_digest.map(|profile| profile.as_str());
+            let plan_revision = &assessment.plan_revision;
+            let target_from_ordinal = &assessment.target_from_ordinal;
+            let target_through_ordinal = &assessment.target_through_ordinal;
+            let assessed_at_ms = &assessment.assessed_at_ms;
+            let score = &assessment.score;
+            let partial = &assessment.partial;
             let revision = sql_u64(*plan_revision)?;
-            type ExistingSegmentIdentity = (String, String, i64, Option<String>, Option<String>);
+            type ExistingSegmentIdentity = (
+                String,
+                String,
+                i64,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            );
             let existing: Option<ExistingSegmentIdentity> = transaction
                 .query_row(
-                    "SELECT session_id,plan_id,plan_revision,model_configuration_id,profile_digest
+                    "SELECT session_id,plan_id,plan_revision,model_configuration_id,profile_digest,attribution
                      FROM plan_quality_segments WHERE workspace_id=?1 AND segment_id=?2",
                     params![envelope.correlation.workspace_id.as_str(), segment_id,],
                     |row| {
@@ -247,22 +261,27 @@ pub(super) fn apply(
                             row.get(2)?,
                             row.get(3)?,
                             row.get(4)?,
+                            row.get(5)?,
                         ))
                     },
                 )
                 .optional()
                 .map_err(|_| FactProjectionError::Storage)?;
-            if existing
-                .as_ref()
-                .is_some_and(|(session, plan, stored_revision, model, profile)| {
+            if existing.as_ref().is_some_and(
+                |(session, plan, stored_revision, model, profile, attribution)| {
                     session != envelope.correlation.conversation_id.as_str()
                         || plan != plan_id.as_str()
                         || *stored_revision != revision
-                        || model.as_deref() != Some(model_configuration_id)
-                        || profile.as_deref() != Some(profile_digest.as_str())
-                })
-            {
+                        || model.as_deref() != model_configuration_id
+                        || profile.as_deref() != profile_digest
+                        || (assessment.stage_scope.is_some()
+                            && attribution.as_deref() != Some("mixed"))
+                },
+            ) {
                 return Err(FactProjectionError::ImmutableConflict);
+            }
+            if existing.is_none() && assessment.stage_scope.is_some() {
+                return Err(FactProjectionError::MissingPrerequisite);
             }
             if existing.is_none() {
                 transaction
@@ -278,7 +297,7 @@ pub(super) fn apply(
                             plan_id.as_str(),
                             revision,
                             model_configuration_id,
-                            profile_digest.as_str(),
+                            profile_digest,
                         ],
                     )
                     .map_err(|_| FactProjectionError::Storage)?;
@@ -345,6 +364,7 @@ pub(super) fn apply(
         _ => false,
     };
     if changed {
+        apply_membership(transaction, envelope)?;
         transaction
             .execute(
                 "UPDATE observation_meta SET value=CAST(value AS INTEGER)+1
@@ -353,6 +373,67 @@ pub(super) fn apply(
             )
             .map_err(|_| FactProjectionError::Storage)?;
     }
+    Ok(())
+}
+
+fn apply_membership(
+    transaction: &Transaction<'_>,
+    envelope: &ExecutionFactEnvelopeV1,
+) -> Result<(), FactProjectionError> {
+    let (segment, membership, column, union) = if let ExecutionFactV1::AgentTurnFinished {
+        segment_id,
+        history_membership: Some(m),
+        ..
+    } = &envelope.fact
+    {
+        (segment_id.as_str(), m, "history_membership_json", true)
+    } else if let Some(assessment) = envelope.fact.assessment_record() {
+        let Some(membership) = assessment.history_membership else {
+            return Ok(());
+        };
+        (
+            assessment.segment_id,
+            membership,
+            "assessment_membership_json",
+            false,
+        )
+    } else {
+        return Ok(());
+    };
+    let mut current = membership.clone();
+    if union {
+        let previous: Option<String> = transaction.query_row(
+            "SELECT history_membership_json FROM plan_quality_segments WHERE workspace_id=?1 AND segment_id=?2",
+            params![envelope.correlation.workspace_id.as_str(), segment], |r| r.get(0))
+            .map_err(|_| FactProjectionError::Storage)?;
+        if let Some(previous) = previous {
+            let old: hiroute_domain::HistoryMembershipV1 =
+                serde_json::from_str(&previous).map_err(|_| FactProjectionError::Invalid)?;
+            if old.branch_id != current.branch_id {
+                return Err(FactProjectionError::ImmutableConflict);
+            }
+            if old.revision > current.revision {
+                return Ok(());
+            }
+            current.source_unverified |= old.source_unverified;
+            current.association_unverified |= old.association_unverified;
+            current.capture_partial |= old.capture_partial;
+            current.clipped |= old.clipped;
+            for id in old.request_ids {
+                if current.request_ids.contains(&id) {
+                    continue;
+                }
+                if current.request_ids.len() < 128 {
+                    current.request_ids.push(id);
+                } else {
+                    current.clipped = true;
+                }
+            }
+        }
+    }
+    let encoded = serde_json::to_string(&current).map_err(|_| FactProjectionError::Invalid)?;
+    transaction.execute(&format!("UPDATE plan_quality_segments SET {column}=?3 WHERE workspace_id=?1 AND segment_id=?2"),
+        params![envelope.correlation.workspace_id.as_str(), segment, encoded]).map_err(|_| FactProjectionError::Storage)?;
     Ok(())
 }
 

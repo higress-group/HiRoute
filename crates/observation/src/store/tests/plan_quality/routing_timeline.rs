@@ -2,6 +2,66 @@ use super::*;
 use hiroute_domain::RoutingTimelineQueryV1;
 
 #[test]
+fn known_native_auxiliary_keeps_receipts_without_manufacturing_a_user_turn() {
+    use super::super::support;
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let main = Fixture::new("native-main");
+    let mut title = Fixture::new("native-title");
+    title.session = main.session.clone();
+    title.fact_stream = main.fact_stream.clone();
+    let channel = fact_channel(&main, 256 * 1024);
+    let writer = writer(&store);
+    let mut auxiliary = support::route_decision(PLAN);
+    if let ExecutionFactV1::RouteDecision(route) = &mut auxiliary {
+        route.native_auxiliary = true;
+    }
+    for (index, (fixture, fact)) in [(&main, support::route_decision(PLAN)), (&title, auxiliary)]
+        .into_iter()
+        .enumerate()
+    {
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                fixture.fact(index as u64 + 1, fact, 1000 + index as i64)
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    let query = RoutingTimelineQueryV1 {
+        session_id: main.session.to_string(),
+        after_watermark: None,
+        limit: 100,
+    };
+    let page = store
+        .observed_routing_timeline(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(page.turns.len(), 1);
+    assert_eq!(page.turns[0].requests[0].request_id, main.request.as_str());
+    let retained: i64 = store
+        .connection
+        .lock()
+        .query_row("SELECT COUNT(*) FROM logical_requests", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        retained, 2,
+        "auxiliary request accounting and receipts remain retained"
+    );
+    drop(writer);
+    drop(store);
+    let reopened = open_store(directory.path());
+    assert_eq!(
+        reopened
+            .observed_routing_timeline(&reader(), &query, 5000)
+            .unwrap()
+            .turns
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn native_timeline_identity_uses_the_executed_candidate_not_the_last_evaluated_one() {
     use super::super::support;
     for primary in [false, true] {

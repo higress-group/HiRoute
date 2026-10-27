@@ -4,8 +4,20 @@ import { NewModels } from '../../../src/features/trial/NewModels';
 import { readyDesktop, readyAgents, readyManagement, dailyPlan, mockProductInvoke } from './product-fixtures';
 import type { DesktopOperation, DesktopSnapshot } from '../../../src/product/home-projections';
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
+import { trialAgentRead } from './trial-agent-fixture';
+import type { Agent } from '../../../src/features/agents/types';
 const desktop = structuredClone(readyDesktop); desktop.catalog = { plans: [], drafts: [] }; desktop.pending = null;
 const agents = structuredClone(readyAgents); agents.agents = [{...agents.agents.find(a=>a.agent_id==='agent_claude_default')!,context_id:'agent-context/claude/default',settings:{state:'not_configured',restore_point_ref:null,model_verified:false}}];agents.plans.plans=[];
+const additionalFamily = new URLSearchParams(location.search).get('agent-family');
+if (['dsh', 'pi', 'qoder', 'opencode'].includes(additionalFamily ?? '')) agents.agents.push({
+ ...structuredClone(agents.agents[0]), agent_id:`agent_${additionalFamily}_default`, context_id:`agent-context/${additionalFamily}/default`,
+});
+const retiredContexts = new Map<string, Agent>();
+if (additionalFamily === 'codex') agents.agents.push({
+ ...structuredClone(readyAgents.agents.find(a=>a.agent_id==='agent_codex_default')!),
+ context_id:'agent-context/codex/root',
+ codex_access:{codex_home:'/workspace/codex',slot_id:'codex',root_context_id:'agent-context/codex/root',profile_context_id:'agent-context/codex/profile',selected_mode:'root',slot_occupied:true,target_file:'config.toml',profile_name:'hiroute',commands:{},pending_operation:null,access_revoked:false,conflict_fields:[]},
+});
 const decision = {id:'decision/trial',revision:1,name:'Saved decision model',connection:{kind:'custom',endpoint:'https://decision.example.test',timeout_ms:10000}};
 let observed:DesktopOperation|null=null;
 let publishLost=false;
@@ -20,13 +32,44 @@ export const trialModel = catalog.find(m=>m.binding_ids.includes('binding/bailia
 export const primaryModel = catalog.find(m=>m.binding_ids.includes('binding/codex/gpt-5.6-sol'))!;
 if (new URLSearchParams(location.search).has('feed-trial')) trialModel.origin = {kind:'feed',sequence:12,included_on:'2026-10-16'};
 Object.assign(window,{trialModel,primaryModel});
+const agentControl = {
+ hold: new URLSearchParams(location.search).has('agent-hold'), failNext: false,
+ pending: [] as { context: string; release(): void }[],
+ mappedContexts: [] as string[], rejectedContexts: [] as string[],
+ setTrusted(value: boolean) { agents.trusted_authority=value; },
+ setCodexMode(mode: 'root' | 'profile') {
+  const agent=agents.agents.find(a=>a.agent_id==='agent_codex_default')!;
+  retiredContexts.set(agent.context_id!,{...structuredClone(agent),settings:{state:'restored',restore_point_ref:null,model_verified:false}});
+  agent.context_id=`agent-context/codex/${mode}`;
+  agent.codex_access={...agent.codex_access!,selected_mode:mode};
+ },
+ setClaudePlan(name: string) {
+  const agent = agents.agents[0];
+  agent.settings = {state:'configured',restore_point_ref:null,model_verified:false,current_selection:{mode:'claude_launcher',surfaces:['claude_cli'],fixed_models:[],preset_mappings:{opus:{kind:'plan',plan_id:name},sonnet:{kind:'preserve_native'},haiku:{kind:'preserve_native'}}}};
+  agents.plans.plans.push({...structuredClone(dailyPlan),agent_plan_id:name,desired:{...structuredClone(dailyPlan.desired),display_name:name}});
+ },
+};
+Object.assign(window,{trialAgentControl:agentControl});
 export async function quickStartInvoke(command:string,payload:any,params:URLSearchParams) {
+ if(command==='trial_agent_choices') return trialAgentRead(agents,command,payload);
+ if(command==='trial_agent_model') {
+  if(agentControl.failNext){agentControl.failNext=false;throw Error('AGENT_STATUS_UNAVAILABLE');}
+  const retired=retiredContexts.get(payload.contextId);
+  const result=trialAgentRead(retired ? {...agents,agents:[retired]} : agents,command,payload);
+  if(agentControl.hold) await new Promise<void>(release=>agentControl.pending.push({context:payload.contextId,release}));
+  return result;
+ }
  if(command==='model_availability') return {featured:params.has('saved-only')?[]:featured,models:params.has('saved-only')?[]:catalog};
  if(command==='desktop_snapshot') return structuredClone(desktop);
  if(command==='model_feed_status') return structuredClone(feedStatus);
  if(command==='model_feed_settings_apply') {if(payload.input.retrieval_enabled!==undefined) feedStatus.retrieval_enabled=payload.input.retrieval_enabled; if(payload.input.acknowledge_disclosure) feedStatus.disclosure_acknowledged=true; return structuredClone(feedStatus);}
  if(command==='agent_snapshot') return structuredClone(agents);
  if(command==='decision_services') return {services:[params.has('native')?{...decision,connection:{kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:10000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}}}:decision]};
+ if(command==='plan_editor_options') {
+  const value = await mockProductInvoke(command,payload,'ready');
+  if (!('quickStartAuthoringJudgment' in window)) Object.assign(window, { quickStartAuthoringJudgment: structuredClone((value as any).authoring.editor.smart.judgment) });
+  return value;
+ }
  if(command==='observe_operation') return observed;
  if(command==='preview_plan_editor') {
   const i=payload.input;
@@ -41,11 +84,19 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   return {state:'succeeded',operation:observed};
  }
  if(command==='preview_agent_settings') {
-  const agent=agents.agents[0];
+  const codex=agents.agents.find(a=>a.agent_id==='agent_codex_default');
+  if(codex && payload.input.spec.context_id.startsWith('agent-context/codex/') && payload.input.spec.context_id!==codex.context_id) {
+   agentControl.rejectedContexts.push(payload.input.spec.context_id);
+   return {preview:{applicable:false,blockers:[{reason:'codex_slot_conflict'}]}};
+  }
+  const agent=agents.agents.find(a=>a.context_id===payload.input.spec.context_id)!;
+  agentControl.mappedContexts.push(payload.input.spec.context_id);
   const selection=structuredClone(payload.input.spec.model.settings);
   // Match the native snapshot's map order rather than echoing the form object.
-  const p=selection.preset_mappings;
-  selection.preset_mappings={haiku:p.haiku,opus:p.opus,sonnet:p.sonnet};
+  if (selection.mode==='claude_launcher') {
+   const p=selection.preset_mappings;
+   selection.preset_mappings={haiku:p.haiku,opus:p.opus,sonnet:p.sonnet};
+  }
   agent.settings={state:'configured',restore_point_ref:'restore/test',model_verified:false,operation_id:'operation/map',operation_state:'succeeded',current_selection:selection};
   return {preview:{applicable:true,blockers:[]},mutation:{state:'applied',operation:{operation_id:'operation/map',state:'succeeded',sequence:1,cancellable:false}}};
  }

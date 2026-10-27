@@ -59,7 +59,111 @@ function changeSelect(select, value) {
 }
 const configureSpecs = () => calls('preview_agent_settings').map(item => item.payload.input.spec);
 
+export async function showDshDesktopEditor() {
+  c().reset(); c().agents = c().registered();
+  const web = c().agents.agents.find(a => a.agent_id === 'agent_dsh_default');
+  c().agents.agents.push({ ...structuredClone(web), agent_id: 'agent_dsh_desktop',
+    context_id: 'agent-context/dsh/desktop-fixture', available_surfaces: ['dsh_desktop'],
+    settings: { state: 'not_configured', model_verified: false, restore_point_ref: null, current_selection: null } });
+  c().refresh();
+  await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('DeepSeek Harness Desktop')), 'Desktop entry loaded');
+  [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('DeepSeek Harness Desktop')).click();
+  await until(() => document.querySelector('[data-agent-id="agent_dsh_desktop"]'), 'Desktop selection');
+  assert(!facet('collaboration') && !facet('management_skill'), 'Model support invented Desktop Skill support');
+  await openEditor('model', false);
+  assert(dialog().textContent.includes('DeepSeek Harness Desktop') && !dialog().textContent.includes('dsh web'), 'Desktop guidance targets the wrong client');
+  const route = dialog().querySelector('input[type=checkbox]');
+  assert(route, 'Desktop route choices missing'); if (!route.checked) route.click();
+  await tick();
+}
+
 const scenarios = [
+  scenario('dsh.desktop.independent-model-settings', ['dsh-desktop'], 'Desktop model settings use their own context and preserve Web settings', async () => {
+    await showDshDesktopEditor();
+    const web = JSON.stringify(c().agents.agents.find(a => a.agent_id === 'agent_dsh_default'));
+    await save();
+    const spec = configureSpecs().at(-1);
+    assert(spec.context_id === 'agent-context/dsh/desktop-fixture', 'Desktop save used Web authority');
+    assert(spec.model.settings.mode === 'dsh_additional' && spec.model.settings.allowed_plan_ids.length > 0, 'Desktop did not map routes');
+    assert(spec.collaboration.intent === 'keep', 'Desktop save acquired Skill ownership');
+    assert(JSON.stringify(c().agents.agents.find(a => a.agent_id === 'agent_dsh_default')) === web, 'Desktop save changed Web settings');
+  }),
+  scenario('agent.readback.active-and-exact', ['agent-readback'], 'Hidden Agents defer invalidation reads; saving reads only its exact context before refreshing summaries', async () => {
+    await fresh('registered');
+    const before = calls('agent_snapshot').length;
+    c().setActive(false); await tick(); c().refresh(); await tick();
+    assert(calls('agent_snapshot').length === before, 'Hidden Agent page scanned the whole installation');
+    c().setActive(true);
+    await until(() => calls('agent_snapshot').length === before + 1 && !facet('model').disabled, 'Active page reads current facts');
+    await openEditor('model');
+    const selected = c().agents.agents.find(agent => agent.agent_id === 'agent_claude_default');
+    const start = calls('agent_snapshot').length;
+    await save();
+    await until(() => c().mutations === 1 && !facet('model').disabled, 'Exact save readback');
+    const reads = calls('trial_agent_model');
+    assert(reads.length === 1 && reads[0].payload.contextId === selected.context_id,
+      'Model Save must confirm its exact model without repeating native discovery and unrelated skill reads');
+    assert(calls('agent_snapshot').length === start, 'Model Save unexpectedly rescanned the installation');
+    assert(document.querySelector('[data-agent-skills-unverified]'), 'Unrefreshed skills were presented as current');
+    assert(!facet('model').disabled, 'Confirmed model should remain editable while skills await their own read');
+    const codex = [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex'));
+    let rejectRead;
+    c().handlers.agent_snapshot = () => new Promise((_, reject) => { rejectRead = reject; });
+    codex.click();
+    await until(() => calls('agent_snapshot').length === start + 1 && rejectRead, 'Invalidated next Agent starts its read');
+    assert(facet('model').disabled && facet('management_skill').disabled,
+      'Unverified Agent became editable while its read was pending');
+    assert(!text().includes('本机服务尚未就绪'), 'An ordinary read falsely warned that the service was down');
+    assert(calls('agent_snapshot').at(-1).payload.contextId === c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default').context_id,
+      'Switching Agent reused old settings as freshly verified');
+    rejectRead({ code: 'AGENT_STATUS_UNAVAILABLE' });
+    await until(() => document.querySelector('[data-error-code="AGENT_STATUS_UNAVAILABLE"]'), 'Failed readback stays actionable');
+    assert(facet('model').disabled, 'Failed readback allowed writes against stale settings');
+    delete c().handlers.agent_snapshot;
+    document.querySelector('[data-error-code="AGENT_STATUS_UNAVAILABLE"] button').click();
+    await until(() => calls('agent_snapshot').length === start + 2 && !facet('model').disabled, 'Scoped retry confirms the selected Agent');
+    assert(calls('agent_snapshot').at(-1).payload.contextId === c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default').context_id,
+      'Retry scanned unrelated Agents');
+    assert(calls('agent_snapshot').at(-1).payload.nativeTargets.length === 0, 'Codex retry must not reread remembered Hermes profiles');
+  }),
+  scenario('agent.readback.deferred-skill-edit', ['agent-readback'], 'Model confirmation does not claim skill state; opening a skill reads its current selection', async () => {
+    await fresh('registered'); await openEditor('model'); await save();
+    await until(() => c().mutations === 1 && !facet('model').disabled, 'Model confirmed');
+    assert(document.querySelector('[data-agent-skills-unverified]'), 'Missing explicit unrefreshed state');
+    assert(!document.querySelector('[data-agent-management] [role="switch"]'), 'Unread management state falsely claims off/on');
+    const selected = c().agents.agents.find(agent => agent.agent_id === 'agent_claude_default');
+    selected.settings.collaboration = { state: 'configured', restore_point_ref: 'restore/changed', current_selection: { trigger_mode: 'delegate_by_default' } };
+    const reads = calls('agent_snapshot').length;
+    await openEditor('collaboration');
+    assert(calls('agent_snapshot').length === reads + 1, 'Skill edit reused stale pre-model-save facts');
+    assert(dialog().querySelector('input[value="delegate_by_default"]').checked, 'Skill edit lost the newly observed selection');
+    assert(c().operations.length === 1, 'Reading the skill caused a second mutation');
+  }),
+  scenario('agent.readback.skill-selection-race', ['agent-readback'], 'A late skill read cannot reopen the old Agent after selection changes', async () => {
+    await fresh('registered'); await openEditor('model'); await save();
+    await until(() => c().mutations === 1 && !facet('model').disabled, 'Model confirmed');
+    let resolveRead;
+    c().handlers.agent_snapshot = () => new Promise(resolve => { resolveRead = resolve; });
+    facet('collaboration').click();
+    await until(() => resolveRead, 'Skill read waiting');
+    [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex')).click();
+    await tick();
+    delete c().handlers.agent_snapshot;
+    resolveRead(structuredClone(c().agents));
+    await until(() => document.querySelector('[data-agent-id="agent_codex_default"] .detail-hero') && !facet('model').disabled, 'New selection confirmed');
+    assert(!dialog(), 'The completed old skill read reopened its editor');
+  }),
+  scenario('agent.readback.model-failure', ['agent-readback'], 'Delayed or wrong-context model reads do not confirm a completed save', async () => {
+    await fresh('registered'); await openEditor('model');
+    let resolveRead;
+    c().handlers.trial_agent_model = () => new Promise(resolve => { resolveRead = resolve; });
+    submit().click();
+    await until(() => resolveRead && !dialog(), 'Submitted save awaits actual readback');
+    assert(facet('model').disabled && c().mutations === 0, 'Save became usable before its model proof');
+    resolveRead({ settings: { context_id: 'agent-context/unrelated', state: 'configured' }, plans: c().agents.plans, trusted_authority: true });
+    await until(() => document.querySelector('[data-error-code="AGENT_STATUS_UNAVAILABLE"]'), 'Wrong context rejected');
+    assert(facet('model').disabled, 'Wrong context was accepted as save confirmation');
+  }),
   scenario('hermes.discovery.brand-and-known-profile', ['hermes', 'agent-discovery'], 'Hermes shows its own mark and the discovered profile without a separate selection step', async () => {
     c().reset(); c().agents = c().hermesFresh(); await tick();
     const rows = () => [...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Hermes'));
@@ -74,14 +178,14 @@ const scenarios = [
     agent.context_id = null; agent.settings = null; agent.status_error = 'AGENT_STATUS_UNAVAILABLE'; agent.configuration_state = 'profile_unavailable';
     c().refresh(); await tick();
     await until(() => document.querySelector('[data-agent-discovery="unavailable"]'), 'Unreadable default profile');
-    assert(rows().length === 1 && document.querySelectorAll('.native-list .list-row').length === 7, 'An unreadable profile hid or duplicated Agents');
+    assert(rows().length === 1 && document.querySelectorAll('.native-list .list-row').length === 8, 'An unreadable profile hid or duplicated Agents');
     assert(facet('model').disabled && !document.querySelector('[data-hermes-select-root]').disabled, 'Unreadable profile has settings authority or cannot change directory');
   }),
   scenario('hermes.discovery.parallel-entry', ['hermes', 'agent-discovery'], 'Hermes remains alongside other Agents and selects its profile from details without writes', async () => {
     c().reset(); await tick();
     const hermesRows = () => [...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Hermes'));
     await until(() => hermesRows().length === 1, 'Unscoped Hermes list row');
-    assert(document.querySelectorAll('.native-list .list-row').length === 7, 'Existing Agent entries changed');
+    assert(document.querySelectorAll('.native-list .list-row').length === 8, 'Existing Agent entries changed');
     assert(!document.querySelector('[data-hermes-select-root]'), 'Hermes directory control leaked into another Agent');
     assert(![...document.querySelectorAll('button')].some(button => button.textContent === '选择 Hermes 配置目录'), 'Hermes has a page-level directory entry');
     hermesRows()[0].click();
@@ -140,7 +244,7 @@ const scenarios = [
     await until(() => calls('agent_snapshot').at(-1)?.payload.nativeTargets?.length === 1, 'Remembered target reread');
     [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
     await until(() => document.querySelector('[data-agent-discovery="unavailable"]'), 'Unavailable retained profile');
-    assert(document.querySelectorAll('.native-list .list-row').length === 7, 'One failed target hid another Agent');
+    assert(document.querySelectorAll('.native-list .list-row').length === 8, 'One failed target hid another Agent');
     assert(document.querySelector('[data-hermes-profile]').textContent.includes('/tmp/hermes-profile-fixture'), 'Failed read lost the selected root');
     assert(facet('model').disabled && facet('management_skill').disabled && facet('collaboration').disabled, 'A preference became settings authority');
     assert(configureSpecs().length === 0 && calls('check_agent_live').length === 0, 'Discovery wrote settings or called a model');

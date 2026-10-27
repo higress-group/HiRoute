@@ -4,6 +4,9 @@ import { extensionDecisionScenarios } from './extension-decision-scenarios.mjs';
 import { cProtocolScenarios } from './c-protocol-scenarios.mjs';
 import { nativeConnectionScenarios } from './native-connection-scenarios.mjs';
 import { presentationScenarios } from './presentation-interactions.mjs';
+import { trustProgressScenarios } from './trust-progress-scenarios.mjs';
+import { homeStartupScenarios } from './home-startup-scenarios.mjs';
+import { operationRecoveryScenarios } from './operation-recovery-scenarios.mjs';
 const c = () => window.productShell;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -59,10 +62,64 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  scenario('desktop.operation.hidden-summaries-defer', ['operation-feedback'], 'Terminal confirmation does not scan a hidden Agent page or unrelated Home summaries', async () => {
+    await fresh();
+    await click('Agent');
+    await until(() => all('.native-list .list-row').length > 0 && !text().includes('正在读取本地 Agent'), 'Agent page loaded');
+    await click('会话');
+    const reads = calls('agent_snapshot').length;
+    c().desktop.pending = { plan_id: 'plan/daily', operation_id: null, idempotency_key: 'key/deferred-summaries' };
+    c().handlers.observe_operation = () => operation('succeeded', 'operation/deferred-summaries');
+    window.dispatchEvent(new Event('focus'));
+    await until(() => feedback()?.dataset.operationPhase === 'succeeded', 'terminal operation confirmed');
+    await pause(150);
+    assert(calls('agent_snapshot').length === reads, 'Hidden summary or Agent page performed a full scan');
+    await click('首页');
+    await until(() => calls('agent_snapshot').length === reads + 1, 'Invalidated summary reread when opened');
+  }),
+  ...homeStartupScenarios({ until, control: c }),
+  ...operationRecoveryScenarios({ fresh, until, control: c, calls }),
+  ...trustProgressScenarios({ fresh, until, control: c }),
   ...nativeConnectionScenarios({ fresh, click, until, text, calls, control: c }),
   ...extensionDecisionScenarios({ fresh, routing, click, until, all, calls, control: c }),
   ...cProtocolScenarios({ fresh, routing, click, until, all, text, calls, setInput, control: c }),
   ...presentationScenarios,
+  scenario('desktop.routing.recovered-mapping-session', ['routing-editor', 'sessions'], 'A resumed Agent mapping opens the observed session through the shell and releases its dialog', async () => {
+    const sessionId = 'session/recovered-mapping';
+    for (const action of ['watch', 'list', 'dirty-watch']) {
+    await fresh(() => {
+      c().handlers.preview_agent_settings = ({ input }) => {
+        const agent = c().agents.agents.find(item => item.context_id === input.spec.context_id);
+        agent.settings = { ...agent.settings, state: 'configured', current_selection: structuredClone(input.spec.model.settings), operation_id: 'operation/map', operation_state: 'succeeded' };
+        return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: operation('succeeded', 'operation/map') } };
+      };
+      c().handlers.observation_read = payload => {
+        const intent = payload.request.intent;
+        if (intent.view === 'sessions' && intent.query.plan_id) return { sessions: [{ session_id: sessionId }], next_cursor: null };
+        return c().fixtureResponse('observation_read', payload);
+      };
+    });
+    await routing();
+    if (action === 'dirty-watch') { setInput(document.querySelector('.plan-identity-fields input'), 'Retained route draft'); await pause(40); }
+    await click('映射 Agent'); await click('检查并映射 Agent'); await click('刷新结果');
+    await until(() => text().includes('发现映射确认后使用此路由的会话'), 'verified mapping and observed activity');
+    assert(button('观察此会话'), 'Recovered mapping has no Watch this session action');
+    await click(action === 'list' ? '查看会话时间线' : '观察此会话');
+    if (action === 'dirty-watch') {
+      await until(() => all('dialog[open]').length, 'unsaved route guard');
+      await click('继续编辑');
+      assert(button('观察此会话') && document.querySelector('.plan-identity-fields input').value === 'Retained route draft', 'Cancelled navigation lost the mapping or route draft');
+      assert(!calls('observation_read').some(call => call.payload.request.intent.view === 'timeline' && call.payload.request.intent.query.session_id === sessionId), 'Cancelled navigation opened the session');
+      await click('观察此会话'); await click('不保存');
+    }
+    await until(() => calls('observation_read').some(call => call.payload.request.intent.view === 'timeline' && (action === 'list' || call.payload.request.intent.query.session_id === sessionId)), 'requested session view opened');
+    assert(!all('[role="dialog"]').length, 'Mapping dialog remained over Sessions');
+    assert(!document.querySelector('.sidebar')?.inert && document.body.style.overflow !== 'hidden', 'Mapping dialog kept navigation inert or scroll locked');
+    await click('智能路由');
+    assert(!all('.trial-mapping').length, 'Returning to Routing resurrected the mapping dialog');
+    assert(calls('preview_agent_settings').length === 1, 'Watching activity submitted the mapping twice');
+    }
+  }),
   scenario('desktop.routing.two-context-conflict', ['routing-editor'], 'A rival context revision refuses stale publication and preserves the current draft', async () => {
     await fresh(); await routing();
     const name = document.querySelector('.plan-identity-fields input');
@@ -84,10 +141,21 @@ const scenarios = [
     assert(calls('preview_plan_editor').length === 1, 'Stale publication was retried automatically');
   }),
   scenario('desktop.models.subscription-login.callback-modes', ['subscription-proxy', 'subscription-login'], 'Automatic callback opens the browser; manual fallback explains the conflict before opening and keeps callback text protected', async () => {
+    const browser = window.fixtureTransport === 'console';
+    const originalClick = HTMLAnchorElement.prototype.click;
+    let opened = [];
+    // Console navigation is a browser anchor, never native IPC. Observe the real host
+    // boundary while keeping this synthetic authorization URL inside the fixture.
+    if (browser) HTMLAnchorElement.prototype.click = function () {
+      opened.push({ url: this.href, target: this.target, rel: this.rel });
+    };
+    const openCount = () => browser ? opened.length : calls('open_external_url').length;
+    try {
     for (const language of (window.cpaCallbackLanguages ?? ['zh', 'en'])) {
       for (const provider of ['codex', 'claude']) {
         for (const manual of [false, true]) {
           let session;
+          opened = [];
           await fresh(() => {
             session = { provider, login_ref: `login/fixture-${provider}`, status: 'pending',
               authorization_url: 'https://example.invalid/oauth/authorize',
@@ -109,10 +177,15 @@ const scenarios = [
           const name = provider === 'codex' ? 'Codex' : 'Claude Code';
           await until(() => all('.oc-status-row').some(row => row.querySelector('strong')?.textContent === name && !row.querySelector('button')?.disabled), 'ready provider sign-in');
           all('.oc-status-row').find(row => row.querySelector('strong')?.textContent === name).querySelector('button').click();
-          await until(() => button(label('手动完成授权', 'Complete authorization manually')), 'pending callback mode');
-          assert(calls('open_external_url').length === (manual ? 0 : 1), 'Manual conflict opened a browser before guidance or automatic mode did not open it');
+          await until(() => { const manualAction = button(label('手动完成授权', 'Complete authorization manually')); return manualAction && !manualAction.disabled; }, 'completed sign-in action and pending callback mode');
+          assert(openCount() === (manual ? 0 : 1), 'Manual conflict opened a browser before guidance or automatic mode did not open it');
           assert(text().includes(manual ? label('无法自动接收浏览器授权', 'Automatic callback reception is unavailable') : label('HiRoute 会自动接收结果', 'HiRoute will receive the result automatically')), 'Callback mode guidance missing');
-          if (manual) { await click(label('打开登录页面', 'Open sign-in page')); assert(calls('open_external_url').length === 1, 'Explicit manual browser action did not dispatch'); }
+          if (manual) { await click(label('打开登录页面', 'Open sign-in page')); assert(openCount() === 1, 'Explicit manual browser action did not dispatch'); }
+          if (browser) {
+            assert(calls('open_external_url').length === 0, 'Console navigation invoked native IPC');
+            assert(opened.length === 1 && opened[0].url === session.authorization_url
+              && opened[0].target === '_blank' && opened[0].rel.includes('noreferrer'), 'Console authorization anchor lost its URL or navigation boundary');
+          }
           await click(label('手动完成授权', 'Complete authorization manually'));
           await until(() => all('input[type="password"]').length === 1, 'protected manual callback form');
           const dialog = all('[role="dialog"]')[0];
@@ -137,6 +210,7 @@ const scenarios = [
         }
       }
     }
+    } finally { HTMLAnchorElement.prototype.click = originalClick; }
   }),
   scenario('desktop.models.subscription-scan.append-to-login', ['subscription-proxy', 'subscription-login'], 'Independent sign-in from an append scan creates a new connection instead of retaining the previous append target', async () => {
     let previous;
@@ -468,8 +542,8 @@ const scenarios = [
     assert(all('.model-result-row input:checked').length === 1, 'Tool check lost the explicit model selection');
     assert(!button('保存连接').disabled, 'Successful tool check disabled save');
     await click('保存连接');
-    await until(() => calls('preview_compute_save').length === 1, 'save preview');
-    const preview = JSON.stringify(calls('preview_compute_save')[0].payload);
+    await until(() => calls('preview_compute_save_v3').length === 1, 'current save preview');
+    const preview = JSON.stringify(calls('preview_compute_save_v3')[0].payload);
     assert(preview.includes('model-ref/qwen3-coder-plus/checked') && !preview.includes('model-ref/qwen3-max/checked'), 'Save did not use only the selected fresh model reference');
   }),
   scenario('desktop.routing.disabled-header', ['routing-editor'], 'A stopped route stays visibly disabled while its editor has unsaved changes', async () => {

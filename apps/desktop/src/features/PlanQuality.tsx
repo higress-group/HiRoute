@@ -24,7 +24,7 @@ const EMPTY_SUMMARY: QualitySummary = { models: [], scored_stage_count: 0, unrat
 
 export function PlanQuality({
   planId, sessionId, planRevision, currentModels = [], language, compact = false,
-  active = true, refreshVersion = 0, onOpenEvidence, onThreshold, onDivision, onOpenAgent,
+  active = true, refreshVersion = 0, onOpenEvidence, onThreshold, onDivision, divisionBranches, onOpenAgent,
 }: {
   planId?: string | null;
   sessionId?: string | null;
@@ -36,6 +36,7 @@ export function PlanQuality({
   refreshVersion?: number;
   onThreshold?: (branch: string, threshold: number) => void;
   onDivision?: (branch: string) => void; onOpenAgent?: (agent: string) => void;
+  divisionBranches?: readonly string[];
   onOpenEvidence?: (sessionId: string, requestId: string) => void;
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
@@ -58,13 +59,23 @@ export function PlanQuality({
   const window = useMemo(() => {
     return planQualityWindow(period, Date.now());
   }, [planId, sessionId, planRevision, period, version, refreshVersion, reload, active, groupBy]);
-  const pairedWindow = useRef<typeof window | null>(null);
-  const revision = version === 'current' ? planRevision || null : version === 'all' ? null : Number(version);
+  const trustScope = !compact && Boolean(planId) && !sessionId;
+  // A supplied revision pins the loaded Plan. Other entries resolve active once
+  // through the trust report; an unresolved active scope never means all versions.
+  const trust = usePlanTrust({ planId: trustScope ? planId : null,
+    revision: version === 'current' ? planRevision ?? 'active' : version === 'all' ? 'all' : Number(version),
+    fromMs: window.from, toMs: window.to, active, groupBy, reload });
+  const report = trust.report;
+  const activeRevision = planRevision ?? report?.active_revision ?? null;
+  const revision = version === 'current' ? activeRevision : version === 'all' ? null : Number(version);
+  const revisionReady = !trustScope || version !== 'current' || revision !== null;
+  const readScope = useMemo(() => ({ window, revision }), [window, revision]);
+  const pairedScope = useRef<typeof readScope | null>(null);
 
   async function load(next: string | null = null, captureRouting = false) {
-    if (!active || (!planId && !sessionId)) return;
+    if (!active || !revisionReady || (!planId && !sessionId)) return;
     const epoch = ++generation.current;
-    if (captureRouting) pairedWindow.current = window;
+    if (captureRouting) pairedScope.current = readScope;
     setBusy(true); setError('');
     try {
       const page = await observationRead<Page>('plan_quality', {
@@ -78,7 +89,7 @@ export function PlanQuality({
       });
       // Aggregate routing evidence belongs to the base read paired with PlanTrust.
       // Detail reads can be clipped by a later retention clock and must not replace it.
-      if (captureRouting && pairedWindow.current === window) setRoutingSummary(page.routing_observations ?? null);
+      if (captureRouting && pairedScope.current === readScope) setRoutingSummary(page.routing_observations ?? null);
       if (epoch !== generation.current) return;
       setSummary(page.summary);
       const stages = selected && !selected.execution && !selected.trustRow ? [] : page.samples;
@@ -105,18 +116,18 @@ export function PlanQuality({
   useEffect(() => {
     setSummary(EMPTY_SUMMARY);
     setRoutingSummary(null);
-    pairedWindow.current = null;
-    return () => { pairedWindow.current = null; };
-  }, [planId, sessionId, revision, window]);
+    pairedScope.current = null;
+    return () => { pairedScope.current = null; };
+  }, [planId, sessionId, readScope]);
 
   useEffect(() => {
-    if (!active) { generation.current++; setBusy(false); return; }
+    if (!active || !revisionReady) { generation.current++; setBusy(false); setLoaded(false); return; }
     setSamples([]); setExecutionModels({}); setCursor(null); setLoaded(false);
-    void load(null, pairedWindow.current !== window);
+    void load(null, pairedScope.current !== readScope);
     return () => { generation.current++; };
-  }, [planId, sessionId, revision, score, selected?.key, window, active]);
+  }, [planId, sessionId, readScope, revisionReady, score, selected?.key, active]);
 
-  const rows = qualityModelRows(revision === planRevision ? currentModels : [], summary.models);
+  const rows = qualityModelRows(revision !== null && revision === planRevision ? currentModels : [], summary.models);
   const groups = [...new Set(rows.map(qualityRowSection))];
   const selectedRow = rows.find(row => row.key === selected?.key);
   const rowName = (row: QualityModelRow) => row.summary?.execution.attribution === 'mixed' ? text('多个执行模型', 'Multiple execution models')
@@ -137,9 +148,7 @@ export function PlanQuality({
     <option value="unrated">{text('未评分', 'Unrated')}</option>
   </select></label>;
 
-  const trustScope = !compact && Boolean(planId) && !sessionId;
-  const trust = usePlanTrust({ planId: trustScope ? planId : null, revision: version === 'current' ? 'active' : version === 'all' ? 'all' : Number(version), fromMs: window.from, toMs: window.to, active, groupBy, reload });
-  const report = trust.report;
+  const manualDivisionBranches = divisionBranches ?? report?.branches.map(branch => branch.branch_id) ?? [];
   const percent = (value: number | null | undefined) => value == null ? '—' : `${Math.round(value * 100)}%`;
   const seconds = (ms: number | null | undefined) => ms == null ? '—' : text(`${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} 秒`, `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`);
   const groupOf = (row: QualityModelRow) => row.summary?.execution.group ?? row.configured?.group ?? null;
@@ -183,7 +192,7 @@ export function PlanQuality({
     {!compact && <div className="quality-stage-heading"><div><h4>{selected?.label ?? (selectedRow ? rowName(selectedRow) : text('执行阶段', 'Execution stages'))}</h4><span>{text('按实际执行模型与推理配置查看', 'Stages for the actual execution and reasoning configuration')}</span></div><div className="quality-filters">{filter}<button type="button" className="btn btn-quiet" onClick={resetDetail}>{text('收起', 'Close')}</button></div></div>}
     {compact && stageCount > 20 && <div className="quality-filters">{filter}</div>}
     {loaded && !busy && !error && samples.length === 0 && <p className="oc-meta">{text('没有符合筛选条件的执行阶段。', 'No execution stages match this filter.')}</p>}
-    <div className="quality-list">{samples.map(sample => <PlanQualityStage key={sample.segment_id} sample={sample} modelName={sampleName(sample)} activeRevision={planRevision} language={language} onOpenEvidence={onOpenEvidence} />)}</div>
+    <div className="quality-list">{samples.map(sample => <PlanQualityStage key={sample.segment_id} sample={sample} modelName={sampleName(sample)} activeRevision={activeRevision} language={language} onOpenEvidence={onOpenEvidence} />)}</div>
     {cursor && <button className="btn quality-more" type="button" disabled={busy} onClick={() => void load(cursor)}>{text('加载更多阶段', 'Load more stages')}</button>}
   </section>;
 
@@ -194,9 +203,9 @@ export function PlanQuality({
         {!compact && <label><span className="sr-only">{text('时间范围', 'Time range')}</span><select className="select" value={period} onChange={event => { resetDetail(); setPeriod(event.target.value as Period); }}>
           <option value="seven_days">{text('最近 7 天', 'Last 7 days')}</option><option value="one_day">{text('最近 24 小时', 'Last 24 hours')}</option><option value="all">{text('全部保留期', 'All retained')}</option>
         </select></label>}
-        {!compact && planRevision && <label><span className="sr-only">{text('路由版本', 'Route version')}</span><select className="select" value={version} onChange={event => { resetDetail(); setVersion(event.target.value); }}>
+        {!compact && planId && <label><span className="sr-only">{text('路由版本', 'Route version')}</span><select className="select" value={version} onChange={event => { resetDetail(); setVersion(event.target.value); }}>
           <option value="current">{text('当前生效版本', 'Active version')}</option>
-          {summary.available_revisions.filter(value => value !== planRevision).map(value => <option key={value} value={String(value)}>{text('历史版本 ' + value, 'Earlier version ' + value)}</option>)}
+          {summary.available_revisions.filter(value => value !== activeRevision).map(value => <option key={value} value={String(value)}>{text('历史版本 ' + value, 'Earlier version ' + value)}</option>)}
           <option value="all">{text('全部保留版本', 'All retained versions')}</option>
         </select></label>}
         <button className="btn btn-quiet quality-refresh" type="button" disabled={busy} onClick={() => setReload(value => value + 1)}><UiIcon name="refresh" />{text('刷新', 'Refresh')}</button>
@@ -221,7 +230,7 @@ export function PlanQuality({
           <header className="quality-group-heading"><h4>{qualityRowSectionLabel(members[0], language)}{names.length === 1 ? ` → ${names[0]}` : ''}</h4><span>{text(members.length + ' 个模型配置', members.length + (members.length === 1 ? ' model configuration' : ' model configurations'))}</span></header>
           <div className="quality-table">{columns}{members.map(row => { const evidence = trustRow(row); const tone = groupTone(groupOf(row)); return <div className={'quality-model-row' + (selected?.key === row.key ? ' selected' : '')} key={row.key} data-model-configuration={row.configured?.model_configuration_id ?? row.summary?.execution.model_configuration_id ?? ''}>
             <div className="quality-model-name"><strong>{rowName(row)}</strong><span className="quality-model-tags"><span className={`badge no-dot ${tone}`}>{qualityGroupLabel(row.branch, groupOf(row), language)}</span><span>{qualityReasoningLabel(row.summary ? row.summary.reasoning_profile_id : row.configured?.reasoning_profile_id, language)}{version === 'all' && row.summary && text(' · 版本 ', ' · version ') + row.summary.execution.plan_revision}</span></span></div>
-            <div className="quality-model-average" data-label={text('平均阶段胜任度', 'Average stage competence')}>{row.summary?.average_score != null ? <><strong>{row.summary.average_score.toFixed(2)} <small>/ 1</small></strong><div className={`quality-score-bar ${tone}`} aria-hidden="true"><svg viewBox="0 0 100 4" preserveAspectRatio="none"><rect width={Math.max(0, Math.min(100, row.summary.average_score * 100))} height="4" /></svg></div></> : <span>{row.summary ? text('未评分', 'Unrated') : text('暂无记录', 'No records')}</span>}</div>
+            <div className="quality-model-average" data-label={text('平均阶段胜任度', 'Average stage competence')}>{row.summary?.average_score != null ? <><strong>{row.summary.average_score.toFixed(2)} <small>/ 1</small></strong><div className={`quality-score-bar ${tone}`} aria-hidden="true"><svg viewBox="0 0 100 4" preserveAspectRatio="none"><rect width={Math.max(0, Math.min(100, row.summary.average_score * 100))} height="4" /></svg></div></> : <span>{row.summary?.execution.attribution === 'mixed' ? text('不归属单模型', 'No single-model attribution') : row.summary ? text('未评分', 'Unrated') : text('暂无记录', 'No records')}</span>}</div>
             <span data-label={text('胜任率', 'Competence rate')}>{percent(evidence?.competence_rate)}</span>
             <span data-label={text('阶段占比', 'Stage share')}>{percent(evidence?.execution_share)}</span>
             <span className="quality-model-counts" data-label={text('阶段样本', 'Stage samples')}>{evidence ? <><span className="quality-row-coverage">{text(`评分覆盖 ${percent(evidence.scoring_coverage)}`, `${percent(evidence.scoring_coverage)} scoring coverage`)}</span>{stageStates(evidence.counts)}</> : <><span>{text((row.summary?.scored_stage_count ?? 0) + ' 已评分', (row.summary?.scored_stage_count ?? 0) + ' scored')}</span><span>{text((row.summary?.unrated_stage_count ?? 0) + ' 未评分', (row.summary?.unrated_stage_count ?? 0) + ' unrated')}</span></>}</span>
@@ -256,7 +265,7 @@ export function PlanQuality({
     </div>}
     {report && groupBy === 'executor' && <ExecutorOutcomes report={report} language={language} />}
     {report && <TrustSessions report={report} language={language} onOpenSession={onOpenEvidence ? session => onOpenEvidence(session, '') : undefined} />}
-    {report && onDivision && report.branches.length > 0 && <div className="quality-footer-links"><span>{text('想直接分工？', 'Want to divide work directly?')}</span>{report.branches.map(branch => <button key={branch.branch_id} type="button" className="btn btn-quiet" onClick={() => onDivision(branch.branch_id)}>{text('创建分工草稿', 'Create a division draft')}{report.branches.length > 1 ? ` · ${branch.branch_id}` : ''}</button>)}<span>{text('打开草稿不代表已有证据支持扩大试用范围。', 'Opening a draft does not mean the evidence supports wider use.')}</span></div>}
+    {onDivision && manualDivisionBranches.length > 0 && <div className="quality-footer-links"><span>{text('想直接分工？', 'Want to divide work directly?')}</span>{manualDivisionBranches.map(branch => <button key={branch} type="button" className="btn btn-quiet" onClick={() => onDivision(branch)}>{text('创建分工草稿', 'Create a division draft')}{manualDivisionBranches.length > 1 ? ` · ${branch}` : ''}</button>)}<span>{text('打开草稿不代表已有证据支持扩大试用范围。', 'Opening a draft does not mean the evidence supports wider use.')}</span></div>}
   </div>;
 }
 

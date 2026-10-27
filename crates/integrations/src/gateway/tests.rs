@@ -15,6 +15,9 @@ use serde_json::{Value, json};
 
 use super::*;
 
+#[path = "admission_tests.rs"]
+mod admission_tests;
+
 const DIGEST: &str = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn producer(component: &str) -> Value {

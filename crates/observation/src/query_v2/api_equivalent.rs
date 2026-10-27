@@ -1,9 +1,12 @@
 //! Read-time API reference comparison. Never changes frozen settlement or receipts.
 use super::*;
-use crate::valuation::{MetricCoverage, RawUsage, reference_usage, value_attempt};
+use crate::valuation::{
+    MetricCoverage, RawUsage, reference_bounds_semantics, reference_usage, value_attempt,
+};
 use hiroute_domain::{
-    ApiEquivalentPriceV1, ApiEquivalentValueReportV1, ExecutionPricingEvidenceV1,
-    ObservationMetricCoverageV2, ObservationValueQueryV2, PriceValuationKindV1,
+    ApiEquivalentBoundsV1, ApiEquivalentPriceV1, ApiEquivalentValueReportV1,
+    ExecutionPricingEvidenceV1, ObservationMetricCoverageV2, ObservationValueQueryV2,
+    PriceValuationKindV1,
 };
 use rusqlite::{Connection, OpenFlags, params};
 use std::collections::BTreeMap;
@@ -64,24 +67,16 @@ impl crate::LocalObservationStore {
         let retained = now_ms
             .saturating_sub(crate::managed_text::RETENTION_MS)
             .saturating_add(1);
-        let (total, compared, actual, baseline, used, excluded) = if let Some(projected) =
-            crate::analysis::projected_comparison(
-                &tx,
-                reader,
-                q,
-                reference,
-                prices,
-                q.from_ms.max(retained),
-                now_ms,
-            )? {
-            (
-                projected.total,
-                projected.compared,
-                projected.actual,
-                projected.baseline,
-                projected.used,
-                projected.excluded,
-            )
+        let comparison = if let Some(projected) = crate::analysis::projected_comparison(
+            &tx,
+            reader,
+            q,
+            reference,
+            prices,
+            q.from_ms.max(retained),
+            now_ms,
+        )? {
+            projected
         } else {
             let args = params![
                 reader.workspace().as_str(),
@@ -159,9 +154,25 @@ impl crate::LocalObservationStore {
             drop(statement);
             let total = requests.len() as u64;
             let mut compared = 0;
+            let mut routed_full = Some(0u64);
+            let mut routed_overflow = false;
+            let mut reference_bounds = Some((0u64, 0u64));
             let mut actual = Some(0u64);
             let mut baseline = Some(0u64);
             for (_, comparison) in requests {
+                if comparison.complete {
+                    if let Some(known) = comparison.actual {
+                        if let Some(sum) = routed_full {
+                            routed_full = sum.checked_add(known);
+                            routed_overflow |= routed_full.is_none();
+                        }
+                    } else {
+                        routed_full = None;
+                        routed_overflow = true;
+                    }
+                } else {
+                    routed_full = None;
+                }
                 let reference_amount = comparison
                     .accepted
                     .as_ref()
@@ -173,6 +184,32 @@ impl crate::LocalObservationStore {
                     })
                     .transpose()
                     .map_err(|_| ObservationV2Error::Invalid)?;
+                let bounds = reference_amount
+                    .as_ref()
+                    .filter(|amount| amount.coverage == MetricCoverage::Complete)
+                    .and_then(|amount| amount.known_sum_micros)
+                    .map(|amount| (amount, amount))
+                    .or_else(|| {
+                        comparison.accepted.as_ref().and_then(|(pricing, raw)| {
+                            reference_bounds_semantics(
+                                pricing.usage_semantics,
+                                raw,
+                                &reference.quote,
+                            )
+                        })
+                    });
+                if comparison.complete && comparison.actual.is_some() {
+                    reference_bounds = reference_bounds.zip(bounds).and_then(
+                        |((lower, upper), (request_lower, request_upper))| {
+                            Some((
+                                lower.checked_add(request_lower)?,
+                                upper.checked_add(request_upper)?,
+                            ))
+                        },
+                    );
+                } else {
+                    reference_bounds = None;
+                }
                 if comparison.complete
                     && reference_amount
                         .as_ref()
@@ -185,25 +222,23 @@ impl crate::LocalObservationStore {
                         baseline.and_then(|s| s.checked_add(reference_amount?.known_sum_micros?));
                 }
             }
-            (total, compared, actual, baseline, used, excluded)
+            crate::analysis::ProjectedComparison {
+                total,
+                compared,
+                routed_full,
+                routed_overflow,
+                reference_bounds,
+                actual,
+                baseline,
+                used,
+                excluded,
+            }
         };
         tx.commit()?;
         check_visibility(&db, visibility)?;
         reader.check(now_ms, false, false)?;
         Ok(comparison_report(
-            q,
-            reference,
-            prices,
-            now_ms,
-            retained,
-            crate::analysis::ProjectedComparison {
-                total,
-                compared,
-                actual,
-                baseline,
-                used,
-                excluded,
-            },
+            q, reference, prices, now_ms, retained, comparison,
         ))
     }
 }
@@ -219,6 +254,9 @@ pub(super) fn comparison_report(
     let crate::analysis::ProjectedComparison {
         total,
         compared,
+        routed_full,
+        routed_overflow,
+        reference_bounds,
         actual,
         baseline,
         used,
@@ -235,8 +273,23 @@ pub(super) fn comparison_report(
     } else {
         None
     };
-    let overflow = (compared > 0 && (actual.is_none() || baseline.is_none()))
+    let overflow = routed_overflow
+        || (compared > 0 && (actual.is_none() || baseline.is_none()))
         || (complete && difference.is_none());
+    let same_usage_bounds = (!complete && total > 0 && !retention && !overflow)
+        .then(|| {
+            let routed = routed_full?;
+            let (lower, upper) = reference_bounds?;
+            Some(ApiEquivalentBoundsV1 {
+                reference_min_micros: lower,
+                reference_max_micros: upper,
+                difference_min_micros: i64::try_from(i128::from(routed) - i128::from(upper))
+                    .ok()?,
+                difference_max_micros: i64::try_from(i128::from(routed) - i128::from(lower))
+                    .ok()?,
+            })
+        })
+        .flatten();
     ApiEquivalentValueReportV1 {
             schema: "hiroute.api-equivalent-value/v1".into(),
             from_ms: q.from_ms,
@@ -258,16 +311,18 @@ pub(super) fn comparison_report(
             } else {
                 ObservationMetricCoverageV2::Unknown
             },
-            routed_estimate_micros: complete.then_some(actual).flatten(),
+            routed_estimate_micros: (total>0 && !retention).then_some(routed_full).flatten(),
             reference_estimate_micros: complete.then_some(baseline).flatten(),
             estimated_savings_micros: difference,
+            same_usage_bounds,
             compared_routed_subtotal_micros: (compared>0).then_some(actual).flatten(),
             compared_reference_subtotal_micros: (compared>0).then_some(baseline).flatten(),
             actual_cash_micros: None,
             disclosure: concat!("API-equivalent estimate using current source-specific prices and recorded tokens, including retries. ",
                 "The reference values accepted usage at the selected model's rates; equal output or quality is not established. ",
                 "This does not reprice historical receipts or prove a bill or cash saving. ",
-                "Missing/expired evidence is not zero; subtotals cover paired complete requests only.").into(),
+                "The full-scope routed amount can be available independently of reference coverage. Bounds assume the same input and cache-read usage and an unknown exclusive cache-write split between zero and input minus cache reads. ",
+                "Missing/expired evidence is not zero; subtotals and comparison coverage count paired complete requests only.").into(),
         }
 }
 

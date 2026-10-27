@@ -13,6 +13,7 @@ a prerequisite, not a model call, installed Skill invocation or resumable task.
 | --- | --- | --- |
 | Scan, prepare and import model sources | [Source admission map](architecture.md#model-sources-and-native-configuration), [model connection assembly](../../crates/daemon/src/control/runtime/model_connections.rs) | [Pi acceptance](../../tools/product-e2e/tests/PI_INTEGRATION.md), [DSH acceptance](../../tools/product-e2e/tests/DSH_INTEGRATION.md) |
 | Configure, edit and restore models | [Settings transaction](../../crates/application/src/agent_connection/settings), [typed facts](../../crates/daemon/src/control/runtime/settings_facts), [Desktop Agent feature](../../apps/desktop/src/features/agents/README.md) | [Additional native provider guide](../../crates/integrations/src/agents/additional_native/README.md), [saved-model journey](../../crates/daemon/tests/support/additional_model_product.py), [Windows ordinary Pi/DSH clients](../../crates/daemon/tests/support/windows_user_models.rs), [Windows Qoder official-account journey](../../crates/daemon/tests/support/windows_qoder_user_models.rs) |
+| Choose an Agent for a model trial | [Choice/detail reads](../../crates/product-session/src/commands/trial_agents.rs), [flow lifetime](../../apps/desktop/src/features/trial/useTrialAgents.ts), [model projection](../../crates/daemon/src/control/runtime/settings_status.rs) | [Trial read races and mapping refresh](../../apps/desktop/tests/v3/visual/trial-agent-read-checks.mjs), [strict model/full query control](../../crates/daemon/src/control/runtime/settings_projection_tests.rs) |
 | Enable, edit or disable task collaboration independently | [CLI intent workflow](../../crates/cli/src/collaboration.rs), [Skill effects](../../crates/application/src/agent_connection), [shared session checks](../../crates/product-session/src/agent_check_session.rs) | [CLI workflow regressions](../../crates/cli/src/collaboration/tests.rs), [real main-Agent → public CLI → Worker journey](../../crates/daemon/tests/support/collaboration_product.py) |
 
 Qoder/Pi/DSH/OpenCode saved models use one owned provider per Plan with an explicit
@@ -24,6 +25,41 @@ report the actual installed consumers; [safe conflict facts](../../crates/domain
 retain rejection identity through compensation and client observation.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
+[Native routing resources](../../crates/integrations/src/agents/routing_adapters.rs)
+use the same protected artifact journal as model settings. The
+[request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
+main/child history and detaches known auxiliary calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
+cover interleaving and semantic compaction independently of provider affinity.
+Pi's [provider adapter](../../assets/agents/pi/hiroute-routing.mjs) binds native
+compaction/tree-summary signals at the public provider seam and retains branch
+cursors as observed evidence. Its [native guide](../../tools/product-e2e/tests/PI_INTEGRATION.md#ordinary-routing-metadata)
+separates installed SDK fixtures, actual CLI acceptance and Restore inference.
+Claude's native [identity leaf](../../crates/gateway/src/context_hold/identity/claude.rs)
+keeps session/agent scope separate from its [request-class and prompt leaf](../../crates/gateway/src/context_hold/routing/claude.rs);
+known auxiliary classes survive optional enrichment failure, while unknown classes
+retain complete observed input and normal routing.
+The [native continuity owner](../../crates/gateway/src/context_hold/continuity.rs)
+separates known continuations from usable observed input. Missing origin proof
+retains classification, actual capture and evaluation in an uncertain lane without
+replacing verified task history. Native identities remain scoped independently;
+Qoder's shared main/child identity has an accepted association limit. Follow the
+[routing contract](../../issue-spec/specs/request-routing/spec.md#requirement-native-routing-remains-available-without-perfect-input-provenance)
+for recovery limits rather than equating successful output with full adaptation.
+
+The [v2 input consumer](../../crates/gateway/src/context_hold/routing/v2.rs) keeps
+an omitted optional input descriptor distinct from an invalid declaration.
+[Input projection](../../crates/gateway/src/core_runtime/native_routing_view.rs)
+reports the former as correlation only without selecting a human window. DSH's
+late model-selection notification is covered by the
+[producer controls](../../scripts/tests/dsh-routing-adapter.test.mjs) and
+[projection controls](../../crates/gateway/src/core_runtime/native_routing_view/dsh_tests.rs);
+the unchanged wire request remains available to normal routing and capture.
+The DSH producer recognizes native runtime, skill-catalog and time-context
+supplements, and validates both retained instruction roles and older User-role
+projections against the complete final User scope. Unknown producers still lose
+the optional input proof. Native failed-request retry association belongs to the
+[shared history owner](../../crates/gateway/src/agent_turn_history/store/retry.rs),
+not to the DSH adapter or a session-wide lock.
 
 Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
 explains native provider-scoped session discovery before enabling routing. Default
@@ -34,6 +70,18 @@ OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) 
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)
 also feed the shared configured/drift status.
+Its ordinary [routing producer](../../assets/agents/opencode/hiroute-routing.mjs)
+freezes per-call purpose/session before a bounded optional SDK page; exact native
+page positions provide compression references while synthetic continuations keep
+unavailable-input semantics. The [OpenCode guide](../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md#ordinary-routing-metadata)
+separates hook regressions from native dependency initialization, recovery and
+Restore inference; a hook deadline cannot bound the native loader that precedes it.
+The persisted OpenCode metadata fallback is decided by
+[additional-model facts](../../crates/daemon/src/control/runtime/settings_facts/additional_model.rs)
+before writes and uses the existing model Restore/Apply journal. Its
+[settings regressions](../../crates/daemon/src/control/runtime/settings_entry_opencode_metadata_tests.rs)
+cover restart, re-enablement, borrowed resources and stale previews; it changes
+metadata precision without changing model authorization or Gateway routing.
 Its [bounded Markdown reference reader](../../crates/integrations/src/agents/opencode_resources.rs)
 adds native user Agent/Mode selectors to the same settings dependency checks;
 removal requires complete references, while retaining selectors permits grant rotation.
@@ -41,6 +89,10 @@ Worker project ancestry uses the [native Git boundary check](../../crates/integr
 with the filtered child HOME/XDG/PATH and shared bounded probe process. Both configuration
 and resource inspection require a confirmed Git stop or the filesystem root within the
 existing bound; an invalid marker or unavailable Git cannot truncate admission.
+The shared [probe process owner](../../crates/integrations/src/agents/native_probe_process.rs)
+retains an exited Unix leader until group signals finish. Only a still-running
+leader receives termination grace; completed probes immediately stop surviving
+group members and still require reap and proven group absence.
 
 Hermes uses an [explicit effective profile](../../crates/integrations/src/agents/hermes/README.md)
 and one default main-model Plan. Desktop keeps Hermes in the common Agent list;
@@ -48,8 +100,17 @@ its native host resolves the caller's existing default profile and its details c
 select another through the same target-read flow before settings become available.
 The common [discovery preference](../../apps/desktop/src/features/agents/discovery.ts)
 remembers explicit targets as hints, with backend revalidation and per-profile failure isolation.
-Its bundled native middleware carries the real
-session into trusted Gateway correlation. The managed provider also uses the same
+Startup [protected-input priming](../../crates/daemon/src/control/runtime/mutation.rs)
+reads exact native configuration descriptors without running informational version probes;
+explicit Agent inventory retains full discovery and later secret reads recheck source revisions.
+Its [native request middleware](../../assets/agents/hermes/__init__.py) carries the real
+session into trusted Gateway correlation and emits observed batch context
+independently from optional bounded read-only compression evidence;
+clean callback text and retained legacy hints cannot select an input instance.
+Gateway [routing evidence](../../crates/gateway/src/context_hold/routing.rs) validates
+compression scope independently of task-envelope parsing, so an adapter fault and
+recovery cannot strand otherwise comparable captured history.
+The managed provider also uses the same
 scoped model grant as its native API key for auxiliary Chat requests; global model
 headers are not a credential carrier. All six supported Agents have independent management and collaboration Skills;
 [shared Skill facts](../../crates/daemon/src/control/runtime/settings_facts/skills.rs)
@@ -188,11 +249,21 @@ not replace real native compaction, Continue or concurrent-route journeys.
 
 ### DeepSeek Harness
 
+[Official Desktop admission](../../crates/integrations/src/agents/dsh_desktop.rs)
+uses the app's bundled public CLI and independent `profiles/desktop` settings.
+The Web entry retains `profiles/web` ownership; both reuse protected additional
+provider effects and bundled routing registration. Desktop discovery does not
+require npm DSH, and its model support does not advertise Worker/Skill support.
+
 DSH uses public CLI/configuration and native ACP; there is no SDK import or native
 history decoder. [Static source/configuration rules](../../crates/integrations/src/agents/additional_native/README.md#dsh-static-composition)
 belong to the native leaf. [Local capability checks](../../crates/integrations/src/agents/dsh_native.rs)
 inspect public composition without model activation and keep collaboration resources
 independent of model-provider edits.
+Settings discovery reads native files without a version subprocess. The
+[facts capture](../../crates/daemon/src/control/runtime/settings_facts.rs) owns one
+public composition probe per capture and checks its dependencies after both native
+snapshots; Preview, Apply and locked admission keep independent proofs.
 
 The [Worker profile](../../crates/daemon/src/delegation/profile/README.md#dsh-public-composition)
 adds a final run-owned patch while preserving borrowed resource roots. Continue
@@ -274,3 +345,15 @@ selected by `actual_windows_opencode_worker_native_history_and_cancellation` in
 [`windows_headless.rs`](../../crates/daemon/tests/windows_headless.rs). It shares the
 public routing/Worker receipt oracle and Job cancellation assertions with existing
 Windows acceptance; it adds no alternative production lifecycle.
+
+Model-only post-save confirmation reuses the exact model projection in
+[`trial_agents.rs`](../../crates/product-session/src/commands/trial_agents.rs);
+its authority fences remain independent of retained discovery hints. Unread Skills
+are read when their editor opens. Codex/Hermes target-sensitive reads and explicit
+selected discovery are owned by
+[`agent_discovery.rs`](../../crates/daemon/src/control/runtime/agent_discovery.rs)
+and the shared
+[`Agent snapshot reader`](../../crates/product-session/src/session/agent_snapshot.rs).
+The exact context crosses `ScanAgents`; full discovery remains explicit. Agent
+settings effects are prepared once under the Application writer in
+[`prepared.rs`](../../crates/application/src/operations/prepared.rs).

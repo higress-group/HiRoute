@@ -12,6 +12,7 @@ const fixtureUrl = relative => { const url = new URL(relative, baseUrl); if (hos
 
 const outputRoot = path.resolve(process.argv[4]);
 const subscriptionProxyOnly = process.argv[5] === '--subscription-proxy-only';
+const agentsOnly = process.argv[5] === '--agents-only';
 const shellOnly = process.argv[5] === '--shell-only' || subscriptionProxyOnly;
 const routeSaveOnly = process.argv[5] === '--route-save-only';
 const workerReplacementOnly = process.argv[5] === '--worker-replacement-only';
@@ -40,7 +41,7 @@ try {
       const catalog = await evaluate(client, "import('/agent-trust-scenarios.mjs').then(module => module.agentTrustScenarioCatalog)");
       const selected = selectScenarios(catalog, claudeCollaborationOnly
         ? { capability: 'claude-collaboration', requiredIds: focusedRequirements['claude-collaboration'] }
-        : { requiredIds: agentTrustRequired });
+        : { ids: agentsOnly ? process.env.HIROUTE_BROWSER_SCENARIOS?.split(',') : undefined, requiredIds: agentsOnly && process.env.HIROUTE_BROWSER_SCENARIOS ? process.env.HIROUTE_BROWSER_SCENARIOS.split(',') : agentTrustRequired });
       const results = [];
       for (let offset = 0; offset < selected.length; offset += 5) {
         const ids = selected.slice(offset, offset + 5).map(item => item.id);
@@ -52,8 +53,14 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(item => item.capabilities.includes('dsh-desktop'))) {
+        checks.push(...await (await import('./agent-readback-captures.mjs')).dshDesktopCaptures(client, baseUrl, outputRoot));
+      }
+      if (selected.some(item => item.capabilities.includes('agent-readback'))) {
+        checks.push(...await (await import('./agent-readback-captures.mjs')).agentReadbackCaptures(client, baseUrl, outputRoot));
+      }
     }
-    if (!shellOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
+    if (!agentsOnly && !shellOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
       await navigate(client, fixtureUrl('?page=routing&scenario=ready'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/routing-worker-scenarios.mjs').then(module => module.routingWorkerScenarioCatalog)");
@@ -67,7 +74,7 @@ try {
         process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
     }
-    if (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
+    if (!agentsOnly && !shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
       await navigate(client, fixtureUrl('?page=models&scenario=ready'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
       const fromModel = await evaluate(client, "import('/model-to-route-scenarios.mjs').then(module => module.runModelToRouteScenarios())");
@@ -79,13 +86,13 @@ try {
         process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
     }
-    if (routeOptionsOnly || (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly)) {
+    if (!agentsOnly && (routeOptionsOnly || (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly))) {
       await navigate(client, fixtureUrl('plan-editor-ux.html?checks=availability'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(document.querySelector("button")?.textContent?.includes("运行智能路由交互检查"))', { timeout: 7000 });
       await evaluate(client, 'document.querySelector("button").click()');
       await waitFor(client, 'Boolean(document.querySelector("[data-ux-results]")?.textContent)', { timeout: 20000 });
       const result = await evaluate(client, 'JSON.parse(document.querySelector("[data-ux-results]").textContent)');
-      const required = ['routing.options.id-safety', 'routing.options.exclusions', 'routing.options.service-error', 'routing.options.empty'];
+      const required = ['routing.options.loading', 'routing.options.id-safety', 'routing.options.exclusions', 'routing.options.service-error', 'routing.options.empty'];
       if (result.tests !== required.length || result.results?.length !== required.length
         || result.results.some(item => !['green', 'red'].includes(item.state))
         || new Set(result.results.map(item => item.name.split(':')[0])).size !== required.length
@@ -95,7 +102,7 @@ try {
       checks.push(...result.results);
       for (const item of result.results) process.stdout.write(`${item.state}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
     }
-    if (routeOptionsOnly || (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly)) {
+    if (!agentsOnly && (routeOptionsOnly || (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly))) {
       const required = ['routing.authoring.loading', 'routing.authoring.failure', 'routing.authoring.reopen', 'routing.authoring.dirty'];
       for (const language of ['zh', 'en']) {
         for (const viewport of [{ width: 755, height: 600 }, { width: 1200, height: 813 }]) {
@@ -126,7 +133,7 @@ try {
         process.stdout.write(`${result.state}: ${result.name} (dark)${result.error ? ` · ${result.error}` : ''}\n`);
       }
     }
-    if (shellOnly || (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly)) {
+    if (!agentsOnly && (shellOnly || (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly))) {
       await navigate(client, fixtureUrl('product-shell.html'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.productShell)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/product-shell-scenarios.mjs').then(module => module.productShellScenarioCatalog)");
@@ -150,6 +157,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(s => s.capabilities.includes('home-trust-progress'))) {
+        checks.push(...await (await import('./trust-progress-captures.mjs')).trustProgressCaptures(client, baseUrl, outputRoot));
+      }
       if (selected.some(s => s.capabilities.includes('native-recovery'))) {
         checks.push(...await (await import('./native-connection-captures.mjs')).nativeConnectionCaptures(client, baseUrl, outputRoot));
       }

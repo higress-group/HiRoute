@@ -169,6 +169,7 @@ impl LocalControlAdapter {
             let discovery = match class {
                 SettingsAgentClass::Pi => self.scanner.pi_settings_discovery(),
                 SettingsAgentClass::Dsh => self.scanner.dsh_settings_discovery(),
+                SettingsAgentClass::DshDesktop => self.scanner.dsh_desktop_settings_discovery(),
                 SettingsAgentClass::OpenCode => self.scanner.opencode_settings_discovery(),
                 _ => self.scanner.qoder_settings_discovery(true),
             };

@@ -42,12 +42,18 @@ mod windows_artifacts_tests;
 mod windows_native_reader_tests;
 
 mod agent_check;
+mod agent_history_cache;
 mod agent_read;
+mod artifact_dependencies;
+mod artifact_heads;
+mod artifact_validation;
+mod completed_operation_cache;
 mod native_targets;
 pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
 mod compute;
+pub(crate) mod current_dependencies;
 mod decision_services;
 mod journal;
 #[path = "../agents/native_artifacts.rs"]
@@ -57,11 +63,15 @@ mod native_directories;
 mod native_permissions;
 #[path = "../agents/native_reference.rs"]
 mod native_reference;
+pub(crate) mod payloads;
+mod read_stamp;
+mod recovery_reads;
 use native_permissions::{
     current_artifact_aad, current_artifact_schema, desired_windows_permissions,
 };
 #[cfg(windows)]
 use native_permissions::{read_private_restore_file, windows_artifact_fingerprint};
+pub use read_stamp::ControlReadStamp;
 #[path = "../agents/native_restoration_ack.rs"]
 mod native_restoration_ack;
 mod operation_status;
@@ -84,6 +94,10 @@ pub use compute::{
 };
 
 pub struct ControlStore {
+    completed_operation_cache: RefCell<completed_operation_cache::CompletedOperationCache>,
+    agent_history_cache: RefCell<agent_history_cache::AgentHistoryCache>,
+    // One rebuildable active record; every hit compares a fresh raw SQL row.
+    active_publication_cache: RefCell<Option<hiroute_domain::PublicationRecordV1>>,
     diagnostics: RefCell<hiroute_diagnostics::DiagnosticsPort>,
     pub(crate) connection: RefCell<Connection>,
     pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
@@ -249,6 +263,9 @@ impl ControlStore {
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
+            agent_history_cache: RefCell::new(Default::default()),
+            completed_operation_cache: RefCell::new(Default::default()),
+            active_publication_cache: RefCell::new(None),
             startup_lock: None,
             connection: RefCell::new(open_database(
                 _authority,
@@ -268,6 +285,9 @@ impl ControlStore {
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
+            agent_history_cache: RefCell::new(Default::default()),
+            completed_operation_cache: RefCell::new(Default::default()),
+            active_publication_cache: RefCell::new(None),
             startup_lock: None,
             connection: RefCell::new(open_database_from_set(
                 authority,
@@ -407,7 +427,11 @@ impl ControlStore {
         for row in rows {
             let encoded =
                 row.map_err(|_| port(PortErrorCode::Corrupt, "control.operation.completed.row"))?;
-            operations.push(decode_operation(&self.diagnostics.borrow(), &encoded)?);
+            operations.push(decode_stored_operation(
+                &self.diagnostics.borrow(),
+                &connection,
+                &encoded,
+            )?);
         }
         Ok(operations)
     }
@@ -576,8 +600,7 @@ impl ControlStore {
             }
         }
 
-        let encoded = serde_json::to_string(operation)
-            .map_err(|_| port(PortErrorCode::InvalidData, "control.operation.encode"))?;
+        let encoded = payloads::encode(&transaction, operation)?;
         transaction
             .execute(
                 "INSERT INTO operations(
@@ -599,6 +622,12 @@ impl ControlStore {
             )
             .map_err(|_| port(PortErrorCode::Conflict, "control.operation.insert"))?;
         store_steps(&transaction, operation)?;
+        native_targets::remember(&transaction, operation)?;
+        artifact_heads::admit(
+            &transaction,
+            operation,
+            Some(&self.completed_operation_cache),
+        )?;
         compute::begin_save_handoff_in(&transaction, operation)?;
         transaction
             .commit()
@@ -736,34 +765,15 @@ impl ControlRepositoryPort for ControlStore {
     }
 
     fn load_operation(&self, operation_id: &OperationId) -> PortResult<Option<OperationV1>> {
-        load_operation_where(
+        self.completed_operation_cache.borrow_mut().read(
             &self.diagnostics.borrow(),
             &self.connection.borrow(),
-            "operation_id = ?1",
-            params![operation_id.as_str()],
+            operation_id,
         )
     }
 
     fn recoverable_operations(&self) -> PortResult<Vec<OperationV1>> {
-        let connection = self.connection.borrow();
-        let mut statement = connection
-            .prepare(
-                "SELECT operation_json FROM operations
-                 WHERE state NOT IN ('succeeded', 'rolled_back', 'needs_attention')
-                    OR (state = 'needs_attention' AND operation_id =
-                        (SELECT operation_id FROM writer_claim WHERE singleton = 1))
-                 ORDER BY created_at, operation_id",
-            )
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.recovery.prepare"))?;
-        let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.recovery.query"))?;
-        let mut operations = Vec::new();
-        for row in rows {
-            let encoded = row.map_err(|_| port(PortErrorCode::Corrupt, "control.recovery.row"))?;
-            operations.push(decode_operation(&self.diagnostics.borrow(), &encoded)?);
-        }
-        Ok(operations)
+        self.read_recoverable_operations(None)
     }
 
     fn writer_recovery_required(&self) -> PortResult<bool> {
@@ -1509,8 +1519,15 @@ impl ControlRepositoryPort for ControlStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.begin"))?;
         plans::finish_draft_operation(&transaction, operation)?;
+        plans::finish_plan_operation(&transaction, operation)
+            .map_err(|_| port(PortErrorCode::Conflict, "control.finish.plan-head"))?;
         decision_services::finish(&transaction, operation)?;
         compute::finish_save_handoff_in(&transaction, operation)?;
+        artifact_heads::finish(
+            &transaction,
+            operation,
+            Some(&self.completed_operation_cache),
+        )?;
         let generation = journal::save(&transaction, operation)?;
         if operation.state != OperationState::NeedsAttention {
             let released = transaction
@@ -1528,6 +1545,14 @@ impl ControlRepositoryPort for ControlStore {
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.commit"))?;
         operation.acknowledge_journal_commit(generation);
         read_control_head(&connection, &operation.workspace_id)
+    }
+
+    fn operation_finalization_pending(&self, operation: &OperationV1) -> PortResult<bool> {
+        self.operation_requires_finalization(operation)
+    }
+
+    fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()> {
+        self.finish_operation_finalization(operation)
     }
 
     fn save_operation_tail(&self, operation: &mut OperationV1) -> PortResult<()> {
@@ -1740,9 +1765,15 @@ fn store_step(
     operation: &OperationV1,
     step: &OperationStepV1,
 ) -> PortResult<()> {
+    let projection = if payloads::partitioned(transaction, operation.operation_id.as_str())? {
+        payloads::step(transaction, operation.operation_id.as_str(), step, true)?
+    } else {
+        serde_json::to_value(step)
+            .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?
+    };
     let encoded = serde_json::to_string(&hiroute_domain::canonicalize_json(json!({
         "schema": "hiroute.operation-step/v1",
-        "step": step,
+        "step": projection,
     })))
     .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
     transaction
@@ -1791,7 +1822,7 @@ fn load_operation_where<P: rusqlite::Params>(
         },
     )?;
     encoded
-        .map(|encoded| decode_operation(diagnostics, &encoded))
+        .map(|encoded| decode_stored_operation(diagnostics, connection, &encoded))
         .transpose()
 }
 
@@ -1810,6 +1841,14 @@ struct DurableOperation {
     generation: u64,
     steps: Vec<OperationStepV1>,
     safe_error_code: Option<String>,
+}
+
+fn decode_stored_operation(
+    diagnostics: &hiroute_diagnostics::DiagnosticsPort,
+    connection: &Connection,
+    encoded: &str,
+) -> PortResult<OperationV1> {
+    decode_operation(diagnostics, &payloads::expand(connection, encoded)?)
 }
 
 fn decode_operation(
@@ -2058,6 +2097,18 @@ impl ManagedArtifactStore {
         restore_root: impl AsRef<Path>,
         targets: impl IntoIterator<Item = (String, PathBuf)>,
     ) -> Result<Self, LocalStorageError> {
+        let store = Self::open_registered(_authority, root, restore_root, targets)?;
+        store.migrate_legacy_markers()?;
+        store.validate_existing_marker_bindings()?;
+        Ok(store)
+    }
+
+    pub(crate) fn open_registered(
+        _authority: &DaemonStorageAuthority,
+        root: impl AsRef<Path>,
+        restore_root: impl AsRef<Path>,
+        targets: impl IntoIterator<Item = (String, PathBuf)>,
+    ) -> Result<Self, LocalStorageError> {
         let mut external_targets = BTreeMap::new();
         for (target, path) in targets {
             // Startup registers potential targets, including Agents never configured here.
@@ -2085,10 +2136,7 @@ impl ManagedArtifactStore {
             external_targets: std::sync::RwLock::new(external_targets),
             untouched_deletions: std::sync::Mutex::new(BTreeMap::new()),
         };
-        // Register all exact bindings before validating the targets actually owned by markers.
-        // A never-managed Agent's directory cannot prevent unrelated service startup.
-        store.migrate_legacy_markers()?;
-        store.validate_existing_marker_bindings()?;
+        // Exact current dependencies are checked by the coordinated store factory.
         Ok(store)
     }
 
@@ -2281,111 +2329,28 @@ impl ManagedArtifactStore {
         operation_id: &OperationId,
         effect_id: &str,
     ) -> Result<Option<ArtifactMarker>, LocalStorageError> {
-        let path = self.marker_path(operation_id, effect_id);
-        match fs::symlink_metadata(&path) {
-            Ok(metadata) => {
-                validate_owner_regular_file(&metadata)?;
-                #[cfg(windows)]
-                let bytes = read_private_restore_file(&path)?;
-                #[cfg(not(windows))]
-                let bytes = fs::read(path)?;
-                let encoded: Value =
-                    serde_json::from_slice(&bytes).map_err(|_| LocalStorageError::InvalidData)?;
-                if encoded.get("backup_aad").is_none() {
-                    return Err(LocalStorageError::InvalidData);
-                }
-                let marker: ArtifactMarker =
-                    serde_json::from_value(encoded).map_err(|_| LocalStorageError::InvalidData)?;
-                if marker.schema != current_artifact_schema()
-                    || marker.operation_id != operation_id.as_str()
-                    || marker.effect_id != effect_id
-                    || marker.restore_store_uuid != self.restore_store_uuid
-                    || marker.restore_key_id != self.restore_key_id
-                {
-                    return Err(LocalStorageError::InvalidData);
-                }
-                self.validate_marker_shape(&marker)?;
-                Ok(Some(marker))
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error.into()),
+        let marker = self.load_marker_compatible(&self.marker_path(operation_id, effect_id))?;
+        if marker
+            .as_ref()
+            .is_some_and(|m| m.operation_id != operation_id.as_str() || m.effect_id != effect_id)
+        {
+            return Err(LocalStorageError::InvalidData);
         }
+        Ok(marker)
     }
 
-    /// Atomically upgrades marker metadata while preserving the exact authenticated backup.
-    /// The explicit AAD discriminator prevents a schema-label rewrite from making ciphertext
-    /// unrecoverable after a crash.
+    /// Explicit full audit/conversion. Ordinary scoped admission uses exact references.
     fn migrate_legacy_markers(&self) -> Result<(), LocalStorageError> {
         for entry in fs::read_dir(&self.restore_root)? {
-            let entry = entry?;
-            let path = entry.path();
+            let path = entry?.path();
             if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
                 continue;
             }
-            let metadata = fs::symlink_metadata(&path)?;
-            validate_owner_regular_file(&metadata).map_err(|_| LocalStorageError::Locked)?;
-            #[cfg(windows)]
-            let bytes = read_private_restore_file(&path)?;
-            #[cfg(not(windows))]
-            let bytes = fs::read(&path)?;
-            let encoded: Value =
-                serde_json::from_slice(&bytes).map_err(|_| LocalStorageError::Locked)?;
-            let has_backup_aad = encoded.get("backup_aad").is_some();
-            let mut marker: ArtifactMarker =
-                serde_json::from_value(encoded).map_err(|_| LocalStorageError::Locked)?;
-            let operation_id = OperationId::parse(marker.operation_id.clone())
-                .map_err(|_| LocalStorageError::Locked)?;
-            if path != self.marker_path(&operation_id, &marker.effect_id)
-                || marker.restore_store_uuid != self.restore_store_uuid
-                || marker.restore_key_id != self.restore_key_id
-                || marker.external_path_digest != self.external_path_digest(&marker.target)?
-            {
-                return Err(LocalStorageError::Locked);
-            }
-            let external = self
-                .external_targets
-                .read()
-                .map_err(|_| LocalStorageError::InvalidData)?
-                .contains_key(&marker.target);
-            if external {
-                // A durable effect is a real recovery consumer, not an unused registration.
-                // Validate before touching even a legacy marker's internal representation.
-                let _ = self.target_path(&marker.target)?;
-            }
-            let changed = match marker.schema.as_str() {
-                "hiroute.managed-artifact-marker/v2" => {
-                    marker.backup_aad = if marker.backup_name.is_some() {
-                        ArtifactBackupAad::LegacyV2
-                    } else {
-                        ArtifactBackupAad::CurrentV4
-                    };
-                    true
-                }
-                "hiroute.managed-artifact-marker/v3" => {
-                    marker.backup_aad = if marker.backup_name.is_some() {
-                        ArtifactBackupAad::LegacyV3
-                    } else {
-                        ArtifactBackupAad::CurrentV4
-                    };
-                    true
-                }
-                #[cfg(windows)]
-                "hiroute.windows-managed-artifact-marker/v5" if has_backup_aad => false,
-                "hiroute.managed-artifact-marker/v4" if has_backup_aad => false,
-                "hiroute.managed-artifact-marker/v4" => return Err(LocalStorageError::Locked),
-                _ => return Err(LocalStorageError::Locked),
-            };
-            if changed {
-                marker.schema = "hiroute.managed-artifact-marker/v4".to_owned();
-            }
-            self.validate_marker_shape(&marker)
-                .map_err(|_| LocalStorageError::Locked)?;
+            let marker = self
+                .load_marker_compatible(&path)?
+                .ok_or(LocalStorageError::Locked)?;
             self.validated_backup(&marker)
                 .map_err(|_| LocalStorageError::Locked)?;
-            if changed {
-                self.save_marker(&marker)
-                    .map_err(|_| LocalStorageError::Locked)?;
-            }
         }
         Ok(())
     }

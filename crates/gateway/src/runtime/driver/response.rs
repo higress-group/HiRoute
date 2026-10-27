@@ -100,6 +100,7 @@ pub(super) fn classify_precommit(
                         state.budget.clone(),
                     )
                     .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+                    .with_function_encoding(state.function_encoding_projection)
                     .with_omitted_thinking(state.omit_thinking),
                 ));
             } else {
@@ -111,7 +112,8 @@ pub(super) fn classify_precommit(
                         state.chat_tool_projection.take(),
                         state.budget.clone(),
                     )
-                    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
+                    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+                    .with_function_encoding(state.function_encoding_projection),
                 );
             }
             Ok(PrecommitClassification::pending())
@@ -185,6 +187,12 @@ pub(super) fn classify_precommit(
                         );
                     }
                 };
+                response_diagnostics::native_completion(
+                    state
+                        .projector
+                        .as_mut()
+                        .expect("native projector remains installed"),
+                );
                 let mut failure = None;
                 for unit in units {
                     state.semantic_seen |= unit.semantic;
@@ -673,6 +681,9 @@ fn sanitized_provider_kind(
     if !sealed_connector_semantics(profile) {
         return None;
     }
+    if super::context_overflow::matches(profile.capability.upstream_protocol, error) {
+        return Some(ProviderFailureKind::ContextLength);
+    }
     let code = error.code.as_deref()?.to_ascii_lowercase();
     // Preserve a precise cause without guessing one for generic InvalidParameter.
     // Relay eligibility is independent of this diagnostic classification.
@@ -786,14 +797,19 @@ fn classify_state_failure(
     }
     let failure = classify_failure(&raw, connector_error_profile(&state.profile)?);
     let facts = failure_facts(&failure);
+    let context_overflow = failure.class == AttemptFailureClass::ContextLength;
     state.classified_failure = Some(failure);
-    let body = serde_json::to_vec(&serde_json::json!({
-        "error": {
-            "type": "upstream_error",
-            "code": "UPSTREAM_ATTEMPT_FAILED"
-        }
-    }))
-    .map_err(|_| Arc::from("sanitized error serialization failed"))?;
+    let body = if context_overflow {
+        super::context_overflow::BODY.to_vec()
+    } else {
+        serde_json::to_vec(&serde_json::json!({
+            "error": {
+                "type": "upstream_error",
+                "code": "UPSTREAM_ATTEMPT_FAILED"
+            }
+        }))
+        .map_err(|_| Arc::from("sanitized error serialization failed"))?
+    };
     let terminal_body =
         ChargedBytes::from_exact_vec(&state.budget, MemoryRole::ResponsePrefix, body)
             .map_err(safe_error)?;
@@ -851,12 +867,14 @@ fn project_native_chunk_readiness(
     bytes: &[u8],
     end_stream: bool,
 ) -> Result<(Option<Vec<u8>>, bool), Arc<str>> {
-    let units = readiness
+    let projector = readiness
         .projector
         .as_mut()
-        .ok_or_else(|| Arc::from("accepted native projector is unavailable"))?
+        .ok_or_else(|| Arc::from("accepted native projector is unavailable"))?;
+    let units = projector
         .feed(bytes, end_stream)
         .map_err(|error| response_diagnostics::adapter(FailureStage::NativeProjection, error))?;
+    response_diagnostics::native_completion(projector);
     let mut output = Vec::new();
     let mut terminal = false;
     for unit in units {
@@ -1108,6 +1126,7 @@ fn rendered_response_parts(
 pub(super) fn failure_facts(failure: &AttemptFailure) -> ProviderClassificationFacts {
     ProviderClassificationFacts {
         error_class: Some(label(match failure.class {
+            AttemptFailureClass::ContextLength => "context_length",
             AttemptFailureClass::ReasoningHistory => "reasoning_history",
             AttemptFailureClass::Credential => "credential",
             AttemptFailureClass::Quota => "quota",

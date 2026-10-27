@@ -30,8 +30,6 @@ impl LocalControlAdapter {
         {
             self.validate_additional_installed_model_budgets(&record)?;
             record
-                .verify()
-                .map_err(|_| invalid("publication.admission.verify"))?
                 .gateway_snapshot()
                 .map_err(|_| invalid("publication.admission.projection"))?;
         }
@@ -58,10 +56,7 @@ impl LocalControlAdapter {
         &self,
         record: &PublicationRecordV1,
     ) -> PortResult<bool> {
-        let publication = record
-            .verify()
-            .map_err(|_| invalid("publication.target.record"))?;
-        publication
+        record
             .gateway_snapshot()
             .map_err(|_| invalid("publication.target.projection"))?;
         self.required_publication_target()?
@@ -73,9 +68,14 @@ impl LocalControlAdapter {
         &self,
         operation: &OperationV1,
     ) -> PortResult<()> {
-        self.require_current_operation(operation)?;
-        self.guard_codex_pending_change(Some(&operation.operation_id))?;
-        self.guard_additional_pending_model_change(Some(&operation.operation_id))?;
+        // Verify the current journal and complete recovery membership together.
+        // Do not fully reconstruct this same operation twice just to discard it.
+        let other = self
+            .stores_lock()?
+            .control()
+            .other_recoverable_operations(operation)?;
+        super::super::settings_codex_profile::check_pending_codex_change(&other, None)?;
+        super::super::additional_model_budget::check_pending_model_change(&other, None)?;
         self.begin_plan_content_activation(operation)?;
         // Settings model publications are hot-swappable: the aggregate ArcSwap cutover keeps
         // every in-flight pin on its old root, so normal B updates never suspend admission.
@@ -121,18 +121,12 @@ impl LocalControlAdapter {
                     .expect("publication_marker always returns the current shape");
                 self.validate_additional_installed_model_budgets(record)?;
                 record
-                    .verify()
-                    .map_err(|_| invalid("publication.install.record"))?
                     .gateway_snapshot()
                     .map_err(|_| invalid("publication.install.projection"))?;
                 self.required_publication_target()?;
                 marker.schema = PUBLICATION_MARKER_SCHEMA.to_owned();
                 marker.decision = InstallationDecision::Install;
-                let mut checkpoint = effect.clone();
-                checkpoint.compensation = serde_json::to_value(marker)
-                    .map_err(|_| invalid("publication.checkpoint.encode"))?
-                    .into();
-                Ok(checkpoint)
+                self.encode_publication_marker(effect.clone(), marker)
             },
         )
     }
@@ -195,11 +189,7 @@ impl LocalControlAdapter {
                 }
                 marker.decision = InstallationDecision::Abort;
                 marker.schema = PUBLICATION_MARKER_SCHEMA.to_owned();
-                let mut checkpoint = effect.clone();
-                checkpoint.compensation = serde_json::to_value(marker)
-                    .map_err(|_| invalid("publication.abort.encode"))?
-                    .into();
-                Ok(checkpoint)
+                self.encode_publication_marker(effect.clone(), marker)
             },
         )
     }

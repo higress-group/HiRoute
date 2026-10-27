@@ -9,9 +9,7 @@ use hiroute_gateway_core::runtime::sse::{
 use crate::server::core_runtime::model_ir::ModelIrError;
 
 use super::ProtocolAdapterError;
-use super::native_passthrough::{
-    NativeProjectedUnit, NativeTerminalOutcome, ProjectionMetadata, ProjectionState,
-};
+use super::native_passthrough::{NativeProjectedUnit, ProjectionMetadata, ProjectionState};
 
 pub(super) fn feed_projected_sse(
     framer: &mut SseFramer,
@@ -83,7 +81,8 @@ pub(super) fn feed_projected_sse(
     if let Some(index) = output.iter().position(|unit| unit.terminal.is_some())
         && (index + 1 < output.len() || framer.pending_bytes() > 0)
     {
-        state.withhold_terminal_completion();
+        // A buffered tail delays delivery, but only its parsed model semantics
+        // can invalidate the outcome. A comment may itself span transport chunks.
         output[index].terminal = None;
         *pending_terminal_tail = true;
     }
@@ -94,7 +93,7 @@ pub(super) fn feed_projected_sse(
         && framer.pending_bytes() == 0
         && let Some(last) = output.last_mut()
     {
-        last.terminal = Some(NativeTerminalOutcome::Unknown);
+        last.terminal = state.terminal;
         *pending_terminal_tail = false;
     }
     Ok(output)
@@ -113,11 +112,12 @@ impl SseVisitor for ProjectionVisitor<'_> {
         event: SseEventView<'_>,
         emitter: &mut BoundedEventEmitter<'_, '_>,
     ) -> Result<(), SseError> {
+        self.state.begin_native_diagnostic_frame();
         let data = event.data(self.budget)?;
         if data.as_ref().is_empty() {
-            if self.state.protocol == super::IngressProtocol::Responses
-                && self.state.terminal.is_some()
-            {
+            if self.state.terminal.is_some() && event.fields().any(|field| !field.comment) {
+                // An empty control description remains uncertain. Pure SSE
+                // comments carry no model semantics and preserve the outcome.
                 self.state.withhold_terminal_completion();
             }
             self.metadata.push_back(ProjectionMetadata {

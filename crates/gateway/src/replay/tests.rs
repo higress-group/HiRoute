@@ -11,6 +11,9 @@ use super::{ReplayConfig, ReplayError, ReplayManager, ReplayStore};
 #[path = "tests/locator_literals.rs"]
 mod locator_literals;
 
+#[path = "tests/json_provenance.rs"]
+mod json_provenance;
+
 static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct TestRoot(PathBuf);

@@ -13,12 +13,15 @@ use crate::server::core_runtime::model_ir::{
     WebSearchAction, WebSearchCallV1, WebSearchSourceKind, WebSearchStatus,
 };
 
+use super::fingerprint::FingerprintBudget;
+
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
 pub(crate) struct HistoryEvidence<'a> {
     pub(crate) instruction_digest: [u8; 32],
     request: &'a ModelRequestIRV1,
+    semantic_request: Option<&'a ModelRequestIRV1>,
     key: &'a [u8; 32],
     replay: Option<&'a ReplayStore>,
 }
@@ -28,32 +31,145 @@ pub(crate) struct HistoryDigests {
     pub(crate) message_count: usize,
     pub(crate) prefix_digest: Option<[u8; 32]>,
     pub(crate) complete_digest: [u8; 32],
+    pub(crate) semantic_prefix_digest: Option<[u8; 32]>,
+    pub(crate) semantic_complete_digest: [u8; 32],
+    pub(crate) contains_model_history: bool,
+    pub(crate) latest_user_index: Option<usize>,
 }
 
-impl HistoryEvidence<'_> {
+/// Scan once for the bounded set of captured branch boundaries. Keep no
+/// transcript-sized index, and never use text similarity as parentage.
+pub(crate) fn branch_anchors(
+    request: &ModelRequestIRV1,
+    key: &[u8; 32],
+    replay: Option<&ReplayStore>,
+    positions: &[usize],
+) -> Option<super::HistoryAnchors> {
+    if request.native_only || request.native_history.is_some() {
+        request.native_history_layout()?;
+    }
+    let mut encoder = Encoder::new(key, b"history-branch/v3", replay)?;
+    // A previous raw JSON argument can still bind its exact request prefix.
+    // It cannot prove equivalence with accepted canonical tool output or grant
+    // provider affinity. Keep that weaker evidence local to branch lookup.
+    encoder.allow_raw_json = true;
+    // Request-local instructions and tool setup invalidate provider affinity,
+    // not a witnessed predecessor in the actual conversation.
+    encoder.items(request.messages.len())?;
+    let mut prefixes = Vec::with_capacity(positions.len().min(32));
+    if positions.len() > 32 {
+        return None;
+    }
+    for (index, message) in request.messages.iter().enumerate() {
+        encoder.history_item(request, index, message, false)?;
+        if positions.contains(&(index + 1)) {
+            prefixes.push((index + 1, encoder.snapshot()?));
+        }
+    }
+    let contextual = encoder.used_raw_json;
+    Some(super::HistoryAnchors {
+        complete: encoder.finish()?,
+        prefixes,
+        contextual,
+    })
+}
+
+impl<'a> HistoryEvidence<'a> {
+    #[cfg(test)]
+    pub(crate) fn branch_anchors(&self, positions: &[usize]) -> Option<super::HistoryAnchors> {
+        branch_anchors(self.request, self.key, self.replay, positions)
+    }
+
+    /// Borrow a verified routing-only view without changing strict execution evidence.
+    pub(crate) fn with_semantic_request(
+        mut self,
+        request: Option<&'a ModelRequestIRV1>,
+    ) -> Option<Self> {
+        if request.is_some_and(|value| value.messages.len() != self.request.messages.len()) {
+            return None;
+        }
+        self.semantic_request = request;
+        Some(self)
+    }
+
     #[cfg(test)]
     pub(crate) fn message_count(&self) -> usize {
         self.request.messages.len()
     }
 
-    /// Hashes the requested stored prefix and the complete visible history in
-    /// one streaming pass. No per-message digest array survives the call.
+    /// Measures strict model history and routing continuity together. The latter
+    /// only masks instruction-role text; positions and all other parts stay exact.
+    /// No per-message digest array survives the call.
     pub(crate) fn measure(&self, prefix_count: Option<usize>) -> Option<HistoryDigests> {
-        let mut history = Encoder::new(self.key, b"visible-history/v1/messages", self.replay)?;
+        let semantic_request = self.semantic_request.unwrap_or(self.request);
+        if semantic_request.messages.len() != self.request.messages.len() {
+            return None;
+        }
+        if self.request.native_only || self.request.native_history.is_some() {
+            self.request.native_history_layout()?;
+        }
+        let mut history = Encoder::new(
+            self.key,
+            if self.request.native_only {
+                b"visible-history/v1/opaque-projection"
+            } else {
+                b"visible-history/v1/messages"
+            },
+            self.replay,
+        )?;
+        let mut semantic = Encoder::new(self.key, b"visible-history/v1/conversation", self.replay)?;
+        history.items(self.request.messages.len())?;
+        semantic.items(semantic_request.messages.len())?;
         let mut prefix_digest = match prefix_count {
             Some(0) => Some(history.snapshot()?),
             _ => None,
         };
+        let mut semantic_prefix_digest = match prefix_count {
+            Some(0) => Some(semantic.snapshot()?),
+            _ => None,
+        };
         for (index, message) in self.request.messages.iter().enumerate() {
-            history.history_item(self.request, index, message)?;
+            history.history_item(self.request, index, message, false)?;
+            semantic.history_item(
+                semantic_request,
+                index,
+                &semantic_request.messages[index],
+                true,
+            )?;
             if prefix_count == Some(index.saturating_add(1)) {
                 prefix_digest = Some(history.snapshot()?);
+                semantic_prefix_digest = Some(semantic.snapshot()?);
             }
         }
         Some(HistoryDigests {
             message_count: self.request.messages.len(),
-            prefix_digest,
+            // An incomplete projection must never establish provider/KV affinity.
+            prefix_digest: if self.request.native_only {
+                None
+            } else {
+                prefix_digest
+            },
             complete_digest: history.finish()?,
+            semantic_prefix_digest,
+            semantic_complete_digest: semantic.finish()?,
+            contains_model_history: self.request.messages.iter().any(|message| {
+                message.role == MessageRole::Assistant
+                    || message.content.iter().any(|part| {
+                        matches!(
+                            part,
+                            ContentPart::ToolCall { .. }
+                                | ContentPart::ToolResult { .. }
+                                | ContentPart::ProviderState { .. }
+                        )
+                    })
+            }) || !self.request.responses_search_history.is_empty()
+                || !self.request.responses_reasoning_history.is_empty(),
+            latest_user_index: semantic_request.messages.iter().rposition(|message| {
+                message.role == MessageRole::User
+                    && message.content.iter().any(|part| {
+                        matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. })
+                    })
+            }),
         })
     }
 
@@ -71,6 +187,14 @@ impl HistoryEvidence<'_> {
 }
 
 #[cfg(test)]
+#[path = "history_semantic_tests.rs"]
+mod semantic_tests;
+
+#[cfg(test)]
+#[path = "history_budget_tests.rs"]
+mod budget_tests;
+
+#[cfg(test)]
 pub(crate) fn visible_history<'a>(
     request: &'a ModelRequestIRV1,
     key: &'a [u8; 32],
@@ -86,18 +210,30 @@ pub(crate) fn visible_history_with_replay<'a>(
     if request.native_only {
         return None;
     }
+    observed_history_with_replay(request, key, replay)
+}
+
+/// Actual known messages can support uncertain task capture without claiming
+/// that the complete native payload has a comparable provider-cache prefix.
+pub(crate) fn observed_history_with_replay<'a>(
+    request: &'a ModelRequestIRV1,
+    key: &'a [u8; 32],
+    replay: Option<&'a ReplayStore>,
+) -> Option<HistoryEvidence<'a>> {
     let mut instructions = Encoder::new(key, b"visible-history/v1/instructions", replay)?;
+    instructions.items(request.instructions.len())?;
     instructions.usize(request.instructions.len());
     for instruction in &request.instructions {
         instructions.tag(match instruction.role {
             InstructionRole::System => b"system",
             InstructionRole::Developer => b"developer",
         });
-        instructions.parts(&instruction.content)?;
+        instructions.parts(&instruction.content, false)?;
     }
     // Tool declarations and stable provider state are part of the effective
     // model setup. Treating their change as a rebuild is conservative for KV
     // affinity and avoids claiming equivalence across transport rewrites.
+    instructions.items(request.tools.len())?;
     instructions.usize(request.tools.len());
     for tool in &request.tools {
         instructions.tag(match tool.kind {
@@ -122,10 +258,12 @@ pub(crate) fn visible_history_with_replay<'a>(
             None => instructions.tag(b"no-custom-format"),
         }
     }
+    instructions.items(request.tool_namespaces.len())?;
     instructions.usize(request.tool_namespaces.len());
     for namespace in &request.tool_namespaces {
         instructions.string(&namespace.name);
         instructions.optional_string(namespace.description.as_deref());
+        instructions.items(namespace.tools.len())?;
         instructions.usize(namespace.tools.len());
         for tool in &namespace.tools {
             instructions.tag(match tool.kind {
@@ -151,6 +289,7 @@ pub(crate) fn visible_history_with_replay<'a>(
             }
         }
     }
+    instructions.items(request.responses_tool_order.len())?;
     instructions.usize(request.responses_tool_order.len());
     for entry in &request.responses_tool_order {
         match entry {
@@ -196,6 +335,7 @@ pub(crate) fn visible_history_with_replay<'a>(
         instructions.tag(b"messages-output-format");
         instructions.json(format)?;
     }
+    instructions.items(request.provider_state.len())?;
     instructions.usize(request.provider_state.len());
     for state in &request.provider_state {
         instructions.provider_state(state)?;
@@ -211,6 +351,7 @@ pub(crate) fn visible_history_with_replay<'a>(
     Some(HistoryEvidence {
         instruction_digest,
         request,
+        semantic_request: None,
         key,
         replay,
     })
@@ -220,6 +361,10 @@ struct Encoder<'a> {
     mac: HmacSha256,
     replay: Option<&'a ReplayStore>,
     valid: bool,
+    budget: FingerprintBudget,
+    native_item_offset: usize,
+    allow_raw_json: bool,
+    used_raw_json: bool,
 }
 
 impl<'a> Encoder<'a> {
@@ -230,6 +375,10 @@ impl<'a> Encoder<'a> {
             mac,
             replay,
             valid: true,
+            budget: FingerprintBudget::default(),
+            native_item_offset: 0,
+            allow_raw_json: false,
+            used_raw_json: false,
         })
     }
 
@@ -242,12 +391,29 @@ impl<'a> Encoder<'a> {
             .then(|| self.mac.clone().finalize().into_bytes().into())
     }
 
+    fn items(&mut self, count: usize) -> Option<()> {
+        if !self.valid {
+            return None;
+        }
+        self.valid = self.budget.items(count).is_some();
+        self.valid.then_some(())
+    }
+
+    fn charge(&mut self, count: usize) -> bool {
+        self.valid = self.valid && self.budget.bytes(count).is_some();
+        self.valid
+    }
+
     fn tag(&mut self, value: &[u8]) {
-        frame(&mut self.mac, b"tag", value);
+        if self.charge(value.len().saturating_add(32)) {
+            frame(&mut self.mac, b"tag", value);
+        }
     }
 
     fn bytes(&mut self, value: &[u8]) {
-        frame(&mut self.mac, b"bytes", value);
+        if self.charge(value.len().saturating_add(32)) {
+            frame(&mut self.mac, b"bytes", value);
+        }
     }
 
     fn string(&mut self, value: &str) {
@@ -288,22 +454,34 @@ impl<'a> Encoder<'a> {
     }
 
     fn u64(&mut self, value: u64) {
-        frame(&mut self.mac, b"u64", &value.to_be_bytes());
+        if self.charge(32) {
+            frame(&mut self.mac, b"u64", &value.to_be_bytes());
+        }
     }
 
     fn json(&mut self, value: &Value) -> Option<()> {
-        self.tag(b"json");
+        self.items(0)?;
         if let Some(reference) = value.content_ref() {
+            if self.replay?.is_canonical_json(&reference) {
+                self.tag(b"json");
+            } else if self.allow_raw_json {
+                self.tag(b"raw-json-prefix");
+                self.used_raw_json = true;
+            } else {
+                return None;
+            }
             return self.hash_reference(&reference);
         }
+        self.tag(b"json");
+        let referenced = self.budget.json(value)?;
         let mut counter = ByteCounter(0);
-        if contains_content_ref(value) {
+        if referenced {
             write_canonical_json_with_replay(&mut counter, value, self.replay?)?;
         } else {
             write_canonical_json(&mut counter, value).ok()?;
         }
         frame_header(&mut self.mac, b"bytes", counter.0);
-        if contains_content_ref(value) {
+        if referenced {
             write_canonical_json_with_replay(&mut MacWriter(&mut self.mac), value, self.replay?)?;
         } else {
             write_canonical_json(&mut MacWriter(&mut self.mac), value).ok()?;
@@ -312,6 +490,13 @@ impl<'a> Encoder<'a> {
     }
 
     fn hash_reference(&mut self, reference: &ContentRef) -> Option<()> {
+        if !self.charge(
+            usize::try_from(reference.byte_len())
+                .ok()?
+                .checked_add(32)?,
+        ) {
+            return None;
+        }
         let mut reader = self.replay?.reader(reference).ok()?;
         frame_header(&mut self.mac, b"bytes", reference.byte_len());
         let mut buffer = [0_u8; 16 * 1024];
@@ -325,13 +510,19 @@ impl<'a> Encoder<'a> {
         reader.verify_terminal().ok()
     }
 
-    fn parts(&mut self, parts: &[ContentPart]) -> Option<()> {
+    fn parts(&mut self, parts: &[ContentPart], omit_instruction_text: bool) -> Option<()> {
+        self.items(parts.len())?;
         self.usize(parts.len());
         for part in parts {
+            self.items(0)?;
             match part {
                 ContentPart::Text { text } => {
                     self.tag(b"text");
-                    self.string(text);
+                    if omit_instruction_text {
+                        self.tag(b"instruction-text");
+                    } else {
+                        self.string(text);
+                    }
                 }
                 ContentPart::Image {
                     source: ImageSource::Url { url },
@@ -347,6 +538,7 @@ impl<'a> Encoder<'a> {
                     self.string(data);
                 }
                 ContentPart::ToolCall {
+                    encrypted_function_args,
                     logical_id,
                     tool_kind,
                     namespace,
@@ -362,6 +554,10 @@ impl<'a> Encoder<'a> {
                     self.bytes(logical_id.as_bytes());
                     self.optional_string(namespace.as_deref());
                     self.string(name);
+                    if let Some(paths) = encrypted_function_args {
+                        self.tag(b"encrypted-function-args");
+                        self.json(&serde_json::json!(paths))?;
+                    }
                     if let Some(raw) = raw_arguments {
                         self.tag(b"raw-arguments");
                         self.string(raw);
@@ -406,7 +602,7 @@ impl<'a> Encoder<'a> {
         Some(())
     }
 
-    fn message(&mut self, message: &CanonicalMessage) -> Option<()> {
+    fn message(&mut self, message: &CanonicalMessage, semantic: bool) -> Option<()> {
         self.tag(b"message");
         self.tag(match message.role {
             MessageRole::User => b"user",
@@ -415,7 +611,10 @@ impl<'a> Encoder<'a> {
             MessageRole::Developer => b"developer",
         });
         self.optional_string(message.name.as_deref());
-        self.parts(&message.content)
+        self.parts(
+            &message.content,
+            semantic && matches!(message.role, MessageRole::System | MessageRole::Developer),
+        )
     }
 
     fn history_item(
@@ -423,18 +622,60 @@ impl<'a> Encoder<'a> {
         request: &ModelRequestIRV1,
         message_index: usize,
         message: &CanonicalMessage,
+        semantic: bool,
     ) -> Option<()> {
+        self.items(0)?;
         self.tag(b"history-item");
+        if let Some(layout) = &request.native_history {
+            let item = layout.get(message_index)?;
+            if !item.modeled {
+                // Modeled history keeps its existing canonical equivalences.
+                // Every unmodeled item's full original bytes also bind the
+                // prefix, including extensions and opaque state after Replay.
+                self.tag(b"unmodeled-native-history-item");
+                self.json(request.native_history_item(item)?)?;
+            }
+        }
+        if request.native_history.is_none() {
+            let native_items = request
+                .native_body
+                .as_ref()
+                .and_then(|body| body.get("input"))
+                .and_then(Value::as_array);
+            // Ingress does not create a canonical position for additional_tools.
+            // Each encoder visits messages in order, so this bounded offset scans
+            // skipped native items once rather than rescanning each prefix.
+            while native_items
+                .and_then(|items| items.get(message_index + self.native_item_offset))
+                .is_some_and(|item| {
+                    item.get("type").and_then(Value::as_str) == Some("additional_tools")
+                })
+            {
+                self.items(1)?;
+                self.native_item_offset += 1;
+            }
+            if let Some(peer) = native_items
+                .and_then(|items| items.get(message_index + self.native_item_offset))
+                .filter(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
+            {
+                // The portable placeholder is deliberately empty. It cannot stand
+                // in for author, recipient, typed content or ciphertext evidence.
+                self.tag(b"native-peer-message");
+                self.json(peer)?;
+            }
+        }
         if let Some(search) = request.responses_search_history.get(&message_index) {
             self.web_search_call(search);
         } else {
-            self.message(message)?;
+            self.message(message, semantic)?;
         }
         match request.responses_annotations.get(&message_index) {
             Some(parts) => {
                 self.tag(b"responses-annotations");
+                self.items(parts.len())?;
                 self.usize(parts.len());
                 for (part_index, annotations) in parts {
+                    self.items(annotations.len())?;
                     self.usize(*part_index);
                     self.usize(annotations.len());
                     for annotation in annotations {
@@ -450,6 +691,7 @@ impl<'a> Encoder<'a> {
                 // Native fields may each be Replay-backed (notably a long
                 // Responses summary). Hash the sorted fields individually so
                 // the request-local JSON markers never stand in for content.
+                self.items(history.native_fields.len())?;
                 self.usize(history.native_fields.len());
                 let mut keys = history.native_fields.keys().collect::<Vec<_>>();
                 keys.sort_unstable();
@@ -490,6 +732,9 @@ impl<'a> Encoder<'a> {
                 match sources {
                     Some(sources) => {
                         self.tag(b"some-sources");
+                        if self.items(sources.len()).is_none() {
+                            return;
+                        }
                         self.usize(sources.len());
                         for source in sources {
                             self.tag(match &source.kind {
@@ -518,6 +763,9 @@ impl<'a> Encoder<'a> {
         match values {
             Some(values) => {
                 self.tag(b"some-strings");
+                if self.items(values.len()).is_none() {
+                    return;
+                }
                 self.usize(values.len());
                 for value in values {
                     self.string(value);
@@ -561,24 +809,15 @@ fn frame_header(mac: &mut HmacSha256, kind: &[u8], length: u64) {
     mac.update(&length.to_be_bytes());
 }
 
-fn contains_content_ref(value: &Value) -> bool {
-    if value.content_ref().is_some() {
-        return true;
-    }
-    match value {
-        Value::String(value) => value.content_ref().is_some(),
-        Value::Array(values) => values.iter().any(contains_content_ref),
-        Value::Object(values) => values.values().any(contains_content_ref),
-        _ => false,
-    }
-}
-
-fn write_canonical_json_with_replay(
+pub(crate) fn write_canonical_json_with_replay(
     writer: &mut impl Write,
     value: &Value,
     replay: &ReplayStore,
 ) -> Option<()> {
     if let Some(reference) = value.content_ref() {
+        if !replay.is_canonical_json(&reference) {
+            return None;
+        }
         let mut reader = replay.reader(&reference).ok()?;
         std::io::copy(&mut reader, writer).ok()?;
         reader.verify_terminal().ok()?;
@@ -701,6 +940,7 @@ mod tests {
         ModelRequestIRV1 {
             native_body: None,
             native_only: false,
+            native_history: None,
             schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
             ingress_protocol: IngressProtocol::Responses,
             served_model_id: "agent/test".into(),
@@ -924,7 +1164,7 @@ mod tests {
             });
             let mut pool = store.begin_content_pool().unwrap();
             let schema_ref = pool
-                .append_json(if appended { &reordered_schema } else { &schema }, true)
+                .append_canonical_json(if appended { &reordered_schema } else { &schema })
                 .unwrap();
             pool.seal().unwrap();
             request.tools.push(CanonicalTool {
@@ -1118,6 +1358,7 @@ mod tests {
         let tool_message = |arguments| CanonicalMessage {
             role: MessageRole::Assistant,
             content: vec![ContentPart::ToolCall {
+                encrypted_function_args: None,
                 logical_id: "call".into(),
                 tool_kind: ToolKindV1::Function,
                 namespace: None,

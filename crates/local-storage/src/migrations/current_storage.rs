@@ -70,7 +70,25 @@ pub(crate) fn acquire_startup_lock(root: &Path) -> Result<std::fs::File, LocalSt
     Ok(file)
 }
 
+mod dependencies;
+
 pub(crate) fn validate_current_storage(
+    control: &crate::ControlStore,
+    runtime: &crate::RuntimeStore,
+    secrets: &crate::LocalSecretStore,
+) -> Result<(), LocalStorageError> {
+    let version: u32 =
+        control
+            .connection
+            .borrow()
+            .pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version < 32 {
+        return audit_current_storage(control, runtime, secrets);
+    }
+    dependencies::validate(control, runtime, secrets)
+}
+
+pub(crate) fn audit_current_storage(
     control: &crate::ControlStore,
     runtime: &crate::RuntimeStore,
     secrets: &crate::LocalSecretStore,
@@ -188,6 +206,14 @@ pub(crate) fn validate_recovered_grant_publications(
     control: &crate::ControlStore,
     secrets: &crate::LocalSecretStore,
 ) -> Result<(), LocalStorageError> {
+    let version: u32 =
+        control
+            .connection
+            .borrow()
+            .pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version >= 32 {
+        return dependencies::validate_grant_publications(control, secrets);
+    }
     let secret_connection = secrets.connection.borrow();
     let mut statement=secret_connection.prepare("SELECT v.grant_id,v.generation,v.scope_json,v.material_sha256 FROM agent_access_grant_heads h JOIN agent_access_grant_versions v ON v.connection_id=h.connection_id AND v.generation=h.active_version_generation")?;
     let mut unmatched = Vec::new();

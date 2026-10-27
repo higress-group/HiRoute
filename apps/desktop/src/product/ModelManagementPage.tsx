@@ -30,10 +30,11 @@ import {
 } from '../features/device-scan/DeviceScanList';
 import { PriceEditor } from '../features/model-reference/PriceEditor';
 import { HermesRootFields } from '../features/agents/HermesRootFields';
+import { agentDisplayName as discoveredAgentName } from '../features/agents/ecosystems';
 import type { AgentNativeTarget } from '../features/agents/types';
 import type { PriceContext, PriceOutcome } from '../features/model-reference/types';
 import { agentBrandFromId, BrandIcon, Dialog, Disclosure, ProductPage, UiIcon } from '../ui';
-import type { Agent } from '../agents';
+import type { DeviceScanAgent } from '../features/device-scan/DeviceScanList';
 import type {
   CandidateRef,
   ManagedModel,
@@ -115,13 +116,6 @@ function discoveryFailureMessage(code: string, language: 'zh' | 'en'): string {
   }
 }
 
-function discoveredAgentName(agentId: string, language: 'zh' | 'en') {
-  if (agentId.toLocaleLowerCase().includes('hermes')) return 'Hermes';
-  if (agentId.toLocaleLowerCase().includes('claude')) return 'Claude Code';
-  if (agentId.toLocaleLowerCase().includes('codex')) return 'Codex';
-  return language === 'zh' ? '本机 Agent' : 'Local agent';
-}
-
 export { newModelConnectionDraft } from '../features/model-connections/new-draft';
 
 export function ModelManagementPage({
@@ -155,7 +149,7 @@ export function ModelManagementPage({
   onChanged(): void;
   refreshVersion?: number;
   plans?: Plan[];
-  agents?: Agent[];
+  agents?: DeviceScanAgent[];
   onOpenPlan?(planId: string): void;
   onTryModel?(modelId: string | undefined, bindingId: string): void;
   onCreatePlan?(bindingId: string): void;

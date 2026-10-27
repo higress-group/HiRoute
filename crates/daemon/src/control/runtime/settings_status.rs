@@ -10,8 +10,8 @@ use hiroute_application_api::{
     AgentModelSurfaceResultV2, AgentSettingsStatusRequestV2,
 };
 use hiroute_domain::{
-    AgentAccessGrantRefV1, OperationState, OperationStepKind, PublicationRepositoryPort,
-    SecretStorePort, is_agent_access_grant_effect,
+    AgentAccessGrantRefV1, OperationState, PublicationRepositoryPort, SecretStorePort,
+    is_agent_access_grant_effect,
 };
 
 enum ModelAction {
@@ -53,6 +53,7 @@ impl LocalControlAdapter {
             return Err(ControlReadError::Denied);
         }
         let (status, grant, _) = self.evaluate_model_settings(&AgentSettingsStatusRequestV2 {
+            projection: Default::default(),
             effective: None,
             include_skills: false,
             native_target: None,
@@ -79,11 +80,20 @@ impl LocalControlAdapter {
         &self,
         request: &AgentSettingsStatusRequestV2,
     ) -> Result<AgentModelSettingsStatusV2, ControlReadError> {
+        if request.projection == hiroute_application_api::AgentSettingsStatusProjectionV2::Model
+            && (request.include_skills || request.effective.is_some())
+        {
+            return Err(ControlReadError::Denied);
+        }
         let (mut status, _, join) = self.evaluate_model_settings(request)?;
+        if request.projection == hiroute_application_api::AgentSettingsStatusProjectionV2::Model {
+            return Ok(status);
+        }
         let collaboration_request = if self.settings_agent_for_context(&request.context_id)
             == Some(SettingsAgentClass::CodexProfile)
         {
             AgentSettingsStatusRequestV2 {
+                projection: Default::default(),
                 effective: None,
                 include_skills: false,
                 native_target: None,
@@ -93,13 +103,15 @@ impl LocalControlAdapter {
         } else {
             request.clone()
         };
+        let desktop = self.settings_agent_for_context(&request.context_id)
+            == Some(SettingsAgentClass::DshDesktop);
         let hermes = self.settings_agent_for_context(&request.context_id)
             == Some(SettingsAgentClass::Hermes);
-        if hermes || request.include_skills {
+        if !desktop && (hermes || request.include_skills) {
             status.management_skill =
                 Some(self.management_settings_status(&collaboration_request)?);
         }
-        if !hermes || request.include_skills {
+        if !desktop && (!hermes || request.include_skills) {
             status.collaboration =
                 Some(self.collaboration_settings_status(&collaboration_request)?);
         }
@@ -117,6 +129,7 @@ impl LocalControlAdapter {
         context_id: &str,
     ) -> Result<Option<ConfiguredModelSettings>, ControlReadError> {
         let (_, _, join) = self.evaluate_model_settings(&AgentSettingsStatusRequestV2 {
+            projection: Default::default(),
             effective: None,
             include_skills: false,
             native_target: None,
@@ -139,6 +152,7 @@ impl LocalControlAdapter {
             .filter(|context| format!("agent-connection/{context}") == connection_id)
             .ok_or(ControlReadError::NotFound)?;
         let request = AgentSettingsStatusRequestV2 {
+            projection: Default::default(),
             effective: None,
             include_skills: false,
             native_target: None,
@@ -233,18 +247,19 @@ impl LocalControlAdapter {
             status.operation_state = Some(pending.state.as_str().into());
             return Ok((status, None, None));
         }
-        let operations = stores
+        let operation = stores
             .control()
-            .succeeded_agent_operations_for_kinds(
+            .find_verified_agent_operation(
                 &WorkspaceId::default(),
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
+                |operation| Ok(belongs(operation)),
             )
             .map_err(super::map_port)?;
-        let Some(operation) = operations.into_iter().find(|operation| belongs(operation)) else {
+        let Some(operation) = operation else {
             return Ok((status, None, None));
         };
-        let intent = model_intent(class, &operation).ok_or(ControlReadError::Corrupt)?;
-        let action = model_action(class, &operation, intent).map_err(super::map_port)?;
+        let intent = model_intent(class, operation.as_ref()).ok_or(ControlReadError::Corrupt)?;
+        let action = model_action(class, operation.as_ref(), intent).map_err(super::map_port)?;
         let current = stores
             .secrets()
             .inspect_agent_access_grant(
@@ -261,16 +276,38 @@ impl LocalControlAdapter {
                     SettingsAgentClass::Qoder
                         | SettingsAgentClass::Pi
                         | SettingsAgentClass::Dsh
+                        | SettingsAgentClass::DshDesktop
                         | SettingsAgentClass::OpenCode
                 ) {
-                    hiroute_integrations::additional_native_configuration_is_applied(
-                        &self.artifacts,
-                        &operation.operation_id,
-                        intent,
-                    )
-                    .map_err(super::map_port)?
+                    let model_applied =
+                        hiroute_integrations::additional_native_configuration_is_applied(
+                            &self.artifacts,
+                            &operation.operation_id,
+                            intent,
+                        )
+                        .map_err(super::map_port)?;
+                    // Published operations predating routing adapters retain their
+                    // original contract. New operations also own the adapter bytes.
+                    let mut adapter_applied = true;
+                    for plugin in operation
+                        .plan
+                        .external()
+                        .iter()
+                        .filter(|i| i.effect_id() == "agent-connection-native-routing-adapter")
+                    {
+                        hiroute_application::agent_connection::settings_native_plugin_file_for_operation(
+                            operation.as_ref(), plugin,
+                        ).map_err(super::map_port)?;
+                        adapter_applied &= hiroute_integrations::native_plugin_is_applied(
+                            &self.artifacts,
+                            &operation.operation_id,
+                            plugin,
+                        )
+                        .map_err(super::map_port)?;
+                    }
+                    model_applied && adapter_applied
                 } else if class == SettingsAgentClass::Hermes {
-                    self.hermes_operation_files_applied(&operation, intent)
+                    self.hermes_operation_files_applied(operation.as_ref(), intent)
                         .map_err(super::map_port)?
                 } else if class == SettingsAgentClass::Claude {
                     let policy =
@@ -334,8 +371,7 @@ impl LocalControlAdapter {
                     return Err(ControlReadError::Corrupt);
                 };
                 let effect = operation
-                    .step(OperationStepKind::ApplySecrets)
-                    .effects
+                    .grant_effects()
                     .iter()
                     .find(|effect| is_agent_access_grant_effect(effect))
                     .ok_or(ControlReadError::Corrupt)?;
@@ -376,7 +412,7 @@ impl LocalControlAdapter {
                     let runtime = runtime.as_ref().ok_or(ControlReadError::Unavailable)?;
                     model_endpoint_matches_runtime(
                         class,
-                        &operation,
+                        operation.as_ref(),
                         intent,
                         &runtime.gateway_base_url,
                     )
@@ -384,7 +420,7 @@ impl LocalControlAdapter {
                 };
                 if class == SettingsAgentClass::Hermes {
                     let resources_installed = self
-                        .hermes_operation_plugin_files_applied(&operation)
+                        .hermes_operation_plugin_files_applied(operation.as_ref())
                         .map_err(super::map_port)?;
                     status.native_adapter = Some(
                         hiroute_application_api::AgentNativeAdapterStatusV1 {
@@ -455,6 +491,10 @@ impl LocalControlAdapter {
                             hiroute_domain::AgentModelSelectionV2::DshAdditional { .. },
                             SettingsAgentClass::Dsh,
                         ) => [hiroute_domain::AgentModelSurfaceV2::DshCli].into(),
+                        (
+                            hiroute_domain::AgentModelSelectionV2::DshAdditional { .. },
+                            SettingsAgentClass::DshDesktop,
+                        ) => [hiroute_domain::AgentModelSurfaceV2::DshDesktop].into(),
                         (
                             hiroute_domain::AgentModelSelectionV2::HermesDefault { .. },
                             SettingsAgentClass::Hermes,
@@ -598,6 +638,7 @@ fn model_intent(
             super::settings_facts::SettingsAgentClass::Qoder
             | super::settings_facts::SettingsAgentClass::Pi
             | super::settings_facts::SettingsAgentClass::Dsh
+            | super::settings_facts::SettingsAgentClass::DshDesktop
             | super::settings_facts::SettingsAgentClass::OpenCode => {
                 super::native_additional_model::is_settings_additional_model(intent)
             }
@@ -614,7 +655,7 @@ fn model_action(
             hiroute_application::agent_connection::HermesModelFileAction::Configure { .. } => Ok(ModelAction::Configure),
             hiroute_application::agent_connection::HermesModelFileAction::Restore { .. } => Ok(ModelAction::Restore),
         },
-        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi | super::settings_facts::SettingsAgentClass::Dsh | super::settings_facts::SettingsAgentClass::OpenCode => {
+        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi | super::settings_facts::SettingsAgentClass::Dsh | super::settings_facts::SettingsAgentClass::DshDesktop | super::settings_facts::SettingsAgentClass::OpenCode => {
             match hiroute_application::agent_connection::settings_additional_model_file_for_operation(
                 operation, intent,
             )?
@@ -672,6 +713,7 @@ fn model_endpoint_matches_runtime(
         SettingsAgentClass::Qoder
         | SettingsAgentClass::Pi
         | SettingsAgentClass::Dsh
+        | SettingsAgentClass::DshDesktop
         | SettingsAgentClass::OpenCode => {
             let endpoint = super::native_additional_model::additional_model_endpoint(
                 additional_model_kind(intent)?,

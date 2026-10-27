@@ -214,10 +214,15 @@ fn terminal_empty_discovery_fails_without_spending_the_control_budget() {
         let fixture = Fixture::new();
         fixture.fault.store(fault, Ordering::SeqCst);
         let started = Instant::now();
-        assert!(matches!(
-            fixture.discover(false),
-            Err(AccountDiscoveryError::PinNotApplied)
-        ));
+        let error = fixture.discover(false).unwrap_err();
+        if fault == 10 {
+            assert!(matches!(
+                error,
+                AccountDiscoveryError::TransientModelCatalog { process_id: 123 }
+            ));
+        } else {
+            assert!(matches!(error, AccountDiscoveryError::PinNotApplied));
+        }
         assert!(started.elapsed() < Duration::from_millis(500));
         assert_eq!(fixture.patches.load(Ordering::SeqCst), 0);
     }

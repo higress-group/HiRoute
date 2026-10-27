@@ -4,19 +4,26 @@ import { useTrustSuggestions, type TrustSuggestionPlan } from '../../../src/feat
 import { TrustAttention } from '../../../src/features/trust/TrustAttention';
 import { Sessions } from '../../../src/features/Sessions';
 
-const timers = new Map<number, { interval: number; callback: () => void }>();
+const timers = new Map<number, { interval: number; callback: () => void; once?: boolean }>();
 let serial = 70000, hidden = false;
 export const readCostState = { found: false, fail: false, confirmed: Date.now() };
 export function installReadCostClock() {
   const set = window.setInterval.bind(window), clear = window.clearInterval.bind(window);
+  const timeout = window.setTimeout.bind(window), clearTimeout = window.clearTimeout.bind(window);
   window.setInterval = ((callback: () => void, interval: number) => {
     if (![5000,300000].includes(interval)) return set(callback, interval);
     const id = ++serial; timers.set(id,{interval,callback}); return id;
   }) as typeof window.setInterval;
   window.clearInterval = ((id: number) => { if (!timers.delete(id)) clear(id); }) as typeof window.clearInterval;
+  // Suggestions schedule their next read after completion, rather than overlapping intervals.
+  window.setTimeout = ((callback: () => void, interval: number) => {
+    if (interval !== 300000) return timeout(callback, interval);
+    const id = ++serial; timers.set(id, { interval, callback, once: true }); return id;
+  }) as typeof window.setTimeout;
+  window.clearTimeout = ((id: number) => { if (!timers.delete(id)) clearTimeout(id); }) as typeof window.clearTimeout;
   Object.defineProperty(document,'hidden',{configurable:true,get:()=>hidden});
   Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>hidden?'hidden':'visible'});
-  Object.assign(window,{readCostState, tickReadCost:(elapsed:number)=>{for(const timer of [...timers.values()])if(elapsed>=timer.interval)timer.callback();}, hideReadCost:(value:boolean)=>{hidden=value;document.dispatchEvent(new Event('visibilitychange'));},readCostTimers:timers});
+  Object.assign(window,{readCostState, tickReadCost:(elapsed:number)=>{for(const [id,timer] of [...timers])if(elapsed>=timer.interval){if(timer.once)timers.delete(id);timer.callback();}}, hideReadCost:(value:boolean)=>{hidden=value;document.dispatchEvent(new Event('visibilitychange'));},readCostTimers:timers});
 }
 export function ReadCostFixture({language,view}:{language:'zh'|'en';view:string}) {
   const [open,setOpen]=useState(true),[session,setSession]=useState<string|null>(null),[revision,setRevision]=useState(1),[home,setHome]=useState(true);

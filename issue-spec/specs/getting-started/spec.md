@@ -29,6 +29,13 @@ state, never invented savings or a chart of fabricated zeros.
 - **THEN** Desktop MUST retain the correct service state, identify the affected read,
   and offer a retry without overwriting edits or claiming the resource is absent.
 
+#### Scenario: A startup result arrives after a newer Home refresh
+
+- **WHEN** an old snapshot or startup-status read completes after a newer Home result
+- **THEN** it MUST NOT clear the current startup failure or replace newer successful
+  service evidence with an earlier failure. Independent startup checks and failed-read
+  follow-ups MUST share the same ordering of accepted startup results.
+
 ### Requirement: Preferences preserve the current interaction
 
 The production shell MUST support English and Chinese, light and dark themes,
@@ -331,6 +338,28 @@ start a trial.
 Home and routing creation open one full-page, four-step flow for trial model, in-place connection,
 Primary model, decision connection, selected Agent/presets and review.
 
+Opening the flow SHALL discover Agent choices without reading every Agent's
+settings. Selecting a known choice SHALL read only that context's model settings,
+without repeating device discovery or reading management Skill/collaboration
+facets. Explicit rediscovery and a new flow lifetime refresh the choices. Choices
+are hints, not proof of editable or empty settings. Missing, failed or superseded
+details SHALL block review and offer retry; late responses after selection changes
+or closure SHALL NOT replace current details. Before mapping, the flow SHALL
+refresh the selected model settings, require review of any changed selection/context,
+and retain normal fresh Preview/Apply checks. Discovery choices MAY be retained only
+within the open flow across publication and mapping. They remain hints, never proof
+that the selected installation or settings are current; reopening or explicitly
+refreshing discovery reads new choices. Mapping MUST NOT repeat all-Agent discovery
+solely because the flow changed steps or requested a fresh selected settings read.
+The mapping page's explicit refresh/retry SHALL rediscover choices and reread the
+selected settings so an external native-context or authority change remains
+recoverable without closing the flow. This read SHALL NOT submit a mapping. A changed
+target requires a new user confirmation; pending-operation reconciliation still
+matches its original exact context and submitted selection.
+Choosing Primary while Agent details are pending SHALL retain that explicit model
+choice without preventing default Agent initialization. Late details SHALL NOT
+replace an explicitly selected Agent or Primary.
+
 A registered connection must observe the selected model before continuing. Protected
 input/check/save and native subscription import retain their existing authority.
 Primary is prefilled only from a recorded unambiguous fixed-model resolution; a
@@ -348,7 +377,17 @@ never the preceding successful operation. Completed connections, drafts and Plan
 remain visible after later failures. A published Plan can be mapped from Routing
 after reload without recreating it.
 
+After a mapping Apply reply, the flow SHALL immediately read the exact selected
+Agent settings and reconcile the submitted operation/selection. A completed mapping
+SHALL NOT wait for a periodic timer before that read. Pending or uncertain outcomes
+retain same-operation reconciliation without resubmission or invented success.
+
 After this flow confirms that the Agent mapping applied successfully, it SHALL wait for matching Plan activity while the trial page and window remain visible. It SHALL query the existing sessions view from that confirmation time at a five-second cadence, skipping an in-flight read. The first matching candidate observed by the flow SHALL remain selectable through "Watch this session", which opens its live routing timeline only on user action. A Plan match SHALL NOT be described as proof of the Agent identity or a newly created, chronologically first session. Closing or hiding the flow stops reads; showing it resumes them. A read failure SHALL offer retry while retaining the model-performance and session-list actions.
+
+#### Scenario: Switch Agent while a previous read is pending
+
+- **WHEN** the user switches A to B and back to A while earlier detail reads remain pending
+- **THEN** only the latest A result may become editable; the switches do not rediscover other Agents or read their settings, and a failed read can be retried without inventing defaults.
 
 #### Scenario: Publication succeeds but its reply is lost
 

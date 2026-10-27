@@ -30,6 +30,11 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     transaction
         .execute_batch(migration_sql(kind, version).unwrap())
         .unwrap();
+    if kind == DatabaseKind::Control && version == 32 {
+        // The crash fixture commits the complete current migration transaction,
+        // including its semantic initialization before publishing the schema marker.
+        current_dependencies_v32::initialize(&transaction).unwrap();
+    }
     transaction
         .pragma_update(None, "user_version", version)
         .unwrap();
@@ -50,6 +55,124 @@ fn assert_latest_and_preserved(root: &Path, key: &[u8]) {
         assert_eq!(
             database_version(&path).unwrap(),
             Some(LATEST_SCHEMA_VERSION)
+        );
+    }
+}
+
+#[test]
+fn upgrade_progress_tracks_real_conversion_and_is_silent_after_completion() {
+    use hiroute_host_runtime::StorageUpgradePhase::*;
+    for target in [24, LATEST_SCHEMA_VERSION] {
+        let directory = crate::test_tempdir().unwrap();
+        let root = directory.path().join("storage");
+        source_batch(&root, target);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let options = crate::StorageStartupOptions {
+            upgrade_progress: Some(sender.into()),
+            ..Default::default()
+        };
+        drop(LocalStorageSet::open_for_daemon_startup_with_options(&root, &options).unwrap());
+        assert_eq!(
+            receiver.try_iter().collect::<Vec<_>>(),
+            [SourceCheck, Backup, Conversion, Validation]
+        );
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let options = crate::StorageStartupOptions {
+            upgrade_progress: Some(sender.into()),
+            ..Default::default()
+        };
+        drop(LocalStorageSet::open_for_daemon_startup_with_options(&root, &options).unwrap());
+        assert!(
+            receiver.try_recv().is_err(),
+            "completed upgrade is ordinary startup"
+        );
+    }
+}
+
+#[test]
+fn failed_conversion_keeps_last_entered_phase_and_original_group() {
+    use hiroute_host_runtime::StorageUpgradePhase::*;
+    let directory = crate::test_tempdir().unwrap();
+    let root = directory.path().join("storage");
+    schema23_source(&root, &cases()[0]);
+    let path = root.join("live/control.db");
+    let db = Connection::open(&path).unwrap();
+    assert!(
+        db.execute("UPDATE operations SET operation_json='{}'", [])
+            .unwrap()
+            > 0
+    );
+    let before = database_state_digest(&db).unwrap();
+    drop(db);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let options = crate::StorageStartupOptions {
+        upgrade_progress: Some(sender.into()),
+        ..Default::default()
+    };
+    assert!(LocalStorageSet::open_for_daemon_startup_with_options(&root, &options).is_err());
+    assert_eq!(
+        receiver.try_iter().collect::<Vec<_>>(),
+        [SourceCheck, Backup, Conversion]
+    );
+    // Recovery may rebuild SQLite pages; compare the original logical group.
+    let backup = crate::upgrade_backup_root(&root).unwrap();
+    assert!(backup.join("control.db").exists());
+    assert_eq!(database_version(&path).unwrap(), Some(23));
+    let db = Connection::open(&path).unwrap();
+    assert_eq!(database_state_digest(&db).unwrap(), before);
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM operations WHERE operation_json!='{}'",
+            [],
+            |r| r.get::<_, u64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn completed_upgrade_keeps_current_binding_and_unfinished_recovery_strict() {
+    for fault in [
+        "unfinished",
+        "unknown_manifest",
+        "foreign_store",
+        "current_membership",
+    ] {
+        let directory = crate::test_tempdir().unwrap();
+        let root = directory.path().join("storage");
+        schema23_source(&root, &cases()[0]);
+        drop(LocalStorageSet::open_for_daemon_startup(&root).unwrap());
+        let backup = crate::upgrade_backup_root(&root).unwrap();
+        match fault {
+            "unfinished" => {
+                let path = backup.join("backup-set.manifest.json");
+                let mut manifest: serde_json::Value =
+                    serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+                manifest["phase"] = "secrets_migrated".into();
+                fs::write(path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+                fs::write(backup.join("control.db"), b"required backup damaged").unwrap();
+            }
+            "unknown_manifest" => {
+                fs::write(backup.join("backup-set.manifest.json"), b"{}").unwrap()
+            }
+            "foreign_store" => {
+                Connection::open(root.join("live/runtime.db"))
+                    .unwrap()
+                    .execute("UPDATE storage_meta SET store_uuid='foreign-store'", [])
+                    .unwrap();
+            }
+            "current_membership" => {
+                Connection::open(root.join("live/control.db"))
+                    .unwrap()
+                    .execute("DELETE FROM operation_recovery_coverage", [])
+                    .unwrap();
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            LocalStorageSet::open_for_daemon_startup(&root).is_err(),
+            "{fault}"
         );
     }
 }

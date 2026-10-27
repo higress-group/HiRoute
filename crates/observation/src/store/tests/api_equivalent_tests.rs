@@ -39,6 +39,81 @@ fn query(fixture: &Fixture) -> ObservationValueQueryV2 {
         currency: Some("USD".into()),
     }
 }
+
+#[test]
+fn routed_total_remains_available_when_reference_requires_unreported_cache_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = open_store(dir.path());
+    let fixture = Fixture::new("separate-routed-coverage");
+    for mut envelope in facts(&fixture, UsageFrameKindV1::Cumulative) {
+        if let ExecutionFactV1::UsageAndCache {
+            cache_write_tokens,
+            cache_write_provenance,
+            ..
+        } = &mut envelope.fact
+        {
+            *cache_write_tokens = None;
+            *cache_write_provenance = UsageProvenanceV1::Unknown;
+        }
+        store.ingest_fact(&envelope, &[]).unwrap();
+    }
+    store.settle_pending_valuations(16).unwrap();
+    let frozen = serde_json::to_value(latest(&store, &fixture)).unwrap();
+    let actual = reference_price("binding-a", "model-a", 1_000_000);
+    let mut reference = reference_price("binding-ref", "model-reference", 4_000_000);
+    reference.quote.rates.cache_write = TokenRateV1::known(5_000_000);
+    reference.quote.quote_digest = reference.quote.computed_digest().unwrap();
+
+    let read = || {
+        store
+            .observed_api_equivalent_value(
+                &reader(&fixture),
+                &query(&fixture),
+                &reference,
+                std::slice::from_ref(&actual),
+                1000,
+            )
+            .unwrap()
+    };
+    let indexed = read();
+    assert_eq!(indexed.routed_estimate_micros, Some(125));
+    assert_eq!(indexed.reference_estimate_micros, None);
+    assert_eq!(indexed.estimated_savings_micros, None);
+    assert_eq!(indexed.compared_request_count, 0);
+    assert_eq!(indexed.coverage, ObservationMetricCoverageV2::Unknown);
+    assert_eq!(
+        indexed.same_usage_bounds,
+        Some(ApiEquivalentBoundsV1 {
+            reference_min_micros: 500,
+            reference_max_micros: 560,
+            difference_min_micros: -435,
+            difference_max_micros: -375,
+        })
+    );
+    assert_eq!(
+        serde_json::to_value(latest(&store, &fixture)).unwrap(),
+        frozen
+    );
+
+    // The documented retained-reader fallback must produce the same result.
+    store
+        .connection
+        .lock()
+        .execute(
+            "UPDATE observation_analysis_meta_v1 SET value='future' WHERE key='format'",
+            [],
+        )
+        .unwrap();
+    let fallback = read();
+    assert_eq!(
+        fallback.routed_estimate_micros,
+        indexed.routed_estimate_micros
+    );
+    assert_eq!(fallback.reference_estimate_micros, None);
+    assert_eq!(fallback.estimated_savings_micros, None);
+    assert_eq!(fallback.compared_request_count, 0);
+    assert_eq!(fallback.same_usage_bounds, indexed.same_usage_bounds);
+}
 #[test]
 fn explicit_current_price_comparison_keeps_frozen_values_and_missing_evidence_honest() {
     let dir = tempfile::tempdir().unwrap();

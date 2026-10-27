@@ -224,6 +224,13 @@ substitute a model fixture for a real upstream.
 configuration, client identity and sandbox. It requests no tools and requires a
 completed turn with the exact per-run answer. It establishes no native tool
 execution and cannot replace or waive a failed `codex-call` result.
+`codex-two-turn --codex-profile hiroute` starts a new native session, then resumes
+the exact client-reported session with a separate feedback prompt in the same
+temporary working directory. Each turn retains its own stdout/stderr and must
+complete with its own exact answer; the helper never resumes an unproved ID. This
+establishes two native turns, not classification or cross-turn assessment: check
+those actual Gateway and observation records separately. Each call keeps the
+existing 150-second subprocess bound; the outer task covers both calls.
 The runner records the actual client version before the call and preserves partial
 stdout/stderr when its bounded wait expires. Such a timeout is a failed attempt,
 not an inference verdict. The bounded public-CLI action also accepts `sessions`

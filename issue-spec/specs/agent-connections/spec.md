@@ -8,6 +8,22 @@ published routes converge through the common recoverable settings workflow.
 
 ## Requirements
 
+### Requirement: Settings confirmation reads its current target
+
+After a settings change, Desktop SHALL read the exact selected context and confirm
+its current result without first scanning every other Agent. The read SHALL retain
+the same current Session, authority, revision and publication checks as a full
+snapshot. Unrelated retained settings SHALL become unverified and be read before
+their next use. Hidden pages SHALL defer refresh work until activated. Trial draft
+save, publication and operation confirmation SHALL NOT launch unrelated full-Agent
+or subscription scans ahead of the active workflow's result; affected background
+summaries are invalidated and refreshed when their consuming view becomes active.
+
+#### Scenario: Save while unrelated views have been visited
+
+- **WHEN** an Agent is saved or a trial draft is published after visiting other pages
+- **THEN** confirmation reads the changed target, hidden Agent pages do not scan, and opening an invalidated view reads current facts before presenting them as verified; failed readback remains unconfirmed without resubmitting.
+
 ### Requirement: Model and collaboration facets have independent intent
 
 Each facet MUST use keep, configure, or restore, with omission meaning keep.
@@ -75,6 +91,16 @@ Source SPEC comments:
 
 ### Requirement: Settings bind current facts once through one transaction
 
+V2 settings status supports explicit `full` and `model` projections. Omission
+retains the existing full response and `include_skills` semantics, and the default
+projection is omitted when serialized. Unknown projections and `model` combined
+with `include_skills=true` or `effective` are rejected. Model projection reuses the
+same strict model evaluation, including pending/recovery states, Configure/Restore,
+native files, current grants and publication; it does not evaluate management or
+collaboration. Omitted facets mean not projected, not unconfigured. This extension
+requires a matching host/daemon; rejection by an older daemon remains a retryable
+read failure, never evidence of empty configuration.
+
 Preview/Apply MUST bind context, target file ownership, required native capability,
 selected plans/protocols, resource revisions, and dependency digest, reproducing
 facts at Application admission. One save click is explicit intent without a second
@@ -99,6 +125,11 @@ bypass another's ownership. Damaged recovery proofs or unverifiable shared effec
 retain the recovery gate. Unmanaged unreadable targets cannot block service startup;
 actual managed access/recovery still checks type, contents, and identity. No extra
 owner/group-read/write-bit check or chmod is introduced.
+
+#### Scenario: Read model settings without unrelated Skill resources
+
+- **WHEN** a consumer requests model projection and an unrequested Skill resource is unreadable
+- **THEN** valid model facts remain readable with their original proof checks; the full query retains its existing Skill checks and failures.
 
 ### Requirement: Connection bearer is separate from provider and Worker secrets
 
@@ -135,6 +166,21 @@ startup side effects cannot fall back into a daily home. Ordinary Claude setting
 Preview/Apply does not re-run `claude --version`. An unknown native provider in scan
 cannot make a valid executable/resource disappear when switching to an authorized plan.
 Only the action requiring an unproven capability is unavailable.
+
+Startup recovery SHALL prime its protected-input registry from current native configuration
+without requiring informational native version probes. It SHALL retain permission findings
+and exact source-revision checks before reading a recovered secret. Configuration priming
+does not establish executable, managed-launch or connection authority; explicit Agent
+inventory retains its complete discovery behavior.
+
+Explicit Claude authentication and collaboration checks MUST replace inherited
+HOME, native configuration and temporary-directory selectors with disposable
+probe-owned roots. Both the generic temporary directory and Claude's dedicated
+`CLAUDE_CODE_TMPDIR` MUST use the probe workspace, so native startup cannot fall
+back to a shared user temporary directory. The check MUST stop its owned process
+scope before removing those roots. An authenticated loopback Messages request
+and successful native completion remain necessary authentication evidence;
+isolated environment setup alone does not establish that capability.
 
 Hermes connection admission SHALL depend on actual plugin/configuration interfaces and required transport/header delivery. Older version labels or missing optional reasoning replay SHALL NOT alone block a connection. CLI/management and Desktop guidance SHALL recommend a release with the upstream reasoning-replay fix and explain that older versions may omit reasoning content on tool continuations. Missing required integration interfaces still reject before native writes with actionable guidance, without automatically upgrading Hermes. Passive scan, independent management-Skill preparation, owned restore and accepted-operation recovery retain their action-specific capability and ownership checks.
 
@@ -370,6 +416,47 @@ never chooses a native default or takes over an unowned equal-name provider.
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/159#issuecomment-6258609244
 
+### Requirement: DSH Desktop owns an independent native model target
+
+The official macOS DSH Desktop installation SHALL be discoverable independently of
+an npm DSH CLI. Its model entry SHALL use `agent_dsh_desktop` and surface
+`dsh_desktop`, retaining the registered DSH integration profile. Existing
+`agent_dsh_default` Web settings and their restoration authority SHALL retain
+their identity and `profiles/web/cordis.patch.yml` target.
+
+Desktop configuration SHALL use the selected DSH_HOME's
+`profiles/desktop/cordis.patch.yml`. Provider mapping, bundled routing adapter and
+its native registration SHALL be installed through the ordinary protected
+settings transaction. The Desktop adapter SHALL be adjacent to that patch, with
+independent artifact ownership and access grants. Saving, rotating or restoring
+one profile SHALL preserve the other profile, native providers and unrelated
+user content. Restore SHALL remain available after the Desktop application is
+removed; missing or unsupported installation SHALL block new Configure attempts.
+
+Configure SHALL verify the installed app's bundled public CLI in an isolated
+HOME, DSH_HOME and working directory, without activating user plugins or models.
+The shipped Desktop profile uses the standard Web bundles; because upstream
+forbids a Desktop-profile CLI dump, admission SHALL combine the bundled CLI's
+standard Web composition with the actual Desktop manifest and static patches.
+Custom bundle/dependency composition SHALL be rejected rather than inferred from
+a default dump. Capture SHALL bind executable/archive identity, home patch,
+Desktop patch and manifest, and recheck them before returning. A Web-profile
+change SHALL NOT invalidate an independent Desktop proof.
+
+Desktop model support SHALL NOT imply Worker, collaboration Skill or management
+Skill support. Those operations remain unavailable until independently supported.
+A composition dump or fixture SHALL NOT establish actual Desktop loading or
+Gateway request provenance; those require native client evidence.
+
+#### Scenario: Desktop-only install and independent recovery
+
+- **GIVEN** the official Desktop app is installed without an npm DSH CLI
+- **WHEN** a user saves published routes in the Desktop entry
+- **THEN** the native Desktop model selector SHALL load those routes with the bundled routing adapter
+- **AND** Web configuration SHALL retain its previous content and ownership
+- **WHEN** HiRoute restarts and the Desktop app is removed
+- **THEN** the retained Desktop operation SHALL still restore only its owned model configuration and adapter.
+
 ### Requirement: DSH configuration uses public static composition
 
 DSH uses public CLI/ACP/config, no internal SDK/plugin/session decoder. Static scan
@@ -390,6 +477,34 @@ disabled/removed/unknown module composition fail without guessing a default or h
 Passive dotenv/OAuth import is not supported. Public composition checks stay path-
 capability-based, not exact release pins; cross-version execution needs separate
 native evidence. Model and collaboration restore remain independent.
+
+Settings reads SHALL resolve the current executable and native configuration without
+running a diagnostic version command. Explicit discovery MAY obtain the version.
+A model facts capture SHALL check the public composition once and bind that result
+to its observed installation and model-configuration dependencies. It SHALL reread
+those dependencies after both native snapshots and reject changes. Preview and
+Apply admission SHALL perform independent captures; no composition result may be
+reused across them. Apply SHALL reproduce current facts, confirm the accepted intent
+and seal effects once inside the existing writer boundary, after revision and
+principal checks. It SHALL NOT build and clone another complete plan before the
+writer. Idempotent replay SHALL return the admitted operation without repeating
+native preparation. Current dependency, accepted digest, login-item restoration,
+external fingerprint and atomic journal checks remain mandatory; unchanged route
+selections do not authorize skipping native drift checks.
+The typed settings planner SHALL confirm original caller intent against those facts
+and bind the normalized specification to the request digest, Operation identity and
+journal. Existing callers MAY submit the original intent with the returned preview
+digests, including an omitted known Hermes target or preserved Codex model entries.
+Normalization SHALL NOT bypass intent, dependency, revision or Restore authority
+checks; genuinely stale settings continue to report `CHANGE_PREVIEW_STALE`.
+
+#### Scenario: DSH composition changes during or after preview
+
+- **GIVEN** a supported DSH installation and selected published model routes
+- **WHEN** the public composition probe or either native snapshot observes changing dependencies
+- **THEN** the capture is rejected instead of publishing a mixed configuration
+- **AND** Apply checks the then-current composition inside locked admission,
+  even if the earlier Preview succeeded.
 
 ### Requirement: Collaboration proofs distinguish preinstall from installed Skill
 
@@ -474,6 +589,168 @@ all configured Agents or future service state. Verification uses isolated config
 rather than altering a live user's environment, and cannot substitute for ordinary
 native saved-route or real main-Agent delegation acceptance.
 
+### Requirement: Routing adapters share native configuration ownership
+
+Applying managed Pi, DSH or ordinary OpenCode model settings SHALL install the
+bundled native routing adapter through the existing protected artifact transaction.
+OpenCode MAY explicitly persist `routing_metadata: false` in its additional-model
+selection to omit only the HiRoute metadata plugin. Omission or `true` retains the
+normal installation behavior. The selection SHALL preserve the authorized models,
+classification, actual execution capture and cross-turn evaluation; missing native
+purpose and continuity evidence remains uncertain. It SHALL NOT disable unrelated
+plugins or promise to bypass their native dependency initialization.
+An existing managed adapter SHALL require complete model Restore before this
+selection can be applied. Preview SHALL identify that recovery step before writes;
+a surviving borrowed or foreign adapter SHALL instead require explicit user review.
+Reapplying the normal selection SHALL reinstall the adapter through the same
+transaction, including after a daemon restart or a plugin-free configuration.
+Reconfiguration, activation, drift detection, interrupted-operation retry and
+restore SHALL verify the adapter's exact owned bytes. A conflicting foreign file
+SHALL be preserved. Identical pre-existing files MAY be borrowed and SHALL survive
+restore. Published operations without adapter effects retain their original
+recovery contract; explicit reconfiguration can add the current adapter.
+DSH SHALL preserve the original ownership of its Cordis adapter registration across
+unrelated user edits, model changes and token rotation. Restore SHALL remove an owned
+registration together with its owned adapter file, while retaining a genuinely
+pre-existing registration and borrowed file. A registration created by an earlier
+HiRoute configuration MUST NOT become user-owned merely by reconfiguration.
+
+Pi delegates managed physical Responses and Messages providers through the public
+provider registry and registration seam. It disables managed-provider cache warming,
+whose purpose is otherwise indistinguishable. DSH attaches one public Cordis middleware
+insert and preserves unrelated patch rows. OpenCode uses its native per-call hook
+with a bounded optional session read. OpenCode Workers retain pure mode and split
+main and auxiliary provider declarations within the same authorized frozen Plan;
+they do not enable arbitrary external plugins to obtain routing evidence.
+
+Hermes optional compression evidence SHALL support both the bounded current SDK
+chain API and the compatible 0.20 public row/unique-live-child APIs. The legacy
+unbounded lineage enumeration SHALL NOT run. Missing, locked, ambiguous, corrupt,
+replaced or unsupported native state SHALL suppress optional continuity evidence
+without preventing the model request or changing its authorization. Ordinary
+children and forks SHALL NOT be reported as compression continuations.
+
+Hermes public whole-turn hooks cannot distinguish real input from native async
+completion notifications. The producer SHALL NOT claim fresh human provenance.
+Gateway treats these as observed requests with explicit source uncertainty,
+including older producers' false freshness flag, and retains classification,
+actual execution history and cross-turn evaluation. Missing optional hooks SHALL
+NOT block compatible authorization or model execution; absent native identity
+retains request scope. Compression lineage does not authenticate input origin.
+Accuracy of callback/task association remains a separate limitation, not a reason
+to disable smart routing. Known auxiliary clients remain outside the main history.
+Pi compaction and requested nonempty tree summaries SHALL bind purpose to the
+actual native operation's AbortSignal. Serial calls and retries on that signal
+remain auxiliary without a session phase, timeout or terminal callback. A failed,
+cancelled, extension-supplied or omitted summary SHALL NOT mark subsequent ordinary
+requests. Known summary purpose survives unavailable optional cursor evidence.
+Ordinary calls SHALL attach the extension session's cursor only when the provider
+call's sessionId matches that live native session; a summary requires its own
+matched operation signal. An unmatched call keeps its original provider options.
+Missing signal remains unknown. Session, purpose and branch facts SHALL be frozen
+before asynchronous provider execution. Native projection tri-state supplies
+observed event/compression cursor evidence, never final wire input positions or
+human provenance. Branch evidence includes the leaf and ordered native path; a
+shared user entry alone cannot distinguish branches.
+Pi SHALL write request metadata through options.headers at the provider seam and
+retain the original stream implementation exactly once, including auth, payload,
+retry and cancellation semantics. Reload, session/model replacement and provider
+refresh SHALL NOT stack wrappers or revive a superseded delegate. Missing public
+registration-identity capability or optional metadata failure SHALL preserve native
+provider availability. The exact-metadata scope is one managed CLI runtime per
+process; arbitrary SDK hosts that share and independently unload a mutable
+provider registry, third-party virtual routes and signal-replacing summaries
+require separate evidence. A transient optional failure SHALL NOT latch routing
+off, and summary content SHALL NOT reconstruct prior accepted task execution.
+DSH managed model streams SHALL retain minimal purpose/session evidence across
+native LLM service isolation, including Web session main and title calls. Listening
+across service scopes SHALL NOT attach metadata to unmanaged providers or remove
+the existing Agent/grant transport gate.
+DSH relay/settlement envelopes after the latest actual input SHALL
+NOT acquire that input's proof merely by arriving in its active native turn.
+OpenCode binds a bounded native message lookup to the current message ID, preserving
+native page order rather than deriving chronology from opaque IDs. A positively typed,
+synthetic-only compaction followup emits the `existing_turn` input guard with that
+current message ID; a successful summary's exact parent and checkpoint are advisory
+compression cursors, never authority to select an old or newer queued task. Without
+an independently captured boundary, the continuation temporarily falls back and
+captures its actual output with unavailable input. Later ordinary A/B requests SHALL
+recover classification, capture and cross-turn evaluation in the same session.
+Lookup failure retains minimal purpose/session evidence and observed-batch semantics;
+it SHALL NOT erase a known auxiliary purpose or invent a synthetic-input guard.
+Unbound synthetic child results remain observed with uncertainty. These adapter facts
+do not authenticate arbitrary third-party transformations of the final provider
+payload. Such unsupported composition MUST NOT be claimed as verified recovery.
+
+Retained Hermes `X-Hermes-Observed-Input` v1 headers are non-authoritative
+compatibility hints. A clean-text digest or reverse ordinal SHALL NOT select a
+current event, remove later Users or reconstruct original task input. Current
+Hermes adapters SHALL use observed-batch semantics and retain actual execution
+and cross-turn evaluation with explicit source and association uncertainty.
+
+### Requirement: Optional native routing evidence separates purpose, input and history
+
+The `X-HiRoute-Routing-Context` v2 object SHALL carry `version:2`, the matching
+`agent` family and `purpose`. Known auxiliary purposes (`compaction`, `summary`,
+`title`, `session-title`, `prewarm`) are resolved before optional enrichment.
+Ordinary purposes are `main` and `unknown`. One header of at most 4096 bytes is
+accepted. Duplicate fields/headers and contradictory identity channels reject the
+affected evidence; malformed JSON is never mined for a trusted purpose substring.
+Missing/invalid enrichment cannot disable compatible model execution.
+
+Optional `session_id`, `turn_id`, `request_id` and `checkpoint` use the existing
+printable native-ID limit of 128 UTF-8 bytes. `session_id` must match an independently
+admitted native identity. `request_id` is advisory and never deduplicates Gateway
+executions. `branch:{leaf_id,path_digest}` supplies a bounded native cursor;
+`continuation:{kind,from_turn_id?,from_checkpoint?,to_checkpoint?}` supplies an
+optional `same_turn` or `compression` claim. Neither grants history authority.
+Only the existing authenticated consumer/workspace/grant/route/protocol scope may
+own captures. Unknown versions retain independently usable native identity and
+ordinary observed routing.
+
+`input` may be `observed_batch` with optional `event_id`, or `native_messages`
+with `event_id`, `coverage:"window"`, `messages:[{index,sha256}]` and `scope_digest`.
+The latter admits at most 32 strictly ordered unique positions among at most 128
+final User envelopes and 2 MiB supported text. Each message digest hashes the UTF-8
+compact JSON array of its text parts; scope_digest hashes the compact ordered array
+of lowercase per-User digest strings. Tool-only envelopes do not take User ordinals.
+Unsupported media/tool/provider-state parts invalidate the proof instead of being
+dropped. Valid proof selects only current input and never reclassifies unlisted
+Users as System or proves human authorship. Failure falls back to the full latest
+wire User envelope. Legacy v1 inputs remain readable through one ingress normalization;
+they cannot acquire stronger current-version semantics by adding unknown fields.
+
+`input:{kind:"existing_turn",event_id}` is a negative guard for positively identified
+synthetic continuation input on a `main` execution. Its bounded `event_id` SHALL
+equal the current `turn_id` and its session/family SHALL match independent native
+identity. It SHALL NOT replace that ID with a predecessor, prove human origin, grant
+ancestry or detach the actual output as auxiliary. Without independently captured
+input/decision continuity, this request temporarily falls back, retains actual output
+and marks its input `native_continuation_input` unavailable. Later ordinary input
+is independently eligible for classification and assessment. Compression cursors alone
+SHALL NOT apply this guard. Invalid guards retain observed routing. Matching current
+installed resources and Gateway are required for this additive v2 capability; an
+older reader may discard unknown enrichment and does not promise synthetic-input
+protection. The registered legacy v1 reader retains its existing semantics.
+
+Validated current-input windows SHALL preserve their canonical first/last positions
+through capture admission. Multiple input envelopes in that window and trailing
+native context SHALL NOT create a false uncaptured execution between completed A
+and new B. A window cannot span model/tool execution. Earlier uncaptured turns
+still fence the preceding assessment, and uncaptured output after the selected
+window still makes its captured suffix partial. Original roles, bytes, response
+boundaries and source uncertainty remain unchanged.
+
+#### Scenario: New input follows compaction and carries trailing context
+
+- **WHEN** A completes after shortened history and B has a valid input window followed by a native User-role context envelope
+- **THEN** B classifies its selected input and can assess A's actual completed stage, without capturing the summary or trailing context as A's execution or treating B as a missing earlier turn.
+
+#### Scenario: Synthetic continuation has a new native message ID
+
+- **WHEN** a main compaction continuation names a former turn but has no independently captured execution boundary, including after Gateway restart
+- **THEN** its synthetic input cannot be classified or captured as new task intent, its actual output remains captured with unavailable input, and subsequent A/B requests resume classification with B assessing A's actual execution without importing the summary.
+
 ### Requirement: Reversible Hermes profile connection and activation guidance
 
 Desktop SHALL show Hermes alongside other supported Agents before a profile is
@@ -488,6 +765,13 @@ back to another profile. A failed default-profile read SHALL preserve the other
 Agent entries and allow selection of another directory.
 
 HiRoute SHALL configure the selected effective Hermes profile's default main model to the chosen published Plan alias and automatically install and enable the required HiRoute integration resources when the connection is applied from CLI or Desktop. Native connection fields and resources SHALL follow existing reversible ownership and transaction contracts, preserving unrelated native configuration and user data. Connection status/guidance SHALL identify the configured scope, report statically known selection overrides and applicable reload/model-selection actions, and keep unobserved live selection unknown. Installed/enabled resources SHALL NOT be represented as proof that an already-running Hermes process loaded them. HiRoute SHALL publish its Hermes integration requirements and reject a new connection before native writes only when required plugin/configuration or transport/header interfaces are incompatible. Older version labels and optional reasoning-replay limitations SHALL produce upgrade guidance rather than block an otherwise compatible connection. Independent Skill preparation, passive scan and existing owned recovery/restore SHALL use their own required capabilities rather than a blanket new-connection version gate.
+
+Each journaled native plugin module, manifest or routing adapter SHALL contain
+nonempty UTF-8 content of at most 32 KiB, measured in bytes, without NUL. Actual
+bundled Hermes, Pi, DSH and OpenCode resources SHALL fit through the current intent
+constructor and decoder. This per-file bound preserves admitted content of
+16 KiB or less and the existing ownership, authorization and digest bindings;
+independent Skill resources retain their 16 KiB limit.
 
 #### Scenario: Open Hermes before selecting a profile
 
@@ -553,6 +837,32 @@ HiRoute SHALL let the owner independently configure, inspect and restore task de
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/125#issuecomment-6186244084
+
+### Requirement: Selected Agent refresh reads only its current context
+
+Refreshing a known Agent after a save SHALL verify that exact context without
+scanning neighboring Agents or the caller's default Hermes directory. A model-only
+save MAY use the fresh model projection without repeating version diagnostics or
+unmodified Skill reads. The current native file, grant and installed publication
+join remains required; a successful Apply receipt alone is not readback evidence.
+Unrefreshed Skill state SHALL remain explicit rather than appearing configured or
+disabled. Opening that Skill's normal editor SHALL read its current selection before
+seeding the draft. Codex root/profile/access metadata and explicit Hermes native
+targets retain their scoped full read where required to validate the selected target.
+`ScanAgents` MAY accept an optional `context_id` with its exact native target;
+omitting it retains the existing full-scan behavior. An invalid context, mismatched
+native target or changed selected Codex root/profile SHALL fail without rebinding
+the caller to another context. Explicit full rescan remains the recovery path.
+The selected read SHALL retain before/after service revision, publication, recovery,
+client authority and window-lifetime validation; discovery alone never proves
+that settings or a saved operation are effective.
+
+#### Scenario: A save refresh has an unrelated installed Agent
+
+- **WHEN** the client refreshes the saved Agent's exact current context
+- **THEN** the affected settings are freshly verified, without launching or reading
+  the unrelated Agent's configuration
+- **AND** an external change to the selected context is reported for explicit recovery.
 
 ### Requirement: Supported Agent discovery preserves scope and remains actionable
 

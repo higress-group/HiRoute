@@ -163,3 +163,49 @@ fn codex_catalog_matching_digest_does_not_replace_schema_validation() {
     );
     assert!(!path.exists());
 }
+
+#[test]
+fn current_catalog_dependency_requires_exact_protected_and_installed_bytes() {
+    for damage in [
+        "none",
+        "protected-missing",
+        "protected-different",
+        "installed",
+    ] {
+        let temp = crate::test_tempdir().unwrap();
+        let path = temp.path().join("catalog.json");
+        let bytes = catalog();
+        let intent = catalog_intent(&bytes);
+        let op = operation();
+        let artifacts = store(temp.path(), intent.target(), &path);
+        artifacts.save_native_restore(&op, &intent, &bytes).unwrap();
+        let effect = restage_codex_catalog(&artifacts, &op, &intent).unwrap();
+        artifacts.activate_artifact(&effect).unwrap();
+        let protected = artifacts.restore_root.join(format!(
+            "{}.native-restore",
+            ManagedArtifactStore::marker_key(&op, intent.effect_id())
+        ));
+        match damage {
+            "protected-missing" => fs::remove_file(&protected).unwrap(),
+            "protected-different" => {
+                fs::remove_file(&protected).unwrap();
+                artifacts
+                    .save_native_restore(&op, &intent, b"different authenticated bytes")
+                    .unwrap();
+            }
+            "installed" => write(&path, b"different current catalog"),
+            _ => {}
+        }
+        let dependency = crate::control::artifact_dependencies::Dependency {
+            operation: op,
+            intent,
+            receipt: Some(effect),
+            required: true,
+        };
+        assert_eq!(
+            artifacts.validate_dependencies(&[dependency]).is_ok(),
+            damage == "none",
+            "{damage}"
+        );
+    }
+}

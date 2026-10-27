@@ -60,6 +60,11 @@ impl DesktopFailure {
                 "override_active" => EventErrorCode::OverrideActive,
                 "unsupported_platform" => EventErrorCode::UnsupportedPlatform,
                 "diagnostics_unavailable" => EventErrorCode::DiagnosticsUnavailable,
+                "RESIDENT_UNAVAILABLE" => EventErrorCode::ResidentUnavailable,
+                "CLIENT_CONTEXT_INVALID" => EventErrorCode::ClientContextInvalid,
+                "READ_SNAPSHOT_CHANGED" => EventErrorCode::ReadSnapshotChanged,
+                "CONFIRMATION_STALE" => EventErrorCode::ConfirmationStale,
+                "RESPONSE_DATA_MISSING" => EventErrorCode::ResponseDataMissing,
                 _ => EventErrorCode::ExternalError,
             },
         }

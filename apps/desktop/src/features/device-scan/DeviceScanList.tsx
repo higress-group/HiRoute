@@ -1,7 +1,9 @@
 import type { Agent } from '../../agents';
+export type DeviceScanAgent = Pick<Agent, 'agent_id' | 'configuration_state'>;
 import type { SubscriptionCandidate } from '../subscriptions/types';
 import { BrandIcon, UiIcon } from '../../ui';
 import { agentBrandFromId } from '../../ui/BrandIcon';
+import { agentDisplayName as agentName } from '../agents/ecosystems';
 
 export type ComputeScanItem = {
   agent_id: string;
@@ -27,16 +29,6 @@ export type ComputeScanResult = {
   connections: ComputeScanItem[];
   diagnostics: { agent_id: string; reason: string; native_provider_id?: string; model_id?: string }[];
 };
-
-function agentName(agentId: string, language: 'zh' | 'en') {
-  if (agentId.includes('claude')) return 'Claude Code';
-  if (agentId.includes('codex')) return 'Codex';
-  if (agentId === 'agent_dsh_default') return 'DeepSeek Harness';
-  if (agentId === 'agent_pi_default') return 'Pi';
-  if (agentId === 'agent_hermes_default') return 'Hermes';
-  if (agentId.includes('qoder')) return 'Qoder';
-  return language === 'zh' ? '本机 Agent' : 'Local agent';
-}
 
 function connectionName(optionId: string | undefined, language: 'zh' | 'en') {
   if (!optionId) return language === 'zh' ? '本机模型配置' : 'Local model configuration';
@@ -64,7 +56,7 @@ function configurationMessage(item: ComputeScanItem, language: 'zh' | 'en') {
   return language === 'zh' ? '已检测到配置，但当前无法安全复用。' : 'Configuration found, but it cannot be reused safely yet.';
 }
 
-function agentScanState(agent: Agent, language: 'zh' | 'en') {
+function agentScanState(agent: DeviceScanAgent, language: 'zh' | 'en') {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   if (agent.configuration_state === 'executable_not_runnable') {
     return {
@@ -126,7 +118,7 @@ export function DeviceScanList({
   language: 'zh' | 'en';
   subscriptions: SubscriptionCandidate[];
   computeItems: ComputeScanItem[];
-  agents: Agent[];
+  agents: DeviceScanAgent[];
   subscriptionScanFailed: boolean;
   subscriptionRuntimeUnavailable: boolean;
   computeScanFailed: boolean;

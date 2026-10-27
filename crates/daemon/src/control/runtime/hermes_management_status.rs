@@ -114,20 +114,21 @@ impl LocalControlAdapter {
                 return Ok(status);
             }
         }
-        let mut selected = None;
-        for operation in stores
+        let selected = stores
             .control()
-            .succeeded_agent_operations_for_kinds(
+            .find_verified_agent_operation(
                 &WorkspaceId::default(),
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
+                |operation| {
+                    belongs(operation).map_err(|_| {
+                        hiroute_domain::PortError::new(
+                            hiroute_domain::PortErrorCode::Corrupt,
+                            "agent.management.current-fact",
+                        )
+                    })
+                },
             )
-            .map_err(super::map_port)?
-        {
-            if belongs(&operation)? {
-                selected = Some(operation);
-                break;
-            }
-        }
+            .map_err(super::map_port)?;
         let Some(operation) = selected else {
             return Ok(status);
         };

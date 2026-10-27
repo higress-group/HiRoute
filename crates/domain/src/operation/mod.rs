@@ -600,6 +600,21 @@ impl ExternalEffectIntentV1 {
         if !matches!(desired_mode, 0o600 | 0o640 | 0o644) {
             return Err(OperationValidationError::InvalidArtifactMode);
         }
+        // The private immutable effect carries the complete authentication result.
+        // Reuse it for registry admission and the later Plan/control join instead
+        // of decoding the same publication three times during a cold load.
+        let content_publication = if routing_content::is_effect(&desired) {
+            Some(Arc::new(routing_content::decode_external(
+                &effect_id,
+                kind,
+                &target,
+                &desired,
+                desired_mode,
+                sensitive,
+            )?))
+        } else {
+            None
+        };
         let setup_registered = match kind {
             OwnedEffectKind::Publication => {
                 effect_id == "publication-setup"
@@ -626,15 +641,16 @@ impl ExternalEffectIntentV1 {
             sensitive,
         )
         .is_ok();
-        let routing_registered = routing::validate_external_components(
-            &effect_id,
-            kind,
-            &target,
-            &desired,
-            desired_mode,
-            sensitive,
-        )
-        .is_ok();
+        let routing_registered = content_publication.is_some()
+            || routing::validate_external_components(
+                &effect_id,
+                kind,
+                &target,
+                &desired,
+                desired_mode,
+                sensitive,
+            )
+            .is_ok();
         let permission_registered = agent_config_permission::validate_external_components(
             &effect_id,
             kind,
@@ -663,18 +679,6 @@ impl ExternalEffectIntentV1 {
         {
             return Err(OperationValidationError::UnregisteredEffectPlan);
         }
-        let content_publication = if routing_content::is_effect(&desired) {
-            Some(std::sync::Arc::new(routing_content::decode_external(
-                &effect_id,
-                kind,
-                &target,
-                &desired,
-                desired_mode,
-                sensitive,
-            )?))
-        } else {
-            None
-        };
         Ok(Self {
             content_publication,
             effect_id,
@@ -1712,6 +1716,11 @@ pub trait ControlRepositoryPort {
     }
     /// Persists a terminal state and releases the durable single-writer claim when safe.
     fn finish_operation(&self, operation: &mut OperationV1) -> PortResult<u64>;
+    /// Read the authoritative completion obligation for this exact committed terminal
+    /// journal. A settled idempotent replay must not run old cleanup on newer state.
+    fn operation_finalization_pending(&self, operation: &OperationV1) -> PortResult<bool>;
+    /// Clear durable post-commit work only after the real external finalizer succeeded.
+    fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()>;
     /// Persists a non-terminal settings tail and atomically releases this operation's writer
     /// claim in the same control transaction. Fails when another operation holds the claim.
     fn save_operation_tail(&self, operation: &mut OperationV1) -> PortResult<()>;
@@ -1942,6 +1951,15 @@ pub trait ExternalEffectPort {
     }
     fn finish_publication_activation(&self, _operation: &OperationV1) -> PortResult<()> {
         Ok(())
+    }
+    /// Commit local terminal effects while the production owner retains the affected
+    /// admission guard. This is one control-store transaction, never a cross-store lock.
+    fn finish_local_operation(
+        &self,
+        control: &dyn ControlRepositoryPort,
+        operation: &mut OperationV1,
+    ) -> PortResult<u64> {
+        control.finish_operation(operation)
     }
     /// Persist adapter-owned activation metadata from the admitted plan. Runs under the
     /// existing writer, including replay of an artifact that is already applied.

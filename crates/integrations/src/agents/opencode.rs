@@ -266,7 +266,23 @@ impl OpenCodeNativeContext {
         {
             for name in ["plugin", "plugins"] {
                 match std::fs::read_dir(root.join(name)) {
-                    Ok(mut entries) => executable_plugins |= entries.next().is_some(),
+                    Ok(entries) => {
+                        for entry in entries {
+                            let entry = entry.map_err(|_| Error::SourceUnavailable)?;
+                            let bundled = entry.file_name() == "hiroute-routing.js"
+                                && entry
+                                    .file_type()
+                                    .map_err(|_| Error::SourceUnavailable)?
+                                    .is_file()
+                                && super::filesystem_config::read_system_config_bytes(
+                                    &entry.path(),
+                                )?
+                                .is_some_and(|(bytes, _)| {
+                                    bytes.as_slice() == super::OPENCODE_ROUTING_ADAPTER.as_bytes()
+                                });
+                            executable_plugins |= !bundled;
+                        }
+                    }
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                     Err(_) => return Err(Error::SourceUnavailable),
                 }
@@ -397,7 +413,8 @@ pub fn opencode_provider(
     };
     let mut options = serde_json::json!({"baseURL":endpoint,"apiKey":api_key});
     if let Some(grant) = local_grant {
-        options["headers"] = serde_json::json!({"X-HiRoute-Token":grant});
+        options["headers"] =
+            serde_json::json!({"X-HiRoute-Token":grant,"X-HiRoute-Agent":"opencode"});
     }
     Ok(
         serde_json::json!({"npm":sdk,"name":"HiRoute","options":options,"models":{(model.alias.clone()):{

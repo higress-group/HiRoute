@@ -518,6 +518,9 @@ fn get_account_models(
         }
     }
     let terminal = result.is_empty() && model_discovery::latest_is_terminal(&value);
+    if terminal && let Some(process_id) = model_discovery::retryable_failure(&value) {
+        return Err(AccountDiscoveryError::TransientModelCatalog { process_id });
+    }
     Ok((result, terminal))
 }
 

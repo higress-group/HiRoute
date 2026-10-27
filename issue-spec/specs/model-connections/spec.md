@@ -350,6 +350,17 @@ replacement credentials or capability issuance. Revision conflicts and transient
 CPA/network failures retain configuration and report retry/repair. Deleted/disabled
 sources cannot be revived by late work, and sent requests cannot be recalled.
 
+An enabled saved source whose current CPA process has an empty directory after a
+confirmed transient network failure SHALL recover through existing maintenance,
+without requiring repeated user checks. Ordinary reads and Attempt issuance SHALL
+NOT initiate this refresh. Maintenance may refresh once per cycle only after a
+current, quiescent failure observation; it shares the original control deadline
+and backs off repeated failures from five seconds to at most once per minute.
+Authentication failures, revoked or replaced accounts, successful empty directories,
+invalid catalogs and missing observations do not authorize this retry. Recovery
+must recheck saved-source revision, account identity, controls, directory pins and
+publication authority; it cannot synthesize membership or import new models.
+
 ### Requirement: Borrowed Codex auth follows its supported file semantics
 
 An explicit `HIROUTE_CODEX_AUTH_SOURCE` selects that file; otherwise borrowing uses
@@ -375,6 +386,13 @@ The packaged CPA locator binds the adjacent executable to its final signed-byte
 identity; missing, changed, or nonexecutable CPA affects subscriptions only and
 cannot silently use a user's different CPA. Native API and control remain usable.
 Provider failures are isolated from each other.
+
+Release Desktop builds MUST reject development-only, invalid or wrong-target CPA
+manifests before producing an executable, using the same manifest policy as native
+launch. Optional launch-time rejection MUST retain a closed diagnostic cause.
+An absent CPA runtime SHALL remain runtime-unavailable in maintenance, model
+management and routing rather than claiming that authentication failed. These
+failures SHALL NOT rewrite saved source/model choices or block unrelated sources.
 
 Credential/profile/file/Keychain/management-HTTP/process I/O MUST NOT synchronously
 block Gateway async workers or hold their blocking locks. Bounded executors limit

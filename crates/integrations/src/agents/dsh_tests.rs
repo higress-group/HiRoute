@@ -6,6 +6,57 @@ use hiroute_domain::{
 const OWNER: &str = "hiroute-main-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 #[test]
+fn dsh_routing_adapter_insert_is_idempotent_restorable_and_rejects_foreign_ownership() {
+    let original = b"# keep this\n- id: other\n  config: {keep: true}\n";
+    let original_patch = Patch::parse(Some(original)).unwrap();
+    let uri = "file:///synthetic/hiroute-routing.mjs";
+    let configured = original_patch.edit_routing_adapter(uri, None).unwrap();
+    assert!(configured.starts_with(original));
+    let restored_patch = Patch::parse(Some(&configured)).unwrap();
+    assert_eq!(
+        restored_patch.edit_routing_adapter(uri, None).unwrap(),
+        configured
+    );
+    assert_eq!(
+        restored_patch
+            .edit_routing_adapter(uri, Some(&original_patch))
+            .unwrap()
+            .as_slice(),
+        original
+    );
+    let edited = [
+        configured.as_slice(),
+        b"- id: later\n  config: {keep: later}\n",
+    ]
+    .concat();
+    assert_eq!(
+        Patch::parse(Some(&edited))
+            .unwrap()
+            .edit_routing_adapter(uri, Some(&original_patch))
+            .unwrap()
+            .as_slice(),
+        [
+            original.as_slice(),
+            b"- id: later\n  config: {keep: later}\n"
+        ]
+        .concat()
+    );
+    let foreign = b"- insert: [{id: hiroute-routing, name: 'file:///foreign.mjs'}]\n";
+    assert!(
+        Patch::parse(Some(foreign))
+            .unwrap()
+            .edit_routing_adapter(uri, None)
+            .is_err()
+    );
+    assert!(
+        Patch::parse(Some(b"[{id: foreign}]\n"))
+            .unwrap()
+            .edit_routing_adapter(uri, None)
+            .is_err()
+    );
+}
+
+#[test]
 fn dsh_additional_routes_preserve_foreign_configuration_and_restore_after_user_edits() {
     let original = b"# user's configuration\n- id: llm-pi-ai\n  config:\n    providers:\n      native:\n        api: openai-responses\n        baseURL: https://native.invalid/v1\n        models: [{id: original}]\n- id: agent-default-model\n  config: {provider: native, model: original}\n- id: unrelated\n  config: {keep: true}\n";
     let models: Vec<_> = [

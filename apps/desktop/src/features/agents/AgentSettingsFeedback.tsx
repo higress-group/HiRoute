@@ -33,6 +33,10 @@ export function AgentSettingsFeedback({ preview, agent: selected, facet, default
           ? `${text('原 Codex 默认模型没有同账号可用路由；请接入对应来源，或改选“只使用已配置的 HiRoute 模型”：', 'The native Codex default has no proven same-account route. Connect its source or select HiRoute-only: ')}${(block.model_ids ?? []).join(', ')}`
         : block.reason === 'restore_native_model_invalid'
           ? text('恢复将留下无效的原生默认模型。请在“连接详情与恢复”中明确选择一个原生模型后重试。', 'Restoring would leave an invalid native default. Choose a native model under Connection details and recovery, then retry.')
+        : block.reason === 'native_routing_adapter_restore_required'
+          ? text('先在连接详情中恢复 OpenCode 模型配置，再重新应用 routing_metadata=false。恢复会移除 HiRoute 拥有的元数据插件；模型路由可重新配置，其他插件保持不变。', 'Restore OpenCode model settings under connection details, then reapply with routing_metadata=false. Restore removes the metadata plugin owned by HiRoute; model routes can be configured again and other plugins stay unchanged.')
+        : block.reason === 'native_routing_adapter_external_resource'
+          ? text('HiRoute 元数据插件路径存在外部或借用文件。请在所选 OpenCode 配置目录核对并手动停用该文件，再重新预览；HiRoute 不会删除它。其他外部插件仍可能等待依赖安装。', 'An external or borrowed file exists at the HiRoute metadata plugin path. Review and disable it manually in the selected OpenCode configuration directory, then preview again; HiRoute will not delete it. Other external plugins may still wait for dependencies.')
         : block.reason === 'additional_default_in_use'
           ? text('当前默认模型仍引用将被移除的路由。请先在所选客户端中切换到其他模型，然后重试；HiRoute 不会替你更改默认模型。', 'The default model still uses a route being removed. Switch to another model in the selected client, then retry; HiRoute will not change the default for you.')
         : block.reason === 'qoder_default_in_use'

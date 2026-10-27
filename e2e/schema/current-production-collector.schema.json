@@ -57,15 +57,15 @@
         "records_digest": {"type": "string", "minLength": 71, "maxLength": 71},
         "producer_id": {"type": "string", "minLength": 1}, "producer_epoch": {"type": "string", "minLength": 1},
         "stream_id": {"type": "string", "minLength": 1}, "first_sequence": {"const": 1},
-        "last_sequence": {"const": 14}, "record_count": {"const": 14}, "terminal": {"const": "request_finished"},
+        "last_sequence": {"const": 15}, "record_count": {"const": 15}, "terminal": {"const": "request_finished"},
         "records": {
-          "type": "array", "minItems": 14, "maxItems": 14,
+          "type": "array", "minItems": 15, "maxItems": 15,
           "items": {
             "type": "object", "additionalProperties": false,
             "required": ["schema_version", "schema_digest", "channel", "producer", "sequence", "event_id", "correlation", "attempt_id", "authority_id", "authority_epoch", "served_model_id", "selector_source", "agent_plan_id", "route", "gateway_publication_revision", "gateway_publication_digest", "grant_id", "grant_generation", "ingress_protocol", "occurred_at_unix_nanos", "fact", "loss_watermark", "completeness_delta"],
             "properties": {
               "schema_version": {"const": "hiroute.observation.execution-fact-envelope/v3"},
-              "schema_digest": {"const": "sha256:1329bf3c2891e91bf16d7d737d31f20592b0acbc145b0ba7209bc9389169c124"},
+              "schema_digest": {"const": "sha256:24f26b9f29ecc05e85ea7650da55454f1470bb3fbd888916f02389b4727bc8bc"},
               "pricing": {"type": "object"},
               "channel": {"const": "execution_fact"}, "producer": {"type": "object"},
               "sequence": {"type": "integer", "minimum": 1}, "event_id": {"type": "string", "minLength": 1},

@@ -13,8 +13,11 @@ use crate::server::request_plan::IngressProtocol;
 
 use super::{
     ProtocolAdapterError, RenderedSseEvent, client_can_represent_message_phase, responses_terminal,
+    synthetic_responses_item_id,
 };
 
+#[path = "client_projection.rs"]
+mod projection;
 #[cfg(test)]
 #[path = "client_stream_tests.rs"]
 mod tests;
@@ -131,27 +134,7 @@ impl IncrementalClientSseRenderer {
             .into());
         }
         self.validate_event_capability(&event.event)?;
-        let omit = match &event.event {
-            ModelEvent::ProviderState { state } => match self.profile.protocol {
-                IngressProtocol::Responses => state.kind != "encrypted_content",
-                IngressProtocol::Messages => !matches!(
-                    state.kind.as_str(),
-                    "thinking_signature" | "redacted_thinking"
-                ),
-                IngressProtocol::ChatCompletions => true,
-            },
-            ModelEvent::ContentBlockStarted {
-                block_kind: ResponseBlockKind::Reasoning,
-                ..
-            }
-            | ModelEvent::ReasoningDelta { .. }
-            | ModelEvent::ReasoningFinished { .. } => {
-                self.profile.protocol == IngressProtocol::Messages
-                    && self.profile.source_protocol != IngressProtocol::Messages
-            }
-            _ => false,
-        };
-        if omit {
+        if !Self::retains_event(&self.profile, &event.event) {
             if matches!(
                 &event.event,
                 ModelEvent::ProviderState { .. } | ModelEvent::ContentBlockStarted { .. }
@@ -428,6 +411,7 @@ impl IncrementalClientSseRenderer {
                 self.named(&mut output, event, json!({"type":event,"sequence_number":self.native_sequence,"item_id":item_id,"output_index":index,"delta":delta}));
             }
             ModelEvent::ToolCallFinished {
+                encrypted_function_args,
                 index,
                 logical_id,
                 tool_kind,
@@ -462,6 +446,9 @@ impl IncrementalClientSseRenderer {
                 self.named(&mut output, done_event, done);
                 let mut item = json!({"type":item_type,"id":item_id,"call_id":logical_id,"name":name,"status":status.as_str()});
                 item[payload_field] = Value::String(arguments);
+                if let Some(encoding) = encrypted_function_args {
+                    item["encrypted_function_args"] = json!(encoding);
+                }
                 if let Some(namespace) = namespace {
                     item["namespace"] = Value::String(namespace.clone());
                 }
@@ -482,7 +469,7 @@ impl IncrementalClientSseRenderer {
                 let usage = responses_usage(&self.usage)?;
                 let mut completed_output = snapshot
                     .iter()
-                    .map(super::render::render_responses_output_block)
+                    .map(|block| super::render::render_responses_output_block(&id, block))
                     .collect::<Result<Vec<_>, _>>()?;
                 for (block, item) in snapshot.iter().zip(&mut completed_output) {
                     if let ResponseBlock::Reasoning { index, .. } = block
@@ -725,6 +712,14 @@ impl IncrementalClientSseRenderer {
     }
 
     fn validate_event_capability(&self, event: &ModelEvent) -> Result<(), ProtocolAdapterError> {
+        if self.profile.protocol != IngressProtocol::Responses
+            && matches!(event,
+            ModelEvent::ToolCallFinished { encrypted_function_args: Some(paths), .. } if !paths.is_empty())
+        {
+            return Err(unrepresentable(
+                "encrypted function arguments require native Responses",
+            ));
+        }
         let response = &self.profile.response;
         let exact = Fidelity::Exact;
         let supported = match event {
@@ -894,9 +889,10 @@ impl IncrementalClientSseRenderer {
         prefix: &str,
         native_item_id: Option<&str>,
     ) -> Result<String, ProtocolAdapterError> {
-        let item_id = native_item_id
-            .map(str::to_owned)
-            .unwrap_or_else(|| format!("{prefix}_{index}"));
+        let item_id = match native_item_id {
+            Some(id) => id.to_owned(),
+            None => synthetic_responses_item_id(self.response_id()?, prefix, index),
+        };
         if item_id.is_empty()
             || item_id.chars().any(char::is_control)
             || self.item_ids.contains_key(&index)
@@ -1141,12 +1137,9 @@ fn responses_usage(usage: &ModelUsage) -> Result<Value, ProtocolAdapterError> {
     let output = usage
         .output_tokens
         .ok_or_else(|| unrepresentable("Responses output usage"))?;
-    if usage.cache_write_tokens.is_some() {
-        return Err(unrepresentable("Responses cache-write usage"));
-    }
     let mut value = json!({"input_tokens":input,"output_tokens":output,"total_tokens":input.saturating_add(output)});
-    if let Some(cache) = usage.cache_read_tokens {
-        value["input_tokens_details"] = json!({"cached_tokens":cache});
+    if let Some(details) = super::render::openai_cache_details(usage) {
+        value["input_tokens_details"] = details;
     }
     if let Some(reasoning) = usage.reasoning_tokens {
         value["output_tokens_details"] = json!({"reasoning_tokens":reasoning});
@@ -1161,12 +1154,9 @@ fn chat_usage(usage: &ModelUsage) -> Result<Value, ProtocolAdapterError> {
     let output = usage
         .output_tokens
         .ok_or_else(|| unrepresentable("Chat output usage"))?;
-    if usage.cache_write_tokens.is_some() {
-        return Err(unrepresentable("Chat cache-write usage"));
-    }
     let mut value = json!({"prompt_tokens":input,"completion_tokens":output,"total_tokens":input.saturating_add(output)});
-    if let Some(cache) = usage.cache_read_tokens {
-        value["prompt_tokens_details"] = json!({"cached_tokens":cache});
+    if let Some(details) = super::render::openai_cache_details(usage) {
+        value["prompt_tokens_details"] = details;
     }
     if let Some(reasoning) = usage.reasoning_tokens {
         value["completion_tokens_details"] = json!({"reasoning_tokens":reasoning});

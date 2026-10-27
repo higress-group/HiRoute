@@ -356,7 +356,7 @@ impl ProductionControlRuntime {
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress
         {
-            let _ = progress.send(hiroute_host_runtime::StorageUpgradePhase::SourceCheck);
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::SourceCheck);
         }
         let stores = LocalStorageSet::open_for_daemon_startup_with_options(storage_root, &startup)
             .map_err(|error| error.to_string())?;
@@ -465,6 +465,12 @@ impl ProductionControlRuntime {
             hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,
         )
         .map_err(|e| e.to_string())?;
+        let dsh_desktop_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent_dsh_desktop",
+            hiroute_integrations::DSH_PROFILE_ID_V1,
+            hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,
+        )
+        .map_err(|e| e.to_string())?;
         let opencode_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
             "agent_opencode_default",
             hiroute_integrations::OPENCODE_PROFILE_ID_V1,
@@ -519,6 +525,34 @@ impl ProductionControlRuntime {
                 root.join("hiroute-management/SKILL.md"),
             ));
         }
+        // An unavailable native context is local to that Agent. Register only
+        // resolved adapter targets so it cannot prevent daemon/control startup.
+        for (subject, kind) in [
+            (&opencode_subject, hiroute_domain::AgentKindV1::OpenCode),
+            (&dsh_subject, hiroute_domain::AgentKindV1::DeepseekHarness),
+            (&pi_subject, hiroute_domain::AgentKindV1::Pi),
+        ] {
+            if let Some(path) = scanner.native_routing_adapter_target(kind) {
+                scoped_targets.push((
+                    AgentConnectionEffectRoleV1::NativeRoutingAdapter
+                        .target_for(subject)
+                        .map_err(|e| e.to_string())?,
+                    path,
+                ));
+            }
+        }
+        scoped_targets.push((
+            AgentConnectionEffectRoleV1::NativeRoutingAdapter
+                .target_for(&dsh_desktop_subject)
+                .map_err(|e| e.to_string())?,
+            scanner.dsh_desktop_routing_adapter_target(),
+        ));
+        scoped_targets.push((
+            AgentConnectionEffectRoleV1::ManagedConfiguration
+                .target_for(&dsh_desktop_subject)
+                .map_err(|e| e.to_string())?,
+            scanner.dsh_desktop_models_target(),
+        ));
         let mut external_targets = [
             (
                 opencode_model_target.clone(),
@@ -599,7 +633,7 @@ impl ProductionControlRuntime {
                 Ok(artifacts) => break artifacts,
                 Err(error) => {
                     // An added JSONC layer must not redirect an existing JSON recovery target.
-                    // The same store validates every marker against the exact candidate path;
+                    // The same store validates each required marker against the exact candidate path;
                     // no new binding metadata or permissive recovery reader is introduced.
                     if matches!(&error, hiroute_local_storage::LocalStorageError::Locked)
                         && let Some(path) = alternatives.next()
@@ -641,7 +675,7 @@ impl ProductionControlRuntime {
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress
         {
-            let _ = progress.send(hiroute_host_runtime::StorageUpgradePhase::Validation);
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
         }
         let delegation_epoch = delegation_epoch()?;
         let plan_admission =
@@ -653,6 +687,8 @@ impl ProductionControlRuntime {
         let delegation_finalization = Arc::new(DelegationFinalization::default());
         let adapter = Arc::new(LocalControlAdapter {
             publication_diagnostics: Mutex::new(Default::default()),
+            publication_marker_cache: Mutex::new(None),
+            settings_publication_candidate: Mutex::new(None),
             stores: Mutex::new(stores),
             price_snapshot: Arc::new(hiroute_application::prices::PriceSnapshotSlot::default()),
             delegation_digest_authority: digest_authority,
@@ -712,9 +748,14 @@ impl ProductionControlRuntime {
             worker_platform.clone(),
             Arc::new(UnavailableWorkerProfileSource),
         ));
-        // Prime opaque scanner descriptors before journal recovery. A recovered Secret step can
-        // resolve only the same exact revision; changed or missing sources fail closed.
-        adapter.refresh_discovery()?;
+        // Recovery needs exact configuration descriptors, not the informational native-version
+        // inventory. A recovered Secret step still rejects a changed or missing source revision.
+        if let Some(progress) = &startup.upgrade_progress
+            && progress.started()
+        {
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::ServiceRecovery);
+        }
+        adapter.prime_discovery()?;
         // Price availability alone does not reject an otherwise authorized model request.
         // Pending price Operations perform mandatory installation during recovery below.
         let _ = adapter.rebuild_price_snapshot();
@@ -966,6 +1007,8 @@ fn delegation_epoch() -> Result<String, String> {
 
 struct LocalControlAdapter {
     publication_diagnostics: Mutex<DiagnosticsPort>,
+    publication_marker_cache: Mutex<Option<publication::DecodedMarker>>,
+    settings_publication_candidate: Mutex<Option<publication::SettingsCandidate>>,
     price_snapshot: Arc<hiroute_application::prices::PriceSnapshotSlot>,
     stores: Mutex<LocalStorageSet>,
     delegation_digest_authority: DigestAuthority,
@@ -1442,197 +1485,7 @@ impl ControlStatePort for LocalControlAdapter {
     }
 }
 
-impl AgentDiscoveryPort for LocalControlAdapter {
-    fn list(&self) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
-        let mut agents = self.discover()?;
-        let targets = self
-            .stores_lock()
-            .map_err(map_port)?
-            .control()
-            .agent_settings_native_targets(&WorkspaceId::default())
-            .map_err(map_port)?;
-        for target in targets {
-            match self.discover_target(&target) {
-                Ok(rows) => agents.extend(rows),
-                Err(_) => {
-                    let subject = hiroute_integrations::hermes_subject(target.config_root())
-                        .map_err(|_| ControlReadError::Corrupt)?;
-                    agents.push(DiscoveredAgentV1 {
-                        native_target: Some(target.clone()),
-                        codex_access: None,
-                        context_id: Some(hiroute_integrations::hermes_context_id(
-                            target.config_root(),
-                        )),
-                        agent_id: subject.agent_id().into(),
-                        profile_id: subject.profile_id().into(),
-                        version: "unknown".into(),
-                        supported: false,
-                        configuration_state: "selected_target_unavailable".into(),
-                        available_surfaces: Default::default(),
-                        native_model_catalog: None,
-                        registered_configuration: None,
-                        discovered_credential: None,
-                        permission_hardening: None,
-                    });
-                }
-            }
-        }
-        Ok(agents)
-    }
-    fn discover_target(
-        &self,
-        target: &hiroute_domain::AgentNativeTargetV1,
-    ) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
-        let target = hiroute_integrations::canonical_hermes_target(target)
-            .map_err(|_| ControlReadError::Denied)?;
-        let (installation, config_available) =
-            match hiroute_integrations::hermes_settings_installation(&target) {
-                Ok(installation) => (installation, true),
-                Err(_) => (
-                    hiroute_integrations::hermes_management_installation(&target)
-                        .map_err(|_| ControlReadError::Denied)?,
-                    false,
-                ),
-            };
-        let supported = config_available
-            && installation
-                .require_action(hiroute_domain::AgentAction::ConfigureModel)
-                .is_ok();
-        let context_id = hiroute_integrations::hermes_context_id(target.config_root());
-        Ok(vec![DiscoveredAgentV1 {
-            native_target: Some(target),
-            context_id: Some(context_id),
-            codex_access: None,
-            agent_id: installation.agent_id,
-            profile_id: installation.profile.profile_id,
-            version: installation.version,
-            supported,
-            configuration_state: if supported {
-                "registered"
-            } else {
-                "unsupported_native_feature"
-            }
-            .into(),
-            available_surfaces: [hiroute_domain::AgentModelSurfaceV2::HermesCli].into(),
-            native_model_catalog: None,
-            registered_configuration: None,
-            discovered_credential: None,
-            permission_hardening: None,
-        }])
-    }
-    fn discover(&self) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
-        let fixed_candidates =
-            hiroute_application::control::RoutingFactsPort::routing_compilation_snapshot(
-                self,
-                &WorkspaceId::default(),
-            )
-            .map(|snapshot| snapshot.facts.candidates)
-            .unwrap_or_default();
-        let codex_catalog = self.scanner.codex_catalog_summary().ok().and_then(|catalog| {
-            let metadata_source = match catalog.metadata_source {
-                hiroute_integrations::CodexCatalogMetadataSourceV1::UserConfigured => {
-                    AgentModelCatalogMetadataSourceV1::UserConfigured
-                }
-                hiroute_integrations::CodexCatalogMetadataSourceV1::TargetCache => {
-                    AgentModelCatalogMetadataSourceV1::TargetCache
-                }
-                hiroute_integrations::CodexCatalogMetadataSourceV1::TargetBundled => {
-                    AgentModelCatalogMetadataSourceV1::TargetBundled
-                }
-                // This is an output artifact, never a native metadata source.
-                hiroute_integrations::CodexCatalogMetadataSourceV1::HirouteGenerated => {
-                    return None;
-                }
-            };
-            let models = catalog
-                .models
-                .into_iter()
-                .map(|model| {
-                    let mut source_options = fixed_candidates
-                        .iter()
-                        .filter(|candidate| {
-                            candidate.native_transport_model == model.client_model_id
-                                || candidate.binding.upstream_model_id == model.client_model_id
-                        })
-                        .map(|candidate| {
-                            let state = if candidate.is_routable() {
-                                AgentModelSourceCoverageStateV1::Ready
-                            } else if !candidate.inventory_model_matched
-                                && candidate.authority
-                                    != hiroute_application::compiler::CandidateFactAuthorityV1::SourceLocalUser
-                            {
-                                AgentModelSourceCoverageStateV1::ModelUnconfirmed
-                            } else {
-                                match candidate.source_state {
-                                    MaterializationState::NeedsCredential => {
-                                        AgentModelSourceCoverageStateV1::CredentialRequired
-                                    }
-                                    MaterializationState::NeedsAuthorization => {
-                                        AgentModelSourceCoverageStateV1::AuthorizationRequired
-                                    }
-                                    MaterializationState::Disabled => {
-                                        AgentModelSourceCoverageStateV1::Disabled
-                                    }
-                                    MaterializationState::Ready => {
-                                        AgentModelSourceCoverageStateV1::ModelUnconfirmed
-                                    }
-                                }
-                            };
-                            DiscoveredAgentModelSourceV1 {
-                                binding_id: candidate.binding.binding_id.clone(),
-                                source_label: candidate.connection_option_id.clone(),
-                                account_scope_ref: candidate.binding.source_id.clone(),
-                                account_scope_digest: candidate
-                                    .binding
-                                    .source_identity_digest
-                                    .clone(),
-                                state,
-                                reasoning: candidate.reasoning.clone(),
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    source_options.sort_by(|left, right| {
-                        (&left.source_label, &left.account_scope_ref, &left.binding_id).cmp(&(
-                            &right.source_label,
-                            &right.account_scope_ref,
-                            &right.binding_id,
-                        ))
-                    });
-                    DiscoveredAgentModelV1 {
-                        client_model_id: model.client_model_id,
-                        display_name: model.display_name,
-                        source_options,
-                    }
-                })
-                .collect();
-            Some(DiscoveredAgentModelCatalogV1 {
-                metadata_source,
-                native_default_model: catalog.native_default_model,
-                models,
-            })
-        });
-        self.refresh_discovery()
-            .map_err(|_| ControlReadError::Unavailable)?
-            .into_iter()
-            .map(|discovery| {
-                let mut agent = discovered_agent(discovery)?;
-                agent.context_id = self.settings_context_for_agent(&agent.agent_id);
-                agent.available_surfaces = self.scanner.available_model_surfaces(&agent.agent_id);
-                if agent.agent_id == "agent_codex_default" {
-                    agent.native_model_catalog = codex_catalog.clone();
-                    let access = self.codex_access_view()?;
-                    agent.context_id = Some(if access.selected_mode == "profile" {
-                        access.profile_context_id.clone()
-                    } else {
-                        access.root_context_id.clone()
-                    });
-                    agent.codex_access = Some(access);
-                }
-                Ok(agent)
-            })
-            .collect()
-    }
-}
+mod agent_discovery;
 
 impl ValueScopePort for LocalControlAdapter {
     fn value_plan_ids(

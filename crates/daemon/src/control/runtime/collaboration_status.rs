@@ -57,20 +57,21 @@ impl LocalControlAdapter {
             status.operation_state = Some(pending.state.as_str().into());
             return Ok(status);
         }
-        let operations = stores
+        let selected = stores
             .control()
-            .succeeded_agent_operations_for_kinds(
+            .find_verified_agent_operation(
                 &WorkspaceId::default(),
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
+                |operation| {
+                    belongs(operation).map_err(|_| {
+                        hiroute_domain::PortError::new(
+                            hiroute_domain::PortErrorCode::Corrupt,
+                            "agent.collaboration.current-fact",
+                        )
+                    })
+                },
             )
             .map_err(super::map_port)?;
-        let mut selected = None;
-        for operation in operations {
-            if belongs(&operation)? {
-                selected = Some(operation);
-                break;
-            }
-        }
         let Some(operation) = selected else {
             return Ok(status);
         };

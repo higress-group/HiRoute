@@ -86,13 +86,41 @@ fn physical_release_yields_to_a_pinned_reader_then_truncates_after_it_finishes()
     let start = Instant::now();
     assert!(!checkpoint_pages(&db, start + BUDGET).unwrap());
     assert!(start.elapsed() < BUDGET);
+    let wal = format!("{}-wal", store.activity_path.display());
+    assert!(fs::metadata(&wal).unwrap().len() > 0);
     drop(reader);
-    assert!(checkpoint_pages(&db, Instant::now() + BUDGET).unwrap());
+    assert!(fs::metadata(&wal).unwrap().len() > 0);
+    // Even with no pinned reader, an exhausted pass must defer physical release.
+    // PASSIVE may backfill pages; it must not truncate after its deadline.
+    let expired = Instant::now() - Duration::from_millis(1);
+    assert!(!checkpoint_pages(&db, expired).unwrap());
+    assert!(fs::metadata(&wal).unwrap().len() > 0);
+    // Production resumes pending release on a later capacity cycle. Keep the
+    // original per-pass budget instead of requiring one fsync to finish in it.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut passes = Vec::new();
+    loop {
+        let start = Instant::now();
+        let released = checkpoint_pages(&db, start + BUDGET).unwrap();
+        passes.push((start.elapsed(), released, fs::metadata(&wal).unwrap().len()));
+        if released {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline && passes.len() < 32,
+            "released reader left physical release pending (busy_timeout=0): {passes:?}"
+        );
+        std::thread::yield_now();
+    }
+    assert_eq!(fs::metadata(&wal).unwrap().len(), 0);
     assert_eq!(
-        fs::metadata(format!("{}-wal", store.activity_path.display()))
-            .unwrap()
-            .len(),
-        0
+        db.query_row(
+            "SELECT value FROM observation_meta WHERE key='capacity-reader-fixture'",
+            [],
+            |row| row.get::<_, String>(0)
+        )
+        .unwrap(),
+        "1"
     );
 }
 

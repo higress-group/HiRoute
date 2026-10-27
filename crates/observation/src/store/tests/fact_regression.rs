@@ -141,6 +141,59 @@ fn assert_postcommit_receipt(
 }
 
 #[test]
+fn delivered_native_terminal_failure_freezes_a_failed_receipt_with_actual_attempt() {
+    for model_event in ["response_incomplete", "response_failed"] {
+        let temporary = tempdir().unwrap();
+        let fixture = Fixture::new("delivered-native-failure");
+        let store = open_store(temporary.path());
+        let writer = writer(&store);
+        let channel = fact_channel(&fixture, 512 * 1024);
+        let mut facts = request_facts(&fixture, "attempt-native", finished("attempt-native"), 100);
+        facts.retain(|event| !matches!(event.fact, ExecutionFactV1::ValueSnapshot { .. }));
+        for (index, event) in facts.iter_mut().enumerate() {
+            event.sequence = index as u64 + 1;
+            match &mut event.fact {
+                ExecutionFactV1::AttemptFinished(attempt) => {
+                    assert_eq!(attempt.outcome, AttemptOutcomeV1::Accepted);
+                    attempt.error_class = Some("provider_rejected".into());
+                    attempt.retryable = Some(false);
+                    attempt.provider_model_event = Some(model_event.into());
+                }
+                ExecutionFactV1::RequestFinished { outcome, .. } => {
+                    *outcome = ExecutionRequestOutcomeV1::Failed;
+                }
+                _ => {}
+            }
+            assert!(matches!(
+                offer_fact(&writer, &channel, event.clone()),
+                WriterCycleOutcome::Ack(_)
+            ));
+        }
+        let receipt_id = ReceiptId::parse(fixture.request.as_str()).unwrap();
+        let receipt = store.get_receipt(&fixture.workspace, &receipt_id).unwrap();
+        assert_eq!(receipt.outcome, RequestOutcome::Failed);
+        assert_eq!(
+            receipt.final_attempt_id,
+            Some(AttemptId::parse("attempt-native").unwrap())
+        );
+        assert!(receipt.ordered_facts.iter().any(|event| matches!(
+            &event.fact, ExecutionFactV1::AttemptFinished(attempt)
+                if attempt.provider_model_event.as_deref() == Some(model_event)
+                    && attempt.error_class.as_deref() == Some("provider_rejected")
+        )));
+        drop(channel);
+        drop(writer);
+        drop(store);
+        assert_eq!(
+            open_store(temporary.path())
+                .get_receipt(&fixture.workspace, &receipt_id)
+                .unwrap(),
+            receipt
+        );
+    }
+}
+
+#[test]
 fn postcommit_ordinal_still_rejects_attempts_without_transport_acceptance() {
     for outcome in [
         AttemptOutcomeV1::Rejected,

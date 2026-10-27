@@ -732,6 +732,57 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
         panic!("expected Codex model configuration")
     };
     assert_eq!(fixed_models, std::slice::from_ref(&preserved));
+    // Released callers may retain the original intent rather than copying preview.spec.
+    // Confirmation derives preserved models and protected IDs again from current facts.
+    let original_intent = spec(preserve_selection.clone());
+    assert_ne!(original_intent, proven.spec);
+    let confirmed = confirm_agent_settings(
+        hiroute_application_api::AgentSettingsApplyV2 {
+            spec: original_intent,
+            expected_revisions: hiroute_domain::RevisionSetV1 {
+                target: 0,
+                dependencies: Default::default(),
+            },
+            accept_digest: proven.accept_digest.clone(),
+            dependency_digest: proven.dependency_digest.clone(),
+            idempotency_key: "original-codex-intent".into(),
+            login_item: None,
+        },
+        &proven_facts,
+    )
+    .unwrap();
+    assert_eq!(confirmed.preview().spec, proven.spec);
+    let extra = hiroute_domain::AgentFixedModelSelectionV2 {
+        client_model_id: replacement_candidate.native_transport_model.clone(),
+        candidate: hiroute_domain::CandidateSelectionV1 {
+            binding_id: replacement_candidate.binding.binding_id.clone(),
+            reasoning: preserved.candidate.reasoning.clone(),
+        },
+    };
+    let mut reversed = vec![preserved.clone(), extra];
+    reversed.sort_by(|left, right| right.client_model_id.cmp(&left.client_model_id));
+    let mut unsorted_selection = preserve_selection.clone();
+    unsorted_selection["fixed_models"] = serde_json::to_value(&reversed).unwrap();
+    let unsorted_intent = spec(unsorted_selection);
+    let sorted = preview_agent_settings(unsorted_intent.clone(), &proven_facts).unwrap();
+    assert!(sorted.blockers.is_empty(), "{:?}", sorted.blockers);
+    assert_ne!(sorted.spec, unsorted_intent);
+    let confirmed = confirm_agent_settings(
+        hiroute_application_api::AgentSettingsApplyV2 {
+            spec: unsorted_intent,
+            expected_revisions: hiroute_domain::RevisionSetV1 {
+                target: 0,
+                dependencies: Default::default(),
+            },
+            accept_digest: sorted.accept_digest.clone(),
+            dependency_digest: sorted.dependency_digest.clone(),
+            idempotency_key: "unsorted-codex-intent".into(),
+            login_item: None,
+        },
+        &proven_facts,
+    )
+    .unwrap();
+    assert_eq!(confirmed.preview().spec, sorted.spec);
 
     // A later full-state edit keeps the sealed native route even when the ephemeral
     // connection-only candidate has vanished from current discovery.

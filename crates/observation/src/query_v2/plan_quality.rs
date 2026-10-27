@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use super::{ObservationReaderContext, ObservationV2Error, QueryDeadline, identifier};
 use crate::LocalObservationStore;
 
+#[cfg(test)]
+#[path = "plan_quality_snapshot_tests.rs"]
+mod snapshot_tests;
+
 /// Both projections share the same scope and transaction. Detail filters never
 /// enter this CTE, so pagination and drill-down cannot change the full-scope mean.
 /// The small safe-event catalog excludes known unrelated payloads before opening
@@ -22,7 +26,13 @@ pub(super) const SCOPE: &str = "
       json_extract(q.branch_execution_json,'$.candidate_index') AS candidate_index,
       json_extract(q.branch_execution_json,'$.policy') AS branch_policy,
       json_extract(q.branch_execution_json,'$.policy.floor_millis') AS floor_millis,
-      CASE WHEN q.assessment_partial=0 THEN q.score END AS reliable_score,
+      CASE WHEN q.assessment_partial=0
+        AND COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
+        AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
+        AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) THEN q.score END AS reliable_score,
+      (COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
+        AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
+        AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value)))) AS assessment_covers_stage,
       COALESCE(
         (SELECT a.model_id FROM observation_attempt_models_v2 a
          JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
@@ -88,7 +98,8 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                         CASE WHEN COALESCE(l.conflicted,0)=0 THEN l.run_id END,
                         q.assessment_event_id,q.assessment_trigger_request_id,q.assessed_at_ms,
                         q.target_from_turn_id,q.target_through_turn_id,q.target_from_ordinal,
-                        q.target_through_ordinal,q.score,q.assessment_partial,
+                        q.target_through_ordinal,q.score,
+                        (q.assessment_partial OR NOT q.assessment_covers_stage),
                         CASE WHEN q.reason_present=1
                           THEN (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reason') END ELSE json_extract(p.body_json,'$.fact.reason') END) END,
                         q.assessment_event_id IS NOT NULL AND EXISTS(
@@ -131,6 +142,16 @@ impl LocalObservationStore {
         query: &PlanQualitySamplesQuery,
         now_ms: i64,
     ) -> Result<PlanQualitySamplesPage, ObservationV2Error> {
+        self.plan_quality_samples_inner(reader, query, now_ms, || {})
+    }
+
+    fn plan_quality_samples_inner(
+        &self,
+        reader: &ObservationReaderContext,
+        query: &PlanQualitySamplesQuery,
+        now_ms: i64,
+        after_snapshot: impl FnOnce(),
+    ) -> Result<PlanQualitySamplesPage, ObservationV2Error> {
         reader.check(now_ms, false, false)?;
         validate(query)?;
         let _permit = self.query_permit()?;
@@ -143,12 +164,7 @@ impl LocalObservationStore {
             Connection::open_with_flags(&self.activity_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         let _deadline = QueryDeadline::start_for(&connection, reader)?;
         let transaction = connection.transaction()?;
-        let generation: u64 = transaction.query_row(
-            "SELECT CAST(value AS INTEGER) FROM observation_meta
-             WHERE key='plan_quality_generation'",
-            [],
-            |row| row.get(0),
-        )?;
+        let (generation, visibility) = generations(&transaction)?;
         let cursor = match &query.cursor {
             Some(encoded) => {
                 let cursor: Cursor = self.decode_observation_cursor(encoded)?;
@@ -286,13 +302,13 @@ impl LocalObservationStore {
             None
         };
         transaction.commit()?;
-        let current: u64 = connection.query_row(
-            "SELECT CAST(value AS INTEGER) FROM observation_meta
-             WHERE key='plan_quality_generation'",
-            [],
-            |row| row.get(0),
-        )?;
-        if current != generation {
+        after_snapshot();
+        // Fresh pages already have a consistent summary and detail snapshot.
+        // Ordinary ingestion must not invalidate that complete read. Visibility
+        // changes still fence every response; pagination keeps its strict
+        // generation contract so it cannot mix populations across pages.
+        let (current, current_visibility) = generations(&connection)?;
+        if current_visibility != visibility || (query.cursor.is_some() && current != generation) {
             return Err(ObservationV2Error::Stale);
         }
         reader.check(now_ms, false, false)?;
@@ -305,6 +321,15 @@ impl LocalObservationStore {
     }
 }
 
+fn generations(connection: &Connection) -> rusqlite::Result<(u64, u64)> {
+    connection.query_row(
+        "SELECT (SELECT CAST(value AS INTEGER) FROM observation_meta WHERE key='plan_quality_generation'),
+                (SELECT CAST(value AS INTEGER) FROM observation_meta WHERE key='query_visibility_generation')",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+}
+
 pub(super) fn summary_sql() -> String {
     // Aggregate projected names once per stage; flattening repeats the correlated lookups.
     format!(
@@ -314,7 +339,7 @@ pub(super) fn summary_sql() -> String {
            executed_branch_id,model_configuration_id,profile_digest,attribution,
            CASE WHEN COUNT(DISTINCT native_model)=1 THEN MAX(native_model) END,
            CASE WHEN COUNT(DISTINCT reasoning_profile_id)=1 THEN MAX(reasoning_profile_id) END,
-           COUNT(reliable_score),COUNT(*)-COUNT(reliable_score),AVG(reliable_score), execution_group, candidate_index, MAX(branch_policy)
+           COUNT(reliable_score),COUNT(*)-COUNT(reliable_score),AVG(CASE WHEN attribution='single' THEN reliable_score END), execution_group, candidate_index, MAX(branch_policy)
          FROM quality GROUP BY plan_revision,
            CASE WHEN executed_branch_id IS NULL THEN selected_branch_id END,
            executed_branch_id,model_configuration_id,profile_digest,attribution,execution_group,candidate_index
@@ -400,14 +425,15 @@ pub(crate) fn routing_reason(
     request: &str,
 ) -> Result<Option<PlanQualitySample>, ObservationV2Error> {
     use rusqlite::OptionalExtension;
-    Ok(db
+    let mut result = db
         .query_row(
             &format!(
                 "WITH quality AS ({SCOPE}) {SAMPLE_SELECT}
       WHERE q.session_id=:session
-        AND (q.first_request_id=:request OR q.last_request_id=:request OR q.segment_id=(
-          SELECT t.segment_id FROM observation_analysis_turns_v1 t WHERE t.workspace_id=q.workspace_id
-            AND t.request_id=:request AND t.partial=0))
+        AND ((q.history_membership_json IS NOT NULL AND EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') member WHERE member.value=:request))
+          OR (q.history_membership_json IS NULL AND (q.first_request_id=:request OR q.last_request_id=:request OR q.segment_id=(
+            SELECT t.segment_id FROM observation_analysis_turns_v1 t WHERE t.workspace_id=q.workspace_id
+              AND t.request_id=:request AND t.partial=0))))
         AND EXISTS(SELECT 1 FROM logical_requests request WHERE request.workspace_id=q.workspace_id
           AND request.session_id=q.session_id AND request.request_id=:request)
       ORDER BY q.first_at_ms DESC,q.segment_id LIMIT 1"
@@ -417,7 +443,16 @@ pub(crate) fn routing_reason(
             ":runs":Option::<String>::None,":request":request},
             sample,
         )
-        .optional()?)
+        .optional()?;
+    if let Some(value) = result.as_mut() {
+        let covered: bool = db.query_row(
+            "SELECT assessment_membership_json IS NULL OR EXISTS(SELECT 1 FROM json_each(assessment_membership_json,'$.request_ids') member WHERE member.value=?3) FROM plan_quality_segments WHERE workspace_id=?1 AND segment_id=?2",
+            rusqlite::params![workspace, value.segment_id, request], |row| row.get(0))?;
+        if !covered {
+            value.assessment = None;
+        }
+    }
+    Ok(result)
 }
 
 pub(super) fn sample(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanQualitySample> {

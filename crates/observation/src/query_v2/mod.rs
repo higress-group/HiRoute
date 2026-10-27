@@ -6,6 +6,7 @@ mod cache_hit;
 mod catalog;
 mod content;
 mod facts;
+mod input_selection;
 mod plan_quality;
 #[cfg(test)]
 mod plan_quality_bounds_tests;

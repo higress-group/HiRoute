@@ -11,6 +11,7 @@ pub struct WireResponse {
     pub status: u16,
     pub headers: BTreeMap<String, String>,
     pub body: Vec<u8>,
+    pub http_entity_complete: bool,
 }
 
 pub fn request(
@@ -197,7 +198,7 @@ fn read_response(
             body.len()
         ));
     }
-    if let Some(error) = read_error
+    if let Some(error) = &read_error
         && !matches!(error.kind(), ErrorKind::ConnectionReset)
     {
         return Err(format!(
@@ -206,9 +207,19 @@ fn read_response(
             error.kind()
         ));
     }
+    let (body, http_entity_complete) = if headers
+        .get("transfer-encoding")
+        .is_some_and(|value| value.eq_ignore_ascii_case("chunked"))
+    {
+        hiroute_e2e::gateway_fixture::decode_chunked_response_body(body)
+            .map_err(|error| format!("invalid chunked response for {}: {error}", context()))?
+    } else {
+        (body.to_vec(), read_error.is_none())
+    };
     Ok(WireResponse {
         status,
         headers,
-        body: body.to_vec(),
+        body,
+        http_entity_complete,
     })
 }

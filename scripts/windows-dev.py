@@ -338,7 +338,7 @@ def main():
     desktop = commands.add_parser('desktop-session', help='Measured installed Desktop and native UI acceptance')
     desktop.add_argument('--product', required=True)
     desktop.add_argument('--action', dest='desktop_action', required=True,
-                         choices=('install', 'installer-resume', 'installer-quarantine', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'))
+                         choices=('install', 'installer-resume', 'installer-quarantine', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'codex-two-turn', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'))
     desktop.add_argument('--from-product', help='Exact installed bundle admitted before a cross-build upgrade')
     desktop.add_argument('--recover-product', help='Exact interrupted bundle, with a recent inspection, before normal NSIS recovery')
     desktop.add_argument('--observation-run')
@@ -431,7 +431,8 @@ def main():
                     raise ValueError('Scrolling requires an explicit direction')
             values.update(run_id=uuid.uuid4().hex, harness=args.product, binary='hiroute.exe',
                           case='native_desktop_' + args.desktop_action.replace('-', '_'), operation='desktop', ignored=False,
-                          timeout={'install':810,'recovery-lock-ui':600,'recovery-file-use-ui':600}.get(args.desktop_action,240))
+                          timeout={'install':810,'recovery-lock-ui':600,'recovery-file-use-ui':600,
+                                   'codex-two-turn':420}.get(args.desktop_action,240))
             values.pop('cli_args')
             if args.desktop_action == 'cli':
                 if args.cli_args is None:

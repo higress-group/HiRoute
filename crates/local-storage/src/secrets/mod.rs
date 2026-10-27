@@ -32,6 +32,7 @@ mod collaboration_credentials;
 mod compensation;
 mod grant;
 pub(crate) use grant::integrity::validate as validate_stable_grants;
+pub(crate) use grant::integrity::validate_current as validate_current_grants;
 #[cfg(test)]
 mod grant_tests;
 mod runtime;

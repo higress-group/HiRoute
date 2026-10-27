@@ -155,6 +155,7 @@ impl PublicationRepositoryPort for ControlStore {
                 ],
             )
             .map_err(|_| port(PortErrorCode::Unavailable, "publication.prepare.insert"))?;
+        super::current_dependencies::record_publication_proofs(&transaction, &publication)?;
         transaction
             .commit()
             .map_err(|_| port(PortErrorCode::Unavailable, "publication.prepare.commit"))?;
@@ -301,18 +302,49 @@ fn load_by_state(
         )
         .optional()
         .map_err(|_| port(PortErrorCode::Unavailable, "publication.read"))?;
-    row.map(|(revision, digest, bytes)| {
-        PublicationRecordV1::from_parts(
-            workspace.clone(),
-            GatewayPublicationRevision::new(revision)
-                .map_err(|_| port(PortErrorCode::Corrupt, "publication.revision"))?,
-            CanonicalDigest::parse(digest)
-                .map_err(|_| port(PortErrorCode::Corrupt, "publication.digest"))?,
-            bytes,
-        )
-        .map_err(|_| port(PortErrorCode::Corrupt, "publication.verify"))
-    })
-    .transpose()
+    // Do not cache current membership or trust a digest label alone. The single
+    // SELECT above binds state/revision/digest/bytes in a fresh SQLite snapshot.
+    // Exact unchanged bytes can retain their value-owned authentication proof.
+    let mut cache = store.active_publication_cache.borrow_mut();
+    if state == "active" {
+        if let (Some((revision, digest, bytes)), Some(cached)) = (&row, cache.as_ref())
+            && cached.workspace_id == *workspace
+            && cached.publication_revision.get() == *revision
+            && cached.digest.as_str() == digest
+            && cached.bytes.as_slice() == bytes.as_slice()
+        {
+            return Ok(Some(cached.clone()));
+        }
+        *cache = None;
+    }
+    let record = row
+        .map(|(revision, digest, bytes)| {
+            PublicationRecordV1::from_parts(
+                workspace.clone(),
+                GatewayPublicationRevision::new(revision)
+                    .map_err(|_| port(PortErrorCode::Corrupt, "publication.revision"))?,
+                CanonicalDigest::parse(digest)
+                    .map_err(|_| port(PortErrorCode::Corrupt, "publication.digest"))?,
+                bytes,
+            )
+            .map_err(|_| port(PortErrorCode::Corrupt, "publication.verify"))
+        })
+        .transpose()?;
+    // Account conservatively for decoded allocations and derived projections.
+    // Oversized records retain the same strict uncached reader, without eviction
+    // churn or an unbounded per-workspace map. This is not an RSS guarantee.
+    if state == "active"
+        && let Some(record) = &record
+        && record
+            .bytes
+            .len()
+            .saturating_mul(8)
+            .saturating_add(64 * 1024)
+            <= 64 * 1024 * 1024
+    {
+        *cache = Some(record.clone());
+    }
+    Ok(record)
 }
 
 fn port(code: PortErrorCode, context: &'static str) -> PortError {
@@ -416,5 +448,93 @@ mod routing_publication_storage_tests {
         let error = store.prepare_publication(&second, None).unwrap_err();
         assert_eq!(error.code, PortErrorCode::Conflict);
         assert!(store.prepared_publication(&workspace).unwrap().is_none());
+    }
+
+    #[test]
+    fn active_publication_shares_only_a_fresh_exact_row_and_rejects_warmed_tampering() {
+        let directory = tempdir().unwrap();
+        owner_only(directory.path());
+        let store = ControlStore::open(
+            &crate::test_storage_authority(),
+            directory.path().join("control.db"),
+            directory.path().join("backups"),
+        )
+        .unwrap();
+        let workspace = WorkspaceId::default();
+        let first = record(&workspace, 1);
+        store.prepare_publication(&first, None).unwrap();
+        store
+            .mark_publication_active(&workspace, first.publication_revision, &first.digest)
+            .unwrap();
+        let cold = store.active_publication(&workspace).unwrap().unwrap();
+        for _ in 0..20 {
+            let warm = store.active_publication(&workspace).unwrap().unwrap();
+            assert!(std::sync::Arc::ptr_eq(&cold.bytes, &warm.bytes));
+            assert_eq!(warm, first);
+        }
+        for sql in [
+            "UPDATE gateway_publications SET publication_revision=99 WHERE state='active'",
+            "UPDATE gateway_publications SET digest='sha256:0000000000000000000000000000000000000000000000000000000000000000' WHERE state='active'",
+        ] {
+            store.connection.borrow().execute_batch("BEGIN").unwrap();
+            store.connection.borrow().execute_batch(sql).unwrap();
+            assert_eq!(
+                store.active_publication(&workspace).unwrap_err().code,
+                PortErrorCode::Corrupt
+            );
+            store.connection.borrow().execute_batch("ROLLBACK").unwrap();
+            assert_eq!(
+                store.active_publication(&workspace).unwrap(),
+                Some(first.clone())
+            );
+        }
+        let external = rusqlite::Connection::open(directory.path().join("control.db")).unwrap();
+        let mut wrong = first.bytes.as_ref().clone();
+        wrong.push(b' ');
+        external.execute_batch("BEGIN").unwrap();
+        external
+            .execute(
+                "UPDATE gateway_publications SET publication_bytes=?1 WHERE state='active'",
+                [&wrong],
+            )
+            .unwrap();
+        assert_eq!(
+            store.active_publication(&workspace).unwrap(),
+            Some(first.clone())
+        );
+        external.execute_batch("COMMIT").unwrap();
+        assert_eq!(
+            store.active_publication(&workspace).unwrap_err().code,
+            PortErrorCode::Corrupt
+        );
+        external
+            .execute(
+                "UPDATE gateway_publications SET publication_bytes=?1 WHERE state='active'",
+                [first.bytes.as_slice()],
+            )
+            .unwrap();
+        assert_eq!(
+            store.active_publication(&workspace).unwrap(),
+            Some(first.clone())
+        );
+        let second = record(&workspace, 2);
+        store
+            .prepare_publication(&second, Some(first.publication_revision))
+            .unwrap();
+        store
+            .mark_publication_active(&workspace, second.publication_revision, &second.digest)
+            .unwrap();
+        assert_eq!(
+            store.active_publication(&workspace).unwrap(),
+            Some(second.clone())
+        );
+        assert_eq!(
+            store.last_known_good_publication(&workspace).unwrap(),
+            Some(first)
+        );
+        external
+            .execute("DELETE FROM gateway_publications WHERE state='active'", [])
+            .unwrap();
+        assert!(store.active_publication(&workspace).unwrap().is_none());
     }
 }
