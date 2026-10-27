@@ -76,6 +76,8 @@ In Difficulty routing and Custom branches, a task with two model groups selects 
 
 Protection requires a fresh, complete, valid assessment returned by this decision, bound to the preceding actual execution stage and compatible with the current category, published configuration, and assessment criteria. Missing, partial, cross-category, or unattributable scores cannot trigger protection. Unrated is not zero, and an old low score is not repeatedly applied.
 
+For valid difficulty, eligible low-score protection is evaluated for simple and complex work. A native applicability result below 0.5 releases only the historical constraint: the difficulty selection still applies, so complex work remains Primary. Unavailable applicability retains protection. A preceding Primary stage may also trigger protection, without creating another group.
+
 A new usable request can choose again. An earlier primary selection does not lock later turns to primary. Tool continuations inherit a reusable captured decision when native evidence identifies the same task. Known summaries and auxiliary calls stay outside main task history.
 
 Smart routing does not require perfect proof that a wire User came from a human. If origin is uncertain, HiRoute classifies observed input, records the actual accepted result with an explicit source-uncertainty marker, and retains cross-turn evaluation. Such requests use separate history from verified adapter input. Classification failure can temporarily fall back under the existing plan rules; it does not disable later requests in the session.

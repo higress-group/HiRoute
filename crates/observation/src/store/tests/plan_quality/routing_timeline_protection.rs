@@ -4,7 +4,7 @@ use hiroute_domain::*;
 
 #[test]
 fn timeline_preserves_opening_protection_and_keeps_later_scores_separate() {
-    for variant in [2, 3, 4, 7] {
+    for (variant, complex_release) in [(2, false), (3, false), (4, false), (7, false), (3, true)] {
         let directory = tempfile::tempdir().unwrap();
         let store = open_store(directory.path());
         let current = Fixture::new(&format!("timeline-protection-{variant}"));
@@ -12,7 +12,10 @@ fn timeline_preserves_opening_protection_and_keeps_later_scores_separate() {
         previous.request = LogicalRequestId::parse(format!("previous-{variant}")).unwrap();
         let channel = fact_channel(&current, 1024 * 1024);
         let writer = writer(&store);
-        let observation = super::routing_observations::observation(variant);
+        let mut observation = super::routing_observations::observation(variant);
+        if complex_release {
+            observation.simple_probability = serde_json::Number::from_f64(0.7);
+        }
         let mut route = route_decision(PLAN);
         let ExecutionFactV1::RouteDecision(decision) = &mut route else {
             unreachable!()
@@ -31,13 +34,15 @@ fn timeline_preserves_opening_protection_and_keeps_later_scores_separate() {
             HistoricalProtectionActionV1::Applied
                 | HistoricalProtectionActionV1::RetainedUnavailable
         );
-        selection.execution_group = if protected {
+        selection.execution_group = if protected || complex_release {
             ExecutionGroupV1::Primary
         } else {
             ExecutionGroupV1::Regular
         };
         selection.selection_reason = if protected {
             ModelGroupReasonV1::LowCompetence
+        } else if complex_release {
+            ModelGroupReasonV1::ComplexTask
         } else {
             ModelGroupReasonV1::SimpleTask
         };
@@ -147,6 +152,11 @@ fn timeline_preserves_opening_protection_and_keeps_later_scores_separate() {
         assert_eq!(turn.tool_continuations, 1);
         let selection = turn.selection.as_ref().unwrap();
         let history = selection.historical_protection.as_ref().unwrap();
+        if complex_release {
+            assert_eq!(selection.execution_group, ExecutionGroupV1::Primary);
+            assert_eq!(selection.selection_reason, ModelGroupReasonV1::ComplexTask);
+            assert!(selection.competence_trigger.is_none());
+        }
         assert_eq!(history.outcome, observation.protection_action);
         assert_eq!(history.previous_score, observation.score);
         assert_eq!(

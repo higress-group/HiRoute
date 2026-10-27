@@ -606,9 +606,12 @@ fn ordinary_preview_resolves_defaults_and_seals_concrete_contents_without_review
         panic!("native execution missing")
     };
     assert_eq!(frozen.scopes[SMART_SAVING_SCOPE_ID].standard, "default");
+    let protocol = NativeProtocolV1::default();
+    let mut current = JudgmentSettingsV1::default();
+    protocol.current_assessment(&mut current);
     assert_eq!(
         frozen.scopes[SMART_SAVING_SCOPE_ID].assessment,
-        stock_c_questions()["q1"]
+        composed_assessment(Some(&protocol), &current)
     );
     assert_eq!(frozen.protocol.fixed, NativeFixedContentV1::c_v1());
     let reopened = enabled.plan_version.configuration.editor(None).unwrap();
@@ -619,11 +622,7 @@ fn ordinary_preview_resolves_defaults_and_seals_concrete_contents_without_review
         off.plan_version.configuration.assessment_scopes()[SMART_SAVING_SCOPE_ID]
             .competence
             .instructions,
-        stock_c_questions()["q1"]["instructions"]
-            .as_str()
-            .unwrap()
-            .strip_prefix(&(NativeFixedContentV1::c_v1().assessment_wrapper + " "))
-            .unwrap()
+        current.competence.instructions
     );
     assert_eq!(serde_json::to_vec(&legacy.plan_version).unwrap(), old_bytes);
 }

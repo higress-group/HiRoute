@@ -259,9 +259,12 @@ fn released_defaults_move_only_at_next_publication_without_editor_controls() {
     let before = serde_json::to_vec(&editor).unwrap();
     let current = editor.effective().unwrap();
     let j = current.assessment_scopes()[SMART_SAVING_SCOPE_ID];
+    let protocol = NativeProtocolV1::default();
+    let mut expected = JudgmentSettingsV1::default();
+    protocol.current_assessment(&mut expected);
     assert_eq!(
-        composed_assessment(Some(&NativeProtocolV1::default()), j),
-        stock_c_questions()["q1"]
+        composed_assessment(Some(&protocol), j),
+        composed_assessment(Some(&protocol), &expected)
     );
     assert_eq!(j.competence.standard, Some(AssessmentStandardV1::Default));
     assert_eq!(
@@ -312,6 +315,42 @@ fn released_defaults_move_only_at_next_publication_without_editor_controls() {
     let next = reopened.editor(None).unwrap().effective().unwrap();
     assert!(next.native_protocol().is_some());
     assert_eq!(serde_json::to_vec(&legacy).unwrap(), old);
+}
+
+#[test]
+fn retained_native_operation_validates_its_original_default_and_new_edit_uses_current_text() {
+    use crate::*;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../fixtures/baseline-c-default-publication.json"
+    ))
+    .unwrap();
+    let old: JudgmentSettingsV1 = serde_json::from_value(fixture["judgment"].clone()).unwrap();
+    let editor = native_editor();
+    let mut frozen = editor.effective().unwrap();
+    let AgentPlanStrategyV2::SmartSaving { judgment, .. } = &mut frozen.strategy else {
+        unreachable!()
+    };
+    *judgment = old.clone();
+    let before = serde_json::to_vec(&frozen).unwrap();
+    assert_eq!(
+        editor.effective_for_frozen_validation(&frozen).unwrap(),
+        frozen
+    );
+    assert_eq!(serde_json::to_vec(&frozen).unwrap(), before);
+    let current = editor.effective().unwrap();
+    assert_ne!(
+        current.assessment_scopes()[SMART_SAVING_SCOPE_ID]
+            .competence
+            .instructions,
+        old.competence.instructions
+    );
+    let mut custom = editor.clone();
+    custom.smart.judgment.competence.standard = Some(AssessmentStandardV1::Custom);
+    custom.smart.judgment.competence.instructions = "Custom user text".into();
+    assert_ne!(
+        custom.effective_for_frozen_validation(&frozen).unwrap(),
+        frozen
+    );
 }
 
 #[test]

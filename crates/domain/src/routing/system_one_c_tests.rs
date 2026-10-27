@@ -1,24 +1,22 @@
 use super::*;
 
 #[test]
-fn capture_baseline_c_default_publication() {
-    let protocol = NativeProtocolV1::default();
-    let mut judgment = JudgmentSettingsV1::default();
-    protocol.stock_assessment(&mut judgment);
-    judgment.competence.standard = Some(super::super::AssessmentStandardV1::Default);
-    let frozen = FrozenNativeProtocolV1::freeze(
-        &protocol,
-        judgment.degree.definition().into(),
-        [(super::super::SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
-    )
-    .unwrap();
+fn baseline_c_default_publication_remains_valid_without_replacing_frozen_questions() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/baseline-c-default-publication.json")).unwrap();
+    let judgment: JudgmentSettingsV1 = serde_json::from_value(fixture["judgment"].clone()).unwrap();
+    let frozen: FrozenNativeProtocolV1 = serde_json::from_value(fixture["frozen"].clone()).unwrap();
+    frozen.validate_smart(&judgment).unwrap();
+    assert_eq!(serde_json::to_value(&frozen).unwrap(), fixture["frozen"]);
     assert_eq!(
         frozen.scopes[super::super::SMART_SAVING_SCOPE_ID].assessment,
         stock_c_questions()["q1"]
     );
-    println!(
-        "BASELINE_C_PUBLICATION={}",
-        serde_json::json!({"judgment":judgment,"frozen":frozen})
+    let mut changed = judgment.clone();
+    changed.competence.instructions.push_str(" changed");
+    assert_eq!(
+        frozen.validate_smart(&changed),
+        Err(NativeProtocolError::ContentMismatch)
     );
 }
 
@@ -209,7 +207,13 @@ fn direct_freezing_resolves_default_intent_and_preserves_explicit_custom_bytes()
         .unwrap()
     };
     let default = freeze(original.clone());
+    let mut current = original.clone();
+    protocol.current_assessment(&mut current);
     assert_eq!(
+        default.scopes[super::super::SMART_SAVING_SCOPE_ID].assessment,
+        composed_assessment(Some(&protocol), &current)
+    );
+    assert_ne!(
         default.scopes[super::super::SMART_SAVING_SCOPE_ID].assessment,
         stock_c_questions()["q1"]
     );

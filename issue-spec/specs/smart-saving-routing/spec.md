@@ -259,13 +259,20 @@ Source SPEC comments:
 
 ### Requirement: The trust view distinguishes released historical protection
 
-The Plan model-performance protection card MUST show how many historical low-score protections were released because the previous problem was fixed or unrelated and Regular continued. This count describes retained routing decisions and remains separate from the trust report's protected-stage count. A numeric count is permitted only when routing-observation coverage is complete and its Plan, published-revision selection, effective time interval and branch scopes match the protection card's trust report. Model and score filters must not relabel a Plan-wide count as a filtered-model count. Cohorts may be aggregated only within the matching branch scopes. A complete matching recorded cohort with no releases shows zero. Missing observations, incomplete coverage or any unproven scope alignment MUST show an unavailable value and a plain-language reason; unknown evidence MUST NOT become zero. The observation disclosure remains available with its own scope when a count cannot be placed beside protections. The release explanation uses capability language and MUST NOT display internal protocol labels, digests or question identifiers. No route, assessment, suggestion threshold or stored record changes through this view.
+The Plan model-performance protection card MUST show how many historical low-score protections were released because the previous problem was fixed or unrelated. Release removes that historical constraint; the current difficulty still determines the base group, and complex work may remain Primary. This count describes retained routing decisions and remains separate from the trust report's protected-stage count. A numeric count is permitted only when routing-observation coverage is complete and its Plan, published-revision selection, effective time interval and branch scopes match the protection card's trust report. Model and score filters must not relabel a Plan-wide count as a filtered-model count. Cohorts may be aggregated only within the matching branch scopes. A complete matching recorded cohort with no releases shows zero. Missing observations, incomplete coverage or any unproven scope alignment MUST show an unavailable value and a plain-language reason; unknown evidence MUST NOT become zero. The observation disclosure remains available with its own scope when a count cannot be placed beside protections. The release explanation uses capability language and MUST NOT display internal protocol labels, digests or question identifiers. No route, assessment, suggestion threshold or stored record changes through this view.
 
 The view MUST offer last-24-hours, default last-seven-days and all-retained scopes. For every period, the stage and routing-decision reads MUST use the same captured explicit interval with its lower bound inside the retention boundary and a bounded read margin. Reads taken at different instants MUST NOT make an otherwise complete matching release count unavailable at the normal seven-day edge. Actual effective-interval mismatches still show unavailable. Changing the displayed period does not narrow the full active-revision evidence used for suggestions.
 
 The routing release aggregate SHALL remain the result of the base read paired with the trust report. Later detail score/model filters and pagination SHALL NOT replace it with a separately clipped aggregate, even after the bounded read margin has elapsed. A grouping, period or revision change, explicit refresh or retry SHALL capture a fresh interval and reread both sources together. Actual scope mismatches remain unavailable.
 
 Every Plan-performance entry SHALL use the same publication selection for both reads. A loaded publication revision pins both reads to that revision. An entry without it SHALL resolve the active revision before reading current-version quality; unresolved active selection SHALL NOT silently mean all retained versions. Explicit historical and all-version selections retain their own scopes. Responses from an earlier revision or refresh SHALL NOT populate the replacement scope, including its base routing aggregate.
+
+A protection opportunity is a non-inherited valid C observation with an eligible complete finite low score and recorded Applied, RetainedUnavailable or Suppressed action, independently of simple probability. Suppressed counts only actual suppression in those opportunities. Zero ratio denominators remain unavailable. Old complex/not_needed records do not become opportunities. Threshold replay preserves recorded protected stages as Primary without applying the current algorithm to old unprotected records.
+
+Statistics use protection actions recorded under the rules active at the time. A retained scope may contain records from different rule versions; these counts and rates do not establish a uniform-policy effectiveness comparison. Do not invent a rule version from dates or Plan identity, relabel old events, or backfill hypothetical protection opportunities.
+
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253018308
 
 #### Scenario: Session entry has no loaded publication revision
 
@@ -285,7 +292,7 @@ Every Plan-performance entry SHALL use the same publication selection for both r
 #### Scenario: Aligned complete evidence
 
 - **WHEN** a trust report and complete routing observations match Plan, revision, time and branches and matching cohorts contain five released protections
-- **THEN** the protection card shows five releases separately from its protected-stage count and explains that Regular continued after the earlier problem stopped mattering
+- **THEN** the protection card shows five releases separately from its protected-stage count and explains that the earlier problem no longer constrained routing while the current difficulty still selected the actual group
 
 #### Scenario: Incomplete or mismatched scope
 
@@ -302,8 +309,23 @@ Every Plan-performance entry SHALL use the same publication selection for both r
 - **WHEN** the default seven-day or all-retained view remains open for more than one minute, then the user selects low-score stages and loads another page
 - **THEN** the release count stays bound to the original paired base read; grouping afterward refreshes both sources with one new interval.
 
+#### Scenario: Actual opportunity population
+
+- **WHEN** the scope contains simple Applied, complex Applied, complex Suppressed, RetainedUnavailable, old complex NotNeeded and an inherited duplicate
+- **THEN** opportunities=4 and suppressed=1 with ratio 1/4 when coverage is complete; old and inherited entries are excluded.
+
+#### Scenario: Scope remains paired
+
+- **WHEN** detail filters/pagination occur after a paired retained read, or the period/revision changes
+- **THEN** detail navigation preserves the pair; scope changes reread both; unproven alignment remains unavailable.
+
+#### Scenario: Replay preserves old facts
+
+- **WHEN** new complex protection and an old complex/not_needed stage are replayed at another threshold
+- **THEN** the protected stage remains Primary and the old stage is not rewritten or relabelled protected.
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253018308
+- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6440838906
 
 ## Implementation references
 

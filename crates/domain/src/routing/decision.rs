@@ -69,6 +69,7 @@ pub struct CompetenceProtectionV1 {
     pub segment_id: String,
     pub score: serde_json::Number,
     pub floor_millis: u16,
+    /// Actual group of the assessed preceding stage, including Primary.
     pub from_group: ExecutionGroupV1,
 }
 

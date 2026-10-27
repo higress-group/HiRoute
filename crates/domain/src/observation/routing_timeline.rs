@@ -102,6 +102,8 @@ pub struct RoutingTimelineSelectionV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingTimelineProtectionV1 {
+    /// Recorded historical protection action. Suppression removes only that constraint;
+    /// the current difficulty can still select Primary.
     pub outcome: crate::HistoricalProtectionActionV1,
     pub previous_score: Option<serde_json::Number>,
     pub competence_floor_millis: u16,

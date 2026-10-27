@@ -121,6 +121,7 @@ fn reduce(
         .simple_probability
         .as_ref()
         .and_then(serde_json::Number::as_f64)
+        .filter(|p| p.is_finite() && (0.0..=1.0).contains(p))
     else {
         outcome.decision.execution_group = ExecutionGroupV1::Primary;
         outcome.decision.selection_reason = ModelGroupReasonV1::DegreeUnavailable;
@@ -129,10 +130,10 @@ fn reduce(
     if probability < f64::from(judgment.degree.simple_threshold_millis) / 1000.0 {
         outcome.decision.execution_group = ExecutionGroupV1::Primary;
         outcome.decision.selection_reason = ModelGroupReasonV1::ComplexTask;
-        return;
+    } else {
+        outcome.decision.execution_group = ExecutionGroupV1::Regular;
+        outcome.decision.selection_reason = ModelGroupReasonV1::SimpleTask;
     }
-    outcome.decision.execution_group = ExecutionGroupV1::Regular;
-    outcome.decision.selection_reason = ModelGroupReasonV1::SimpleTask;
     let Some(assessment) = &outcome.assessment else {
         return;
     };
@@ -165,7 +166,10 @@ fn reduce(
         return;
     }
     if native_protocol(input).is_some() {
-        use hiroute_domain::{ApplicabilityReasonV1 as R, HistoricalProtectionActionV1 as A};
+        use hiroute_domain::{
+            ApplicabilityReasonV1 as R, ApplicabilityStateV1 as S,
+            HistoricalProtectionActionV1 as A,
+        };
         if let Some(o) = outcome.decision.routing_observation.as_mut() {
             if !o.applicability_requested {
                 o.applicability_reason = R::RequiredQuestionMissing;
@@ -174,6 +178,9 @@ fn reduce(
                 .applicability_probability
                 .as_ref()
                 .and_then(serde_json::Number::as_f64)
+                .filter(|a| {
+                    o.applicability_state == S::Valid && a.is_finite() && (0.0..=1.0).contains(a)
+                })
             {
                 if a < 0.5 {
                     o.protection_action = A::Suppressed;
@@ -181,6 +188,12 @@ fn reduce(
                 }
                 o.protection_action = A::Applied;
             } else {
+                if o.applicability_probability.take().is_some()
+                    || o.applicability_state != S::Unavailable
+                {
+                    o.applicability_state = S::Unavailable;
+                    o.applicability_reason = R::InvalidOutput;
+                }
                 o.protection_action = A::RetainedUnavailable;
             }
         }
@@ -308,7 +321,13 @@ fn finalize_observation(input: &PlannerInputV1, outcome: &mut ClassificationOutc
     } else {
         E::Unrated
     };
-    if o.protection_action == A::NotConsidered && o.eligibility == E::Eligible {
+    if o.protection_action == A::NotConsidered
+        && o.eligibility == E::Eligible
+        && matches!(
+            outcome.decision.selection_reason,
+            ModelGroupReasonV1::SimpleTask | ModelGroupReasonV1::ComplexTask
+        )
+    {
         o.protection_action = A::NotNeeded;
     }
 }

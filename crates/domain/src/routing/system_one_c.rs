@@ -111,6 +111,27 @@ impl NativeProtocolV1 {
         judgment.competence.criteria =
             std::array::from_fn(|i| stock["q1"]["criteria"][i].as_str().unwrap().into());
     }
+
+    /// Current editable default; the v1 fixed bundle and its stock fixture remain unchanged.
+    pub fn current_assessment(&self, judgment: &mut JudgmentSettingsV1) {
+        self.stock_assessment(judgment);
+        let guidance: Value = serde_json::from_str(include_str!(
+            "../../../../assets/decision-services/default-assessment-guidance.json"
+        ))
+        .expect("default assessment guidance");
+        judgment.competence.instructions.push(' ');
+        judgment
+            .competence
+            .instructions
+            .push_str(guidance["feedback"].as_str().expect("feedback guidance"));
+    }
+
+    pub(crate) fn is_stock_assessment(&self, judgment: &JudgmentSettingsV1) -> bool {
+        let mut stock = judgment.clone();
+        self.stock_assessment(&mut stock);
+        judgment.competence.instructions == stock.competence.instructions
+            && judgment.competence.criteria == stock.competence.criteria
+    }
 }
 
 pub fn composed_assessment(
@@ -199,7 +220,17 @@ impl FrozenNativeProtocolV1 {
         for (id, judgment) in judgments {
             // Freezing is also used directly by compiler/diagnostic callers. Resolve
             // default intent here rather than relying on an editor to replace text.
-            let judgment = judgment.resolve_assessment(Some(&selection))?;
+            // Existing v1 publications carry the stock editable question as Default.
+            // Validate and rebuild those bytes as written, without replacing them with
+            // today's default. New editor publications resolve before reaching here.
+            let judgment = if judgment.competence.standard
+                == Some(super::AssessmentStandardV1::Default)
+                && protocol.is_stock_assessment(&judgment)
+            {
+                judgment
+            } else {
+                judgment.resolve_assessment(Some(&selection))?
+            };
             if !judgment.validate() {
                 return Err(NativeProtocolError::ContentMismatch);
             }

@@ -266,6 +266,54 @@ fn c_stock_questions_exactly_match_the_appendix_and_isolate_invalid_q3() {
 }
 
 #[test]
+fn c_request_keeps_feedback_separate_and_sends_the_sealed_questions() {
+    let mut authority = c_authority();
+    let protocol = hiroute_domain::NativeProtocolV1::default();
+    let mut judgment = JudgmentSettingsV1::default();
+    protocol.current_assessment(&mut judgment);
+    judgment.competence.standard = Some(hiroute_domain::AssessmentStandardV1::Default);
+    let frozen = hiroute_domain::FrozenNativeProtocolV1::freeze(
+        &protocol,
+        judgment.degree.definition().into(),
+        [(SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
+    )
+    .unwrap();
+    authority.smart_judgment = Some(judgment);
+    authority.native_protocol = Some(frozen.clone());
+    let history = c_history(&authority);
+    for feedback in [
+        "This result is not satisfactory; please improve it.",
+        "这个结果不太满意，请继续改进。",
+    ] {
+        let mut request = diagnostic_request();
+        request.messages[0].content =
+            vec![crate::server::core_runtime::model_ir::ContentPart::Text {
+                text: feedback.into(),
+            }];
+        let prepared = request_template(&authority, &request, &history, false).unwrap();
+        let wire: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
+        assert_eq!(
+            wire["questions"]["q1"],
+            frozen.scopes[SMART_SAVING_SCOPE_ID].assessment
+        );
+        assert_eq!(wire["questions"]["q2"], frozen.protocol.fixed.applicability);
+        assert!(wire["state"]["latest_user"].to_string().contains(feedback));
+        assert!(
+            wire["state"]["assessment_stage"]
+                .to_string()
+                .contains("Previous work")
+        );
+        assert!(
+            !wire["state"]["assessment_stage"]
+                .to_string()
+                .contains(feedback)
+        );
+        assert!(prepared.bindings.as_ref().unwrap().assessment.is_some());
+        assert!(prepared.bindings.as_ref().unwrap().applicability.is_some());
+    }
+}
+
+#[test]
 fn observed_input_is_disclosed_without_dropping_native_assessment_or_applicability() {
     for native_c in [false, true] {
         let a = if native_c { c_authority() } else { authority() };
