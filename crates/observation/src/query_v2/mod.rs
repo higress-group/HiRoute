@@ -10,6 +10,8 @@ mod input_selection;
 mod plan_quality;
 #[cfg(test)]
 mod plan_quality_bounds_tests;
+#[cfg(test)]
+mod plan_quality_field_tests;
 mod trust_cost;
 pub(crate) use plan_quality::routing_reason;
 mod relation;

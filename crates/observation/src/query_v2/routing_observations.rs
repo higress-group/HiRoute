@@ -15,10 +15,10 @@ const MAX_SAFE_BYTES: usize = 32 * 1024 * 1024;
 // Stream in the covering index's unique request/digest order: ordering by rowid
 // would sort every match before LIMIT or the reader's byte ceiling can stop it.
 // This is an internal scan order; stage pages keep their existing time order.
-pub(super) const SUMMARY_SQL: &str = "SELECT f.body_json,e.producer_id,e.producer_epoch,e.stream_id,e.event_id
+pub(super) const SUMMARY_SQL: &str = "SELECT f.body_json,e.rowid
         FROM observation_safe_facts_v2 f INDEXED BY observation_safe_route_payloads
-        CROSS JOIN execution_fact_events e INDEXED BY execution_facts_request_identity ON e.workspace_id=f.workspace_id AND e.request_id=f.request_id AND e.envelope_digest=f.original_digest
-        JOIN logical_requests r ON r.workspace_id=f.workspace_id AND r.request_id=f.request_id
+        CROSS JOIN execution_fact_events e INDEXED BY execution_facts_request_payload ON e.workspace_id=f.workspace_id AND e.request_id=f.request_id AND e.envelope_digest=f.original_digest
+        JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=f.workspace_id AND r.request_id=f.request_id
         JOIN sessions s ON s.workspace_id=r.workspace_id AND s.session_id=r.session_id
         LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
         WHERE f.workspace_id=:workspace
@@ -75,12 +75,9 @@ pub(super) fn summarize(
             result.scan_limited = true;
             break;
         }
-        let identity = (
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-        );
+        // The UNIQUE producer/epoch/stream/event key makes rowid an equivalent
+        // identity within this snapshot; the narrow request index covers it.
+        let identity = row.get::<_, i64>(1)?;
         if !seen.insert(identity) {
             continue;
         }
@@ -191,7 +188,7 @@ pub(super) fn summarize(
     }
     // Missing safe projections are observable gaps. With no safe Plan identity their Plan
     // membership is uncertain, so conservatively withhold exact-population rates.
-    result.missing_projection_events = transaction.query_row("SELECT COUNT(*) FROM execution_fact_events e JOIN logical_requests r ON r.workspace_id=e.workspace_id AND r.request_id=e.request_id
+    result.missing_projection_events = transaction.query_row("SELECT COUNT(*) FROM execution_fact_events e INDEXED BY execution_facts_request_payload JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=e.workspace_id AND r.request_id=e.request_id
         LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
         WHERE e.workspace_id=:workspace AND r.started_at_ms>=:from AND r.started_at_ms<:to AND (:session IS NULL OR r.session_id=:session)
           AND (:runs IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(:runs))))

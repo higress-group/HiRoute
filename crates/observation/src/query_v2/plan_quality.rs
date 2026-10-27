@@ -15,8 +15,8 @@ mod snapshot_tests;
 
 /// Both projections share the same scope and transaction. Detail filters never
 /// enter this CTE, so pagination and drill-down cannot change the full-scope mean.
-/// The small safe-event catalog excludes known unrelated payloads before opening
-/// content carriers; absent projections retain the original reasoning lookup.
+/// The request-scoped candidate index excludes unrelated content carriers.
+/// The safe-event guard preserves missing projections and selected corruption.
 /// Guarded CASE expressions match the small JSON expression indexes. The inner
 /// CASE is the indexed value; the outer invalid-JSON branch preserves the original
 /// read failure instead of treating corrupt content as a missing field.
@@ -37,27 +37,30 @@ pub(super) const SCOPE: &str = "
         (SELECT a.model_id FROM observation_attempt_models_v2 a
          JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
            AND v.request_id=a.request_id AND v.accepted_ordinal=a.ordinal
-         JOIN logical_requests r ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
+         JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
          WHERE a.workspace_id=q.workspace_id AND a.request_id=q.last_request_id
            AND r.session_id=q.session_id LIMIT 1),
         (SELECT a.model_id FROM observation_attempt_models_v2 a
          JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
            AND v.request_id=a.request_id AND v.accepted_ordinal=a.ordinal
-         JOIN logical_requests r ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
+         JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
          WHERE a.workspace_id=q.workspace_id AND a.request_id=q.first_request_id
            AND r.session_id=q.session_id LIMIT 1)
       ) AS native_model,
       (SELECT (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reasoning_profile_id') END ELSE json_extract(p.body_json,'$.fact.reasoning_profile_id') END)
-       FROM execution_fact_events e
+       FROM observation_sensitive_payloads_v2 p INDEXED BY observation_payload_candidate_request
+       CROSS JOIN execution_fact_events e INDEXED BY execution_facts_request_payload ON e.workspace_id=p.workspace_id AND e.request_id=p.request_id AND e.envelope_digest=substr(p.id,6)
        LEFT JOIN observation_safe_facts_v2 f INDEXED BY observation_safe_kind_fields ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest
-       CROSS JOIN observation_sensitive_payloads_v2 p INDEXED BY observation_payload_query_fields ON p.id='fact:'||e.envelope_digest
-       JOIN logical_requests r ON r.workspace_id=e.workspace_id AND r.request_id=e.request_id
-       WHERE e.workspace_id=q.workspace_id AND r.session_id=q.session_id
+       JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=e.workspace_id AND r.request_id=e.request_id
+       WHERE p.workspace_id=q.workspace_id AND p.request_id IN(q.last_request_id,q.first_request_id)
+         AND p.id GLOB 'fact:*' AND CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.kind') ELSE 'candidate_decision' END='candidate_decision'
+         AND e.workspace_id=q.workspace_id AND r.session_id=q.session_id
          AND e.request_id IN(q.last_request_id,q.first_request_id)
-         AND (f.original_digest IS NULL OR (CASE WHEN json_valid(f.body_json) THEN CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') END ELSE json_extract(f.body_json,'$.event_kind') END)='candidate_decision')
-         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.kind') END ELSE json_extract(p.body_json,'$.fact.kind') END)='candidate_decision'
-         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.model_configuration_id') END ELSE json_extract(p.body_json,'$.fact.model_configuration_id') END)=q.model_configuration_id
-         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.profile_digest') END ELSE json_extract(p.body_json,'$.fact.profile_digest') END)=q.profile_digest
+         AND CASE WHEN (f.original_digest IS NULL OR (CASE WHEN json_valid(f.body_json) THEN CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') END ELSE json_extract(f.body_json,'$.event_kind') END)='candidate_decision') THEN
+           (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.kind') END ELSE json_extract(p.body_json,'$.fact.kind') END)='candidate_decision'
+           AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.model_configuration_id') END ELSE json_extract(p.body_json,'$.fact.model_configuration_id') END)=q.model_configuration_id
+           AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.profile_digest') END ELSE json_extract(p.body_json,'$.fact.profile_digest') END)=q.profile_digest
+           ELSE 0 END
        ORDER BY e.sequence DESC LIMIT 1
       ) AS reasoning_profile_id
     FROM plan_quality_segments q
@@ -86,11 +89,11 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                         q.profile_digest,q.attribution,q.first_turn_id,q.first_turn_ordinal,
                         q.last_observed_turn_id,q.last_observed_turn_ordinal,q.first_at_ms,
                         q.last_at_ms,q.history_partial,q.first_request_id,q.last_request_id,
-                        EXISTS(SELECT 1 FROM logical_requests first_req
+                        EXISTS(SELECT 1 FROM logical_requests first_req INDEXED BY requests_observation_fields
                           WHERE first_req.workspace_id=q.workspace_id
                             AND first_req.session_id=q.session_id
                             AND first_req.request_id=q.first_request_id)
-                          AND EXISTS(SELECT 1 FROM logical_requests last_req
+                          AND EXISTS(SELECT 1 FROM logical_requests last_req INDEXED BY requests_observation_fields
                           WHERE last_req.workspace_id=q.workspace_id
                             AND last_req.session_id=q.session_id
                             AND last_req.request_id=q.last_request_id),
@@ -101,9 +104,10 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                         q.target_through_ordinal,q.score,
                         (q.assessment_partial OR NOT q.assessment_covers_stage),
                         CASE WHEN q.reason_present=1
-                          THEN (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reason') END ELSE json_extract(p.body_json,'$.fact.reason') END) END,
+                          THEN
+           (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reason') END ELSE json_extract(p.body_json,'$.fact.reason') END) END,
                         q.assessment_event_id IS NOT NULL AND EXISTS(
-                          SELECT 1 FROM logical_requests trigger_req
+                          SELECT 1 FROM logical_requests trigger_req INDEXED BY requests_observation_fields
                           WHERE trigger_req.workspace_id=q.workspace_id
                             AND trigger_req.session_id=q.session_id
                             AND trigger_req.request_id=q.assessment_trigger_request_id),
