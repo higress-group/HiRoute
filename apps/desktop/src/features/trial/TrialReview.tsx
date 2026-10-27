@@ -23,12 +23,6 @@ export function TrialReview({ editor, previewAgentId, language, mutable, snapsho
   useEffect(() => () => onRepresentedOperations([]), [onRepresentedOperations]);
   const autoPublish = useRef(false);
   const settled = useRef(new Set<string>());
-  const busyObserved = useRef(false);
-  useEffect(() => {
-    if (busy) busyObserved.current = true;
-    else if (pending && busyObserved.current) setPhase(current => current === 'saving' || current === 'publishing' ? 'confirming' : current);
-    else if (!pending) busyObserved.current = false;
-  }, [busy, pending]);
   function complete(value: PersistedEditor<Plan, Draft>, action: 'save_draft' | 'publish', identity: PersistenceIdentity) {
     const key = `${action}/${identity.draftId}/${identity.targetDraftRevision ?? identity.targetHeadRevision}`;
     if (settled.current.has(key)) return;

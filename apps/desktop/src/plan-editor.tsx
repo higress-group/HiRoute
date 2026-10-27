@@ -361,6 +361,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     } catch (e) {
       const code = planErrorCode(e);
       if (['PLAN_UNCHANGED', 'CHANGE_PREVIEW_STALE', 'REVISION_CONFLICT', 'INVALID_ARGUMENTS', 'MODEL_BUDGET_CONFLICT', 'PLAN_INVALID', 'PLAN_HEAD_STALE', 'DRAFT_REVISION_STALE'].includes(code)) onPersistenceCancelled?.();
+      else if (trialOnly && (action === 'save_draft' || action === 'publish')) onPersisted?.(null, action, identity, null);
       if (['REVISION_CONFLICT', 'PLAN_HEAD_STALE', 'DRAFT_REVISION_STALE'].includes(code)) await onDone();
       if (code === 'PLAN_UNCHANGED') setNotice(planErrorMessage(e, language)); else reportError(e);
     }

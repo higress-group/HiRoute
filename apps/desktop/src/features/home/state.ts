@@ -79,7 +79,7 @@ export function deriveHomeServiceStatus(read: HomeRead<HomeService>): {
     && ['ready', 'empty', 'no_new_calls'].includes(service.gateway);
   return {
     state: service.nativeConnectionLost ? 'connection_lost' : service.daemon === 'read_only' ? 'read_only'
-      : service.daemon === 'unavailable' ? 'unavailable'
+      : service.daemon === 'unavailable' || service.gateway === 'unavailable' ? 'unavailable'
         : running ? 'ready' : 'unknown',
     operational: running && Boolean(service.recoveryReady) && !service.nativeConnectionLost,
   };

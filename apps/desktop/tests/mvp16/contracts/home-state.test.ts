@@ -74,6 +74,7 @@ test('service refresh keeps only same-target confirmed display without gaining w
   assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,nativeConnectionLost:true}}),{state:'connection_lost',refreshing:false,checkFailed:false});
   assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,daemon:'read_only'}}),{state:'read_only',refreshing:false,checkFailed:false});
   assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,recoveryReady:false}}),{state:'unknown',refreshing:false,checkFailed:false});
+  assert.deepEqual(homeState.deriveHomeServicePresentation({status:'ready',data:{...ready,gateway:'unavailable'}}),{state:'unavailable',refreshing:false,checkFailed:false});
   assert.equal(homeState.deriveHomeServiceStatus({status:'ready',data:{...ready,daemon:'read_only'}}).operational,false);
   assert.equal(homeState.deriveHomeServiceStatus({status:'ready',data:{...ready,recoveryReady:false}}).operational,false);
   assert.equal(homeState.deriveHomeServiceStatus({status:'ready',data:{...ready,gateway:'unknown'}}).operational,false);

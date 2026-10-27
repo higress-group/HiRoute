@@ -31,6 +31,13 @@ export function homeStartupScenarios({ until, control }) {
         await until(() => health()?.textContent.includes('状态待核实') && routeButton().disabled, 'returned not-composed state');
         assert(!health().querySelector('.good'), 'A completed not-composed result inherited healthy display');
 
+        notComposed.pending = { plan_id: 'plan/daily', operation_id: 'operation/service-refresh', idempotency_key: 'service-refresh' };
+        c.handlers.observe_operation = () => ({ operation_id: 'operation/service-refresh', state: 'running', sequence: 1, cancellable: false, safe_error_code: null });
+        window.dispatchEvent(new Event('focus'));
+        await until(() => document.querySelector('[data-operation-state="running"]'), 'concurrent exact operation');
+        assert(!health().querySelector('.good') && routeButton().disabled, 'Concurrent operation masked a completed not-composed state');
+        c.handlers.observe_operation = () => null;
+
         c.handlers.desktop_snapshot = () => { throw { code: 'READ_UNAVAILABLE' }; };
         window.dispatchEvent(new Event('focus'));
         await until(() => health()?.textContent.includes('状态读取失败') && health().querySelector('button'), 'failed service read');
@@ -48,6 +55,10 @@ export function homeStartupScenarios({ until, control }) {
         window.dispatchEvent(new Event('focus'));
         await until(() => health()?.textContent.includes('状态待核实') && routeButton().disabled, 'unready recovery');
         assert(!health().querySelector('.good'), 'Unready recovery was presented as healthy');
+        const unavailable = structuredClone(c.desktop); unavailable.service.gateway = 'unavailable';
+        c.handlers.desktop_snapshot = () => unavailable;
+        window.dispatchEvent(new Event('focus'));
+        await until(() => health()?.textContent.includes('本机服务不可用') && routeButton().disabled, 'unavailable gateway');
       } finally { c.reset(); release?.(structuredClone(c.desktop)); await settled(); }
     }),
     scenario('desktop.home.service-disconnect-generation', ['home-startup'], 'Connection loss invalidates the previous display and ignores an older response', async () => {
