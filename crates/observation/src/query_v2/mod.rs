@@ -167,7 +167,7 @@ impl QueryDeadline {
         let deadline = reader
             .as_ref()
             .and_then(ObservationReaderContext::query_deadline)
-            .unwrap_or(now + std::time::Duration::from_millis(500));
+            .unwrap_or(now + hiroute_domain::ObservationReaderContext::QUERY_BUDGET);
         if deadline <= now {
             return Err(ObservationV2Error::Timeout);
         }

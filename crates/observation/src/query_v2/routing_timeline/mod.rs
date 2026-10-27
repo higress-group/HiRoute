@@ -179,7 +179,7 @@ impl crate::LocalObservationStore {
         }
         state.visibility = visibility;
         cursor.expires_at = state.expires_at;
-        if started.elapsed() > std::time::Duration::from_millis(500) {
+        if started.elapsed() > hiroute_domain::ObservationReaderContext::QUERY_BUDGET {
             return Err(ObservationV2Error::Timeout);
         }
         let start = cursor.after.as_ref().map_or(0, |after| {

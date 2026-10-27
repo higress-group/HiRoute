@@ -23,7 +23,7 @@ impl ObservationControl {
         }
         let now = self.clock.now_ms().map_err(map_control)?;
         let analysis = matches!(&request.intent, ObservationReadIntentV2::Analysis(_));
-        let deadline = started + std::time::Duration::from_millis(500);
+        let deadline = started + hiroute_domain::ObservationReaderContext::QUERY_BUDGET;
         let generation = if analysis {
             let result = if let Some(grant) = grant {
                 if grant.principal_kind.is_collaboration() {
@@ -101,11 +101,7 @@ impl ObservationControl {
                 | ObservationReadIntentV2::PlanTrustReplay(_)
                 | ObservationReadIntentV2::PlanTrustSuggestions(_)
         );
-        let reader = if matches!(&request.intent, ObservationReadIntentV2::Analysis(_)) {
-            reader.with_query_deadline(started + std::time::Duration::from_millis(500))
-        } else {
-            reader
-        };
+        let reader = reader.with_query_deadline(deadline);
         let result = match request.intent {
             ObservationReadIntentV2::Analysis(q) => {
                 if (q.analysis_scope.is_some() || q.cursor.is_some()) && !q.time.is_empty() {
