@@ -80,8 +80,10 @@ fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
     let mut unknown = new.clone();
     unknown.schema = "hiroute.system-one-c/v99".into();
     assert_eq!(unknown.validate(), Err(NativeProtocolError::Unsupported));
-    let mut selection = super::super::NativeProtocolSelectionV1::default();
-    selection.prior_context_max_turns = 7;
+    let selection = super::super::NativeProtocolSelectionV1 {
+        prior_context_max_turns: 7,
+        ..Default::default()
+    };
     assert_eq!(selection.resolve(), Err(NativeProtocolError::HistoryCap));
 
     let judgment = JudgmentSettingsV1::default();
