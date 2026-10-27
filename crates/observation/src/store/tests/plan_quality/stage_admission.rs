@@ -406,12 +406,30 @@ fn presentation_is_opt_in_and_transitions_follow_recorded_facts() {
         State::Resolved
     );
     rich.after_watermark = Some(routed.watermark);
+    let mut relay_candidate = support::candidate("model/relay");
+    if let ExecutionFactV1::CandidateDecision(candidate) = &mut relay_candidate {
+        candidate.candidate_id = "candidate-relay".into();
+        candidate.stable_binding_id = "binding-relay".into();
+    }
+    for (sequence, candidate) in [support::candidate("model/actual"), relay_candidate]
+        .into_iter()
+        .enumerate()
+    {
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                f.fact(sequence as u64 + 3, candidate, 1015)
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
     assert!(matches!(
         offer_fact(
             &writer,
             &channel,
             f.attempt_fact(
-                3,
+                5,
                 "attempt/actual",
                 support::attempt_started("model/actual"),
                 1020,
@@ -445,7 +463,7 @@ fn presentation_is_opt_in_and_transitions_follow_recorded_facts() {
         offer_fact(
             &writer,
             &channel,
-            f.attempt_fact(4, "attempt/key-relay", key_relay, 1030, PLAN)
+            f.attempt_fact(6, "attempt/key-relay", key_relay, 1030, PLAN)
         ),
         WriterCycleOutcome::Ack(_)
     ));
@@ -462,14 +480,22 @@ fn presentation_is_opt_in_and_transitions_follow_recorded_facts() {
     );
     rich.after_watermark = Some(same.watermark);
     let mut relay = support::attempt_started("model/relay");
-    if let ExecutionFactV1::AttemptStarted { ordinal, .. } = &mut relay {
+    if let ExecutionFactV1::AttemptStarted {
+        ordinal,
+        candidate_id,
+        stable_binding_id,
+        ..
+    } = &mut relay
+    {
         *ordinal = 3;
+        *candidate_id = "candidate-relay".into();
+        *stable_binding_id = "binding-relay".into();
     }
     assert!(matches!(
         offer_fact(
             &writer,
             &channel,
-            f.attempt_fact(5, "attempt/model-relay", relay, 1040, PLAN)
+            f.attempt_fact(7, "attempt/model-relay", relay, 1040, PLAN)
         ),
         WriterCycleOutcome::Ack(_)
     ));
@@ -484,6 +510,18 @@ fn presentation_is_opt_in_and_transitions_follow_recorded_facts() {
         Some("model/relay")
     );
     rich.after_watermark = Some(mixed.watermark);
+    let mut accepted_attempt = support::attempt_finished();
+    if let ExecutionFactV1::AttemptFinished(fact) = &mut accepted_attempt {
+        fact.ordinal = 2;
+    }
+    assert!(matches!(
+        offer_fact(
+            &writer,
+            &channel,
+            f.attempt_fact(8, "attempt/key-relay", accepted_attempt, 1045, PLAN)
+        ),
+        WriterCycleOutcome::Ack(_)
+    ));
     let finished = ExecutionFactV1::RequestFinished {
         outcome: hiroute_domain::ExecutionRequestOutcomeV1::Accepted,
         attempts_started: 3,
@@ -492,7 +530,7 @@ fn presentation_is_opt_in_and_transitions_follow_recorded_facts() {
         facts_completeness: hiroute_domain::FactsCompleteness::Complete,
     };
     assert!(matches!(
-        offer_fact(&writer, &channel, f.fact(6, finished, 1050)),
+        offer_fact(&writer, &channel, f.fact(9, finished, 1050)),
         WriterCycleOutcome::Ack(_)
     ));
     let accepted = store
