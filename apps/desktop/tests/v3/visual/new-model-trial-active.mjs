@@ -250,46 +250,82 @@ try {
  assert.equal(await evaluate(client,`document.querySelector('.routing-timeline [role=alert]')`),null);
  assert.ok(await evaluate(client,`(()=>{const calls=trialTrace.filter(x=>x.command==='observation_read'&&x.payload.request.intent.view==='routing_timeline');return calls[1].at-calls[0].at<1000;})()`));
  results.push({id:'timeline.busy-retries-quietly',status:'passed'});
- await open('lang=en&view=editor&cost=1'); await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`); await click('[role=tab]','Model performance');
- await waitFor(client,`document.body.textContent.includes('Additional cost')`); await evaluate(client,`document.querySelector('[aria-label="Regular cost comparison"]').scrollIntoView({block:'center'});true`); await shot('trust-cost-positive-en-755');
- assert.ok(await evaluate(client,`document.querySelector('[aria-label="Regular cost comparison"]').textContent.includes('+')`));
- results.push({id:'trust.cost-positive-difference-disclosure',status:'passed'});
+ for (const lang of ['en','zh']) for (const width of [755,1200]) {
+  await open(`lang=${lang}&view=editor&cost=1`,width,width===755?600:813);
+  await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`);
+  await click('[role=tab]',lang==='zh'?'模型表现':'Model performance');
+  await waitFor(client,`!!document.querySelector('.trust-cost [data-cost-metric="difference"]')`);
+  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('.trust-cost').scrollIntoView({block:'center'});return true;})()`);
+  const state=await evaluate(client,`(()=>{const card=document.querySelector('.trust-cost'),row=key=>card.querySelector('[data-cost-metric="'+key+'"] strong');return {routed:row('routed').innerText,reference:row('reference').innerText,difference:row('difference').innerText,tone:row('difference').className,open:card.querySelector('.trust-cost-details').open,text:card.innerText};})()`);
+  assert.equal(state.routed,'$0.0180'); assert.equal(state.reference,'$0.0120');
+  assert.equal(state.difference,'+$0.0060'); assert.equal(state.tone,'more');
+  assert.equal(state.open,false,'calculation details start collapsed');
+  assert.ok(!state.text.includes(lang==='zh'?'可精确比较':'Exactly comparable'));
+  for(const g of await geometry('.trust-cost,.trust-cost-row,.trust-cost-details')){assert.ok(g.scroll<=g.width+2,JSON.stringify(g));assert.ok(g.left>=-1&&g.right<=width+1,JSON.stringify(g));}
+  await shot(`trust-cost-positive-${lang}-${width}`);
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`document.querySelector('.trust-cost-details').open`);
+  const details=await evaluate(client,`document.querySelector('.trust-cost-details .disclosure-body').innerText`);
+  assert.ok(details.includes('3/3'));
+  assert.ok(details.includes(lang==='zh'?'仅已知配对请求的小计':'Known paired-request subtotals only'));
+  assert.ok(details.includes('$0.0180 / $0.0120'));
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`!document.querySelector('.trust-cost-details').open`);
+  results.push({id:`trust.cost-positive-difference-disclosure.${lang}.${width}`,status:'passed'});
+ }
  for (const lang of ['en','zh']) for (const width of [755,1200]) for (const kind of ['partial','unknown']) {
   await open(`lang=${lang}&view=editor&cost-${kind}=1`,width,width===755?600:813);
   await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`);
   await click('[role=tab]',lang==='zh'?'模型表现':'Model performance');
-  const label=lang==='zh'?'常规组成本对比':'Regular cost comparison';
-  await waitFor(client,`!!document.querySelector('[aria-label="${label}"]')`);
-  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('[aria-label="${label}"]').scrollIntoView({block:'center'});return true;})()`);
-  const text=await evaluate(client,`document.querySelector('[aria-label="${label}"]').textContent`);
-  assert.ok(text.includes(lang==='zh'?'排除数量包含在缺失数量中':'Excluded gaps are included in the missing count'));
-  assert.ok(text.includes(lang==='zh'?'完整范围的差额未知':'The full-scope difference is unknown'));
-  assert.equal(text.includes(lang==='zh'?'仅完整配对请求的小计':'Paired complete-request subtotals'),kind==='partial');
-  assert.equal(text.includes(lang==='zh'?'额外成本':'Additional cost'),false);
-  assert.ok(text.includes(`${kind==='partial'?1:0}/3`));
-  for(const g of await geometry())assert.ok(g.scroll<=g.width+2,JSON.stringify(g));
+  await waitFor(client,`!!document.querySelector('.trust-cost [data-cost-metric="difference"]')`);
+  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('.trust-cost').scrollIntoView({block:'center'});return true;})()`);
+  const state=await evaluate(client,`(()=>{const card=document.querySelector('.trust-cost'),row=key=>card.querySelector('[data-cost-metric="'+key+'"] strong').innerText;return {routed:row('routed'),reference:row('reference'),difference:row('difference'),open:card.querySelector('.trust-cost-details').open,text:card.innerText};})()`);
+  assert.equal(state.routed,lang==='zh'?'未知':'Unknown'); assert.equal(state.reference,lang==='zh'?'未知':'Unknown');
+  assert.equal(state.difference,lang==='zh'?'差额未知':'Difference unknown');
+  assert.equal(state.open,false,'calculation details start collapsed');
+  assert.ok(!state.text.includes(lang==='zh'?'可精确比较':'Exactly comparable'));
+  for(const g of await geometry('.trust-cost,.trust-cost-row,.trust-cost-details')){assert.ok(g.scroll<=g.width+2,JSON.stringify(g));assert.ok(g.left>=-1&&g.right<=width+1,JSON.stringify(g));}
   await shot(`trust-cost-gaps-${kind}-${lang}-${width}`);
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`document.querySelector('.trust-cost-details').open`);
+  const details=await evaluate(client,`document.querySelector('.trust-cost-details .disclosure-body').innerText`);
+  const missing=kind==='partial'?2:3;
+  assert.ok(details.includes(`${kind==='partial'?1:0}/3`));
+  assert.ok(details.includes(lang==='zh'?`缺口 ${missing}`:`${missing} missing`));
+  assert.ok(details.includes(lang==='zh'?`排除 ${missing} 个请求，已包含在缺口数量中`:`${missing} excluded requests are included in the missing count`));
+  assert.equal(details.includes(lang==='zh'?'仅已知配对请求的小计':'Known paired-request subtotals only'),kind==='partial');
+  assert.equal(details.includes('$0.0060 / $0.0040'),kind==='partial');
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`!document.querySelector('.trust-cost-details').open`);
   results.push({id:`trust.cost-gaps.${kind}.${lang}.${width}`,status:'passed'});
  }
  for (const lang of ['en','zh']) for (const width of [755,1200]) {
   await open(`lang=${lang}&view=editor&cost-routed-only=1`,width,width===755?600:813);
   await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`);
   await click('[role=tab]',lang==='zh'?'模型表现':'Model performance');
-  const label=lang==='zh'?'常规组成本对比':'Regular cost comparison';
-  await waitFor(client,`!!document.querySelector('[aria-label="${label}"]')`);
-  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('[aria-label="${label}"]').scrollIntoView({block:'center'});return true;})()`);
-  const text=await evaluate(client,`document.querySelector('[aria-label="${label}"]').textContent`);
-  assert.ok(text.includes('0.0180'));
-  assert.ok(text.includes(lang==='zh'?'完整范围的差额未知':'The full-scope difference is unknown'));
-  assert.ok(text.includes('0/1'));
-  assert.ok(text.includes(lang==='zh'?'可完整比较':'Fully comparable'));
-  assert.ok(text.includes(lang==='zh'?'主力参考费用范围':'Primary reference cost range'));
-  assert.ok(text.includes(lang==='zh'?'估算差额范围':'Estimated difference range'));
-  assert.ok(text.includes('0.0929') && text.includes('0.1157'));
-  assert.ok(text.includes(lang==='zh'?'未上报的缓存写入量':'unreported cache writes'));
-  assert.equal(text.includes(lang==='zh'?'仅完整配对请求的小计':'Paired complete-request subtotals'),false);
-  for(const g of await geometry())assert.ok(g.scroll<=g.width+2,JSON.stringify(g));
+  await waitFor(client,`!!document.querySelector('.trust-cost [data-cost-metric="difference"]')`);
+  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('.trust-cost').scrollIntoView({block:'center'});return true;})()`);
+  const state=await evaluate(client,`(()=>{const card=document.querySelector('.trust-cost'),row=key=>card.querySelector('[data-cost-metric="'+key+'"] strong');return {routed:row('routed').innerText,reference:row('reference').innerText,difference:row('difference').innerText,tone:row('difference').className,open:card.querySelector('.trust-cost-details').open,text:card.innerText};})()`);
+  assert.equal(state.routed,'$0.0180');
+  assert.ok(state.reference.includes(lang==='zh'?'$0.0928 至 $0.1158':'$0.0928 to $0.1158'));
+  assert.ok(state.difference.includes(lang==='zh'?'−$0.0978 至 −$0.0748':'−$0.0978 to −$0.0748'));
+  assert.ok(state.reference.includes(lang==='zh'?'范围':'Range') && state.difference.includes(lang==='zh'?'范围':'Range'));
+  assert.equal(state.tone,'less'); assert.equal(state.open,false,'calculation details start collapsed');
+  assert.ok(!state.text.includes(lang==='zh'?'差额未知':'Difference unknown'));
+  assert.ok(state.text.includes(lang==='zh'?'不是账单，也不是实际节省':'not a bill or an actual cash saving'));
+  assert.doesNotMatch(state.text,/you (?:saved|save)|cash saved|已节省|节省了/i);
+  for(const g of await geometry('.trust-cost,.trust-cost-row,.trust-cost-details')){assert.ok(g.scroll<=g.width+2,JSON.stringify(g));assert.ok(g.left>=-1&&g.right<=width+1,JSON.stringify(g));}
   await shot(`trust-cost-routed-only-${lang}-${width}`);
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`document.querySelector('.trust-cost-details').open`);
+  const details=await evaluate(client,`document.querySelector('.trust-cost-details .disclosure-body').innerText`);
+  assert.ok(details.includes('0/1'));
+  assert.ok(details.includes(lang==='zh'?'缺口 1':'1 missing'));
+  assert.ok(details.includes('92880 / 115738 · -97738 / -74880'));
+  assert.ok(details.includes(lang==='zh'?'未上报缓存写入量的上下限':'possible unreported cache-write amount'));
+  assert.ok(!details.includes(lang==='zh'?'仅已知配对请求的小计':'Known paired-request subtotals only'));
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`!document.querySelector('.trust-cost-details').open`);
   results.push({id:`trust.cost-routed-only.${lang}.${width}`,status:'passed'});
  }
 
