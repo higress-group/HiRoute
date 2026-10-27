@@ -72,8 +72,9 @@ the next wait is also at least 100 times the actual elapsed pass cost, so a slow
 unit cannot turn into continuous CPU work. Oldest eligible completed requests
 retire toward 90% of the limit. Durable request/blob progress, shared-reference
 rechecks and incremental page release keep logical expiry separate from actual
-physical release. Plan-quality stages and assessments obey the committed request
-tombstone immediately, including on reopen before physical cleanup; quality
+physical release. Plan-quality stages and assessments obey committed fact
+retirement immediately, including on reopen before physical cleanup. A content-only
+tombstone keeps current request membership and quality evidence; quality
 cursors and trust generations change at that same barrier. Busy,
 unreclaimable or protected data may keep usage above this soft threshold.
 Page release consumes each bounded incremental-vacuum result and yields to pinned

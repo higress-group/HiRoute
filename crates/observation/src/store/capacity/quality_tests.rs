@@ -4,8 +4,9 @@ use crate::WriterCycleOutcome;
 use crate::query_v2::ObservationReaderContext;
 use crate::store::tests::support::*;
 use hiroute_domain::{
-    AgentPlanId, AgentTurnAttributionV1, AgentTurnStatusV1, CanonicalDigest, ExecutionFactV1,
-    ObservedProfileDigestV1, PlanQualitySamplesQuery, TrustPopulationQueryV1, TurnId,
+    AgentPlanId, AgentTurnAttributionV1, AgentTurnStatusV1, CanonicalDigest, DeletionDataClass,
+    ExecutionFactV1, ObservationPrincipalV1, ObservationQueryPort, ObservedProfileDigestV1,
+    PlanQualitySamplesQuery, SessionDeletionSpecV1, TrustPopulationQueryV1, TurnId,
 };
 
 fn stage(fixture: &Fixture, segment: &str) -> ExecutionFactV1 {
@@ -156,15 +157,12 @@ fn retirement_barrier(retire_trigger: bool) {
             .unwrap();
         assert_eq!(retained.assessment.as_ref().unwrap().score, 0.9);
         assert_eq!(
-            serde_json::to_value(retained).unwrap(),
-            serde_json::to_value(
-                before
-                    .samples
-                    .iter()
-                    .find(|sample| sample.segment_id == "retained-stage")
-                    .unwrap()
-            )
-            .unwrap()
+            retained,
+            before
+                .samples
+                .iter()
+                .find(|sample| sample.segment_id == "retained-stage")
+                .unwrap()
         );
         assert_eq!(page.summary.models[0].average_score, Some(0.9));
         if retire_trigger {
@@ -272,4 +270,138 @@ fn retired_last_request_is_hidden_before_cleanup_and_after_reopen() {
 #[test]
 fn retired_assessment_trigger_is_unrated_before_cleanup_and_after_reopen() {
     retirement_barrier(true);
+}
+
+#[test]
+fn content_only_tombstone_preserves_quality_and_trust_after_reopen() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let fixture = Fixture::new("quality-content-only");
+    let writer = writer(&store);
+    let channel = fact_channel(&fixture, 512 * 1024);
+    let mut events = request_facts(&fixture, "content-only", finished("content-only"), 100);
+    events.extend([
+        fixture.fact(11, stage(&fixture, "retained-stage"), 1100),
+        fixture.fact(12, assessment(&fixture, "retained-stage", 0.6), 1200),
+    ]);
+    for event in events {
+        assert!(matches!(
+            offer_fact(&writer, &channel, event),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    install_content(&store, &fixture, b"delete only these bytes", 1300);
+    drop(writer);
+    let reader = || {
+        ObservationReaderContext::local_user(
+            fixture.workspace.clone(),
+            "reader".into(),
+            1,
+            10_000,
+            false,
+            false,
+        )
+        .unwrap()
+    };
+    let query: PlanQualitySamplesQuery = serde_json::from_value(serde_json::json!({
+        "plan_id":"plan/codex-daily", "from_ms":0, "to_ms":10000, "limit":50
+    }))
+    .unwrap();
+    let before = store
+        .observed_plan_quality_samples(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(before.summary.scored_stage_count, 1);
+    let principal = ObservationPrincipalV1::local_user(fixture.workspace.clone());
+    let spec = SessionDeletionSpecV1 {
+        workspace_id: fixture.workspace.clone(),
+        session_id: fixture.session.clone(),
+        data_class: DeletionDataClass::ContentOnly,
+        delete_rollups: false,
+    };
+    let preview = store.preview_session_deletion(&principal, &spec).unwrap();
+    store
+        .apply_session_deletion(
+            &principal,
+            &spec,
+            preview.store_revision,
+            &preview.change_digest,
+            2000,
+        )
+        .unwrap();
+    // Content-backed reasons and selectors disappear; frozen quality facts,
+    // score, identity and execution evidence keep their existing meaning.
+    let mut expected = before.clone();
+    expected.samples[0].selection = None;
+    expected.samples[0].reasoning_profile_id = None;
+    expected.samples[0].assessment.as_mut().unwrap().reason = None;
+    expected.summary.models[0].reasoning_profile_id = None;
+    let verify = |store: &LocalObservationStore| {
+        let page = store
+            .observed_plan_quality_samples(&reader(), &query, 5000)
+            .unwrap();
+        assert_eq!(page, expected);
+        let mut scored = query.clone();
+        scored.score_gt = Some(0.5);
+        assert_eq!(
+            store
+                .observed_plan_quality_samples(&reader(), &scored, 5000)
+                .unwrap()
+                .samples
+                .len(),
+            1
+        );
+        let trust_query = TrustPopulationQueryV1 {
+            active_revision: 17,
+            plan_id: "plan/codex-daily".into(),
+            branch_id: None,
+            revision: Some(17),
+            from_ms: Some(0),
+            to_ms: Some(10_000),
+        };
+        for lean in [false, true] {
+            let population = if lean {
+                store.observed_trust_suggestion_population(&reader(), &trust_query, 5000)
+            } else {
+                store.observed_trust_population(&reader(), &trust_query, 5000)
+            }
+            .unwrap();
+            assert_eq!(population.stages.len(), 1);
+            assert_eq!(
+                population.stages[0]
+                    .sample
+                    .assessment
+                    .as_ref()
+                    .unwrap()
+                    .score,
+                0.6
+            );
+        }
+        let db = store.connection.lock();
+        assert_eq!(
+            db.query_row("SELECT COUNT(*) FROM content_instances_v2", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.query_row("SELECT COUNT(*) FROM logical_requests", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT COUNT(*) FROM observation_request_tombstones_v2",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+            1
+        );
+    };
+    verify(&store);
+    drop(channel);
+    drop(store);
+    let store = open_store(directory.path());
+    verify(&store);
 }
