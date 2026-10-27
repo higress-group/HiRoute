@@ -27,11 +27,10 @@ export function TrustSuggestions({ report, language, currentModels = [], onThres
     const configured = configuredByBranch.get(model.branch_id) ?? [];
     configured.push(model); configuredByBranch.set(model.branch_id, configured);
   }
-  const announcementDates = new Map<string, string[]>();
-  for (const announcement of report.announcements) {
-    const dates = announcementDates.get(announcement.model_configuration_id) ?? [];
-    dates.push(announcement.included_on); announcementDates.set(announcement.model_configuration_id, dates);
-  }
+  // Announcements cover the report's whole catalog, while editor options can omit
+  // published bindings or contain newer model IDs. Only an empty global list proves
+  // that no model-update cutoff applies without the published per-branch identities.
+  const noModelUpdates = report.announcements.length === 0;
   function facts(counts: TrustCounts, upward: boolean) {
     return t(`完整评分阶段 ${counts.complete}（要求 ≥30）· 胜任率 ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)}（${upward ? '要求 ≥85%' : '低于 70% 时建议下调'}）· 评分覆盖 ${ratio(counts.complete, counts.executed)}${upward ? '（要求 ≥60%）' : ''} · 来自 ${counts.sessions} 个会话${upward ? '（要求 ≥3）' : ''}`,
       `${counts.complete} fully scored stages (≥30 required) · ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)} competence (${upward ? '≥85% required' : 'below 70% suggests stepping down'}) · ${ratio(counts.complete, counts.executed)} scored${upward ? ' (≥60% required)' : ''} · ${counts.sessions} sessions${upward ? ' (≥3 required)' : ''}`);
@@ -69,7 +68,6 @@ export function TrustSuggestions({ report, language, currentModels = [], onThres
     const configured = configuredByBranch.get(branch.branch_id) ?? [];
     const category = configured.find(model => model.branch_name)?.branch_name
       ?? (branch.branch_id === 'smart_saving' ? qualityBranchLabel(branch.branch_id, language) : branch.branch_id);
-    const dates = [...new Set(configured.flatMap(model => announcementDates.get(model.model_configuration_id) ?? []))];
     const fromDate = new Date(branch.upward_from_ms);
     const from = Number.isSafeInteger(branch.upward_from_ms) && branch.upward_from_ms > 0 && Number.isFinite(fromDate.getTime())
       ? fromDate.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US') : null;
@@ -81,9 +79,8 @@ export function TrustSuggestions({ report, language, currentModels = [], onThres
         <p className="trust-suggestion-sample"><strong>{t(`升档样本：${branch.upward_cohort.complete} / 30`, `Step-up samples: ${branch.upward_cohort.complete} / 30`)}</strong><span>{t(`当前版本 · ${category} · 常规组 · 完整评分`, `Active revision · ${category} · Regular · Fully scored`)}</span></p>
         <Disclosure className="trust-evidence-scope" label={t('样本范围', 'Evidence scope')} language={language}>
           <p>{t('升档使用当前生效版本、本分类常规组的保留记录，与页面展示的时间筛选无关。下调也只使用该版本和分类的保留记录。', 'Step-up uses retained records for the active revision and this category’s Regular group, independently of the page’s display period. Step-down also uses retained records for that revision and category.')}</p>
-          {configured.length === 0 ? <p>{t('当前分类的模型更新信息暂不可用；实际起点已包含保留期及适用的更新截点。', 'Model-update information for this category is unavailable; the effective start includes retention and any applicable update cutoff.')}</p>
-            : dates.length ? <p>{t(`本分类常规模型的更新公告日期：${dates.join('、')}。保留期可能晚于公告。`, `Update announcement dates for this category’s Regular models: ${dates.join(', ')}. Retention may begin later.`)}</p>
-              : <p>{t('本分类可用的常规模型配置没有显示适用的更新公告；升档范围受保留期限制。', 'No update announcement is shown for this category’s available Regular model configurations; retention bounds the step-up scope.')}</p>}
+          {noModelUpdates ? <p>{t('此报告没有模型更新公告；升档范围受保留期限制。', 'No model-update announcements are present in this report; retention bounds the step-up scope.')}</p>
+            : <p>{t('模型更新是否适用于本分类尚未确认；实际起点已包含保留期和可能适用的更新截点。', 'Model-update basis is unconfirmed for this category; the effective start includes retention and any applicable update cutoff.')}</p>}
           <p>{from ? t(`升档样本实际起点：${from}。`, `Effective step-up sample start: ${from}.`) : t('升档样本从可用保留记录的起点开始。', 'Step-up samples begin at the start of available retained records.')}</p>
         </Disclosure>
         {b.replay && <p className="trust-suggestion-replay">{b.replay}</p>}

@@ -183,7 +183,7 @@ Source SPEC comments:
 
 ### Requirement: Evidence counts disclose their actual routing cohorts
 
-The evidence view SHALL label the selected display scope separately from suggestion evidence. Header stage/scored/unrated counts follow the display filters. Step-up evidence remains the active-revision, per-category Regular complete-scoring cohort within retention and its applicable model-update cutoff, independent of the display time window; labels remain visible even when the suggestion is keep. No applicable announcement means retention-only wording, not a fabricated update date. Required thresholds and cohorts remain unchanged; noncurrent/all-version actions retain existing restrictions. Counts, original model identity, unscored last stages and protection/release distinctions are not changed to appear consistent. Keep a compact visible step-up sample count and explicit active-revision/category/Regular scope; place retention and model-update cutoff details in an accessible disclosure. Do not refer to the header as the scope above or hide the difference between display counts and suggestion counts.
+The evidence view SHALL label the selected display scope separately from suggestion evidence. Header stage/scored/unrated counts follow the display filters. Step-up evidence remains the active-revision, per-category Regular complete-scoring cohort within retention and its applicable model-update cutoff, independent of the display time window; labels remain visible even when the suggestion is keep. When complete authoritative evidence proves no announcement applies, use retention-only wording, not a fabricated update date. If the published per-category identities or applicability cannot be established, the model-update basis SHALL remain unconfirmed; incomplete or refreshed editor options cannot prove applicability or absence. The reported effective cohort start remains visible. Required thresholds and cohorts remain unchanged; noncurrent/all-version actions retain existing restrictions. Counts, original model identity, unscored last stages and protection/release distinctions are not changed to appear consistent. Keep a compact visible step-up sample count and explicit active-revision/category/Regular scope; place retention and model-update cutoff details in an accessible disclosure. Do not refer to the header as the scope above or hide the difference between display counts and suggestion counts.
 
 #### Scenario: Different legitimate counts
 
@@ -194,6 +194,16 @@ The evidence view SHALL label the selected display scope separately from suggest
 
 - **WHEN** the user changes seven days to all, another branch has an announcement, or retention is later than the applicable announcement
 - **THEN** suggestion population keeps its actual scope and labels do not attribute another branch or retention date to a model update.
+
+#### Scenario: Incomplete or refreshed editor options
+
+- **WHEN** a published Regular binding is absent from current editor options or its current model identity differs from the published identity while the report contains model-update announcements
+- **THEN** the view describes the model-update basis as unconfirmed and displays the reported effective cohort start without asserting applicability or absence from those options.
+
+#### Scenario: Proven absence of model updates
+
+- **WHEN** the complete report contains no model-update announcements
+- **THEN** the view identifies retention as the bound on the step-up scope without inventing an announcement date.
 
 #### Scenario: No later assessment or historical view
 

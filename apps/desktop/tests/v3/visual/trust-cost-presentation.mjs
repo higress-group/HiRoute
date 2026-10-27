@@ -44,7 +44,7 @@ try {
     assert.match(baseline.tile, /\$0\.0028/, 'The small known amount must remain visible in the evidence tile');
     assert.match(baseline.card, /−\$0\.1125 to −\$0\.0896/, 'The full range must be the primary difference result');
   } else {
-    const initial = await evaluate(client, `({report: structuredClone(window.trustCostFixture.report), models: structuredClone(window.trustCostFixture.models)})`);
+    const initial = await evaluate(client, `({report: structuredClone(window.trustCostFixture.report), models: structuredClone(window.trustCostFixture.models), editorPlan: structuredClone(window.trustCostFixture.editorPlan)})`);
     const results = [];
     async function fixture(settings = {}) {
       const generation = await evaluate(client, `(() => { const f = window.trustCostFixture; Object.assign(f, ${JSON.stringify({
@@ -71,6 +71,47 @@ try {
       await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
       await waitFor(client, `document.querySelector(${JSON.stringify(selector)})?.parentElement.open === ${open} && document.querySelector(${JSON.stringify(selector)}).getAttribute('aria-expanded') === '${open}'`);
     }
+    async function editorScope({ bindings, candidates, announcements }) {
+      const plan = structuredClone(initial.editorPlan);
+      plan.desired.strategy.economy = bindings.map(binding_id => ({ binding_id }));
+      const report = structuredClone(initial.report);
+      report.plan_id = plan.agent_plan_id;
+      report.branches[0].branch_id = 'smart_saving';
+      report.branches[0].upward_from_ms = Date.UTC(2026, 9, 11);
+      report.rows[0].branch_id = 'smart_saving';
+      report.announcements = announcements.map(model_configuration_id => ({ model_configuration_id, included_on: '2026-10-10',
+        cohort_from_ms: Date.UTC(2026, 9, 11), before: 0, announcement_day: 0, after: 0, executed_version_verified: false }));
+      const generation = await evaluate(client, `(() => { const f=window.trustCostFixture; Object.assign(f, ${JSON.stringify({
+        view: 'editor', language: 'en', theme: 'light', report, editorPlan: plan, editorCandidates: candidates, scored: 4, unrated: 1,
+      })}); f.refresh(); return f.generation; })()`);
+      await waitFor(client, `document.querySelector('[data-fixture-generation="${generation}"] .quality-model-row[data-model-configuration=${JSON.stringify(candidates[0].model_configuration_id)}]') !== null`);
+      await keyboardToggle('.trust-evidence-scope > summary');
+      return evaluate(client, `({text:document.querySelector('.trust-evidence-scope').innerText,
+        models:[...document.querySelectorAll('.quality-model-row')].map(row=>row.dataset.modelConfiguration)})`);
+    }
+    const candidate = (binding_id, model_configuration_id) => ({ binding_id, model_configuration_id, display_name: model_configuration_id,
+      reasoning: { kind: 'fixed', profile: 'provider-default' }, billing_class: 'standard', routable: true, ingress_protocols: ['responses'] });
+    const first = candidate('binding/a', 'model/current-a'), second = candidate('binding/b', 'model/current-b');
+    const scopeCases = [
+      { name: 'missing-binding', input: { bindings: ['binding/a', 'binding/b'], candidates: [first], announcements: ['model/published-b'] } },
+      { name: 'changed-source-identity', input: { bindings: ['binding/a'], candidates: [first], announcements: ['model/published-a'] } },
+      { name: 'matching-current-identity', input: { bindings: ['binding/a'], candidates: [first], announcements: ['model/current-a'] } },
+      { name: 'complete-empty-announcements', input: { bindings: ['binding/a', 'binding/b'], candidates: [first, second], announcements: [] } },
+    ];
+    const scopes = [];
+    for (const item of scopeCases) scopes.push({ name: item.name, ...await editorScope(item.input) });
+    await writeFile(path.join(output, 'editor-scope-cases.json'), JSON.stringify(scopes, null, 2));
+    const effectiveStart = await evaluate(client, `new Date(Date.UTC(2026, 9, 11)).toLocaleString('en-US')`);
+    for (const item of scopes.slice(0, 3)) {
+      assert.deepEqual(item.models, ['model/current-a'], `${item.name}: the production editor options projection must be loaded`);
+      assert.match(item.text, /Model-update basis is unconfirmed/, `${item.name}: current editor identities do not prove the published cohort basis`);
+      assert.doesNotMatch(item.text, /No update announcement|Update announcement dates/);
+      assert.ok(item.text.includes(`Effective step-up sample start: ${effectiveStart}.`));
+    }
+    assert.deepEqual(scopes[3].models, ['model/current-a', 'model/current-b']);
+    assert.match(scopes[3].text, /No model-update announcements are present in this report; retention bounds the step-up scope/);
+    assert.ok(scopes[3].text.includes(`Effective step-up sample start: ${effectiveStart}.`));
+    assert.doesNotMatch(scopes[3].text, /unconfirmed/);
     for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const width of [755, 1200]) {
       await client.send('Emulation.setDeviceMetricsOverride', { width, height: width === 755 ? 600 : 813, deviceScaleFactor: 1, mobile: false });
       await fixture({ language, theme });
@@ -100,10 +141,23 @@ try {
       await keyboardToggle('.trust-cost-details > summary', false);
       await keyboardToggle('.trust-evidence-scope > summary');
       const scope = await evaluate(client, `document.querySelector('.trust-evidence-scope').innerText`);
-      assert.ok(scope.includes(language === 'zh' ? '没有显示适用的更新公告' : 'No update announcement is shown'));
+      assert.ok(scope.includes(language === 'zh' ? '此报告没有模型更新公告' : 'No model-update announcements are present in this report'));
       assert.ok(scope.includes(language === 'zh' ? '与页面展示的时间筛选无关' : 'independently of the page’s display period'));
       await snapshot('.trust-evidence-scope', `scope-${suffix}`);
       await keyboardToggle('.trust-evidence-scope > summary', false);
+    }
+
+    const unconfirmed = structuredClone(initial.report);
+    unconfirmed.announcements = [{ model_configuration_id: 'model/published', included_on: '2026-10-10',
+      cohort_from_ms: Date.UTC(2026, 9, 11), before: 0, announcement_day: 0, after: 0, executed_version_verified: false }];
+    for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const width of [755, 1200]) {
+      await client.send('Emulation.setDeviceMetricsOverride', { width, height: width === 755 ? 600 : 813, deviceScaleFactor: 1, mobile: false });
+      await fixture({ language, theme, report: unconfirmed });
+      await keyboardToggle('.trust-evidence-scope > summary');
+      const scope = await evaluate(client, `document.querySelector('.trust-evidence-scope').innerText`);
+      assert.ok(scope.includes(language === 'zh' ? '模型更新是否适用于本分类尚未确认' : 'Model-update basis is unconfirmed'));
+      assert.ok(!scope.includes('2026-10-10'));
+      await snapshot('.trust-evidence-scope', `scope-unconfirmed-${language}-${theme}-${width}`);
     }
 
     const withCost = (changes, difference = null) => ({ ...initial.report, cost: { kind: 'available', difference_micros: difference, comparison: { ...initial.report.cost.comparison, ...changes } } });
@@ -165,7 +219,9 @@ try {
     assert.match(await evaluate(client, `document.querySelector('.quality-scope-meta').innerText`), /58 scored/);
     assert.match(await evaluate(client, `document.querySelector('.trust-suggestion').innerText`), /Step-up samples: 41 \/ 30/);
     await keyboardToggle('.trust-evidence-scope > summary');
-    assert.match(await evaluate(client, `document.querySelector('.trust-evidence-scope').innerText`), /No update announcement is shown/);
+    const unrelated = await evaluate(client, `document.querySelector('.trust-evidence-scope').innerText`);
+    assert.match(unrelated, /Model-update basis is unconfirmed/);
+    assert.doesNotMatch(unrelated, /2026-10-03|No model-update announcements/);
     await evaluate(client, `(() => { const s=[...document.querySelectorAll('.quality-filters select')].find(e=>e.querySelector('option[value="seven_days"]')); s.value='all'; s.dispatchEvent(new Event('change',{bubbles:true})); })()`);
     await waitFor(client, `document.querySelector('.trust-suggestion')?.innerText.includes('Step-up samples: 41 / 30')`);
     const timeReads = await evaluate(client, `window.trustCostFixture.reads.filter(x=>x.view==='plan_trust').map(x=>x.query.from_ms)`);
@@ -177,9 +233,9 @@ try {
     larger.announcements.push({ model_configuration_id: 'model/regular', included_on: '2026-10-10', before: 0, announcement_day: 0, after: 0, executed_version_verified: false });
     await fixture({ report: larger }); await keyboardToggle('.trust-evidence-scope > summary');
     const scope = await evaluate(client, `document.querySelector('.trust-evidence-scope').innerText`);
-    assert.ok(scope.includes('2026-10-10') && !scope.includes('2026-10-03') && scope.includes('Retention may begin later') && scope.includes('Effective step-up sample start'));
+    assert.ok(scope.includes('Model-update basis is unconfirmed') && !scope.includes('2026-10-10') && !scope.includes('2026-10-03') && scope.includes('Effective step-up sample start'));
     await fixture({ report: larger, models: [] }); await keyboardToggle('.trust-evidence-scope > summary');
-    assert.match(await evaluate(client, `document.querySelector('.trust-evidence-scope').innerText`), /Model-update information for this category is unavailable/);
+    assert.match(await evaluate(client, `document.querySelector('.trust-evidence-scope').innerText`), /Model-update basis is unconfirmed/);
 
     const multiple = structuredClone(larger);
     multiple.branches.push({ ...structuredClone(multiple.branches[0]), branch_id: 'other', upward_cohort: { ...multiple.branches[0].upward_cohort, complete: 7 } });

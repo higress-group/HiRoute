@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { mockIPC } from './host-mock';
 import { PlanQuality, type PlanQualityModel } from '../../../src/features/PlanQuality';
 import { RoutingTimeline } from '../../../src/features/RoutingTimeline';
+import { PlanEditor } from '../../../src/plan-editor';
 import { PresentationRoot } from '../../../src/ui';
+import { dailyPlan, fixturePlanAuthoring, mockProductInvoke } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
 const counts = { executed: 5, complete: 2, meets_floor: 2, partial: 1, awaiting_assessment: 1, unscored: 1, sessions: 2 };
@@ -26,10 +28,13 @@ const models: PlanQualityModel[] = [{ plan_revision: 8, branch_id: 'writing', br
 
 const fixture = { language: 'en' as 'en' | 'zh', theme: 'light' as 'light' | 'dark', report: structuredClone(report),
   models: structuredClone(models), scored: 4, unrated: 1, generation: 0, refresh: () => {}, reads: [] as any[],
-  view: 'quality' as 'quality' | 'timeline', timelineMicros: 1 as number | null, timelineCurrency: 'USD' as string | null };
+  view: 'quality' as 'quality' | 'timeline' | 'editor', timelineMicros: 1 as number | null, timelineCurrency: 'USD' as string | null,
+  editorPlan: structuredClone(dailyPlan), editorCandidates: [] as any[] };
 Object.assign(window, { trustCostFixture: fixture });
 mockIPC(async (command, payload: any) => {
-  if (command !== 'observation_read') throw new Error(`Unexpected command ${command}`);
+  if (command === 'plan_editor_options') return { ...mockProductInvoke(command, payload, 'ready'),
+    authoring: fixturePlanAuthoring(fixture.editorPlan), candidates: fixture.editorCandidates };
+  if (command !== 'observation_read') return mockProductInvoke(command, payload, 'ready');
   const { view, query } = payload.request.intent;
   fixture.reads.push({ view, query });
   if (view === 'plan_trust') {
@@ -64,7 +69,8 @@ function Harness() {
     <div className="app-window"><header className="titlebar" /><aside className="sidebar" /><main className="main">
       <div className="detail-pane" style={{ height: '100%' }}><section className="editor-section quality-performance-panel" data-fixture-generation={generation}>
         {fixture.view === 'quality' ? <PlanQuality key={generation} planId="plan/fixture" planRevision={8} currentModels={fixture.models} language={fixture.language} onThreshold={() => {}} onDivision={() => {}} />
-          : <RoutingTimeline key={generation} session="session/fixture" language={fixture.language} active displayed refreshVersion={0} requestId={null} contentCleared onSelectRequest={() => {}} onOpenPerformance={() => {}} />}
+          : fixture.view === 'editor' ? <PlanEditor key={generation} plan={fixture.editorPlan} initialView="performance" language={fixture.language} onDone={async () => {}} onClose={() => {}} />
+            : <RoutingTimeline key={generation} session="session/fixture" language={fixture.language} active displayed refreshVersion={0} requestId={null} contentCleared onSelectRequest={() => {}} onOpenPerformance={() => {}} />}
       </section></div>
     </main></div>
   </PresentationRoot>;
