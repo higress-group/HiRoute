@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn capture_baseline_c_default_publication() {
+    let protocol = NativeProtocolV1::default();
+    let mut judgment = JudgmentSettingsV1::default();
+    protocol.stock_assessment(&mut judgment);
+    judgment.competence.standard = Some(super::super::AssessmentStandardV1::Default);
+    let frozen = FrozenNativeProtocolV1::freeze(
+        &protocol,
+        judgment.degree.definition().into(),
+        [(super::super::SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
+    )
+    .unwrap();
+    assert_eq!(
+        frozen.scopes[super::super::SMART_SAVING_SCOPE_ID].assessment,
+        stock_c_questions()["q1"]
+    );
+    println!(
+        "BASELINE_C_PUBLICATION={}",
+        serde_json::json!({"judgment":judgment,"frozen":frozen})
+    );
+}
+
+#[test]
 fn stock_questions_and_composition_are_the_public_frozen_c_full() {
     let p = NativeProtocolV1::default();
     let mut j = JudgmentSettingsV1::default();
