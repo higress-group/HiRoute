@@ -464,7 +464,7 @@ HiRoute SHALL allow the local installation owner to save or disable one durable 
 #### Scenario: Logical retirement precedes physical cleanup
 
 - **WHEN** capacity retention commits a request's logical retirement and its physical cleanup is interrupted or deferred, including across restart
-- **THEN** fresh Plan-quality reads immediately omit stages ending in that request and omit assessments triggered by it from samples, filters and summary scores; existing quality cursors become stale, while unrelated retained evidence remains unchanged and physical cleanup resumes in bounded passes.
+- **THEN** fresh Plan-quality reads immediately omit stages ending in that request and omit assessments triggered by it from samples, filters and summary scores; existing quality cursors become stale, while unrelated retained evidence remains unchanged and physical cleanup resumes in bounded passes. Content-only deletion retains current request membership, stages and scores.
 
 #### Scenario: Physical release is reported honestly
 

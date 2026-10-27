@@ -20,7 +20,8 @@ mod snapshot_tests;
 /// Guarded CASE expressions match the small JSON expression indexes. The inner
 /// CASE is the indexed value; the outer invalid-JSON branch preserves the original
 /// read failure instead of treating corrupt content as a missing field.
-/// Request tombstones take effect before resumable physical projection cleanup.
+/// A request tombstone with no current membership retires facts before physical
+/// cleanup. Content-only deletion keeps that membership and its quality evidence.
 pub(super) const SCOPE: &str = "
     SELECT q.*,
       json_extract(q.branch_execution_json,'$.group') AS execution_group,
@@ -70,12 +71,17 @@ pub(super) const SCOPE: &str = "
     LEFT JOIN observation_request_tombstones_v2 retired_assessment
       ON retired_assessment.workspace_id=q.workspace_id
       AND retired_assessment.request_id=q.assessment_trigger_request_id
+      AND NOT EXISTS(SELECT 1 FROM logical_requests retained
+        WHERE retained.workspace_id=q.workspace_id
+          AND retained.request_id=q.assessment_trigger_request_id)
     LEFT JOIN observation_run_links l ON l.workspace_id=q.workspace_id
       AND l.request_id=q.first_request_id
     WHERE q.workspace_id=:workspace AND q.last_at_ms>=:from AND q.last_at_ms<:to
       AND q.last_at_ms IS NOT NULL AND q.selected_branch_id IS NOT NULL
       AND NOT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 retired
-        WHERE retired.workspace_id=q.workspace_id AND retired.request_id=q.last_request_id)
+        WHERE retired.workspace_id=q.workspace_id AND retired.request_id=q.last_request_id
+          AND NOT EXISTS(SELECT 1 FROM logical_requests retained
+            WHERE retained.workspace_id=q.workspace_id AND retained.request_id=q.last_request_id))
       AND (:plan IS NULL OR q.plan_id=:plan)
       AND (:session IS NULL OR q.session_id=:session)
       AND (:revision IS NULL OR q.plan_revision=:revision)
