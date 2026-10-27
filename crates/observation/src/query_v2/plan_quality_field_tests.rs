@@ -174,6 +174,18 @@ fn quality_identity_reads_use_covering_request_and_exact_payload_lookup() {
             && step.contains("workspace_id=? AND request_id=?")),
         "candidate metadata must be scoped before source lookups: {summary:?}"
     );
+    for (alias, index) in [
+        ("v", "valuation_request_accepted_ordinal"),
+        ("a", "observation_attempt_model_names"),
+    ] {
+        assert!(
+            summary
+                .iter()
+                .any(|step| step
+                    .starts_with(&format!("SEARCH {alias} USING COVERING INDEX {index}"))),
+            "accepted model lookup must not open table rows: {alias}: {summary:?}"
+        );
+    }
     let routing = plan(SUMMARY_SQL);
     assert!(
         routing
@@ -181,6 +193,57 @@ fn quality_identity_reads_use_covering_request_and_exact_payload_lookup() {
             .any(|step| step.starts_with("SEARCH e USING COVERING INDEX")
                 && step.contains("workspace_id=? AND request_id=? AND envelope_digest=?")),
         "routing identity lookup must locate the exact retained event: {routing:?}"
+    );
+}
+
+#[test]
+fn accepted_model_covering_indexes_preserve_live_ordinal_and_missing_evidence() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    let sql = summary_sql();
+    let previous = sql
+        .replace(
+            "INDEXED BY valuation_request_accepted_ordinal",
+            "INDEXED BY sqlite_autoindex_valuation_requests_v2_1",
+        )
+        .replace(
+            "INDEXED BY observation_attempt_model_names",
+            "INDEXED BY sqlite_autoindex_observation_attempt_models_v2_1",
+        );
+    let (rows, covered_work) = measured(&db, &sql);
+    let (old_rows, previous_work) = measured(&db, &previous);
+    assert_eq!(rows, old_rows);
+    assert!(
+        covered_work < previous_work,
+        "covering lookups used {covered_work} VM steps; table lookups used {previous_work}"
+    );
+    db.execute(
+        "INSERT INTO observation_attempt_models_v2
+         SELECT workspace_id,request_id,99,'native-other' FROM valuation_requests_v2 LIMIT 1",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        measured(&db, &sql).0,
+        rows,
+        "unaccepted attempts stay excluded"
+    );
+    db.execute("UPDATE valuation_requests_v2 SET accepted_ordinal=99", [])
+        .unwrap();
+    let current = measured(&db, &sql).0;
+    assert_eq!(current, measured(&db, &previous).0);
+    assert_eq!(current[0][6], Value::Text("native-other".into()));
+    db.execute(
+        "DELETE FROM observation_attempt_models_v2 WHERE ordinal=99",
+        [],
+    )
+    .unwrap();
+    let missing = measured(&db, &sql).0;
+    assert_eq!(missing, measured(&db, &previous).0);
+    assert_eq!(
+        missing[0][6],
+        Value::Null,
+        "do not reuse a rejected model name"
     );
 }
 
@@ -372,7 +435,7 @@ fn request_field_indexes_reopen_without_rewriting_source_rows() {
             .iter()
             .map(|t| retained_rows(&db, t))
             .collect::<Vec<_>>();
-        db.execute_batch("DROP INDEX requests_observation_fields; DROP INDEX observation_payload_candidate_request;").unwrap();
+        db.execute_batch("DROP INDEX requests_observation_fields; DROP INDEX observation_payload_candidate_request; DROP INDEX valuation_request_accepted_ordinal; DROP INDEX observation_attempt_model_names;").unwrap();
         before
     };
     drop(store);
@@ -386,7 +449,7 @@ fn request_field_indexes_reopen_without_rewriting_source_rows() {
                 "source changed: {table}"
             );
         }
-        assert_eq!(db.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN('requests_observation_fields','observation_payload_candidate_request')",[],|r|r.get::<_,u64>(0)).unwrap(),2);
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN('requests_observation_fields','observation_payload_candidate_request','valuation_request_accepted_ordinal','observation_attempt_model_names')",[],|r|r.get::<_,u64>(0)).unwrap(),4);
         assert_eq!(
             db.query_row(
                 "SELECT value FROM observation_meta WHERE key='schema_version'",
