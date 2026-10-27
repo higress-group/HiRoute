@@ -409,7 +409,7 @@ fn candidate_index_keeps_unrelated_corrupt_carriers_out_of_reasoning_reads() {
     let (id, expected) = {
         let db = store.connection.lock();
         let expected = measured(&db, &summary_sql()).0;
-        let id:String=db.query_row("SELECT id FROM observation_sensitive_payloads_v2 WHERE json_extract(body_json,'$.fact.kind')='request_started' LIMIT 1",[],|r|r.get(0)).unwrap();
+        let id:String=db.query_row("SELECT id FROM observation_sensitive_payloads_v2 WHERE json_extract(body_json,'$.fact.kind')='attempt_started' LIMIT 1",[],|r|r.get(0)).unwrap();
         db.execute(
             "UPDATE observation_sensitive_payloads_v2 SET body_json='{' WHERE id=?1",
             [&id],
