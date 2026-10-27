@@ -57,8 +57,7 @@ fn preview_uses_the_frozen_plan_budget_used_by_dsh_native_mapping() {
     );
 
     let mut converted = plan.clone();
-    for candidate in converted
-        .body
+    for candidate in std::sync::Arc::make_mut(&mut converted.body)
         .materialized
         .attempt_owned
         .groups
@@ -77,7 +76,11 @@ fn preview_uses_the_frozen_plan_budget_used_by_dsh_native_mapping() {
     ));
 
     let mut missing_ingress = plan.clone();
-    missing_ingress.body.materialized.attempt_owned.groups[0].candidates[0]
+    std::sync::Arc::make_mut(&mut missing_ingress.body)
+        .materialized
+        .attempt_owned
+        .groups[0]
+        .candidates[0]
         .protocol_profiles
         .retain(|profile| profile.ingress_protocol != UpstreamProtocol::Responses);
     assert_eq!(
@@ -88,7 +91,12 @@ fn preview_uses_the_frozen_plan_budget_used_by_dsh_native_mapping() {
     );
 
     let mut missing_budget = plan;
-    missing_budget.body.materialized.attempt_owned.groups[0].candidates[0].protocol_profiles[0]
+    std::sync::Arc::make_mut(&mut missing_budget.body)
+        .materialized
+        .attempt_owned
+        .groups[0]
+        .candidates[0]
+        .protocol_profiles[0]
         .capability
         .context
         .max_output_tokens = GatewayCriticalFactV1::Unknown;
