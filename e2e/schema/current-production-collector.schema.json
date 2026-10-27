@@ -65,7 +65,7 @@
             "required": ["schema_version", "schema_digest", "channel", "producer", "sequence", "event_id", "correlation", "attempt_id", "authority_id", "authority_epoch", "served_model_id", "selector_source", "agent_plan_id", "route", "gateway_publication_revision", "gateway_publication_digest", "grant_id", "grant_generation", "ingress_protocol", "occurred_at_unix_nanos", "fact", "loss_watermark", "completeness_delta"],
             "properties": {
               "schema_version": {"const": "hiroute.observation.execution-fact-envelope/v3"},
-              "schema_digest": {"const": "sha256:b705dea673ed9c204300c4dd0549e7433e62ac90c72f760b5e922175c27def51"},
+              "schema_digest": {"const": "sha256:24f26b9f29ecc05e85ea7650da55454f1470bb3fbd888916f02389b4727bc8bc"},
               "pricing": {"type": "object"},
               "channel": {"const": "execution_fact"}, "producer": {"type": "object"},
               "sequence": {"type": "integer", "minimum": 1}, "event_id": {"type": "string", "minLength": 1},
