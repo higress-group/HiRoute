@@ -98,7 +98,13 @@ async function additionalAgentMappings() {
 }
 async function trialIdentityChecks() {
  let criterion, rubric;
- for (const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',755,600],['en','dark',1200,813],['zh','light',1200,813]]) {
+ const variants=['en','zh'].flatMap(lang=>['light','dark'].flatMap(theme=>[755,1200].map(width=>[lang,theme,width,width===755?600:813])));
+ const enter=async selector=>{
+  await evaluate(client,`document.querySelector(${JSON.stringify(selector)}).focus();true`);
+  await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r',unmodifiedText:'\r'});
+  await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+ };
+ for (const [lang,theme,width,height] of variants) {
   await open(`lang=${lang}&theme=${theme}&view=quickstart&agent-family=dsh&no-reasoning-default=1&hold-writes=1`,width,height);
   await click('.new-models button',lang==='zh'?'试用':'Try');
   await waitFor(client,`!!document.querySelector('.trial-agent-choice select')`);
@@ -106,14 +112,16 @@ async function trialIdentityChecks() {
   await waitFor(client,`!!document.querySelector('.trial-choice-list .trial-choice')`);
   await evaluate(client,`[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name)).click();true`);
   assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),true,'a selectable binding without a supported default needs an explicit choice');
-  await click('.trial-column .trial-reasoning button',lang==='zh'?'请选择':'Choose');
-  await click('[role=dialog] .segment','low');
-  await click('[role=dialog] .btn-primary',lang==='zh'?'应用':'Apply');
+  await enter('.trial-column .trial-reasoning button');
+  await waitFor(client,`!!document.querySelector('[role=dialog] .segment')`);
+  await enter('[role=dialog] .segment');
+  assert.equal(await evaluate(client,`document.querySelector('[role=dialog] .segment').getAttribute('aria-pressed')`),'true','reasoning can be selected with the keyboard');
+  await enter('[role=dialog] .btn-primary');
   await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
   assert.match(await evaluate(client,`document.querySelector('.trial-page').textContent`),/trial-qwen3-coder-plus-[0-9a-f]{8}/);
   await shot(`trial-selection-${lang}-${theme}-${width}`);
   for(const node of await geometry('.trial-card,.trial-reasoning')) assert.ok(node.scroll<=node.width+1,`horizontal overflow: ${JSON.stringify(node)}`);
-  await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
+  await enter('.trial-footer .btn-primary');
   await waitFor(client,`!!document.querySelector('[data-dsh-capability-state="available"]') && !!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
   assert.equal(await evaluate(client,`document.querySelector('[data-codex-capability-state]')`),null,'DSH never shows Codex capability results');
   assert.ok(await evaluate(client,`trialTrace.some(x=>x.command==='plan_editor_options'&&x.payload.input.preview_agent==='dsh'&&x.payload.input.editor)`));
@@ -121,7 +129,7 @@ async function trialIdentityChecks() {
   await evaluate(client,`document.querySelector('.trial-review > .actions .btn-primary').scrollIntoView({block:'center'});true`);
   await shot(`trial-review-action-${lang}-${theme}-${width}`);
   const before=await evaluate(client,`(()=>{const r=document.querySelector('.trial-review > .actions .btn-primary').getBoundingClientRect();return {left:r.left,top:r.top};})()`);
-  await click('.trial-review > .actions button',lang==='zh'?'保存并发布路由':'Save and publish route');
+  await enter('.trial-review > .actions button');
   await waitFor(client,`trialWrites.pending.length===1`);
   const during=await evaluate(client,`(()=>{const r=document.querySelector('.trial-review > .actions .btn-primary').getBoundingClientRect();return {left:r.left,top:r.top};})()`);
   assert.ok(Math.abs(before.left-during.left)<=2 && Math.abs(before.top-during.top)<=2,`saving moved the action: ${JSON.stringify({before,during})}`);
@@ -141,7 +149,7 @@ async function trialIdentityChecks() {
   if (rubric === undefined) rubric=writes[0].editor.smart.judgment; else assert.deepEqual(writes[0].editor.smart.judgment,rubric,'all model-facing rubric instructions and criteria are identical across UI languages');
   results.push({id:`quickstart.identity-preview-publication.${lang}.${theme}.${width}`,status:'passed'});
  }
- for (const [lang,theme,width,height] of [['en','light',755,600],['zh','dark',1200,813]]) {
+ for (const [lang,theme,width,height] of variants) {
   await open(`lang=${lang}&theme=${theme}&view=quickstart&agent-family=dsh&same-names=1`,width,height);
   await click('.new-models button',lang==='zh'?'试用':'Try');
   await waitFor(client,`!!document.querySelector('.trial-agent-choice select') && !!document.querySelector('.trial-connection-field select')`);
