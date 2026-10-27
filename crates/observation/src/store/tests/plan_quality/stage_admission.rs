@@ -316,3 +316,23 @@ fn finished_request_without_stage_closure_cannot_remain_running_or_claim_task_co
         assert!(page.turns[0].segment_id.is_none() && page.turns[0].finished_at_ms.is_none());
     }
 }
+
+#[test]
+fn frozen_baseline_timeline_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let f = Fixture::new("presentation-baseline");
+    let channel = fact_channel(&f, 256 * 1024);
+    let writer = writer(&store);
+    assert!(matches!(
+        offer_fact(&writer, &channel, f.fact(1, admitted("turn-a", "branch-a", 1), 1000)),
+        WriterCycleOutcome::Ack(_)
+    ));
+    let query = RoutingTimelineQueryV1 {
+        session_id: f.session.to_string(),
+        after_watermark: None,
+        limit: 50,
+    };
+    let page = store.observed_routing_timeline(&reader(), &query, 5000).unwrap();
+    println!("BASELINE_TIMELINE_JSON={}", serde_json::to_string(&page.turns[0]).unwrap());
+}
