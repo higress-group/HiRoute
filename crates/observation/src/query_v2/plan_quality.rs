@@ -20,13 +20,15 @@ mod snapshot_tests;
 /// Guarded CASE expressions match the small JSON expression indexes. The inner
 /// CASE is the indexed value; the outer invalid-JSON branch preserves the original
 /// read failure instead of treating corrupt content as a missing field.
+/// Request tombstones take effect before resumable physical projection cleanup.
 pub(super) const SCOPE: &str = "
     SELECT q.*,
       json_extract(q.branch_execution_json,'$.group') AS execution_group,
       json_extract(q.branch_execution_json,'$.candidate_index') AS candidate_index,
       json_extract(q.branch_execution_json,'$.policy') AS branch_policy,
       json_extract(q.branch_execution_json,'$.policy.floor_millis') AS floor_millis,
-      CASE WHEN q.assessment_partial=0
+      retired_assessment.request_id IS NOT NULL AS assessment_retired,
+      CASE WHEN q.assessment_partial=0 AND retired_assessment.request_id IS NULL
         AND COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
         AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) THEN q.score END AS reliable_score,
@@ -65,10 +67,15 @@ pub(super) const SCOPE: &str = "
       ) AS reasoning_profile_id
     FROM plan_quality_segments q
     JOIN sessions s ON s.workspace_id=q.workspace_id AND s.session_id=q.session_id
+    LEFT JOIN observation_request_tombstones_v2 retired_assessment
+      ON retired_assessment.workspace_id=q.workspace_id
+      AND retired_assessment.request_id=q.assessment_trigger_request_id
     LEFT JOIN observation_run_links l ON l.workspace_id=q.workspace_id
       AND l.request_id=q.first_request_id
     WHERE q.workspace_id=:workspace AND q.last_at_ms>=:from AND q.last_at_ms<:to
       AND q.last_at_ms IS NOT NULL AND q.selected_branch_id IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 retired
+        WHERE retired.workspace_id=q.workspace_id AND retired.request_id=q.last_request_id)
       AND (:plan IS NULL OR q.plan_id=:plan)
       AND (:session IS NULL OR q.session_id=:session)
       AND (:revision IS NULL OR q.plan_revision=:revision)
@@ -99,11 +106,12 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                             AND last_req.request_id=q.last_request_id),
                         CASE WHEN COALESCE(l.conflicted,0)=0 THEN json_extract(l.body_json,'$.task_id') END,
                         CASE WHEN COALESCE(l.conflicted,0)=0 THEN l.run_id END,
-                        q.assessment_event_id,q.assessment_trigger_request_id,q.assessed_at_ms,
+                        CASE WHEN NOT q.assessment_retired THEN q.assessment_event_id END,
+                        q.assessment_trigger_request_id,q.assessed_at_ms,
                         q.target_from_turn_id,q.target_through_turn_id,q.target_from_ordinal,
                         q.target_through_ordinal,q.score,
                         (q.assessment_partial OR NOT q.assessment_covers_stage),
-                        CASE WHEN q.reason_present=1
+                        CASE WHEN q.reason_present=1 AND NOT q.assessment_retired
                           THEN
            (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reason') END ELSE json_extract(p.body_json,'$.fact.reason') END) END,
                         q.assessment_event_id IS NOT NULL AND EXISTS(
@@ -126,6 +134,7 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                  LEFT JOIN execution_fact_events e ON e.workspace_id=q.workspace_id
                     AND e.request_id=q.assessment_trigger_request_id
                     AND e.event_id=q.assessment_event_id
+                    AND NOT q.assessment_retired
                  LEFT JOIN observation_sensitive_payloads_v2 p INDEXED BY observation_payload_query_fields
                     ON p.id='fact:'||e.envelope_digest";
 

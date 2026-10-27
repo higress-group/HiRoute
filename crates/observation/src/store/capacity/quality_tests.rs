@@ -1,11 +1,11 @@
 //! Logical retirement is the read barrier even while physical cleanup is pending.
 use super::*;
+use crate::WriterCycleOutcome;
 use crate::query_v2::ObservationReaderContext;
 use crate::store::tests::support::*;
-use crate::WriterCycleOutcome;
 use hiroute_domain::{
     AgentPlanId, AgentTurnAttributionV1, AgentTurnStatusV1, CanonicalDigest, ExecutionFactV1,
-    ObservedProfileDigestV1, PlanQualitySamplesQuery, TurnId,
+    ObservedProfileDigestV1, PlanQualitySamplesQuery, TrustPopulationQueryV1, TurnId,
 };
 
 fn stage(fixture: &Fixture, segment: &str) -> ExecutionFactV1 {
@@ -133,13 +133,15 @@ fn retirement_barrier(retire_trigger: bool) {
         .unwrap();
     // An expired slice performs no physical work. The committed barrier must
     // already govern fresh reads, including after the process is reopened.
-    assert!(!store
-        .capacity_cleanup(
-            &mut store.connection.lock(),
-            &mut State::default(),
-            Instant::now() - Duration::from_millis(1),
-        )
-        .unwrap());
+    assert!(
+        !store
+            .capacity_cleanup(
+                &mut store.connection.lock(),
+                &mut State::default(),
+                Instant::now() - Duration::from_millis(1),
+            )
+            .unwrap()
+    );
     let verify = |store: &LocalObservationStore| {
         let page = store
             .observed_plan_quality_samples(&reader(), &query, 5000)
@@ -153,14 +155,27 @@ fn retirement_barrier(retire_trigger: bool) {
             .find(|sample| sample.segment_id == "retained-stage")
             .unwrap();
         assert_eq!(retained.assessment.as_ref().unwrap().score, 0.9);
+        assert_eq!(
+            serde_json::to_value(retained).unwrap(),
+            serde_json::to_value(
+                before
+                    .samples
+                    .iter()
+                    .find(|sample| sample.segment_id == "retained-stage")
+                    .unwrap()
+            )
+            .unwrap()
+        );
+        assert_eq!(page.summary.models[0].average_score, Some(0.9));
         if retire_trigger {
-            assert!(page
-                .samples
-                .iter()
-                .find(|sample| sample.segment_id == "retiring-stage")
-                .unwrap()
-                .assessment
-                .is_none());
+            assert!(
+                page.samples
+                    .iter()
+                    .find(|sample| sample.segment_id == "retiring-stage")
+                    .unwrap()
+                    .assessment
+                    .is_none()
+            );
         }
         let mut scored = query.clone();
         scored.score_gt = Some(0.5);
@@ -169,15 +184,48 @@ fn retirement_barrier(retire_trigger: bool) {
             .unwrap();
         assert_eq!(scored.samples.len(), 1);
         assert_eq!(scored.samples[0].segment_id, "retained-stage");
+        let trust_query = TrustPopulationQueryV1 {
+            active_revision: 17,
+            plan_id: "plan/codex-daily".into(),
+            branch_id: None,
+            revision: Some(17),
+            from_ms: Some(0),
+            to_ms: Some(10_000),
+        };
+        for lean in [false, true] {
+            let population = if lean {
+                store.observed_trust_suggestion_population(&reader(), &trust_query, 5000)
+            } else {
+                store.observed_trust_population(&reader(), &trust_query, 5000)
+            }
+            .unwrap();
+            assert_eq!(population.stages.len(), page.samples.len());
+            assert_eq!(
+                population
+                    .stages
+                    .iter()
+                    .filter(|stage| stage.sample.assessment.is_some())
+                    .count(),
+                1
+            );
+        }
         let db = store.connection.lock();
         assert_eq!(
-            db.query_row("SELECT step FROM observation_capacity_pending_v5", [], |r| r
-                .get::<_, i64>(0))
-                .unwrap(),
+            db.query_row(
+                "SELECT step FROM observation_capacity_pending_v5",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
             0
         );
         assert_eq!(
-            db.query_row("SELECT COUNT(*) FROM plan_quality_segments WHERE score IS NOT NULL", [], |r| r.get::<_, u64>(0)).unwrap(),
+            db.query_row(
+                "SELECT COUNT(*) FROM plan_quality_segments WHERE score IS NOT NULL",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
             2,
             "quality projection cleanup has not run"
         );
@@ -191,6 +239,29 @@ fn retirement_barrier(retire_trigger: bool) {
     drop(store);
     let store = open_store(directory.path());
     verify(&store);
+    store.set_capacity_limit(None).unwrap();
+    for _ in 0..30 {
+        store.capacity.lock().next_due = Instant::now();
+        store.capacity_cycle(5000).unwrap();
+    }
+    assert_eq!(
+        store
+            .connection
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM observation_capacity_pending_v5",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        0
+    );
+    let after = store
+        .observed_plan_quality_samples(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(after.summary.scored_stage_count, 1);
+    assert_eq!(after.summary.unrated_stage_count, u64::from(retire_trigger));
+    assert_eq!(after.samples.len(), 1 + usize::from(retire_trigger));
 }
 
 #[test]
