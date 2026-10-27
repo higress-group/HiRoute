@@ -222,8 +222,8 @@ impl AgentTurnHistoryStore {
     ) -> Result<AgentTurnBegin, AgentTurnHistoryError> {
         let analyzed = analyze_request(request, replay)?;
         let latest = analyzed
-            .turns
-            .last()
+            .latest_turn
+            .as_ref()
             .ok_or(AgentTurnHistoryError::Integrity)?;
         let mut inner = self.inner.lock();
         inner.purge_expired(now, self.idle_ttl);
@@ -240,7 +240,7 @@ impl AgentTurnHistoryStore {
             // That prefix is missing from our history, but does not make the current
             // stage partial unless output after its user message was already missed.
             let missing_current_output = analyzed.message_count > latest.user_index + 1;
-            let missing_history = analyzed.turns.len() > 1 || missing_current_output;
+            let missing_history = analyzed.user_count > 1 || missing_current_output;
             let entry_token = inner.allocate_token()?;
             let request_token = inner.allocate_request_token()?;
             let turn_id = self.allocate_id(&mut inner, "turn")?;
