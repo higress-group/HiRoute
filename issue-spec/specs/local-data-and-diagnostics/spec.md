@@ -59,6 +59,11 @@ not deletion of storage or a single database replacement. Archive/restart recove
 retains actual backup ownership and package identity. A changing filesystem device
 number after reboot cannot alone invalidate logically intact supported store identity.
 
+#### Scenario: Startup ownership follows the actual store lifetime
+
+- **WHEN** current stores are transferred to independent owners and an unrelated Unix child or duplicate descriptor retains a copy of their startup-lock handle
+- **THEN** each retained Control, Runtime or Secrets store continues to exclude another writer; releasing the last actual store relinquishes startup ownership without waiting for the unrelated descriptor to close or exec, preserving current storage and ordinary lock-conflict diagnostics.
+
 #### Scenario: Independent historical damage does not disable current routing
 
 - **WHEN** current dependencies and unresolved recovery work are verified, but an unrelated retained historical publication is damaged
