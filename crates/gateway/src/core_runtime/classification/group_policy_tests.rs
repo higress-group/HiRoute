@@ -231,6 +231,42 @@ fn with_applicability(
     result.decision.routing_observation = Some(observation);
     result
 }
+
+#[test]
+fn complex_work_still_records_applicable_low_score_protection() {
+    use hiroute_domain::HistoricalProtectionActionV1 as A;
+    let input = c_input();
+    let mut result = with_applicability(&input, Some(0.7), Some(0.24), true, Some(0.55));
+    result
+        .assessment
+        .as_mut()
+        .unwrap()
+        .target
+        .branch_execution
+        .as_mut()
+        .unwrap()
+        .group = ExecutionGroupV1::Primary;
+
+    apply(&input, &history(), &mut result);
+
+    assert_eq!(result.decision.execution_group, ExecutionGroupV1::Primary);
+    assert_eq!(
+        result.decision.selection_reason,
+        ModelGroupReasonV1::LowCompetence
+    );
+    let trigger = result.decision.competence_trigger.as_ref().unwrap();
+    assert_eq!(trigger.segment_id, "stage-1");
+    assert_eq!(trigger.from_group, ExecutionGroupV1::Primary);
+    assert_eq!(
+        result
+            .decision
+            .routing_observation
+            .as_ref()
+            .unwrap()
+            .protection_action,
+        A::Applied
+    );
+}
 #[test]
 fn c_gate_boundaries_and_missing_required_question_preserve_independent_signals() {
     use hiroute_domain::{ApplicabilityReasonV1 as R, HistoricalProtectionActionV1 as A};
