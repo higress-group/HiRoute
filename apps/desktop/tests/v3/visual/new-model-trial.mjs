@@ -70,6 +70,9 @@ try {
   await new Promise((resolve, reject) => { chrome.once('spawn', resolve); chrome.once('error', reject); });
   await waitFor(`http://127.0.0.1:${cdpPort}/json/version`);
   const selectedRunner = [
+    ['--trust-continuous', 'trust-continuous-active.mjs'],
+    ['--trust-replay-stale', 'trust-replay-stale-active.mjs'],
+    ['--routing-presentation', 'routing-presentation-active.mjs'],
     ['--session-live-refresh', 'session-live-refresh-active.mjs'],
     ['--presentation', 'timeline-presentation-active.mjs'],
     ['--metadata', 'model-metadata-active.mjs'],

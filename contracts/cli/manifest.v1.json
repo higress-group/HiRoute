@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:4c6ad98a122d461104603829802dcf3d90c09f469756cfb42eedac9a2615f507",
+  "descriptor_digest": "sha256:81ff69e5fedbd8a4c69f4e3082564cb5970f04a2d23274ff0e23d7c8e4a80f20",
   "visibility": "release",
   "commands": [
     {
@@ -3402,7 +3402,7 @@
       "help": {
         "purpose": "Read agent turns with selection, historical protection, score, requests and costs; --follow streams changed turns.",
         "usage": "hiroute sessions timeline <SESSION_ID> [--follow] [--after-watermark <WATERMARK>] [--limit <1..200>] --output json",
-        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Required SESSION_ID; optional --after-watermark and --limit 1..200 (default 50). --follow streams one NDJSON change event per new or updated agent turn every two seconds, until interrupted. A watermark is opaque and scoped to this session and page size. No configuration is changed.",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Required SESSION_ID; optional --after-watermark and --limit 1..200 (default 50). --follow streams one NDJSON change event per new or updated agent turn every two seconds, until interrupted. JSON requests may explicitly set include_presentation:true to include evidence-backed group state, execution attribution and per-request model identities. Omitted or false preserves the legacy output; watermarks are scoped to the selected presentation mode, session and page size. No configuration is changed.",
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",

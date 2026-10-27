@@ -116,6 +116,7 @@ fn composite_score_roundtrips_membership_and_never_credits_one_model() {
         .observed_routing_timeline(
             &reader(),
             &RoutingTimelineQueryV1 {
+                include_presentation: false,
                 session_id: first.session.to_string(),
                 after_watermark: None,
                 limit: 50,

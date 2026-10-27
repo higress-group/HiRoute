@@ -100,6 +100,45 @@ fn probability_and_competence_boundaries_select_the_current_group() {
         assert_eq!(result.decision.selection_reason, reason);
     }
 }
+
+#[test]
+fn zero_threshold_keeps_equality_and_independent_protection() {
+    let mut input = fixture();
+    let MaterializedRouteV1::Branches { branches, .. } = &mut input.policy.route else {
+        unreachable!()
+    };
+    branches[0]
+        .judgment
+        .as_mut()
+        .unwrap()
+        .degree
+        .simple_threshold_millis = 0;
+    for (probability, score, group, reason) in [
+        (
+            Some(0.0),
+            Some(0.5),
+            ExecutionGroupV1::Regular,
+            ModelGroupReasonV1::SimpleTask,
+        ),
+        (
+            Some(0.0),
+            Some(0.499),
+            ExecutionGroupV1::Primary,
+            ModelGroupReasonV1::LowCompetence,
+        ),
+        (
+            None,
+            Some(0.5),
+            ExecutionGroupV1::Primary,
+            ModelGroupReasonV1::DegreeUnavailable,
+        ),
+    ] {
+        let mut result = outcome(&input, probability, score);
+        apply(&input, &history(), &mut result);
+        assert_eq!(result.decision.execution_group, group);
+        assert_eq!(result.decision.selection_reason, reason);
+    }
+}
 #[test]
 fn new_turn_redecides_instead_of_resetting_or_preserving_the_old_group() {
     let input = fixture();

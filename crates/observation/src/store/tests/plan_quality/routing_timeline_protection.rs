@@ -126,6 +126,7 @@ fn timeline_preserves_opening_protection_and_keeps_later_scores_separate() {
             ));
         }
         let query = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: current.session.to_string(),
             after_watermark: None,
             limit: 50,
@@ -188,6 +189,7 @@ fn timeline_tool_continuations_require_recorded_tool_inheritance() {
         let directory = tempfile::tempdir().unwrap();
         let fixture = Fixture::new(&format!("tool-continuation-{index}"));
         let query = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: fixture.session.to_string(),
             after_watermark: None,
             limit: 50,

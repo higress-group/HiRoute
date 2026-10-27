@@ -35,7 +35,7 @@ async function check(id, run) {
   try { await run(); results.push({ id, status: 'passed' }); }
   catch (error) {
     await shot(`failure-${id}`);
-    const geometry = await evaluate(client, `({width:innerWidth,document:document.documentElement.scrollWidth,lanes:[...document.querySelectorAll('.routing-lanes-scroll')].map(e=>({width:e.clientWidth,scroll:e.scrollWidth,visible:e.getClientRects().length}))})`).catch(() => null);
+    const geometry = await evaluate(client, `({width:innerWidth,document:document.documentElement.scrollWidth,visibility:document.visibilityState,replay:document.querySelector('.trust-replay')?.textContent,reads:window.trialTrace?.filter(x=>x.command==='observation_read'&&x.payload.request.intent.view==='plan_trust_replay'),lanes:[...document.querySelectorAll('.routing-lanes-scroll')].map(e=>({width:e.clientWidth,scroll:e.scrollWidth,visible:e.getClientRects().length}))})`).catch(() => null);
     await writeFile(path.join(output, `failure-${id}.json`), JSON.stringify({ error: String(error.stack ?? error), geometry }, null, 2));
     results.push({ id, status: 'failed', error: String(error.stack ?? error) });
     await client.send('Emulation.setEmulatedMedia', { features: [] });
@@ -63,23 +63,27 @@ try {
       assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='open-plan').length`), 1);
     });
     await check(`replay-cache-${suffix}`, async () => {
-      await open('view=editor', width, height, theme, lang);
+      await open('view=editor&native=1', width, height, theme, lang);
       await waitFor(client, `!!document.querySelector('.trust-replay-bar')`);
       const first = await evaluate(client, `${reads}[0].payload.request.intent.query.thresholds_millis`);
-      assert.deepEqual([...first].sort((a, b) => a - b), [500, 650, 720, 800, 900]);
+      assert.deepEqual(first, [720]);
       const count = await evaluate(client, `${reads}.length`);
-      for (const level of lang === 'zh' ? ['试用', '熟悉', '信任', '放手'] : ['Trial', 'Familiar', 'Trusted', 'Hands-off']) {
+      const levels = lang === 'zh' ? ['试用', '熟悉', '信任', '放手'] : ['Trial', 'Familiar', 'Trusted', 'Hands-off'];
+      for (const [index, level] of levels.entries()) {
         await click('.trust-levels button', level);
-        assert.equal(await evaluate(client, `${reads}.length`), count);
+        await waitFor(client, `${reads}.length===${count + index + 1} && !document.querySelector('.trust-replay-state')`);
+        assert.deepEqual(await evaluate(client, `${reads}.at(-1).payload.request.intent.query.thresholds_millis`), [[900], [800], [650], [500]][index]);
         assert.equal(await evaluate(client, `document.querySelector('.trust-replay-state')`), null);
       }
-      assert.ok(await evaluate(client, `document.querySelector('.trust-replay-bar').getAnimations({subtree:true}).some(a=>a.effect.getComputedTiming().duration===250)`));
+      await click('.trust-levels button', lang === 'zh' ? '试用' : 'Trial');
+      assert.equal(await evaluate(client, `${reads}.length`), count + 4);
+      await waitFor(client, `document.querySelector('.trust-replay-bar').getAnimations({subtree:true}).some(a=>a.effect.getComputedTiming().duration===250)`);
       await click('.trust-exact summary', lang === 'zh' ? '精确值' : 'Exact value');
       await evaluate(client, `(()=>{const el=document.querySelector('[data-decision-field="smart-simple-threshold"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'0.777');el.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
-      await waitFor(client, `${reads}.length===${count + 1} && document.querySelector('.trust-replay-bar')?.getAttribute('aria-label').includes('0.777')`);
+      await waitFor(client, `${reads}.length===${count + 5} && document.querySelector('.trust-replay-bar')?.getAttribute('aria-label').includes('0.777')`);
       assert.deepEqual(await evaluate(client, `${reads}.at(-1).payload.request.intent.query.thresholds_millis`), [777]);
       await click('.trust-levels button', lang === 'zh' ? '试用' : 'Trial');
-      assert.equal(await evaluate(client, `${reads}.length`), count + 1);
+      assert.equal(await evaluate(client, `${reads}.length`), count + 5);
       const label = lang === 'zh' ? '内置规则' : 'Built-in rules';
       assert.ok(await evaluate(client, `document.querySelector('.trust-replay').textContent.includes(${JSON.stringify(label)})`));
       await evaluate(client, `document.querySelector('.trust-replay').scrollIntoView({block:'center'});true`);

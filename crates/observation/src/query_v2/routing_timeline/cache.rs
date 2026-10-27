@@ -65,6 +65,7 @@ impl Snapshot {
         target: Position,
         now: i64,
         changed: Option<&BTreeSet<String>>,
+        include_presentation: bool,
     ) -> Result<(), ObservationV2Error> {
         if changed.is_some_and(BTreeSet::is_empty) {
             self.position = Some(target);
@@ -127,6 +128,7 @@ impl Snapshot {
             previous,
             &mut self.bases,
             &self.turns,
+            include_presentation,
         )?;
         let old: BTreeMap<_, _> = self.turns.iter().map(|t| (&t.view.turn_id, t)).collect();
         self.projected_turns += turns

@@ -13,9 +13,15 @@ pub struct RoutingTimelineQueryV1 {
     #[serde(default)]
     pub after_watermark: Option<String>,
     pub limit: u16,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub include_presentation: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingTimelinePageV1 {
     pub turns: Vec<RoutingTimelineTurnV1>,
@@ -24,7 +30,7 @@ pub struct RoutingTimelinePageV1 {
     pub complete: bool,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RoutingTurnBoundaryV1 {
     NewUserMessage,
@@ -32,7 +38,7 @@ pub enum RoutingTurnBoundaryV1 {
     Unknown,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingTimelineTurnV1 {
     /// Stable opening-request identity, including while the turn is still running.
@@ -61,8 +67,34 @@ pub struct RoutingTimelineTurnV1 {
     pub requests: Vec<RoutingTimelineRequestV1>,
     pub cost_by_model: Vec<RoutingTimelineCostV1>,
     pub evidence_partial: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<RoutingTimelinePresentationV1>,
     /// Lets a reconnecting consumer discard an identical projection without hiding late scores.
     pub content_digest: String,
+}
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingTimelineGroupStateV1 {
+    Pending,
+    Resolved,
+    Mixed,
+    Unavailable,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingTimelinePresentationV1 {
+    pub group_state: RoutingTimelineGroupStateV1,
+    pub execution_attribution: crate::AgentTurnAttributionV1,
+    pub request_models: Vec<RoutingTimelineRequestModelV1>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingTimelineRequestModelV1 {
+    pub request_id: String,
+    pub model_configuration_id: Option<String>,
 }
 
 /// Opening-decision read view. Persisted BranchDecisionV1 remains unchanged.
@@ -172,7 +204,7 @@ impl From<BranchDecisionV1> for RoutingTimelineSelectionV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingTimelineRelayV1 {
     pub request_id: String,
@@ -180,7 +212,7 @@ pub struct RoutingTimelineRelayV1 {
     pub to_model: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingTimelineRequestV1 {
     pub request_id: String,
@@ -195,7 +227,7 @@ pub struct RoutingTimelineRequestV1 {
     pub outcome: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingTimelineCostV1 {
     pub model_configuration_id: Option<String>,
