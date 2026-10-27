@@ -9,7 +9,8 @@ use crate::server::core_runtime::model_ir::{
 
 pub(super) struct AnalyzedRequest {
     pub(super) message_count: usize,
-    pub(super) turns: Vec<AnalyzedTurn>,
+    pub(super) user_count: usize,
+    pub(super) latest_turn: Option<AnalyzedTurn>,
     pub(super) tool_results: Vec<(usize, String, ToolStatus)>,
 }
 
@@ -22,20 +23,24 @@ pub(super) fn analyze_request(
     request: &ModelRequestIRV1,
     replay: &ReplayStore,
 ) -> Result<AnalyzedRequest, AgentTurnHistoryError> {
-    let user_indices = request
-        .messages
-        .iter()
-        .enumerate()
-        .filter_map(|(index, message)| is_real_user(message).then_some(index))
-        .collect::<Vec<_>>();
-    let mut turns = Vec::with_capacity(user_indices.len());
-    for user_index in user_indices.iter().copied() {
-        let user = project_user(&request.messages[user_index], replay)?;
-        turns.push(AnalyzedTurn { user_index, user });
+    let mut user_count = 0;
+    let mut latest_index = None;
+    for (index, message) in request.messages.iter().enumerate() {
+        if is_real_user(message) {
+            user_count += 1;
+            latest_index = Some(index);
+        }
     }
+    let latest_turn = latest_index
+        .map(|user_index| {
+            project_user(&request.messages[user_index], replay)
+                .map(|user| AnalyzedTurn { user_index, user })
+        })
+        .transpose()?;
     Ok(AnalyzedRequest {
         message_count: request.messages.len(),
-        turns,
+        user_count,
+        latest_turn,
         tool_results: project_tool_results(request),
     })
 }
