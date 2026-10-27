@@ -4,6 +4,8 @@ use super::LocalObservationStore;
 #[cfg(test)]
 pub(super) mod probe;
 #[cfg(test)]
+mod quality_tests;
+#[cfg(test)]
 mod tests;
 use hiroute_domain::{ObservationCapacityStatusV1 as Status, ObservationQueryError as Error};
 use rusqlite::{Connection, OptionalExtension, params};

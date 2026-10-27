@@ -1,0 +1,204 @@
+//! Logical retirement is the read barrier even while physical cleanup is pending.
+use super::*;
+use crate::query_v2::ObservationReaderContext;
+use crate::store::tests::support::*;
+use crate::WriterCycleOutcome;
+use hiroute_domain::{
+    AgentPlanId, AgentTurnAttributionV1, AgentTurnStatusV1, CanonicalDigest, ExecutionFactV1,
+    ObservedProfileDigestV1, PlanQualitySamplesQuery, TurnId,
+};
+
+fn stage(fixture: &Fixture, segment: &str) -> ExecutionFactV1 {
+    ExecutionFactV1::AgentTurnFinished {
+        history_membership: None,
+        opening_cause: None,
+        branch_execution: None,
+        agent_turn_id: segment.into(),
+        segment_id: segment.into(),
+        ordinal: 1,
+        plan_id: AgentPlanId::parse("plan/codex-daily").unwrap(),
+        plan_revision: 17,
+        selected_branch_id: "regular".into(),
+        executed_branch_id: Some("regular".into()),
+        model_configuration_id: Some("model-a".into()),
+        profile_digest: Some(ObservedProfileDigestV1::from(CanonicalDigest::of_bytes(
+            b"profile-a",
+        ))),
+        attribution: AgentTurnAttributionV1::Single,
+        started_at_ms: 1000,
+        finished_at_ms: 1100,
+        status: AgentTurnStatusV1::Completed,
+        history_partial: false,
+        first_request_id: Some(fixture.request.clone()),
+        last_request_id: Some(fixture.request.clone()),
+    }
+}
+
+fn assessment(fixture: &Fixture, segment: &str, score: f64) -> ExecutionFactV1 {
+    ExecutionFactV1::BranchAssessmentRecorded {
+        history_membership: None,
+        segment_id: segment.into(),
+        plan_id: AgentPlanId::parse("plan/codex-daily").unwrap(),
+        plan_revision: 17,
+        model_configuration_id: "model-a".into(),
+        profile_digest: ObservedProfileDigestV1::from(CanonicalDigest::of_bytes(b"profile-a")),
+        trigger_request_id: fixture.request.clone(),
+        target_from_turn_id: TurnId::parse(segment).unwrap(),
+        target_through_turn_id: TurnId::parse(segment).unwrap(),
+        target_from_ordinal: 1,
+        target_through_ordinal: 1,
+        assessed_at_ms: 1200,
+        score,
+        partial: false,
+        reason: Some(format!("score-{score}")),
+    }
+}
+
+fn retirement_barrier(retire_trigger: bool) {
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let execution = Fixture::new("quality-retirement-execution");
+    let mut trigger = Fixture::new("quality-retirement-trigger");
+    let mut control = Fixture::new("quality-retirement-control");
+    trigger.session = execution.session.clone();
+    control.session = execution.session.clone();
+    let writer = writer(&store);
+    for fixture in [&execution, &trigger, &control] {
+        let channel = fact_channel(fixture, 512 * 1024);
+        let attempt = format!("attempt-{}", fixture.request);
+        for event in request_facts(fixture, &attempt, finished(&attempt), 100) {
+            assert!(matches!(
+                offer_fact(&writer, &channel, event),
+                WriterCycleOutcome::Ack(_)
+            ));
+        }
+        let facts = if fixture.request == execution.request {
+            vec![stage(fixture, "retiring-stage")]
+        } else if fixture.request == trigger.request {
+            vec![assessment(fixture, "retiring-stage", 0.6)]
+        } else {
+            vec![
+                stage(fixture, "retained-stage"),
+                assessment(fixture, "retained-stage", 0.9),
+            ]
+        };
+        for (index, fact) in facts.into_iter().enumerate() {
+            assert!(matches!(
+                offer_fact(
+                    &writer,
+                    &channel,
+                    fixture.fact(11 + index as u64, fact, 1200 + index as i64)
+                ),
+                WriterCycleOutcome::Ack(_)
+            ));
+        }
+    }
+    drop(writer);
+    let reader = || {
+        ObservationReaderContext::local_user(
+            execution.workspace.clone(),
+            "reader".into(),
+            1,
+            10_000,
+            false,
+            false,
+        )
+        .unwrap()
+    };
+    let query: PlanQualitySamplesQuery = serde_json::from_value(serde_json::json!({
+        "plan_id":"plan/codex-daily", "from_ms":0, "to_ms":10000, "limit":50
+    }))
+    .unwrap();
+    let before = store
+        .observed_plan_quality_samples(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(before.samples.len(), 2);
+    assert_eq!(before.summary.scored_stage_count, 2);
+    let mut paged = query.clone();
+    paged.limit = 1;
+    let cursor = store
+        .observed_plan_quality_samples(&reader(), &paged, 5000)
+        .unwrap()
+        .next_cursor
+        .unwrap();
+    let retired = if retire_trigger { &trigger } else { &execution };
+    store
+        .capacity_retire(
+            &mut store.connection.lock(),
+            retired.workspace.as_str(),
+            retired.session.as_str(),
+            retired.request.as_str(),
+            1500,
+        )
+        .unwrap();
+    // An expired slice performs no physical work. The committed barrier must
+    // already govern fresh reads, including after the process is reopened.
+    assert!(!store
+        .capacity_cleanup(
+            &mut store.connection.lock(),
+            &mut State::default(),
+            Instant::now() - Duration::from_millis(1),
+        )
+        .unwrap());
+    let verify = |store: &LocalObservationStore| {
+        let page = store
+            .observed_plan_quality_samples(&reader(), &query, 5000)
+            .unwrap();
+        assert_eq!(page.summary.scored_stage_count, 1);
+        assert_eq!(page.summary.unrated_stage_count, u64::from(retire_trigger));
+        assert_eq!(page.samples.len(), 1 + usize::from(retire_trigger));
+        let retained = page
+            .samples
+            .iter()
+            .find(|sample| sample.segment_id == "retained-stage")
+            .unwrap();
+        assert_eq!(retained.assessment.as_ref().unwrap().score, 0.9);
+        if retire_trigger {
+            assert!(page
+                .samples
+                .iter()
+                .find(|sample| sample.segment_id == "retiring-stage")
+                .unwrap()
+                .assessment
+                .is_none());
+        }
+        let mut scored = query.clone();
+        scored.score_gt = Some(0.5);
+        let scored = store
+            .observed_plan_quality_samples(&reader(), &scored, 5000)
+            .unwrap();
+        assert_eq!(scored.samples.len(), 1);
+        assert_eq!(scored.samples[0].segment_id, "retained-stage");
+        let db = store.connection.lock();
+        assert_eq!(
+            db.query_row("SELECT step FROM observation_capacity_pending_v5", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.query_row("SELECT COUNT(*) FROM plan_quality_segments WHERE score IS NOT NULL", [], |r| r.get::<_, u64>(0)).unwrap(),
+            2,
+            "quality projection cleanup has not run"
+        );
+    };
+    verify(&store);
+    paged.cursor = Some(cursor);
+    assert!(matches!(
+        store.observed_plan_quality_samples(&reader(), &paged, 5000),
+        Err(crate::query_v2::ObservationV2Error::Stale)
+    ));
+    drop(store);
+    let store = open_store(directory.path());
+    verify(&store);
+}
+
+#[test]
+fn retired_last_request_is_hidden_before_cleanup_and_after_reopen() {
+    retirement_barrier(false);
+}
+
+#[test]
+fn retired_assessment_trigger_is_unrated_before_cleanup_and_after_reopen() {
+    retirement_barrier(true);
+}
