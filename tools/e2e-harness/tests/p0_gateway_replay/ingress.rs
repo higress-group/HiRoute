@@ -9,7 +9,7 @@ fn real_listener_spools_model_last_large_bodies_for_all_ingress_protocols() {
             .map(|_| ProviderReply::Complete {
                 status: 200,
                 error_kind: None,
-                body: br#"{"group":"primary"}"#,
+                body: br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}}}"#,
             })
             .collect(),
     );
