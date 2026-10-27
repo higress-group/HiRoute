@@ -62,6 +62,9 @@ fn frozen_equal_rate_amount_is_settled_and_retained_timeline_recovers_without_re
             serde_json::from_str::<serde_json::Value>(&stored_usage).unwrap()["write"].is_null()
         );
         assert_eq!(settled.attempts[0].components[3].tokens, None);
+        drop(store);
+        let store = open_store(directory.path());
+        assert_eq!(latest(&store, &fixture), settled);
         let reader = ObservationReaderContext::local_user(
             fixture.workspace.clone(),
             "user".into(),
@@ -121,6 +124,8 @@ fn frozen_equal_rate_amount_is_settled_and_retained_timeline_recovers_without_re
                 ).unwrap();
             }
         }
+        drop(store);
+        let store = open_store(directory.path());
         let page = store
             .observed_routing_timeline(
                 &reader,
