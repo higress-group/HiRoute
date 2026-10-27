@@ -518,6 +518,8 @@ const BASE_SCHEMA_V2: &str = r#"
     );
     CREATE INDEX IF NOT EXISTS requests_session
         ON logical_requests(workspace_id, session_id, started_at_ms);
+    CREATE INDEX IF NOT EXISTS requests_observation_fields
+        ON logical_requests(workspace_id, request_id, session_id, started_at_ms);
 
     CREATE TABLE IF NOT EXISTS attempts (
         workspace_id TEXT NOT NULL,

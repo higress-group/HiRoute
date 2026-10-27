@@ -86,3 +86,9 @@ query deadline. Existing pagination cursors still report stale visibility.
 The ignored `store::field_tests` acceptance entry accepts only an explicitly
 marked private stopped copy. It exercises current-format open/reopen and real
 maintenance cadence; it never authorizes mutation of a live source.
+
+Plan-quality reads resolve candidate metadata from a request-scoped partial
+index. Request/session/time checks share a small covering index, including page
+evidence checks. The readers retain the 500 ms deadline, streaming row/byte
+limits, and existing missing/deleted/corrupt evidence rules. These indexes are
+rebuildable; opening an existing current-format store does not rewrite history.
