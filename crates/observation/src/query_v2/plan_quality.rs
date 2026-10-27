@@ -37,14 +37,14 @@ pub(super) const SCOPE: &str = "
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
         AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value)))) AS assessment_covers_stage,
       COALESCE(
-        (SELECT a.model_id FROM observation_attempt_models_v2 a
-         JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
+        (SELECT a.model_id FROM observation_attempt_models_v2 a INDEXED BY observation_attempt_model_names
+         JOIN valuation_requests_v2 v INDEXED BY valuation_request_accepted_ordinal ON v.workspace_id=a.workspace_id
            AND v.request_id=a.request_id AND v.accepted_ordinal=a.ordinal
          JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
          WHERE a.workspace_id=q.workspace_id AND a.request_id=q.last_request_id
            AND r.session_id=q.session_id LIMIT 1),
-        (SELECT a.model_id FROM observation_attempt_models_v2 a
-         JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
+        (SELECT a.model_id FROM observation_attempt_models_v2 a INDEXED BY observation_attempt_model_names
+         JOIN valuation_requests_v2 v INDEXED BY valuation_request_accepted_ordinal ON v.workspace_id=a.workspace_id
            AND v.request_id=a.request_id AND v.accepted_ordinal=a.ordinal
          JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
          WHERE a.workspace_id=q.workspace_id AND a.request_id=q.first_request_id
@@ -217,7 +217,9 @@ impl LocalObservationStore {
             .map(serde_json::to_string)
             .transpose()
             .map_err(|_| ObservationV2Error::Invalid)?;
-        let summary = summarize(&transaction, reader, query, from_ms, to_ms, &runs)?;
+        // Read request-ordered routing evidence before scattered stage lookups.
+        // Both views share this snapshot; the global scan also avoids reopening
+        // the same small identity indexes in alternating access orders.
         let routing_observations = query
             .include_routing_observations
             .then(|| {
@@ -231,6 +233,7 @@ impl LocalObservationStore {
                 )
             })
             .transpose()?;
+        let summary = summarize(&transaction, reader, query, from_ms, to_ms, &runs)?;
         let execution = query
             .execution
             .as_ref()

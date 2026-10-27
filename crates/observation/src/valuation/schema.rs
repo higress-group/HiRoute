@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS valuation_requests_v2(
     started_ms INTEGER NOT NULL,input_revision INTEGER NOT NULL,input_digest TEXT NOT NULL,
     terminal INTEGER NOT NULL DEFAULT 0,accepted_ordinal INTEGER,partial INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(workspace_id,request_id));
+CREATE INDEX IF NOT EXISTS valuation_request_accepted_ordinal
+    ON valuation_requests_v2(workspace_id,request_id,accepted_ordinal);
 CREATE TABLE IF NOT EXISTS valuation_attempt_inputs_v2(
     workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,ordinal INTEGER NOT NULL,
     pricing_json TEXT,usage_json TEXT,

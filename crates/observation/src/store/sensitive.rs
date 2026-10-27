@@ -47,7 +47,9 @@ pub(crate) fn migrate(transaction: &Connection) -> Result<(), Error> {
             WHERE id GLOB 'fact:*' AND CASE WHEN json_valid(body_json) THEN json_extract(body_json,'$.fact.kind') ELSE 'candidate_decision' END='candidate_decision';
          CREATE TABLE IF NOT EXISTS observation_attempt_models_v2(
             workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,ordinal INTEGER NOT NULL,model_id TEXT NOT NULL,
-            PRIMARY KEY(workspace_id,request_id,ordinal));"
+            PRIMARY KEY(workspace_id,request_id,ordinal));
+         CREATE INDEX IF NOT EXISTS observation_attempt_model_names ON observation_attempt_models_v2(
+            workspace_id,request_id,ordinal,model_id);"
     ).map_err(|_|Error::ActivityUnavailable)?;
     Ok(())
 }

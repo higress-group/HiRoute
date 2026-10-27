@@ -92,6 +92,8 @@ maintenance cadence; it never authorizes mutation of a live source.
 
 Plan-quality reads resolve candidate metadata from a request-scoped partial
 index. Request/session/time checks share a small covering index, including page
-evidence checks. The readers retain the 500 ms deadline, streaming row/byte
-limits, and existing missing/deleted/corrupt evidence rules. These indexes are
+evidence checks. Accepted attempt and model-name lookups also use covering
+indexes. Optional routing summaries run first in the same read transaction so
+their ordered identity scan precedes stage drill-down. The readers retain the
+500 ms deadline, streaming row/byte limits, and existing missing/deleted/corrupt evidence rules. These indexes are
 rebuildable; opening an existing current-format store does not rewrite history.
