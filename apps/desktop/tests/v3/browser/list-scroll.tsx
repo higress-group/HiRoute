@@ -40,7 +40,7 @@ createRoot(document.getElementById('root')!).render(
         {page === 'models'
           ? <ModelManagementPage language="en" active trustedAuthority={!warning} refreshVersion={0}
               onOperation={() => undefined} onRecoveryRefresh={() => undefined} onChanged={() => undefined} />
-          : <RoutingPage language="en" snapshot={snapshot} loading={false} busy={false}
+          : <RoutingPage language="en" snapshot={snapshot} loading={false} busy={false} mutationAllowed={Boolean(snapshot.trusted_authority && snapshot.service.mutation_available)}
               onRefresh={async () => undefined} onOperation={() => undefined} />}
       </div></main>
     </div>
