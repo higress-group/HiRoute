@@ -93,6 +93,11 @@ stay request-scoped. Coherent generic Codex dimensions retain their historical
 namespace, including Pi's Codex transport. Claude header and metadata share the
 existing Claude namespace. Session storage uses the producer's scoped HMAC;
 raw IDs are not persisted and existing observations are not rewritten.
+Chat user messages may also carry a client `message_id` annotation: a nonempty,
+ASCII graphic string of at most 128 bytes. The adapter retains it in the native
+payload and excludes it from normalized history. It supplies no session identity
+or model-state authority. Opaque values, other roles and unknown semantic fields
+retain the conservative history boundary.
 [p0_gateway_native_sessions.rs](../../tools/e2e-harness/tests/p0_gateway_native_sessions.rs)
 covers the real listener and observation boundary across Responses and Messages,
 plus OpenCode's native identity across Chat Completions and shared cache affinity.

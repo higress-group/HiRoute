@@ -78,7 +78,10 @@ fn hermes_chat_aliases_keep_tool_attribution_and_request_all_three_questions() {
             body["choices"][0]["message"].clone()
         };
         let thinking = "r".repeat(reasoning_bytes);
-        let mut history = vec![json!({"role":"user","content":"Read the value with lookup."})];
+        let mut history = vec![
+            json!({"role":"user","content":"Read the value with lookup.",
+            "message_id":"platform-message-1"}),
+        ];
         let mut assistant = send(&history, "hermes-main");
         assert_eq!(assistant["tool_calls"][0]["function"]["name"], "lookup");
         assistant["reasoning_content"] = json!(thinking);
@@ -95,7 +98,8 @@ fn hermes_chat_aliases_keep_tool_attribution_and_request_all_three_questions() {
         assistant["reasoning_content"] = json!(thinking);
         assistant["reasoning"] = json!(thinking);
         history.push(assistant);
-        history.push(json!({"role":"user","content":"Add eight to that value."}));
+        history.push(json!({"role":"user","content":"Add eight to that value.",
+            "message_id":"platform-message-2"}));
         send(&history, "hermes-main");
         assert_eq!(decider.calls(), 2);
         // Neither another native session nor a rewritten main history may borrow

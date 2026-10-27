@@ -80,6 +80,23 @@ cleanup. Authorized prefix cleanup removes both recognized carriers only within
 the selected prefix. Alias normalization does not bypass session/authority scope,
 tool identity, message order or content-change checks.
 
+Chat user messages MAY carry a client `message_id` transport annotation when it
+is a nonempty ASCII graphic string of at most 128 bytes. The adapter SHALL retain
+it in native forwarding and exclude it from normalized conversation history;
+it MUST NOT establish session identity, turn identity or provider-state authority.
+Other roles, invalid shapes and unrecognized semantic fields retain the
+conservative native-only history boundary.
+
+#### Scenario: Platform message annotations do not reset a complete conversation
+
+- **WHEN** a Chat client supplies a proven native session and continuous typed
+  user/tool history with bounded user `message_id` annotations
+- **THEN** those annotations do not reset candidate continuity or discard the
+  prior actual execution's assessment target
+- **AND** the native provider receives the original message annotations, while
+  actual content, tool identity, message order and session changes retain their
+  existing continuity boundaries
+
 #### Scenario: Hermes replays duplicate reasoning through a local Chat endpoint
 
 - **WHEN** a Hermes tool continuation or subsequent user turn supplies the same
