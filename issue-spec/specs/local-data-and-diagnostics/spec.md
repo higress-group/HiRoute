@@ -146,6 +146,12 @@ HiRoute SHALL store repeated retained content and common observation metadata th
 - **WHEN** equal bytes appear in distinct logical conversations or authorization scopes
 - **THEN** physical reuse does not merge identities, grant access, change visibility, or assign one occurrence the other occurrence's execution facts.
 
+#### Scenario: Resolve an incoming sequence without rescanning expired gap ranges
+
+- **WHEN** a fact or content event arrives while retained gaps grow across producer epochs, streams and earlier sequences
+- **THEN** gap lookup seeks within that exact channel/producer/epoch/stream past ranges ending before the event, without scanning unrelated or already-ended gaps for each event; all overlapping gaps are resolved with their original scope, known-loss status and reason, preserving acknowledgement, replay and completeness semantics.
+- **AND** reopening an existing current-format store may install a derived lookup index without rewriting historical evidence or changing its format version; repeated reopen preserves the index and historical receipts.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248901316
 
