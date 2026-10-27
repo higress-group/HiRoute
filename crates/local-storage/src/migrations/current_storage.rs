@@ -9,6 +9,16 @@ pub(crate) struct StartupLock {
     file: std::fs::File,
 }
 
+#[cfg(unix)]
+impl Drop for StartupLock {
+    fn drop(&mut self) {
+        // The shared guard outlives every actual store, including into_parts.
+        // An incidental fork/dup descriptor must not extend that ownership
+        // until its eventual close/exec. File close remains the fallback.
+        let _ = fs2::FileExt::unlock(&self.file);
+    }
+}
+
 #[cfg(not(unix))]
 pub(crate) type StartupLock = std::fs::File;
 
