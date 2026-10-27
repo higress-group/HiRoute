@@ -4,7 +4,7 @@ import { agentDisplayName } from '../agents/ecosystems';
 import { Disclosure } from '../../ui';
 import { trustLevelLabel } from './levels';
 import { formatPresentedCostAmount, presentTrustCost, trustCostUnavailableReason } from './cost-presentation';
-import type { PlanQualityModel } from '../plan-quality-state';
+import { qualityBranchLabel, type PlanQualityModel } from '../plan-quality-state';
 import type { TrustBranch, TrustCounts, TrustReport, TrustRow } from './types';
 import './trust.css';
 
@@ -67,7 +67,8 @@ export function TrustSuggestions({ report, language, currentModels = [], onThres
   return <>{report.branches.map(branch => {
     const b = banner(branch);
     const configured = configuredByBranch.get(branch.branch_id) ?? [];
-    const category = configured.find(model => model.branch_name)?.branch_name ?? branch.branch_id;
+    const category = configured.find(model => model.branch_name)?.branch_name
+      ?? (branch.branch_id === 'smart_saving' ? qualityBranchLabel(branch.branch_id, language) : branch.branch_id);
     const dates = [...new Set(configured.flatMap(model => announcementDates.get(model.model_configuration_id) ?? []))];
     const fromDate = new Date(branch.upward_from_ms);
     const from = Number.isSafeInteger(branch.upward_from_ms) && branch.upward_from_ms > 0 && Number.isFinite(fromDate.getTime())

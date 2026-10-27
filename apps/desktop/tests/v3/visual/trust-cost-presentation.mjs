@@ -189,6 +189,11 @@ try {
     assert.equal(labels.length, 2); assert.match(labels[0], /41 \/ 30/); assert.match(labels[1], /7 \/ 30/);
     assert.ok(labels[0].includes('A long category name') && labels[1].includes('Other category'));
 
+    const difficulty = structuredClone(initial.report); difficulty.branches[0].branch_id = 'smart_saving';
+    const difficultyModels = [{ ...initial.models[0], branch_id: 'smart_saving', branch_name: undefined }];
+    await fixture({ report: difficulty, models: difficultyModels });
+    assert.match(await evaluate(client, `document.querySelector('.trust-suggestion-sample').innerText`), /Active revision · Difficulty routing · Regular · Fully scored/);
+
     for (const [micros, expected] of [[0, '$0.00'], [1, '$0.000001'], [49, '$0.000049'], [2764, '$0.0028'], [1000000, '$1.00'], [null, 'Amount unknown']]) {
       const generation = await evaluate(client, `(() => { const f=window.trustCostFixture; Object.assign(f, {view:'timeline', language:'en', timelineMicros:${JSON.stringify(micros)}, timelineCurrency:'USD'}); f.refresh(); return f.generation; })()`);
       await waitFor(client, `document.querySelector('[data-fixture-generation="${generation}"] .routing-tile strong') !== null`);
