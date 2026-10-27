@@ -354,6 +354,63 @@ fn retained_native_operation_validates_its_original_default_and_new_edit_uses_cu
 }
 
 #[test]
+fn retained_native_branch_operation_preserves_default_and_override_stock_questions() {
+    use crate::*;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../fixtures/baseline-c-default-publication.json"
+    ))
+    .unwrap();
+    let old: JudgmentSettingsV1 = serde_json::from_value(fixture["judgment"].clone()).unwrap();
+    let mut editor = native_editor();
+    editor.mode = PlanEditorMode::CustomBranches;
+    editor.branch_routing = Some(BranchRoutingEditorV1 {
+        classifier: editor.smart.classifier.clone(),
+        default_branch_id: "general".into(),
+        judgment: JudgmentSettingsV1::default(),
+        reselect_on_user_message: false,
+        branches: [
+            ("code", Some(JudgmentSettingsV1::default())),
+            ("general", None),
+        ]
+        .into_iter()
+        .map(|(id, judgment)| RouteBranchV1 {
+            id: id.into(),
+            name: id.into(),
+            condition: format!("Handle {id}"),
+            candidates: editor.candidates.clone(),
+            primary_candidates: vec![],
+            judgment,
+        })
+        .collect(),
+    });
+    let mut frozen = editor.effective().unwrap();
+    let AgentPlanStrategyV2::Branches { routing } = &mut frozen.strategy else {
+        unreachable!()
+    };
+    routing.judgment = old.clone();
+    routing.branches[0].judgment = Some(old);
+    assert_eq!(
+        editor.effective_for_frozen_validation(&frozen).unwrap(),
+        frozen
+    );
+    let next = editor.effective().unwrap();
+    assert_ne!(
+        next.assessment_scopes()["default"].competence.instructions,
+        frozen.assessment_scopes()["default"]
+            .competence
+            .instructions
+    );
+    assert_ne!(
+        next.assessment_scopes()["branch/code"]
+            .competence
+            .instructions,
+        frozen.assessment_scopes()["branch/code"]
+            .competence
+            .instructions
+    );
+}
+
+#[test]
 fn custom_text_and_criteria_remain_byte_exact_even_when_equal_to_a_default() {
     use crate::*;
     for equal_default in [false, true] {
