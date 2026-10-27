@@ -10,6 +10,23 @@ use super::types::*;
 use crate::p0::canonical::sha256_hex;
 
 const MAX_CHANNEL_BYTES: u64 = 16 * 1024 * 1024;
+pub(super) const SEALED_EXECUTION_ORDER: [&str; 14] = [
+    "route_decision",
+    "candidate_decision",
+    "runtime_state",
+    "credential_lease",
+    "runtime_state",
+    "runtime_state",
+    "runtime_state",
+    "runtime_state",
+    "runtime_state",
+    "attempt_started",
+    "semantic_commit",
+    "attempt_finished",
+    "request_finished",
+    "usage_and_cache",
+];
+pub(super) const CURRENT_EXECUTION_FACT_COUNT: usize = SEALED_EXECUTION_ORDER.len() + 1;
 
 pub(crate) async fn wait_for_independent_terminals(
     directory: &Path,
@@ -401,23 +418,7 @@ fn validate_execution(
         .iter()
         .filter_map(|record| record.pointer("/fact/kind").and_then(Value::as_str))
         .collect::<Vec<_>>();
-    let exact_kinds = [
-        "route_decision",
-        "candidate_decision",
-        "runtime_state",
-        "credential_lease",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "attempt_started",
-        "semantic_commit",
-        "attempt_finished",
-        "request_finished",
-        "usage_and_cache",
-    ];
-    if !valid_execution_kind_order(&kinds, &exact_kinds, current) {
+    if !valid_execution_kind_order(&kinds, &SEALED_EXECUTION_ORDER, current) {
         return Err(collector(
             "execution fact sequence is not the exact green smoke",
         ));
@@ -526,7 +527,9 @@ fn valid_execution_kind_order(kinds: &[&str], sealed_order: &[&str; 14], current
     }
     // The current Gateway records the request-local input selection before
     // routing. It is not evidence of human authorship.
-    if kinds.first().copied() != Some("request_input_selection") {
+    if kinds.len() != CURRENT_EXECUTION_FACT_COUNT
+        || kinds.first().copied() != Some("request_input_selection")
+    {
         return false;
     }
     let kinds = &kinds[1..];
@@ -761,25 +764,10 @@ fn collector(message: &'static str) -> ProductionError {
 
 #[cfg(test)]
 mod execution_order_tests {
-    use super::{valid_execution_kind_order, valid_smoke_input_selection};
+    use super::{
+        SEALED_EXECUTION_ORDER as SEALED, valid_execution_kind_order, valid_smoke_input_selection,
+    };
     use serde_json::json;
-
-    const SEALED: [&str; 14] = [
-        "route_decision",
-        "candidate_decision",
-        "runtime_state",
-        "credential_lease",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "attempt_started",
-        "semantic_commit",
-        "attempt_finished",
-        "request_finished",
-        "usage_and_cache",
-    ];
 
     #[test]
     fn current_order_accepts_each_single_usage_authority_position() {

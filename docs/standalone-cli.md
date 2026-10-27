@@ -1464,6 +1464,12 @@ For missing rates, read the installed `prices.effective` and `prices.override.pr
 
 When cache creation is charged at the ordinary input rate, set its reference rate equal to input. The amount then does not depend on an unreported input/creation split; HiRoute can combine equal-rate calculation buckets without filling or rewriting recorded usage. Different rates still require the missing count.
 
+New historical valuations can also combine an unreported split when the attempt's own frozen
+input and cache-write prices are equal and inclusion and exclusivity are established. The amount
+may be complete while the individual cache-write tokens remain unknown. For retained older records,
+the session timeline can derive that amount from matching frozen evidence without modifying the
+original settlement; older settled totals and expired records are not automatically recalculated.
+
 If the full-scope routed amount is known, input and cache reads are reported, and the input/cache
 inclusion and exclusivity are established, a reference with an unreported cache-write split may
 show bounds. The same-usage scenario assumes reference input and reads match the observed values

@@ -8,6 +8,8 @@ use hiroute_domain::*;
 
 #[path = "analysis_tests.rs"]
 mod analysis_tests;
+#[path = "valuation_equal_rate.rs"]
+mod equal_rate;
 #[path = "native_analysis_tests.rs"]
 mod native_analysis_tests;
 

@@ -67,6 +67,85 @@ fn unknown_cache_semantics_keep_known_output_and_explicit_partial_coverage() {
 }
 
 #[test]
+fn frozen_equal_rates_value_an_unknown_write_without_inventing_tokens() {
+    let mut price = quote();
+    price.rates.cache_write = price.rates.input_uncached.clone();
+    price.quote_digest = price.computed_digest().unwrap();
+    let mut pricing = ExecutionPricingEvidenceV1 {
+        schema_version: EXECUTION_PRICING_SCHEMA_V1.into(),
+        request_generation: None,
+        captured_at_ms: 1_000,
+        attempt_execution_at_ms: 1_000,
+        quote: Some(price),
+        reference_quote: None,
+        unknown_reason: None,
+        usage_semantics: UsageSemanticsV1 {
+            frame_kind: UsageFrameKindV1::Cumulative,
+            input: InputUsageMeaningV1::IncludesExclusiveCache,
+            output: OutputUsageMeaningV1::IncludesReasoning,
+            cache_buckets_exclusive: true,
+        },
+    };
+    let raw = RawUsage {
+        input: Some(100),
+        output: Some(25),
+        read: Some(40),
+        write: None,
+        reasoning: None,
+    };
+    let original = serde_json::to_value(&raw).unwrap();
+    let valued = value_recorded_attempt(&pricing, &raw).unwrap();
+    assert_eq!(valued.known_sum_micros, Some(114));
+    assert_eq!(valued.coverage, MetricCoverage::Complete);
+    assert_eq!(valued.algorithm, EQUAL_RATE_VALUATION_ALGORITHM);
+    assert_eq!(valued.components[0].tokens, None);
+    assert_eq!(valued.components[3].tokens, None);
+    assert_eq!(
+        valued.components[3].missing,
+        Some(ValuationMissingReason::UsageUnknown)
+    );
+    assert_eq!(serde_json::to_value(&raw).unwrap(), original);
+
+    // Neither a different nor an unknown frozen write price is inferable.
+    for write in [
+        TokenRateV1::known(1_500_000),
+        TokenRateV1::unknown(PriceUnknownReasonV1::CacheRateNotCollected),
+    ] {
+        let quote = pricing.quote.as_mut().unwrap();
+        quote.rates.cache_write = write;
+        quote.quote_digest = quote.computed_digest().unwrap();
+        let valued = value_recorded_attempt(&pricing, &raw).unwrap();
+        assert_eq!(valued.known_sum_micros, Some(54));
+        assert_eq!(valued.coverage, MetricCoverage::Partial);
+        assert_eq!(valued.algorithm, VALUATION_ALGORITHM);
+    }
+    let quote = pricing.quote.as_mut().unwrap();
+    quote.rates.cache_write = quote.rates.input_uncached.clone();
+    quote.quote_digest = quote.computed_digest().unwrap();
+    pricing.usage_semantics.cache_buckets_exclusive = false;
+    assert_ne!(
+        value_recorded_attempt(&pricing, &raw).unwrap().coverage,
+        MetricCoverage::Complete
+    );
+
+    pricing.usage_semantics.cache_buckets_exclusive = true;
+    let quote = pricing.quote.as_mut().unwrap();
+    quote.rates.input_uncached = TokenRateV1::known(u64::MAX);
+    quote.rates.cache_write = quote.rates.input_uncached.clone();
+    quote.quote_digest = quote.computed_digest().unwrap();
+    let overflow = RawUsage {
+        input: Some(u64::MAX),
+        output: Some(0),
+        read: Some(0),
+        write: None,
+        reasoning: None,
+    };
+    let valued = value_recorded_attempt(&pricing, &overflow).unwrap();
+    assert_eq!(valued.known_sum_micros, None);
+    assert_eq!(valued.coverage, MetricCoverage::Unknown);
+}
+
+#[test]
 fn unknown_write_bounds_require_known_exclusive_usage_and_do_not_rewrite_it() {
     let semantics = UsageSemanticsV1 {
         frame_kind: UsageFrameKindV1::Cumulative,
