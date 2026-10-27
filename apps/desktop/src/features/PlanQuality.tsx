@@ -273,7 +273,7 @@ function ProtectionCard({ report, released, caught, language, onShowLow, onOpenE
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const protections = report.rows.reduce((total, row) => total + row.protections.length, 0);
   const relays = report.rows.reduce((total, row) => total + row.availability_relays, 0);
-  const releaseReason = released.kind === 'available' ? text('之前的问题已修正或与当前工作无关，允许新模型继续。', 'Earlier problems were fixed or unrelated, allowing Regular to continue.') : {
+  const releaseReason = released.kind === 'available' ? text('之前的问题已修正或不再相关，本轮重新按难度选择模型。', 'The earlier problem was resolved or is no longer relevant; this turn selects a model based on difficulty.') : {
     missing: text('历史保护记录尚不可用。', 'Historical protection records are not available yet.'),
     partial: text('历史保护记录覆盖不完整。', 'Historical protection records have incomplete coverage.'),
     plan: text('历史保护记录与当前路由范围不同。', 'Historical protection records cover a different route scope.'),

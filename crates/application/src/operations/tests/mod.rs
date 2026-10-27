@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use super::*;
 
 mod admission;
+mod native_v1_recovery;
 mod settings_tail;
 
 #[derive(Clone)]

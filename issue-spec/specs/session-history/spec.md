@@ -466,15 +466,18 @@ covered scopes, missing projections, old unknown markers and scan limits. Mixed 
 Deleted data is outside retained scope and its missing population cannot be invented.
 
 Q3 unavailable/requested uses actual dispatch as denominator. No-target/partial
-omissions and inherited decisions are separate. Eligible low history and simple
-current work define protection opportunities; suppressed/opportunities and
-suppressed/fresh C decisions show actual group changes. Required-question-missing
+omissions and inherited decisions are separate. Eligible complete finite low history and a recorded Applied, RetainedUnavailable or Suppressed action define protection opportunities, independently of simple probability. Suppressed/opportunities and suppressed/fresh C decisions describe recorded historical-constraint releases, not necessarily actual group changes or avoided Primary execution. Old complex/not_needed observations remain outside that opportunity population. Required-question-missing
 violations retain protection and count separately as internal anomalies, excluded
 from provider-unavailable/requested totals. Zero denominators are unavailable.
 These rates describe behavior, not ground-truth accuracy or task quality.
 Content-only deletion preserves safe evidence under existing retention; facts-and-
 content deletion/expiry removes it. Existing reader authorization, run conflicts,
 idempotency and deletion boundaries remain effective.
+
+Statistics use protection actions recorded under the rules active at the time. A retained scope may contain records from different rule versions; these counts and rates do not establish a uniform-policy effectiveness comparison. Do not invent a rule version from dates or Plan identity, relabel old events, or backfill hypothetical protection opportunities.
+
+Prior source:
+- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235111513
 
 #### Scenario: All decisions, not open stages
 
@@ -501,8 +504,13 @@ idempotency and deletion boundaries remain effective.
 - **WHEN** a current marker is lost or a source/projection is missing, invalid, unsupported or already deleted without retained proof
 - **THEN** Coverage MUST remain partial and exact-population rates unavailable; Plan identity and marker omission cannot replace evidence.
 
+#### Scenario: Recorded opportunities across difficulty and rule history
+
+- **WHEN** one retained scope contains simple Applied, complex Applied, complex Suppressed, RetainedUnavailable, old complex NotNeeded and an inherited duplicate
+- **THEN** the complete opportunity count is four and the suppressed count is one; inherited/old NotNeeded are excluded and the UI discloses historical-rule comparability limits.
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235111513
+- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6445348771
 
 ### Requirement: Trial evidence discloses scoring coverage and execution scope
 
@@ -722,7 +730,10 @@ Source SPEC comments:
 
 ### Requirement: Routing timelines explain historical protection at the opening selection
 
-The session routing-timeline read and public CLI follow output MUST expose the opening selection's recorded historical-protection outcome, previous stage score and competence floor when available, and applicability probability when valid. The result distinguishes applied protection, released protection, protection retained because judgment was unavailable, and protection not needed. Unconsidered or unrecorded evidence remains explicit; it MUST NOT imply a release or zero probability. The lane marks released protection distinctly from an ordinary simple-task selection. Selected-turn details explain the current task's simple probability and threshold, the previous stage score and floor, and whether the earlier problem still matters, ending with the actual recorded group. The previous score comes from the opening decision, not the selected turn's later assessment. Continuations inherit the opening selection and are not additional protection decisions. Existing selection, read and follow meanings remain unchanged. This view does not alter routing, stored facts or assessment semantics. Labels use plain capability names and exclude internal protocol labels, digests and question identifiers.
+The session routing-timeline read and public CLI follow output MUST expose the opening selection's recorded historical-protection outcome, previous stage score and competence floor when available, and applicability probability when valid. The result distinguishes applied protection, released protection, protection retained because judgment was unavailable, and protection not needed. Unconsidered or unrecorded evidence remains explicit; it MUST NOT imply a release or zero probability. The lane marks released protection distinctly from an ordinary unprotected selection. Release removes only the historical constraint: simple work can continue with Regular, while complex work remains Primary. Protection may follow an eligible previous Regular or Primary stage; a previous Primary does not imply a third tier or a Regular-to-Primary transition. Selected-turn details explain the current task's simple probability and threshold, the previous stage score and floor, and whether the earlier problem still matters, ending with the actual recorded group. The previous score comes from the opening decision, not the selected turn's later assessment. Continuations inherit the opening selection and are not additional protection decisions. Existing selection, read and follow meanings remain unchanged. This view does not alter routing, stored facts or assessment semantics. Labels use plain capability names and exclude internal protocol labels, digests and question identifiers.
+
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253018980
 
 #### Scenario: Protection applied
 
@@ -744,8 +755,13 @@ The session routing-timeline read and public CLI follow output MUST expose the o
 - **WHEN** a record says protection was not needed, or historical-protection evidence is absent or unconsidered
 - **THEN** the view distinguishes those states and never calls missing evidence released protection
 
+#### Scenario: Complex work after protection release
+
+- **WHEN** P(simple)=0.80 at T=0.90, eligible previous score=0.30 below F=0.50, applicability=0.05 and recorded Suppressed
+- **THEN** the lane marks released protection while explaining the actual Primary/complex_task selection; it does not claim Regular continued.
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253018980
+- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6445348771
 
 ### Requirement: Long routing timelines provide a navigable overview
 

@@ -13,6 +13,7 @@ with no current runtime or product entry.
 
 | Capability | Production owner | Representative evidence |
 | --- | --- | --- |
+| Publish or diagnose a versioned native applicability bundle | [Versioned fixed content](../../crates/domain/src/routing/system_one_c.rs), [diagnostic schema](../../crates/application-api/src/generated/native_protocol.rs), [request builder](../../crates/gateway/src/core_runtime/classification/c_request.rs) | [v1/v2 bundle and policy identity](../../crates/domain/src/routing/system_one_c_tests.rs), [v1 Operation recovery](../../crates/application/src/operations/tests/native_v1_recovery.rs), [both-version diagnostic and publication path](../../crates/daemon/tests/support/c_protocol_product.py), [version-separated cohorts](../../crates/observation/src/store/tests/plan_quality/routing_observations.rs) |
 | Discover CLI presets, securely connect, edit, test or delete a decision model/custom extension | [CLI journey](../../crates/cli/src/quickstart/decision.rs), [shared presets](../../assets/decision-services/providers.v1.json), [terminal credential input](../../crates/cli/src/protected_prompt.rs), [Connection UI](../../apps/desktop/src/features/decision-services/DecisionServicesPage.tsx), [shared product transaction](../../crates/product-session/src/session/decision_services.rs), [store](../../crates/local-storage/src/control/decision_services.rs) | [Desktop shell scenarios](../../apps/desktop/tests/v3/browser/product-shell-scenarios.mjs), [real CLI lifecycle](../../crates/daemon/tests/support/decision_services_product.py), [installed secure onboarding](../../crates/daemon/tests/support/quickstart_decision.py) |
 | Create a connection while editing a route | [DesktopApp](../../apps/desktop/src/product/DesktopApp.tsx), [selector](../../apps/desktop/src/features/decision-services/DecisionSelector.tsx) | Preserve route edits and select the exact saved revision without implicit publication |
 | Configure categories, degree and competence | [Plan editor](../../apps/desktop/src/plan-editor.tsx), [branch editor](../../apps/desktop/src/features/decision-services/BranchRoutingEditor.tsx), [judgment controls](../../apps/desktop/src/features/decision-services/JudgmentSettings.tsx), [domain](../../crates/domain/src/routing/decision.rs) | Existing model picker, collapsed advanced settings, complete overrides and publish validation |
@@ -50,8 +51,9 @@ the custom-extension v1 shape has no old-format negotiation. New native publicat
 wire envelope. Earlier built-in frozen publications keep their original execution semantics.
 
 Editor input/readback has no native protocol or background selection. Effective
-native authoring records the current internal protocol, with a fixed eight-turn
-background. Compiled execution freezes actual fixed/effective content and digest.
+native authoring records C v2 as the current internal protocol, with a fixed eight-turn
+background. Compiled execution freezes actual fixed/effective content and digest;
+supported C v1 publications and retained Operations resolve their own original bundle.
 Legacy omission remains frozen execution support only and is registered for
 supported old publications and retained [Operation validation](../../crates/domain/src/operation/routing_content.rs), which checks the original editor against already sealed settings without replaying completed effects. Default assessments resolve to the current default at
 the next edit/publication; custom text stays exact. The released-input adapter
@@ -59,6 +61,12 @@ recognizes exact legacy default instructions and all criteria. Existing
 publications are never rewritten; assessment inheritance and thresholds keep
 their existing owners. Desktop has one connection test with the current request
 example; CLI/acceptance retains the explicit maximum-shape diagnostic.
+The editable native default adds shared [feedback guidance](../../assets/decision-services/default-assessment-guidance.json).
+The separate [C v2 questions](../../crates/domain/src/routing/fixtures/system_one_c_v2.json)
+change only applicability, leaving the fixed C v1 bundle untouched. The [baseline publication fixture](../../crates/domain/src/routing/fixtures/baseline-c-default-publication.json)
+checks that sealed stock questions and retained Operations keep their original bytes.
+Explicit diagnostics accept either exact schema/bundle pair; observations and cohorts
+retain the executed version and content identity.
 
 ## Provider and routing policy
 
@@ -91,7 +99,9 @@ unavailable applicability retains that opportunity conservatively; category,
 degree, rubric validity, inheritance and relay retain their separate owners.
 
 For built-in connections, `group_policy.rs` uses the current simple probability and applicable complete
-assessment for the same category, plan revision and rubric. Each new user turn
+assessment for the same category, plan revision and rubric. Valid simple and complex
+base selections both enter the eligible historical gate; suppression returns to that
+base, while a prior Primary stage remains an actual Primary trigger. Each new user turn
 runs a fresh decision: it neither preserves an old upgrade cursor nor blindly
 returns to regular. Missing/partial scores remain unrated. Recognized tool
 continuations reuse the frozen decision only while history and authority permit.
@@ -239,6 +249,9 @@ assessments do not enter averages.
 read the existing route events and safe-fact projection, independently of stage
 pages and score/model filters. The existing observation query v2 opts in with `include_routing_observations`;
 omission preserves released fields, authorization and cursor bindings. The [Application reader](../../crates/application/src/observation_query/control/v2.rs) retains the released identity for existing queries under current Local Control admission.
+The opportunity denominator counts recorded eligible low-score gate actions, including
+complex decisions, without reinterpreting older not-needed decisions. [Replay](../../crates/application/src/trust/replay.rs)
+keeps recorded protection at Primary across threshold previews.
 [Product presentation](../../apps/desktop/src/features/RoutingObservations.tsx)
 shows counts, denominators, cohorts and coverage; it does not infer accuracy.
 Every current classifier decision records its protocol. Known non-C decisions stay
