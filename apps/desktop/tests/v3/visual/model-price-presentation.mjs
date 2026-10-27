@@ -53,6 +53,87 @@ try {
     const shot = await client.send('Page.captureScreenshot', { format: 'png' });
     await writeFile(path.join(output, `${name}.png`), Buffer.from(shot.data, 'base64'));
   };
+  const detailReads = `window.modelPriceFixture.requests.filter(r=>r.command==='effective_price_query' && r.payload.input.targets[0].query_id==='model-detail')`;
+  const price = `document.querySelector('.v3-price').innerText`;
+  const edit = async lang => {
+    await click('.detail-section button', lang === 'zh' ? '调整价格' : 'Edit pricing');
+    await waitFor(client, `!!document.querySelector('[role="dialog"] .price-mode-list')`);
+  };
+  const manual = async (lang, input, outputRate) => {
+    await click('[role="dialog"] label', lang === 'zh' ? '手工设置费率' : 'Set rates manually');
+    for (const [name, value] of [['input_rate', input], ['output_rate', outputRate]]) {
+      await evaluate(client, `(()=>{const e=document.querySelector('[name="${name}"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+    }
+  };
+  const save = async lang => click('[role="dialog"] button', lang === 'zh' ? '保存价格' : 'Save pricing');
+  for (const lang of ['en', 'zh']) for (const width of [755, 1200]) {
+    await open(`lang=${lang}&theme=${width === 755 ? 'dark' : 'light'}&stateful=1&rates=unknown`, width, width === 755 ? 600 : 813);
+    const selected = await evaluate(client, `document.querySelector('.detail-identity h2').innerText`);
+    const initialReads = await evaluate(client, `${detailReads}.length`);
+    await edit(lang); await manual(lang, '0.30', '1.20'); await save(lang);
+    await waitFor(client, `!document.querySelector('[role="dialog"]') && !!document.querySelector('.toast')`);
+    try {
+      await waitFor(client, `${detailReads}.length === ${initialReads + 1} && ${price}.includes('$0.3 / $1.2')`, { timeout: 3000 });
+    } catch (error) {
+      const state = await evaluate(client, `({price:${price},reads:${detailReads}.length,rates:window.modelPriceFixture.rates,revision:window.modelPriceFixture.revision})`);
+      await writeFile(path.join(output, 'save-refresh-failure.json'), JSON.stringify({ error: String(error), state }, null, 2));
+      const shot = await client.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(path.join(output, 'save-refresh-failure.png'), Buffer.from(shot.data, 'base64'));
+      throw error;
+    }
+    assert.equal(await evaluate(client, `document.querySelector('.detail-identity h2').innerText`), selected);
+    assert.ok((await evaluate(client, price)).includes(lang === 'zh' ? '人工费率' : 'Manual rates'));
+    const request = await evaluate(client, `window.modelPriceFixture.requests.find(r=>r.command==='preview_price_change').payload.input`);
+    assert.deepEqual(request.action, { kind: 'set', input_uncached: '0.30', output: '1.20', cache_read: null, cache_write: null });
+    assert.equal(await evaluate(client, `${detailReads}.every(r=>r.payload.input.targets[0].target_locator.binding_id===${JSON.stringify(request.target_locator.binding_id)} && r.payload.input.targets[0].currency==='USD' && r.payload.input.targets[0].valuation_kind==='api_equivalent')`), true);
+    await snapshot(`saved-manual-${lang}-${width}`);
+
+    await edit(lang); await click('[role="dialog"] label', lang === 'zh' ? '跟随目录价格' : 'Follow catalog pricing'); await save(lang);
+    await waitFor(client, `!document.querySelector('[role="dialog"]') && ${detailReads}.length === ${initialReads + 2} && ${price}.includes(${JSON.stringify(lang === 'zh' ? '未计价' : 'Unpriced')})`);
+    assert.equal(await evaluate(client, `document.querySelector('.detail-identity h2').innerText`), selected);
+    await snapshot(`restored-unknown-${lang}-${width}`);
+
+    await edit(lang); await manual(lang, '0', '1.20'); await save(lang);
+    await waitFor(client, `!document.querySelector('[role="dialog"]') && ${detailReads}.length === ${initialReads + 3} && ${price}.includes('$0 / $1.2')`);
+    await edit(lang); await manual(lang, '0.30', '0'); await save(lang);
+    await waitFor(client, `!document.querySelector('[role="dialog"]') && ${detailReads}.length === ${initialReads + 4} && ${price}.includes('$0.3 / $0')`);
+    results.push({ scenario: 'successful-save-refresh-and-restore', lang, width, status: 'passed' });
+  }
+  for (const outcome of ['cancel', 'failure', 'pending', 'failed_operation']) {
+    await open('lang=en&stateful=1&rates=unknown', 1200, 813);
+    const before = await evaluate(client, `${detailReads}.length`);
+    await edit('en'); await manual('en', '0.30', '1.20');
+    await evaluate(client, `window.modelPriceFixture.outcome=${JSON.stringify(outcome)}`);
+    await save('en');
+    const message = outcome === 'cancel' ? 'Cancelled. Pricing was not changed.' : outcome === 'failure' ? 'Pricing changed elsewhere.' : 'Confirming the save result.';
+    await waitFor(client, `document.querySelector('[role="dialog"]')?.innerText.includes(${JSON.stringify(message)})`);
+    await evaluate(client, `new Promise(resolve=>setTimeout(()=>resolve(true),150))`);
+    assert.equal(await evaluate(client, `${detailReads}.length`), before, `${outcome} cannot refresh the summary as a successful save`);
+    assert.ok((await evaluate(client, price)).includes('Unpriced'));
+    assert.equal(await evaluate(client, `window.modelPriceFixture.revision`), 6);
+    assert.equal(await evaluate(client, `!!document.querySelector('.toast')`), false);
+    await click('[role="dialog"] button', 'Cancel');
+    results.push({ scenario: `unsuccessful-save-${outcome}`, status: 'passed' });
+  }
+  for (const scope of ['same', 'other']) {
+    await open(`lang=en&stateful=1&rates=unknown&two=${scope}`, 1200, 813);
+    await edit('en'); await manual('en', '0.30', '1.20');
+    await evaluate(client, `window.modelPriceFixture.outcome='hold'`); await save('en');
+    await waitFor(client, `typeof window.modelPriceFixture.releaseSave==='function'`);
+    await evaluate(client, `document.querySelectorAll('.models-feature .master-list .list-row')[1].click();true`);
+    await waitFor(client, `document.querySelector('.detail-identity h2')?.innerText==='Other fixture model' && ${price}.includes('$9 / $10')`);
+    const otherReads = await evaluate(client, `${detailReads}.filter(r=>r.payload.input.targets[0].target_locator.binding_id==='binding/fixture/other').length`);
+    await evaluate(client, `window.modelPriceFixture.releaseSave();true`);
+    await waitFor(client, `!document.querySelector('[role="dialog"]') && !!document.querySelector('.toast')`);
+    await evaluate(client, `new Promise(resolve=>setTimeout(()=>resolve(true),150))`);
+    assert.equal(await evaluate(client, `document.querySelector('.detail-identity h2').innerText`), 'Other fixture model');
+    assert.ok((await evaluate(client, price)).includes('$9 / $10'));
+    assert.equal(await evaluate(client, `${detailReads}.filter(r=>r.payload.input.targets[0].target_locator.binding_id==='binding/fixture/other').length`), otherReads, 'saving another binding must not re-read this model');
+    await evaluate(client, `document.querySelectorAll('.models-feature .master-list .list-row')[0].click();true`);
+    await waitFor(client, `${price}.includes('$0.3 / $1.2')`);
+    results.push({ scenario: `save-retains-selection-and-target-${scope}-source`, status: 'passed' });
+  }
+
   for (const lang of ['en', 'zh']) for (const theme of ['light', 'dark']) for (const width of [755, 1200]) {
     for (const scenario of ['unknown', 'input', 'output', 'zero_input', 'zero_output']) {
       await open(`lang=${lang}&theme=${theme}&rates=${scenario}`, width, width === 755 ? 600 : 813);
