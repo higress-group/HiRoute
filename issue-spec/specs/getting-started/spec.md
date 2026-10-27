@@ -504,3 +504,4 @@ Source SPEC comments:
   [product shell](../../../apps/desktop/src/product).
 - [Release identity](../../../crates/host-runtime/src/releases.rs) and
   [macOS installation guide](../../../docs/macos-installation.md).
+- [Earlier new-model trial source SPEC](https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235502571).

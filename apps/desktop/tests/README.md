@@ -128,6 +128,7 @@ run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --polish
 They cover cached trust-level replay, precise-value debounce, shared reason labels,
 bounded two/forty-turn lanes and sticky labels, visible arrivals and unread counts,
 automatic following until an explicit selection, reduced motion, suggestion hierarchy,
+Home suggestion start times under unrelated announcements and retention boundaries,
 model-card facts and footer clearance across both supported sizes, languages and themes.
 Small-window timeline captures use the product's Compact view. Browser suites in
 one checkout share the Vite dependency cache and should run serially. These

@@ -62,8 +62,13 @@ const qualityModels = [
   {execution:{group:'primary' as const,candidate_index:0,plan_revision:8,selected_branch_id:'smart_saving',executed_branch_id:'smart_saving',model_configuration_id:'gpt-5.6-sol',profile_digest:null,attribution:'single' as const},native_model:'gpt-5.6-sol',reasoning_profile_id:'high',scored_stage_count:17,unrated_stage_count:2,average_score:0.9},
 ];
 const stepDownCounts = { executed:46,complete:40,meets_floor:26,partial:2,awaiting_assessment:0,unscored:6,sessions:7 };
+const homeScope = params.get('home-scope');
+const homeScopeFrom = homeScope === 'retention' ? Date.UTC(2026, 9, 24, 12, 34, 56) : Date.UTC(2026, 9, 20, 12, 34, 56);
+const homeAnnouncements = homeScope && homeScope !== 'no-announcement'
+  ? [{ model_configuration_id: homeScope === 'unrelated' ? 'other-branch-model' : 'qwen3-coder-plus', included_on:'2026-10-10', before:31, announcement_day:2, after:25, executed_version_verified:false as const }]
+  : [];
 const homeSuggestions = [
-  {...report,announcements:[],branches:report.branches.map(b=>({...b,protection_count:2,identity_stabilities:['rolling-alias']}))},
+  {...report,announcements:homeAnnouncements,branches:report.branches.map(b=>({...b,upward_from_ms:homeScope ? homeScopeFrom : b.upward_from_ms,protection_count:2,identity_stabilities:['rolling-alias']}))},
   {...report,plan_id:'plan/orders',announcements:[],branches:[{branch_id:'smart_saving',threshold_millis:800,full_history:stepDownCounts,upward_cohort:stepDownCounts,upward_from_ms:0,suggestion:{kind:'step_down' as const,threshold_millis:900},replay:{included:46,excluded_by_reason:{},recorded_share_at_current:0.61,estimate_only:true as const,thresholds:[{threshold_millis:900,regular:14,primary:32,protected_as_primary:9,regular_share:14/46,newly_regular:0}]},protection_count:9,identity_stabilities:['pinned']}]},
 ];
 const timelineRequests = (params.has('polish') ? Array.from({length:Number(params.get('turns')??2)},(_,i)=>i+1) : params.has('stale-timeline') ? [1,2,3] : [1,2]).map(i => ({request_id:`request-${i}`,started_at_ms:Date.now()-10000+i*1000,duration_ms:1500,native_model:i===1?'primary-model':'trial-model',input_tokens:1000,output_tokens:200,cache_read_tokens:990,cache_read_share:0.99,costs:[{model_configuration_id:i===1?'Primary':'Trial',currency:'USD',valuation_kind:'usage_estimate',known_micros:1250,unknown_contributions:i===1?0:1}],outcome:params.get('request-outcome')??'accepted'}));
