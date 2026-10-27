@@ -73,3 +73,7 @@ pub struct HistoricalApplicabilityTestResultV1 {
     pub duration_millis: u64,
     pub reason: String,
 }
+
+#[cfg(test)]
+#[path = "classifier_diagnostic_c_tests.rs"]
+mod tests;

@@ -327,9 +327,18 @@ fn retained_native_operation_validates_its_original_default_and_new_edit_uses_cu
     let old: JudgmentSettingsV1 = serde_json::from_value(fixture["judgment"].clone()).unwrap();
     let editor = native_editor();
     let mut frozen = editor.effective().unwrap();
-    let AgentPlanStrategyV2::SmartSaving { judgment, .. } = &mut frozen.strategy else {
+    let AgentPlanStrategyV2::SmartSaving {
+        judgment,
+        native_protocol,
+        ..
+    } = &mut frozen.strategy
+    else {
         unreachable!()
     };
+    *native_protocol = Some(NativeProtocolSelectionV1 {
+        schema: SYSTEM_ONE_C_V1.into(),
+        prior_context_max_turns: 8,
+    });
     *judgment = old.clone();
     let before = serde_json::to_vec(&frozen).unwrap();
     assert_eq!(
@@ -338,6 +347,7 @@ fn retained_native_operation_validates_its_original_default_and_new_edit_uses_cu
     );
     assert_eq!(serde_json::to_vec(&frozen).unwrap(), before);
     let current = editor.effective().unwrap();
+    assert_eq!(current.native_protocol().unwrap().schema, SYSTEM_ONE_C_V2);
     assert_ne!(
         current.assessment_scopes()[SMART_SAVING_SCOPE_ID]
             .competence
@@ -387,6 +397,10 @@ fn retained_native_branch_operation_preserves_default_and_override_stock_questio
     let AgentPlanStrategyV2::Branches { routing } = &mut frozen.strategy else {
         unreachable!()
     };
+    routing.native_protocol = Some(NativeProtocolSelectionV1 {
+        schema: SYSTEM_ONE_C_V1.into(),
+        prior_context_max_turns: 8,
+    });
     routing.judgment = old.clone();
     routing.branches[0].judgment = Some(old);
     assert_eq!(
@@ -394,6 +408,7 @@ fn retained_native_branch_operation_preserves_default_and_override_stock_questio
         frozen
     );
     let next = editor.effective().unwrap();
+    assert_eq!(next.native_protocol().unwrap().schema, SYSTEM_ONE_C_V2);
     assert_ne!(
         next.assessment_scopes()["default"].competence.instructions,
         frozen.assessment_scopes()["default"]
@@ -474,7 +489,7 @@ fn inherited_defaults_and_independent_custom_overrides_resolve_separately() {
     let internal = serde_json::to_value(&authored).unwrap();
     assert_eq!(
         internal["strategy"]["routing"]["native_protocol"]["schema"],
-        SYSTEM_ONE_C_V1
+        SYSTEM_ONE_C_V2
     );
     let editor = serde_json::to_value(authored.editor(None).unwrap()).unwrap();
     assert!(

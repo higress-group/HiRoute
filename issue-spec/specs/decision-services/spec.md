@@ -176,7 +176,7 @@ partial; missing target response or target trimming still invalidates protection
 The native applicability protocol MUST freeze its actual fixed bundle,
 effective degree/category definitions, every composed per-scope assessment,
 thresholds, context cap and content digest in the published route. Execution uses
-that content without substituting binary defaults. Stock C_full questions and
+that content without substituting binary defaults. Supported C v1 stock C_full questions and
 criteria MUST exactly reproduce routing/fixtures/system_one_c_v1.json in Domain,
 whose sorted-key compact UTF-8 checksum is
 4dbab2f53954eb2176b6aa8d31b97808c4fee15ebb2fae337012eba348aef3c7.
@@ -209,6 +209,10 @@ fixture. Pure composition logic may be shared. Disposable unreleased C encodings
 need no support adapter; supported released data and retained authenticated
 historical evidence preserve their existing compatibility treatment.
 
+New native authoring seals `hiroute.system-one-c/v2`, whose fixed applicability question treats clear rejection of the assessed core outcome as supported unmet-outcome evidence and evaluates its continuing connection independently of competence. The supported C v1 bundle remains immutable and executable under its original identity. C v2 keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
+
+Current readers accept authenticated v1 and v2 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier may also accept the explicitly supplied supported v2 protocol. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
+
 #### Scenario: Frozen C questions
 
 - **WHEN** a published native C route evaluates a complete prior stage
@@ -224,8 +228,29 @@ historical evidence preserve their existing compatibility treatment.
 - **WHEN** current category or degree defaults change after a C publication is saved
 - **THEN** Reopen and execution MUST retain the frozen questions, role bindings and content identity, while corrupted or authoring-mismatched content remains rejected.
 
+#### Scenario: Current feedback protocol on new publication
+
+- **WHEN** a new native route is explicitly saved and published with otherwise eligible same-core rejection feedback
+- **THEN** the sealed protocol is C v2 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
+
+#### Scenario: Supported v1 execution and recovery
+
+- **WHEN** an authenticated supported C v1 publication or unfinished Operation is loaded after the authoring default changes
+- **THEN** its exact original protocol, questions, custom/default standard and digests remain valid and execute unchanged; startup never recompiles it against the new default.
+
+#### Scenario: Version-content mismatch
+
+- **WHEN** v2 fixed content is paired with a v1 identity, a v1 fixed bundle with v2, or an unknown protocol or corrupt digest is supplied
+- **THEN** validation rejects the input rather than substituting a supported default or repairing authenticated content.
+
+#### Scenario: Version-separated evidence and diagnostics
+
+- **WHEN** retained v1 and new v2 observations share a service and plan scope, or an explicit diagnostic is run with either supported frozen protocol
+- **THEN** observations keep their original authenticated protocol/content identities and remain readable without a rewrite, cohorts do not imply equivalence across identities, and diagnostics use exactly the supplied supported bundle under the unchanged protected request/result carrier.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
+- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6448880209
 
 ### Requirement: Conservative fallback preserves a valid selected category
 
@@ -448,6 +473,8 @@ Applicability independently evaluates whether the reported unmet outcome still m
 
 All shipped default model-facing instructions and criteria SHALL be English independently of UI locale, including category, degree, competence, applicability, wrappers and trial presets. Localized UI explanations may be translated; user-authored prompts retain their chosen language. New defaults are sealed through normal publication; existing saved custom prompts and frozen published question content retain their exact original meaning and bytes. A fixed supported protocol bundle must not be edited in place to change its meaning.
 
+Newly authored native publications use the versioned C v2 applicability bundle. Clear rejection of the assessed core result followed by work on that same unmet outcome is supported applicability evidence without a technical diagnosis, while the existing correction, acceptance, unrelated-task and authority distinctions remain effective. Existing C v1 publications and retained Operations retain their exact frozen questions, protocol identity and digests. Editing prepares current defaults only for the next explicit save/publication and cannot mutate active or historical content.
+
 #### Scenario: Brief rejection of the preceding core result
 
 - **WHEN** a complete attributable stage delivers an answer; the latest user evaluates that answer as not satisfactory and requests improvement to the same outcome, with no indication of merely a small preference change
@@ -467,6 +494,11 @@ All shipped default model-facing instructions and criteria SHALL be English inde
 
 - **WHEN** the same new default route is authored in Chinese and English UI with identical choices and user content
 - **THEN** the generated model-facing default instructions and criteria are identical English definitions; localized help does not become the stored rubric, and existing custom/frozen content is not translated.
+
+#### Scenario: Versioned defaults preserve sealed history
+
+- **WHEN** a supported C v1 publication or unfinished Operation is reopened after C v2 becomes the authoring default
+- **THEN** the original v1 bundle, custom/default contents and authenticated identities remain unchanged; a later explicit edit/publication seals the current supported bundle without rewriting earlier records.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/226#issuecomment-6445981518

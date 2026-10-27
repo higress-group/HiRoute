@@ -20,17 +20,22 @@ pub struct NativeProtocolSelectionV1 {
 impl Default for NativeProtocolSelectionV1 {
     fn default() -> Self {
         Self {
-            schema: SYSTEM_ONE_C_V1.into(),
+            schema: SYSTEM_ONE_C_V2.into(),
             prior_context_max_turns: 8,
         }
     }
 }
 impl NativeProtocolSelectionV1 {
     pub fn resolve(&self) -> Result<NativeProtocolV1, NativeProtocolError> {
+        let fixed = match self.schema.as_str() {
+            SYSTEM_ONE_C_V1 => NativeFixedContentV1::c_v1(),
+            SYSTEM_ONE_C_V2 => NativeFixedContentV1::c_v2(),
+            _ => return Err(NativeProtocolError::Unsupported),
+        };
         let value = NativeProtocolV1 {
             schema: self.schema.clone(),
+            fixed,
             prior_context_max_turns: self.prior_context_max_turns,
-            ..Default::default()
         };
         value.validate()?;
         Ok(value)
@@ -85,7 +90,8 @@ impl JudgmentSettingsV1 {
     ) -> Result<Self, NativeProtocolError> {
         if let (Some(selection), Some(frozen)) = (protocol, frozen) {
             let native = selection.resolve()?;
-            if self.assessment_standard() == AssessmentStandardV1::Default
+            if selection.schema == SYSTEM_ONE_C_V1
+                && self.assessment_standard() == AssessmentStandardV1::Default
                 && frozen.competence.standard == Some(AssessmentStandardV1::Default)
                 && native.is_stock_assessment(frozen)
             {

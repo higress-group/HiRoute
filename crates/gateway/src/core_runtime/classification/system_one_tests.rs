@@ -168,7 +168,7 @@ fn oversized_current_input_is_rejected_and_history_removal_marks_only_affected_t
 
 fn c_authority() -> RestBranchClassifierAuthorityV1 {
     let mut a = authority();
-    let p = hiroute_domain::NativeProtocolV1::default();
+    let p = hiroute_domain::NativeProtocolV1::c_v1();
     let mut j = JudgmentSettingsV1::default();
     p.stock_assessment(&mut j);
     a.decision = j.degree.definition().into();
@@ -263,6 +263,53 @@ fn c_stock_questions_exactly_match_the_appendix_and_isolate_invalid_q3() {
         assert_eq!(response.assessment.unwrap().score, 0.1);
         assert_eq!(response.probabilities.unwrap()["simple"], 0.9);
     }
+}
+
+#[test]
+fn c_request_uses_the_frozen_version_and_never_substitutes_current_q2() {
+    let mut wires = Vec::new();
+    let mut policies = Vec::new();
+    for protocol in [
+        hiroute_domain::NativeProtocolV1::c_v1(),
+        hiroute_domain::NativeProtocolV1::c_v2(),
+    ] {
+        let mut authority = c_authority();
+        let mut judgment = JudgmentSettingsV1::default();
+        protocol.current_assessment(&mut judgment);
+        judgment.competence.standard = Some(hiroute_domain::AssessmentStandardV1::Default);
+        let frozen = hiroute_domain::FrozenNativeProtocolV1::freeze(
+            &protocol,
+            judgment.degree.definition().into(),
+            [(SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
+        )
+        .unwrap();
+        policies.push(frozen.execution_policy(SMART_SAVING_SCOPE_ID, &judgment, "same"));
+        authority.smart_judgment = Some(judgment);
+        authority.native_protocol = Some(frozen.clone());
+        let prepared = request_template(
+            &authority,
+            &diagnostic_request(),
+            &c_history(&authority),
+            false,
+        )
+        .unwrap();
+        let wire: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
+        assert_eq!(
+            wire["questions"]["q1"],
+            frozen.scopes[SMART_SAVING_SCOPE_ID].assessment
+        );
+        assert_eq!(wire["questions"]["q2"], protocol.fixed.applicability);
+        assert_eq!(
+            prepared.routing_observation.unwrap().protocol,
+            protocol.schema
+        );
+        wires.push(wire);
+    }
+    assert_eq!(wires[0]["state"], wires[1]["state"]);
+    assert_eq!(wires[0]["questions"]["q0"], wires[1]["questions"]["q0"]);
+    assert_eq!(wires[0]["questions"]["q1"], wires[1]["questions"]["q1"]);
+    assert_ne!(wires[0]["questions"]["q2"], wires[1]["questions"]["q2"]);
+    assert_ne!(policies[0], policies[1]);
 }
 
 #[test]

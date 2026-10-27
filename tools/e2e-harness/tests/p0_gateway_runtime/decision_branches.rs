@@ -572,15 +572,25 @@ fn builtin_decision_reselects_groups_and_observes_actual_execution_in_both_modes
     }
 }
 
-fn enable_c(fixture: &RuntimeFixture) -> hiroute_domain::FrozenNativeProtocolV1 {
+fn enable_c(
+    fixture: &RuntimeFixture,
+    protocol: &hiroute_domain::NativeProtocolV1,
+) -> hiroute_domain::FrozenNativeProtocolV1 {
     let mut publication = fixture.publication();
-    let protocol = enable_c_in_publication(&mut publication);
+    let protocol = enable_c_in_publication_with(&mut publication, protocol);
     fixture.publish(&mut publication);
     protocol
 }
 
 fn enable_c_in_publication(
     publication: &mut hiroute_gateway::server::publication::GatewayPublicationSnapshotV3,
+) -> hiroute_domain::FrozenNativeProtocolV1 {
+    enable_c_in_publication_with(publication, &hiroute_domain::NativeProtocolV1::default())
+}
+
+fn enable_c_in_publication_with(
+    publication: &mut hiroute_gateway::server::publication::GatewayPublicationSnapshotV3,
+    protocol: &hiroute_domain::NativeProtocolV1,
 ) -> hiroute_domain::FrozenNativeProtocolV1 {
     use hiroute_domain::*;
     use hiroute_gateway::server::publication::AliasRequestOwnedRouteV1;
@@ -595,12 +605,12 @@ fn enable_c_in_publication(
             native_protocol,
             ..
         } => {
-            let p = NativeProtocolV1::default();
+            let p = protocol;
             let judgment = judgment.as_mut().unwrap();
             p.stock_assessment(judgment);
             *native_protocol = Some(
                 FrozenNativeProtocolV1::freeze(
-                    &p,
+                    p,
                     judgment.degree.definition().into(),
                     [(SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
                 )
@@ -613,13 +623,13 @@ fn enable_c_in_publication(
             native_protocol,
             ..
         } => {
-            let p = NativeProtocolV1::default();
+            let p = protocol;
             for b in branches.iter_mut() {
                 p.stock_assessment(b.judgment.as_mut().unwrap());
             }
             *native_protocol = Some(
                 FrozenNativeProtocolV1::freeze(
-                    &p,
+                    p,
                     branch_decision_definition(branches, default_branch_id),
                     branches
                         .iter()
@@ -678,7 +688,13 @@ fn c_complex_answer(smart: bool, applicable: bool) -> &'static [u8] {
 }
 #[test]
 fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_listeners() {
-    for smart in [true, false] {
+    for (protocol, smart) in [
+        hiroute_domain::NativeProtocolV1::c_v1(),
+        hiroute_domain::NativeProtocolV1::c_v2(),
+    ]
+    .into_iter()
+    .flat_map(|protocol| [true, false].map(move |smart| (protocol.clone(), smart)))
+    {
         let plain: &'static [u8] = if smart {
             br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#
         } else {
@@ -696,7 +712,7 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
         ]);
         let fixture =
             RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], smart);
-        let frozen = enable_c(&fixture);
+        let frozen = enable_c(&fixture, &protocol);
         let mut input = Vec::new();
         for (index, text) in [
             "Provide the requested title.",
@@ -772,6 +788,12 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
             assert!(body["state"].get("assessment_stage").is_some());
             let applicability = if smart { "q2" } else { "q3" };
             assert_eq!(body["questions"].get(applicability).is_some(), i > 0);
+            if i > 0 {
+                assert_eq!(
+                    body["questions"][applicability],
+                    protocol.fixed.applicability
+                );
+            }
         }
         let facts = wait_execution_facts(&fixture, 6);
         let actions: Vec<_> = facts
@@ -809,6 +831,11 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
         assert_eq!(decisions[5]["execution_group"], "primary");
         assert_eq!(decisions[5]["selection_reason"], "low_competence");
         assert_eq!(decisions[5]["competence_trigger"]["from_group"], "primary");
+        assert!(
+            decisions
+                .iter()
+                .all(|decision| decision["routing_observation"]["protocol"] == protocol.schema)
+        );
         assert!(
             facts
                 .iter()
