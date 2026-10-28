@@ -636,10 +636,11 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
     observation.finish_response_content("finish", None);
     // The original content was validated at admission. Simulate backing loss
     // only after the optional worker owns its lease and before it reads.
-    fixture
-        .store
-        .truncate_stream_last_byte(&model_content_refs(&input)[0])
-        .unwrap();
+    let ContentPart::ProviderState { state } = &input.messages[0].content[0] else {
+        panic!("canonical state fixture")
+    };
+    let reference = state.value["text"].as_str().unwrap().content_ref().unwrap();
+    fixture.store.truncate_stream_last_byte(&reference).unwrap();
     gate.release();
     observation.inner.channels.content_work.flush(&observation);
     let mut records = Vec::new();
@@ -647,7 +648,12 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
         let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
         let gap = record["schema_version"] == "hiroute.observation.gap-heartbeat/v1";
         records.push(record);
-        if gap {
+        if (gap
+            || records
+                .iter()
+                .any(|record| record["loss_watermark"].is_object()))
+            && records.iter().any(|record| record["phase"] == "abort")
+        {
             break;
         }
     }

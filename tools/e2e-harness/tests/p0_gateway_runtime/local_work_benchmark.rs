@@ -61,10 +61,14 @@ fn measure_complete_local_work_with_continuity_and_capture() {
                 &candidate.credential_refs,
                 provider.authority(),
                 &candidate.upstream_model_id,
-                &[(
-                    IngressProtocol::ChatCompletions,
-                    IngressProtocol::ChatCompletions,
-                )],
+                &[
+                    (IngressProtocol::Responses, IngressProtocol::ChatCompletions),
+                    (
+                        IngressProtocol::ChatCompletions,
+                        IngressProtocol::ChatCompletions,
+                    ),
+                    (IngressProtocol::Messages, IngressProtocol::ChatCompletions),
+                ],
             );
         }
         publication
