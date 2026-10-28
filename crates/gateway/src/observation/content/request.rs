@@ -439,8 +439,12 @@ impl RequestObservation {
         let whole_digest = format!("blob-{}", digest.finish().trim_start_matches("sha256:"));
         let message_instance_id = self.message_instance_id("request_input", message_ordinal, role);
         let content_id = self.content_id(&message_instance_id, part_ordinal, &whole_digest);
-        let public_ref =
-            self.public_content_ref(reference, media_type, content_id, whole_digest.clone());
+        let public_ref = self.public_content_ref(
+            reference,
+            media_type,
+            content_id.clone(),
+            whole_digest.clone(),
+        );
         emit_content_ref(self, "request_input", public_ref.clone());
         let mut reader = replay.reader(reference).map_err(|_| ())?;
         let mut emitted = false;
@@ -462,6 +466,8 @@ impl RequestObservation {
                 bytes: &bytes[..read.filled],
                 public_ref: Some(public_ref.clone()),
                 whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_id,
                 starts_content: !emitted,
                 transport_frame_id: None,
                 downstream_delivery: None,
@@ -479,8 +485,10 @@ impl RequestObservation {
                 kind,
                 media_type,
                 bytes: &[],
-                public_ref: Some(public_ref),
+                public_ref: Some(public_ref.clone()),
                 whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_id,
                 starts_content: true,
                 transport_frame_id: None,
                 downstream_delivery: None,
@@ -500,11 +508,12 @@ impl RequestObservation {
     ) {
         let whole_digest = self.content_blob_digest(media_type, bytes);
         let message_instance_id = self.message_instance_id("request_input", message_ordinal, role);
+        let content_id = self.content_id(&message_instance_id, part_ordinal, &whole_digest);
         emit_content_ref(
             self,
             "request_input",
             ContentRefV1 {
-                content_id: self.content_id(&message_instance_id, part_ordinal, &whole_digest),
+                content_id: content_id.clone(),
                 digest: whole_digest.clone(),
                 byte_count: bytes.len() as u64,
                 media_type: media_type.into(),
@@ -522,6 +531,8 @@ impl RequestObservation {
                 bytes,
                 public_ref: None,
                 whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_id,
                 starts_content: true,
                 transport_frame_id: None,
                 downstream_delivery: None,
@@ -540,6 +551,8 @@ impl RequestObservation {
                 bytes: chunk,
                 public_ref: None,
                 whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_id,
                 starts_content: index == 0,
                 transport_frame_id: None,
                 downstream_delivery: None,

@@ -316,6 +316,9 @@ Request JSON observation uses the same Replay-aware canonical serialization as
 comparison, with bounded chunks and integrity checks instead of retaining internal
 locators. [Observation regressions](src/observation/content/request_json_replay_tests.rs)
 cover nested strings, tool JSON, literal-marker isolation and missing backing.
+Content-part owners compute message/content identities once and pass them to their
+chunks; the capture lifetime owns its fixed fork identity. Digest algorithms,
+transcript ordering and queued envelope shapes remain unchanged.
 Response ciphertext remains excluded from retained observation content.
 The response tracker retains accepted lifecycle evidence separately from that
 presentation policy. Converted responses use the protocol renderer's omission
@@ -680,3 +683,15 @@ Admission exclusions also join the existing request-local preparation summary wh
 another candidate remains. Mixed permanent failures do not become a pure cooling
 response, and an actual upstream attempt retains its existing response. These errors
 contain no credentials or provider text and have no `Retry-After`.
+
+## Bounded local text processing
+
+The ingress serde reader uses an accounted 8 KiB buffer to amortize Replay reads;
+syntax/end validation and the Replay terminal checks remain authoritative. The
+sequential request encoder copies unchanged text runs and raw JSON in bulk from
+its existing bounded content buffer, retaining scalar escaping only at special
+bytes. It still respects write quantum, exact declared length and release rules.
+[Boundary tests and the opt-in release benchmark](src/adapters/tests/local_work.rs)
+exercise the same parser/encoder with memory and disk backing. Benchmark timings
+cover those local operations; actual request summaries also include history,
+observation capture and scheduling, and are not CPU-time measurements.

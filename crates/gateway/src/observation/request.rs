@@ -106,6 +106,8 @@ pub(super) struct RequestObservationState {
     pub(super) request_content_terminal: bool,
     pub(super) response_content_started: bool,
     pub(super) response_content_terminal: bool,
+    pub(super) request_content_fork: Option<String>,
+    pub(super) response_content_fork: Option<String>,
     pub(super) request_transcript: Option<WorkspaceHmac>,
     pub(super) response_transcript: Option<WorkspaceHmac>,
     pub(super) request_content_stats: ContentCaptureStats,

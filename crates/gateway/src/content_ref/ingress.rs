@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::io::Read;
+use std::io::{BufReader, Read};
 
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation};
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
@@ -81,7 +81,13 @@ pub(crate) fn parse_ingress_document(
     stats: IngressDocumentStats,
 ) -> Result<(Value, IngressWorkspace), ReplayError> {
     let parse = stats.reserve_streaming_workspace(replay)?;
-    let mut reader = replay.reader(raw)?;
+    // serde's reader adapter asks for individual bytes. Amortize Replay range
+    // checks and copies without materializing another full request body.
+    let buffer_bytes = raw.byte_len().min(8 * 1024) as usize;
+    let buffer_reservation = replay
+        .budget()
+        .reserve(MemoryRole::ModelIrBacking, buffer_bytes)?;
+    let mut reader = BufReader::with_capacity(buffer_bytes, replay.reader(raw)?);
     let mut state = IngressParserState {
         replay,
         pool: None,
@@ -106,7 +112,9 @@ pub(crate) fn parse_ingress_document(
         Err(_) => return Err(state.failure.take().unwrap_or(ReplayError::InvalidJson)),
     };
     drop(deserializer);
-    reader.verify_terminal()?;
+    reader.get_mut().verify_terminal()?;
+    drop(reader);
+    drop(buffer_reservation);
     // serde's largest-string scratch is gone after the deserializer drops.
     // Restoration below may retain that string, but never overlaps the
     // parser's transient copy in the request memory budget.

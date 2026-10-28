@@ -67,6 +67,10 @@ impl RequestObservation {
             }
             *started = true;
             let fork_id = self.fork_id(direction, attempt);
+            match direction {
+                "request_input" => state.request_content_fork = Some(fork_id.clone()),
+                _ => state.response_content_fork = Some(fork_id.clone()),
+            }
             let parent_transcript_root = (direction == "response_delivered")
                 .then(|| state.request_result_transcript_root.clone())
                 .flatten();
@@ -119,10 +123,10 @@ impl RequestObservation {
         if !self.captures_content() {
             return;
         }
-        let message_instance_id =
-            self.message_instance_id(chunk.direction, chunk.message_ordinal, chunk.role);
-        let content_id =
-            self.content_id(&message_instance_id, chunk.part_ordinal, chunk.whole_digest);
+        // The part owner already authenticated these IDs before publishing its
+        // ContentRef. Reuse them for every chunk of that same part.
+        let message_instance_id = chunk.message_instance_id;
+        let content_id = chunk.content_id;
         let parent_transcript_root = self.content_parent_root(chunk.direction);
         let (chunk_ordinal, attempt_id, fork_id) = {
             let mut state = self.lock_state();
@@ -135,7 +139,7 @@ impl RequestObservation {
                 if chunk.starts_content
                     && let Some(transcript) = &mut state.request_transcript
                 {
-                    update_transcript(transcript, &message_instance_id, &content_id);
+                    update_transcript(transcript, message_instance_id, content_id);
                 }
                 current
             } else {
@@ -147,7 +151,7 @@ impl RequestObservation {
                 if chunk.starts_content
                     && let Some(transcript) = &mut state.response_transcript
                 {
-                    update_transcript(transcript, &message_instance_id, &content_id);
+                    update_transcript(transcript, message_instance_id, content_id);
                 }
                 current
             };
@@ -160,7 +164,12 @@ impl RequestObservation {
             (
                 current,
                 chunk.attempt.map(|attempt| attempt.attempt_id.clone()),
-                self.fork_id(chunk.direction, chunk.attempt),
+                if chunk.direction == "request_input" {
+                    state.request_content_fork.clone()
+                } else {
+                    state.response_content_fork.clone()
+                }
+                .expect("content capture begins before appending"),
             )
         };
         self.emit_content(ContentEvent {
@@ -170,10 +179,10 @@ impl RequestObservation {
             fork_id,
             parent_transcript_root,
             result_transcript_root: None,
-            message_instance_id: Some(message_instance_id),
+            message_instance_id: Some(message_instance_id.into()),
             message_role: Some(chunk.role.into()),
             content_kind: Some(chunk.kind.into()),
-            content_id: Some(content_id),
+            content_id: Some(content_id.into()),
             content_blob_digest: Some(chunk.whole_digest.into()),
             message_ordinal: Some(chunk.message_ordinal),
             part_ordinal: Some(chunk.part_ordinal),
@@ -547,6 +556,8 @@ impl RequestObservation {
                         bytes: chunk,
                         public_ref: Some(content_ref.clone()),
                         whole_digest: &whole_digest,
+                        message_instance_id: &message_instance_id,
+                        content_id: &content_ref.content_id,
                         starts_content: index == 0,
                         transport_frame_id: Some(frame_id),
                         downstream_delivery: Some("full_frame_transport_accepted"),
@@ -636,6 +647,8 @@ struct ContentChunk<'a> {
     bytes: &'a [u8],
     public_ref: Option<ContentRefV1>,
     whole_digest: &'a str,
+    message_instance_id: &'a str,
+    content_id: &'a str,
     starts_content: bool,
     transport_frame_id: Option<&'a str>,
     downstream_delivery: Option<&'a str>,

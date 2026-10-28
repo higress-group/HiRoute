@@ -140,6 +140,32 @@ fn sequential_bulk_runs_preserve_all_escapes_and_empty_parts_at_chunk_boundaries
 }
 
 #[test]
+fn buffered_ingress_still_rejects_trailing_invalid_and_truncated_json() {
+    for threshold in [31, 1024 * 1024] {
+        let fixture = Fixture::new(threshold, 31);
+        let mut valid = fixture.store.begin_raw().unwrap();
+        valid.append(br#"{"model":"alias","input":"ok"}"#).unwrap();
+        let valid = valid.seal().unwrap();
+        let stats = scan_ingress_document(fixture.store.reader(&valid).unwrap()).unwrap();
+        for bytes in [
+            br#"{"model":"alias","input":"ok"} {}"#.as_slice(),
+            br#"{"model":"alias","input":"\q"}"#,
+            br#"{"model":"alias","input":"ok""#,
+        ] {
+            let mut raw = fixture.store.begin_raw().unwrap();
+            raw.append(bytes).unwrap();
+            let raw = raw.seal().unwrap();
+            let live = fixture.budget.snapshot().unwrap().live;
+            assert!(
+                parse_ingress_document(IngressProtocol::Responses, &fixture.store, &raw, stats)
+                    .is_err()
+            );
+            assert_eq!(fixture.budget.snapshot().unwrap().live, live);
+        }
+    }
+}
+
+#[test]
 #[ignore = "opt-in release benchmark; reports timings without a flaky deadline assertion"]
 fn benchmark_local_text_processing() {
     let text = "ordinary text 中文, quote \" and slash \\, newline\n".repeat(15);

@@ -552,6 +552,8 @@ blanket unmeasured performance/native/Windows result.
   [credential/preparation failures](../../../crates/gateway/src/runtime/driver/selection/preparation.rs).
 - [Replay implementation/default regression](../../../crates/gateway/src/replay/tests.rs) and
   [native response evidence](../../../crates/gateway/src/adapters/response/native_passthrough_evidence.rs).
+- [Sequential encoding byte-equivalence and fixed-input benchmark](../../../crates/gateway/src/adapters/tests/local_work.rs)
+  cover chunk boundaries, escaped/Unicode content, memory and disk backing, and bounded parser rejection.
 - [Real runtime listener corpus](../../../tools/e2e-harness/tests/p0_gateway_runtime.rs),
   [protocol corpus](../../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs), and
   [strict product fact projection](../../../crates/integrations/src/gateway/tests.rs).
