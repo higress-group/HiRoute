@@ -451,7 +451,10 @@ impl ReplayStore {
     }
 
     #[cfg(test)]
-    fn truncate_stream_last_byte(&self, reference: &ContentRef) -> Result<(), ReplayError> {
+    pub(crate) fn truncate_stream_last_byte(
+        &self,
+        reference: &ContentRef,
+    ) -> Result<(), ReplayError> {
         let streams = lock(&self.inner.streams);
         streams
             .get(&reference.stream_ordinal())

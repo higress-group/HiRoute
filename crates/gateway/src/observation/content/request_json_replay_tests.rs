@@ -636,11 +636,10 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
     observation.finish_response_content("finish", None);
     // The original content was validated at admission. Simulate backing loss
     // only after the optional worker owns its lease and before it reads.
-    for directory in std::fs::read_dir(&fixture._root.0).unwrap() {
-        for entry in std::fs::read_dir(directory.unwrap().path()).unwrap() {
-            std::fs::remove_file(entry.unwrap().path()).unwrap();
-        }
-    }
+    fixture
+        .store
+        .truncate_stream_last_byte(&model_content_refs(&input)[0])
+        .unwrap();
     gate.release();
     observation.inner.channels.content_work.flush(&observation);
     let mut records = Vec::new();
