@@ -55,8 +55,8 @@ pub use operation::{
     VerifiedSecretSubjectV1, WorkerDependencySelectionChangeV1, WorkerDependencySelectionRecordV1,
     agent_connection_publication_record, agent_connection_restore_publication_record,
     checkpoint_publication, decode_subscription_check_intent, is_agent_access_grant_effect,
-    is_settings_managed_configuration, is_settings_publication, is_subscription_check_effect,
-    routing_publication_record, settings_model_publication_intent,
+    is_settings_additional_model, is_settings_managed_configuration, is_settings_publication,
+    is_subscription_check_effect, routing_publication_record, settings_model_publication_intent,
     settings_model_publication_record, valid_user_agent_token, validate_idempotency_key,
     validate_settings_model_publication_intent,
 };

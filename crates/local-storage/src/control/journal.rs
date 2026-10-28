@@ -257,6 +257,15 @@ fn journal_json_matches(encoded: &str, expected: &JournalJson) -> bool {
     read_journal_json(encoded).is_ok_and(|actual| actual == *expected)
 }
 
+/// Compare two retained journal fragments using the same order-insensitive,
+/// duplicate- and numeric-preserving rules as current journal validation.
+pub(super) fn journal_fragments_equal(left: &str, right: &str) -> PortResult<bool> {
+    let invalid = || port(PortErrorCode::Corrupt, "control.journal.encoding");
+    let left = read_journal_json(left).map_err(|_| invalid())?;
+    let right = read_journal_json(right).map_err(|_| invalid())?;
+    Ok(left == right)
+}
+
 #[derive(PartialEq)]
 enum JournalJson {
     Scalar(Value),

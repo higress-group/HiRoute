@@ -591,6 +591,80 @@ fn target_operation(root: &str, key: &str, restore: bool) -> OperationV1 {
 }
 
 #[test]
+fn locator_input_classifies_the_plan_without_optional_step_expansion() {
+    use super::super::{agent_history_cache::AgentHistoryRow, agent_locator_input};
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let path = directory.path().join("hermes-selected");
+    let mut operation = target_operation(path.to_str().unwrap(), "locator-input", false);
+    persist(&control, &mut operation);
+    let db = control.connection.borrow();
+    let row = || {
+        db.query_row(
+            "SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json FROM operations WHERE operation_id=?1",
+            [operation.operation_id.as_str()],
+            AgentHistoryRow::read,
+        )
+        .unwrap()
+    };
+    let before = agent_locator_input::classify(&db, &row()).unwrap().unwrap();
+    assert_eq!(before.operation_id, operation.operation_id);
+    assert_eq!(
+        before.context,
+        operation.plan.spec().resource_id.clone().unwrap()
+    );
+    assert_eq!(
+        before.management,
+        Some(agent_locator_input::FacetAction::Configure)
+    );
+    assert_eq!(before.model, None);
+    assert_eq!(before.collaboration, None);
+    assert!(!before.additional_model_grant_candidate);
+    db.execute(
+        "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=1",
+        [operation.operation_id.as_str()],
+    )
+    .unwrap();
+    let after = agent_locator_input::classify(&db, &row()).unwrap().unwrap();
+    assert_eq!(after.plan_bytes_digest, before.plan_bytes_digest);
+    drop(db);
+    assert!(
+        read(&control).is_err(),
+        "explicit complete history remains strict"
+    );
+}
+
+#[test]
+fn locator_input_binds_the_actual_selected_row() {
+    use super::super::{agent_history_cache::AgentHistoryRow, agent_locator_input};
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let mut first = target_operation(
+        directory.path().join("first").to_str().unwrap(),
+        "first",
+        false,
+    );
+    let mut second = target_operation(
+        directory.path().join("second").to_str().unwrap(),
+        "second",
+        false,
+    );
+    persist(&control, &mut first);
+    persist(&control, &mut second);
+    let db = control.connection.borrow();
+    db.execute(
+        "UPDATE operations SET operation_json=(SELECT operation_json FROM operations WHERE operation_id=?2) WHERE operation_id=?1",
+        rusqlite::params![first.operation_id.as_str(), second.operation_id.as_str()],
+    )
+    .unwrap();
+    let row = db.query_row(
+        "SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json FROM operations WHERE operation_id=?1",
+        [first.operation_id.as_str()], AgentHistoryRow::read,
+    ).unwrap();
+    assert!(agent_locator_input::classify(&db, &row).is_err());
+}
+
+#[test]
 fn selected_settings_does_not_decode_newer_unrelated_contexts() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());
@@ -857,7 +931,7 @@ fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_refere
 }
 
 #[test]
-fn legacy_initialization_ignores_superseded_optional_step_damage() {
+fn legacy_initialization_refuses_unverified_history_and_preserves_source() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());
     let path = directory.path().join("hermes-selected");
@@ -886,6 +960,13 @@ fn legacy_initialization_ignores_superseded_optional_step_damage() {
         [older.operation_id.as_str()],
     )
     .unwrap();
+    let before: Vec<(String, String)> = db
+        .prepare("SELECT operation_id,operation_json FROM operations ORDER BY rowid")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
     db.execute_batch(
         "BEGIN; DROP TRIGGER operation_recovery_insert; DROP TRIGGER operation_recovery_guard;
         DROP TRIGGER operation_recovery_update; DELETE FROM operation_recovery_members;
@@ -897,7 +978,35 @@ fn legacy_initialization_ignores_superseded_optional_step_damage() {
     let result = super::super::current_dependencies::initialize(&db);
     db.execute_batch("ROLLBACK").unwrap();
     assert!(
-        result.is_ok(),
-        "a superseded, unrelated optional step must not prevent current target discovery"
+        result.is_err(),
+        "the existing initial conversion must refuse an unverified old journal"
     );
+    let after: Vec<(String, String)> = db
+        .prepare("SELECT operation_id,operation_json FROM operations ORDER BY rowid")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        before, after,
+        "failed conversion must preserve source bytes"
+    );
+    let damaged: String = db
+        .query_row(
+            "SELECT step_json FROM operation_steps WHERE operation_id=?1 AND step_no=1",
+            [older.operation_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(damaged, "{}");
+    drop(db);
+    assert_eq!(
+        control
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(read(&control).is_err(), "explicit history remains strict");
 }

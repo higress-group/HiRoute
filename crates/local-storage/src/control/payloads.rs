@@ -92,7 +92,11 @@ fn raw<T: Serialize>(value: &T) -> PortResult<Box<RawValue>> {
     serde_json::value::to_raw_value(value).map_err(|_| invalid())
 }
 
-fn expand_payload(db: &Connection, owner: &str, value: &RawValue) -> PortResult<Box<RawValue>> {
+pub(super) fn expand_payload(
+    db: &Connection,
+    owner: &str,
+    value: &RawValue,
+) -> PortResult<Box<RawValue>> {
     let candidate: Value = serde_json::from_str(value.get()).map_err(|_| invalid())?;
     if candidate.get("schema").and_then(Value::as_str) != Some(SCHEMA) {
         return RawValue::from_string(value.get().to_owned()).map_err(|_| invalid());
@@ -113,7 +117,11 @@ fn expand_payload(db: &Connection, owner: &str, value: &RawValue) -> PortResult<
     RawValue::from_string(bytes).map_err(|_| invalid())
 }
 
-fn expand_step(db: &Connection, owner: &str, encoded: &RawValue) -> PortResult<Box<RawValue>> {
+pub(super) fn expand_step(
+    db: &Connection,
+    owner: &str,
+    encoded: &RawValue,
+) -> PortResult<Box<RawValue>> {
     let mut value: Object = serde_json::from_str(encoded.get()).map_err(|_| invalid())?;
     if let Some(effects) = value.get("effects") {
         let mut effects: Vec<Object> =

@@ -103,6 +103,8 @@ pub struct ControlStore {
     pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
 }
 
+mod agent_locator_input;
+
 /// One exact grant received over the daemon launcher's protected inherited channel. The raw
 /// capability is zeroized by the domain wrapper and this type is intentionally neither Clone nor
 /// serializable, so it cannot become an ambient socket/API credential.
