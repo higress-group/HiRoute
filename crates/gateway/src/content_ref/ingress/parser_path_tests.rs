@@ -36,7 +36,7 @@ impl Fixture {
         }
     }
 
-    fn raw(&self, bytes: &[u8]) -> super::super::super::ContentRef {
+    fn raw(&self, bytes: &[u8]) -> crate::content_ref::ContentRef {
         let mut writer = self.store.begin_raw().unwrap();
         for chunk in bytes.chunks(113) {
             writer.append(chunk).unwrap();
