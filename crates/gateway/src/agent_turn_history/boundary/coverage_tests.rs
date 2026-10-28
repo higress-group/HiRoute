@@ -39,6 +39,7 @@ fn accepted() -> BoundaryCapture {
         text: "READY".into(),
         annotations: vec![],
         status: ResponseItemStatus::Completed,
+        final_phase: None,
     });
     capture
 }

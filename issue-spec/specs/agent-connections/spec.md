@@ -128,8 +128,16 @@ owner/group-read/write-bit check or chmod is introduced.
 
 #### Scenario: Read model settings without unrelated Skill resources
 
-- **WHEN** a consumer requests model projection and an unrequested Skill resource is unreadable
+- **WHEN** a consumer requests model projection and an unrequested Skill record or resource is unreadable, while the shared storage, coverage, and selected model proofs remain valid
 - **THEN** valid model facts remain readable with their original proof checks; the full query retains its existing Skill checks and failures.
+
+#### Scenario: Shared storage proof cannot be established
+
+- **WHEN** an unsupported external schema change, such as dropping the Skill table, invalidates the shared Control storage or locator coverage proof
+- **THEN** model projection fails closed instead of treating the damaged proof as an unreadable, unrequested Skill resource or as empty configuration. Supported migrations maintain the corresponding proof under the existing migration contract.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/249#issuecomment-6461279047
 
 ### Requirement: Connection bearer is separate from provider and Worker secrets
 
@@ -1033,6 +1041,38 @@ Trial review SHALL preview the selected Agent's actual current candidate combina
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/228#issuecomment-6440851627
+
+### Requirement: Current settings reads isolate unrelated history
+
+Current settings SHALL locate the last applicable declaration by exact workspace,
+context and facet; grant provenance SHALL additionally match the complete current
+grant identity, and resident service ownership SHALL use its workspace-wide latest
+declaration. Keep, Configure, Restore and unresolved recovery retain their distinct
+meanings. Unknown coverage, newer unresolved work or damaged current proof cannot
+be reported as absent or as a settled success. Explicit history and Restore reads
+retain their original strict scope.
+
+The selected journal and required dependencies SHALL be captured from independently
+owned database snapshots, with store and connection identities and physical epochs
+fenced before capture, after capture and after lock-free verification. The current
+grant is authenticated in its own snapshot without exporting secret material.
+Selected journal validation and native reads occur outside the shared storage lock;
+the final fence rechecks the exact consumed dependencies. A changed read may be
+retried once and continued change remains a retryable failure. These snapshots do
+not create a cross-database transaction or grant Preview/Apply authority.
+
+#### Scenario: Older or unrelated Agent history is damaged
+
+- **WHEN** the selected current owner and recovery closure are valid but an unrelated older completed record is damaged
+- **THEN** current settings use the selected owner's complete proof without expanding unrelated history, while explicit access to that damaged record still reports its actual failure.
+
+#### Scenario: Grant or recovery changes during a read
+
+- **WHEN** the active grant, selected owner, pending/finalization work or physical database epoch changes during capture or verification
+- **THEN** the reader discards the mixed result, retries the complete read at most once and never represents unresolved work as a completed or absent configuration.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/249#issuecomment-6461279047
 
 ## Implementation references
 

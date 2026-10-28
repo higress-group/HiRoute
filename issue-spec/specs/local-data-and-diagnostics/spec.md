@@ -106,6 +106,17 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **WHEN** supported older data needs a complete initial conversion or a full-store integrity audit is performed
 - **THEN** the existing coordinated recovery boundary preserves the source and reports the actual work separately; interruption cannot publish partial current-state coverage or turn unchecked historical data into a successful integrity result.
 
+#### Scenario: Admitted v32 adds the current Agent locator
+
+- **WHEN** the original verified three-store backup group has exact source version 32 and the immutable migration target is version 33
+- **THEN** the locator is built and published atomically from the admitted current and recovery coverage; final validation checks all three SQLite structures, the strict current and unresolved closure, and complete locator coverage without claiming an audit of unrelated history.
+- **AND** missing or damaged source identity, coverage, current owners or unresolved work remains a failure. Lower source versions, other target batches and unprovable source groups retain their original full conversion and audit rules. An interrupted batch retains its original backup, identity and matching-binary recovery path.
+
+#### Scenario: Diagnose a current Agent read
+
+- **WHEN** debug diagnostics are enabled for an Agent read
+- **THEN** closed operation categories distinguish total time, storage lock wait and hold, snapshot and locator work, lock-free validation, native checks, final fence and current grant authentication. Aggregate operation and payload counts and byte lengths do not contain paths, user content or credential material. Diagnostics do not scan history or change the read result.
+
 #### Scenario: Completed upgrade backup is retained without reopening history
 
 - **WHEN** the durable completion record names the current target format and agrees with the current three-store identities and secret binding
@@ -116,6 +127,9 @@ number after reboot cannot alone invalidate logically intact supported store ide
 
 - **WHEN** startup enters backup publication, data conversion, final current-data validation and service recovery
 - **THEN** it reports the corresponding bounded phases on the existing readiness channel, without rescanning history for progress. Completing an older batch before the current batch does not repeat or regress visible phases. A failed stage remains the last entered phase; no later stage or ready result is fabricated. Ordinary current-format restart emits no upgrade phases and retains its normal readiness deadline.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/249#issuecomment-6461279980
 
 ### Requirement: Journal progress does not rewrite immutable payloads
 

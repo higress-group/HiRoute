@@ -130,6 +130,8 @@ export function homeCopy(language: Language): HomeCopy {
 export function facetLabel(state: HomeFacetState, language: Language): string {
   const labels: Record<HomeFacetState, [string, string]> = {
     unconfigured: ['未配置', 'Not configured'],
+    recorded: ['已保存设置，使用前检查', 'Settings saved; checked before use'],
+    restored: ['已恢复', 'Restored'],
     configured: ['已配置', 'Configured'],
     verified: ['已验证', 'Verified'],
     pending: ['正在处理', 'Pending'],

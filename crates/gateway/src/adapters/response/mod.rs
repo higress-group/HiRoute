@@ -5,6 +5,7 @@ mod client_stream;
 mod completion;
 mod decoder;
 mod function_encoding;
+mod message_phase;
 mod messages;
 mod native_passthrough;
 mod native_passthrough_sse;
@@ -124,6 +125,7 @@ struct DecoderCore {
     responses_encrypted_final: BTreeMap<u32, Option<Value>>,
     responses_encrypted_buffered_bytes: usize,
     native_message_phases: BTreeMap<u32, String>,
+    final_message_phases: BTreeMap<u32, Option<String>>,
     search_ids: std::collections::BTreeSet<String>,
     next_block: u32,
     next_sequence: u64,
@@ -153,6 +155,7 @@ impl DecoderCore {
             responses_encrypted_final: BTreeMap::new(),
             responses_encrypted_buffered_bytes: 0,
             native_message_phases: BTreeMap::new(),
+            final_message_phases: BTreeMap::new(),
             search_ids: std::collections::BTreeSet::new(),
             next_block: 0,
             next_sequence: 0,
@@ -327,60 +330,6 @@ impl DecoderCore {
         self.native_item_ids.get(&native_index).cloned()
     }
 
-    fn observe_message_phase(
-        &mut self,
-        native_index: u32,
-        phase: Option<&str>,
-        complete_item: bool,
-    ) -> Result<(), ProtocolAdapterError> {
-        let Some(phase) = phase else {
-            if complete_item && self.native_message_phases.contains_key(&native_index) {
-                return Err(ModelIrError::InvalidResponseLifecycle(
-                    "Responses completed message omitted its established phase".into(),
-                )
-                .into());
-            }
-            return Ok(());
-        };
-        if phase.is_empty() || phase.chars().any(char::is_control) {
-            return Err(ModelIrError::InvalidField("response output message phase").into());
-        }
-        if let Some(current) = self.native_message_phases.get(&native_index) {
-            if current == phase {
-                return Ok(());
-            }
-            return Err(ModelIrError::InvalidResponseLifecycle(
-                "Responses message phase changed during the stream".into(),
-            )
-            .into());
-        }
-        if self
-            .native_blocks
-            .contains_key(&(NativeBlockKind::Text, native_index))
-            || self
-                .native_blocks
-                .contains_key(&(NativeBlockKind::Refusal, native_index))
-        {
-            return Err(ModelIrError::InvalidResponseLifecycle(
-                "Responses message phase arrived after message content".into(),
-            )
-            .into());
-        }
-
-        self.retention.add(phase.len())?;
-        self.semantic_bytes = self
-            .semantic_bytes
-            .checked_add(phase.len())
-            .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
-        self.native_message_phases
-            .insert(native_index, phase.to_owned());
-        Ok(())
-    }
-
-    fn native_message_phase(&self, native_index: u32) -> Option<String> {
-        self.native_message_phases.get(&native_index).cloned()
-    }
-
     fn charge_semantics(&mut self, event: &ModelEvent) -> Result<(), ProtocolAdapterError> {
         let added = match event {
             ModelEvent::ResponsesMetadata { metadata } => serde_json::to_vec(metadata)
@@ -389,9 +338,12 @@ impl DecoderCore {
             ModelEvent::TextAnnotation { annotation, .. } => serde_json::to_vec(annotation)
                 .map_err(|error| ModelIrError::InvalidJson(error.to_string()))?
                 .len(),
-            ModelEvent::TextFinished { .. }
-            | ModelEvent::ReasoningFinished { .. }
-            | ModelEvent::RefusalFinished { .. } => 0,
+            ModelEvent::TextFinished { final_phase, .. }
+            | ModelEvent::RefusalFinished { final_phase, .. } => final_phase
+                .as_ref()
+                .and_then(|phase| phase.value.as_ref())
+                .map_or(0, String::len),
+            ModelEvent::ReasoningFinished { .. } => 0,
             ModelEvent::WebSearch {
                 item, native_id, ..
             } => serde_json::to_vec(item)
@@ -476,6 +428,7 @@ impl DecoderCore {
             ModelEvent::TextFinished {
                 index,
                 text,
+                final_phase,
                 annotations,
                 status,
             } => {
@@ -487,6 +440,7 @@ impl DecoderCore {
                 {
                     return Err(invalid_block(*index, "text completion"));
                 }
+                self.apply_final_message_phase(*index, final_phase)?;
                 self.bind_item_status(*index, *status)?;
             }
             ModelEvent::ReasoningFinished {
@@ -506,6 +460,7 @@ impl DecoderCore {
             ModelEvent::RefusalFinished {
                 index,
                 text,
+                final_phase,
                 status,
             } => {
                 if !matches!(
@@ -515,6 +470,7 @@ impl DecoderCore {
                 {
                     return Err(invalid_block(*index, "refusal completion"));
                 }
+                self.apply_final_message_phase(*index, final_phase)?;
                 self.bind_item_status(*index, *status)?;
             }
             ModelEvent::WebSearch {
@@ -1040,6 +996,7 @@ impl DecoderCore {
                 index,
                 text,
                 status,
+                final_phase: self.final_message_phase(native_index),
             },
             output,
         )

@@ -16,6 +16,7 @@ use hiroute_application_api::PlanCandidateUnavailableReasonV1 as UnavailableReas
 
 #[path = "routing_candidates.rs"]
 mod candidates;
+mod trial;
 use candidates::CandidateDiagnostics;
 
 #[cfg(test)]
@@ -359,6 +360,17 @@ impl RoutingFactsPort for LocalControlAdapter {
     ) -> Result<RoutingCompilationSnapshotV1, ControlReadError> {
         self.routing_snapshot(workspace_id)
     }
+
+    fn trial_routing_snapshot(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<hiroute_application::control::TrialRoutingSnapshotV1, ControlReadError> {
+        let (routing, management) = self.routing_snapshot_capture(workspace_id, true)?;
+        Ok(hiroute_application::control::TrialRoutingSnapshotV1 {
+            routing,
+            management: management.ok_or(ControlReadError::Corrupt)?,
+        })
+    }
 }
 
 impl LocalControlAdapter {
@@ -395,6 +407,21 @@ impl LocalControlAdapter {
         &self,
         workspace_id: &WorkspaceId,
     ) -> Result<RoutingCompilationSnapshotV1, ControlReadError> {
+        self.routing_snapshot_capture(workspace_id, false)
+            .map(|(routing, _)| routing)
+    }
+
+    fn routing_snapshot_capture(
+        &self,
+        workspace_id: &WorkspaceId,
+        trial_capture: bool,
+    ) -> Result<
+        (
+            RoutingCompilationSnapshotV1,
+            Option<hiroute_application_api::TrialManagementSnapshotV1>,
+        ),
+        ControlReadError,
+    > {
         hiroute_diagnostics::publication::measure(
             &self
                 .publication_diagnostics
@@ -422,8 +449,13 @@ impl LocalControlAdapter {
                         control.compute_projection_rows().map_err(super::map_port)?,
                     )
                 };
+                let trusted_trial_sources =
+                    trial_capture.then(|| trial::trusted_sources(self, &catalog, &management));
                 let mut diagnostics =
                     CandidateDiagnostics::new(&management.sources, &rows, &catalog);
+                let trial_ownership =
+                    trial_capture.then(|| trial::ManagedOwnership::new(&management));
+                let mut retained_api_connections = Vec::new();
                 let needs_cpa = rows
                     .iter()
                     .any(|(source, _, _)| source.origin == SourceOrigin::Cpa)
@@ -473,7 +505,15 @@ impl LocalControlAdapter {
                         .then(|| {
                             (
                                 source.source_id.clone(),
-                                self.subscription_routing_unavailability(source),
+                                if trial_capture {
+                                    if cpa_targets.is_some() {
+                                        UnavailableReason::CredentialUnavailable
+                                    } else {
+                                        UnavailableReason::RuntimeUnavailable
+                                    }
+                                } else {
+                                    self.subscription_routing_unavailability(source)
+                                },
                             )
                         })
                     })
@@ -494,6 +534,14 @@ impl LocalControlAdapter {
                     binding
                         .validate_shape()
                         .map_err(|_| ControlReadError::Corrupt)?;
+                    // A V2 owner is authoritative for trial admission even if its
+                    // matching legacy projection would still be executable.
+                    if trial_ownership
+                        .as_ref()
+                        .is_some_and(|owners| owners.owns(&source.source_id, &binding.binding_id))
+                    {
+                        continue;
+                    }
                     if catalog.validate_source(&source, true).is_err()
                         || binding.validate(&source, catalog.model_data()).is_err()
                     {
@@ -686,7 +734,7 @@ impl LocalControlAdapter {
                         .observed_models
                         .iter()
                         .any(|model| model.upstream_model_id == binding.upstream_model_id);
-                    candidates.push(CandidateCompilationFactV1 {
+                    let candidate = CandidateCompilationFactV1 {
                 authority:
                     hiroute_application::compiler::CandidateFactAuthorityV1::RegisteredCatalog,
                 connection_option_id: source.connection_option_id.clone(),
@@ -707,9 +755,16 @@ impl LocalControlAdapter {
                 rating,
                 ordering_price,
                 free_evidence,
-            });
+            };
+                    if let Some(ownership) = &trial_ownership
+                        && let Some(connection) =
+                            trial::retained_api(&source, &candidate, &resolved, ownership)
+                    {
+                        retained_api_connections.push(connection);
+                    }
+                    candidates.push(candidate);
                 }
-                for source in management.sources {
+                for source in &management.sources {
                     inventory_refs.push((
                         source.source_id.clone(),
                         "compute-management/v2".into(),
@@ -723,20 +778,20 @@ impl LocalControlAdapter {
                     {
                         let Ok(resolved) = catalog.resolve_connection_option(connection_option_id)
                         else {
-                            diagnostics.catalog_mismatch(&source);
+                            diagnostics.catalog_mismatch(source);
                             continue;
                         };
                         if !super::model_connections::registered_source_matches_current_option(
-                            &source, &resolved,
+                            source, &resolved,
                         ) {
-                            diagnostics.catalog_mismatch(&source);
+                            diagnostics.catalog_mismatch(source);
                             continue;
                         }
                     }
                     let preferences = control
                         .source_default_preferences(&source.source_id)
                         .map_err(super::map_port)?;
-                    let mut compilation = diagnostics.compile_models(&source);
+                    let mut compilation = diagnostics.compile_models(source);
                     for fact in &mut compilation {
                         fact.default_preferences = preferences
                             .get(&fact.binding_id)
@@ -863,6 +918,23 @@ impl LocalControlAdapter {
                 expected_revisions
                     .dependencies
                     .insert("release.model_data".into(), provenance.release_sequence);
+                // Project trial choices while the same local rows and captured routing facts are
+                // held. The compact projection contains no credential or endpoint material.
+                let trial_projection = if trial_capture {
+                    Some(trial::capture_projected(
+                        self,
+                        &catalog,
+                        &management,
+                        cpa_targets,
+                        trusted_trial_sources
+                            .as_deref()
+                            .ok_or(ControlReadError::Corrupt)?,
+                        stores.runtime(),
+                        (&facts.candidates, &retained_api_connections),
+                    )?)
+                } else {
+                    None
+                };
                 // Revalidation can wait for CPA control or lifecycle work. Native
                 // grants use this same store mutex and have a shorter ACK deadline.
                 drop(stores);
@@ -871,6 +943,30 @@ impl LocalControlAdapter {
                 {
                     return Err(ControlReadError::SnapshotChanged);
                 }
+                let management_projection = if let Some((context, projected)) = trial_projection {
+                    let stores = self.stores_lock().map_err(super::map_port)?;
+                    let current = trial::project(
+                        &management,
+                        stores.runtime(),
+                        &facts.candidates,
+                        &context,
+                        &retained_api_connections,
+                    )?;
+                    if projected != current
+                        || !trial::maintenance_unchanged(self, &management, &context)
+                    {
+                        return Err(ControlReadError::SnapshotChanged);
+                    }
+                    drop(stores);
+                    if trusted_trial_sources.as_ref().is_none_or(|before| {
+                        *before != trial::trusted_sources(self, &catalog, &management)
+                    }) {
+                        return Err(ControlReadError::SnapshotChanged);
+                    }
+                    Some(projected)
+                } else {
+                    None
+                };
                 // The local fence covers every captured local row, not only published
                 // revisions. CPA batch.finish above still validates actual external facts;
                 // a metadata feed replacement also invalidates this composed snapshot.
@@ -881,12 +977,15 @@ impl LocalControlAdapter {
                 {
                     return Err(ControlReadError::SnapshotChanged);
                 }
-                Ok(RoutingCompilationSnapshotV1 {
-                    unavailable_candidates: diagnostics.finish(&facts.candidates),
-                    facts,
-                    expected_revisions,
-                    active_publication,
-                })
+                Ok((
+                    RoutingCompilationSnapshotV1 {
+                        unavailable_candidates: diagnostics.finish(&facts.candidates),
+                        facts,
+                        expected_revisions,
+                        active_publication,
+                    },
+                    management_projection,
+                ))
             },
         )
     }

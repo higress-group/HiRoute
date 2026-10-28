@@ -52,6 +52,27 @@ fn discovery() -> RegisteredComputeDiscoveryFactV1 {
     }
 }
 
+fn disabled_v2_owner(
+    source_id: &str,
+    binding_id: &str,
+) -> hiroute_domain::ComputeManagementSourceV2 {
+    let evidence = CanonicalDigest::of_bytes(b"disabled-v2-owner-fixture");
+    let source: hiroute_domain::ComputeManagementSourceV2 = serde_json::from_value(serde_json::json!({
+        "schema": hiroute_domain::COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2,
+        "source_id": source_id, "revision": 1, "lineage_digest": evidence,
+        "display_name": "Disabled V2 fixture", "provenance": {"kind":"user_configured", "configuration_revision":1, "evidence_digest":evidence},
+        "target": {"scheme":"http", "authority":"127.0.0.1", "port":8123, "request_path":"/v1/responses", "upstream_protocol":"responses", "protocol_profile_id":"profile/custom/responses", "protocol_profile_revision":1},
+        "authentication":{"kind":"none"}, "state":"disabled",
+        "models":[{"model_ref":"model/fixture", "binding_id":binding_id, "revision":1,
+            "upstream_model_id":"fixture-model", "display_name":"Fixture model", "membership":"user_declared", "execution_eligible":true,
+            "capabilities":{"tool":{"value":true,"basis":"user_declared"}, "vision":{"value":false,"basis":"user_declared"}, "streaming":{"value":true,"basis":"user_declared"}, "context_tokens":{"value":32768,"basis":"user_declared"}, "max_output_tokens":{"value":4096,"basis":"user_declared"}, "native_reasoning":{"value":{"kind":"fixed","profile":"provider-default"},"basis":"user_declared"}},
+            "capability_evidence_digest":evidence}],
+        "last_candidate_ref":"candidate/fixture", "last_candidate_revision":1
+    })).unwrap();
+    source.validate().unwrap();
+    source
+}
+
 #[test]
 fn trusted_catalog_lineage_proof_selects_only_its_exact_legacy_source() {
     let catalog = routable_fixture_catalog();
@@ -563,6 +584,74 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
     )
     .unwrap();
 
+    let trial = hiroute_application::control::RoutingFactsPort::trial_routing_snapshot(
+        &adapter,
+        &WorkspaceId::default(),
+    )
+    .unwrap();
+    assert!(
+        trial
+            .routing
+            .facts
+            .candidates
+            .iter()
+            .any(
+                |candidate| candidate.binding.binding_id == current.binding.binding_id
+                    && candidate.is_routable()
+            ),
+        "a failed subscription must not hide the healthy API candidate"
+    );
+    let safe = serde_json::to_value(&trial.management).unwrap();
+    let retained = safe["retained_api_connections"]
+        .as_array()
+        .expect("an admitted API candidate must be selectable without a V2 management source");
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0]["source_id"], current.source.source_id);
+    assert_eq!(retained[0]["source_revision"], current.source.revision);
+    assert_eq!(retained[0]["binding_id"], current.binding.binding_id);
+    assert_eq!(retained[0]["binding_revision"], current.binding.revision);
+    assert_eq!(
+        retained[0]["model_configuration_id"],
+        current.binding.model_configuration_id
+    );
+    for forbidden in [
+        "model_ref",
+        "actions",
+        "credentials",
+        "target",
+        "authentication",
+    ] {
+        assert!(retained[0].get(forbidden).is_none());
+    }
+    let actual = trial
+        .routing
+        .facts
+        .candidates
+        .iter()
+        .find(|candidate| candidate.binding.binding_id == current.binding.binding_id)
+        .unwrap();
+    let candidate = serde_json::json!({
+        "binding_id":actual.binding.binding_id,
+        "model_configuration_id":actual.model.model_configuration_id,
+        "display_name":actual.model.display_name,
+        "reasoning":actual.reasoning,
+        "billing_class":actual.binding.billing_class,
+        "routable":actual.is_routable(),
+        "ingress_protocols":actual.protocol_profiles.iter().map(|profile| profile.ingress_protocol).collect::<Vec<_>>(),
+        "native_ingress_protocols":actual.protocol_profiles.iter().filter(|profile| profile.ingress_protocol == profile.capability.upstream_protocol).map(|profile| profile.ingress_protocol).collect::<Vec<_>>()
+    });
+    let expected: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../../contracts/routing/trial-retained-api-capture.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        serde_json::json!({"connection":retained[0], "candidate":candidate}),
+        expected,
+        "the UI fixture must come from this real routing capture"
+    );
+    assert!(trial.routing.unavailable_candidates.iter().any(|candidate|
+        candidate.binding_id == cpa.binding.binding_id
+            && candidate.reason == hiroute_application_api::PlanCandidateUnavailableReasonV1::RuntimeUnavailable));
     assert_eq!(snapshot.facts.candidates.len(), 1);
     let reasons = snapshot
         .unavailable_candidates
@@ -623,5 +712,79 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
     assert_ne!(
         CanonicalDigest::of(&snapshot.facts.candidates).unwrap(),
         CanonicalDigest::of_bytes(b"empty")
+    );
+
+    // Exercise the real capture with retained legacy rows and a disabled V2
+    // owner. Neither source ownership nor binding ownership may fall back.
+    let database = rusqlite::Connection::open(storage_root.join("live/control.db")).unwrap();
+    let digest = CanonicalDigest::of_bytes(b"fixture-operation");
+    database.execute(
+        "INSERT INTO operations(operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json,created_at,updated_at)
+         VALUES ('operation/v2-owner',?1,'interactive-user','fixture.management','fixture-v2-owner',?2,?2,'succeeded',0,'{}',0,0)",
+        rusqlite::params![WorkspaceId::default().as_str(), digest.as_str()],
+    ).unwrap();
+    for (source_id, binding_id) in [
+        (current.source.source_id.as_str(), "binding/v2-unrelated"),
+        (
+            "source/v2-binding-owner",
+            current.binding.binding_id.as_str(),
+        ),
+    ] {
+        let owned = disabled_v2_owner(source_id, binding_id);
+        database
+            .execute("DELETE FROM compute_management_sources", [])
+            .unwrap();
+        database.execute(
+            "INSERT INTO compute_management_sources(workspace_id,source_id,lineage_digest,revision,source_json,owner_operation_id,updated_at) VALUES (?1,?2,?3,1,?4,'operation/v2-owner',0)",
+            rusqlite::params![WorkspaceId::default().as_str(), source_id, owned.lineage_digest.as_str(), serde_json::to_string(&owned).unwrap()],
+        ).unwrap();
+        let protected = hiroute_application::control::RoutingFactsPort::trial_routing_snapshot(
+            &adapter,
+            &WorkspaceId::default(),
+        )
+        .unwrap();
+        assert!(
+            protected
+                .management
+                .retained_api_connections
+                .iter()
+                .all(|item| item.binding_id != current.binding.binding_id)
+        );
+        assert!(
+            protected
+                .routing
+                .facts
+                .candidates
+                .iter()
+                .all(|item| item.binding.binding_id != current.binding.binding_id),
+            "a disabled V2 owner must suppress the retained execution fact"
+        );
+    }
+    database
+        .execute("DELETE FROM compute_management_sources", [])
+        .unwrap();
+    let mut disabled = current.source.clone();
+    disabled.state = hiroute_domain::MaterializationState::Disabled;
+    database
+        .execute(
+            "UPDATE compute_sources SET source_json=?1 WHERE source_id=?2",
+            rusqlite::params![
+                serde_json::to_string(&disabled).unwrap(),
+                disabled.source_id
+            ],
+        )
+        .unwrap();
+    let disabled_trial = hiroute_application::control::RoutingFactsPort::trial_routing_snapshot(
+        &adapter,
+        &WorkspaceId::default(),
+    )
+    .unwrap();
+    assert!(
+        disabled_trial
+            .management
+            .retained_api_connections
+            .iter()
+            .all(|item| item.binding_id != current.binding.binding_id),
+        "a disabled retained API is not selectable"
     );
 }

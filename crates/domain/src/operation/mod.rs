@@ -49,8 +49,9 @@ pub use agent_connection::{
     AgentConnectionTransactionKindV1, AgentConnectionTransactionSubjectV1,
     SETTINGS_SERVICE_COMPLETION_SCHEMA, SettingsServiceCompletionV1,
     agent_connection_publication_record, agent_connection_restore_publication_record,
-    is_settings_managed_configuration, is_settings_publication, settings_model_publication_intent,
-    settings_model_publication_record, validate_settings_model_publication_intent,
+    is_settings_additional_model, is_settings_managed_configuration, is_settings_publication,
+    settings_model_publication_intent, settings_model_publication_record,
+    validate_settings_model_publication_intent,
 };
 pub use compute::ComputeSourceMutationV1;
 pub use routing::routing_publication_record;

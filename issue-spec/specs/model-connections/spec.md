@@ -30,6 +30,26 @@ ordinary persistence never stores them. Editing check-relevant facts invalidates
 the previous check. Internal navigation is not abandonment; close uses the normal
 unsaved-edit rule. None of these actions implicitly starts inference.
 
+For a new connection opened explicitly for one selected trial model, the caller may opt into a shortcut only after the options read succeeds and existing executable and model-scope filters leave exactly one product. It enters that product's normal configuration once per opening, with its actual name and an action to return to the directory. A provider with two eligible products is not unique. Loading, failure, unknown eligibility, an empty result, directory search or billing filters do not qualify. Returning or choosing a service prevents another automatic advance; asynchronous changes never overwrite an edited product. The ordinary directory and its permitted custom entry remain available, and this shortcut does not check, sign in, select a model, save or run inference.
+
+#### Scenario: One exact trial product
+
+- **WHEN** a new connection for an explicit trial model has one eligible product after a successful load
+- **THEN** configuration opens once with the product name; the user can return to service selection without automatic check, save or inference
+
+#### Scenario: Not unique or unknown
+
+- **WHEN** two products share a provider, no eligible product exists, the read fails, or a directory filter shows one result
+- **THEN** the user remains in the appropriate directory or error state; no shortcut selects a product
+
+#### Scenario: Return and refresh
+
+- **WHEN** the user returns to the directory or edits a selected product while options or language change
+- **THEN** the user remains in control and inputs are not overwritten or silently switched
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/246#issuecomment-6461015079
+
 ### Requirement: Connection identity survives supported lifecycle edits
 
 One template may create multiple independent connections even with identical
@@ -489,6 +509,88 @@ Public CLI help and schema discovery SHALL describe the shared views and control
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/191#issuecomment-6295421495
+
+### Requirement: Connection exit protects actual unsaved user changes
+
+The connection editor SHALL ask for confirmation before exiting only when the session would lose user-created editable changes, an unsaved exact model selection or a temporary credential, including any retained product draft. Compare each product against its stable initial editable values; generated identities, edit/check revisions, check results and unedited drafts do not by themselves require confirmation. Reverting all editable changes and selections to their baselines removes the need for confirmation. An unsaved password or protected-input reference is protected without serializing or copying plaintext for dirty calculation. Changing products retains each product's own drafts and credentials without transferring a Key. The shared discard mechanism handles close, Escape and navigation once, and continuing preserves input and focus. Confirmed save with no later edits needs no discard prompt. A pending, admitted or uncertain save remains attached to its original Operation and its transferred credential is not released or resubmitted as a side effect of closing.
+
+#### Scenario: Selection without edits
+
+- **WHEN** a user only selects and browses products or automatic initialization creates defaults and IDs
+- **THEN** closing or Escape does not prompt even when unedited product drafts were retained
+
+#### Scenario: Real edits across products
+
+- **WHEN** a user changes a name, endpoint, authentication, model declaration or selected model, or enters a Key, then changes products or a check fails
+- **THEN** closing prompts once and continuing retains every affected product input
+
+#### Scenario: Revert to baseline
+
+- **WHEN** the user restores the original editable values and selection with no remaining credential or other edited product
+- **THEN** closing does not prompt solely because a revision increased
+
+#### Scenario: Save uncertainty
+
+- **WHEN** an Apply is pending, accepted or its result is uncertain
+- **THEN** the original Operation and protected-input ownership remain intact; leaving is not represented as cancellation or a repeated Apply
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/246#issuecomment-6461016031
+
+### Requirement: Connection editing retains credential intent and current catalog authority
+
+The connection editor SHALL retain an unsaved plaintext Key only in the current product’s existing in-memory credential owner when a same-context authentication or endpoint/protocol change removes or replaces the input. Restoring an authentication mode that needs a Key restores that product’s available plaintext; None neither sends nor uses the retained Key. Authentication or target changes invalidate the prior candidate/check and release a session-owned protected input that has not transferred to an Operation. If only a protected reference remains and its proof is invalidated, the editor SHALL retain an unsaved re-entry requirement and visibly request a new Key where needed, without revealing plaintext or using the stale proof. Product or prefill changes never transfer credentials; close and accepted or uncertain Operation ownership retain existing rules.
+
+The editor SHALL compare current and retained editable drafts to the immutable automatic baseline for their product and prefill identity. A prefill and its initially provided models alone are not edits. A Key, changed name or endpoint, model selection, deleted or changed prefilled model, capability or other user input remains protected across context switches; restoring an existing draft, rereading metadata or running a check SHALL NOT reset its baseline or hide prior edits.
+
+A selected registered product remains identifiable and its edits remain available when current options disappear, fail to load, or retain its ID but report it unavailable. The visible action and the actual check handler SHALL both require the latest successful executable qualification before registering a credential or checking. The editor never silently replaces the product. A current successful reload can restore eligibility, but performs no automatic check. Provider detail retains stable provider identity while names, products, availability and selection arguments derive from the latest directory and locale. Removal, addition, lost or restored provider and same-ID qualification changes SHALL NOT expose stale selectable options or force a different provider.
+
+A catalog-changed recovery read SHALL share the current options generation and remain owned by the initiating check, product, edit revision and page lifecycle. Cancellation, product change, editing, newer reads or closure make its completion stale; a stale success or failure SHALL NOT change catalog, errors, phase or user input. A current recovery keeps an actionable retry and existing credential-release ownership.
+
+Removing or recreating the exact untouched automatically generated empty-model placeholder is not an edit. This exception SHALL NOT mask a partial ID or name, a capability change, an existing or catalog-prefilled model, a selected model or another product’s edited draft/Key. Empty model sets remain invalid for check/save under the existing validation.
+
+#### Scenario: Authentication changes with a typed Key
+
+- **WHEN** a user enters an unsaved Key, changes authentication to None and then to Bearer or a custom header
+- **THEN** the current product retains the Key in memory, None sends no Key, old check authority is invalidated, closing protects the change and another product never receives it
+
+#### Scenario: A protocol switch changes authentication
+
+- **WHEN** a user has typed a Key and promotes an additional no-authentication endpoint to the primary protocol, then returns to an authenticated endpoint in the same product and prefill context
+- **THEN** the Key is retained only in that context, None does not register or send it, old check authority is invalidated, and immediate close or product change still protects the unsaved Key
+
+#### Scenario: Current and retained prefill baselines
+
+- **WHEN** a user selects an unedited prefill and exits immediately, switches products or saves another product
+- **THEN** the prefill's automatically supplied values do not alone prompt, while an actual edit, pending selection, deleted prefilled model or Key is protected in the current and every retained context; restoring or revisiting it never overwrites its initial baseline
+
+#### Scenario: Only a protected reference remains
+
+- **WHEN** a protected input has replaced plaintext and an authentication or target change invalidates its proof
+- **THEN** the old session-owned input is released once, the need to re-enter remains visible and protected, and no plaintext or stale proof is recovered
+
+#### Scenario: A product loses or regains eligibility
+
+- **WHEN** a selected product is removed, becomes unavailable under the same ID, the directory read fails, or eligibility later returns
+- **THEN** the product identity and input stay visible; until the latest successful qualification both the action and handler reject before credential registration or check; recovery requires an explicit retry
+
+#### Scenario: Current provider details
+
+- **WHEN** the provider detail remains open while a product is added, removed or disabled, locale changes, or the provider disappears and returns
+- **THEN** details and selectable values follow the current directory and locale; no stale product or different provider is silently selected
+
+#### Scenario: Recovery read loses ownership
+
+- **WHEN** a catalog-changed check starts a deferred reload and the user cancels, edits, selects another product, closes, or starts a newer read
+- **THEN** the old success or failure cannot overwrite current catalog, error, phase or input and cannot release another owner’s credential
+
+#### Scenario: Pristine placeholder
+
+- **WHEN** a user opens manual model editing and removes the untouched automatically generated blank row
+- **THEN** exit does not prompt solely for that placeholder, but partial user values, capability changes, real models, pending selections and other product credentials remain protected; zero models cannot be checked and saved
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/246#issuecomment-6462728885
 
 ## Implementation references
 

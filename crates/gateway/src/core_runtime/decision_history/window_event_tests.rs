@@ -70,6 +70,7 @@ fn native_reasoning_replay_keeps_new_input_and_tool_steps_in_their_actual_turns(
                     text: "READY".into(),
                     annotations: vec![],
                     status: ResponseItemStatus::Completed,
+                    final_phase: None,
                 },
             ),
         ],

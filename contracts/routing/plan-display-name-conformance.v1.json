@@ -1,0 +1,23 @@
+[
+  {"case":"ordinary", "parts":["Routing plan"], "valid":true},
+  {"case":"empty", "parts":[""], "valid":false},
+  {"case":"leading-space", "parts":[" Plan"], "valid":false},
+  {"case":"trailing-unicode-space", "parts":["Plan\u3000"], "valid":false},
+  {"case":"inner-whitespace", "parts":["Two words"], "valid":true},
+  {"case":"control", "parts":["A\u0001B"], "valid":false},
+  {"case":"c1-control", "parts":["A\u0085B"], "valid":false},
+  {"case":"feff-is-not-rust-whitespace", "parts":["\ufeffPlan"], "valid":true},
+  {"case":"url", "parts":["https", "://", "example.invalid"], "valid":false},
+  {"case":"bearer-marker", "parts":["AUTHORIZATION:", " ", "Bearer", " ", "placeholder"], "valid":false},
+  {"case":"underscore-key-marker", "parts":["API", "_KEY=", "placeholder"], "valid":false},
+  {"case":"hyphen-key-marker", "parts":["api", "-key=", "placeholder"], "valid":false},
+  {"case":"credential-marker", "parts":["credential", "_value=", "placeholder"], "valid":false},
+  {"case":"private-key-marker", "parts":["-----begin ", "private key-----"], "valid":false},
+  {"case":"rsa-key-marker", "parts":["-----BEGIN ", "RSA PRIVATE KEY-----"], "valid":false},
+  {"case":"long-sk-fragment", "parts":["prefix ", "sk-", {"repeat":"a", "count":20}], "valid":false},
+  {"case":"short-sk-fragment", "parts":["sk-", {"repeat":"a", "count":19}], "valid":true},
+  {"case":"sk-punctuation-near-match", "parts":["sk-", {"repeat":"a", "count":20}, "!"], "valid":true},
+  {"case":"marker-near-match", "parts":["API key rotation"], "valid":true},
+  {"case":"128-astral-scalars", "parts":[{"repeat":"🚀", "count":128}], "valid":true},
+  {"case":"129-astral-scalars", "parts":[{"repeat":"🚀", "count":129}], "valid":false}
+]

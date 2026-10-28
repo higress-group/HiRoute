@@ -591,6 +591,138 @@ fn target_operation(root: &str, key: &str, restore: bool) -> OperationV1 {
 }
 
 #[test]
+fn locator_input_classifies_the_plan_without_optional_step_expansion() {
+    use super::super::{agent_history_cache::AgentHistoryRow, agent_locator_input};
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let path = directory.path().join("hermes-selected");
+    let mut operation = target_operation(path.to_str().unwrap(), "locator-input", false);
+    persist(&control, &mut operation);
+    let db = control.connection.borrow();
+    let row = || {
+        db.query_row(
+            "SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json FROM operations WHERE operation_id=?1",
+            [operation.operation_id.as_str()],
+            AgentHistoryRow::read,
+        )
+        .unwrap()
+    };
+    let before = agent_locator_input::classify(&*db, &row())
+        .unwrap()
+        .unwrap();
+    assert_eq!(before.operation_id, operation.operation_id);
+    assert_eq!(
+        before.context,
+        operation.plan.spec().resource_id.clone().unwrap()
+    );
+    assert_eq!(
+        before.management,
+        Some(agent_locator_input::FacetAction::Configure)
+    );
+    assert_eq!(before.model, None);
+    assert_eq!(before.collaboration, None);
+    assert!(!before.additional_model_grant_candidate);
+    db.execute(
+        "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=1",
+        [operation.operation_id.as_str()],
+    )
+    .unwrap();
+    let after = agent_locator_input::classify(&*db, &row())
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.plan_bytes_digest, before.plan_bytes_digest);
+    drop(db);
+    assert!(
+        read(&control).is_err(),
+        "explicit complete history remains strict"
+    );
+}
+
+#[test]
+fn locator_input_binds_the_actual_selected_row() {
+    use super::super::{agent_history_cache::AgentHistoryRow, agent_locator_input};
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let mut first = target_operation(
+        directory.path().join("first").to_str().unwrap(),
+        "first",
+        false,
+    );
+    let mut second = target_operation(
+        directory.path().join("second").to_str().unwrap(),
+        "second",
+        false,
+    );
+    persist(&control, &mut first);
+    persist(&control, &mut second);
+    let db = control.connection.borrow();
+    db.execute(
+        "UPDATE operations SET operation_json=(SELECT operation_json FROM operations WHERE operation_id=?2) WHERE operation_id=?1",
+        rusqlite::params![first.operation_id.as_str(), second.operation_id.as_str()],
+    )
+    .unwrap();
+    let row = db.query_row(
+        "SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json FROM operations WHERE operation_id=?1",
+        [first.operation_id.as_str()], AgentHistoryRow::read,
+    ).unwrap();
+    assert!(agent_locator_input::classify(&*db, &row).is_err());
+}
+
+#[path = "agent_frozen_read_tests.rs"]
+mod frozen_read;
+#[path = "agent_locator_grant_tests.rs"]
+mod locator_grant;
+#[path = "agent_locator_projection_tests.rs"]
+mod locator_projection;
+
+#[test]
+fn selected_settings_does_not_decode_newer_unrelated_contexts() {
+    let directory = tempdir().unwrap();
+    let mut control = open(directory.path());
+    let selected_root = directory.path().join("selected");
+    let mut selected = target_operation(selected_root.to_str().unwrap(), "selected", false);
+    let context = selected.plan.spec().resource_id.clone().unwrap();
+    persist(&control, &mut selected);
+    for index in 0..10 {
+        let other_root = directory.path().join(format!("unrelated-{index}"));
+        let mut other = target_operation(
+            other_root.to_str().unwrap(),
+            &format!("other-{index}"),
+            false,
+        );
+        persist(&control, &mut other);
+        if index == 0 || index == 9 {
+            // Compare N and 10N with a fresh connection each time: this must
+            // not depend on a cache warmed by the smaller history.
+            drop(control);
+            control = open(directory.path());
+            let before = super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
+            let found = control
+                .find_agent_locator(
+                    &WorkspaceId::default(),
+                    super::super::AgentLocatorScope::ContextFacet {
+                        context_id: &context,
+                        facet: hiroute_domain::AgentSettingsFacet::ManagementSkill,
+                    },
+                )
+                .unwrap();
+            let super::super::AgentLocatorResult::Found(found) = found else {
+                panic!("selected configuration must be present");
+            };
+            assert_eq!(found.operation_id, selected.operation_id);
+            let decoded =
+                super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get) - before;
+            assert_eq!(
+                decoded,
+                1,
+                "{} unrelated contexts must not be authenticated before selection",
+                index + 1
+            );
+        }
+    }
+}
+
+#[test]
 fn native_target_discovery_reads_only_current_targets_and_keeps_unfinished_tails() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());
@@ -780,7 +912,7 @@ fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_refere
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         for (id, encoded) in rows {
-            let inline = super::super::payloads::expand(&db, &encoded).unwrap();
+            let inline = super::super::payloads::expand(&*db, &encoded).unwrap();
             db.execute(
                 "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
                 rusqlite::params![id, inline.as_str()],
@@ -822,4 +954,85 @@ fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_refere
             .len(),
         1
     );
+}
+
+#[test]
+fn legacy_initialization_refuses_unverified_history_and_preserves_source() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let path = directory.path().join("hermes-selected");
+    let mut older = target_operation(path.to_str().unwrap(), "old-damaged", false);
+    persist(&control, &mut older);
+    let mut current = target_operation(path.to_str().unwrap(), "current-valid", false);
+    persist(&control, &mut current);
+    let db = control.connection.borrow();
+    let rows = db
+        .prepare("SELECT operation_id,operation_json FROM operations ORDER BY rowid")
+        .unwrap()
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    for (id, encoded) in rows {
+        let inline = super::super::payloads::expand(&*db, &encoded).unwrap();
+        db.execute(
+            "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
+            rusqlite::params![id, inline],
+        )
+        .unwrap();
+    }
+    db.execute(
+        "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=1",
+        [older.operation_id.as_str()],
+    )
+    .unwrap();
+    let before: Vec<(String, String)> = db
+        .prepare("SELECT operation_id,operation_json FROM operations ORDER BY rowid")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    db.execute_batch(
+        "BEGIN; DROP TRIGGER operation_recovery_insert; DROP TRIGGER operation_recovery_guard;
+        DROP TRIGGER operation_recovery_update; DELETE FROM operation_recovery_members;
+        DELETE FROM operation_recovery_coverage; DELETE FROM agent_native_target_heads;
+        DELETE FROM agent_native_target_coverage; DELETE FROM publication_grant_proofs;
+        DELETE FROM artifact_head_transitions; DELETE FROM artifact_heads; DELETE FROM artifact_head_coverage;",
+    )
+    .unwrap();
+    let result = super::super::current_dependencies::initialize(&db);
+    db.execute_batch("ROLLBACK").unwrap();
+    assert!(
+        result.is_err(),
+        "the existing initial conversion must refuse an unverified old journal"
+    );
+    let after: Vec<(String, String)> = db
+        .prepare("SELECT operation_id,operation_json FROM operations ORDER BY rowid")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        before, after,
+        "failed conversion must preserve source bytes"
+    );
+    let damaged: String = db
+        .query_row(
+            "SELECT step_json FROM operation_steps WHERE operation_id=?1 AND step_no=1",
+            [older.operation_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(damaged, "{}");
+    drop(db);
+    assert_eq!(
+        control
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(read(&control).is_err(), "explicit history remains strict");
 }

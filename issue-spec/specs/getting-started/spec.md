@@ -23,6 +23,19 @@ Home MUST show current configured resources, recent sessions, active delegated
 work, and available valuation with its completeness. Empty usage is an onboarding
 state, never invented savings or a chart of fabricated zeros.
 
+Home SHALL obtain recorded Agent settings through a bounded summary without
+reading every Agent's complete settings or Skill state. A recorded configuration
+is not proof of native health, successful verification or permission to act.
+Incomplete summary coverage SHALL remain unknown or unavailable, not become an
+empty setup. Visible routing editors MAY request model associations separately;
+an incomplete association read SHALL NOT be presented as unused.
+
+#### Scenario: Open Home while Agent settings are unverified
+
+- **WHEN** saved settings are recorded but their native state has not been checked
+- **THEN** Home presents them as saved and awaiting a check, without showing verified readiness or requiring full settings reads for unrelated Agents.
+- **AND** an incomplete summary or association keeps its uncertainty and remains retryable; it cannot establish first use or an unused route.
+
 #### Scenario: Return while a resource query fails
 
 - **WHEN** service status succeeds but a model or history query is pending or fails
@@ -35,6 +48,9 @@ state, never invented savings or a chart of fabricated zeros.
 - **THEN** it MUST NOT clear the current startup failure or replace newer successful
   service evidence with an earlier failure. Independent startup checks and failed-read
   follow-ups MUST share the same ordering of accepted startup results.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/249#issuecomment-6461278064
 
 ### Requirement: Preferences preserve the current interaction
 
@@ -372,13 +388,10 @@ Opening SHALL discover Agent choices without reading every Agent's settings. Sel
 Before mapping, refresh selected model settings, require review of changed selection/context, and retain fresh Preview/Apply checks. Step changes or fresh selected-settings reads MUST NOT alone repeat all-Agent discovery. Mapping refresh/retry SHALL rediscover choices and reread selected settings to recover external native-context/authority changes without closing the flow; it SHALL NOT submit mapping. A changed target requires new user confirmation. Pending-operation reconciliation still matches its original exact context and submitted selection.
 Primary chosen while Agent details are pending SHALL persist without preventing default Agent initialization. Late details SHALL NOT replace an explicit Agent or Primary.
 
-A registered connection must observe the selected model before continuing. Protected
-input/check/save and native subscription import retain their existing authority.
+Catalog-linked registrations require observed model identity; unlinked saved models require explicit binding selection. Protected input/check/save and subscription-import authority remains.
 Primary is prefilled only from a recorded unambiguous fixed-model resolution; a
 native alias does not identify a model version. Decision connections can be reused
-or created in place; this flow offers no heuristic classification. The editable
-review begins at Trial 0.90 with explicit low-progress/corrected-result competence
-criteria, both model groups, saved connections and the proposed mapping scope.
+or created in place; this flow offers no heuristic classification. Review uses the chosen initial threshold (default 0.90), explicit low-progress/corrected-result competence criteria, both groups, saved connections and proposed mapping scope.
 
 Confirmation saves the ordinary draft, publishes it after its exact save and model
 facts are confirmed, then uses normal Agent Preview/Apply. Mapping only changes the
@@ -463,6 +476,21 @@ After this flow confirms that the Agent mapping applied successfully, it SHALL w
 - **WHEN** a new trial is reviewed in Chinese or English, including a language change before review
 - **THEN** model-facing default instructions and criteria remain the same English text; only help text is localized. Brief dissatisfaction about the completed core result counts as negative feedback without requiring a diagnosed technical error; new requirements or bounded preferences are not automatically core failures. Preserve user-edited prompts, explicit default/custom intent, saved drafts and already published frozen contents.
 
+#### Scenario: Reuse a saved connection or explicitly choose an unlinked model
+
+- **WHEN** the user selects an available saved API or subscription binding, including a user-declared model without catalog identity
+- **THEN** the trial uses that exact current routable binding and actual configuration without another source save, credential prompt, automatic scan or inferred catalog match; an unlinked model's catalog version remains explicitly unconfirmed.
+
+#### Scenario: A successful save returns a model without catalog identity
+
+- **WHEN** a completed connection save exposes an exact current executable receipt binding without a catalog ID for the recommendation
+- **THEN** the connection remains visibly saved; the user can explicitly choose the actual saved model after seeing its source and identity basis. The flow does not demand another connection, assign a catalog identity, repeat Apply or claim inference verification. Read failure offers read-only retry of the original saved result.
+
+#### Scenario: Starting trust survives review and connection detours
+
+- **WHEN** a user selects Entrusted zero or an arbitrary threshold such as 0.723, opens or saves a connection, changes Agent, enters review, edits the threshold and returns
+- **THEN** the latest exact chosen/editor judgment survives custom-extension and language detours as well as review and is saved/published only on explicit confirmation; the initial default 0.90 never overwrites a choice. Initial setup and unpublished review do not show active-version evidence or request replay, and existing published-route protection and evidence behavior remain unchanged.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/228#issuecomment-6440850201
 
@@ -495,6 +523,151 @@ Suggestion failures SHALL be isolated per Plan: an oversized or unavailable Plan
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6236472105
+
+### Requirement: Trial setup reuses saved models and explains every blocked continuation
+
+Trial setup SHALL derive review eligibility, inline explanations and the complete blocker summary from one consistent current readiness result. It SHALL distinguish incomplete or invalid user choices from pending work, failed reads, saved-but-unresolved model selection and missing authority. Every gate that prevents review SHALL have a localized reason and a relevant field or recovery action. Required user choices SHALL be visibly labelled Required and accessibility-linked to their explanation. A missing explicit reasoning choice SHALL be visible as required, without inventing provider defaults or automatic extreme profiles. Fixed reasoning and an available generated route name SHALL NOT become false missing fields.
+
+For ordinary incomplete/invalid user input, Review changes SHALL remain an accessible validation action. Activating it SHALL list all current blockers in form order, open and focus/scroll the first affected field above fixed actions, and issue no write or model call. Summary items SHALL navigate to their own controls, and errors SHALL update as the user corrects them without losing other entered values. Before first submission, required labels and neutral guidance are shown without treating every untouched field as an error. Valid input enters review once through the same guards.
+
+An action disabled by active loading/saving/reconciliation or unavailable authority SHALL visibly explain that state and provide supported recovery where applicable; a completed read failure SHALL not remain an indefinite loading indicator. Saved sources SHALL remain described as saved while model choice or verification is unresolved. Retry SHALL be scoped to the retained original operation/result and cannot create duplicates. Language changes, late reads, role switching and closed dialogs SHALL not substitute stale identity or validation results. All existing credential, authority, preview, publication and mapping checks remain effective.
+
+
+Trial setup SHALL offer selection of actual saved API and subscription models without recreating connections or re-entering their saved credentials. Exact source and binding identities, resolved through current routable candidates, govern selection; display names or absence of a catalog link do not establish or negate that executable identity. A catalog-linked registered selection retains its selected-model observation and catalog-admission requirements. An unlinked saved model may be explicitly selected as its actual configured identity with its catalog version unconfirmed; it SHALL NOT silently acquire the recommended model's catalog identity, verification or capabilities. Save completion and selected-model resolution are distinct: reconcile the original operation and exact returned bindings, preserve completed saves, perform bounded current-state rereads and never repeat Apply to repair lost replies or stale UI state.
+
+The initial trial threshold defaults to 0.90 but is selectable before review using the shared continuous control and directly clickable presets, including Entrusted at zero. The chosen exact thousandth value SHALL survive connection detours, refresh, model/Agent changes, review/back/edit, ordinary save, publication and reopening. Review SHALL use the latest chosen/editor value rather than reset it to 0.90. Initial setup SHALL not show active-version evidence-loading copy or request historical replay. Custom extensions hide and park built-in controls. Existing ordinary authoring defaults, competence floors, English default prompts, protection, permissions and explicit publication remain unchanged.
+
+Protected connection editors SHALL pass their existing replacement guard before a saved-model choice would replace them. A rejected replacement retains the editor, temporary credentials, selected identities and selection context; a Primary selection SHALL NOT release an unrelated trial editor. A pending or uncertain save retains the original operation, accepted digest, idempotency key and candidate and SHALL block review with a visible same-operation read-only recovery action. A confirmed save awaiting binding selection remains recoverable across selection of another model and review/back, without a new Apply or empty new-source form.
+
+Selection SHALL join exact current management and executable-candidate facts with required current catalog admission only under one coherent client/session/authority read. All consumed local inputs, catalog identity and relevant connector runtime authority must be proven current at the shared boundary. Superseded reads may retry the whole read once; continued change or missing proof is a retryable failure that retains user input. Unlinked models SHALL NOT require an unrelated catalog-availability scan or acquire current catalog admission from retained descriptive data. Existing Preview and Apply authority remain unchanged.
+
+The generated route name SHALL be valid under the domain's 128 Unicode scalar-value limit and preserve readable portions of both model names. Readiness, visible errors and the submitted editor SHALL use the same effective name. Manual blank or overlong input remains visible and invalid; explicitly clearing the field SHALL NOT restore a default. Built-in judgment edited in review SHALL remain parked across custom-extension, language and back-to-setup transitions. Unpublished review uses initial-trial context without current-version evidence copy or historical replay; existing published routes retain their evidence and replay semantics.
+
+Trial selection SHALL also offer an otherwise current and executable retained API binding without V2 management ownership using its exact captured source/binding/configuration identity and safe source description. This read-only choice SHALL NOT invent a management record or action, infer identity by name, perform another connector discovery, or bypass a V2 owner's existing checks. It SHALL NOT create a subscription authorization fallback. An explicit later trial binding choice SHALL survive reconciliation of an earlier saved operation, including a different binding of the same model; declining protected draft replacement SHALL preserve both selection and generation.
+
+A failed descriptive recommendation read SHALL show a localized independent retry without treating the catalog as empty or blocking previously proven saved connections. Retry SHALL preserve selections and inputs, be single-flight, ignore stale/closed-flow responses, and not grant executable admission merely because recommendations load.
+
+Trial names SHALL satisfy the complete existing `AgentPlanDisplayName` domain validation, including Unicode scalar length, whitespace/control, URL and sensitive-marker restrictions. If an automatically generated combination is invalid, use a safe localized default; manually entered invalid text remains visible with a specific error and is never silently replaced. Setup and review SHALL preserve the same text and domain boundary, accept 128 Unicode scalar values including supplementary characters, explicitly reject 129, and never silently truncate by UTF-16 units. An invalid name cannot be published.
+
+#### Scenario: Retained API candidate without V2 management ownership
+
+- **WHEN** a supported retained API binding is currently admitted as an executable routing candidate but has no V2 management owner
+- **THEN** it is selectable for either trial role by its exact captured identity and safe source description without inventing an editable management source; a disabled, credential-invalid, mismatched or V2-owned invalid entry is not selected through this fallback. Existing subscription proof remains required.
+
+#### Scenario: A later same-model binding choice wins
+
+- **WHEN** a saved binding A awaits recovery and the user explicitly selects binding B of the same model before A's reread succeeds
+- **THEN** B remains selected; A remains available as a saved result and can be selected explicitly, with no repeated Apply. Declining a protected replacement preserves the prior choice.
+
+#### Scenario: Recommendations recover independently
+
+- **WHEN** the initial descriptive recommendation read fails while an existing saved binding is usable
+- **THEN** the saved binding remains selectable and a visible retry independently rereads recommendations; retry failure and stale responses preserve the user's selections and do not establish admission.
+
+#### Scenario: Domain-valid route names in setup and review
+
+- **WHEN** a model name would make the generated route name violate the domain URL or sensitive-marker rules, or the user enters 128 or 129 Unicode scalars in either editor
+- **THEN** an invalid generated name uses the safe localized default, manual text is retained with a concrete error, 128 scalars are accepted and 129 are rejected without truncation, and only a valid exact name reaches Preview/publication.
+
+#### Scenario: Reject an unknown trial snapshot schema
+
+- **WHEN** the current session receives a trial snapshot with an unexpected schema identifier or invalidated read authority
+- **THEN** it returns a safe read failure without exposing candidates or raw data, and selection does not advance on that response.
+
+#### Scenario: All missing fields are discoverable together
+
+- **WHEN** the trial model lacks a selected usable binding and Primary reasoning still needs an explicit choice
+- **THEN** Review changes lists both blockers and links to each control; focus lands on the first, fixing it leaves the second visible, and no write occurs.
+
+#### Scenario: A saved connection is not reported as absent
+
+- **WHEN** save is complete but a post-save read fails or its exact binding still needs selection
+- **THEN** the page shows Connection saved with the concrete unresolved state and scoped recovery; it never asks to create the same connection again or treats another source with the same name as its result.
+
+#### Scenario: Reasoning requirement is visible
+
+- **WHEN** the selected candidate has discrete/toggle/budget reasoning with no supported authoritative default
+- **THEN** the field says Required and asks for a choice; an unset value blocks review with a field-specific message and never silently becomes Low, Max or provider-default. Fixed/no-control candidates remain valid under their existing contract.
+
+#### Scenario: System and field blockers stay distinct
+
+- **WHEN** selected Agent settings cannot be read, authority is lost, or model facts are loading
+- **THEN** the exact system state and supported retry are visible, any disabled action has a persistent reason, and prior healthy presentation cannot grant write permission or masquerade as a missing user input.
+
+#### Scenario: Initial trust is a visible draft choice
+
+- **WHEN** a new built-in trial opens and the user clicks a preset or drags between presets
+- **THEN** the default is Trial 0.90, controls accept exact thousandths through zero, one live threshold caption changes, and the chosen value reaches review and publication unchanged without evidence reads or automatic mutation.
+
+#### Scenario: Keyboard and narrow-window correction
+
+- **WHEN** a validation attempt identifies a field inside a collapsed section or near sticky footer controls
+- **THEN** the section opens, keyboard focus and the complete field/error remain visible above the footer, all summary links work, and cancel/retry preserve unrelated input.
+
+#### Scenario: Reuse a saved connection or explicitly choose an unlinked model
+
+- **WHEN** the user selects an available saved API or subscription binding, including a user-declared model without catalog identity
+- **THEN** the trial uses that exact current routable binding and actual configuration without another source save, credential prompt, automatic scan or inferred catalog match; an unlinked model's catalog version remains explicitly unconfirmed.
+
+#### Scenario: A successful save returns a model without catalog identity
+
+- **WHEN** a completed connection save exposes an exact current executable receipt binding without a catalog ID for the recommendation
+- **THEN** the connection remains visibly saved; the user can explicitly choose the actual saved model after seeing its source and identity basis. The flow does not demand another connection, assign a catalog identity, repeat Apply or claim inference verification. Read failure offers read-only retry of the original saved result.
+
+#### Scenario: Starting trust survives review and connection detours
+
+- **WHEN** a user selects Entrusted zero or an arbitrary threshold such as 0.723, opens or saves a connection, changes Agent, enters review, edits the threshold and returns
+- **THEN** the latest exact chosen/editor value survives and is saved/published only on explicit confirmation; the initial default 0.90 never overwrites a choice. Initial setup does not load active-version evidence or replay, and all existing protection and custom-extension rules remain unchanged.
+
+#### Scenario: Protected connection draft and saved-model choice
+
+- **WHEN** a user has edited a connection and chooses an existing trial or Primary model
+- **THEN** a replacement of that editor asks through the existing guard; refusal retains the draft, credentials and selection, while acceptance selects the exact binding. A Primary choice that does not replace the trial editor leaves it intact.
+
+#### Scenario: Save recovery survives leaving the connection card
+
+- **WHEN** a user already has a usable trial model, starts another connection and its save is uncertain or completes before a binding is chosen
+- **THEN** uncertain completion blocks review and offers read-only recovery of the same operation; a confirmed result remains selectable after another binding is used for review and the user returns. Neither path repeats Apply.
+
+#### Scenario: One coherent model selection view
+
+- **WHEN** candidate reasoning, routability, source state or relevant connector authority changes while trial selection facts are read, including the same binding identity
+- **THEN** no mixed snapshot grants selection or review. At most one complete reread may recover a stable view; continuing change or missing authority remains visibly retryable, while unrelated reads do not wait for the entire trial read.
+
+#### Scenario: Parked judgment and initial review context
+
+- **WHEN** review changes 0.90 to 0.723, switches to a custom extension, returns to setup, changes language and switches back to the built-in decision model
+- **THEN** 0.723 and the other parked built-in judgment survive repeated detours; unpublished review shows no active-version evidence or historical replay, while published routes retain their existing evidence behavior.
+
+#### Scenario: Unicode route name matches submission
+
+- **WHEN** model names would produce a default above 128 Unicode scalar values, or a user supplies a blank, 128-character or 129-character name including supplementary-plane characters
+- **THEN** a generated name is valid and readable, the exact manually entered value is retained, blank and 129-character input receive field errors, and the same valid effective name reaches the editor after correction.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/228#issuecomment-6460225695
+
+### Requirement: Trial guidance progressively explains routing and protection
+
+The trial setup SHALL initially show a concise explanation matching the active classifier and an accessible disclosure of the complete current protection explanation and applicable trial supplement. System One explains suitable work for the trial model, complex work for Primary, and Primary for a turn when low-score protection applies. Local rules explain current task signals and no low-score protection. Custom extensions explain their own choice and that HiRoute adds no trust threshold or low-score protection. The full explanation retains score eligibility, the previous actual stage, problem relevance, conservative protection when unknown, difficulty selection after resolution or irrelevance, conditional continuation of Primary and mode-specific exceptions. Toggling, changing language or classifier SHALL preserve other input and cause no backend action. The candidate area and existing protection policy remain unchanged.
+
+#### Scenario: Built-in protection
+
+- **WHEN** System One is selected
+- **THEN** the concise explanation is visible by default and the disclosure explains the complete applicability conditions without promising every low score triggers a change
+
+#### Scenario: Other classifiers
+
+- **WHEN** local rules or a custom extension is selected
+- **THEN** the concise and expanded explanation describe that mode without claiming built-in protection
+
+#### Scenario: Disclosure and localization
+
+- **WHEN** the user operates the disclosure by keyboard or changes language or classifier
+- **THEN** the correct text is available without duplicate focusable hidden content and without a write or loss of unrelated input
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/246#issuecomment-6461014114
 
 ## Implementation references
 

@@ -83,6 +83,31 @@ impl LocalControlAdapter {
         }
     }
 
+    /// The narrow trial read uses the same retained-validation and exact catalog identity
+    /// admission as management, without running management's price or connector discovery.
+    pub(in crate::control::runtime) fn trial_subscription_identity_is_trusted(
+        &self,
+        catalog: &TrustedReleaseCatalog,
+        source: &ComputeManagementSourceV2,
+    ) -> bool {
+        let ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } = &source.provenance
+        else {
+            return false;
+        };
+        let Some(kind) = CpaAccountKind::from_connector(connector_id) else {
+            return false;
+        };
+        let Some(checked) = self
+            .retained_subscription_candidate_for_source(source)
+            .ok()
+            .flatten()
+        else {
+            return false;
+        };
+        crate::control::runtime::subscriptions::target::logical_target(catalog, kind)
+            .is_ok_and(|target| trusted_subscription(catalog, source, &checked, &target, kind))
+    }
+
     pub(super) fn compute_management_presentation_facts(
         &self,
     ) -> Result<ComputeManagementPresentationFactsV1, ComputeManagementControlError> {

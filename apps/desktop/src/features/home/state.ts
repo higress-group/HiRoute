@@ -11,7 +11,7 @@ import type {
   HomeSubscriptionCheck,
 } from './types';
 
-export type HomePrimaryMode = 'loading' | 'first-use' | 'partial' | 'configured-empty' | 'daily';
+export type HomePrimaryMode = 'loading' | 'unavailable' | 'first-use' | 'partial' | 'configured-empty' | 'daily';
 
 export type DomainReadSlot<T> = {
   requestId: string | null;
@@ -105,7 +105,7 @@ export function deriveHomeServicePresentation(read: HomeRead<HomeService>): {
 }
 
 function configuredFacet(state: HomeFacetState): boolean {
-  return state !== 'unconfigured' && state !== 'unknown' && state !== 'unsupported';
+  return state !== 'unconfigured' && state !== 'restored' && state !== 'unknown' && state !== 'unavailable' && state !== 'unsupported';
 }
 
 function hasAnyConfiguration(compute?: HomeCompute, plans?: HomePlans, agents?: HomeAgents): boolean {
@@ -138,7 +138,12 @@ export function deriveHomePrimaryMode(reads: HomeReads): HomePrimaryMode {
 
   if (requiredUnresolved) return 'loading';
   const configured = hasAnyConfiguration(compute, plans, agents);
-  if (!configured) return 'first-use';
+  if (!configured) {
+    const incompleteAgentCoverage = agents?.agents.some(agent =>
+      ['unknown', 'unavailable'].includes(agent.model) || ['unknown', 'unavailable'].includes(agent.collaboration),
+    );
+    return incompleteAgentCoverage ? 'unavailable' : 'first-use';
+  }
   if (activity && (activity.sessions.length > 0 || activity.tasks.length > 0)) return 'daily';
   if (!hasCompleteRoute(compute, plans, agents)) return 'partial';
   return 'configured-empty';

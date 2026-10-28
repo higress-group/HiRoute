@@ -92,6 +92,23 @@ the field. A null status conveys no completion evidence. Missing status remains
 missing, and unfinished or unknown statuses are not normalized into completed history.
 The original request, reasoning content/ciphertext, item IDs, message phases and
 other item statuses remain unchanged; public Responses endpoints keep native fields.
+An assistant message's phase on `response.output_item.added` is provisional
+metadata, not item identity. The corresponding `response.output_item.done` may
+correct, add or clear it without changing accepted item identity, text, refusal
+or tool content. Canonical completion and same-protocol rendering SHALL retain
+the actual completed phase, including its absence, without rewriting accepted
+start events. Once item completion seals that phase, a later response snapshot
+may omit the optional field but SHALL NOT contradict an explicitly supplied
+completed value. Invalid phase types, empty/control values, changed identities
+and conflicting content remain failures; unknown nonempty phases stay native
+metadata and do not become portable or classification evidence by guessing.
+Released canonical completion events without final-phase metadata retain their
+original start-phase meaning and bytes. A newly observed final commentary phase
+SHALL NOT authorize live projection to a client lacking that phase's semantics.
+Final text annotations may append to the exact accepted annotation prefix before
+text completion; they SHALL NOT remove, replace or reorder an accepted citation,
+or extend an already sealed text item. This does not make unknown annotation
+types portable or change accepted text/identity validation.
 For an explicitly selected standard Responses JSON target, absent, explicit-null and
 empty-string reasoning `encrypted_content` SHALL remain distinct non-opaque native
 shapes. Projection SHALL consume the ingress-typed state of retained canonical messages,

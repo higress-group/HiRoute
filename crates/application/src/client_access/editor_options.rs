@@ -18,198 +18,209 @@ pub(super) fn dispatch(
     {
         return failed(ErrorCode::InvalidArguments, request.request_id);
     }
-    let result = (|| {
-        let state = port
-            .routing_compilation_snapshot(&WorkspaceId::default())
-            .map_err(map_control_error)?;
-        if state.facts.candidates.len() > MAX_RATING_QUERY_ITEMS {
-            return Err(ErrorCode::InvalidArguments);
-        }
-        let free_suggestions = if payload.suggest_free {
-            Some(
-                port.free_plan_suggestions(
-                    &WorkspaceId::default(),
-                    &payload.requirements,
-                    &payload.native_selections,
-                    RatingSnapshotSelectionV1::Latest,
-                )
-                .map_err(map_control_error)?,
-            )
-        } else {
-            None
-        };
-        let ratings = if payload.rating_items.is_empty() {
-            None
-        } else {
-            match port.resolve_model_ratings(&ResolveModelRatingsV1 {
-                snapshot: RatingSnapshotSelectionV1::Latest,
-                items: payload.rating_items,
-            }) {
-                Ok(result) => Some(result),
-                Err(crate::model_catalog::RatingQueryError::SnapshotUnavailable) => None,
-                Err(_) => return Err(ErrorCode::InvalidArguments),
-            }
-        };
-        let suggested_alias = payload
-            .display_name
-            .as_ref()
-            .map(|name| {
-                state
-                    .active_publication
-                    .as_ref()
-                    .map(|p| p.alias_registry.clone())
-                    .unwrap_or_default()
-                    .suggest_alias(name)
-                    .map_err(|_| ErrorCode::InvalidArguments)
-            })
-            .transpose()?;
-        if payload.published_plan.is_some() && payload.editor.is_some() {
-            return Err(ErrorCode::InvalidArguments);
-        }
-        let candidates: Vec<PlanCandidateOptionV1> = state
-            .facts
-            .candidates
-            .iter()
-            .map(|fact| PlanCandidateOptionV1 {
-                binding_id: fact.binding.binding_id.clone(),
-                model_configuration_id: fact.model.model_configuration_id.clone(),
-                display_name: fact.model.display_name.clone(),
-                reasoning: fact.reasoning.clone(),
-                billing_class: fact.binding.billing_class,
-                routable: fact.is_routable(),
-                native_ingress_protocols: fact
-                    .protocol_profiles
-                    .iter()
-                    .filter(|p| p.ingress_protocol == p.capability.upstream_protocol)
-                    .map(|p| p.ingress_protocol)
-                    .collect(),
-                ingress_protocols: fact
-                    .protocol_profiles
-                    .iter()
-                    .map(|p| p.ingress_protocol)
-                    .collect(),
-            })
-            .collect();
-        let authoring = payload
-            .authoring
-            .as_ref()
-            .map(|input| {
-                let current = if let Some(plan_id) = &input.plan_id {
-                    let client = ports
-                        .client_access
-                        .as_ref()
-                        .ok_or(ErrorCode::DaemonUnavailable)?;
-                    Some(
-                        client
-                            .plan_catalog()
-                            .map_err(map_control_error)?
-                            .plans
-                            .into_iter()
-                            .find(|plan| &plan.agent_plan_id == plan_id)
-                            .ok_or(ErrorCode::ResourceNotFound)?,
-                    )
-                } else {
-                    None
-                };
-                crate::routing::prepare_authoring(input, current.as_ref(), &candidates)
-            })
-            .transpose()?;
-        let editor = payload
-            .editor
-            .as_ref()
-            .or_else(|| authoring.as_ref().map(|value| &value.editor));
-        let dsh_requested = payload.preview_agent == Some(PlanPreviewAgentV1::Dsh);
-        let (codex_capabilities, claude_capabilities, dsh_capabilities, context_window) =
-            if let Some(reference) = &payload.published_plan {
-                let publication = state
-                    .active_publication
-                    .as_ref()
-                    .ok_or(ErrorCode::ResourceNotFound)?;
-                let plan = published_preview_plan(publication, reference)?;
-                let upper = plan
-                    .body
-                    .materialized
-                    .context_window_upper_bound()
-                    .map_err(|_| ErrorCode::CapabilityDenied)?;
-                let (codex, claude, dsh) = if dsh_requested {
-                    (
-                        None,
-                        None,
-                        Some(
-                            port.dsh_client_capability_preview(&plan)
-                                .map_err(map_control_error)?,
-                        ),
-                    )
-                } else {
-                    (
-                        Some(
-                            port.codex_client_capability_preview(&plan)
-                                .map_err(map_control_error)?,
-                        ),
-                        Some(
-                            port.claude_client_capability_preview(&plan)
-                                .map_err(map_control_error)?,
-                        ),
-                        None,
-                    )
-                };
-                (
-                    codex,
-                    claude,
-                    dsh,
-                    Some(PlanContextWindowPreviewV1 {
-                        maximum_tokens: upper,
-                        default_tokens: upper
-                            .min(hiroute_domain::DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS),
-                    }),
-                )
-            } else {
-                if dsh_requested {
-                    (
-                        None,
-                        None,
-                        dsh_capabilities(payload.editor.as_ref(), &state.facts, port.as_ref())?,
-                        context_window_preview(payload.editor.as_ref(), &state.facts),
-                    )
-                } else {
-                    (
-                        codex_capabilities(editor, &state.facts, port.as_ref())?,
-                        claude_capabilities(editor, &state.facts, port.as_ref()),
-                        None,
-                        context_window_preview(editor, &state.facts),
-                    )
-                }
-            };
-        let unavailable_candidate_count = (payload.include_unavailable
-            && state.unavailable_candidates.len() > MAX_RATING_QUERY_ITEMS)
-            .then_some(state.unavailable_candidates.len());
-        Ok(PlanEditorOptionsV1 {
-            authoring,
-            unavailable_candidate_count,
-            unavailable_candidates: if payload.include_unavailable {
-                state
-                    .unavailable_candidates
-                    .into_iter()
-                    .take(MAX_RATING_QUERY_ITEMS)
-                    .collect()
-            } else {
-                Vec::new()
-            },
-            claude_capabilities,
-            context_window,
-            suggested_alias,
-            candidates,
-            ratings,
-            free_suggestions,
-            codex_capabilities,
-            dsh_capabilities,
-            revisions: state.expected_revisions,
-        })
-    })();
+    let result = port
+        .routing_compilation_snapshot(&WorkspaceId::default())
+        .map_err(map_control_error)
+        .and_then(|state| build_options(ports, payload, state));
     match result {
         Ok(value) => succeeded(value, request.request_id),
         Err(error) => failed(error, request.request_id),
     }
+}
+
+pub(super) fn build_options(
+    ports: &crate::control::ApplicationPorts,
+    payload: PlanEditorOptionsRequestV1,
+    state: crate::control::RoutingCompilationSnapshotV1,
+) -> Result<PlanEditorOptionsV1, ErrorCode> {
+    let port = ports.routing.as_ref().ok_or(ErrorCode::DaemonUnavailable)?;
+    if payload.rating_items.len() > MAX_RATING_QUERY_ITEMS
+        || payload.native_selections.len() > MAX_RATING_QUERY_ITEMS
+    {
+        return Err(ErrorCode::InvalidArguments);
+    }
+    if state.facts.candidates.len() > MAX_RATING_QUERY_ITEMS {
+        return Err(ErrorCode::InvalidArguments);
+    }
+    let free_suggestions = if payload.suggest_free {
+        Some(
+            port.free_plan_suggestions(
+                &WorkspaceId::default(),
+                &payload.requirements,
+                &payload.native_selections,
+                RatingSnapshotSelectionV1::Latest,
+            )
+            .map_err(map_control_error)?,
+        )
+    } else {
+        None
+    };
+    let ratings = if payload.rating_items.is_empty() {
+        None
+    } else {
+        match port.resolve_model_ratings(&ResolveModelRatingsV1 {
+            snapshot: RatingSnapshotSelectionV1::Latest,
+            items: payload.rating_items,
+        }) {
+            Ok(result) => Some(result),
+            Err(crate::model_catalog::RatingQueryError::SnapshotUnavailable) => None,
+            Err(_) => return Err(ErrorCode::InvalidArguments),
+        }
+    };
+    let suggested_alias = payload
+        .display_name
+        .as_ref()
+        .map(|name| {
+            state
+                .active_publication
+                .as_ref()
+                .map(|p| p.alias_registry.clone())
+                .unwrap_or_default()
+                .suggest_alias(name)
+                .map_err(|_| ErrorCode::InvalidArguments)
+        })
+        .transpose()?;
+    if payload.published_plan.is_some() && payload.editor.is_some() {
+        return Err(ErrorCode::InvalidArguments);
+    }
+    let candidates: Vec<PlanCandidateOptionV1> = state
+        .facts
+        .candidates
+        .iter()
+        .map(|fact| PlanCandidateOptionV1 {
+            binding_id: fact.binding.binding_id.clone(),
+            model_configuration_id: fact.model.model_configuration_id.clone(),
+            display_name: fact.model.display_name.clone(),
+            reasoning: fact.reasoning.clone(),
+            billing_class: fact.binding.billing_class,
+            routable: fact.is_routable(),
+            native_ingress_protocols: fact
+                .protocol_profiles
+                .iter()
+                .filter(|p| p.ingress_protocol == p.capability.upstream_protocol)
+                .map(|p| p.ingress_protocol)
+                .collect(),
+            ingress_protocols: fact
+                .protocol_profiles
+                .iter()
+                .map(|p| p.ingress_protocol)
+                .collect(),
+        })
+        .collect();
+    let authoring = payload
+        .authoring
+        .as_ref()
+        .map(|input| {
+            let current = if let Some(plan_id) = &input.plan_id {
+                let client = ports
+                    .client_access
+                    .as_ref()
+                    .ok_or(ErrorCode::DaemonUnavailable)?;
+                Some(
+                    client
+                        .plan_catalog()
+                        .map_err(map_control_error)?
+                        .plans
+                        .into_iter()
+                        .find(|plan| &plan.agent_plan_id == plan_id)
+                        .ok_or(ErrorCode::ResourceNotFound)?,
+                )
+            } else {
+                None
+            };
+            crate::routing::prepare_authoring(input, current.as_ref(), &candidates)
+        })
+        .transpose()?;
+    let editor = payload
+        .editor
+        .as_ref()
+        .or_else(|| authoring.as_ref().map(|value| &value.editor));
+    let dsh_requested = payload.preview_agent == Some(PlanPreviewAgentV1::Dsh);
+    let (codex_capabilities, claude_capabilities, dsh_capabilities, context_window) =
+        if let Some(reference) = &payload.published_plan {
+            let publication = state
+                .active_publication
+                .as_ref()
+                .ok_or(ErrorCode::ResourceNotFound)?;
+            let plan = published_preview_plan(publication, reference)?;
+            let upper = plan
+                .body
+                .materialized
+                .context_window_upper_bound()
+                .map_err(|_| ErrorCode::CapabilityDenied)?;
+            let (codex, claude, dsh) = if dsh_requested {
+                (
+                    None,
+                    None,
+                    Some(
+                        port.dsh_client_capability_preview(&plan)
+                            .map_err(map_control_error)?,
+                    ),
+                )
+            } else {
+                (
+                    Some(
+                        port.codex_client_capability_preview(&plan)
+                            .map_err(map_control_error)?,
+                    ),
+                    Some(
+                        port.claude_client_capability_preview(&plan)
+                            .map_err(map_control_error)?,
+                    ),
+                    None,
+                )
+            };
+            (
+                codex,
+                claude,
+                dsh,
+                Some(PlanContextWindowPreviewV1 {
+                    maximum_tokens: upper,
+                    default_tokens: upper.min(hiroute_domain::DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS),
+                }),
+            )
+        } else {
+            if dsh_requested {
+                (
+                    None,
+                    None,
+                    dsh_capabilities(payload.editor.as_ref(), &state.facts, port.as_ref())?,
+                    context_window_preview(payload.editor.as_ref(), &state.facts),
+                )
+            } else {
+                (
+                    codex_capabilities(editor, &state.facts, port.as_ref())?,
+                    claude_capabilities(editor, &state.facts, port.as_ref()),
+                    None,
+                    context_window_preview(editor, &state.facts),
+                )
+            }
+        };
+    let unavailable_candidate_count = (payload.include_unavailable
+        && state.unavailable_candidates.len() > MAX_RATING_QUERY_ITEMS)
+        .then_some(state.unavailable_candidates.len());
+    Ok(PlanEditorOptionsV1 {
+        authoring,
+        unavailable_candidate_count,
+        unavailable_candidates: if payload.include_unavailable {
+            state
+                .unavailable_candidates
+                .into_iter()
+                .take(MAX_RATING_QUERY_ITEMS)
+                .collect()
+        } else {
+            Vec::new()
+        },
+        claude_capabilities,
+        context_window,
+        suggested_alias,
+        candidates,
+        ratings,
+        free_suggestions,
+        codex_capabilities,
+        dsh_capabilities,
+        revisions: state.expected_revisions,
+    })
 }
 
 fn dsh_capabilities(

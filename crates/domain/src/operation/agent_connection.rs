@@ -350,6 +350,22 @@ pub fn is_settings_managed_configuration(intent: &ExternalEffectIntentV1) -> boo
         && intent.desired()["role"] == "managed_configuration"
 }
 
+/// The registered additional-provider settings effect used for grant attribution.
+pub fn is_settings_additional_model(intent: &ExternalEffectIntentV1) -> bool {
+    intent.effect_id() == "agent-connection-managed-configuration"
+        && intent.desired()["transaction"] == "settings"
+        && matches!(
+            intent.desired()["subject"]["agent_id"].as_str(),
+            Some(
+                "agent_qoder_default"
+                    | "agent_pi_default"
+                    | "agent_dsh_default"
+                    | "agent_dsh_desktop"
+                    | "agent_opencode_default"
+            )
+        )
+}
+
 /// The settings-transaction model publication: B's service segment.
 pub fn is_settings_publication(intent: &ExternalEffectIntentV1) -> bool {
     intent.kind() == OwnedEffectKind::Publication && intent.desired()["transaction"] == "settings"

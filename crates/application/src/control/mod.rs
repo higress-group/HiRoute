@@ -344,6 +344,13 @@ pub trait AgentConnectionControlPort: Send + Sync {
         Err(ControlReadError::Unavailable)
     }
 
+    fn settings_summary(
+        &self,
+        _request: &hiroute_application_api::AgentSettingsSummaryRequestV1,
+    ) -> Result<hiroute_application_api::AgentSettingsSummaryV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+
     fn settings_facts(
         &self,
         _spec: &hiroute_application_api::AgentSettingsSpecV2,
@@ -376,6 +383,12 @@ pub struct RoutingCompilationSnapshotV1 {
     /// Exact active aggregate used only by Apply to preserve immutable aliases, existing Plans,
     /// and grants. Preview remains stateless over the captured facts and revisions above.
     pub active_publication: Option<hiroute_domain::GatewayPublicationV1>,
+}
+
+#[derive(Clone)]
+pub struct TrialRoutingSnapshotV1 {
+    pub routing: RoutingCompilationSnapshotV1,
+    pub management: hiroute_application_api::TrialManagementSnapshotV1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -650,6 +663,13 @@ pub trait RoutingFactsPort: Send + Sync {
         &self,
         workspace_id: &WorkspaceId,
     ) -> Result<RoutingCompilationSnapshotV1, ControlReadError>;
+
+    fn trial_routing_snapshot(
+        &self,
+        _workspace_id: &WorkspaceId,
+    ) -> Result<TrialRoutingSnapshotV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
 
     fn try_active_publication(
         &self,

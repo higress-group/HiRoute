@@ -210,6 +210,7 @@ impl DecoderCore {
                 text,
                 annotations,
                 status,
+                final_phase: self.final_message_phase(native_index),
             },
             output,
         )

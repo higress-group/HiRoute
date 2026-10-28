@@ -81,6 +81,15 @@ pub async fn dispatch(
             let value = compute_key_masks(window, state, input.query).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
+        "trial_setup_snapshot" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {}
+            let _: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = trial_setup_snapshot(window, state).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "compute_management_snapshot" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -673,6 +682,18 @@ pub async fn dispatch(
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
             let value = effective_price_query(window, state, input.input).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "agent_home_summary" => {
+            let _input: ClientEmptyRequestV1 = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = agent_home_summary(window, state).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "agent_model_associations" => {
+            let _input: ClientEmptyRequestV1 = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = agent_model_associations(window, state).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "trial_agent_choices" => {

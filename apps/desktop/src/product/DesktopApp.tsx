@@ -776,7 +776,7 @@ export function DesktopApp() {
             onRecoveryRefresh={() => void home.refreshAll()}
             onChanged={() => void Promise.allSettled([home.refreshCompute(), home.refreshDesktop()])}
             plans={home.desktopSnapshot?.catalog.plans}
-            agents={home.agentSnapshot?.agents}
+            agents={home.agentDirectory ?? undefined}
             onOpenPlan={planId => {
               const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId);
               if (plan) void showRouting({ key: plan.agent_plan_id, plan });
@@ -801,7 +801,6 @@ export function DesktopApp() {
             refreshVersion={refreshVersion}
             snapshot={home.desktopSnapshot}
             mutationAllowed={mutationAllowed}
-            agentSnapshot={home.agentSnapshot}
             operation={operation}
             loading={home.reads.plans.status === 'loading'}
             busy={refreshing}

@@ -19,7 +19,9 @@ export async function trialAgentReadChecks({ client, open, click, shot, results 
  await choosePrimary();
  await select('agent_dsh_default');
  await waitFor(client, `!!document.querySelector('.trial-choice-list .trial-choice') && !document.querySelector('.trial-agent-choice [role=alert]')`);
- assert.equal(await evaluate(client, `document.querySelector('.trial-footer .btn-primary').disabled`),true,'an Agent switch clears the previous Primary provenance');
+ await waitFor(client, `!document.querySelector('.trial-footer .btn-primary').disabled`);
+ await click('.trial-footer .btn-primary','Review changes');
+ assert.match(await evaluate(client, `document.querySelector('.trial-validation-summary').textContent`),/Primary/,'an Agent switch clears the previous Primary provenance');
  await choosePrimary();
  await waitFor(client, `!document.querySelector('.trial-footer .btn-primary').disabled`);
  assert.equal(await count('trial_agent_choices'),1,'switching a known choice does not scan all CLIs');

@@ -40,6 +40,7 @@ use super::super::{LocalControlAdapter, ProductionControlRuntime, RuntimeOpenOve
 mod discovery_tests;
 
 mod routing_lock_tests;
+mod trial_snapshot_tests;
 
 struct Fixture {
     runtime: Option<ProductionControlRuntime>,

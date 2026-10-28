@@ -70,6 +70,10 @@ impl ApplicationService {
             return failed(ErrorCode::FeatureNotEnabled, request.request_id);
         }
 
+        if request.operation_id == hiroute_application_api::GET_TRIAL_SETUP_SNAPSHOT_OPERATION_V1 {
+            return client_access::dispatch(self, request);
+        }
+
         if compute_management::is_compute_management_operation(&request.operation_id) {
             return compute_management::dispatch_compute_management(self, request);
         }
@@ -79,6 +83,10 @@ impl ApplicationService {
             WORKER_SETTINGS_GET_OPERATION_V1 | WORKER_SETTINGS_SET_OPERATION_V1
         ) {
             return delegation::tasks::dispatch(self, request);
+        }
+
+        if request.operation_id == hiroute_application_api::AGENT_SETTINGS_SUMMARY_OPERATION_V1 {
+            return control_plane::agent_settings::summary(self, request);
         }
 
         let Some(descriptor) = command_by_operation(&request.operation_id) else {

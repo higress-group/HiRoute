@@ -505,6 +505,16 @@ assertions and private helper names are not substitutes for these behaviors.
 
 ## Native controls and completed responses
 
+[Message phase reconciliation](src/adapters/response/message_phase.rs) separates
+provisional added-item metadata from authoritative item completion. Text/refusal
+completion carries an optional final-phase envelope: missing preserves released
+event semantics, while a present empty value clears the provisional phase.
+[Client completion](src/adapters/response/client_message_phase.rs) uses the same
+value for done-item rendering and retains cross-protocol capability checks.
+Identity, accepted-content prefixes and sealed terminal metadata still reconcile
+strictly. The [phase regressions](src/adapters/response/message_phase_tests.rs)
+cover correction, late/missing metadata, native preservation and conflicting data.
+
 [Reasoning serialization](src/adapters/request/reasoning.rs) owns protocol-level
 switch semantics and normalizes supported released projections without rewriting
 frozen publication identities. The daemon produces current profiles; explicit

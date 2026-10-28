@@ -64,6 +64,7 @@ fn production_reasoning_boundary_is_independent_of_aggregate_inline_allowance() 
                 text: "READY".into(),
                 annotations: vec![],
                 status: ResponseItemStatus::Completed,
+                final_phase: None,
             });
             // The exact-size instructions consume the aggregate allowance even
             // though the reasoning summary itself is small.
@@ -113,6 +114,7 @@ fn production_reasoning_boundary_accepts_empty_native_fields_without_accepting_h
             text: "READY".into(),
             annotations: vec![],
             status: ResponseItemStatus::Completed,
+            final_phase: None,
         });
         for encrypted in [serde_json::Value::Null, json!("")] {
             for content in [serde_json::Value::Null, json!([])] {
@@ -342,6 +344,7 @@ fn native_reasoning_replay_compares_accepted_summary_before_visible_answer() {
             text: "READY".into(),
             annotations: vec![],
             status: ResponseItemStatus::Completed,
+            final_phase: None,
         });
         let wire = json!({"model":"route","input":[
             {"type":"reasoning","id":"rs_0","status":"completed","summary":[{"type":"summary_text","text":summary}]},

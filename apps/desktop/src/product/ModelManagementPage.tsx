@@ -125,13 +125,15 @@ export function ModelManagementPage({
   initialSourceId = null,
   startAdding = false,
   startScanning = false,
+  scanOnMount = true,
+  startAppending = false,
   notice,
   onOperation,
   onRecoveryRefresh,
   onChanged,
   refreshVersion = 0,
   plans,
-  agents = [],
+  agents,
   onOpenPlan,
   onCreatePlan,
   onTryModel,
@@ -143,6 +145,8 @@ export function ModelManagementPage({
   initialSourceId?: string | null;
   startAdding?: boolean;
   startScanning?: boolean;
+  scanOnMount?: boolean;
+  startAppending?: boolean;
   notice?: string;
   onOperation(operation: OperationReference): void;
   onRecoveryRefresh(): void;
@@ -179,6 +183,7 @@ export function ModelManagementPage({
   const [editingSubscriptionProxy, setEditingSubscriptionProxy] = useState(false);
   const proxyButton = useRef<HTMLButtonElement>(null);
   const scanResumed = useRef(false);
+  const appendStarted = useRef(false);
   const [hermesScanRoot, setHermesScanRoot] = useState('');
   const hermesScanTarget = useRef<AgentNativeTarget | null>(null);
   const [hermesScanDiagnostic, setHermesScanDiagnostic] = useState(false);
@@ -209,6 +214,7 @@ export function ModelManagementPage({
   const managementRequest = useRef(0);
   const subscriptionView = useRef(0);
   const subscriptionScan = useRef(0);
+  const subscriptionTouched = useRef(scanOnMount);
   const discoveryGeneration = useRef(0);
   const discoveryInFlight = useRef(false);
 
@@ -239,6 +245,7 @@ export function ModelManagementPage({
   }
 
   async function refreshSubscriptions() {
+    subscriptionTouched.current = true;
     const scan = ++subscriptionScan.current;
     setSubscriptionLoading(true);
     setSubscriptionError(current => current?.phase === 'scan' ? null : current);
@@ -630,7 +637,7 @@ export function ModelManagementPage({
 
   useEffect(() => {
     alive.current = true;
-    void Promise.all([refreshManagement(), refreshSubscriptions(), recoverSubscriptionCheck()]);
+    void Promise.all([refreshManagement(), ...(scanOnMount ? [refreshSubscriptions(), recoverSubscriptionCheck()] : [])]);
     return () => {
       alive.current = false;
       managementRequest.current += 1;
@@ -639,7 +646,7 @@ export function ModelManagementPage({
       subscriptionScan.current += 1;
       subscriptionInFlight.current = false;
       discoveryInFlight.current = false;
-      void invoke('close_subscription_check')
+      if (subscriptionTouched.current) void invoke('close_subscription_check')
         .catch(() => undefined)
         .finally(onRecoveryRefresh);
     };
@@ -651,7 +658,7 @@ export function ModelManagementPage({
     if (previous && !active) {
       closeSubscriptionView();
     } else if (!previous && active) {
-      void Promise.all([refreshManagement(), refreshSubscriptions(), recoverSubscriptionCheck()]);
+      void Promise.all([refreshManagement(), ...(scanOnMount ? [refreshSubscriptions(), recoverSubscriptionCheck()] : [])]);
     }
   }, [active]);
 
@@ -835,17 +842,26 @@ export function ModelManagementPage({
     if (!trustedAuthority || !await requestEditorReplacement('models')) return;
     setAppendingSource(source); setAppendManual(false); setAdding(false);
     if (source.provenance === 'connector_owned') {
+      subscriptionTouched.current = true;
       setRepairingSubscriptionSource(null); setSelectedSubscriptionRef(null);
-      setAddStage('scan'); setAdding(true);
+      setAddStage('scan'); setAdding(true); setSubscriptionLoading(true);
       try {
         const result = await invoke<SubscriptionScanResult>('compute_subscriptions');
+        if (!alive.current) return;
         setSubscriptions(result.candidates);
         const candidate = result.candidates.find(item => item.existing_source_id === source.source_id);
         if (!candidate) throw { code: 'SUBSCRIPTION_NOT_FOUND' };
         openSubscription(candidate);
-      } catch (cause) { setSubscriptionError({ code: failureCode(cause), phase: 'scan' }); }
+      } catch (cause) { if (alive.current) setSubscriptionError({ code: failureCode(cause), phase: 'scan' }); }
+      finally { if (alive.current) setSubscriptionLoading(false); }
     }
   }
+
+  useEffect(() => {
+    if (!startAppending || appendStarted.current || !initialSourceId || !management || !trustedAuthority) return;
+    const source = management.sources.find(item => item.source_id === initialSourceId && item.actions.includes('append_models'));
+    if (source) { appendStarted.current = true; void appendModels(source); }
+  }, [startAppending, initialSourceId, management, trustedAuthority]);
 
   async function loadAppendModels(source: ManagedSource) {
     const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
