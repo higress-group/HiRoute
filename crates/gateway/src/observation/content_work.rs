@@ -152,11 +152,16 @@ impl ContentWorkProducer {
                     let started = Instant::now();
                     let request = job.request.clone();
                     let failed = job.status.failed.load(Ordering::Acquire);
-                    if !failed
-                        && catch_unwind(AssertUnwindSafe(|| process(&job.request, job.command)))
-                            .is_err()
-                    {
-                        request.fail_content_work(&job.status, "content_capture_worker_panicked");
+                    if !failed {
+                        let result =
+                            catch_unwind(AssertUnwindSafe(|| process(&job.request, job.command)));
+                        match result {
+                            Ok(true) => {}
+                            Ok(false) => request
+                                .fail_content_work(&job.status, "content_capture_unavailable"),
+                            Err(_) => request
+                                .fail_content_work(&job.status, "content_capture_worker_panicked"),
+                        }
                     }
                     if let Some(latency) = &request.inner.latency {
                         latency.capture_completed(
@@ -174,11 +179,12 @@ impl ContentWorkProducer {
     }
 }
 
-fn process(request: &RequestObservation, command: Command) {
+fn process(request: &RequestObservation, command: Command) -> bool {
     match command {
         #[cfg(test)]
         Command::Barrier(sender) => {
             let _ = sender.send(());
+            true
         }
         Command::Request { snapshot, replay } => request.capture_request_payload(
             &snapshot.instructions,
@@ -187,15 +193,20 @@ fn process(request: &RequestObservation, command: Command) {
             &replay,
         ),
         Command::BeginResponse(attempt) => {
-            request.begin_content("response_delivered", Some(&attempt))
+            request.begin_content("response_delivered", Some(&attempt));
+            true
         }
         Command::Delivery {
             attempt,
             frame_id,
             delivery,
-        } => request.emit_response_content(&attempt, &frame_id, delivery),
+        } => {
+            request.emit_response_content(&attempt, &frame_id, delivery);
+            true
+        }
         Command::TerminalResponse { phase, reason } => {
-            request.terminal_content("response_delivered", phase, reason)
+            request.terminal_content("response_delivered", phase, reason);
+            true
         }
     }
 }

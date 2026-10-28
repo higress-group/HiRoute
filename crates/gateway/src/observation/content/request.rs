@@ -89,7 +89,7 @@ impl RequestObservation {
         messages: &[CanonicalMessage],
         tools: &[CanonicalTool],
         replay: &ReplayStore,
-    ) {
+    ) -> bool {
         let snapshot = replay.snapshot();
         self.emit_diagnostic(DiagnosticEvent::SpillBegin(SpillBegin {
             mode: if snapshot.disk_backed {
@@ -108,6 +108,7 @@ impl RequestObservation {
                 Some("canonical_content_unavailable"),
             ),
         }
+        result.is_ok()
     }
 
     fn capture_request_fields(

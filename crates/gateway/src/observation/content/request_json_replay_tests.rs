@@ -619,3 +619,40 @@ fn full_content_work_queue_declares_loss_without_waiting_and_next_request_recove
         }
     }
 }
+
+#[test]
+fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
+    use crate::content_ref::model_content_refs;
+    let fixture = ReplayFixture::new(31);
+    let mut input = state_request([json!({"text":"deferred disk input".repeat(1024)})]);
+    externalize_model_request(&mut input, &fixture.store, 0).unwrap();
+    fixture
+        .store
+        .prevalidate(&model_content_refs(&input))
+        .unwrap();
+    let (observation, receiver, gate) = asynchronous_observation();
+    observation.capture_request_async(&input, &fixture.store);
+    observation.begin_response_content(&content_attempt());
+    observation.finish_response_content("finish", None);
+    // The original content was validated at admission. Simulate backing loss
+    // only after the optional worker owns its lease and before it reads.
+    for directory in std::fs::read_dir(&fixture._root.0).unwrap() {
+        for entry in std::fs::read_dir(directory.unwrap().path()).unwrap() {
+            std::fs::remove_file(entry.unwrap().path()).unwrap();
+        }
+    }
+    gate.release();
+    observation.inner.channels.content_work.flush(&observation);
+    let mut records = Vec::new();
+    loop {
+        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        let gap = record["schema_version"] == "hiroute.observation.gap-heartbeat/v1";
+        records.push(record);
+        if gap {
+            break;
+        }
+    }
+    records.extend(receiver.try_iter());
+    assert!(records.iter().any(|record| record["phase"] == "abort"));
+    assert!(!records.iter().any(|record| record["phase"] == "finish"));
+}
