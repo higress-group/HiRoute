@@ -160,7 +160,9 @@ fn locator_grant_receipt_binds_identity_material_and_operation() {
             [operation.operation_id.as_str()], AgentHistoryRow::read,
         ).unwrap()
         };
-        let input = agent_locator_input::classify(&db, &row()).unwrap().unwrap();
+        let input = agent_locator_input::classify(&*db, &row())
+            .unwrap()
+            .unwrap();
         assert_eq!(
             agent_locator_input::grant_reference(&db, &row(), &input).unwrap(),
             expected
@@ -187,7 +189,7 @@ fn locator_grant_receipt_binds_identity_material_and_operation() {
             db.execute("UPDATE operation_steps SET step_json=json_set(step_json,?2,?3) WHERE operation_id=?1 AND step_no=1",
                 rusqlite::params![operation.operation_id.as_str(), indexed_path, bad]).unwrap();
             let changed = row();
-            let current = agent_locator_input::classify(&db, &changed)
+            let current = agent_locator_input::classify(&*db, &changed)
                 .unwrap()
                 .unwrap();
             assert!(

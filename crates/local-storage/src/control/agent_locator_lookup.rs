@@ -1,5 +1,8 @@
 //! Typed current discovery. The selected journal is still strictly authenticated.
-use super::{agent_history_cache::AgentHistoryRow, agent_locator, agent_locator_input, *};
+use super::{
+    agent_frozen_read::FrozenAgentJournal, agent_history_cache::AgentHistoryRow, agent_locator,
+    agent_locator_input, *,
+};
 use hiroute_domain::{AgentAccessGrantRefV1, AgentSettingsFacet};
 use std::sync::Arc;
 
@@ -21,6 +24,111 @@ pub enum AgentLocatorScope<'a> {
 pub enum AgentLocatorResult {
     Found(Arc<SucceededAgentOperationV1>),
     AbsentWithCompleteCoverage,
+}
+
+/// A non-authoritative raw closure captured under an owned Control read snapshot.
+/// Verify it outside the shared store lock and perform the separate final fence.
+pub enum CapturedAgentLocator {
+    Found(AgentLocatorCapture),
+    AbsentWithCompleteCoverage,
+}
+
+#[derive(Clone)]
+enum OwnedScope {
+    ContextFacet {
+        context_id: String,
+        facet: AgentSettingsFacet,
+    },
+    GrantProvenance {
+        context_id: String,
+        grant: AgentAccessGrantRefV1,
+    },
+    ResidentService,
+}
+impl OwnedScope {
+    fn borrow(&self) -> AgentLocatorScope<'_> {
+        match self {
+            Self::ContextFacet { context_id, facet } => AgentLocatorScope::ContextFacet {
+                context_id,
+                facet: *facet,
+            },
+            Self::GrantProvenance { context_id, grant } => {
+                AgentLocatorScope::GrantProvenance { context_id, grant }
+            }
+            Self::ResidentService => AgentLocatorScope::ResidentService,
+        }
+    }
+}
+impl From<AgentLocatorScope<'_>> for OwnedScope {
+    fn from(scope: AgentLocatorScope<'_>) -> Self {
+        match scope {
+            AgentLocatorScope::ContextFacet { context_id, facet } => Self::ContextFacet {
+                context_id: context_id.to_owned(),
+                facet,
+            },
+            AgentLocatorScope::GrantProvenance { context_id, grant } => Self::GrantProvenance {
+                context_id: context_id.to_owned(),
+                grant: grant.clone(),
+            },
+            AgentLocatorScope::ResidentService => Self::ResidentService,
+        }
+    }
+}
+
+pub struct AgentLocatorCapture {
+    frozen: FrozenAgentJournal,
+    member: Member,
+    workspace: WorkspaceId,
+    scope: OwnedScope,
+    head_action: String,
+}
+
+impl AgentLocatorCapture {
+    /// Complete the same strict selected-journal validation over the captured
+    /// bytes. The caller must still fence current business/native dependencies.
+    pub fn verify(self) -> PortResult<Arc<SucceededAgentOperationV1>> {
+        let key = Key::new(self.scope.borrow())?;
+        let row = self.frozen.row();
+        let input = agent_locator_input::classify(&self.frozen, row)?.ok_or_else(invalid)?;
+        let operation = self.frozen.verify()?;
+        if self.member.generation != Some(row.generation)
+            || self.member.accepted.as_deref() != Some(row.accepted_digest.as_str())
+            || self.member.plan_digest.as_deref() != Some(input.plan_bytes_digest.as_str())
+            || input.workspace_id != self.workspace
+            || (key.scope != "resident" && input.context != key.context)
+        {
+            return Err(invalid());
+        }
+        match key.scope {
+            "resident"
+                if input.resident_service_declaration && self.head_action == "declaration" => {}
+            "grant" if input.additional_model_grant_candidate && self.head_action == "grant" => {
+                let [mutation] = input.plan.agent_access_grants() else {
+                    return Err(invalid());
+                };
+                let [effect] = operation.grant_effects() else {
+                    return Err(invalid());
+                };
+                if effect
+                    .compensation
+                    .get("operation_id")
+                    .and_then(Value::as_str)
+                    != Some(operation.operation_id.as_str())
+                {
+                    return Err(invalid());
+                }
+                let actual = AgentAccessGrantRefV1::from_ensure_effect(effect, mutation)
+                    .map_err(|_| invalid())?;
+                if Some(&actual) != key.grant || actual.owner_scope() != self.workspace.as_str() {
+                    return Err(invalid());
+                }
+            }
+            "model" | "collaboration" | "management"
+                if action(&input, &key) == Some(self.head_action.as_str()) => {}
+            _ => return Err(invalid()),
+        }
+        Ok(Arc::new(operation))
+    }
 }
 
 fn invalid() -> PortError {
@@ -329,7 +437,7 @@ fn selected(
     db: &Connection,
     workspace: &WorkspaceId,
     scope: AgentLocatorScope<'_>,
-) -> PortResult<Option<Arc<SucceededAgentOperationV1>>> {
+) -> PortResult<Option<AgentLocatorCapture>> {
     let key = Key::new(scope)?;
     if key
         .grant
@@ -378,36 +486,43 @@ fn selected(
             |r| r.get(0),
         )
         .map_err(|_| invalid())?;
-    let input = agent_locator_input::classify(db, &row)?.ok_or_else(invalid)?;
     if actual_ordinal != ordinal
         || member.generation != Some(row.generation)
         || member.accepted.as_deref() != Some(row.accepted_digest.as_str())
-        || member.plan_digest.as_deref() != Some(input.plan_bytes_digest.as_str())
-        || input.workspace_id != *workspace
-        || (key.scope != "resident" && input.context != key.context)
     {
         return Err(invalid());
     }
-    match key.scope {
-        "resident" if input.resident_service_declaration && head_action == "declaration" => {}
-        "grant" if input.additional_model_grant_candidate && head_action == "grant" => {
-            let actual = agent_locator_input::grant_reference(db, &row, &input)?;
-            if Some(&actual) != key.grant {
-                return Err(invalid());
-            }
-        }
-        "model" | "collaboration" | "management"
-            if action(&input, &key) == Some(head_action.as_str()) => {}
-        _ => return Err(invalid()),
-    }
-    Ok(Some(Arc::new(super::agent_read::decode_selected_agent(
-        db,
-        &row.encoded,
-        Some(&row),
-    )?)))
+    let frozen = FrozenAgentJournal::capture(db, row)?;
+    Ok(Some(AgentLocatorCapture {
+        frozen,
+        member,
+        workspace: workspace.clone(),
+        scope: scope.into(),
+        head_action,
+    }))
 }
 
 impl ControlStore {
+    /// Capture inside a caller-owned, bounded Control read transaction. The
+    /// snapshot does not grant status authority until verified and fenced.
+    pub fn capture_agent_locator(
+        &self,
+        workspace: &WorkspaceId,
+        scope: AgentLocatorScope<'_>,
+    ) -> PortResult<CapturedAgentLocator> {
+        let db = self.connection.borrow();
+        if db.is_autocommit() {
+            return Err(port(
+                PortErrorCode::Conflict,
+                "control.agent-locator.snapshot",
+            ));
+        }
+        Ok(match selected(&db, workspace, scope)? {
+            Some(found) => CapturedAgentLocator::Found(found),
+            None => CapturedAgentLocator::AbsentWithCompleteCoverage,
+        })
+    }
+
     /// The returned record has a strict journal proof, but is not a native/current
     /// status proof. History and recovery retain their existing independent readers.
     pub fn find_agent_locator(
@@ -425,8 +540,9 @@ impl ControlStore {
         if let Some(tx) = tx {
             tx.commit().map_err(|_| invalid())?;
         }
+        drop(db);
         Ok(match found {
-            Some(found) => AgentLocatorResult::Found(found),
+            Some(found) => AgentLocatorResult::Found(found.verify()?),
             None => AgentLocatorResult::AbsentWithCompleteCoverage,
         })
     }

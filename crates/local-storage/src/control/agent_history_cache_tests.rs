@@ -607,7 +607,9 @@ fn locator_input_classifies_the_plan_without_optional_step_expansion() {
         )
         .unwrap()
     };
-    let before = agent_locator_input::classify(&db, &row()).unwrap().unwrap();
+    let before = agent_locator_input::classify(&*db, &row())
+        .unwrap()
+        .unwrap();
     assert_eq!(before.operation_id, operation.operation_id);
     assert_eq!(
         before.context,
@@ -625,7 +627,9 @@ fn locator_input_classifies_the_plan_without_optional_step_expansion() {
         [operation.operation_id.as_str()],
     )
     .unwrap();
-    let after = agent_locator_input::classify(&db, &row()).unwrap().unwrap();
+    let after = agent_locator_input::classify(&*db, &row())
+        .unwrap()
+        .unwrap();
     assert_eq!(after.plan_bytes_digest, before.plan_bytes_digest);
     drop(db);
     assert!(
@@ -661,7 +665,7 @@ fn locator_input_binds_the_actual_selected_row() {
         "SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json FROM operations WHERE operation_id=?1",
         [first.operation_id.as_str()], AgentHistoryRow::read,
     ).unwrap();
-    assert!(agent_locator_input::classify(&db, &row).is_err());
+    assert!(agent_locator_input::classify(&*db, &row).is_err());
 }
 
 #[path = "agent_frozen_read_tests.rs"]

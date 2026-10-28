@@ -109,7 +109,7 @@ pub(super) fn has_bound_header(row: &AgentHistoryRow) -> bool {
 }
 
 pub(super) fn classify(
-    connection: &Connection,
+    connection: &impl payloads::PayloadRead,
     row: &AgentHistoryRow,
 ) -> PortResult<Option<LocatorInput>> {
     let invalid = || port(PortErrorCode::Corrupt, "control.agent-locator.input");
@@ -276,5 +276,12 @@ pub(super) fn grant_reference(
     {
         return Err(invalid());
     }
-    AgentAccessGrantRefV1::from_ensure_effect(effect, mutation).map_err(|_| invalid())
+    let reference =
+        AgentAccessGrantRefV1::from_ensure_effect(effect, mutation).map_err(|_| invalid())?;
+    if reference.owner_scope() != input.workspace_id.as_str()
+        || reference.connection_id() != format!("agent-connection/{}", input.context)
+    {
+        return Err(invalid());
+    }
+    Ok(reference)
 }

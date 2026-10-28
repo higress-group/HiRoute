@@ -87,6 +87,10 @@ impl FrozenAgentJournal {
         })
     }
 
+    pub(super) fn row(&self) -> &AgentHistoryRow {
+        &self.row
+    }
+
     #[cfg(test)]
     pub(super) fn payload_count(&self) -> usize {
         self.payloads.len()

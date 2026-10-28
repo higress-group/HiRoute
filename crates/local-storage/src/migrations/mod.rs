@@ -27,7 +27,7 @@ pub(crate) use startup_format::validate_startup_format;
 mod stopped_read_tests;
 pub(crate) use current_storage::{
     acquire_startup_lock, audit_current_storage, validate_current_storage,
-    validate_recovered_grant_publications,
+    validate_recovered_grant_publications, validate_sqlite_structure,
 };
 mod collaboration_dependency;
 mod completed_batches;
@@ -559,6 +559,21 @@ impl MigrationSetCoordinator {
         self.set
             .as_ref()
             .map_or(LATEST_SCHEMA_VERSION, BackupSet::target_schema_version)
+    }
+
+    /// This is determined only from the already validated original BackupSet,
+    /// not the live files after migration. The exception applies to one target.
+    pub(crate) fn is_admitted_locator_only_batch(&self) -> bool {
+        self.set.as_ref().is_some_and(|set| {
+            set.target_schema_version() == 33
+                && [
+                    set.control.manifest(),
+                    set.runtime.manifest(),
+                    set.secrets.manifest(),
+                ]
+                .iter()
+                .all(|source| source.schema_version == 32)
+        })
     }
 
     pub(crate) fn expected_control_store_uuid(&self) -> Option<&str> {

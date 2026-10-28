@@ -46,6 +46,7 @@ mod agent_frozen_read;
 mod agent_history_cache;
 pub(crate) mod agent_locator;
 mod agent_locator_input;
+mod agent_locator_integrity;
 mod agent_locator_lookup;
 mod agent_read;
 mod artifact_dependencies;
@@ -53,7 +54,9 @@ mod artifact_heads;
 mod artifact_validation;
 mod completed_operation_cache;
 mod native_targets;
-pub use agent_locator_lookup::{AgentLocatorResult, AgentLocatorScope};
+pub use agent_locator_lookup::{
+    AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope, CapturedAgentLocator,
+};
 pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
@@ -105,6 +108,7 @@ pub struct ControlStore {
     active_publication_cache: RefCell<Option<hiroute_domain::PublicationRecordV1>>,
     diagnostics: RefCell<hiroute_diagnostics::DiagnosticsPort>,
     pub(crate) connection: RefCell<Connection>,
+    pub(crate) physical_binding: crate::physical_read_stamp::DatabaseBinding,
     pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
 }
 
@@ -262,22 +266,26 @@ impl ControlStore {
         *self.diagnostics.borrow_mut() = port;
     }
     pub(crate) fn open(
-        _authority: &DaemonStorageAuthority,
+        authority: &DaemonStorageAuthority,
         path: impl AsRef<Path>,
         migration_backup_root: impl AsRef<Path>,
     ) -> Result<Self, LocalStorageError> {
+        let path = path.as_ref();
+        let connection = open_database(
+            authority,
+            path,
+            DatabaseKind::Control,
+            migration_backup_root,
+        )?;
+        let physical_binding = crate::physical_read_stamp::DatabaseBinding::new(path)?;
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
             agent_history_cache: RefCell::new(Default::default()),
             completed_operation_cache: RefCell::new(Default::default()),
             active_publication_cache: RefCell::new(None),
             startup_lock: None,
-            connection: RefCell::new(open_database(
-                _authority,
-                path,
-                DatabaseKind::Control,
-                migration_backup_root,
-            )?),
+            connection: RefCell::new(connection),
+            physical_binding,
         })
     }
 
@@ -288,21 +296,24 @@ impl ControlStore {
         expected_store_uuid: &str,
         target_schema_version: u32,
     ) -> Result<Self, LocalStorageError> {
+        let connection = open_database_from_set(
+            authority,
+            path,
+            DatabaseKind::Control,
+            migration_backup_root,
+            Some(expected_store_uuid),
+            None,
+            target_schema_version,
+        )?;
+        let physical_binding = crate::physical_read_stamp::DatabaseBinding::new(path)?;
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
             agent_history_cache: RefCell::new(Default::default()),
             completed_operation_cache: RefCell::new(Default::default()),
             active_publication_cache: RefCell::new(None),
             startup_lock: None,
-            connection: RefCell::new(open_database_from_set(
-                authority,
-                path,
-                DatabaseKind::Control,
-                migration_backup_root,
-                Some(expected_store_uuid),
-                None,
-                target_schema_version,
-            )?),
+            connection: RefCell::new(connection),
+            physical_binding,
         })
     }
 

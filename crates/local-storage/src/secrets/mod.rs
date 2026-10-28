@@ -70,6 +70,7 @@ impl KeyMaterial {
 
 pub struct LocalSecretStore {
     pub(crate) connection: RefCell<Connection>,
+    pub(crate) physical_binding: crate::physical_read_stamp::DatabaseBinding,
     pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
     keys: KeyMaterial,
     #[cfg(test)]
@@ -186,9 +187,11 @@ impl LocalSecretStore {
         };
         bind_store_metadata(&connection, &keys)?;
         migrate_legacy_secret_aad(&mut connection, &keys)?;
+        let physical_binding = crate::physical_read_stamp::DatabaseBinding::new(database_path)?;
         Ok(Self {
             startup_lock: None,
             connection: RefCell::new(connection),
+            physical_binding,
             keys,
             #[cfg(test)]
             database_path: database_path.to_path_buf(),
@@ -222,6 +225,28 @@ impl LocalSecretStore {
             &binding,
             target,
         )
+    }
+
+    pub(crate) fn physical_read_stamp(
+        &self,
+    ) -> PortResult<crate::physical_read_stamp::StorePhysicalStamp> {
+        let db = self
+            .connection
+            .try_borrow()
+            .map_err(|_| port(PortErrorCode::Conflict, "secret.read-stamp.borrow"))?;
+        self.physical_binding.capture(&db, |db| {
+            let (uuid, key_id, verifier): (String, String, String) = db.query_row(
+                "SELECT store_uuid,key_id,key_verifier FROM secret_store_meta WHERE singleton=1",
+                [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+            ).map_err(|_| port(PortErrorCode::Corrupt, "secret.read-stamp.binding"))?;
+            if uuid != self.keys.store_uuid
+                || key_id != self.keys.key_id.as_str()
+                || verifier != self.keys.verifier.as_str()
+            {
+                return Err(port(PortErrorCode::Corrupt, "secret.read-stamp.binding"));
+            }
+            Ok(vec![uuid, key_id, verifier])
+        })
     }
 
     #[cfg(test)]

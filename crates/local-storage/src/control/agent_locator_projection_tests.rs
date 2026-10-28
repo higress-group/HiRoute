@@ -215,3 +215,46 @@ fn unknown_newer_member_fences_a_previous_hit_and_absence() {
             .is_err()
     );
 }
+
+#[test]
+fn raw_locator_capture_requires_a_transaction_and_verifies_afterward() {
+    use super::super::super::{AgentLocatorScope, CapturedAgentLocator};
+    use hiroute_domain::AgentSettingsFacet;
+    fn assert_send<T: Send>() {}
+    assert_send::<super::super::super::AgentLocatorCapture>();
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let mut operation = target_operation(
+        directory.path().join("capture").to_str().unwrap(),
+        "capture-locator",
+        false,
+    );
+    persist(&control, &mut operation);
+    install(&control);
+    let context = operation.plan.spec().resource_id.as_deref().unwrap();
+    let scope = AgentLocatorScope::ContextFacet {
+        context_id: context,
+        facet: AgentSettingsFacet::ManagementSkill,
+    };
+    assert!(
+        control
+            .capture_agent_locator(&WorkspaceId::default(), scope)
+            .is_err()
+    );
+    let capture = {
+        let db = control.connection.borrow();
+        let tx = db.unchecked_transaction().unwrap();
+        let capture = control
+            .capture_agent_locator(&WorkspaceId::default(), scope)
+            .unwrap();
+        tx.commit().unwrap();
+        capture
+    };
+    let CapturedAgentLocator::Found(capture) = capture else {
+        panic!("missing captured setting");
+    };
+    assert_eq!(
+        capture.verify().unwrap().operation_id,
+        operation.operation_id
+    );
+}
