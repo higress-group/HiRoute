@@ -63,6 +63,7 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.trial.connected-models-and-models-return',
   'desktop.home.observation-reader-bound',
   'desktop.home.observation-busy-recovers',
   'desktop.home.observation-busy-exhausted',

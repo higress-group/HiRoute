@@ -123,6 +123,16 @@ async function trialIdentityChecks() {
   assert.match(await evaluate(client,`document.querySelector('.trial-page').textContent`),/trial-qwen3-coder-plus-[0-9a-f]{8}/);
   await shot(`trial-selection-${lang}-${theme}-${width}`);
   for(const node of await geometry('.trial-card,.trial-reasoning')) assert.ok(node.scroll<=node.width+1,`horizontal overflow: ${JSON.stringify(node)}`);
+  const controls = await evaluate(client, `Array.from(document.querySelectorAll('.trial-reasoning-control')).map(e=>{const r=e.getBoundingClientRect();return {width:r.width,height:r.height,hasPopup:e.getAttribute('aria-haspopup'),icon:!!e.querySelector('svg'),name:e.querySelector('span')?.textContent};})`);
+  assert.ok(controls.length > 0);
+  for (const control of controls) {
+    assert.ok(control.width <= 280 && control.height >= 32 && control.height <= 44, `reasoning must be a compact visible control: ${JSON.stringify(control)}`);
+    assert.equal(control.hasPopup, 'dialog'); assert.ok(control.icon);
+  }
+  assert.equal(controls.at(-1).name, lang === 'zh' ? '低' : 'low', 'friendly labels preserve the authored native profile');
+  await evaluate(client, `document.querySelector('.trial-reasoning-control').scrollIntoView({block:'center'});true`);
+  await shot(`trial-reasoning-${lang}-${theme}-${width}`);
+
   await enter('.trial-footer .btn-primary');
   await waitFor(client,`!!document.querySelector('[data-dsh-capability-state="available"]') && !!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
   assert.equal(await evaluate(client,`document.querySelector('[data-codex-capability-state]')`),null,'DSH never shows Codex capability results');
