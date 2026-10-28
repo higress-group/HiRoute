@@ -15,7 +15,7 @@ use hiroute_diagnostics::identity::CorrelationToken;
 use hiroute_gateway_core::runtime::timing::{RequestClock, TimingSnapshot};
 
 #[derive(Clone)]
-pub(super) struct RequestLatency(Arc<Inner>);
+pub(in crate::server::core_runtime) struct RequestLatency(Arc<Inner>);
 
 struct Inner {
     context: DiagnosticContext,
@@ -44,7 +44,7 @@ tokio::task_local! {
 }
 
 impl RequestLatency {
-    pub(super) fn new(
+    pub(in crate::server::core_runtime) fn new(
         context: DiagnosticContext,
         protocol: Option<IngressProtocol>,
         started: Instant,
@@ -65,34 +65,38 @@ impl RequestLatency {
         }))
     }
 
-    pub(super) fn current() -> Option<Self> {
+    pub(in crate::server::core_runtime) fn current() -> Option<Self> {
         CURRENT.try_with(Clone::clone).ok()
     }
 
-    pub(super) fn context(&self) -> DiagnosticContext {
+    pub(in crate::server::core_runtime) fn context(&self) -> DiagnosticContext {
         self.0.context.clone()
     }
 
-    pub(super) fn response_status(&self, status: u16) {
+    pub(in crate::server::core_runtime) fn response_status(&self, status: u16) {
         self.0.status.store(status, Relaxed);
     }
 
-    pub(super) fn status(&self) -> Option<u16> {
+    pub(in crate::server::core_runtime) fn status(&self) -> Option<u16> {
         match self.0.status.load(Relaxed) {
             0 => None,
             status => Some(status),
         }
     }
 
-    pub(super) fn bind(&self, token: Option<CorrelationToken>) {
+    pub(in crate::server::core_runtime) fn bind(&self, token: Option<CorrelationToken>) {
         *self.0.token.lock().unwrap_or_else(|e| e.into_inner()) = token;
     }
 
-    pub(super) async fn run<F: Future>(&self, future: F) -> F::Output {
+    pub(in crate::server::core_runtime) async fn run<F: Future>(&self, future: F) -> F::Output {
         CURRENT.scope(self.clone(), self.0.clock.run(future)).await
     }
 
-    pub(super) fn finish(&self, outcome: RequestOutcome, status: Option<u16>) {
+    pub(in crate::server::core_runtime) fn finish(
+        &self,
+        outcome: RequestOutcome,
+        status: Option<u16>,
+    ) {
         self.0.finished.get_or_init(|| Finished {
             timing: self.0.clock.finish(),
             at: Instant::now(),
@@ -105,11 +109,11 @@ impl RequestLatency {
         });
     }
 
-    pub(super) fn request_outcome(&self, outcome: RequestOutcome) {
+    pub(in crate::server::core_runtime) fn request_outcome(&self, outcome: RequestOutcome) {
         let _ = self.0.request_outcome.set(outcome);
     }
 
-    pub(super) fn record(&self) -> AsyncRecordTiming {
+    pub(in crate::server::core_runtime) fn record(&self) -> AsyncRecordTiming {
         self.0.records.fetch_add(1, Relaxed);
         AsyncRecordTiming(Arc::new(RecordInner {
             request: self.clone(),
@@ -251,4 +255,5 @@ fn elapsed_us(started: Instant) -> u64 {
 }
 
 #[cfg(test)]
+#[path = "latency/tests.rs"]
 mod tests;
