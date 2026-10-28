@@ -6,20 +6,34 @@ use hiroute_diagnostics::runtime::{DiagnosticRuntime, RuntimeConfig};
 
 #[tokio::test]
 async fn one_info_summary_survives_rejection_and_async_record_loss() {
-    let root = std::env::temp_dir().join(format!("hiroute-request-timing-{}-{}", std::process::id(), crate::server::core_runtime::observation::unix_nanos()));
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-request-timing-{}-{}",
+        std::process::id(),
+        crate::server::core_runtime::observation::unix_nanos()
+    ));
     let runtime = DiagnosticRuntime::start(RuntimeConfig {
-        root: root.clone(), role: ProcessRole::Daemon, component: Component::Gateway,
-        parent_session_id: None, level_override: Some(DiagnosticLevel::Info),
+        root: root.clone(),
+        role: ProcessRole::Daemon,
+        component: Component::Gateway,
+        parent_session_id: None,
+        level_override: Some(DiagnosticLevel::Info),
     });
-    let latency = RequestLatency::new(runtime.port().handle().context(), Some(IngressProtocol::OpenAiResponses), Instant::now());
+    let latency = RequestLatency::new(
+        runtime.port().handle().context(),
+        Some(IngressProtocol::OpenAiResponses),
+        Instant::now(),
+    );
     let record = latency.record();
     let delivered = latency.record();
-    latency.run(async {
-        hiroute_gateway_core::runtime::timing::wait(
-            hiroute_gateway_core::runtime::timing::WaitKind::ClientRead,
-            tokio::time::sleep(std::time::Duration::from_millis(2)),
-        ).await;
-    }).await;
+    latency
+        .run(async {
+            hiroute_gateway_core::runtime::timing::wait(
+                hiroute_gateway_core::runtime::timing::WaitKind::ClientRead,
+                tokio::time::sleep(std::time::Duration::from_millis(2)),
+            )
+            .await;
+        })
+        .await;
     latency.finish(RequestOutcome::Failed, Some(401));
     let request_us = latency.0.finished.get().unwrap().timing.elapsed_us;
     latency.finish(RequestOutcome::Completed, Some(200));
@@ -33,10 +47,17 @@ async fn one_info_summary_survives_rejection_and_async_record_loss() {
     drop(record); // A queue-full, skipped or lost record is terminally accounted.
     runtime.shutdown();
     let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
-    let summaries = log.lines().filter_map(|line| {
-        let record: hiroute_diagnostics::record::DiagnosticRecordV1 = serde_json::from_str(line).unwrap();
-        match record.event { DiagnosticEvent::RequestTimingSummary(s) => Some(s), _ => None }
-    }).collect::<Vec<_>>();
+    let summaries = log
+        .lines()
+        .filter_map(|line| {
+            let record: hiroute_diagnostics::record::DiagnosticRecordV1 =
+                serde_json::from_str(line).unwrap();
+            match record.event {
+                DiagnosticEvent::RequestTimingSummary(s) => Some(s),
+                _ => None,
+            }
+        })
+        .collect::<Vec<_>>();
     assert_eq!(summaries.len(), 1, "{log}");
     let summary = &summaries[0];
     assert_eq!(summary.elapsed_us, request_us);
