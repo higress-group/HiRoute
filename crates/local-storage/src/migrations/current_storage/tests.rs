@@ -437,6 +437,115 @@ fn locator_upgrade_from_admitted_32_preserves_unrelated_publication_damage() {
 }
 
 #[test]
+fn locator_upgrade_resumes_each_store_commit_and_precompletion_from_verified_32() {
+    use crate::backup::test_writer_barrier;
+
+    // Zero means before Control; odd values mean a store committed before its
+    // phase was recorded; even values mean the phase was durably recorded.
+    // Six is after all three commits and immediately before final completion.
+    for boundary in 0..=6 {
+        let directory = crate::test_tempdir().unwrap();
+        let root = directory.path().join("storage");
+        let stores = schema32_source(&root);
+        history(&stores, 3);
+        stores
+            .control
+            .connection
+            .borrow()
+            .execute(
+                "UPDATE gateway_publications SET digest='corrupted-history' WHERE publication_revision=1",
+                [],
+            )
+            .unwrap();
+        validate_current_storage(stores.control(), stores.runtime(), stores.secrets()).unwrap();
+        assert!(
+            audit_current_storage(stores.control(), stores.runtime(), stores.secrets()).is_err()
+        );
+        drop(stores);
+
+        let paths = live_database_paths(&root.join("live"));
+        let binding =
+            crate::LocalSecretStore::migration_binding(&paths[2], &root.join("master-key"))
+                .unwrap()
+                .unwrap();
+        let barrier = test_writer_barrier();
+        let mut set = BackupSet::create_migration(
+            &barrier,
+            &crate::upgrade_backup_root(&root).unwrap(),
+            &open_existing_for_snapshot(&paths[0]).unwrap(),
+            &open_existing_for_snapshot(&paths[1]).unwrap(),
+            &open_existing_for_snapshot(&paths[2]).unwrap(),
+            &binding.key_id,
+            33,
+        )
+        .unwrap();
+        let set_id = set.set_id().to_owned();
+        let backup_root = set.directory().to_owned();
+        let original_backup = fs::read(backup_root.join("control.db")).unwrap();
+
+        for (index, (kind, phase)) in [
+            (DatabaseKind::Control, BackupSetPhase::ControlMigrated),
+            (DatabaseKind::Runtime, BackupSetPhase::RuntimeMigrated),
+            (DatabaseKind::Secrets, BackupSetPhase::SecretsMigrated),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if boundary < 2 * index + 1 {
+                break;
+            }
+            let mut connection = Connection::open(&paths[index]).unwrap();
+            let tx = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            tx.execute_batch(migration_sql(kind, 33).unwrap()).unwrap();
+            if kind == DatabaseKind::Control {
+                agent_locator_v33::initialize(&tx).unwrap();
+            }
+            tx.pragma_update(None, "user_version", 33).unwrap();
+            tx.execute(
+                "INSERT INTO schema_migrations(version,applied_at,binary_version) VALUES(33,1,'interrupted-producer')",
+                [],
+            )
+            .unwrap();
+            tx.commit().unwrap();
+            if boundary >= 2 * index + 2 {
+                set.persist_phase(&barrier, phase).unwrap();
+            }
+        }
+        drop(set);
+
+        let upgraded = LocalStorageSet::open_for_daemon_startup(&root)
+            .unwrap_or_else(|error| panic!("boundary {boundary}: {error:?}"));
+        for path in &paths {
+            assert_eq!(
+                database_version(path).unwrap(),
+                Some(33),
+                "boundary {boundary}"
+            );
+        }
+        assert!(
+            audit_current_storage(upgraded.control(), upgraded.runtime(), upgraded.secrets())
+                .is_err()
+        );
+        upgraded.validate_recovered_grant_publications().unwrap();
+        drop(upgraded);
+        let completed = BackupSet::open(&crate::test_storage_authority(), &backup_root).unwrap();
+        assert_eq!(completed.set_id(), set_id, "boundary {boundary}");
+        assert_eq!(
+            completed.phase(),
+            BackupSetPhase::Completed,
+            "boundary {boundary}"
+        );
+        assert_eq!(
+            fs::read(backup_root.join("control.db")).unwrap(),
+            original_backup
+        );
+        LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+    }
+}
+
+#[test]
 fn locator_upgrade_refuses_missing_original_recovery_coverage() {
     let directory = crate::test_tempdir().unwrap();
     let root = directory.path().join("storage");
