@@ -9,6 +9,24 @@ branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
 
+The small memory-backed ingress path feeds the existing parser from a temporary,
+budgeted slice; disk-backed and pressured inputs retain the bounded reader.
+[Runtime fingerprints](src/runtime_fingerprint.rs) reuse complete normalized
+content within one request. MD5 here is an ephemeral equality check with framed
+domains; authorization, native proofs and persisted observation HMACs retain
+their cryptographic algorithms. [Prepared input](src/composition/prepared.rs)
+may retain bounded candidate templates until the selected attempt uses them;
+current authority/profile checks still run, and cleanup rebuilds the template.
+
+[Optional content encoding](src/observation/content_work.rs) uses one ordered,
+bounded worker per observation channel set. Its immutable snapshot retains only
+instructions, messages, tools and charged semantic Replay backing. It does not
+retain the raw ingress body. Request capture closes before response capture so
+their transcript roots remain related. Accepted-output history and usage update
+at delivery; neither waits for content encoding or SQLite. Capacity or capture
+failure reports a gap and stops dependent capture for that request. The final
+Replay owner releases files and reservations on all paths.
+
 Ordinary Responses, Chat Completions, Messages and model-catalog clients may carry
 their HiRoute connection token as `Authorization: Bearer <token>`. The current
 publication still verifies the issued grant, protocol and aliases. Retained

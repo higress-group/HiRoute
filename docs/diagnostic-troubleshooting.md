@@ -210,6 +210,15 @@ be added to `elapsed_us`. Lost records contribute to `dropped`, not fabricated
 successful ingestion. No exporter/network latency is implied for the local OTEL
 mapper.
 
+`capture_jobs`, `capture_dropped_jobs`, `capture_queue_wait_max_us` and
+`capture_work_us` describe the optional ordered content encoder before those
+sinks. Capture work is elapsed encoding time, not CPU time. The same content
+record may appear in both capture and sink counts; these are different stages,
+not additive request latency. A failed capture job contributes explicit loss and
+stops that request's dependent capture. For full local critical-path cost, include
+`wait.local_work_us` with the local phase sum; do not exclude mandatory worker
+readiness merely because it runs outside the request future.
+
 One summary is enqueued after existing request/capture/queued-record owners are
 released, so a slow sink can delay its appearance without delaying the response.
 The existing `request_end` remains immediate. If a sink never returns or the

@@ -87,6 +87,10 @@ For local request cost, start with the [timing guide](../diagnostic-troubleshoot
 and bounded CPU profiling. The [hash backend benchmark](../../crates/gateway/benches/gateway_hash_paths.rs)
 checks byte equivalence and throughput on the affected CPU; it does not replace
 whole-request measurement or change the production cryptographic backend.
+The opt-in [whole-listener experiment](../../tools/e2e-harness/tests/p0_gateway_runtime/local_work_benchmark.rs)
+keeps multi-turn decisions, history and capture enabled with Info timing. It
+includes local readiness waits and rejects capture loss. Run release binaries on
+the target CPU; component timings and fixture success are not native acceptance.
 
 | Layer | Appropriate assertion | Evidence limit |
 | --- | --- | --- |
@@ -113,6 +117,10 @@ model-group switching and assessment membership through the real Gateway;
 reject ambiguous siblings, changed input/setup, capture gaps and accepted output. The
 [request JSON observation cases](../../crates/gateway/src/observation/content/request_json_replay_tests.rs)
 verify Replay expansion, integrity and bounded storage without leaking locators.
+They also pause deferred encoding through foreground teardown, check root/byte
+parity with the independent synchronous oracle, and inject bounded queue failure.
+The [late-content SQLite case](../../crates/observation/src/store/tests/late_content.rs)
+checks content arriving after RequestFinished, exact reopen and duplicate ACKs.
 The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
 verify that explicit maintenance-purpose evidence excludes a user turn without
 removing the request, while unmarked retained records remain visible. These
