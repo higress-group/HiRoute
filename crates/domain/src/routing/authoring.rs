@@ -136,7 +136,7 @@ impl PlanEditorStateV2 {
     }
 
     pub fn effective(&self) -> Result<AgentPlanAuthoringV2, PlanAuthoringError> {
-        self.effective_with_native(Some(&super::NativeProtocolSelectionV1::default()))
+        self.effective_with_native(Some(&super::NativeProtocolSelectionV1::default()), None)
     }
 
     /// Validate a retained operation against its already sealed configuration, not
@@ -145,12 +145,13 @@ impl PlanEditorStateV2 {
         &self,
         frozen: &AgentPlanAuthoringV2,
     ) -> Result<AgentPlanAuthoringV2, PlanAuthoringError> {
-        self.effective_with_native(frozen.native_protocol())
+        self.effective_with_native(frozen.native_protocol(), Some(frozen))
     }
 
     fn effective_with_native(
         &self,
         protocol: Option<&super::NativeProtocolSelectionV1>,
+        frozen: Option<&AgentPlanAuthoringV2>,
     ) -> Result<AgentPlanAuthoringV2, PlanAuthoringError> {
         self.validate_draft()?;
         let strategy = match self.mode {
@@ -167,15 +168,32 @@ impl PlanEditorStateV2 {
                 };
                 {
                     if routing.classifier.extension_identity().is_none() {
+                        let frozen_routing = frozen.and_then(|value| match &value.strategy {
+                            AgentPlanStrategyV2::Branches { routing } => Some(routing),
+                            _ => None,
+                        });
                         routing.judgment = routing
                             .judgment
-                            .resolve_assessment(routing.native_protocol.as_ref())
+                            .resolve_assessment_for_frozen(
+                                routing.native_protocol.as_ref(),
+                                frozen_routing.map(|value| &value.judgment),
+                            )
                             .map_err(PlanAuthoringError::NativeProtocol)?;
                         for branch in &mut routing.branches {
                             if let Some(j) = &branch.judgment {
                                 branch.judgment = Some(
-                                    j.resolve_assessment(routing.native_protocol.as_ref())
-                                        .map_err(PlanAuthoringError::NativeProtocol)?,
+                                    j.resolve_assessment_for_frozen(
+                                        routing.native_protocol.as_ref(),
+                                        frozen_routing
+                                            .and_then(|value| {
+                                                value
+                                                    .branches
+                                                    .iter()
+                                                    .find(|other| other.id == branch.id)
+                                            })
+                                            .and_then(|other| other.judgment.as_ref()),
+                                    )
+                                    .map_err(PlanAuthoringError::NativeProtocol)?,
                                 );
                             }
                         }
@@ -197,7 +215,13 @@ impl PlanEditorStateV2 {
                 } else {
                     self.smart
                         .judgment
-                        .resolve_assessment(native_protocol.as_ref())
+                        .resolve_assessment_for_frozen(
+                            native_protocol.as_ref(),
+                            frozen.and_then(|value| match &value.strategy {
+                                AgentPlanStrategyV2::SmartSaving { judgment, .. } => Some(judgment),
+                                _ => None,
+                            }),
+                        )
                         .map_err(PlanAuthoringError::NativeProtocol)?
                 };
                 AgentPlanStrategyV2::SmartSaving {

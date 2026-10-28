@@ -80,6 +80,7 @@ async function additionalAgentMappings() {
   if(lang==='zh') await evaluate(client,`document.querySelector('.trial-presets input:checked').click()`);
   await evaluate(client,`(()=>{const el=document.querySelector('.trial-agent-choice select');el.value=${JSON.stringify(`agent_${family}_default`)};el.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
   await waitFor(client,`!document.querySelector('.trial-presets')`);
+  await evaluate(client,`(()=>{const el=[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name));el.click();return true;})()`);
   await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
   assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),false,'additional routing does not require Claude presets');
   await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
@@ -95,8 +96,92 @@ async function additionalAgentMappings() {
   results.push({id:`quickstart.${family}.${lang}.no-claude-presets`,status:'passed'});
  }
 }
+async function trialIdentityChecks() {
+ let criterion, rubric;
+ const variants=['en','zh'].flatMap(lang=>['light','dark'].flatMap(theme=>[755,1200].map(width=>[lang,theme,width,width===755?600:813])));
+ const enter=async selector=>{
+  await evaluate(client,`document.querySelector(${JSON.stringify(selector)}).focus();true`);
+  await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r',unmodifiedText:'\r'});
+  await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+ };
+ for (const [lang,theme,width,height] of variants) {
+  await open(`lang=${lang}&theme=${theme}&view=quickstart&agent-family=dsh&no-reasoning-default=1&hold-writes=1`,width,height);
+  await click('.new-models button',lang==='zh'?'试用':'Try');
+  await waitFor(client,`!!document.querySelector('.trial-agent-choice select')`);
+  await evaluate(client,`(()=>{const e=document.querySelector('.trial-agent-choice select');e.value='agent_dsh_default';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+  await waitFor(client,`!!document.querySelector('.trial-choice-list .trial-choice')`);
+  await evaluate(client,`[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name)).click();true`);
+  assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),true,'a selectable binding without a supported default needs an explicit choice');
+  await enter('.trial-column .trial-reasoning button');
+  await waitFor(client,`!!document.querySelector('[role=dialog] .segment')`);
+  await enter('[role=dialog] .segment');
+  assert.equal(await evaluate(client,`document.querySelector('[role=dialog] .segment').getAttribute('aria-pressed')`),'true','reasoning can be selected with the keyboard');
+  await enter('[role=dialog] .btn-primary');
+  await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
+  assert.match(await evaluate(client,`document.querySelector('.trial-page').textContent`),/trial-qwen3-coder-plus-[0-9a-f]{8}/);
+  await shot(`trial-selection-${lang}-${theme}-${width}`);
+  for(const node of await geometry('.trial-card,.trial-reasoning')) assert.ok(node.scroll<=node.width+1,`horizontal overflow: ${JSON.stringify(node)}`);
+  await enter('.trial-footer .btn-primary');
+  await waitFor(client,`!!document.querySelector('[data-dsh-capability-state="available"]') && !!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+  assert.equal(await evaluate(client,`document.querySelector('[data-codex-capability-state]')`),null,'DSH never shows Codex capability results');
+  assert.ok(await evaluate(client,`trialTrace.some(x=>x.command==='plan_editor_options'&&x.payload.input.preview_agent==='dsh'&&x.payload.input.editor)`));
+  await shot(`trial-review-${lang}-${theme}-${width}`);
+  await evaluate(client,`document.querySelector('.trial-review > .actions .btn-primary').scrollIntoView({block:'center'});true`);
+  await shot(`trial-review-action-${lang}-${theme}-${width}`);
+  const before=await evaluate(client,`(()=>{const r=document.querySelector('.trial-review > .actions .btn-primary').getBoundingClientRect();return {left:r.left,top:r.top};})()`);
+  await enter('.trial-review > .actions button');
+  await waitFor(client,`trialWrites.pending.length===1`);
+  const during=await evaluate(client,`(()=>{const r=document.querySelector('.trial-review > .actions .btn-primary').getBoundingClientRect();return {left:r.left,top:r.top};})()`);
+  assert.ok(Math.abs(before.left-during.left)<=2 && Math.abs(before.top-during.top)<=2,`saving moved the action: ${JSON.stringify({before,during})}`);
+  await evaluate(client,`trialWrites.pending[0].release();true`);
+  await waitFor(client,`trialWrites.pending.length===2`);
+  assert.equal(await evaluate(client,`trialWrites.pending[1].action`),'publish');
+  await evaluate(client,`trialWrites.pending[1].release();true`);
+  await waitFor(client,`!!document.querySelector('.trial-mapping')`);
+  const writes=await evaluate(client,`trialTrace.filter(x=>x.command==='preview_plan_editor').map(x=>x.payload.input)`);
+  assert.deepEqual(writes.map(write=>write.action),['save_draft','publish']);
+  assert.equal(writes[0].editor.smart.primary[0].reasoning.profile,'low');
+  assert.equal(writes[1].editor.smart.primary[0].reasoning.profile,'low');
+  assert.equal(writes[0].editor.smart.judgment.competence.standard,'custom');
+  const current=writes[0].editor.smart.judgment.competence.criteria[0];
+  assert.match(current,/clear user dissatisfaction/);
+  if (criterion === undefined) criterion=current; else assert.equal(current,criterion,'the stored model-facing criterion is identical in both UI languages');
+  if (rubric === undefined) rubric=writes[0].editor.smart.judgment; else assert.deepEqual(writes[0].editor.smart.judgment,rubric,'all model-facing rubric instructions and criteria are identical across UI languages');
+  results.push({id:`quickstart.identity-preview-publication.${lang}.${theme}.${width}`,status:'passed'});
+ }
+ for (const [lang,theme,width,height] of variants) {
+  await open(`lang=${lang}&theme=${theme}&view=quickstart&agent-family=dsh&same-names=1`,width,height);
+  await click('.new-models button',lang==='zh'?'试用':'Try');
+  await waitFor(client,`!!document.querySelector('.trial-agent-choice select') && !!document.querySelector('.trial-connection-field select')`);
+  await evaluate(client,`(()=>{const e=document.querySelector('.trial-agent-choice select');e.value='agent_dsh_default';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+  const options=await evaluate(client,`[...document.querySelector('.trial-connection-field select').options].slice(1).map(e=>({label:e.textContent,value:e.value}))`);
+  assert.equal(options.length,2); assert.notEqual(options[0].label,options[1].label,'same-source connections have distinguishable labels');
+  await evaluate(client,`(()=>{const e=document.querySelector('.trial-connection-field select');e.value='binding/bailian/qwen-second';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+  const showAll=await evaluate(client,`!!document.querySelector('.trial-choice-list .trial-inline-action')`);
+  if(showAll) await evaluate(client,`document.querySelector('.trial-choice-list .trial-inline-action').click();true`);
+  await waitFor(client,`[...document.querySelectorAll('.trial-choice-list .trial-choice')].some(e=>e.textContent.includes('A second provider'))`);
+  const names=await evaluate(client,`[...document.querySelectorAll('.trial-choice-list .trial-choice')].filter(e=>e.querySelector('strong')?.textContent===primaryModel.display_name).map(e=>e.textContent)`);
+  assert.equal(names.length,2); assert.notEqual(names[0],names[1],'same model names show their distinct connection source');
+  await evaluate(client,`document.querySelector('.trial-choice-list').scrollIntoView({block:'center'});true`);
+  await shot(`trial-same-name-options-${lang}-${theme}-${width}`);
+  await evaluate(client,`[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes('A second provider')).click();true`);
+  await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
+  for(const node of await geometry('.trial-choice,.trial-connection-field')) assert.ok(node.scroll<=node.width+1,`horizontal overflow: ${JSON.stringify(node)}`);
+  await shot(`trial-same-names-${lang}-${theme}-${width}`);
+  await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
+  await waitFor(client,`!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+  assert.ok(await evaluate(client,`document.querySelector('.trial-review').textContent.includes('A second provider')`));
+  await click('.trial-review button',lang==='zh'?'保存并发布路由':'Save and publish route');
+  await waitFor(client,`!!document.querySelector('.trial-mapping')`);
+  const writes=await evaluate(client,`trialTrace.filter(x=>x.command==='preview_plan_editor').map(x=>x.payload.input.editor)`);
+  assert.equal(writes.length,2);
+  for(const editor of writes) { assert.equal(editor.smart.economy[0].binding_id,'binding/bailian/qwen-second'); assert.equal(editor.smart.primary[0].binding_id,'binding/second/same-name'); }
+  results.push({id:`quickstart.same-name-distinct-bindings.${lang}.${width}`,status:'passed'});
+ }
+}
 try {
- if(process.argv.includes('--trial-agent-reads')) { await trialAgentReadChecks({client,open,click,shot,results}); }
+ if(process.argv.includes('--trial-identity')) { await trialIdentityChecks(); }
+ else if(process.argv.includes('--trial-agent-reads')) { await trialAgentReadChecks({client,open,click,shot,results}); }
  else if(process.argv.includes('--timeline-pricing')) { await timelinePricingChecks(); }
  else {
  await trialAgentReadChecks({client,open,click,shot,results});
@@ -193,6 +278,8 @@ try {
   await waitFor(client,`trialTrace.some(x=>x.command==='observation_read' && x.payload.request.intent.view==='sessions')`);
   assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='observation_read').payload.request.intent.query.from_ms===readCostState.confirmed`),true);
   assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='observation_read').payload.request.intent.query.plan_id`),'plan/trial');
+  assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='observation_read').payload.request.intent.query.agent_id`),null,'a Plan match does not require Agent attribution');
+  assert.equal(await evaluate(client,`!!document.querySelector('.trial-session-handoff .btn-primary')`),false,'activity before confirmation is excluded');
   await shot(`handoff-waiting-${lang}-755`);
   await evaluate(client,`hideReadCost(true);tickReadCost(5000);true`);
   assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='observation_read').length`),1);
@@ -213,6 +300,15 @@ try {
  await open('lang=en&view=handoff');await waitFor(client,`trialTrace.some(x=>x.command==='observation_read')`);await click('button','Close waiting');
  const closedReads=await evaluate(client,`trialTrace.length`);await evaluate(client,`tickReadCost(5000);true`);assert.equal(await evaluate(client,`trialTrace.length`),closedReads);
  results.push({id:'handoff.close-stops-reads',status:'passed'});
+ await open('lang=en&view=handoff&hold-session-read=1');
+ await waitFor(client,`readCostState.pending.length===1`);
+ await evaluate(client,`tickReadCost(5000);tickReadCost(5000);true`);
+ assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='observation_read').length`),1,'a pending session read is never overlapped by the five-second timer');
+ await evaluate(client,`readCostState.hold=false;readCostState.pending[0]();true`);
+ await waitFor(client,`readCostState.completed===1`);
+ await evaluate(client,`tickReadCost(5000);true`);
+ await waitFor(client,`trialTrace.filter(x=>x.command==='observation_read').length===2`);
+ results.push({id:'handoff.single-in-flight-five-second-cadence',status:'passed'});
  await open('lang=en&view=suggestion-cadence');await waitFor(client,`!!document.querySelector('.trust-attention-item')`);
  const suggestionReads=()=>evaluate(client,`trialTrace.filter(x=>x.command==='observation_read' && x.payload.request.intent.view==='plan_trust_suggestions').length`);
  assert.equal(await suggestionReads(),1);await evaluate(client,`tickReadCost(30000);true`);assert.equal(await suggestionReads(),1);
@@ -250,46 +346,82 @@ try {
  assert.equal(await evaluate(client,`document.querySelector('.routing-timeline [role=alert]')`),null);
  assert.ok(await evaluate(client,`(()=>{const calls=trialTrace.filter(x=>x.command==='observation_read'&&x.payload.request.intent.view==='routing_timeline');return calls[1].at-calls[0].at<1000;})()`));
  results.push({id:'timeline.busy-retries-quietly',status:'passed'});
- await open('lang=en&view=editor&cost=1'); await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`); await click('[role=tab]','Model performance');
- await waitFor(client,`document.body.textContent.includes('Additional cost')`); await evaluate(client,`document.querySelector('[aria-label="Regular cost comparison"]').scrollIntoView({block:'center'});true`); await shot('trust-cost-positive-en-755');
- assert.ok(await evaluate(client,`document.querySelector('[aria-label="Regular cost comparison"]').textContent.includes('+')`));
- results.push({id:'trust.cost-positive-difference-disclosure',status:'passed'});
+ for (const lang of ['en','zh']) for (const width of [755,1200]) {
+  await open(`lang=${lang}&view=editor&cost=1`,width,width===755?600:813);
+  await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`);
+  await click('[role=tab]',lang==='zh'?'模型表现':'Model performance');
+  await waitFor(client,`!!document.querySelector('.trust-cost [data-cost-metric="difference"]')`);
+  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('.trust-cost').scrollIntoView({block:'center'});return true;})()`);
+  const state=await evaluate(client,`(()=>{const card=document.querySelector('.trust-cost'),row=key=>card.querySelector('[data-cost-metric="'+key+'"] strong');return {routed:row('routed').innerText,reference:row('reference').innerText,difference:row('difference').innerText,tone:row('difference').className,open:card.querySelector('.trust-cost-details').open,text:card.innerText};})()`);
+  assert.equal(state.routed,'$0.0180'); assert.equal(state.reference,'$0.0120');
+  assert.equal(state.difference,'+$0.0060'); assert.equal(state.tone,'more');
+  assert.equal(state.open,false,'calculation details start collapsed');
+  assert.ok(!state.text.includes(lang==='zh'?'可精确比较':'Exactly comparable'));
+  for(const g of await geometry('.trust-cost,.trust-cost-row,.trust-cost-details')){assert.ok(g.scroll<=g.width+2,JSON.stringify(g));assert.ok(g.left>=-1&&g.right<=width+1,JSON.stringify(g));}
+  await shot(`trust-cost-positive-${lang}-${width}`);
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`document.querySelector('.trust-cost-details').open`);
+  const details=await evaluate(client,`document.querySelector('.trust-cost-details .disclosure-body').innerText`);
+  assert.ok(details.includes('3/3'));
+  assert.ok(details.includes(lang==='zh'?'仅已知配对请求的小计':'Known paired-request subtotals only'));
+  assert.ok(details.includes('$0.0180 / $0.0120'));
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`!document.querySelector('.trust-cost-details').open`);
+  results.push({id:`trust.cost-positive-difference-disclosure.${lang}.${width}`,status:'passed'});
+ }
  for (const lang of ['en','zh']) for (const width of [755,1200]) for (const kind of ['partial','unknown']) {
   await open(`lang=${lang}&view=editor&cost-${kind}=1`,width,width===755?600:813);
   await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`);
   await click('[role=tab]',lang==='zh'?'模型表现':'Model performance');
-  const label=lang==='zh'?'常规组成本对比':'Regular cost comparison';
-  await waitFor(client,`!!document.querySelector('[aria-label="${label}"]')`);
-  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('[aria-label="${label}"]').scrollIntoView({block:'center'});return true;})()`);
-  const text=await evaluate(client,`document.querySelector('[aria-label="${label}"]').textContent`);
-  assert.ok(text.includes(lang==='zh'?'排除数量包含在缺失数量中':'Excluded gaps are included in the missing count'));
-  assert.ok(text.includes(lang==='zh'?'完整范围的差额未知':'The full-scope difference is unknown'));
-  assert.equal(text.includes(lang==='zh'?'仅完整配对请求的小计':'Paired complete-request subtotals'),kind==='partial');
-  assert.equal(text.includes(lang==='zh'?'额外成本':'Additional cost'),false);
-  assert.ok(text.includes(`${kind==='partial'?1:0}/3`));
-  for(const g of await geometry())assert.ok(g.scroll<=g.width+2,JSON.stringify(g));
+  await waitFor(client,`!!document.querySelector('.trust-cost [data-cost-metric="difference"]')`);
+  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('.trust-cost').scrollIntoView({block:'center'});return true;})()`);
+  const state=await evaluate(client,`(()=>{const card=document.querySelector('.trust-cost'),row=key=>card.querySelector('[data-cost-metric="'+key+'"] strong').innerText;return {routed:row('routed'),reference:row('reference'),difference:row('difference'),open:card.querySelector('.trust-cost-details').open,text:card.innerText};})()`);
+  assert.equal(state.routed,lang==='zh'?'未知':'Unknown'); assert.equal(state.reference,lang==='zh'?'未知':'Unknown');
+  assert.equal(state.difference,lang==='zh'?'差额未知':'Difference unknown');
+  assert.equal(state.open,false,'calculation details start collapsed');
+  assert.ok(!state.text.includes(lang==='zh'?'可精确比较':'Exactly comparable'));
+  for(const g of await geometry('.trust-cost,.trust-cost-row,.trust-cost-details')){assert.ok(g.scroll<=g.width+2,JSON.stringify(g));assert.ok(g.left>=-1&&g.right<=width+1,JSON.stringify(g));}
   await shot(`trust-cost-gaps-${kind}-${lang}-${width}`);
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`document.querySelector('.trust-cost-details').open`);
+  const details=await evaluate(client,`document.querySelector('.trust-cost-details .disclosure-body').innerText`);
+  const missing=kind==='partial'?2:3;
+  assert.ok(details.includes(`${kind==='partial'?1:0}/3`));
+  assert.ok(details.includes(lang==='zh'?`缺口 ${missing}`:`${missing} missing`));
+  assert.ok(details.includes(lang==='zh'?`排除 ${missing} 个请求，已包含在缺口数量中`:`${missing} excluded requests are included in the missing count`));
+  assert.equal(details.includes(lang==='zh'?'仅已知配对请求的小计':'Known paired-request subtotals only'),kind==='partial');
+  assert.equal(details.includes('$0.0060 / $0.0040'),kind==='partial');
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`!document.querySelector('.trust-cost-details').open`);
   results.push({id:`trust.cost-gaps.${kind}.${lang}.${width}`,status:'passed'});
  }
  for (const lang of ['en','zh']) for (const width of [755,1200]) {
   await open(`lang=${lang}&view=editor&cost-routed-only=1`,width,width===755?600:813);
   await waitFor(client,`!!document.querySelector('[data-trust-control="smart"]')`);
   await click('[role=tab]',lang==='zh'?'模型表现':'Model performance');
-  const label=lang==='zh'?'常规组成本对比':'Regular cost comparison';
-  await waitFor(client,`!!document.querySelector('[aria-label="${label}"]')`);
-  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('[aria-label="${label}"]').scrollIntoView({block:'center'});return true;})()`);
-  const text=await evaluate(client,`document.querySelector('[aria-label="${label}"]').textContent`);
-  assert.ok(text.includes('0.0180'));
-  assert.ok(text.includes(lang==='zh'?'完整范围的差额未知':'The full-scope difference is unknown'));
-  assert.ok(text.includes('0/1'));
-  assert.ok(text.includes(lang==='zh'?'可完整比较':'Fully comparable'));
-  assert.ok(text.includes(lang==='zh'?'主力参考费用范围':'Primary reference cost range'));
-  assert.ok(text.includes(lang==='zh'?'估算差额范围':'Estimated difference range'));
-  assert.ok(text.includes('0.0929') && text.includes('0.1157'));
-  assert.ok(text.includes(lang==='zh'?'未上报的缓存写入量':'unreported cache writes'));
-  assert.equal(text.includes(lang==='zh'?'仅完整配对请求的小计':'Paired complete-request subtotals'),false);
-  for(const g of await geometry())assert.ok(g.scroll<=g.width+2,JSON.stringify(g));
+  await waitFor(client,`!!document.querySelector('.trust-cost [data-cost-metric="difference"]')`);
+  await evaluate(client,`(()=>{document.querySelector('.occami-root')?.setAttribute('data-theme',${JSON.stringify(width===755?'light':'dark')});document.querySelector('.trust-cost').scrollIntoView({block:'center'});return true;})()`);
+  const state=await evaluate(client,`(()=>{const card=document.querySelector('.trust-cost'),row=key=>card.querySelector('[data-cost-metric="'+key+'"] strong');return {routed:row('routed').innerText,reference:row('reference').innerText,difference:row('difference').innerText,tone:row('difference').className,open:card.querySelector('.trust-cost-details').open,text:card.innerText};})()`);
+  assert.equal(state.routed,'$0.0180');
+  assert.ok(state.reference.includes(lang==='zh'?'$0.0928 至 $0.1158':'$0.0928 to $0.1158'));
+  assert.ok(state.difference.includes(lang==='zh'?'−$0.0978 至 −$0.0748':'−$0.0978 to −$0.0748'));
+  assert.ok(state.reference.includes(lang==='zh'?'范围':'Range') && state.difference.includes(lang==='zh'?'范围':'Range'));
+  assert.equal(state.tone,'less'); assert.equal(state.open,false,'calculation details start collapsed');
+  assert.ok(!state.text.includes(lang==='zh'?'差额未知':'Difference unknown'));
+  assert.ok(state.text.includes(lang==='zh'?'不是账单，也不是实际节省':'not a bill or an actual cash saving'));
+  assert.doesNotMatch(state.text,/you (?:saved|save)|cash saved|已节省|节省了/i);
+  for(const g of await geometry('.trust-cost,.trust-cost-row,.trust-cost-details')){assert.ok(g.scroll<=g.width+2,JSON.stringify(g));assert.ok(g.left>=-1&&g.right<=width+1,JSON.stringify(g));}
   await shot(`trust-cost-routed-only-${lang}-${width}`);
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`document.querySelector('.trust-cost-details').open`);
+  const details=await evaluate(client,`document.querySelector('.trust-cost-details .disclosure-body').innerText`);
+  assert.ok(details.includes('0/1'));
+  assert.ok(details.includes(lang==='zh'?'缺口 1':'1 missing'));
+  assert.ok(details.includes('92880 / 115738 · -97738 / -74880'));
+  assert.ok(details.includes(lang==='zh'?'未上报缓存写入量的上下限':'possible unreported cache-write amount'));
+  assert.ok(!details.includes(lang==='zh'?'仅已知配对请求的小计':'Known paired-request subtotals only'));
+  await click('.trust-cost-details summary',lang==='zh'?'计算方式':'Calculation details');
+  await waitFor(client,`!document.querySelector('.trust-cost-details').open`);
   results.push({id:`trust.cost-routed-only.${lang}.${width}`,status:'passed'});
  }
 
@@ -471,6 +603,7 @@ try {
   await click('.trial-review button',lang==='zh'?'保存并发布路由':'Save and publish route');
   if(lost) {
    await waitFor(client,`trialTrace.some(x=>x.command==='preview_plan_editor'&&x.payload.input.action==='publish')`);
+   await waitFor(client,`document.querySelector('.trial-publication-status')?.textContent.includes('正在确认发布结果')`);
    await click('.trial-review button',lang==='zh'?'刷新结果':'Refresh result');
   }
   await waitFor(client,`!!document.querySelector('.trial-mapping .trial-agent-choice')`);

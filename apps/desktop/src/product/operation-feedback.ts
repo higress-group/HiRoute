@@ -59,6 +59,11 @@ export function pendingFeedbackIdentity(
   return current?.operation_id ?? pendingOperationId ?? null;
 }
 
+/** Local trial progress may replace only feedback for the same known operation. */
+export function representedByTrial(identity: string | null, phase: OperationFeedback['phase'], observationError: string, recoveryPending: boolean, locallyRepresented: readonly string[]): boolean {
+  return Boolean(identity && !observationError && !recoveryPending && (phase === 'pending' || phase === 'succeeded') && locallyRepresented.includes(identity));
+}
+
 function subject(presentation: OperationPresentation, language: Language): string {
   if (presentation.target) return presentation.target;
   const labels = {

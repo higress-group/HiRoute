@@ -457,8 +457,17 @@ fn query_deadline_interrupts_long_sql_without_a_writer_dependency() {
     let started = std::time::Instant::now();
     let deadline = super::QueryDeadline::start(&connection).unwrap();
     let result=connection.query_row("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1000000000) SELECT sum(x) FROM n",[],|row|row.get::<_,i64>(0));
-    assert!(result.is_err());
+    assert!(
+        matches!(result, Err(rusqlite::Error::SqliteFailure(error, _)) if error.code == rusqlite::ErrorCode::OperationInterrupted)
+    );
+    assert!(started.elapsed() >= std::time::Duration::from_millis(750));
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    assert_eq!(
+        connection
+            .pragma_query_value(None, "busy_timeout", |r| r.get::<_, i64>(0))
+            .unwrap(),
+        100
+    );
     drop(deadline);
     assert_eq!(
         connection
@@ -466,6 +475,29 @@ fn query_deadline_interrupts_long_sql_without_a_writer_dependency() {
             .unwrap(),
         1
     );
+}
+
+#[test]
+fn caller_deadline_stays_shorter_and_is_not_reset_for_the_next_statement() {
+    use std::time::{Duration, Instant};
+
+    let connection = rusqlite::Connection::open_in_memory().unwrap();
+    let started = Instant::now();
+    let scope = reader(None).with_query_deadline(started + Duration::from_millis(200));
+    let _deadline = super::QueryDeadline::start_for(&connection, &scope).unwrap();
+    assert!(
+        connection
+            .pragma_query_value(None, "busy_timeout", |r| r.get::<_, i64>(0))
+            .unwrap()
+            <= 100
+    );
+    for _ in 0..2 {
+        let result = connection.query_row("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1000000000) SELECT sum(x) FROM n", [], |r| r.get::<_, i64>(0));
+        assert!(
+            matches!(result, Err(rusqlite::Error::SqliteFailure(error, _)) if error.code == rusqlite::ErrorCode::OperationInterrupted)
+        );
+    }
+    assert!(started.elapsed() < Duration::from_millis(750));
 }
 
 #[test]

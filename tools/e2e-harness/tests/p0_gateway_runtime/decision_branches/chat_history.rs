@@ -83,7 +83,10 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
             body["choices"][0]["message"].clone()
         };
         let thinking = "r".repeat(reasoning_bytes);
-        let mut history = vec![json!({"role":"user","content":"Read the value with lookup."})];
+        let mut history = vec![
+            json!({"role":"user","content":"Read the value with lookup.",
+            "message_id":"platform-message-1"}),
+        ];
         let mut assistant = send(&history, "hermes-main", "lookup-user-1");
         assert_eq!(assistant["tool_calls"][0]["function"]["name"], "lookup");
         if empty_placeholder {
@@ -110,7 +113,8 @@ fn hermes_chat_aliases_preserve_tools_without_claiming_input_origin() {
             assistant["reasoning"] = json!(thinking);
         }
         history.push(assistant);
-        history.push(json!({"role":"user","content":"Add eight to that value."}));
+        history.push(json!({"role":"user","content":"Add eight to that value.",
+            "message_id":"platform-message-2"}));
         send(&history, "hermes-main", "lookup-user-2");
         assert_eq!(decider.calls(), if reasoning_bytes == 0 { 2 } else { 3 });
         // Another native session and rewritten main history also keep execution

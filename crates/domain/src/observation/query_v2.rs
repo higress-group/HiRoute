@@ -20,11 +20,18 @@ pub struct ObservationReaderContext {
 }
 
 impl ObservationReaderContext {
+    /// Query budget for a management observation read, shared by composed owners.
+    /// Gateway execution and background maintenance use their own budgets.
+    pub const QUERY_BUDGET: std::time::Duration = std::time::Duration::from_secs(1);
+
     /// A composed analysis shares one budget across its existing read owners.
     /// This trusted context is never deserialized from a client request.
     pub fn with_query_deadline(mut self, deadline: std::time::Instant) -> Self {
-        self.query_deadline =
-            Some(deadline.min(std::time::Instant::now() + std::time::Duration::from_millis(500)));
+        let deadline = deadline.min(std::time::Instant::now() + Self::QUERY_BUDGET);
+        self.query_deadline = Some(
+            self.query_deadline
+                .map_or(deadline, |current| current.min(deadline)),
+        );
         self
     }
     pub fn query_deadline(&self) -> Option<std::time::Instant> {
@@ -359,6 +366,41 @@ fn identifier(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_deadlines_allow_one_second_without_extending_a_composed_budget() {
+        use std::time::{Duration, Instant};
+
+        let reader = ObservationReaderContext::local_user(
+            WorkspaceId::default(),
+            "observer".into(),
+            1,
+            10_000,
+            false,
+            false,
+        )
+        .unwrap();
+        let before = Instant::now();
+        let requested = before + Duration::from_millis(750);
+        let shared = reader.clone().with_query_deadline(requested);
+        assert_eq!(shared.query_deadline(), Some(requested));
+        assert_eq!(reader.binding().unwrap(), shared.binding().unwrap());
+        let capped = reader.with_query_deadline(before + Duration::from_secs(60));
+        let after = Instant::now();
+        assert!(capped.query_deadline().unwrap() >= before + Duration::from_secs(1));
+        assert!(capped.query_deadline().unwrap() <= after + Duration::from_secs(1));
+        let composed = shared.with_query_deadline(before + Duration::from_secs(60));
+        assert_eq!(composed.query_deadline(), Some(requested));
+        let expired = composed
+            .with_query_deadline(before)
+            .with_query_deadline(after + Duration::from_secs(1));
+        assert_eq!(expired.query_deadline(), Some(before));
+        assert_eq!(
+            expired.check(0, false, false),
+            Err(ObservationQueryError::ReadTimeout)
+        );
+    }
+
     #[test]
     fn scope_and_permissions_bind_cursors_and_expiry_is_exclusive() {
         let reader = ObservationReaderContext::run_scoped(

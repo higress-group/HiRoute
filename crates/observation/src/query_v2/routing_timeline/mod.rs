@@ -185,7 +185,7 @@ impl crate::LocalObservationStore {
         }
         state.visibility = visibility;
         cursor.expires_at = state.expires_at;
-        if started.elapsed() > std::time::Duration::from_millis(500) {
+        if started.elapsed() > hiroute_domain::ObservationReaderContext::QUERY_BUDGET {
             return Err(ObservationV2Error::Timeout);
         }
         let start = cursor.after.as_ref().map_or(0, |after| {
@@ -374,7 +374,10 @@ mod tests {
         assert_eq!(
             store
                 .routing_timeline_inner(&reader, &query, 5000, || {
-                    std::thread::sleep(std::time::Duration::from_millis(510));
+                    std::thread::sleep(
+                        ObservationReaderContext::QUERY_BUDGET
+                            + std::time::Duration::from_millis(10),
+                    );
                 })
                 .unwrap_err(),
             ObservationV2Error::Timeout

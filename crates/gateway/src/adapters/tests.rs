@@ -27,6 +27,9 @@ mod payload_tolerance;
 #[path = "tests/chat_reasoning.rs"]
 mod chat_reasoning;
 
+#[path = "tests/chat_message_metadata.rs"]
+mod chat_message_metadata;
+
 #[path = "tests/structured_output.rs"]
 mod structured_output;
 

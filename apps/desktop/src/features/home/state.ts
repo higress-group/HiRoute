@@ -24,7 +24,9 @@ export function beginDomainRead<T>(
   requestId: string,
   targetKey: string,
 ): DomainReadSlot<T> {
-  const previous = current.read.status === 'ready' ? current.read.data : current.read.previous;
+  const previous = current.targetKey === targetKey
+    ? current.read.status === 'ready' ? current.read.data : current.read.previous
+    : undefined;
   return {
     requestId,
     targetKey,
@@ -77,9 +79,28 @@ export function deriveHomeServiceStatus(read: HomeRead<HomeService>): {
     && ['ready', 'empty', 'no_new_calls'].includes(service.gateway);
   return {
     state: service.nativeConnectionLost ? 'connection_lost' : service.daemon === 'read_only' ? 'read_only'
-      : service.daemon === 'unavailable' ? 'unavailable'
+      : service.daemon === 'unavailable' || service.gateway === 'unavailable' ? 'unavailable'
         : running ? 'ready' : 'unknown',
     operational: running && Boolean(service.recoveryReady) && !service.nativeConnectionLost,
+  };
+}
+
+// A previous result is only presentation while a read for the same target is
+// in flight. It is never passed to deriveHomeServiceStatus for authorization.
+export function deriveHomeServicePresentation(read: HomeRead<HomeService>): {
+  state: ReturnType<typeof deriveHomeServiceStatus>['state'];
+  refreshing: boolean;
+  checkFailed: boolean;
+} {
+  const refreshing = read.status === 'loading';
+  const checkFailed = read.status === 'error';
+  const data = read.status === 'ready' ? read.data : refreshing ? read.previous : undefined;
+  if (!data) return { state: 'unknown', refreshing, checkFailed };
+  const status = deriveHomeServiceStatus({ status: 'ready', data });
+  return {
+    state: status.state === 'ready' && !status.operational ? 'unknown' : status.state,
+    refreshing,
+    checkFailed,
   };
 }
 

@@ -15,10 +15,16 @@ fn threshold() -> Value {
 }
 
 fn resolved_protocol() -> Value {
-    object(
-        &["schema", "fixed", "prior_context_max_turns"],
-        json!({"schema":{"const":hiroute_domain::SYSTEM_ONE_C_V1},"fixed":{"const":hiroute_domain::NativeFixedContentV1::c_v1()},"prior_context_max_turns":{"const":8}}),
-    )
+    let pair = |schema, fixed| {
+        object(
+            &["schema", "fixed", "prior_context_max_turns"],
+            json!({"schema":{"const":schema},"fixed":{"const":fixed},"prior_context_max_turns":{"const":8}}),
+        )
+    };
+    json!({"oneOf":[
+        pair(hiroute_domain::SYSTEM_ONE_C_V1, hiroute_domain::NativeFixedContentV1::c_v1()),
+        pair(hiroute_domain::SYSTEM_ONE_C_V2, hiroute_domain::NativeFixedContentV1::c_v2())
+    ]})
 }
 fn frozen() -> Value {
     let level = object(
@@ -101,4 +107,39 @@ pub(super) fn files() -> [(&'static str, String); 2] {
             pretty_json(&result),
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_schema_pairs_each_supported_identity_with_its_exact_bundle() {
+        let schema: Value = serde_json::from_str(&files()[0].1).unwrap();
+        let versions = schema["properties"]["protocol"]["properties"]["protocol"]["oneOf"]
+            .as_array()
+            .unwrap();
+        assert_eq!(versions.len(), 2);
+        for (entry, schema, fixed) in [
+            (
+                &versions[0],
+                hiroute_domain::SYSTEM_ONE_C_V1,
+                hiroute_domain::NativeFixedContentV1::c_v1(),
+            ),
+            (
+                &versions[1],
+                hiroute_domain::SYSTEM_ONE_C_V2,
+                hiroute_domain::NativeFixedContentV1::c_v2(),
+            ),
+        ] {
+            assert_eq!(entry["additionalProperties"], false);
+            assert_eq!(entry["properties"]["schema"]["const"], schema);
+            assert_eq!(
+                entry["properties"]["fixed"]["const"],
+                serde_json::to_value(fixed).unwrap()
+            );
+            assert_eq!(entry["properties"]["prior_context_max_turns"]["const"], 8);
+            assert_eq!(entry["required"].as_array().unwrap().len(), 3);
+        }
+    }
 }

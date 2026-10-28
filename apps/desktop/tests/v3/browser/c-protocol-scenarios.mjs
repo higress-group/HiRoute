@@ -1,6 +1,7 @@
 import { branchRouting } from '../../../src/features/decision-services/types.ts';
 import { defaultJudgment } from '../../../src/features/decision-services/types.ts';
 import stock from '../../../../../crates/domain/src/routing/fixtures/system_one_c_v1.json' with { type: 'json' };
+import guidance from '../../../../../assets/decision-services/default-assessment-guidance.json' with { type: 'json' };
 import { resolveAssessment } from '../../../src/features/decision-services/native-protocol.ts';
 import { scenario } from './scenario-selection.mjs';
 
@@ -77,15 +78,22 @@ export function cProtocolScenarios({ fresh, routing, click, until, all, text, ca
     return input;
   }
   return [scenario('desktop.routing.native-default',['routing-editor','decision-services','c-protocol'],'Native editing has one default and ordinary publication without capability controls',async()=>{
+    let previousDefinition;
     for(const language of ['zh','en']){
       const t=(zh,en)=>language==='zh'?zh:en;await open(language);
       assertCopy();geometry();
       for(const field of all('.decision-judgment-fields'))for(const detail of field.querySelectorAll('details'))if(!detail.open)detail.querySelector('summary').click();
       const criteria=stock.q1.criteria;
       assert(document.querySelector('[data-decision-field="smart-criterion-0"]').value===criteria[0],'Released default did not resolve to current native default');
+      const instructions=document.querySelector('[data-decision-field="smart-competence-instructions"]').value;
+      assert(instructions.endsWith(guidance.feedback),'Feedback guidance missing from displayed model instructions');
       setInput(document.querySelector('[data-decision-field="smart-floor"]'),'0.51');
       await until(()=>document.querySelector('[data-decision-field="smart-floor"]').value==='0.51','ordinary edit');
       const input=await publish(t);
+      const definition=input.editor.smart.judgment.competence;
+      assert(definition.instructions===instructions,'Displayed and saved model instructions differ');
+      if(previousDefinition) assert(JSON.stringify(definition)===JSON.stringify(previousDefinition),'UI locale changed the saved default definition');
+      previousDefinition=definition;
       for(const key of ['historical_applicability','native_protocol','prior_context_max_turns'])assert(!(key in input.editor.smart),'Retired field entered editor input: '+key);
       assert(input.editor.smart.judgment.competence.floor_millis===510&&input.editor.smart.judgment.degree.simple_threshold_millis===800,'Threshold changed');
       assert(!calls('test_classifier_decision').length,'Opening/publication dispatched a model request');

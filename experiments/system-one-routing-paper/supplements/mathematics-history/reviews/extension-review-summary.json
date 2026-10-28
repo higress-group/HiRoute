@@ -1,0 +1,36 @@
+{
+  "reviewer_role": "independent_anonymous_reviewer",
+  "procedure": "The reviewer labeled all anonymized records before opening author labels or source mapping, then reconciled. Initial and final positions remain available. No evaluated model outputs were supplied during label review.",
+  "human_expert_validation": false,
+  "records": 92,
+  "initial_labels_original_sha256": "eb52a96206b79b65a141453c0c8ef92689eda259b959168f573bc6b9c82d71b0",
+  "initial_counts": {
+    "determinate": 80,
+    "conditional": 8,
+    "insufficient": 4
+  },
+  "labels_frozen_before_calls": true,
+  "final_counts": {
+    "determinate": 80,
+    "conditional": 8,
+    "insufficient": 4
+  },
+  "targeted_key_label_agreements": 48,
+  "conditional_pairs": [
+    "live3-01",
+    "live3-08",
+    "live3-10",
+    "live3-13"
+  ],
+  "insufficient_pairs": [
+    "live3-14",
+    "live3-15"
+  ],
+  "legacy_assessment_grade_semantics": {
+    "0": "no visible failure",
+    "1": "uncertain failure evidence",
+    "2": "visible failure"
+  },
+  "legacy_code_is_not_performance_grade": true,
+  "threshold_clarification": "The fixed continuous threshold is h < 1. An ordinal or modal grade of 1 does not uniquely locate the probability-weighted scalar relative to that threshold; initial rationale wording about an unspecified threshold should be read as insufficient evidence about h, not an unknown threshold."
+}

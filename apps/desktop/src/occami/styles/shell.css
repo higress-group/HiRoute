@@ -212,6 +212,17 @@
   font-weight: 600;
 }
 
+.sidebar-health-retry {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
 .main {
   position: relative;
   min-width: 0;

@@ -4,7 +4,28 @@ use hiroute_domain::*;
 
 pub(super) const MARKER_SQL: &str = "CREATE TABLE stable_storage_format(singleton INTEGER PRIMARY KEY CHECK(singleton=1), format_version INTEGER NOT NULL CHECK(format_version=1), converted INTEGER NOT NULL CHECK(converted IN (0,1))); INSERT INTO stable_storage_format VALUES(1,1,1);";
 
-pub(crate) fn acquire_startup_lock(root: &Path) -> Result<std::fs::File, LocalStorageError> {
+#[cfg(unix)]
+pub(crate) struct StartupLock {
+    file: std::fs::File,
+    owner_pid: u32,
+}
+
+#[cfg(unix)]
+impl Drop for StartupLock {
+    fn drop(&mut self) {
+        // The shared guard outlives every actual store, including into_parts.
+        // An incidental fork/dup descriptor must not extend that ownership
+        // until its eventual close/exec. File close remains the fallback.
+        if self.owner_pid == std::process::id() {
+            let _ = fs2::FileExt::unlock(&self.file);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub(crate) type StartupLock = std::fs::File;
+
+pub(crate) fn acquire_startup_lock(root: &Path) -> Result<StartupLock, LocalStorageError> {
     use fs2::FileExt;
     let path = root.join("startup.lock");
     #[cfg(windows)]
@@ -67,8 +88,22 @@ pub(crate) fn acquire_startup_lock(root: &Path) -> Result<std::fs::File, LocalSt
             LocalStorageError::Io(error)
         }
     })?;
-    Ok(file)
+    #[cfg(unix)]
+    {
+        Ok(StartupLock {
+            file,
+            owner_pid: std::process::id(),
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(file)
+    }
 }
+
+#[cfg(all(test, unix))]
+#[path = "startup_lock_tests.rs"]
+mod startup_lock_tests;
 
 mod dependencies;
 

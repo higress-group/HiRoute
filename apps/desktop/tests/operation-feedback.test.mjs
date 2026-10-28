@@ -6,6 +6,7 @@ import {
   isTerminalOperation,
   operationFeedback,
   pendingFeedbackIdentity,
+  representedByTrial,
   shouldObservePendingOperation,
 } from '../src/product/operation-feedback.ts';
 
@@ -90,4 +91,16 @@ test('only actual terminal server states end progress', () => {
   assert.equal(isTerminalOperation('needs_attention'), true);
   assert.equal(isTerminalOperation('running'), false);
   assert.equal(isTerminalOperation('unknown'), false);
+});
+
+test('trial feedback replaces only the same known pending or successful operation', () => {
+  assert.equal(representedByTrial('known', 'pending', '', false, ['known']), true);
+  assert.equal(representedByTrial('known', 'succeeded', '', false, ['known']), true);
+  assert.equal(representedByTrial('other', 'pending', '', false, ['known']), false);
+  assert.equal(representedByTrial(null, 'pending', '', false, ['known']), false);
+  assert.equal(representedByTrial('known', 'failed', '', false, ['known']), false);
+  assert.equal(representedByTrial('known', 'unverified', '', false, ['known']), false);
+  assert.equal(representedByTrial('known', 'pending', 'AUTHORITY_LOST', false, ['known']), false);
+  assert.equal(representedByTrial('known', 'pending', '', true, ['known']), false);
+  assert.equal(representedByTrial('known', 'pending', '', false, []), false);
 });

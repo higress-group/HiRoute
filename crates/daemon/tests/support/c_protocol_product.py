@@ -10,7 +10,8 @@ import time
 from publication_process import plan_change
 from publication_product import encoded
 
-C = 'hiroute.system-one-c/v1'
+C_V1 = 'hiroute.system-one-c/v1'
+C = 'hiroute.system-one-c/v2'
 LEGACY = 'hiroute.system-one-legacy/v1'
 
 
@@ -21,9 +22,14 @@ def digest(value):
 def native_protocol(repository):
     stock = json.loads((repository / 'crates/domain/src/routing/fixtures/system_one_c_v1.json').read_text())
     assert digest(stock) == 'sha256:4dbab2f53954eb2176b6aa8d31b97808c4fee15ebb2fae337012eba348aef3c7'
+    current = json.loads((repository / 'crates/domain/src/routing/fixtures/system_one_c_v2.json').read_text())
+    assert digest(current) == 'sha256:a545e497ae5478150790c29f17c041c02a77a29cd825ce2c5fd849b6e4b68efc'
+    assert current['q0'] == stock['q0'] and current['q1'] == stock['q1']
     wrapper, suffix = stock['q1']['instructions'].split(' Distinguish those meanings', 1)
+    guidance = json.loads((repository / 'assets/decision-services/default-assessment-guidance.json').read_text())
     return {'prior_context_max_turns': 8}, {
-            'instructions': 'Distinguish those meanings' + suffix, 'criteria': stock['q1']['criteria']}
+            'instructions': 'Distinguish those meanings' + suffix + ' ' + guidance['feedback'],
+            'criteria': stock['q1']['criteria']}
 
 
 
@@ -49,7 +55,7 @@ def frozen_from(preview):
 
 
 def exercise(product, cli, service, endpoint, selection):
-    _, stock = native_protocol(product.repo)
+    _, current = native_protocol(product.repo)
     smart = copy.deepcopy(product.editor['smart'])
     released = json.loads((product.repo / 'crates/domain/src/routing/authoring/fixtures/released-default-assessment.v1.json').read_text())
     smart['judgment']['competence'].update(released['assessment'])
@@ -81,11 +87,16 @@ def exercise(product, cli, service, endpoint, selection):
     preview, saved = publish(editor, 'native-current-default')
     frozen = frozen_from(preview)
     assert frozen['protocol']['schema'] == C and frozen['protocol']['prior_context_max_turns'] == 8
+    v2_questions = json.loads((product.repo / 'crates/domain/src/routing/fixtures/system_one_c_v2.json').read_text())
+    assert frozen['protocol']['fixed']['applicability'] == v2_questions['q2']
     assert frozen['scopes']['smart_saving']['standard'] == 'default'
+    assessment = frozen['scopes']['smart_saving']['assessment']
+    assert assessment['instructions'] == frozen['protocol']['fixed']['assessment_wrapper'] + ' ' + current['instructions']
+    assert assessment['criteria'] == current['criteria']
     assert judgment(saved)['degree'] == original['degree']
     assert judgment(saved)['competence']['floor_millis'] == 317
-    assert judgment(saved)['competence']['instructions'] == stock['instructions']
-    assert judgment(saved)['competence']['criteria'] == stock['criteria']
+    assert judgment(saved)['competence']['instructions'] == current['instructions']
+    assert judgment(saved)['competence']['criteria'] == current['criteria']
     assert not any(field in editor['smart'] for field in ['native_protocol', 'historical_applicability', 'prior_context_max_turns'])
     for field in ['native_protocol', 'historical_applicability', 'prior_context_max_turns']:
         invalid = copy.deepcopy(editor)
@@ -125,6 +136,13 @@ def exercise(product, cli, service, endpoint, selection):
     body = endpoint.requests[-1][1]
     assert set(body['state']) == {'latest_user', 'prior_context', 'assessment_stage', 'history_partial'}
     assert body['state']['assessment_stage'] and len(body['questions']) == 3
+    assert body['questions']['q2'] == frozen['protocol']['fixed']['applicability']
+    baseline = json.loads((product.repo / 'crates/domain/src/routing/fixtures/baseline-c-default-publication.json').read_text())['frozen']
+    assert baseline['protocol']['schema'] == C_V1
+    old_request = {**request, 'protocol': baseline}
+    old = cli('decision services test', old_request)['data']; calls += 1
+    assert old['state'] == 'verified' and old['question_count'] == 3 and old['protocol_digest'] == baseline['digest']
+    assert endpoint.requests[-1][1]['questions']['q2'] == baseline['protocol']['fixed']['applicability']
     stale = copy.deepcopy(request); stale['service_revision'] = 999
     assert cli('decision services test', stale, ok=False)['status'] != 'succeeded'
     assert len(endpoint.requests) == calls, 'missing saved revision dispatched a request'
@@ -142,15 +160,23 @@ def exercise(product, cli, service, endpoint, selection):
     result = cli('decision services test', request)['data']; calls += 1
     assert result['state'] == 'verified' and result['question_count'] == 19, result
     assert len(endpoint.requests[-1][1]['questions']) == 19
+    assert maximum['protocol']['fixed']['applicability'] in endpoint.requests[-1][1]['questions'].values()
+    old_maximum = copy.deepcopy(maximum)
+    old_maximum['protocol'] = copy.deepcopy(baseline['protocol'])
+    old_maximum['digest'] = digest([old_maximum['protocol'], old_maximum['context_layout'], old_maximum['decision'], old_maximum['scopes']])
+    request['protocol'] = old_maximum
+    result = cli('decision services test', request)['data']; calls += 1
+    assert result['state'] == 'verified' and result['question_count'] == 19, result
+    assert baseline['protocol']['fixed']['applicability'] in endpoint.requests[-1][1]['questions'].values()
     smart['judgment']['competence']['standard'] = 'default'
     _, reset = publish(editor, 'native-reset-default')
-    assert judgment(reset)['competence']['instructions'] == stock['instructions']
-    assert judgment(reset)['competence']['criteria'] == stock['criteria']
+    assert judgment(reset)['competence']['instructions'] == current['instructions']
+    assert judgment(reset)['competence']['criteria'] == current['criteria']
     assert judgment(reset)['degree'] == original['degree']
     assert judgment(reset)['competence']['floor_millis'] == 317
     endpoint.c_vectors = False
     print(json.dumps({'scenario': 'native-default-custom-republication-restart-and-explicit-diagnostics',
-                      'state': 'green', 'explicit_calls': 4, 'routing_calls': routing_calls, 'implicit_calls': 0}), flush=True)
+                      'state': 'green', 'explicit_calls': 6, 'routing_calls': routing_calls, 'implicit_calls': 0}), flush=True)
 
 
 def execute_and_inspect(product, endpoint, saved):

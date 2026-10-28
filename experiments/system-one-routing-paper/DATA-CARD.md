@@ -1,5 +1,10 @@
 # Dataset card
 
+The mathematical dependency-state studies in Sections 5.8–5.9 are documented in
+the [supplementary package](supplements/mathematics-history/README.md). They add
+three separately reported cohorts and do not replace the labels, main tables or
+latency conditions described below.
+
 Research snapshot: 18 October 2026. Public packaging and latency update:
 19 October 2026. Original decision-quality datasets, labels and responses are
 preserved; the latency update does not change their experimental conditions.

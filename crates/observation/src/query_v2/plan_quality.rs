@@ -15,18 +15,21 @@ mod snapshot_tests;
 
 /// Both projections share the same scope and transaction. Detail filters never
 /// enter this CTE, so pagination and drill-down cannot change the full-scope mean.
-/// The small safe-event catalog excludes known unrelated payloads before opening
-/// content carriers; absent projections retain the original reasoning lookup.
+/// The request-scoped candidate index excludes unrelated content carriers.
+/// The safe-event guard preserves missing projections and selected corruption.
 /// Guarded CASE expressions match the small JSON expression indexes. The inner
 /// CASE is the indexed value; the outer invalid-JSON branch preserves the original
 /// read failure instead of treating corrupt content as a missing field.
+/// A request tombstone with no current membership retires facts before physical
+/// cleanup. Content-only deletion keeps that membership and its quality evidence.
 pub(super) const SCOPE: &str = "
     SELECT q.*,
       json_extract(q.branch_execution_json,'$.group') AS execution_group,
       json_extract(q.branch_execution_json,'$.candidate_index') AS candidate_index,
       json_extract(q.branch_execution_json,'$.policy') AS branch_policy,
       json_extract(q.branch_execution_json,'$.policy.floor_millis') AS floor_millis,
-      CASE WHEN q.assessment_partial=0
+      retired_assessment.request_id IS NOT NULL AS assessment_retired,
+      CASE WHEN q.assessment_partial=0 AND retired_assessment.request_id IS NULL
         AND COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
         AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) THEN q.score END AS reliable_score,
@@ -34,38 +37,51 @@ pub(super) const SCOPE: &str = "
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
         AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value)))) AS assessment_covers_stage,
       COALESCE(
-        (SELECT a.model_id FROM observation_attempt_models_v2 a
-         JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
+        (SELECT a.model_id FROM observation_attempt_models_v2 a INDEXED BY observation_attempt_model_names
+         JOIN valuation_requests_v2 v INDEXED BY valuation_request_accepted_ordinal ON v.workspace_id=a.workspace_id
            AND v.request_id=a.request_id AND v.accepted_ordinal=a.ordinal
-         JOIN logical_requests r ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
+         JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
          WHERE a.workspace_id=q.workspace_id AND a.request_id=q.last_request_id
            AND r.session_id=q.session_id LIMIT 1),
-        (SELECT a.model_id FROM observation_attempt_models_v2 a
-         JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
+        (SELECT a.model_id FROM observation_attempt_models_v2 a INDEXED BY observation_attempt_model_names
+         JOIN valuation_requests_v2 v INDEXED BY valuation_request_accepted_ordinal ON v.workspace_id=a.workspace_id
            AND v.request_id=a.request_id AND v.accepted_ordinal=a.ordinal
-         JOIN logical_requests r ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
+         JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
          WHERE a.workspace_id=q.workspace_id AND a.request_id=q.first_request_id
            AND r.session_id=q.session_id LIMIT 1)
       ) AS native_model,
       (SELECT (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reasoning_profile_id') END ELSE json_extract(p.body_json,'$.fact.reasoning_profile_id') END)
-       FROM execution_fact_events e
+       FROM observation_sensitive_payloads_v2 p INDEXED BY observation_payload_candidate_request
+       CROSS JOIN execution_fact_events e INDEXED BY execution_facts_request_payload ON e.workspace_id=p.workspace_id AND e.request_id=p.request_id AND e.envelope_digest=substr(p.id,6)
        LEFT JOIN observation_safe_facts_v2 f INDEXED BY observation_safe_kind_fields ON f.workspace_id=e.workspace_id AND f.request_id=e.request_id AND f.original_digest=e.envelope_digest
-       CROSS JOIN observation_sensitive_payloads_v2 p INDEXED BY observation_payload_query_fields ON p.id='fact:'||e.envelope_digest
-       JOIN logical_requests r ON r.workspace_id=e.workspace_id AND r.request_id=e.request_id
-       WHERE e.workspace_id=q.workspace_id AND r.session_id=q.session_id
+       JOIN logical_requests r INDEXED BY requests_observation_fields ON r.workspace_id=e.workspace_id AND r.request_id=e.request_id
+       WHERE p.workspace_id=q.workspace_id AND p.request_id IN(q.last_request_id,q.first_request_id)
+         AND p.id GLOB 'fact:*' AND CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.kind') ELSE 'candidate_decision' END='candidate_decision'
+         AND e.workspace_id=q.workspace_id AND r.session_id=q.session_id
          AND e.request_id IN(q.last_request_id,q.first_request_id)
-         AND (f.original_digest IS NULL OR (CASE WHEN json_valid(f.body_json) THEN CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') END ELSE json_extract(f.body_json,'$.event_kind') END)='candidate_decision')
-         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.kind') END ELSE json_extract(p.body_json,'$.fact.kind') END)='candidate_decision'
-         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.model_configuration_id') END ELSE json_extract(p.body_json,'$.fact.model_configuration_id') END)=q.model_configuration_id
-         AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.profile_digest') END ELSE json_extract(p.body_json,'$.fact.profile_digest') END)=q.profile_digest
+         AND CASE WHEN (f.original_digest IS NULL OR (CASE WHEN json_valid(f.body_json) THEN CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind') END ELSE json_extract(f.body_json,'$.event_kind') END)='candidate_decision') THEN
+           (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.kind') END ELSE json_extract(p.body_json,'$.fact.kind') END)='candidate_decision'
+           AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.model_configuration_id') END ELSE json_extract(p.body_json,'$.fact.model_configuration_id') END)=q.model_configuration_id
+           AND (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.profile_digest') END ELSE json_extract(p.body_json,'$.fact.profile_digest') END)=q.profile_digest
+           ELSE 0 END
        ORDER BY e.sequence DESC LIMIT 1
       ) AS reasoning_profile_id
     FROM plan_quality_segments q
     JOIN sessions s ON s.workspace_id=q.workspace_id AND s.session_id=q.session_id
+    LEFT JOIN observation_request_tombstones_v2 retired_assessment
+      ON retired_assessment.workspace_id=q.workspace_id
+      AND retired_assessment.request_id=q.assessment_trigger_request_id
+      AND NOT EXISTS(SELECT 1 FROM logical_requests retained
+        WHERE retained.workspace_id=q.workspace_id
+          AND retained.request_id=q.assessment_trigger_request_id)
     LEFT JOIN observation_run_links l ON l.workspace_id=q.workspace_id
       AND l.request_id=q.first_request_id
     WHERE q.workspace_id=:workspace AND q.last_at_ms>=:from AND q.last_at_ms<:to
       AND q.last_at_ms IS NOT NULL AND q.selected_branch_id IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 retired
+        WHERE retired.workspace_id=q.workspace_id AND retired.request_id=q.last_request_id
+          AND NOT EXISTS(SELECT 1 FROM logical_requests retained
+            WHERE retained.workspace_id=q.workspace_id AND retained.request_id=q.last_request_id))
       AND (:plan IS NULL OR q.plan_id=:plan)
       AND (:session IS NULL OR q.session_id=:session)
       AND (:revision IS NULL OR q.plan_revision=:revision)
@@ -86,24 +102,26 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                         q.profile_digest,q.attribution,q.first_turn_id,q.first_turn_ordinal,
                         q.last_observed_turn_id,q.last_observed_turn_ordinal,q.first_at_ms,
                         q.last_at_ms,q.history_partial,q.first_request_id,q.last_request_id,
-                        EXISTS(SELECT 1 FROM logical_requests first_req
+                        EXISTS(SELECT 1 FROM logical_requests first_req INDEXED BY requests_observation_fields
                           WHERE first_req.workspace_id=q.workspace_id
                             AND first_req.session_id=q.session_id
                             AND first_req.request_id=q.first_request_id)
-                          AND EXISTS(SELECT 1 FROM logical_requests last_req
+                          AND EXISTS(SELECT 1 FROM logical_requests last_req INDEXED BY requests_observation_fields
                           WHERE last_req.workspace_id=q.workspace_id
                             AND last_req.session_id=q.session_id
                             AND last_req.request_id=q.last_request_id),
                         CASE WHEN COALESCE(l.conflicted,0)=0 THEN json_extract(l.body_json,'$.task_id') END,
                         CASE WHEN COALESCE(l.conflicted,0)=0 THEN l.run_id END,
-                        q.assessment_event_id,q.assessment_trigger_request_id,q.assessed_at_ms,
+                        CASE WHEN NOT q.assessment_retired THEN q.assessment_event_id END,
+                        q.assessment_trigger_request_id,q.assessed_at_ms,
                         q.target_from_turn_id,q.target_through_turn_id,q.target_from_ordinal,
                         q.target_through_ordinal,q.score,
                         (q.assessment_partial OR NOT q.assessment_covers_stage),
-                        CASE WHEN q.reason_present=1
-                          THEN (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reason') END ELSE json_extract(p.body_json,'$.fact.reason') END) END,
+                        CASE WHEN q.reason_present=1 AND NOT q.assessment_retired
+                          THEN
+           (CASE WHEN json_valid(p.body_json) THEN CASE WHEN json_valid(p.body_json) THEN json_extract(p.body_json,'$.fact.reason') END ELSE json_extract(p.body_json,'$.fact.reason') END) END,
                         q.assessment_event_id IS NOT NULL AND EXISTS(
-                          SELECT 1 FROM logical_requests trigger_req
+                          SELECT 1 FROM logical_requests trigger_req INDEXED BY requests_observation_fields
                           WHERE trigger_req.workspace_id=q.workspace_id
                             AND trigger_req.session_id=q.session_id
                             AND trigger_req.request_id=q.assessment_trigger_request_id),
@@ -122,6 +140,7 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                  LEFT JOIN execution_fact_events e ON e.workspace_id=q.workspace_id
                     AND e.request_id=q.assessment_trigger_request_id
                     AND e.event_id=q.assessment_event_id
+                    AND NOT q.assessment_retired
                  LEFT JOIN observation_sensitive_payloads_v2 p INDEXED BY observation_payload_query_fields
                     ON p.id='fact:'||e.envelope_digest";
 
@@ -198,7 +217,9 @@ impl LocalObservationStore {
             .map(serde_json::to_string)
             .transpose()
             .map_err(|_| ObservationV2Error::Invalid)?;
-        let summary = summarize(&transaction, reader, query, from_ms, to_ms, &runs)?;
+        // Read request-ordered routing evidence before scattered stage lookups.
+        // Both views share this snapshot; the global scan also avoids reopening
+        // the same small identity indexes in alternating access orders.
         let routing_observations = query
             .include_routing_observations
             .then(|| {
@@ -212,6 +233,7 @@ impl LocalObservationStore {
                 )
             })
             .transpose()?;
+        let summary = summarize(&transaction, reader, query, from_ms, to_ms, &runs)?;
         let execution = query
             .execution
             .as_ref()

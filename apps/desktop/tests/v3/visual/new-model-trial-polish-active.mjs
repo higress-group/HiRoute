@@ -55,13 +55,63 @@ try {
       assert.ok(!text.includes('Older directory model'));
       assert.ok(!text.includes(lang === 'zh' ? '签名已校验' : 'Signature verified'));
       assert.equal(await evaluate(client, `document.querySelector('.new-models .model-feed-disclosure')`), null);
-      assert.ok(text.includes(lang === 'zh' ? '接入服务' : 'connection provider'));
+      const card = await evaluate(client, `document.querySelector('.new-model-card').innerText`);
+      assert.ok(card.includes(lang === 'zh' ? '从范围明确的小任务开始试用，并观察实际表现。' : 'Start with a well-scoped task and observe the results.'));
+      assert.ok(!card.includes(lang === 'zh' ? '接入服务' : 'connection provider'));
+      assert.ok(!card.includes(lang === 'zh' ? '同名模型可能被供应商更新' : 'Providers may update a model behind the same name'));
+      const addedDate = await evaluate(client, `new Date('2026-10-19T00:00:00Z').toLocaleDateString(${JSON.stringify(lang === 'zh' ? 'zh-CN' : 'en-US')},{month:${JSON.stringify(lang === 'zh' ? 'numeric' : 'short')},day:'numeric',timeZone:'UTC'})`);
+      assert.ok(card.includes(lang === 'zh' ? `公告收录 ${addedDate}` : `Announcement added ${addedDate}`));
+      const disclosure = `.new-models > details.disclosure`;
+      assert.equal(await evaluate(client, `document.querySelectorAll(${JSON.stringify(disclosure)}).length`), 1);
+      assert.equal(await evaluate(client, `document.querySelector(${JSON.stringify(disclosure)}).open`), false);
+      assert.equal(await evaluate(client, `document.querySelector(${JSON.stringify(disclosure)}+' summary').getAttribute('aria-expanded')`), 'false');
+      assert.equal(await evaluate(client, `document.querySelector(${JSON.stringify(disclosure)}+' .disclosure-label').textContent`), lang === 'zh' ? '版本与来源' : 'Version and source');
+      const uncertainty = lang === 'zh' ? '同名模型可能被供应商更新' : 'Providers may update a model behind the same name';
+      assert.equal(await evaluate(client, `document.querySelector('.new-models').innerText.includes(${JSON.stringify(uncertainty)})`), false);
+      assert.ok(await evaluate(client, `(()=>{const e=document.querySelector(${JSON.stringify(disclosure)}+' summary');e.focus();return document.activeElement===e;})()`));
+      await client.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, text:'\r', unmodifiedText:'\r' });
+      await client.send('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13 });
+      await waitFor(client, `document.querySelector(${JSON.stringify(disclosure)}).open && document.querySelector(${JSON.stringify(disclosure)}+' summary').getAttribute('aria-expanded')==='true'`);
+      const expanded = await evaluate(client, `(()=>{const e=document.querySelector(${JSON.stringify(disclosure)}+' .disclosure-body');return {visible:document.querySelector('.new-models').innerText.includes(${JSON.stringify(uncertainty)}),text:e.innerText,overflow:e.scrollWidth>e.clientWidth+1};})()`);
+      assert.equal(expanded.visible, true);
+      for (const phrase of lang === 'zh' ? ['同名模型', '供应商更新', '收录日期', '不代表实际执行的版本'] : ['Providers may update a model behind the same name', 'date added', 'does not identify the version that runs']) assert.ok(expanded.text.includes(phrase), phrase);
+      assert.equal(expanded.overflow, false);
+      await shot(`home-version-source-expanded-${suffix}`);
+      await client.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, text:'\r', unmodifiedText:'\r' });
+      await client.send('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13 });
+      await waitFor(client, `!document.querySelector(${JSON.stringify(disclosure)}).open && document.querySelector(${JSON.stringify(disclosure)}+' summary').getAttribute('aria-expanded')==='false'`);
+      assert.equal(await evaluate(client, `document.querySelector('.new-models').innerText.includes(${JSON.stringify(uncertainty)})`), false);
       assert.ok(await evaluate(client, `document.documentElement.scrollWidth<=innerWidth+1`));
       assert.ok(await evaluate(client, `[...document.querySelectorAll('.new-model-card,.new-model-card h3,.new-model-note')].every(e=>e.scrollWidth<=e.clientWidth+1)`));
       await shot(`home-current-announcement-${suffix}`);
       await click('.new-model-card button', lang === 'zh' ? '查看模型表现' : 'View model performance');
       assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='open-plan').length`), 1);
     });
+    for (const [scenario, from] of [['unrelated', Date.UTC(2026, 9, 20, 12, 34, 56)], ['retention', Date.UTC(2026, 9, 24, 12, 34, 56)], ['no-announcement', Date.UTC(2026, 9, 20, 12, 34, 56)]]) {
+      await check(`home-scope-${scenario}-${suffix}`, async () => {
+        await open(`view=home&home-scope=${scenario}`, width, height, theme, lang);
+        await waitFor(client, `!!document.querySelector('.trust-attention-item')`);
+        const row = await evaluate(client, `(()=>{const e=document.querySelector('.trust-attention-item');const s=e.querySelector('.trust-attention-scope');return {text:e.textContent,scope:s?.textContent??'',buttons:[...e.querySelectorAll('button')].map(b=>b.textContent),overflow:e.scrollWidth>e.clientWidth+1};})()`);
+        const expectedStart = await evaluate(client, `new Date(${from}).toLocaleString(${JSON.stringify(lang === 'zh' ? 'zh-CN' : 'en-US')},{dateStyle:'medium',timeStyle:'medium'})`);
+        assert.ok(row.scope.includes(expectedStart), `effective start missing: ${row.scope}`);
+        assert.ok(row.scope.includes(lang === 'zh' ? '保留记录' : 'retained records'), row.scope);
+        assert.ok(row.scope.includes(lang === 'zh' ? '可能' : 'may'), row.scope);
+        assert.ok(!row.scope.includes(lang === 'zh' ? '模型更新公告之后' : 'model update announcement'), row.scope);
+        for (const value of ['90%', '37', '41', '9', '2']) assert.ok(row.text.includes(value), value);
+        assert.ok(row.text.includes(lang === 'zh' ? '自定义 0.72' : 'Custom 0.72'));
+        assert.deepEqual(row.buttons, lang === 'zh' ? ['查看依据', '打开调整草稿'] : ['View evidence', 'Open change draft']);
+        assert.equal(row.overflow, false);
+        await evaluate(client, `document.querySelector('.trust-attention-item').scrollIntoView({block:'center'});true`);
+        await shot(`home-scope-${scenario}-${suffix}`);
+        await click('.trust-attention-item button', lang === 'zh' ? '查看依据' : 'View evidence');
+        await click('.trust-attention-item button', lang === 'zh' ? '打开调整草稿' : 'Open change draft');
+        const actions = await evaluate(client, `trialTrace.filter(x=>x.command==='review-trust'||x.command==='review-trust-action').map(({command,payload})=>({command,payload}))`);
+        assert.deepEqual(actions, [
+          {command:'review-trust',payload:{planId:'plan/daily-coding'}},
+          {command:'review-trust-action',payload:{planId:'plan/daily-coding',branchId:'smart_saving'}},
+        ]);
+      });
+    }
     await check(`replay-cache-${suffix}`, async () => {
       await open('view=editor&native=1', width, height, theme, lang);
       await waitFor(client, `!!document.querySelector('.trust-replay-bar')`);

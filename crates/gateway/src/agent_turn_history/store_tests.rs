@@ -15,6 +15,9 @@ use crate::server::request_plan::IngressProtocol;
 
 static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+#[path = "projection_tests.rs"]
+mod projection_reads;
+
 #[path = "branch_context_tests.rs"]
 mod branch_context;
 

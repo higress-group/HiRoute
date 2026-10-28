@@ -440,6 +440,7 @@
     "hiroute.subscription-maintenance/v2",
     "hiroute.subscription-proxy/v1",
     "hiroute.system-one-c/v1",
+    "hiroute.system-one-c/v2",
     "hiroute.system-one-legacy/v1",
     "hiroute.system-status/v1",
     "hiroute.trust-levels/v1",
@@ -500,6 +501,31 @@
     "hiroute.worker-wait-request/v1"
   ],
   "subjects": [
+    {
+      "subject": "system_one_native_applicability",
+      "audited_prefixes": [
+        "hiroute.system-one-c"
+      ],
+      "current_contracts": [
+        "hiroute.system-one-c/v2"
+      ],
+      "legacy_support": [
+        {
+          "contract": "hiroute.system-one-c/v1",
+          "mode": "frozen_fixture",
+          "owner": "decision-foundation",
+          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v2.",
+          "removal_condition": "Retire only when the supported release and retained-publication policy permits removing all v1 readers and authenticated historical evidence.",
+          "allowed_paths": [
+            "apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs",
+            "contracts/cli/historical-applicability-test.v1.schema.json",
+            "crates/daemon/tests/support/c_protocol_product.py",
+            "crates/domain/src/routing/fixtures/baseline-c-default-publication.json",
+            "crates/domain/src/routing/system_one_c.rs"
+          ]
+        }
+      ]
+    },
     {
       "subject": "operation_canonical_fixture",
       "audited_prefixes": [
@@ -1317,8 +1343,11 @@
     "hiroute.routing-preview/v1"
   ],
   "rejection_paths": [
+    "crates/application-api/src/classifier_diagnostic_c_tests.rs",
+    "crates/domain/src/routing/system_one_c_tests.rs",
     "crates/domain/src/publication/mod.rs",
     "crates/gateway/src/publication/tests.rs",
+    "crates/observation/src/store/tests/plan_quality/routing_observations.rs",
     "tools/e2e-harness/tests/p0_gateway_request_authority.rs"
   ],
   "field_compatibility_support": [
@@ -1818,13 +1847,19 @@
     },
     {
       "contract": "hiroute.system-one-c/v1",
-      "field": "immutable native category v1 templates",
+      "field": "immutable native C v1 bundle, sealed publications, Operations and observations",
       "mode": "frozen_fixture",
       "owner": "decision-foundation",
-      "reason": "Keep supported published category/degree composition independent of current defaults. Assessment standard follows authored default/custom intent; legacy category wording is owned separately.",
+      "reason": "Keep the exact C v1 fixed bundle, category/degree composition, stock assessment and authenticated publication identities readable and executable after C v2 becomes the current producer. Retained Operations and observations preserve their original protocol and digests; legacy category wording is owned separately.",
       "removal_condition": "Retire only after an explicit supported-bundle retirement or versioned adapter preserves retained C v1 publications and their immutable question identity.",
       "allowed_paths": [
+        "crates/domain/src/routing/fixtures/system_one_c_v1.json",
         "crates/domain/src/routing/fixtures/native_category_v1.json",
+        "crates/domain/src/routing/fixtures/baseline-c-default-publication.json",
+        "crates/domain/src/routing/assessment.rs",
+        "crates/domain/src/routing/authoring.rs",
+        "crates/domain/src/routing/authoring/tests.rs",
+        "crates/domain/src/routing/c_observation.rs",
         "crates/domain/src/routing/system_one_c.rs",
         "crates/domain/src/routing/system_one_c_tests.rs",
         "crates/gateway/src/publication/compiler.rs",

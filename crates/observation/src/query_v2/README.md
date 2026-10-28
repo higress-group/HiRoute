@@ -1,5 +1,10 @@
 # Session content search
 
+Management reads share `ObservationReaderContext::QUERY_BUDGET` (one second).
+V2 admission and deadline-aware composition carry one absolute deadline; nested contexts only
+shorten it. Four reader permits, the 100 ms SQLite busy cap, row/byte limits and
+cancellation remain independent bounds. Gateway and maintenance budgets are separate.
+
 Current `hiroute.observation.query/v2` retains the optional
 `include_routing_observations` flag for facts and plan-quality reads. Omitted/false
 preserves released strict fields, authorization encoding and cursor bindings.
@@ -90,7 +95,7 @@ cycles without rewriting requests, bodies, dates or identities. Interrupted
 backfills remain unpublished and resume idempotently. Block deletion removes its
 lookup entries in the same transaction. Missing/failed/pending authorized indexes
 set `index_partial`; no ready match is a complete empty result only when that flag
-is false. Four reader permits and the existing 500 ms SQLite deadline remain;
+is false. Four reader permits and the existing 1 s SQLite deadline remain;
 exceeding the query budget is a failure/retry, not a misleading empty result or
 an exposed scan-window cursor.
 The SQL scans source identities through their index and tests the shared keyword
@@ -153,7 +158,7 @@ members for both content and money, and `comparison` shares source matching and 
 with the legacy explicit-reference report. Numeric inputs and native relations use additive auxiliary
 tables, not new execution-fact/receipt variants or changes to shared storage admission markers.
 
-Application composition supplies one 500 ms deadline, including nonblocking control/price reads.
+Application composition supplies one 1 s deadline, including nonblocking control/price reads.
 The existing reader semaphore and SQLite progress handler remain authoritative. Analysis scopes are
 signed, expire within one hour and disclose retention-safe effective bounds; ordinary cleanup removes
 expired membership/price leases. Used-source deletion and withdrawn proofs invalidate affected scopes;

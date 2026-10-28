@@ -27,7 +27,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use bytes::Bytes;
 use hiroute_gateway_core::runtime::body::{
-    BodyDirection, BodyError, BodyPlanExecutor, ChargedBytes, MemoryRole, StreamBudget,
+    BodyDirection, BodyError, BodyPlanExecutor, MemoryRole, StreamBudget,
 };
 use hiroute_gateway_core::runtime::driver::{
     BoundRequestAdmission, DecisionCandidateAuthority, GatewayCoreLifecycle,
@@ -50,7 +50,7 @@ use crate::content_ref::{
     model_content_refs, parse_ingress_document, scan_ingress_document,
 };
 use crate::context_hold::{ContextHoldStore, ContextRequest, HoldCompletion, prepare_context};
-use crate::replay::{ReplayError, ReplayManager, ReplayReader, ReplayStore};
+use crate::replay::{ReplayError, ReplayManager, ReplayReader, ReplayStore, ReplayWriter};
 #[path = "core_runtime/credentials.rs"]
 mod credentials;
 use crate::runtime::{
@@ -323,13 +323,42 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
                 .await;
             }
         };
+        let Some(replay_manager) = &self.replay else {
+            return write_typed_error_phase(
+                session,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "REPLAY_STORE_UNAVAILABLE",
+                "canonical_request",
+            )
+            .await;
+        };
+        let mut ingress = match IngressReplay::begin(replay_manager, budget.clone()) {
+            Ok(ingress) => ingress,
+            Err(_) => {
+                return write_typed_error_phase(
+                    session,
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "REPLAY_STORE_UNAVAILABLE",
+                    "canonical_request",
+                )
+                .await;
+            }
+        };
+        let selector_charge =
+            match budget.reserve(MemoryRole::ModelIrBacking, ModelSelector::MEMORY_BYTES) {
+                Ok(charge) => charge,
+                Err(_) => {
+                    return write_typed_error_phase(
+                        session,
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "REPLAY_BUDGET_UNAVAILABLE",
+                        "model_selector",
+                    )
+                    .await;
+                }
+            };
         let selector_deadline = authenticated.selector_deadline();
-        let mut selector = ModelSelector::new(self.authority().selector_limit());
-        // Retain every opaque chunk already polled while the bounded selector
-        // sees only its prefix, then replay those exact Bytes into the
-        // canonical decoder before polling the rest of the body.
-        let mut ingress_prefix = Vec::new();
-        let mut selector_charges = Vec::new();
+        let mut selector = Box::new(ModelSelector::new(self.authority().selector_limit()));
         let served_model_id = loop {
             match session.read_request_body_before(selector_deadline).await {
                 Err(TransportError::DeadlineExceeded) => {
@@ -338,27 +367,24 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
                 }
                 Err(error) => return Err(error),
                 Ok(Some(chunk)) => {
-                    let charge_bytes = chunk.len().checked_mul(3).and_then(|n| n.checked_add(128));
-                    let charge = charge_bytes
-                        .and_then(|n| budget.reserve(MemoryRole::ModelIrBacking, n).ok());
-                    let Some(charge) = charge else {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "REPLAY_BUDGET_UNAVAILABLE",
-                            "model_selector",
-                        )
-                        .await;
-                    };
-                    selector_charges.push(charge);
-                    let selected = selector.feed(&chunk);
-                    let retained =
-                        ChargedBytes::copy_from_opaque(&budget, MemoryRole::RawRequest, &chunk)
-                            .map_err(|_| {
-                                TransportError::Io("selector memory budget unavailable".into())
-                            })?;
-                    ingress_prefix.push(retained);
-                    match selected {
+                    // One raw owner from the first authenticated byte, including
+                    // the remainder of the chunk containing the selected alias.
+                    if let Err(error) = ingress.append_prefix(&chunk) {
+                        let (status, code, phase) = match error {
+                            ReplayError::Body(BodyError::BudgetExceeded) => (
+                                StatusCode::SERVICE_UNAVAILABLE,
+                                "REPLAY_BUDGET_UNAVAILABLE",
+                                "model_selector",
+                            ),
+                            _ => (
+                                StatusCode::BAD_REQUEST,
+                                "REPLAY_INTEGRITY_FAILED",
+                                "canonical_request",
+                            ),
+                        };
+                        return write_typed_error_phase(session, status, code, phase).await;
+                    }
+                    match selector.feed(&chunk) {
                         Ok(Some(alias)) => break alias,
                         Ok(None) => {}
                         Err(error) => return write_dispatch_error(session, error.into()).await,
@@ -371,7 +397,7 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
             }
         };
         drop(selector);
-        drop(selector_charges);
+        drop(selector_charge);
         let authorized = match authenticated
             .authorize_alias(&served_model_id, Instant::now())
             .map(Box::new)
@@ -385,7 +411,7 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
             Box::new(request),
             protocol,
             declared_content_length,
-            ingress_prefix,
+            ingress,
             authorized,
             budget,
         )
@@ -401,38 +427,16 @@ impl ProductionGatewayRuntime {
         request: Box<GatewayRequestHead>,
         protocol: IngressProtocol,
         declared_content_length: Option<usize>,
-        ingress_prefix: Vec<ChargedBytes>,
+        ingress: IngressReplay,
         mut authorized: Box<AuthorizedRequestPlan>,
         budget: StreamBudget,
     ) -> Pin<Box<dyn Future<Output = Result<SessionReuse, TransportError>> + Send + 'a>> {
         Box::pin(async move {
-            let Some(replay_manager) = &self.replay else {
-                return write_typed_error_phase(
-                    session,
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "REPLAY_STORE_UNAVAILABLE",
-                    "canonical_request",
-                )
-                .await;
-            };
-            let replay = match replay_manager.begin_request(budget.clone()) {
-                Ok(replay) => replay,
-                Err(_) => {
-                    return write_typed_error_phase(
-                        session,
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        "REPLAY_STORE_UNAVAILABLE",
-                        "canonical_request",
-                    )
-                    .await;
-                }
-            };
-            let raw_body = match read_replay_body(
+            let (replay, raw_body) = match read_replay_body(
                 session,
-                ingress_prefix,
+                ingress,
                 declared_content_length,
                 &authorized,
-                &replay,
             )
             .await
             {
@@ -1683,13 +1687,45 @@ enum ReplayBodyError {
     Replay,
 }
 
+// The prefix needs only two counters to enforce the eventual alias body plan.
+// ReplayWriter owns its bytes before and after authorization; no prefix copy or
+// per-frame metadata survives model selection.
+struct IngressReplay {
+    replay: ReplayStore,
+    body: ReplayWriter,
+    prefix_bytes: usize,
+    largest_prefix_chunk: usize,
+}
+
+impl IngressReplay {
+    fn begin(manager: &ReplayManager, budget: StreamBudget) -> Result<Self, ReplayError> {
+        let replay = manager.begin_request(budget)?;
+        let body = replay.begin_raw()?;
+        Ok(Self {
+            replay,
+            body,
+            prefix_bytes: 0,
+            largest_prefix_chunk: 0,
+        })
+    }
+
+    fn append_prefix(&mut self, chunk: &[u8]) -> Result<(), ReplayError> {
+        self.body.append(chunk)?;
+        self.prefix_bytes = self
+            .prefix_bytes
+            .checked_add(chunk.len())
+            .ok_or(ReplayError::Integrity)?;
+        self.largest_prefix_chunk = self.largest_prefix_chunk.max(chunk.len());
+        Ok(())
+    }
+}
+
 async fn read_replay_body(
     session: &mut dyn GatewaySession,
-    ingress_prefix: Vec<ChargedBytes>,
+    ingress: IngressReplay,
     declared_content_length: Option<usize>,
     authorized: &AuthorizedRequestPlan,
-    replay: &ReplayStore,
-) -> Result<ContentRef, ReplayBodyError> {
+) -> Result<(ReplayStore, ContentRef), ReplayBodyError> {
     let plan = authorized.logical_request_plan();
     let Some(hard_limit) = plan.body_plan.max_retained_bytes() else {
         return Err(ReplayBodyError::PlanUnavailable);
@@ -1705,14 +1741,12 @@ async fn read_replay_body(
             .preflight_content_length(content_length)
             .map_err(map_body_error)?;
     }
-    let mut body = replay.begin_raw().map_err(|_| ReplayBodyError::Replay)?;
-    for chunk in ingress_prefix {
-        owner
-            .admit_chunk(chunk.bytes().len())
-            .map_err(map_body_error)?;
-        body.append(chunk.bytes())
-            .map_err(|_| ReplayBodyError::Replay)?;
-    }
+    owner
+        .admit_prefix(ingress.prefix_bytes, ingress.largest_prefix_chunk)
+        .map_err(map_body_error)?;
+    let IngressReplay {
+        replay, mut body, ..
+    } = ingress;
     loop {
         let chunk = session
             .read_request_body_before(authorized.deadline())
@@ -1728,7 +1762,8 @@ async fn read_replay_body(
         body.append(&chunk).map_err(|_| ReplayBodyError::Replay)?;
     }
     owner.finish().map_err(map_body_error)?;
-    body.seal().map_err(|_| ReplayBodyError::Replay)
+    let reference = body.seal().map_err(|_| ReplayBodyError::Replay)?;
+    Ok((replay, reference))
 }
 
 fn map_body_error(error: BodyError) -> ReplayBodyError {

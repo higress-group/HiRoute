@@ -78,10 +78,40 @@ original identity. Persistent uncertainty exposes one result-to-be-confirmed sta
 and a query action. Closing feedback hides it without cancelling server work;
 success feedback settles after a short display period.
 
+Operation presentation SHALL follow exact server identity and sequence. Pending names the action/object and uses indeterminate progress unless measured. Terminal/uncertain outcomes replace the same feedback; stale reads cannot replace a newer identity or confirmed terminal result. Transient checking remains neutral; persistent uncertainty offers a read-only check of the original identity. Trial save→publish keeps stable controls and one local progression, without intermediate success feedback or duplicate submission. Global pending/success may be suppressed only for exact operations actively represented locally; errors, unrelated operations, no-ID recovery and unresolved operations after unmount remain discoverable. Closing feedback never cancels server work. A same-target, same-connection service refresh may retain last confirmed display with Updating, but never extends write authority; disconnect, failed checks, read-only or recovery failure immediately supersede stale display. Success feedback settles after a short display period. A ready response with gateway not_composed is distinct from a pending page read: it must not inherit a healthy status or gain write authority. Only explicit evidence of an expected same-operation transition may justify neutral progress wording; real unavailable, stalled or failed service states remain visible.
+
 #### Scenario: Two saves overlap in observation
 
 - **WHEN** a late status response for the first save arrives after the second starts
 - **THEN** it MUST NOT replace the second save's feedback or trigger a replay.
+
+#### Scenario: Continuous save and publish
+
+- **WHEN** the trial receives exact draft and publication confirmations
+- **THEN** each write and next-step callback occurs once; normal progress keeps controls stable and does not show duplicate local/global success.
+
+#### Scenario: Uncertain result and navigation
+
+- **WHEN** the response is lost or the page leaves while publication is pending
+- **THEN** the original operation remains queryable without replay; global recovery returns on unmount.
+
+#### Scenario: Refresh versus failure
+
+- **WHEN** a healthy same-target display refreshes, then connection/error/read-only evidence arrives
+- **THEN** refresh is neutral Updating without new authority; real invalidation/error becomes visible immediately.
+
+#### Scenario: Concurrent operation feedback
+
+- **WHEN** a late older status or unrelated operation arrives
+- **THEN** it does not replace/suppress the current exact operation or hide unrelated failures.
+
+#### Scenario: Returned service is not composed
+
+- **WHEN** a service read completes with gateway not_composed, with or without a concurrent publication
+- **THEN** the UI distinguishes returned service evidence from loading; it never claims healthy or enables writes from a prior display, and any neutral progress explanation requires an exact expected-operation basis while real failures remain visible.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/228#issuecomment-6440853030
 
 ### Requirement: Information and confirmation match the user's decision
 
@@ -338,27 +368,9 @@ start a trial.
 Home and routing creation open one full-page, four-step flow for trial model, in-place connection,
 Primary model, decision connection, selected Agent/presets and review.
 
-Opening the flow SHALL discover Agent choices without reading every Agent's
-settings. Selecting a known choice SHALL read only that context's model settings,
-without repeating device discovery or reading management Skill/collaboration
-facets. Explicit rediscovery and a new flow lifetime refresh the choices. Choices
-are hints, not proof of editable or empty settings. Missing, failed or superseded
-details SHALL block review and offer retry; late responses after selection changes
-or closure SHALL NOT replace current details. Before mapping, the flow SHALL
-refresh the selected model settings, require review of any changed selection/context,
-and retain normal fresh Preview/Apply checks. Discovery choices MAY be retained only
-within the open flow across publication and mapping. They remain hints, never proof
-that the selected installation or settings are current; reopening or explicitly
-refreshing discovery reads new choices. Mapping MUST NOT repeat all-Agent discovery
-solely because the flow changed steps or requested a fresh selected settings read.
-The mapping page's explicit refresh/retry SHALL rediscover choices and reread the
-selected settings so an external native-context or authority change remains
-recoverable without closing the flow. This read SHALL NOT submit a mapping. A changed
-target requires a new user confirmation; pending-operation reconciliation still
-matches its original exact context and submitted selection.
-Choosing Primary while Agent details are pending SHALL retain that explicit model
-choice without preventing default Agent initialization. Late details SHALL NOT
-replace an explicitly selected Agent or Primary.
+Opening SHALL discover Agent choices without reading every Agent's settings. Selecting a known choice SHALL read only that context's model settings, without repeating discovery or reading management Skill/collaboration facets. Choices MAY persist only within the open flow, including publication/mapping; they are hints, never proof of editable, empty or current settings/installation. A new flow or explicit rediscovery refreshes them. Missing, failed or superseded details SHALL block review with retry; results arriving after selection changes/closure SHALL NOT replace current details.
+Before mapping, refresh selected model settings, require review of changed selection/context, and retain fresh Preview/Apply checks. Step changes or fresh selected-settings reads MUST NOT alone repeat all-Agent discovery. Mapping refresh/retry SHALL rediscover choices and reread selected settings to recover external native-context/authority changes without closing the flow; it SHALL NOT submit mapping. A changed target requires new user confirmation. Pending-operation reconciliation still matches its original exact context and submitted selection.
+Primary chosen while Agent details are pending SHALL persist without preventing default Agent initialization. Late details SHALL NOT replace an explicit Agent or Primary.
 
 A registered connection must observe the selected model before continuing. Protected
 input/check/save and native subscription import retain their existing authority.
@@ -401,8 +413,58 @@ After this flow confirms that the Agent mapping applied successfully, it SHALL w
 - **WHEN** the mapping is confirmed and a subsequent session read finds activity using the published Plan
 - **THEN** the flow offers Watch this session without automatic navigation; old activity before confirmation is excluded, and leaving the trial page stops waiting.
 
+#### Scenario: Preserve reasoning or use a supported model default
+
+- **WHEN** the trial initializes or changes a selected binding
+- **THEN** Preserve a proven selected-Agent setting or explicit user Selection, including its binding and reasoning, subject to normal validation. For a newly selected binding, use only a supported authoritative model default from that binding's native reasoning capability. A valid discrete default_profile must be an exact member of profiles; when no authoritative supported default exists, require an explicit choice. Do not choose a low/high/max profile from list order or Regular/Primary role. A fixed/no-control capability can omit reasoning where its existing contract permits it; missing reasoning for selectable discrete/toggle/budget controls is not provider-default and must not bypass their existing required-choice validation. Unsupported or stale choices remain visible and block review rather than silently changing. This trial policy does not change ordinary PlanEditor role defaults or add a new provider-default wire mode.
+
+#### Scenario: Distinct identities and invalidated Primary provenance
+
+- **WHEN** configurations share a display name, an Agent changes, or selected capability evidence changes
+- **THEN** Same-name configurations and bindings SHALL remain distinct; show a proven current source or explicit multiple/unconfirmed-source state. Review/mapping SHALL preserve exact configuration, binding, source and reasoning. Changing Agent SHALL invalidate previous-Agent Primary provenance and reject stale results; absent a proven current routable Primary, require user selection. Valid explicit settings survive same-Agent refresh; invalid choices remain visible and block continuation. Trial and Primary SHALL NOT be the same configuration.
+
+#### Scenario: Stable readable aliases and consistent trial wording
+
+- **WHEN** a trial is created, retried, restored or reviewed
+- **THEN** New trial aliases SHALL be readable and fixed for their persistence/retry identity. Existing aliases and saved drafts SHALL remain unchanged; collisions or uncertain replies SHALL NOT silently regenerate aliases or repeat writes. Preserve previous-routing restoration. Version/source uncertainty SHALL remain accessible without hiding blocking credential/capability/obsolete-client errors. Trial review and division-draft confirmation SHALL use Low-score protection and Competence floor consistently.
+
+#### Scenario: Equal model names differ in source
+
+- **WHEN** two configurations share a name but have different sources/bindings
+- **THEN** both remain selectable with visible source and accessible identity; all summaries/published selections preserve the chosen binding.
+
+#### Scenario: Current selection cannot be proven
+
+- **WHEN** DSH exposes only an allowlist
+- **THEN** Primary remains unset until selected; a recent request or catalog order cannot provide a default.
+
+#### Scenario: Reasoning defaults and late refresh
+
+- **WHEN** a new binding has a supported model default, no default, or stale/invalid capability results arrive after an explicit selection
+- **THEN** use only its supported model default or require an explicit choice; preserve user/proven choices, reject stale results, and never turn missing discrete reasoning into provider-default or an automatic maximum.
+
+#### Scenario: Stable publication identity
+
+- **WHEN** a new readable alias is saved and publication response is lost
+- **THEN** reconciliation checks the same identity; no silent alias regeneration/repeated create occurs, and existing aliases remain unchanged.
+
+#### Scenario: A routable Plan session lacks Agent attribution
+
+- **WHEN** mapping is confirmed and post-confirmation activity matches the Plan while its Agent attribution is unavailable
+- **THEN** Watch this session remains offered under the Plan/time match without asserting Agent identity; the view opens only on user action.
+
+#### Scenario: Supported default versus missing default
+
+- **WHEN** a new Flash binding exposes low/high/max with default high and a new Primary binding exposes low through max without a default
+- **THEN** Flash starts at high; Primary requires an explicit reasoning choice; a proven or manual low selection remains low, and review/publication reflect that exact setting.
+
+#### Scenario: Trial default rubric does not follow UI language
+
+- **WHEN** a new trial is reviewed in Chinese or English, including a language change before review
+- **THEN** model-facing default instructions and criteria remain the same English text; only help text is localized. Brief dissatisfaction about the completed core result counts as negative feedback without requiring a diagnosed technical error; new requirements or bounded preferences are not automatically core failures. Preserve user-edited prompts, explicit default/custom intent, saved drafts and already published frozen contents.
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235502571
+- https://github.com/higress-group/HiRoute/issues/228#issuecomment-6440850201
 
 ### Requirement: Home lists routing suggestions that need attention
 
@@ -442,3 +504,4 @@ Source SPEC comments:
   [product shell](../../../apps/desktop/src/product).
 - [Release identity](../../../crates/host-runtime/src/releases.rs) and
   [macOS installation guide](../../../docs/macos-installation.md).
+- [Earlier new-model trial source SPEC](https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235502571).

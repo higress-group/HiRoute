@@ -5,7 +5,8 @@
 **HiRoute: System One Routing for Long-Running Agents with History-Aware Protection**
 
 This is the Markdown manuscript for community review before final typesetting and
-arXiv submission. The research snapshot is dated 18 October 2026. It studies how a
+arXiv submission. The main research snapshot is dated 18 October 2026, with a
+mathematical dependency-state supplement dated 28 October 2026. It studies how a
 System One decision interface can support routing that combines current task
 demand with historical performance and the present applicability of an execution
 problem. HiRoute supplies the open-source implementation of that decision contract.
@@ -28,6 +29,9 @@ selection under the declared policy; they are not executor task-completion rates
   protection and release, and the propagation of component errors into actions.
 - [MR010_b sensitivity](main.md#56-a-disputed-evaluability-choice-mr010_b): a disputed
   evaluability choice, reported separately from the original labels and main tables.
+- [Mathematical dependency states](main.md#58-mathematical-workflows-protecting-unresolved-dependencies):
+  independent workflows, controlled protection/release states and separate
+  chronological checkpoints, with [data and offline replay](supplements/mathematics-history/README.md).
 - [Decision costs](main.md#observed-decision-costs): API-reported Jev charges, including
   approximately USD 0.084–0.086 per 1,000 three-question requests in the measured workloads.
 - [Implementation](main.md#6-hiroute-implementation-and-reproducibility) and
@@ -85,6 +89,9 @@ file hashes; original source hashes are separately recorded under `provenance/`.
 | Mathematics | 64 | 16 workflows with custom current-demand criteria |
 | Development V3 | 384 | Historical development and audit evidence, not blind validation |
 | Native direct probes | 8 | Interface diagnostics, not a general accuracy test |
+| Mathematics: independent supplement | 136 | 16 independently authored workflows; separate from the original main panel |
+| Mathematics: dependency states | 48 | Six targeted workflows with balanced protection and release states |
+| Mathematics: chronological checkpoints | 44 | Separate-message representation; 32 determinate, eight conditional and four insufficient cases |
 
 The nine execution archives retain matched, independent, expression-control,
 development and abandoned campaigns separately. Invalid output, unknown outcomes
@@ -92,6 +99,15 @@ and not-started calls remain visible. Complete semantic response fields and LLM
 completion text are retained; service metadata and remote response IDs are removed.
 Original labels remain the scoring source. The [MR010_b overlay](sensitivities/mr010.json)
 is separately identified as a post-hoc sensitivity and does not replace them.
+
+The [mathematics supplement](supplements/mathematics-history/README.md) retains its
+2,912 calls separately. In its 48-record dependency-state panel, the existing
+three-question definitions reach 47/48 and 48/48 for Jev 1.13 and 1.14, versus
+42/48 and 29/48 for matched direct selection. Both versions protect all 24 related
+failures; release accuracy is 23/24 and 24/24. These controlled, explicitly stated
+dependencies show where the mechanism helps; their frequencies do not estimate
+production traffic. The independent and chronological panels retain their own
+denominators, version differences and conditional labels.
 
 From the repository root, with Python 3.9+ and no external packages or model calls:
 
