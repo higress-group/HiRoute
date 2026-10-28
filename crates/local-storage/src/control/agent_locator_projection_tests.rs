@@ -73,6 +73,10 @@ fn coverage_rejects_projection_or_producer_damage_and_keeps_unknown_events() {
         .unwrap();
     assert!(agent_locator::validate_coverage(&db).is_err());
     db.execute_batch("ROLLBACK").unwrap();
+    db.execute_batch("BEGIN; CREATE TEMP TABLE agent_locator_heads(ordinal INTEGER)")
+        .unwrap();
+    assert!(agent_locator::validate_coverage(&db).is_err());
+    db.execute_batch("ROLLBACK").unwrap();
     db.execute(
         "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=1",
         [op.operation_id.as_str()],
@@ -92,4 +96,121 @@ fn coverage_rejects_projection_or_producer_damage_and_keeps_unknown_events() {
     db.execute("DELETE FROM agent_locator_dirty", []).unwrap();
     assert!(agent_locator::validate_coverage(&db).is_err());
     db.execute_batch("ROLLBACK").unwrap();
+}
+
+#[test]
+fn exact_locator_skips_newer_unrelated_history_and_checks_current_bytes() {
+    use super::super::super::{AgentLocatorResult, AgentLocatorScope};
+    use hiroute_domain::AgentSettingsFacet;
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let target = directory.path().join("selected");
+    let mut selected = target_operation(target.to_str().unwrap(), "selected-locator", false);
+    persist(&control, &mut selected);
+    let mut later = Vec::new();
+    for index in 0..5 {
+        let root = directory.path().join(format!("other-{index}"));
+        let mut operation =
+            target_operation(root.to_str().unwrap(), &format!("other-{index}"), false);
+        persist(&control, &mut operation);
+        later.push(operation);
+    }
+    install(&control);
+    // One unrelated indexed optional step no longer validates as full history.
+    control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=2",
+            [later[3].operation_id.as_str()],
+        )
+        .unwrap();
+    let context = selected.plan.spec().resource_id.as_deref().unwrap();
+    let before = super::super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
+    let found = control
+        .find_agent_locator(
+            &WorkspaceId::default(),
+            AgentLocatorScope::ContextFacet {
+                context_id: context,
+                facet: AgentSettingsFacet::ManagementSkill,
+            },
+        )
+        .unwrap();
+    assert!(
+        matches!(found, AgentLocatorResult::Found(ref operation) if operation.operation_id == selected.operation_id)
+    );
+    assert_eq!(
+        super::super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get) - before,
+        1
+    );
+    assert!(read(&control).is_err());
+    // The selected row and both step copies remain proof obligations.
+    control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=2",
+            [selected.operation_id.as_str()],
+        )
+        .unwrap();
+    assert!(
+        control
+            .find_agent_locator(
+                &WorkspaceId::default(),
+                AgentLocatorScope::ContextFacet {
+                    context_id: context,
+                    facet: AgentSettingsFacet::ManagementSkill,
+                }
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn unknown_newer_member_fences_a_previous_hit_and_absence() {
+    use super::super::super::AgentLocatorScope;
+    use hiroute_domain::AgentSettingsFacet;
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let root = directory.path().join("selected");
+    let mut selected = target_operation(root.to_str().unwrap(), "selected-before-unknown", false);
+    let mut unknown = target_operation(
+        directory.path().join("unknown").to_str().unwrap(),
+        "unknown-newer",
+        false,
+    );
+    persist(&control, &mut selected);
+    persist(&control, &mut unknown);
+    control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE operation_payloads SET payload_json='{}' WHERE operation_id=?1",
+            [unknown.operation_id.as_str()],
+        )
+        .unwrap();
+    install(&control);
+    let context = selected.plan.spec().resource_id.as_deref().unwrap();
+    assert!(
+        control
+            .find_agent_locator(
+                &WorkspaceId::default(),
+                AgentLocatorScope::ContextFacet {
+                    context_id: context,
+                    facet: AgentSettingsFacet::ManagementSkill,
+                }
+            )
+            .is_err()
+    );
+    assert!(
+        control
+            .find_agent_locator(
+                &WorkspaceId::default(),
+                AgentLocatorScope::ContextFacet {
+                    context_id: "agent-context/unrecorded",
+                    facet: AgentSettingsFacet::Model,
+                }
+            )
+            .is_err()
+    );
 }

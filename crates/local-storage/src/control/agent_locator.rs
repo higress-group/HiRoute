@@ -234,6 +234,17 @@ pub(crate) fn initialize(db: &Connection) -> Result<(), LocalStorageError> {
 /// A missing marker, missing producer guard, schema change or projection mutation
 /// is damage; none of these is evidence that a context has no saved settings.
 pub(super) fn validate_coverage(db: &Connection) -> PortResult<()> {
+    let temporary_shadow: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_temp_schema WHERE
+           name IN ('operations','operation_steps','operation_payloads','storage_meta',
+                    'agent_locator_coverage','agent_locator_members','agent_locator_heads','agent_locator_dirty')
+           OR (type='trigger' AND tbl_name IN ('operations','operation_steps','operation_payloads',
+                    'agent_locator_coverage','agent_locator_members','agent_locator_heads','agent_locator_dirty'))) ",
+        [], |row| row.get(0),
+    ).map_err(|_| invalid())?;
+    if temporary_shadow {
+        return Err(invalid());
+    }
     for definition in crate::migrations::agent_locator_v33::TRIGGERS
         .split("CREATE TRIGGER ")
         .skip(1)
@@ -242,7 +253,7 @@ pub(super) fn validate_coverage(db: &Connection) -> PortResult<()> {
         let expected = format!("CREATE TRIGGER {}", definition.trim().trim_end_matches(';'));
         let actual: String = db
             .query_row(
-                "SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?1",
+                "SELECT sql FROM main.sqlite_schema WHERE type='trigger' AND name=?1",
                 [name],
                 |row| row.get(0),
             )

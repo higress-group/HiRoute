@@ -45,12 +45,14 @@ mod agent_check;
 mod agent_history_cache;
 pub(crate) mod agent_locator;
 mod agent_locator_input;
+mod agent_locator_lookup;
 mod agent_read;
 mod artifact_dependencies;
 mod artifact_heads;
 mod artifact_validation;
 mod completed_operation_cache;
 mod native_targets;
+pub use agent_locator_lookup::{AgentLocatorResult, AgentLocatorScope};
 pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;

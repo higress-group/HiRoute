@@ -1,0 +1,433 @@
+//! Typed current discovery. The selected journal is still strictly authenticated.
+use super::{agent_history_cache::AgentHistoryRow, agent_locator, agent_locator_input, *};
+use hiroute_domain::{AgentAccessGrantRefV1, AgentSettingsFacet};
+use std::sync::Arc;
+
+/// Distinct keys cannot be substituted for one another. None confers authority
+/// over current native files, grants, publication, recovery or later writes.
+#[derive(Clone, Copy)]
+pub enum AgentLocatorScope<'a> {
+    ContextFacet {
+        context_id: &'a str,
+        facet: AgentSettingsFacet,
+    },
+    GrantProvenance {
+        context_id: &'a str,
+        grant: &'a AgentAccessGrantRefV1,
+    },
+    ResidentService,
+}
+
+pub enum AgentLocatorResult {
+    Found(Arc<SucceededAgentOperationV1>),
+    AbsentWithCompleteCoverage,
+}
+
+fn invalid() -> PortError {
+    port(PortErrorCode::Corrupt, "control.agent-locator.lookup")
+}
+
+struct Key<'a> {
+    scope: &'static str,
+    context: &'a str,
+    grant: Option<&'a AgentAccessGrantRefV1>,
+    hash: String,
+}
+
+impl<'a> Key<'a> {
+    fn new(value: AgentLocatorScope<'a>) -> PortResult<Self> {
+        let (scope, context, grant) = match value {
+            AgentLocatorScope::ContextFacet { context_id, facet } => (
+                match facet {
+                    AgentSettingsFacet::Model => "model",
+                    AgentSettingsFacet::Collaboration => "collaboration",
+                    AgentSettingsFacet::ManagementSkill => "management",
+                },
+                context_id,
+                None,
+            ),
+            AgentLocatorScope::GrantProvenance { context_id, grant } => {
+                grant.validate().map_err(|_| invalid())?;
+                if grant.connection_id() != format!("agent-connection/{context_id}") {
+                    return Err(invalid());
+                }
+                ("grant", context_id, Some(grant))
+            }
+            AgentLocatorScope::ResidentService => ("resident", "", None),
+        };
+        if scope != "resident" && (context.is_empty() || context.len() > 256) {
+            return Err(invalid());
+        }
+        let hash = grant
+            .map(CanonicalDigest::of)
+            .transpose()
+            .map_err(|_| invalid())?
+            .map(|digest| digest.to_string())
+            .unwrap_or_default();
+        Ok(Self {
+            scope,
+            context,
+            grant,
+            hash,
+        })
+    }
+}
+
+#[derive(Clone)]
+struct Member {
+    ordinal: i64,
+    id: Option<String>,
+    workspace: Option<String>,
+    context: Option<String>,
+    generation: Option<u64>,
+    accepted: Option<String>,
+    plan_digest: Option<String>,
+    model: Option<String>,
+    collaboration: Option<String>,
+    management: Option<String>,
+    resident: bool,
+    grant_json: Option<String>,
+    grant_unresolved: bool,
+    classification: String,
+}
+
+const MEMBER_COLUMNS: &str = "ordinal,operation_id,workspace_id,context_id,generation,accepted_digest,plan_digest,model_action,collaboration_action,management_action,resident_declaration,grant_ref_json,grant_unresolved,classification";
+
+impl Member {
+    fn read(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            ordinal: row.get(0)?,
+            id: row.get(1)?,
+            workspace: row.get(2)?,
+            context: row.get(3)?,
+            generation: row.get(4)?,
+            accepted: row.get(5)?,
+            plan_digest: row.get(6)?,
+            model: row.get(7)?,
+            collaboration: row.get(8)?,
+            management: row.get(9)?,
+            resident: row.get(10)?,
+            grant_json: row.get(11)?,
+            grant_unresolved: row.get(12)?,
+            classification: row.get(13)?,
+        })
+    }
+    fn affects(&self, workspace: &str, key: &Key<'_>, unknown_grant: bool) -> PortResult<bool> {
+        if self
+            .workspace
+            .as_deref()
+            .is_some_and(|candidate| candidate != workspace)
+        {
+            return Ok(false);
+        }
+        match self.classification.as_str() {
+            "unresolved" => Ok(true),
+            "other" => Ok(false),
+            "settings" => {
+                if self.workspace.as_deref() != Some(workspace) {
+                    return Err(invalid());
+                }
+                if key.scope == "resident" {
+                    return Ok(self.resident);
+                }
+                if self.context.as_deref() != Some(key.context) {
+                    return Ok(false);
+                }
+                match key.scope {
+                    "model" => Ok(self.model.is_some()),
+                    "collaboration" => Ok(self.collaboration.is_some()),
+                    "management" => Ok(self.management.is_some()),
+                    "grant" => {
+                        if self.grant_unresolved || unknown_grant {
+                            return Ok(self.grant_unresolved || self.grant_json.is_some());
+                        }
+                        self.grant_json
+                            .as_ref()
+                            .map(|json| {
+                                let reference: AgentAccessGrantRefV1 =
+                                    serde_json::from_str(json).map_err(|_| invalid())?;
+                                reference.validate().map_err(|_| invalid())?;
+                                Ok(Some(&reference) == key.grant)
+                            })
+                            .unwrap_or(Ok(false))
+                    }
+                    _ => Err(invalid()),
+                }
+            }
+            _ => Err(invalid()),
+        }
+    }
+}
+
+fn row_for_id(db: &Connection, id: &str) -> PortResult<Option<AgentHistoryRow>> {
+    db.query_row(
+        "SELECT operation_id,workspace_id,principal,operation_kind,idempotency_key,request_digest,accepted_change_digest,state,generation,operation_json FROM operations WHERE operation_id=?1",
+        [id], AgentHistoryRow::read,
+    ).optional().map_err(|_| invalid())
+}
+
+fn current_affects(
+    db: &Connection,
+    row: &AgentHistoryRow,
+    workspace: &str,
+    key: &Key<'_>,
+) -> PortResult<bool> {
+    if !agent_locator_input::has_bound_header(row) {
+        return Ok(true);
+    }
+    if row.workspace_id != workspace || row.state != "succeeded" {
+        return Ok(false);
+    }
+    if !["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"]
+        .contains(&row.operation_kind.as_str())
+    {
+        return Ok(false);
+    }
+    let input = match agent_locator_input::classify(db, row) {
+        Ok(Some(input)) => input,
+        Ok(None) => return Ok(false),
+        Err(error)
+            if matches!(
+                error.code,
+                PortErrorCode::Corrupt | PortErrorCode::InvalidData
+            ) =>
+        {
+            return Ok(true);
+        }
+        Err(error) => return Err(error),
+    };
+    if key.scope == "resident" {
+        return Ok(input.resident_service_declaration);
+    }
+    if input.context != key.context {
+        return Ok(false);
+    }
+    Ok(match key.scope {
+        "model" => input.model.is_some(),
+        "collaboration" => input.collaboration.is_some(),
+        "management" => input.management.is_some(),
+        "grant" if input.additional_model_grant_candidate => {
+            match agent_locator_input::grant_reference(db, row, &input) {
+                Ok(reference) => Some(&reference) == key.grant,
+                Err(error)
+                    if matches!(
+                        error.code,
+                        PortErrorCode::Corrupt | PortErrorCode::InvalidData
+                    ) =>
+                {
+                    true
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        "grant" => false,
+        _ => return Err(invalid()),
+    })
+}
+
+fn uncertain_changes(
+    db: &Connection,
+    workspace: &str,
+    key: &Key<'_>,
+    head: Option<i64>,
+) -> PortResult<bool> {
+    let mut query = db.prepare("SELECT operation_id,old_ordinal,new_ordinal,old_workspace,new_workspace,flags FROM agent_locator_dirty ORDER BY event_id").map_err(|_| invalid())?;
+    let events = query
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, Option<String>>(0)?,
+                r.get::<_, Option<i64>>(1)?,
+                r.get::<_, Option<i64>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, u32>(5)?,
+            ))
+        })
+        .map_err(|_| invalid())?;
+    let mut changes: BTreeMap<String, (u32, Vec<i64>)> = BTreeMap::new();
+    for event in events {
+        let (id, old, new, old_workspace, new_workspace, flags) = event.map_err(|_| invalid())?;
+        let ordinals: Vec<_> = [old, new].into_iter().flatten().collect();
+        let workspaces: Vec<_> = [old_workspace.as_deref(), new_workspace.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect();
+        if !workspaces.is_empty() && !workspaces.contains(&workspace) {
+            continue;
+        }
+        if let Some(head) = head
+            && !ordinals.is_empty()
+            && ordinals.iter().all(|ordinal| *ordinal <= head)
+        {
+            continue;
+        }
+        let Some(id) = id else {
+            return Ok(true);
+        };
+        let entry = changes.entry(id).or_insert_with(|| (0, Vec::new()));
+        entry.0 |= flags;
+        entry.1.extend(ordinals);
+    }
+    drop(query);
+    for (id, (flags, ordinals)) in changes {
+        let sql =
+            format!("SELECT {MEMBER_COLUMNS} FROM agent_locator_members WHERE operation_id=?1");
+        let mut member = db
+            .query_row(&sql, [&id], Member::read)
+            .optional()
+            .map_err(|_| invalid())?;
+        if member.is_none() {
+            for ordinal in ordinals {
+                let sql =
+                    format!("SELECT {MEMBER_COLUMNS} FROM agent_locator_members WHERE ordinal=?1");
+                let candidate = db
+                    .query_row(&sql, [ordinal], Member::read)
+                    .optional()
+                    .map_err(|_| invalid())?;
+                if candidate
+                    .as_ref()
+                    .is_some_and(|m| m.classification == "unresolved")
+                {
+                    member = candidate;
+                    break;
+                }
+            }
+        }
+        if member.as_ref().is_some_and(|m| {
+            m.affects(workspace, key, key.scope == "grant" && flags & 6 != 0)
+                .unwrap_or(true)
+        }) {
+            return Ok(true);
+        }
+        if flags & 1 != 0 || member.is_none() {
+            if let Some(row) = row_for_id(db, &id)?
+                && current_affects(db, &row, workspace, key)?
+            {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn action(input: &agent_locator_input::LocatorInput, key: &Key<'_>) -> Option<&'static str> {
+    use agent_locator_input::FacetAction;
+    let value = match key.scope {
+        "model" => input.model,
+        "collaboration" => input.collaboration,
+        "management" => input.management,
+        _ => None,
+    };
+    match value {
+        Some(FacetAction::Configure) => Some("configure"),
+        Some(FacetAction::Restore) => Some("restore"),
+        None => None,
+    }
+}
+
+fn selected(
+    db: &Connection,
+    workspace: &WorkspaceId,
+    scope: AgentLocatorScope<'_>,
+) -> PortResult<Option<Arc<SucceededAgentOperationV1>>> {
+    let key = Key::new(scope)?;
+    if key
+        .grant
+        .is_some_and(|grant| grant.owner_scope() != workspace.as_str())
+    {
+        return Err(invalid());
+    }
+    agent_locator::validate_coverage(db)?;
+    let head: Option<(i64,String)> = db.query_row(
+        "SELECT ordinal,action FROM agent_locator_heads WHERE workspace_id=?1 AND scope=?2 AND context_id=?3 AND grant_key=?4",
+        params![workspace.as_str(),key.scope,key.context,key.hash], |r| Ok((r.get(0)?,r.get(1)?)),
+    ).optional().map_err(|_| invalid())?;
+    let ordinal = head.as_ref().map(|h| h.0);
+    let unresolved: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM agent_locator_members WHERE
+         (classification='unresolved' AND (workspace_id IS NULL OR workspace_id=?1)
+            OR (?2='grant' AND grant_unresolved=1 AND workspace_id=?1 AND context_id=?3))
+         AND (?4 IS NULL OR ordinal>?4))",
+            params![workspace.as_str(), key.scope, key.context, ordinal],
+            |r| r.get(0),
+        )
+        .map_err(|_| invalid())?;
+    if unresolved || uncertain_changes(db, workspace.as_str(), &key, ordinal)? {
+        return Err(invalid());
+    }
+    let Some((ordinal, head_action)) = head else {
+        return Ok(None);
+    };
+    let sql = format!("SELECT {MEMBER_COLUMNS} FROM agent_locator_members WHERE ordinal=?1");
+    let member = db
+        .query_row(&sql, [ordinal], Member::read)
+        .map_err(|_| invalid())?;
+    if member.ordinal != ordinal
+        || member.classification != "settings"
+        || !member.affects(workspace.as_str(), &key, false)?
+    {
+        return Err(invalid());
+    }
+    let id = member.id.as_deref().ok_or_else(invalid)?;
+    let row = row_for_id(db, id)?.ok_or_else(invalid)?;
+    let actual_ordinal: i64 = db
+        .query_row(
+            "SELECT rowid FROM operations WHERE operation_id=?1",
+            [id],
+            |r| r.get(0),
+        )
+        .map_err(|_| invalid())?;
+    let input = agent_locator_input::classify(db, &row)?.ok_or_else(invalid)?;
+    if actual_ordinal != ordinal
+        || member.generation != Some(row.generation)
+        || member.accepted.as_deref() != Some(row.accepted_digest.as_str())
+        || member.plan_digest.as_deref() != Some(input.plan_bytes_digest.as_str())
+        || input.workspace_id != *workspace
+        || (key.scope != "resident" && input.context != key.context)
+    {
+        return Err(invalid());
+    }
+    match key.scope {
+        "resident" if input.resident_service_declaration && head_action == "declaration" => {}
+        "grant" if input.additional_model_grant_candidate && head_action == "grant" => {
+            let actual = agent_locator_input::grant_reference(db, &row, &input)?;
+            if Some(&actual) != key.grant {
+                return Err(invalid());
+            }
+        }
+        "model" | "collaboration" | "management"
+            if action(&input, &key) == Some(head_action.as_str()) => {}
+        _ => return Err(invalid()),
+    }
+    Ok(Some(Arc::new(super::agent_read::decode_selected_agent(
+        db,
+        &row.encoded,
+        Some(&row),
+    )?)))
+}
+
+impl ControlStore {
+    /// The returned record has a strict journal proof, but is not a native/current
+    /// status proof. History and recovery retain their existing independent readers.
+    pub fn find_agent_locator(
+        &self,
+        workspace: &WorkspaceId,
+        scope: AgentLocatorScope<'_>,
+    ) -> PortResult<AgentLocatorResult> {
+        let db = self.connection.borrow();
+        let tx = if db.is_autocommit() {
+            Some(db.unchecked_transaction().map_err(|_| invalid())?)
+        } else {
+            None
+        };
+        let found = selected(&db, workspace, scope)?;
+        if let Some(tx) = tx {
+            tx.commit().map_err(|_| invalid())?;
+        }
+        Ok(match found {
+            Some(found) => AgentLocatorResult::Found(found),
+            None => AgentLocatorResult::AbsentWithCompleteCoverage,
+        })
+    }
+}
