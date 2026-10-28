@@ -855,3 +855,49 @@ fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_refere
         1
     );
 }
+
+#[test]
+fn legacy_initialization_ignores_superseded_optional_step_damage() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let path = directory.path().join("hermes-selected");
+    let mut older = target_operation(path.to_str().unwrap(), "old-damaged", false);
+    persist(&control, &mut older);
+    let mut current = target_operation(path.to_str().unwrap(), "current-valid", false);
+    persist(&control, &mut current);
+    let db = control.connection.borrow();
+    let rows = db
+        .prepare("SELECT operation_id,operation_json FROM operations ORDER BY rowid")
+        .unwrap()
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    for (id, encoded) in rows {
+        let inline = super::super::payloads::expand(&db, &encoded).unwrap();
+        db.execute(
+            "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
+            rusqlite::params![id, inline],
+        )
+        .unwrap();
+    }
+    db.execute(
+        "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=1",
+        [older.operation_id.as_str()],
+    )
+    .unwrap();
+    db.execute_batch(
+        "BEGIN; DROP TRIGGER operation_recovery_insert; DROP TRIGGER operation_recovery_guard;
+        DROP TRIGGER operation_recovery_update; DELETE FROM operation_recovery_members;
+        DELETE FROM operation_recovery_coverage; DELETE FROM agent_native_target_heads;
+        DELETE FROM agent_native_target_coverage; DELETE FROM publication_grant_proofs;
+        DELETE FROM artifact_head_transitions; DELETE FROM artifact_heads; DELETE FROM artifact_head_coverage;",
+    )
+    .unwrap();
+    let result = super::super::current_dependencies::initialize(&db);
+    db.execute_batch("ROLLBACK").unwrap();
+    assert!(
+        result.is_ok(),
+        "a superseded, unrelated optional step must not prevent current target discovery"
+    );
+}
