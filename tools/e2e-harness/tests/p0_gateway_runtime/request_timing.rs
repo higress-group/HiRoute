@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::Value;
 
-fn summaries(fixture: &RuntimeFixture, expected: usize) -> Vec<Value> {
+pub(super) fn summaries(fixture: &RuntimeFixture, expected: usize) -> Vec<Value> {
     let path = fixture
         .diagnostics_root
         .as_ref()
