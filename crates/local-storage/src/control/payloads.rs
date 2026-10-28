@@ -7,6 +7,22 @@ use serde_json::value::RawValue;
 const SCHEMA: &str = "hiroute.operation-payload/v1";
 const EFFECT_THRESHOLD: usize = 32 * 1024;
 
+/// Minimal read-only source shared by live SQLite and frozen selected closures.
+pub(super) trait PayloadRead {
+    fn payload(&self, owner: &str, digest: &CanonicalDigest) -> PortResult<String>;
+}
+
+impl PayloadRead for Connection {
+    fn payload(&self, owner: &str, digest: &CanonicalDigest) -> PortResult<String> {
+        self.query_row(
+            "SELECT payload_json FROM operation_payloads WHERE operation_id=?1 AND digest=?2",
+            params![owner, digest.as_str()],
+            |row| row.get(0),
+        )
+        .map_err(|_| invalid())
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Reference {
@@ -92,8 +108,27 @@ fn raw<T: Serialize>(value: &T) -> PortResult<Box<RawValue>> {
     serde_json::value::to_raw_value(value).map_err(|_| invalid())
 }
 
+/// Identify only a top-level storage reference without decoding an inline body.
+/// The strict reader still authenticates encoding and digest outside capture.
+pub(super) fn referenced_digest(value: &RawValue) -> PortResult<Option<CanonicalDigest>> {
+    if !value.get().trim_start().starts_with('{') {
+        return Ok(None);
+    }
+    let object: BTreeMap<String, &RawValue> =
+        serde_json::from_str(value.get()).map_err(|_| invalid())?;
+    let schema = object
+        .get("schema")
+        .and_then(|raw| serde_json::from_str::<String>(raw.get()).ok());
+    if schema.as_deref() != Some(SCHEMA) {
+        return Ok(None);
+    }
+    let reference: Reference = serde_json::from_str(value.get()).map_err(|_| invalid())?;
+    CanonicalDigest::parse(reference.digest.as_str()).map_err(|_| invalid())?;
+    Ok(Some(reference.digest))
+}
+
 pub(super) fn expand_payload(
-    db: &Connection,
+    db: &impl PayloadRead,
     owner: &str,
     value: &RawValue,
 ) -> PortResult<Box<RawValue>> {
@@ -102,14 +137,7 @@ pub(super) fn expand_payload(
         return RawValue::from_string(value.get().to_owned()).map_err(|_| invalid());
     }
     let reference: Reference = serde_json::from_str(value.get()).map_err(|_| invalid())?;
-    let bytes: String = db
-        .query_row(
-            "SELECT payload_json FROM operation_payloads
-        WHERE operation_id=?1 AND digest=?2",
-            params![owner, reference.digest.as_str()],
-            |r| r.get(0),
-        )
-        .map_err(|_| invalid())?;
+    let bytes = db.payload(owner, &reference.digest)?;
     if CanonicalDigest::of_bytes(bytes.as_bytes()) != reference.digest {
         return Err(invalid());
     }
@@ -118,7 +146,7 @@ pub(super) fn expand_payload(
 }
 
 pub(super) fn expand_step(
-    db: &Connection,
+    db: &impl PayloadRead,
     owner: &str,
     encoded: &RawValue,
 ) -> PortResult<Box<RawValue>> {
@@ -137,7 +165,7 @@ pub(super) fn expand_step(
     raw(&value)
 }
 
-pub(super) fn expand(db: &Connection, encoded: &str) -> PortResult<String> {
+pub(super) fn expand(db: &impl PayloadRead, encoded: &str) -> PortResult<String> {
     // Preserve duplicate-member/large-number rejection before changing object layout.
     journal::validate_encoding(encoded)?;
     let mut value: Object = serde_json::from_str(encoded).map_err(|_| invalid())?;
@@ -156,7 +184,11 @@ pub(super) fn expand(db: &Connection, encoded: &str) -> PortResult<String> {
     serde_json::to_string(&value).map_err(|_| invalid())
 }
 
-pub(super) fn expand_step_record(db: &Connection, owner: &str, encoded: &str) -> PortResult<Value> {
+pub(super) fn expand_step_record(
+    db: &impl PayloadRead,
+    owner: &str,
+    encoded: &str,
+) -> PortResult<Value> {
     journal::validate_encoding(encoded)?;
     let mut record: Object = serde_json::from_str(encoded).map_err(|_| invalid())?;
     let step = expand_step(db, owner, record.get("step").ok_or_else(invalid)?)?;

@@ -68,6 +68,7 @@ impl ReadEpoch {
 
 /// These are the columns of the selected row, not another matching row found by
 /// an EXISTS query. Raw substitution between two valid operations must fail.
+#[derive(Clone)]
 pub(super) struct AgentHistoryRow {
     pub(super) operation_id: String,
     pub(super) workspace_id: String,

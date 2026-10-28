@@ -664,6 +664,8 @@ fn locator_input_binds_the_actual_selected_row() {
     assert!(agent_locator_input::classify(&db, &row).is_err());
 }
 
+#[path = "agent_frozen_read_tests.rs"]
+mod frozen_read;
 #[path = "agent_locator_grant_tests.rs"]
 mod locator_grant;
 #[path = "agent_locator_projection_tests.rs"]
@@ -891,7 +893,7 @@ fn legacy_native_target_initialization_preserves_journal_bytes_and_latest_refere
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         for (id, encoded) in rows {
-            let inline = super::super::payloads::expand(&db, &encoded).unwrap();
+            let inline = super::super::payloads::expand(&*db, &encoded).unwrap();
             db.execute(
                 "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
                 rusqlite::params![id, inline.as_str()],
@@ -953,7 +955,7 @@ fn legacy_initialization_refuses_unverified_history_and_preserves_source() {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     for (id, encoded) in rows {
-        let inline = super::super::payloads::expand(&db, &encoded).unwrap();
+        let inline = super::super::payloads::expand(&*db, &encoded).unwrap();
         db.execute(
             "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
             rusqlite::params![id, inline],
