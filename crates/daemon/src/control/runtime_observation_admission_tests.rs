@@ -58,7 +58,7 @@ fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
     ];
     for (index, intent) in intents.into_iter().enumerate() {
         let query = ObservationReadRequestV2::new(intent);
-        let capability = format!("bounded-observation-{index}");
+        let capability = format!("bounded-observation-test-capability-{index}");
         runtime
             .register_apply_capability(
                 ApplyCapabilityRegistrationV1::from_protected_launcher(
