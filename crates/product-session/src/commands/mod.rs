@@ -37,8 +37,10 @@ mod web_confirmation;
 use web_confirmation::*;
 mod read_context;
 mod trial_agents;
+mod trial_setup;
 pub use read_context::{desktop_snapshot, observation_read};
 pub use trial_agents::{trial_agent_choices, trial_agent_model};
+pub use trial_setup::trial_setup_snapshot;
 mod context;
 pub use context::*;
 async fn confirmation_session<'a>(

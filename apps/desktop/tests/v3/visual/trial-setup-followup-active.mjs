@@ -45,7 +45,7 @@ async function shot(name) {
   await writeFile(path.join(output,`${name}.png`),Buffer.from(image.data,'base64'));
 }
 async function run(id, test) {
-  if (process.env.TRIAL_SETUP_CASE && process.env.TRIAL_SETUP_CASE !== id) return;
+  if (process.env.TRIAL_SETUP_CASE && !process.env.TRIAL_SETUP_CASE.split(',').includes(id)) return;
   try { await test(); results.push({id,state:'passed'}); }
   catch (error) {
     await shot(`failure-${id}`).catch(()=>{});
@@ -54,6 +54,28 @@ async function run(id, test) {
   }
 }
 try {
+  await run('capture.retry-at-most-once', async () => {
+    await open('');
+    const before=await evaluate(client, `trialTrace.filter(x=>x.command==='trial_setup_snapshot').length`);
+    const catalog=await evaluate(client, `trialTrace.filter(x=>x.command==='model_availability').length`);
+    await evaluate(client, `trialSetupControl.snapshotFailures=['READ_SNAPSHOT_CHANGED'];[...document.querySelectorAll('.trial-footer button')].find(e=>e.textContent.includes('Refresh availability')).click();true`);
+    await waitFor(client, `trialTrace.filter(x=>x.command==='trial_setup_snapshot').length===${before+2}`);
+    await waitFor(client, `!document.querySelector('.trial-footer button[disabled]')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='model_availability').length`),catalog);
+    await evaluate(client, `trialSetupControl.snapshotFailures=['CHANGE_PREVIEW_STALE','CHANGE_PREVIEW_STALE','CHANGE_PREVIEW_STALE'];[...document.querySelectorAll('.trial-footer button')].find(e=>e.textContent.includes('Refresh availability')).click();true`);
+    await waitFor(client, `document.querySelector('.trial-page').textContent.includes('could not be read')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='trial_setup_snapshot').length`),before+4);
+    assert.equal(await evaluate(client, `trialSetupControl.snapshotFailures.length`),1);
+  });
+  await run('capture.descriptive-catalog-does-not-grant-binding', async () => {
+    await open('');
+    await waitFor(client, `!!document.querySelector('[data-trial-target="trial-reasoning"]')`);
+    await evaluate(client, `trialSetupControl.catalogAdmission=false;[...document.querySelectorAll('.trial-footer button')].find(e=>e.textContent.includes('Refresh availability')).click();true`);
+    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.toLowerCase().includes('catalog match unconfirmed')`);
+    await click('.trial-footer .btn-primary','Review changes');
+    await waitFor(client, `document.querySelector('.trial-validation-summary')?.textContent.includes('trial connection')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+  });
   await run('readiness.all-blockers', async () => {
     await open('no-reasoning-default=1');
     await click('.trial-choice-list .trial-choice', 'GPT');
@@ -369,7 +391,7 @@ try {
     await waitFor(client, `trialTrace.some(x=>x.command==='get_compute_save_result')`);
     await evaluate(client, `trialSetupControl.release();true`);
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
-    assert.ok(await evaluate(client, `trialTrace.filter(x=>x.command==='compute_management_snapshot').length>=3`));
+    assert.ok(await evaluate(client, `trialTrace.filter(x=>x.command==='trial_setup_snapshot').length>=3`));
     await click('.trial-recovery button','Use this saved model');
     await waitFor(client, `document.querySelector('[data-trial-target=trial]').textContent.includes('Saved synthetic model')`);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
@@ -468,6 +490,113 @@ try {
       await waitFor(client, `!!document.querySelector('.plan-editor [data-trust-control="smart"] .trust-slider')`);
       assert.equal(await evaluate(client, `document.querySelector('.plan-editor [data-trust-control="smart"] .trust-slider').value`),String(1000-threshold));
     }
+  });
+  await run('review-repair.protected-existing-selection', async () => {
+    await open('additional-connection=1&same-names=1');
+    await click('[data-trial-target=trial] button','Add a connection');
+    await click('.trial-inline-connection button','Kimi');
+    await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
+    await field('#mc-connection-form input[maxlength="60"]','Edited synthetic connection');
+    await field('#mc-connection-form input[type=password]','synthetic-draft-key');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
+    await waitFor(client, `!!document.querySelector('.discard-dialog[open]')`);
+    await click('.discard-dialog button','Keep editing');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`),'synthetic-draft-key');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[maxlength="60"]').value`),'Edited synthetic connection');
+    assert.ok(await evaluate(client, `!!document.querySelector('.trial-picker') && document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Qwen3')`));
+    await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
+    await waitFor(client, `!!document.querySelector('.discard-dialog[open]')`);
+    await click('.discard-dialog button','Discard changes');
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=trial]').textContent.includes('A second provider')`);
+    assert.equal(await evaluate(client, `!!document.querySelector('#mc-connection-form')`),false);
+  });
+  await run('review-repair.primary-keeps-trial-editor', async () => {
+    await open('additional-connection=1');
+    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
+    await field('#mc-connection-form input[type=password]','synthetic-draft-key');
+    await click('[data-trial-target=primary] button','Choose an existing connection');
+    await click('.trial-picker .trial-choice','GPT-6-Astra');
+    await waitFor(client, `!document.querySelector('.trial-picker')`);
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]')?.value`),'synthetic-draft-key');
+    assert.equal(await evaluate(client, `!!document.querySelector('.discard-dialog[open]')`),false);
+  });
+  await run('review-repair.uncertain-save-blocks-review', async () => {
+    await open('additional-connection=1&saved-user-declared=1&lost-apply=1');
+    await click('.trial-choice-list .trial-choice','GPT');
+    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
+    await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
+    await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
+    await click('.model-selection input[type=checkbox]'); await click('.modal-foot button','Save connection');
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('unconfirmed')`);
+    await click('.trial-recovery button','Back to trial');
+    assert.equal(await evaluate(client, `document.querySelector('.trial-footer .btn-primary').disabled`),true,'an unconfirmed original save cannot be abandoned by advancing');
+    assert.match(await evaluate(client, `document.querySelector('.trial-footer-hint').textContent`),/confirm|verif/i);
+    await click('[data-trial-target=trial] button','Review connection result');
+    await click('.trial-recovery button','Refresh result');
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('review-repair.saved-result-survives-review', async () => {
+    await open('additional-connection=1&saved-user-declared=1&same-names=1');
+    await click('.trial-choice-list .trial-choice','GPT');
+    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
+    await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
+    await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
+    await click('.model-selection input[type=checkbox]'); await click('.modal-foot button','Save connection');
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    await click('.trial-recovery button','Back to trial');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=trial]').textContent.includes('A second provider')`);
+    await click('.trial-footer .btn-primary','Review changes'); await waitFor(client, `!!document.querySelector('.trial-review')`);
+    await click('.trial-review > .actions button','Back to setup');
+    await click('[data-trial-target=trial] button','Review connection result');
+    assert.match(await evaluate(client, `document.querySelector('.trial-recovery').textContent`),/Use this saved model/i);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('review-repair.parked-judgment', async () => {
+    await open('custom-service=1'); await click('.trial-choice-list .trial-choice','GPT');
+    await evaluate(client, `(()=>{const e=document.querySelector('.trial-setup .decision-selector select');e.value='decision/trial';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+    await click('.trial-footer .btn-primary','Review changes'); await waitFor(client, `!!document.querySelector('.trial-review .trust-slider')`);
+    await field('.trial-review .trust-slider','277');
+    await click('.trial-review [data-route-group=classifier] .decision-methods button','Custom extension');
+    await click('.trial-review > .actions button','Back to setup');
+    await click('.trial-setup [data-route-group=classifier] .decision-methods button','Decision model');
+    await waitFor(client, `!!document.querySelector('.trial-setup .trust-threshold')`);
+    assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/0\.723$/);
+    await evaluate(client, `setTrialLanguage('zh');true`);
+    await click('.trial-footer .btn-primary','检查改动'); await waitFor(client, `!!document.querySelector('.trial-review .trust-slider')`);
+    await click('.trial-review [data-route-group=classifier] .decision-methods button','自定义扩展');
+    await click('.trial-review > .actions button','返回设置');
+    await click('.trial-setup [data-route-group=classifier] .decision-methods button','决策模型');
+    assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/0\.723$/);
+  });
+  await run('review-repair.generated-name-limit', async () => {
+    await open('long-model-names=1');
+    await evaluate(client, `document.querySelector('.trial-choice-list .trial-choice').click();true`);
+    const value=await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`);
+    assert.ok([...value].length<=128 && value.includes('试') && value.includes('🚀'),`generated name has ${[...value].length} scalars`);
+  });
+  await run('review-repair.name-blank-and-unicode', async () => {
+    await open(''); await click('.trial-choice-list .trial-choice','GPT');
+    await field('[data-trial-target=name] input','   '); await click('.trial-footer .btn-primary','Review changes');
+    assert.ok(await evaluate(client, `!!document.querySelector('[data-trial-target=name] .oc-inline-error') && !document.querySelector('.trial-review')`),'explicit blank must not fall back to default');
+    await field('[data-trial-target=name] input','🚀'.repeat(129)); await click('.trial-footer .btn-primary','Review changes');
+    assert.ok(await evaluate(client, `!!document.querySelector('[data-trial-target=name] .oc-inline-error') && !document.querySelector('.trial-review')`),'129 Unicode scalars must be invalid');
+    const valid='🚀'.repeat(128); await field('[data-trial-target=name] input',valid); await click('.trial-footer .btn-primary','Review changes');
+    await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+    await click('.trial-review > .actions .btn-primary','Save and publish route'); await waitFor(client, `!!document.querySelector('.trial-mapping')`);
+    assert.equal(await evaluate(client, `trialTrace.find(x=>x.command==='preview_plan_editor'&&x.payload.input.action==='save_draft').payload.input.editor.display_name`),valid);
+  });
+  await run('review-repair.unpublished-trust-context', async () => {
+    await open(''); await click('.trial-choice-list .trial-choice','GPT'); await click('.trial-footer .btn-primary','Review changes');
+    await waitFor(client, `!!document.querySelector('.trial-review .trust-control')`);
+    assert.equal(await evaluate(client, `!!document.querySelector('.trial-review .trust-control-evidence')`),false,'an unpublished route has no active-version evidence');
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='observation_read'&&x.payload?.request?.intent?.view==='plan_trust_replay').length`),0);
   });
   await writeFile(path.join(output,'report.json'),JSON.stringify({proof:'production components and synthetic IPC; no model calls',results},null,2));
   console.log(JSON.stringify(results.map(({id,state,error})=>({id,state,error}))));

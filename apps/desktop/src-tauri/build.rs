@@ -87,6 +87,7 @@ fn main() {
             "web_confirmation_snapshot",
             "resolve_web_confirmation",
             "agent_snapshot",
+            "trial_setup_snapshot",
             "trial_agent_choices",
             "trial_agent_model",
             "preview_agent_previous_routing",

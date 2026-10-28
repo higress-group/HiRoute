@@ -4,19 +4,20 @@ import { ModelConnectionForm } from '../model-connections/ModelConnectionForm';
 import { modelConnectionBackend } from '../model-connections/backend';
 import { newModelConnectionDraft } from '../model-connections/new-draft';
 import { checkMatches } from '../model-connections/state';
+import { safeConnectionErrorCode } from '../model-connections/copy';
+import { saveFailureDefinitelyPreAdmission } from '../subscriptions/model';
 import type { ComputeCandidateRef, ComputeSaveResult, ModelConnectionBackend, ModelConnectionCheckView, OperationReference } from '../model-connections/types';
-import type { ManagementSnapshot } from '../models/types';
-import type { AvailableModel, ModelAvailabilityResult } from '../model-feed/types';
-import type { Options } from '../../plan-editor';
-
-export type TrialCatalogSnapshot = { availability: ModelAvailabilityResult; options: Options; management: ManagementSnapshot };
+import type { TrialCatalogSnapshot, TrialManagementSnapshot } from './types';
+import type { AvailableModel } from '../model-feed/types';
 type ResolvedBinding = { bindingId: string; modelId: string; name: string; source: string; linked: boolean };
+export type TrialConnectionState = 'editing' | 'saving' | 'uncertain' | 'saved';
 
-export function TrialConnectModel({ model, language, management, mutable, onResolve, onReceipt, onSaved, onBack, onOperation }: {
-  model: AvailableModel; language: 'zh' | 'en'; management: ManagementSnapshot; mutable: boolean;
+export function TrialConnectModel({ model, language, management, mutable, onResolve, onReceipt, onSaved, onBack, onOperation, onStateChange }: {
+  model: AvailableModel; language: 'zh' | 'en'; management: TrialManagementSnapshot; mutable: boolean;
   onResolve(receipt: ComputeSaveResult): Promise<TrialCatalogSnapshot | undefined>;
   onReceipt(): void;
-  onSaved(result: ComputeSaveResult, selection: ResolvedBinding): void; onBack(recoverable: boolean): void; onOperation(operation: OperationReference): void;
+  onSaved(result: ComputeSaveResult, selection: ResolvedBinding): boolean; onBack(recoverable: boolean): void; onOperation(operation: OperationReference): void;
+  onStateChange(state: TrialConnectionState): void;
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const [draft] = useState(() => newModelConnectionDraft('known'));
@@ -31,6 +32,8 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
   const previewed = useRef<{ acceptDigest: string; candidateKey: string; selectedRefs: Set<string> } | null>(null);
   const unknown = useRef<{ idempotency_key: string; candidate: ComputeCandidateRef } | null>(null);
   const checked = useRef(new Map<string, Set<string>>());
+  const currentLanguage = useRef(language);
+  currentLanguage.current = language;
   useEffect(() => () => { live.current = false; }, []);
   const backend = useMemo<ModelConnectionBackend>(() => {
     const owner = modelConnectionBackend(language);
@@ -75,10 +78,15 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
         submitted.current = { idempotency_key: request.idempotency_key, accept_digest: request.accept_digest,
           candidateKey: preview?.acceptDigest === request.accept_digest ? preview.candidateKey : '',
           selectedRefs: preview?.acceptDigest === request.accept_digest ? preview.selectedRefs : new Set() };
-        return owner.applyComputeSave(request);
+        onStateChange('saving');
+        try { return await modelConnectionBackend(currentLanguage.current).applyComputeSave(request); }
+        catch (error) {
+          if (saveFailureDefinitelyPreAdmission(error) || saveFailureDefinitelyPreAdmission(safeConnectionErrorCode(error, true))) onStateChange('editing');
+          throw error;
+        }
       },
     };
-  }, [language, model.model_configuration_id]);
+  }, [model.model_configuration_id, onStateChange]);
 
   function resolutionScope(receipt: ComputeSaveResult): ComputeSaveResult {
     const reference = receipt.candidate;
@@ -121,19 +129,18 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
         if (live.current) { setUncertain(true); setError(text('保存结果与原始接入不匹配，请返回核对。', 'The save result does not match the original connection. Return to review it.')); }
         return;
       }
-      if (live.current) { setSaved(receipt); setUncertain(false); onReceipt(); }
+      if (live.current) { setSaved(receipt); setUncertain(false); onStateChange('saved'); onReceipt(); }
       const current = await onResolve(resolutionScope(receipt));
       if (!live.current) return;
       if (!current) throw Error('READ_FAILED');
       const observed = reference && checked.current.get(`${reference.candidate_ref}:${reference.candidate_revision}`);
       const selectedRefs = reference && submitted.current?.candidateKey === `${reference.candidate_ref}:${reference.candidate_revision}` ? submitted.current.selectedRefs : undefined;
       const source = current.management.sources.find(s => s.source_id === receipt.source_id);
-      const target = current.availability.models.find(m => m.model_configuration_id === model.model_configuration_id);
       const matches = receipt.bindings.flatMap(binding => {
         const member = source?.models.find(m => m.binding_id === binding.binding_id && m.model_ref === binding.model_ref && m.revision === binding.revision);
         const candidate = current.options.candidates.find(c => c.binding_id === binding.binding_id && c.routable);
-        if (!source || source.state !== 'ready' || !member || !selectedRefs?.has(binding.model_ref) || member.presentation?.availability !== 'available' || !candidate) return [];
-        const linked = member.catalog_configuration_id === model.model_configuration_id && candidate.model_configuration_id === model.model_configuration_id && !!target?.binding_ids.includes(binding.binding_id) && !!observed?.has(binding.model_ref);
+        if (!source || source.state !== 'ready' || !member || !selectedRefs?.has(binding.model_ref) || member.availability !== 'available' || !candidate) return [];
+        const linked = member.catalog_configuration_id === model.model_configuration_id && candidate.model_configuration_id === model.model_configuration_id && member.catalog_admitted && !!observed?.has(binding.model_ref);
         // An unlinked declaration is a distinct identity, never a guessed catalog match.
         if (!linked && member.catalog_configuration_id) return [];
         return [{ bindingId: binding.binding_id, modelId: candidate.model_configuration_id, name: member.display_name, source: source.display_name, linked }];
@@ -142,7 +149,7 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
         setError(text('接入已保存，但当前绑定无法确认可用。请刷新结果或返回检查已保存接入。', 'The connection is saved, but its current binding could not be confirmed. Refresh the result or review the saved connection.'));
         return;
       }
-      if (receipt.bindings.length === 1 && matches.length === 1 && matches[0].linked) { onSaved(receipt, matches[0]); return; }
+      if (receipt.bindings.length === 1 && matches.length === 1 && matches[0].linked && onSaved(receipt, matches[0])) return;
       setResolved(matches);
     } catch {
       if (live.current) setError(text('暂时无法核实保存结果。已完成的保存会保留，刷新不会重复提交。', 'The save result could not be verified. Completed saves are retained; refresh does not resubmit.'));
@@ -161,9 +168,8 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
       const reference = saved.candidate;
       const observation = reference && checked.current.get(`${reference.candidate_ref}:${reference.candidate_revision}`);
       const selected = reference && submitted.current?.candidateKey === `${reference.candidate_ref}:${reference.candidate_revision}` && !!submitted.current.selectedRefs.has(receiptBinding?.model_ref ?? '');
-      const catalog = current?.availability.models.find(item => item.model_configuration_id === model.model_configuration_id);
-      const linked = !!member && member.catalog_configuration_id === model.model_configuration_id && candidate?.model_configuration_id === model.model_configuration_id && !!catalog?.binding_ids.includes(member.binding_id) && !!observation?.has(member.model_ref);
-      if (!source || source.state !== 'ready' || !member || member.presentation?.availability !== 'available' || !candidate || !observation || !selected || (selection.linked ? !linked : !!member.catalog_configuration_id)) {
+      const linked = !!member && member.catalog_configuration_id === model.model_configuration_id && candidate?.model_configuration_id === model.model_configuration_id && member.catalog_admitted && !!observation?.has(member.model_ref);
+      if (!source || source.state !== 'ready' || !member || member.availability !== 'available' || !candidate || !observation || !selected || (selection.linked ? !linked : !!member.catalog_configuration_id)) {
         setResolved([]); setError(text('接入已保存，但所选模型已变化或不可用。请刷新结果。', 'The connection is saved, but this model changed or is unavailable. Refresh the result.')); return;
       }
       onSaved(saved, { ...selection, name: member.display_name, source: source.display_name });
@@ -174,7 +180,7 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
   return <section className="trial-inline-connection"><h3>{text('接入', 'Connect')} {model.display_name}</h3>{error && <p role="alert">{error}</p>}<ModelConnectionForm language={language} mutable={mutable} allowCustom initialDraft={draft} existingNames={management.sources.map(s => s.display_name)} expectedRevisions={management.revisions} backend={backend}
     onBack={() => onBack(false)} onCancel={() => { if (!uncertainRef.current) onBack(false); }}
     onSaveAccepted={operation => { accepted.current = operation; onOperation(operation); }}
-    onSaveResult={result => { if (result.disposition === 'saved') { setSaved(result); void confirm(result); } }}
-    onSaveUncertain={identity => { unknown.current = identity; uncertainRef.current = true; setUncertain(true); }} restoreFocus={() => {}} />
+    onSaveResult={result => { if (result.disposition === 'saved') { setSaved(result); onStateChange('saved'); void confirm(result); } else onStateChange('editing'); }}
+    onSaveUncertain={identity => { unknown.current = identity; uncertainRef.current = true; setUncertain(true); onStateChange('uncertain'); }} restoreFocus={() => {}} />
   </section>;
 }

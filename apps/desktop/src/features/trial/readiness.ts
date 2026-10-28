@@ -9,6 +9,7 @@ type Inputs = {
   language: 'zh' | 'en'; trialId: string; trialUsable: boolean; trialReasoning?: 'selected' | 'choice_required' | 'invalid';
   primaryId: string; primaryUsable: boolean; primaryReasoning?: 'selected' | 'choice_required' | 'invalid';
   connectionOpen: boolean; decisionUsable: boolean; agentId: string; agentMatches: boolean; agentSeedKnown: boolean;
+  connectionPending?: 'saving' | 'uncertain' | null;
   claude: boolean; presets: number; name: string; threshold: number; custom: boolean;
   authoring: boolean; loading: boolean; readError: boolean; decisionError: boolean; agentError: boolean; mutable: boolean; authority: boolean;
 };
@@ -21,6 +22,7 @@ export function trialReadiness(i: Inputs) {
   if (!i.trialId) add('trial-model', 'user_input', 'trial', '选择要试用的模型', 'Choose a model to try');
   else if (!i.trialUsable) add('trial-binding', 'user_input', 'trial', '选择可用的试用接入', 'Choose an available trial connection');
   if (i.connectionOpen) add('trial-connection-open', 'user_input', 'trial', '完成或返回接入流程', 'Finish or return from the connection flow');
+  if (i.connectionPending) add('trial-connection-pending', 'recoverable_read', 'trial', '接入保存结果仍待核实，请查看接入结果', 'The connection save is still being confirmed. Review the connection result');
   if (i.trialReasoning && i.trialReasoning !== 'selected') add('trial-reasoning', 'user_input', 'trial-reasoning', '选择有效的试用思考设置', 'Choose valid trial reasoning');
   if (!i.primaryId || !i.primaryUsable) add('primary-binding', 'user_input', 'primary', '选择主力模型及可用接入', 'Choose a Primary model and available connection');
   else if (i.trialId === i.primaryId) add('primary-distinct', 'user_input', 'primary', '主力模型须与试用模型不同', 'Choose a different model for Primary');
@@ -31,6 +33,8 @@ export function trialReadiness(i: Inputs) {
   if (i.agentId && i.agentMatches && !i.agentSeedKnown) add('agent-seed', 'unavailable', 'agent', '检查 Agent 的现有配置', 'Check the Agent’s current configuration');
   if (i.claude && !i.presets) add('presets', 'user_input', 'presets', '至少选择一个预设', 'Choose at least one preset');
   if (!i.name.trim()) add('name', 'user_input', 'name', '填写有效的路由名称', 'Enter a valid route name');
+  else if (Array.from(i.name).length > 128) add('name', 'user_input', 'name', '路由名称最多 128 个字符', 'Use at most 128 characters for the route name');
+  else if (i.name !== i.name.trim() || /\p{Cc}/u.test(i.name)) add('name', 'user_input', 'name', '去除名称首尾空格和控制字符', 'Remove leading or trailing whitespace and control characters');
   if (!i.custom && (!Number.isInteger(i.threshold) || i.threshold < 0 || i.threshold > 1000)) add('threshold', 'user_input', 'trust', '选择有效的起始信任度', 'Choose a valid starting trust');
   if (i.loading) add('loading', 'loading', 'refresh', '正在读取当前配置', 'Reading the current configuration');
   if (i.readError) add('read', 'recoverable_read', 'refresh', '无法读取试用配置，请重试', 'Trial configuration could not be read. Retry');

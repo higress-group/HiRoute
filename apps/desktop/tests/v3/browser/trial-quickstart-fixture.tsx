@@ -34,6 +34,10 @@ const featured = ['model.trial','model.openai.gpt-6-luna'].map(id=>({id:`feature
 export const trialModel = catalog.find(m=>m.binding_ids.includes('binding/bailian/qwen-coder'))!;
 export const primaryModel = catalog.find(m=>m.binding_ids.includes('binding/codex/gpt-5.6-sol'))!;
 const sameNames = new URLSearchParams(location.search).has('same-names');
+if (new URLSearchParams(location.search).has('long-model-names')) {
+ trialModel.display_name = '试'.repeat(80);
+ primaryModel.display_name = '🚀'.repeat(80);
+}
 const trialManagement = structuredClone(readyManagement);
 const setupParams = new URLSearchParams(location.search);
 // This registered fixture represents the catalog member selected on entry.
@@ -41,6 +45,7 @@ const setupParams = new URLSearchParams(location.search);
 if (setupParams.has('saved-only')) trialManagement.sources[1].models[0].membership = 'user_declared';
 else trialManagement.sources[1].models[0].catalog_configuration_id = trialModel.model_configuration_id;
 const setupControl = { failNextManagement: false, holdNextManagement: false, holdNextDecision: false, pending: [] as (()=>void)[], pendingDecision: [] as (()=>void)[],
+ snapshotFailures: [] as string[], catalogAdmission: true,
  pendingApply: [] as (()=>void)[],
  pendingCheck: [] as (()=>void)[], checkCount: 0,
  checkedSubscription: null as any,
@@ -112,6 +117,14 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   if(agentControl.hold) await new Promise<void>(release=>agentControl.pending.push({context:payload.contextId,release}));
   return result;
  }
+ if(command==='trial_setup_snapshot') {
+  const failure=setupControl.snapshotFailures.shift(); if(failure) throw {source:'native',code:failure};
+  const options:any=await quickStartInvoke('plan_editor_options',{input:{authoring:{},requirements:{},native_selections:{},suggest_free:false}},params);
+  const catalogAtCapture=structuredClone(catalog);
+  const management:any=await quickStartInvoke('compute_management_snapshot',{},params);
+  management.sources=management.sources.map((source:any)=>({source_id:source.source_id,revision:source.revision,display_name:source.display_name,provenance:source.provenance,access_kind:source.connection_identity?.access_kind??'unknown',state:source.state,actions:source.actions,models:source.models.map((member:any)=>({model_ref:member.model_ref,binding_id:member.binding_id,revision:member.revision,upstream_model_id:member.upstream_model_id,display_name:member.display_name,catalog_configuration_id:member.catalog_configuration_id,membership:member.membership,availability:member.presentation?.availability??'unknown',reason_code:member.presentation?.reason_code,catalog_admitted:setupControl.catalogAdmission && !!member.catalog_configuration_id && options.candidates.some((candidate:any)=>candidate.binding_id===member.binding_id && candidate.routable && candidate.model_configuration_id===member.catalog_configuration_id) && !!catalogAtCapture.find(item=>item.model_configuration_id===member.catalog_configuration_id)?.binding_ids.includes(member.binding_id)}))}));
+  return {schema:'hiroute.trial-setup-snapshot/v1',options,management};
+ }
  if(command==='model_availability') return {featured:params.has('saved-only')?[]:featured,models:params.has('saved-only')?[]:catalog};
  if(command==='desktop_snapshot') return structuredClone(desktop);
  if(command==='compute_management_snapshot') {
@@ -125,7 +138,8 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  if(command==='agent_snapshot') return structuredClone(agents);
  if(command==='decision_services') {
   if (setupControl.holdNextDecision) { setupControl.holdNextDecision=false; await new Promise<void>(release=>setupControl.pendingDecision.push(release)); }
-  return {services:[params.has('native')?{...decision,connection:{kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:10000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}}}:decision]};
+  const native=params.has('native')?{...decision,connection:{kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:10000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}}}:decision;
+  return {services:params.has('custom-service')?[native,{...decision,id:'decision/custom-fixture',name:'Saved extension'}]:[native]};
  }
  if(command==='plan_editor_options') {
   const value:any = await mockProductInvoke(command,payload,'ready');
@@ -138,6 +152,10 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   if (trialManagement.sources[0].models.some(member=>member.binding_id==='binding/fixture/sub-added')) value.candidates.push({binding_id:'binding/fixture/sub-added',model_configuration_id:'fixture-sub-added',display_name:'Added subscription model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'subscription',routable:true,ingress_protocols:['responses']});
   if (setupControl.trialReasoningMode==='toggle') value.candidates.find((candidate:any)=>candidate.binding_id==='binding/bailian/qwen-coder').reasoning={kind:'toggle'};
   const primary = value.candidates.find((candidate:any) => candidate.binding_id === 'binding/codex/gpt-5.6-sol');
+  if (params.has('long-model-names')) {
+   value.candidates.find((candidate:any)=>candidate.binding_id==='binding/bailian/qwen-coder').display_name=trialModel.display_name;
+   primary.display_name=primaryModel.display_name;
+  }
   if (primary?.reasoning.kind === 'discrete' && !params.has('no-reasoning-default')) primary.reasoning.default_profile = 'high';
   if (sameNames) {
    value.candidates.push({...structuredClone(primary),binding_id:'binding/second/same-name',model_configuration_id:'model.same-name'});
@@ -189,7 +207,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   if (payload.request.intent.view==='plan_trust_replay') return {included:0,excluded_by_reason:{},recorded_share_at_current:null,estimate_only:true,thresholds:payload.request.intent.query.thresholds_millis.map((threshold:number)=>({threshold_millis:threshold,regular:0,primary:0,protected_as_primary:0,regular_share:null,primary_share:null,newly_regular:0}))};
   return {rows:[],branches:[],sessions:[],announcements:[]};
  }
- if(command==='compute_connection_options') { const value:any=await mockProductInvoke(command,payload,'ready'); for(const option of value.options) if(option.connection_option_id==='kimi.open-platform.cn.v1') option.model_configuration_ids=['model.trial']; return value; }
+ if(command==='compute_connection_options') { const value:any=await mockProductInvoke(command,payload,'ready'); for(const option of value.options) if(option.connection_option_id==='kimi.open-platform.cn.v1') option.model_configuration_ids=[params.has('additional-connection')?trialModel.model_configuration_id:'model.trial']; return value; }
  if(command==='check_registered_model_connection' && params.has('saved-registered')) {
   const value:any=await mockProductInvoke(command,payload,'ready');
   setupControl.checkCount++;
@@ -269,11 +287,12 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  return mockProductInvoke(command,payload,'ready');
 }
 export function TrialFixture({language}:{language:'zh'|'en'}) {
+ const [currentLanguage,setCurrentLanguage]=useState(language);
  const [snapshot,setSnapshot]=useState<DesktopSnapshot>(structuredClone(desktop));
  const [operation,setOperation]=useState<DesktopOperation|null>(null);
  const [open,setOpen]=useState(false);
  const [reopened,setReopened]=useState(false);
- Object.assign(window,{reopenPublishedTrial:()=>setReopened(true)});
- if (reopened && desktop.catalog.plans[0]) return <div className="trial-page-host" style={{height:'100vh'}}><PlanEditor plan={desktop.catalog.plans[0]} language={language} onDone={async()=>{}} onClose={()=>setReopened(false)} /></div>;
- return open ? <div className="trial-page-host" style={{height:'100vh'}}><TrialQuickStart initialModelId={trialModel.model_configuration_id} initialBindingId="binding/bailian/qwen-coder" language={language} mutable snapshot={snapshot} operation={operation} onOperation={setOperation} onRefresh={async()=>{setSnapshot(structuredClone(desktop));setOperation(observed);}} onClose={()=>setOpen(false)} onOpenAgent={()=>{}} /></div> : <NewModels language={language} active plans={snapshot.catalog.plans} refreshVersion={0} onTry={()=>setOpen(true)} />;
+ Object.assign(window,{reopenPublishedTrial:()=>setReopened(true),setTrialLanguage:setCurrentLanguage});
+ if (reopened && desktop.catalog.plans[0]) return <div className="trial-page-host" style={{height:'100vh'}}><PlanEditor plan={desktop.catalog.plans[0]} language={currentLanguage} onDone={async()=>{}} onClose={()=>setReopened(false)} /></div>;
+ return open ? <div className="trial-page-host" style={{height:'100vh'}}><TrialQuickStart initialModelId={trialModel.model_configuration_id} initialBindingId="binding/bailian/qwen-coder" language={currentLanguage} mutable snapshot={snapshot} operation={operation} onOperation={setOperation} onRefresh={async()=>{setSnapshot(structuredClone(desktop));setOperation(observed);}} onClose={()=>setOpen(false)} onOpenAgent={()=>{}} /></div> : <NewModels language={currentLanguage} active plans={snapshot.catalog.plans} refreshVersion={0} onTry={()=>setOpen(true)} />;
 }

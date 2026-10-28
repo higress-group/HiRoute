@@ -563,6 +563,26 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
     )
     .unwrap();
 
+    let trial = hiroute_application::control::RoutingFactsPort::trial_routing_snapshot(
+        &adapter,
+        &WorkspaceId::default(),
+    )
+    .unwrap();
+    assert!(
+        trial
+            .routing
+            .facts
+            .candidates
+            .iter()
+            .any(
+                |candidate| candidate.binding.binding_id == current.binding.binding_id
+                    && candidate.is_routable()
+            ),
+        "a failed subscription must not hide the healthy API candidate"
+    );
+    assert!(trial.routing.unavailable_candidates.iter().any(|candidate|
+        candidate.binding_id == cpa.binding.binding_id
+            && candidate.reason == hiroute_application_api::PlanCandidateUnavailableReasonV1::RuntimeUnavailable));
     assert_eq!(snapshot.facts.candidates.len(), 1);
     let reasons = snapshot
         .unavailable_candidates

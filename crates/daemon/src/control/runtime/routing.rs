@@ -16,6 +16,7 @@ use hiroute_application_api::PlanCandidateUnavailableReasonV1 as UnavailableReas
 
 #[path = "routing_candidates.rs"]
 mod candidates;
+mod trial;
 use candidates::CandidateDiagnostics;
 
 #[cfg(test)]
@@ -359,6 +360,17 @@ impl RoutingFactsPort for LocalControlAdapter {
     ) -> Result<RoutingCompilationSnapshotV1, ControlReadError> {
         self.routing_snapshot(workspace_id)
     }
+
+    fn trial_routing_snapshot(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<hiroute_application::control::TrialRoutingSnapshotV1, ControlReadError> {
+        let (routing, management) = self.routing_snapshot_capture(workspace_id, true)?;
+        Ok(hiroute_application::control::TrialRoutingSnapshotV1 {
+            routing,
+            management: management.ok_or(ControlReadError::Corrupt)?,
+        })
+    }
 }
 
 impl LocalControlAdapter {
@@ -395,6 +407,21 @@ impl LocalControlAdapter {
         &self,
         workspace_id: &WorkspaceId,
     ) -> Result<RoutingCompilationSnapshotV1, ControlReadError> {
+        self.routing_snapshot_capture(workspace_id, false)
+            .map(|(routing, _)| routing)
+    }
+
+    fn routing_snapshot_capture(
+        &self,
+        workspace_id: &WorkspaceId,
+        trial_capture: bool,
+    ) -> Result<
+        (
+            RoutingCompilationSnapshotV1,
+            Option<hiroute_application_api::TrialManagementSnapshotV1>,
+        ),
+        ControlReadError,
+    > {
         hiroute_diagnostics::publication::measure(
             &self
                 .publication_diagnostics
@@ -473,7 +500,15 @@ impl LocalControlAdapter {
                         .then(|| {
                             (
                                 source.source_id.clone(),
-                                self.subscription_routing_unavailability(source),
+                                if trial_capture {
+                                    if cpa_targets.is_some() {
+                                        UnavailableReason::CredentialUnavailable
+                                    } else {
+                                        UnavailableReason::RuntimeUnavailable
+                                    }
+                                } else {
+                                    self.subscription_routing_unavailability(source)
+                                },
                             )
                         })
                     })
@@ -709,7 +744,7 @@ impl LocalControlAdapter {
                 free_evidence,
             });
                 }
-                for source in management.sources {
+                for source in &management.sources {
                     inventory_refs.push((
                         source.source_id.clone(),
                         "compute-management/v2".into(),
@@ -723,20 +758,20 @@ impl LocalControlAdapter {
                     {
                         let Ok(resolved) = catalog.resolve_connection_option(connection_option_id)
                         else {
-                            diagnostics.catalog_mismatch(&source);
+                            diagnostics.catalog_mismatch(source);
                             continue;
                         };
                         if !super::model_connections::registered_source_matches_current_option(
-                            &source, &resolved,
+                            source, &resolved,
                         ) {
-                            diagnostics.catalog_mismatch(&source);
+                            diagnostics.catalog_mismatch(source);
                             continue;
                         }
                     }
                     let preferences = control
                         .source_default_preferences(&source.source_id)
                         .map_err(super::map_port)?;
-                    let mut compilation = diagnostics.compile_models(&source);
+                    let mut compilation = diagnostics.compile_models(source);
                     for fact in &mut compilation {
                         fact.default_preferences = preferences
                             .get(&fact.binding_id)
@@ -863,6 +898,16 @@ impl LocalControlAdapter {
                 expected_revisions
                     .dependencies
                     .insert("release.model_data".into(), provenance.release_sequence);
+                // Project trial choices while the same local rows and captured routing facts are
+                // held. The compact projection contains no credential or endpoint material.
+                let trial_projection = if trial_capture {
+                    let context = trial::capture(self, &catalog, &management, cpa_targets);
+                    let projected =
+                        trial::project(&management, stores.runtime(), &facts.candidates, &context)?;
+                    Some((context, projected))
+                } else {
+                    None
+                };
                 // Revalidation can wait for CPA control or lifecycle work. Native
                 // grants use this same store mutex and have a shorter ACK deadline.
                 drop(stores);
@@ -871,6 +916,19 @@ impl LocalControlAdapter {
                 {
                     return Err(ControlReadError::SnapshotChanged);
                 }
+                let management_projection = if let Some((context, projected)) = trial_projection {
+                    let stores = self.stores_lock().map_err(super::map_port)?;
+                    let current =
+                        trial::project(&management, stores.runtime(), &facts.candidates, &context)?;
+                    if projected != current
+                        || !trial::maintenance_unchanged(self, &management, &context)
+                    {
+                        return Err(ControlReadError::SnapshotChanged);
+                    }
+                    Some(projected)
+                } else {
+                    None
+                };
                 // The local fence covers every captured local row, not only published
                 // revisions. CPA batch.finish above still validates actual external facts;
                 // a metadata feed replacement also invalidates this composed snapshot.
@@ -881,12 +939,15 @@ impl LocalControlAdapter {
                 {
                     return Err(ControlReadError::SnapshotChanged);
                 }
-                Ok(RoutingCompilationSnapshotV1 {
-                    unavailable_candidates: diagnostics.finish(&facts.candidates),
-                    facts,
-                    expected_revisions,
-                    active_publication,
-                })
+                Ok((
+                    RoutingCompilationSnapshotV1 {
+                        unavailable_candidates: diagnostics.finish(&facts.candidates),
+                        facts,
+                        expected_revisions,
+                        active_publication,
+                    },
+                    management_projection,
+                ))
             },
         )
     }

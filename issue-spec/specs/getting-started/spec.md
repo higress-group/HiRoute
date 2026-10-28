@@ -473,7 +473,7 @@ After this flow confirms that the Agent mapping applied successfully, it SHALL w
 #### Scenario: Starting trust survives review and connection detours
 
 - **WHEN** a user selects Entrusted zero or an arbitrary threshold such as 0.723, opens or saves a connection, changes Agent, enters review, edits the threshold and returns
-- **THEN** the latest exact chosen/editor value survives and is saved/published only on explicit confirmation; the initial default 0.90 never overwrites a choice. Initial setup does not load active-version evidence or replay, and all existing protection and custom-extension rules remain unchanged.
+- **THEN** the latest exact chosen/editor judgment survives custom-extension and language detours as well as review and is saved/published only on explicit confirmation; the initial default 0.90 never overwrites a choice. Initial setup and unpublished review do not show active-version evidence or request replay, and existing published-route protection and evidence behavior remain unchanged.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/228#issuecomment-6440850201
@@ -521,6 +521,12 @@ Trial setup SHALL offer selection of actual saved API and subscription models wi
 
 The initial trial threshold defaults to 0.90 but is selectable before review using the shared continuous control and directly clickable presets, including Entrusted at zero. The chosen exact thousandth value SHALL survive connection detours, refresh, model/Agent changes, review/back/edit, ordinary save, publication and reopening. Review SHALL use the latest chosen/editor value rather than reset it to 0.90. Initial setup SHALL not show active-version evidence-loading copy or request historical replay. Custom extensions hide and park built-in controls. Existing ordinary authoring defaults, competence floors, English default prompts, protection, permissions and explicit publication remain unchanged.
 
+Protected connection editors SHALL pass their existing replacement guard before a saved-model choice would replace them. A rejected replacement retains the editor, temporary credentials, selected identities and selection context; a Primary selection SHALL NOT release an unrelated trial editor. A pending or uncertain save retains the original operation, accepted digest, idempotency key and candidate and SHALL block review with a visible same-operation read-only recovery action. A confirmed save awaiting binding selection remains recoverable across selection of another model and review/back, without a new Apply or empty new-source form.
+
+Selection SHALL join exact current management and executable-candidate facts with required current catalog admission only under one coherent client/session/authority read. All consumed local inputs, catalog identity and relevant connector runtime authority must be proven current at the shared boundary. Superseded reads may retry the whole read once; continued change or missing proof is a retryable failure that retains user input. Unlinked models SHALL NOT require an unrelated catalog-availability scan or acquire current catalog admission from retained descriptive data. Existing Preview and Apply authority remain unchanged.
+
+The generated route name SHALL be valid under the domain's 128 Unicode scalar-value limit and preserve readable portions of both model names. Readiness, visible errors and the submitted editor SHALL use the same effective name. Manual blank or overlong input remains visible and invalid; explicitly clearing the field SHALL NOT restore a default. Built-in judgment edited in review SHALL remain parked across custom-extension, language and back-to-setup transitions. Unpublished review uses initial-trial context without current-version evidence copy or historical replay; existing published routes retain their evidence and replay semantics.
+
 #### Scenario: All missing fields are discoverable together
 
 - **WHEN** the trial model lacks a selected usable binding and Primary reasoning still needs an explicit choice
@@ -565,6 +571,31 @@ The initial trial threshold defaults to 0.90 but is selectable before review usi
 
 - **WHEN** a user selects Entrusted zero or an arbitrary threshold such as 0.723, opens or saves a connection, changes Agent, enters review, edits the threshold and returns
 - **THEN** the latest exact chosen/editor value survives and is saved/published only on explicit confirmation; the initial default 0.90 never overwrites a choice. Initial setup does not load active-version evidence or replay, and all existing protection and custom-extension rules remain unchanged.
+
+#### Scenario: Protected connection draft and saved-model choice
+
+- **WHEN** a user has edited a connection and chooses an existing trial or Primary model
+- **THEN** a replacement of that editor asks through the existing guard; refusal retains the draft, credentials and selection, while acceptance selects the exact binding. A Primary choice that does not replace the trial editor leaves it intact.
+
+#### Scenario: Save recovery survives leaving the connection card
+
+- **WHEN** a user already has a usable trial model, starts another connection and its save is uncertain or completes before a binding is chosen
+- **THEN** uncertain completion blocks review and offers read-only recovery of the same operation; a confirmed result remains selectable after another binding is used for review and the user returns. Neither path repeats Apply.
+
+#### Scenario: One coherent model selection view
+
+- **WHEN** candidate reasoning, routability, source state or relevant connector authority changes while trial selection facts are read, including the same binding identity
+- **THEN** no mixed snapshot grants selection or review. At most one complete reread may recover a stable view; continuing change or missing authority remains visibly retryable, while unrelated reads do not wait for the entire trial read.
+
+#### Scenario: Parked judgment and initial review context
+
+- **WHEN** review changes 0.90 to 0.723, switches to a custom extension, returns to setup, changes language and switches back to the built-in decision model
+- **THEN** 0.723 and the other parked built-in judgment survive repeated detours; unpublished review shows no active-version evidence or historical replay, while published routes retain their existing evidence behavior.
+
+#### Scenario: Unicode route name matches submission
+
+- **WHEN** model names would produce a default above 128 Unicode scalar values, or a user supplies a blank, 128-character or 129-character name including supplementary-plane characters
+- **THEN** a generated name is valid and readable, the exact manually entered value is retained, blank and 129-character input receive field errors, and the same valid effective name reaches the editor after correction.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/228#issuecomment-6460225695

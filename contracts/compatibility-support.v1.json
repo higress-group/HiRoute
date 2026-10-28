@@ -443,6 +443,7 @@
     "hiroute.system-one-c/v2",
     "hiroute.system-one-legacy/v1",
     "hiroute.system-status/v1",
+    "hiroute.trial-setup-snapshot/v1",
     "hiroute.trust-levels/v1",
     "hiroute.upgrade-installer-decision/v1",
     "hiroute.upgrade-installer-started/v1",
@@ -1204,6 +1205,16 @@
           ]
         }
       ]
+    },
+    {
+      "subject": "trial_setup_queries",
+      "audited_prefixes": [
+        "hiroute.trial-setup-snapshot"
+      ],
+      "current_contracts": [
+        "hiroute.trial-setup-snapshot/v1"
+      ],
+      "legacy_support": []
     },
     {
       "subject": "compute_management_queries",
