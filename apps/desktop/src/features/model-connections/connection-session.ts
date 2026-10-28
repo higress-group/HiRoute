@@ -50,18 +50,21 @@ export class ConnectionEditingSession {
     if (!values.has(prefill)) values.set(prefill, structuredClone(draft));
     this.prefillBaselines.set(key, values);
   }
-  beginPrefillFromProduct(key: string | null, prefill: string, derive: (draft: ModelConnectionDraft) => ModelConnectionDraft) {
-    const baseline = key ? this.baselines.get(key) : undefined;
-    if (baseline) this.beginPrefill(key, prefill, derive(structuredClone(baseline)));
-  }
-  changed(key: string | null, draft: ModelConnectionDraft, prefill?: string) {
+  private baseline(key: string | null, prefill?: string) {
     const baseline = key && prefill !== undefined
       ? this.prefillBaselines.get(key)?.get(prefill) ?? this.baselines.get(key)
       : key ? this.baselines.get(key) : undefined;
-    const placeholders = key ? this.placeholders.get(key) : undefined;
     const automatic = key && prefill !== undefined ? this.prefillAutomaticModels.get(key)?.get(prefill) : undefined;
-    const comparison = baseline && automatic?.size ? { ...baseline, models: [...baseline.models, ...automatic.values()] } : baseline;
-    return comparison ? JSON.stringify(editableDraft(draft, placeholders)) !== JSON.stringify(editableDraft(comparison, placeholders)) : false;
+    return baseline && automatic?.size ? { ...baseline, models: [...baseline.models, ...automatic.values()] } : baseline;
+  }
+  beginPrefillFromContext(key: string | null, sourcePrefill: string | undefined, prefill: string, derive: (draft: ModelConnectionDraft) => ModelConnectionDraft) {
+    const source = this.baseline(key, sourcePrefill);
+    if (source) this.beginPrefill(key, prefill, derive(structuredClone(source)));
+  }
+  changed(key: string | null, draft: ModelConnectionDraft, prefill?: string) {
+    const baseline = this.baseline(key, prefill);
+    const placeholders = key ? this.placeholders.get(key) : undefined;
+    return baseline ? JSON.stringify(editableDraft(draft, placeholders)) !== JSON.stringify(editableDraft(baseline, placeholders)) : false;
   }
   recordAutoPlaceholder(key: string | null, model: ModelDeclaration) {
     if (!key || model.upstream_model_id !== '' || model.display_name !== '') return;

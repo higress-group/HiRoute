@@ -129,11 +129,24 @@ test('a product converted to a prefill derives its baseline before user edits', 
   const product = { ...newModelConnectionDraft('known'), display_name: 'Original' };
   const derive = draft => ({ ...draft, entry_kind: 'custom_api', base_url: 'https://example.test/v1' });
   session.begin('product', product);
-  session.beginPrefillFromProduct('product', 'template:product', derive);
+  session.beginPrefillFromContext('product', undefined, 'template:product', derive);
   assert.equal(session.changed('product', derive(product), 'template:product'), false);
   assert.equal(session.changed('product', derive({ ...product, display_name: 'Edited' }), 'template:product'), true);
-  session.beginPrefillFromProduct('product', 'template:product', draft => ({ ...derive(draft), display_name: 'Edited' }));
+  session.beginPrefillFromContext('product', undefined, 'template:product', draft => ({ ...derive(draft), display_name: 'Edited' }));
   assert.equal(session.changed('product', derive({ ...product, display_name: 'Edited' }), 'template:product'), true, 're-entering cannot reset the baseline');
+});
+
+test('a new prefill derives from the source context baseline, not its carried edits', () => {
+  const session = new ConnectionEditingSession();
+  const original = { ...newModelConnectionDraft('custom'), display_name: 'Original' };
+  const derive = draft => ({ ...draft, base_url: 'https://example.test/v1' });
+  session.begin('custom', original); session.beginPrefill('custom', '', original);
+  session.beginPrefillFromContext('custom', '', 'template:a', derive);
+  const carried = derive({ ...original, display_name: 'Edited' });
+  assert.equal(session.changed('custom', carried, 'template:a'), true);
+  assert.equal(session.changed('custom', derive(original), 'template:a'), false);
+  session.beginPrefillFromContext('custom', '', 'template:a', () => carried);
+  assert.equal(session.changed('custom', carried, 'template:a'), true, 'a later visit cannot adopt a carried edit as a default');
 });
 
 test('check-generated models do not replace a prefill baseline', () => {

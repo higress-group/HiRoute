@@ -164,10 +164,25 @@ try {
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
     assert.equal(await evaluate(client, `Array.from(document.querySelectorAll('.field')).find(e=>e.querySelector('.field-label')?.textContent==='Connection name').querySelector('input').value`), 'Edited account');
     await field('Connection name', initial.name); await field('Base URL', initial.base); await field('API Key', '');
+    await field('Connection prefill (optional)', 'template:deepseek.official.global.v1');
+    assert.equal(await evaluate(client, `Array.from(document.querySelectorAll('.field')).find(e=>e.querySelector('.field-label')?.textContent==='Connection name').querySelector('input').value`), 'Edited account');
+    await field('Connection name', initial.name); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
     await evaluate(client, `setConnectionLanguage('zh'); true`); await waitFor(client, `!document.querySelector('.connection-flow .oc-spinner')`);
     await click('.modal-head button');
     assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'reverting to the first prefill baseline remains clean after a refresh');
     assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
+  await run('review-r7-prefill-does-not-absorb-carried-name', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    const initial = await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`);
+    await field('Connection name', 'Edited before template'); await click('summary', 'Use connection prefill');
+    await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`), 'Edited before template');
+    await field('Connection prefill (optional)', ''); await field('Connection name', initial);
+    await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1'); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing'); await field('Connection name', initial); await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'reverting the carried edit in both contexts restores clean state');
   });
   await run('review-r7-deleted-prefill-model-is-dirty', async () => {
     await open('connection-flow.html', 'lang=en&kind=custom&prefill_model=1'); await click('summary', 'Use connection prefill');

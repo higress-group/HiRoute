@@ -229,7 +229,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         request_path_override: value.request_path, inventory_path_override: value.inventory_path ?? null,
         protocol: value.protocol, protocol_profile_id: `profile/custom/${value.protocol}`,
         protocol_profile_revision: 1, authentication: value.authentication_semantics ?? { kind: 'bearer' as const } }));
-    invalidate(current => ({
+    const withProvider = (current: ModelConnectionDraft): ModelConnectionDraft => ({
       ...current,
       display_name: current.display_name && current.display_name !== (zh ? '自定义 API' : 'Custom API') ? current.display_name : provider.display_name,
       display_template_id: null,
@@ -253,7 +253,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         return record ? withCapabilityFallback(metadataModelPrefill(record, clientOperationId('model')))
           : blankModel(candidate.upstream_model_id, candidate.display_name);
       }),
-    }), true, 'connection', { credentialContextChanged });
+    });
+    if (credentialContextChanged) editingSession.current.beginPrefillFromContext(editingKey.current, metadataPrefillKey, `provider:${provider.provider_record_key}`, withProvider);
+    invalidate(withProvider, true, 'connection', { credentialContextChanged });
   }
 
   function selectRegisteredTemplate(option: ComputeConnectionOptions['options'][number], keepExistingModels = false, credentialContextChanged = false) {
@@ -280,7 +282,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       authentication: endpoint.authentication_semantics ?? { kind: 'bearer' },
       additional_endpoints, models: withRegisteredModels(keepExistingModels ? current.models : [], candidates),
     });
-    if (!custom && keepExistingModels) editingSession.current.beginPrefillFromProduct(editingKey.current, prefillKey, withTemplate);
+    editingSession.current.beginPrefillFromContext(editingKey.current, custom ? metadataPrefillKey : undefined, prefillKey, withTemplate);
     setCustom(true);
     setMetadataPrefillKey(prefillKey);
     invalidate(withTemplate, true, 'connection', { credentialContextChanged });
@@ -314,6 +316,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const prefill = metadataPrefills.find(value => value.key === key);
     if (prefill?.kind === 'template') selectRegisteredTemplate(prefill.option, false, true);
     else if (prefill?.kind === 'provider') selectMetadataProvider(prefill.provider, true);
+    else if (key === '') editingSession.current.beginPrefillFromContext(editingKey.current, metadataPrefillKey, key, current => current);
   }
 
   useEffect(() => { draftRef.current = draft; }, [draft]);

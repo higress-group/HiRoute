@@ -19,8 +19,9 @@ using it in a check, whether reached directly or by swapping primary and additio
 protocol endpoints. Invalidating a protected-only input releases it and retains a
 visible re-entry requirement. Custom prefills retain separate editing contexts so a
 Key cannot move to another product template. Current, retained and parked drafts all
-compare against the same product-and-prefill baseline; checks must not turn an
-existing user model declaration into an automatic default. Only an exact untouched
+compare against the same product-and-prefill baseline. A new prefill derives its
+defaults from the prior context's baseline so carried user edits remain edits; checks
+must not turn an existing user model declaration into an automatic default. Only an exact untouched
 automatic blank model row is excluded from the dirty comparison; validation still rejects zero models.
 
 The selected registered product is executable only after the latest successful
