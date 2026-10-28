@@ -61,6 +61,8 @@ pub enum ModelEvent {
         text: String,
         annotations: Vec<super::UrlCitationV1>,
         status: ResponseItemStatus,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        final_phase: Option<FinalMessagePhaseV1>,
     },
     ReasoningFinished {
         index: u32,
@@ -71,6 +73,8 @@ pub enum ModelEvent {
         index: u32,
         text: String,
         status: ResponseItemStatus,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        final_phase: Option<FinalMessagePhaseV1>,
     },
     WebSearch {
         index: u32,
@@ -148,6 +152,15 @@ pub enum ModelEvent {
     ResponseFailed {
         error: ModelError,
     },
+}
+
+/// Authoritative message metadata at item completion. An absent envelope keeps
+/// released events' start-phase semantics; an envelope with no value clears a
+/// provisional phase. This never changes item identity or accepted content.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FinalMessagePhaseV1 {
+    pub value: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

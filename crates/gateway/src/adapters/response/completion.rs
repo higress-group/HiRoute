@@ -69,6 +69,7 @@ impl DecoderCore {
                             .cloned()
                             .unwrap_or_default(),
                         status: item_status,
+                        final_phase: None,
                     })
                 }
                 MutableResponseBlock::Reasoning(text) if !finished_reasoning.contains(index) => {
@@ -83,6 +84,7 @@ impl DecoderCore {
                         index: *index,
                         text: text.clone(),
                         status: item_status,
+                        final_phase: None,
                     })
                 }
                 _ => None,

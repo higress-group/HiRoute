@@ -141,6 +141,7 @@ fn accepted_text_survives_client_rewrite_and_history_rebuild_without_terminal_du
                     text: "actual answer".into(),
                     annotations: Vec::new(),
                     status: ResponseItemStatus::Completed,
+                    final_phase: None,
                 },
             )],
         );

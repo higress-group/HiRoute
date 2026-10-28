@@ -173,10 +173,13 @@ fn final_phase_remains_a_cross_protocol_capability_boundary() {
 #[test]
 fn released_text_finished_bytes_without_final_phase_keep_their_meaning() {
     // Shape emitted by stable v0.3.1 / 13856abd873da5b4373d39322493b4cc105c4867.
-    let original = json!({"kind":"text_finished","index":0,"text":"old answer",
-        "annotations":[],"status":"completed"});
-    let event: ModelEvent = serde_json::from_value(original.clone()).unwrap();
-    assert_eq!(serde_json::to_value(event).unwrap(), original);
+    for original in [
+        r#"{"kind":"text_finished","index":0,"text":"old answer","annotations":[],"status":"completed"}"#,
+        r#"{"kind":"refusal_finished","index":0,"text":"old refusal","status":"completed"}"#,
+    ] {
+        let event: ModelEvent = serde_json::from_str(original).unwrap();
+        assert_eq!(serde_json::to_string(&event).unwrap(), original);
+    }
 }
 
 #[test]

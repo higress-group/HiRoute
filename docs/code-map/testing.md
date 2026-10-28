@@ -291,6 +291,9 @@ assessment through the listener. [Projection diagnostics](../../crates/diagnosti
 describe preflight or materialization without claiming provider execution.
 [Response lifecycle tests](../../crates/gateway/src/adapters/response/client_stream_tests.rs)
 check response-scoped synthetic IDs across incremental, buffered and terminal output.
+[Message phase cases](../../crates/gateway/src/adapters/response/message_phase_tests.rs)
+check provisional-to-final metadata reconciliation without relaxing identity,
+accepted content or live cross-protocol capability checks.
 Protocol changes reuse saved-route and native-context journeys across Responses
 and Messages. Assert actual request paths, trusted receipt identity, rotation and
 independent restore. A removed-route witness uses its previously working protocol

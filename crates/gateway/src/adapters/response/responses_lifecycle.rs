@@ -179,7 +179,6 @@ pub(super) fn nonstream_item(
     match required_str(item, "type")? {
         "message" => {
             register_item(core, native_index, item)?;
-            core.observe_message_phase(native_index, optional_str(item, "phase")?, false)?;
             finish_message_item(core, native_index, item, status, true, output)
         }
         "reasoning" => {
@@ -241,7 +240,7 @@ fn finish_message_item(
     if optional_str(item, "role")?.is_some_and(|role| role != "assistant") {
         return Err(ModelIrError::InvalidField("response output message role").into());
     }
-    core.observe_message_phase(native_index, optional_str(item, "phase")?, true)?;
+    core.observe_message_phase(native_index, item, true, final_snapshot)?;
     let content = array_field(item, "content", false)?;
     if content.len() > 1 {
         return Err(ModelIrError::UnsupportedField(
@@ -343,13 +342,13 @@ fn reconcile_annotations(
     if current == expected {
         return Ok(());
     }
-    if !current.is_empty() || core.accumulator.finished_text.contains(&index) {
+    if !expected.starts_with(&current) || core.accumulator.finished_text.contains(&index) {
         return Err(invalid_block(
             index,
             "final text annotations disagree with deltas",
         ));
     }
-    for (position, annotation) in expected.iter().enumerate() {
+    for (position, annotation) in expected.iter().enumerate().skip(current.len()) {
         let value = serde_json::to_value(annotation)
             .map_err(|error| ModelIrError::InvalidJson(error.to_string()))?;
         core.text_annotation(native_index, position as u32, &value, output)?;
