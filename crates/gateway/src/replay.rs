@@ -118,6 +118,7 @@ struct StoreInner {
     force_disk: Arc<AtomicBool>,
     prevalidated: AtomicBool,
     terminal: AtomicBool,
+    fingerprints: crate::runtime_fingerprint::ContentFingerprints,
 }
 
 pub struct ReplayWriter {
@@ -178,6 +179,7 @@ impl ReplayManager {
                 force_disk: Arc::new(AtomicBool::new(false)),
                 prevalidated: AtomicBool::new(false),
                 terminal: AtomicBool::new(false),
+                fingerprints: Default::default(),
             }),
         })
     }
@@ -188,6 +190,22 @@ impl ReplayManager {
 }
 
 impl ReplayStore {
+    pub(crate) fn runtime_fingerprint(
+        &self,
+        reference: &ContentRef,
+    ) -> Result<[u8; 32], ReplayError> {
+        self.inner.fingerprints.reference(self, reference)
+    }
+
+    pub(crate) fn runtime_bytes_fingerprint(&self, bytes: &[u8]) -> [u8; 32] {
+        self.inner.fingerprints.inline(self.budget(), bytes)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn runtime_fingerprint_computations(&self) -> usize {
+        self.inner.fingerprints.computations()
+    }
+
     pub fn begin_raw(&self) -> Result<ReplayWriter, ReplayError> {
         self.begin_stream(MemoryRole::RawRequest)
     }

@@ -225,6 +225,15 @@ including native user-message partitioning. A borrowed routing-only view may
 supply the semantic digest at identical message positions; its normalized batches
 cannot authorize provider affinity or reasoning-cleanup reuse.
 
+Runtime equality fingerprints use complete normalized content, with distinct
+domains and explicit lengths, types, roles, order and part boundaries. They MAY
+reuse a bounded, charged request-local content fingerprint; changing supplied
+content must change its evidence even when length, prefix and suffix match.
+The process-local MD5 equality representation is shared by incoming and accepted
+output evidence and is independent of transport fragmentation and Replay backing.
+It is not authentication or persisted observation integrity. Cache pressure uses
+the existing bounded uncached/unknown behavior without rejecting model delivery.
+
 The history store defaults to 500,000,000 bytes and one-hour idle TTL, retaining
 bounded independent captures, branch heads and immutable assessment membership.
 It does not read Observation disk/SQLite to reconstruct routing history. Concurrent
@@ -414,9 +423,10 @@ again before provider solely for integrity, or seal-copy a second full represent
 Existing syntax/depth/structure checks remain. ContentRef contains request-local
 locator/length, not a digest. Reads reject range violations, early EOF, or whole
 backing length mismatch; equal-length same-OS-user modification is not a cryptographic
-integrity guarantee. ContextHold alone may stream HMAC relevant externalized fields
-through the existing reader for continuity without another cache; failed reads
-create no hold.
+integrity guarantee. Runtime history may fingerprint relevant externalized fields
+through the existing reader and reuse their complete request-local equality digest;
+failed reads create no hold. Registered sealed ranges retain their request-local
+identity; this cache does not add a raw-body fingerprint or persistent cache.
 
 For memory-backed ingress of at most 1 MiB, parsing MAY borrow a contiguous slice
 or gather one temporary, fully budget-charged slice using the same syntax and

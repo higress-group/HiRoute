@@ -1,11 +1,10 @@
 use std::io::{Read, Write};
 
-use hmac::{Hmac, Mac};
 use serde_json::Value;
-use sha2::Sha256;
 
 use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt};
 use crate::replay::{ReplayStore, write_canonical_json};
+use crate::runtime_fingerprint::{DigestWriter, RuntimeHash};
 use crate::server::core_runtime::model_ir::{
     CanonicalMessage, ContentPart, ImageSource, InstructionRole, MessageRole, ModelRequestIRV1,
     OpaqueProviderState, ResponsesReasoningEncryptedContentV1, ResponsesToolOrderEntryV1,
@@ -14,8 +13,6 @@ use crate::server::core_runtime::model_ir::{
 };
 
 use super::fingerprint::FingerprintBudget;
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
 pub(crate) struct HistoryEvidence<'a> {
@@ -358,7 +355,7 @@ pub(crate) fn observed_history_with_replay<'a>(
 }
 
 struct Encoder<'a> {
-    mac: HmacSha256,
+    mac: RuntimeHash,
     replay: Option<&'a ReplayStore>,
     valid: bool,
     budget: FingerprintBudget,
@@ -369,7 +366,8 @@ struct Encoder<'a> {
 
 impl<'a> Encoder<'a> {
     fn new(key: &[u8; 32], domain: &[u8], replay: Option<&'a ReplayStore>) -> Option<Self> {
-        let mut mac = HmacSha256::new_from_slice(key).ok()?;
+        let mut mac = RuntimeHash::new();
+        frame(&mut mac, b"instance", key);
         frame(&mut mac, b"domain", domain);
         Some(Self {
             mac,
@@ -383,12 +381,11 @@ impl<'a> Encoder<'a> {
     }
 
     fn finish(self) -> Option<[u8; 32]> {
-        self.valid.then(|| self.mac.finalize().into_bytes().into())
+        self.valid.then(|| self.mac.finalize())
     }
 
     fn snapshot(&self) -> Option<[u8; 32]> {
-        self.valid
-            .then(|| self.mac.clone().finalize().into_bytes().into())
+        self.valid.then(|| self.mac.clone().finalize())
     }
 
     fn items(&mut self, count: usize) -> Option<()> {
@@ -412,8 +409,17 @@ impl<'a> Encoder<'a> {
 
     fn bytes(&mut self, value: &[u8]) {
         if self.charge(value.len().saturating_add(32)) {
-            frame(&mut self.mac, b"bytes", value);
+            let digest = match self.replay {
+                Some(replay) => replay.runtime_bytes_fingerprint(value),
+                None => RuntimeHash::digest(value),
+            };
+            self.content_digest(value.len() as u64, digest);
         }
+    }
+
+    fn content_digest(&mut self, length: u64, digest: [u8; 32]) {
+        frame(&mut self.mac, b"byte-length", &length.to_be_bytes());
+        frame(&mut self.mac, b"content-md5/v1", &digest[..16]);
     }
 
     fn string(&mut self, value: &str) {
@@ -474,18 +480,14 @@ impl<'a> Encoder<'a> {
         }
         self.tag(b"json");
         let referenced = self.budget.json(value)?;
-        let mut counter = ByteCounter(0);
+        let mut writer = DigestWriter::new();
         if referenced {
-            write_canonical_json_with_replay(&mut counter, value, self.replay?)?;
+            write_canonical_json_with_replay(&mut writer, value, self.replay?)?;
         } else {
-            write_canonical_json(&mut counter, value).ok()?;
+            write_canonical_json(&mut writer, value).ok()?;
         }
-        frame_header(&mut self.mac, b"bytes", counter.0);
-        if referenced {
-            write_canonical_json_with_replay(&mut MacWriter(&mut self.mac), value, self.replay?)?;
-        } else {
-            write_canonical_json(&mut MacWriter(&mut self.mac), value).ok()?;
-        }
+        let (length, digest) = writer.finish();
+        self.content_digest(length, digest);
         Some(())
     }
 
@@ -497,17 +499,9 @@ impl<'a> Encoder<'a> {
         ) {
             return None;
         }
-        let mut reader = self.replay?.reader(reference).ok()?;
-        frame_header(&mut self.mac, b"bytes", reference.byte_len());
-        let mut buffer = [0_u8; 16 * 1024];
-        loop {
-            let size = reader.read(&mut buffer).ok()?;
-            if size == 0 {
-                break;
-            }
-            self.mac.update(&buffer[..size]);
-        }
-        reader.verify_terminal().ok()
+        let digest = self.replay?.runtime_fingerprint(reference).ok()?;
+        self.content_digest(reference.byte_len(), digest);
+        Some(())
     }
 
     fn parts(&mut self, parts: &[ContentPart], omit_instruction_text: bool) -> Option<()> {
@@ -798,12 +792,12 @@ impl<'a> Encoder<'a> {
     }
 }
 
-fn frame(mac: &mut HmacSha256, kind: &[u8], value: &[u8]) {
+fn frame(mac: &mut RuntimeHash, kind: &[u8], value: &[u8]) {
     frame_header(mac, kind, value.len() as u64);
     mac.update(value);
 }
 
-fn frame_header(mac: &mut HmacSha256, kind: &[u8], length: u64) {
+fn frame_header(mac: &mut RuntimeHash, kind: &[u8], length: u64) {
     mac.update(&(kind.len() as u64).to_be_bytes());
     mac.update(kind);
     mac.update(&length.to_be_bytes());
@@ -897,35 +891,6 @@ pub(crate) fn write_canonical_json_with_replay(
         _ => write_canonical_json(writer, value).ok()?,
     }
     Some(())
-}
-
-struct ByteCounter(u64);
-
-impl Write for ByteCounter {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0 = self
-            .0
-            .checked_add(bytes.len() as u64)
-            .ok_or_else(|| std::io::Error::other("JSON length overflow"))?;
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-struct MacWriter<'a>(&'a mut HmacSha256);
-
-impl Write for MacWriter<'_> {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0.update(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }
 
 #[cfg(test)]
