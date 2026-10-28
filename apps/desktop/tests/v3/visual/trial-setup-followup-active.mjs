@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { connectPage, evaluate, waitFor } from './cdp-client.mjs';
 
@@ -7,6 +7,8 @@ const [port, base, output] = process.argv.slice(2);
 const client = await connectPage(Number(port));
 const keepAlive = setInterval(() => {}, 1000);
 const results = [];
+const capturedApi = JSON.parse(await readFile(new URL('../../../../../contracts/routing/trial-retained-api-capture.v1.json', import.meta.url),'utf8'));
+await client.send('Page.addScriptToEvaluateOnNewDocument', {source:`window.trialRetainedCapture=${JSON.stringify(capturedApi)};`});
 await client.send('Page.addScriptToEvaluateOnNewDocument', {source:`window.setupErrors=[];addEventListener('error',e=>window.setupErrors.push({message:e.message,stack:e.error?.stack}));addEventListener('unhandledrejection',e=>window.setupErrors.push({message:String(e.reason),stack:e.reason?.stack}));`});
 async function open(query, language='en', width=755, height=600) {
   const url = `${base}new-model-trial.html?view=quickstart&native=1&lang=${language}&${query}`;
@@ -71,6 +73,18 @@ try {
     await click('[data-trial-target=primary] button','Choose an existing connection');
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Retained fixture API'));source.querySelector('.trial-choice').click();return true;})()`);
     await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=primary]')?.textContent.includes('Retained fixture API')`);
+  });
+  await run('review-r2.production-captured-api-selection', async () => {
+    await open('production-capture=1');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    const row=await evaluate(client, `(()=>{const s=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Zhipu · Coding Plan'));return s&&{text:s.textContent,buttons:[...s.querySelectorAll('button')].map(b=>b.textContent)};})()`);
+    assert.ok(row && row.text.includes('GLM-5.3'));
+    assert.ok(row.buttons.every(text=>!/Add model|Review connection|edit/i.test(text)),JSON.stringify(row));
+    await evaluate(client, `(()=>{const s=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Zhipu · Coding Plan'));s.querySelector('.trial-choice').click();return true;})()`);
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=trial]')?.textContent.includes('Zhipu · Coding Plan')`);
+    await click('.trial-choice-list .trial-choice','GPT');
+    await click('.trial-footer .btn-primary','Review changes');
+    await waitFor(client, `!!document.querySelector('.trial-review')`);
   });
   await run('review-r2.retained-api-cannot-bypass-owner-or-identity', async () => {
     for (const query of ['retained-api=1&retained-mismatch=1','retained-api=1&retained-v2-owner=1&disabled-trial=1']) {

@@ -640,9 +640,14 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
         "ingress_protocols":actual.protocol_profiles.iter().map(|profile| profile.ingress_protocol).collect::<Vec<_>>(),
         "native_ingress_protocols":actual.protocol_profiles.iter().filter(|profile| profile.ingress_protocol == profile.capability.upstream_protocol).map(|profile| profile.ingress_protocol).collect::<Vec<_>>()
     });
-    println!(
-        "TRIAL_CAPTURE_FIXTURE={}",
-        serde_json::json!({"connection":retained[0], "candidate":candidate})
+    let expected: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../../contracts/routing/trial-retained-api-capture.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        serde_json::json!({"connection":retained[0], "candidate":candidate}),
+        expected,
+        "the UI fixture must come from this real routing capture"
     );
     assert!(trial.routing.unavailable_candidates.iter().any(|candidate|
         candidate.binding_id == cpa.binding.binding_id

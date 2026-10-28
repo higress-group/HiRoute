@@ -128,6 +128,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   const management:any=await quickStartInvoke('compute_management_snapshot',{},params);
   management.sources=management.sources.map((source:any)=>({source_id:source.source_id,revision:source.revision,display_name:source.display_name,provenance:source.provenance,access_kind:source.connection_identity?.access_kind??'unknown',state:source.state,actions:source.actions,models:source.models.map((member:any)=>({model_ref:member.model_ref,binding_id:member.binding_id,revision:member.revision,upstream_model_id:member.upstream_model_id,display_name:member.display_name,catalog_configuration_id:member.catalog_configuration_id,membership:member.membership,availability:member.presentation?.availability??'unknown',reason_code:member.presentation?.reason_code,catalog_admitted:setupControl.catalogAdmission && !!member.catalog_configuration_id && options.candidates.some((candidate:any)=>candidate.binding_id===member.binding_id && candidate.routable && candidate.model_configuration_id===member.catalog_configuration_id) && !!catalogAtCapture.find(item=>item.model_configuration_id===member.catalog_configuration_id)?.binding_ids.includes(member.binding_id)}))}));
   management.retained_api_connections=[];
+  if (params.has('production-capture')) management.retained_api_connections.push(structuredClone((window as any).trialRetainedCapture.connection));
   if (params.has('retained-api')) {
    const source=management.sources.find((value:any)=>value.source_id==='source/bailian/coding');
    const member=source.models[0];
@@ -163,6 +164,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  }
  if(command==='plan_editor_options') {
   const value:any = await mockProductInvoke(command,payload,'ready');
+  if (params.has('production-capture')) value.candidates.push(structuredClone((window as any).trialRetainedCapture.candidate));
   if (payload?.input?.authoring?.plan_id === 'plan/trial') value.authoring=fixturePlanAuthoring(desktop.catalog.plans.find(plan=>plan.agent_plan_id==='plan/trial'));
   if (trialManagement.sources.some(source=>source.source_id==='source/fixture/new')) {
    value.candidates.push({binding_id:'binding/fixture/saved-model',model_configuration_id:params.has('same-model-save')?trialModel.model_configuration_id:params.has('saved-registered') || params.has('saved-id-collision') || params.has('unlinked-existing-collision')?'model.trial':'fixture-unlinked-model',display_name:'Saved synthetic model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'paid',routable:true,ingress_protocols:['responses','messages']});
