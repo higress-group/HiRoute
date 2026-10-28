@@ -10,6 +10,7 @@ use crate::{DaemonStorageAuthority, LocalStorageError};
 use hiroute_domain::CanonicalDigest;
 
 mod agent_access_grant_v9;
+pub(crate) mod agent_locator_v33;
 mod agent_surface_checks_v22;
 mod agent_surface_checks_v25;
 #[cfg(test)]

@@ -666,6 +666,8 @@ fn locator_input_binds_the_actual_selected_row() {
 
 #[path = "agent_locator_grant_tests.rs"]
 mod locator_grant;
+#[path = "agent_locator_projection_tests.rs"]
+mod locator_projection;
 
 #[test]
 fn selected_settings_does_not_decode_newer_unrelated_contexts() {

@@ -43,6 +43,7 @@ mod windows_native_reader_tests;
 
 mod agent_check;
 mod agent_history_cache;
+pub(crate) mod agent_locator;
 mod agent_locator_input;
 mod agent_read;
 mod artifact_dependencies;

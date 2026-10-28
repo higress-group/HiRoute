@@ -72,10 +72,7 @@ fn action<T>(intent: &AgentFacetIntent<T>) -> Option<FacetAction> {
     }
 }
 
-pub(super) fn classify(
-    connection: &Connection,
-    row: &AgentHistoryRow,
-) -> PortResult<Option<LocatorInput>> {
+fn checked_header(row: &AgentHistoryRow) -> PortResult<(Envelope<'_>, IdempotencyScopeV1)> {
     let invalid = || port(PortErrorCode::Corrupt, "control.agent-locator.input");
     let envelope: Envelope<'_> = serde_json::from_str(&row.encoded).map_err(|_| invalid())?;
     let scope = IdempotencyScopeV1::new(
@@ -103,6 +100,20 @@ pub(super) fn classify(
     {
         return Err(invalid());
     }
+    Ok((envelope, scope))
+}
+
+/// Establishes which workspace an otherwise unclassifiable row could affect.
+pub(super) fn has_bound_header(row: &AgentHistoryRow) -> bool {
+    checked_header(row).is_ok()
+}
+
+pub(super) fn classify(
+    connection: &Connection,
+    row: &AgentHistoryRow,
+) -> PortResult<Option<LocatorInput>> {
+    let invalid = || port(PortErrorCode::Corrupt, "control.agent-locator.input");
+    let (envelope, scope) = checked_header(row)?;
     let expanded =
         payloads::expand_payload(connection, envelope.operation_id.as_str(), envelope.plan)?;
     journal::validate_encoding(expanded.get())?;
