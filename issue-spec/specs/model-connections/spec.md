@@ -539,7 +539,9 @@ Source SPEC comments:
 
 ### Requirement: Connection editing retains credential intent and current catalog authority
 
-The connection editor SHALL retain an unsaved plaintext Key only in the current product’s existing in-memory credential owner when an authentication change removes the input. Restoring an authentication mode that needs a Key restores that product’s available plaintext; None neither sends nor uses the retained Key. Authentication or target changes invalidate the prior candidate/check and release a session-owned protected input that has not transferred to an Operation. If only a protected reference remains and its proof is invalidated, the editor SHALL retain an unsaved re-entry requirement and visibly request a new Key where needed, without revealing plaintext or using the stale proof. Product changes never transfer credentials; close and accepted or uncertain Operation ownership retain existing rules.
+The connection editor SHALL retain an unsaved plaintext Key only in the current product’s existing in-memory credential owner when a same-context authentication or endpoint/protocol change removes or replaces the input. Restoring an authentication mode that needs a Key restores that product’s available plaintext; None neither sends nor uses the retained Key. Authentication or target changes invalidate the prior candidate/check and release a session-owned protected input that has not transferred to an Operation. If only a protected reference remains and its proof is invalidated, the editor SHALL retain an unsaved re-entry requirement and visibly request a new Key where needed, without revealing plaintext or using the stale proof. Product or prefill changes never transfer credentials; close and accepted or uncertain Operation ownership retain existing rules.
+
+The editor SHALL compare current and retained editable drafts to the immutable automatic baseline for their product and prefill identity. A prefill and its initially provided models alone are not edits. A Key, changed name or endpoint, model selection, deleted or changed prefilled model, capability or other user input remains protected across context switches; restoring an existing draft, rereading metadata or running a check SHALL NOT reset its baseline or hide prior edits.
 
 A selected registered product remains identifiable and its edits remain available when current options disappear, fail to load, or retain its ID but report it unavailable. The visible action and the actual check handler SHALL both require the latest successful executable qualification before registering a credential or checking. The editor never silently replaces the product. A current successful reload can restore eligibility, but performs no automatic check. Provider detail retains stable provider identity while names, products, availability and selection arguments derive from the latest directory and locale. Removal, addition, lost or restored provider and same-ID qualification changes SHALL NOT expose stale selectable options or force a different provider.
 
@@ -551,6 +553,16 @@ Removing or recreating the exact untouched automatically generated empty-model p
 
 - **WHEN** a user enters an unsaved Key, changes authentication to None and then to Bearer or a custom header
 - **THEN** the current product retains the Key in memory, None sends no Key, old check authority is invalidated, closing protects the change and another product never receives it
+
+#### Scenario: A protocol switch changes authentication
+
+- **WHEN** a user has typed a Key and promotes an additional no-authentication endpoint to the primary protocol, then returns to an authenticated endpoint in the same product and prefill context
+- **THEN** the Key is retained only in that context, None does not register or send it, old check authority is invalidated, and immediate close or product change still protects the unsaved Key
+
+#### Scenario: Current and retained prefill baselines
+
+- **WHEN** a user selects an unedited prefill and exits immediately, switches products or saves another product
+- **THEN** the prefill's automatically supplied values do not alone prompt, while an actual edit, pending selection, deleted prefilled model or Key is protected in the current and every retained context; restoring or revisiting it never overwrites its initial baseline
 
 #### Scenario: Only a protected reference remains
 

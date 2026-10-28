@@ -38,6 +38,7 @@ export class ConnectionEditingSession {
   private placeholders = new Map<string, Map<string, ModelDeclaration>>();
   private prefills = new Map<string, Map<string, ConnectionEditingDraft>>();
   private prefillBaselines = new Map<string, Map<string, ModelConnectionDraft>>();
+  private prefillAutomaticModels = new Map<string, Map<string, Map<string, ModelDeclaration>>>();
 
   get hasDrafts() { return this.drafts.size > 0; }
   begin(key: string, draft: ModelConnectionDraft) {
@@ -49,10 +50,18 @@ export class ConnectionEditingSession {
     if (!values.has(prefill)) values.set(prefill, structuredClone(draft));
     this.prefillBaselines.set(key, values);
   }
-  changed(key: string | null, draft: ModelConnectionDraft) {
+  beginPrefillFromProduct(key: string | null, prefill: string, derive: (draft: ModelConnectionDraft) => ModelConnectionDraft) {
     const baseline = key ? this.baselines.get(key) : undefined;
+    if (baseline) this.beginPrefill(key, prefill, derive(structuredClone(baseline)));
+  }
+  changed(key: string | null, draft: ModelConnectionDraft, prefill?: string) {
+    const baseline = key && prefill !== undefined
+      ? this.prefillBaselines.get(key)?.get(prefill) ?? this.baselines.get(key)
+      : key ? this.baselines.get(key) : undefined;
     const placeholders = key ? this.placeholders.get(key) : undefined;
-    return baseline ? JSON.stringify(editableDraft(draft, placeholders)) !== JSON.stringify(editableDraft(baseline, placeholders)) : false;
+    const automatic = key && prefill !== undefined ? this.prefillAutomaticModels.get(key)?.get(prefill) : undefined;
+    const comparison = baseline && automatic?.size ? { ...baseline, models: [...baseline.models, ...automatic.values()] } : baseline;
+    return comparison ? JSON.stringify(editableDraft(draft, placeholders)) !== JSON.stringify(editableDraft(comparison, placeholders)) : false;
   }
   recordAutoPlaceholder(key: string | null, model: ModelDeclaration) {
     if (!key || model.upstream_model_id !== '' || model.display_name !== '') return;
@@ -60,24 +69,25 @@ export class ConnectionEditingSession {
     placeholders.set(model.client_id, structuredClone(model));
     this.placeholders.set(key, placeholders);
   }
-  applyModelDefaults(key: string | null, update: (models: ModelDeclaration[]) => ModelDeclaration[], prefill?: string) {
+  recordAutomaticModel(key: string | null, prefill: string, model: ModelDeclaration) {
+    if (!key || !model.upstream_model_id) return;
+    const baseline = this.prefillBaselines.get(key)?.get(prefill);
+    if (!baseline || baseline.models.some(value => value.upstream_model_id === model.upstream_model_id)) return;
+    const contexts = this.prefillAutomaticModels.get(key) ?? new Map<string, Map<string, ModelDeclaration>>();
+    const models = contexts.get(prefill) ?? new Map<string, ModelDeclaration>();
+    if (!models.has(model.upstream_model_id)) models.set(model.upstream_model_id, structuredClone(model));
+    contexts.set(prefill, models);
+    this.prefillAutomaticModels.set(key, contexts);
+  }
+  applyModelDefaults(key: string | null, update: (models: ModelDeclaration[]) => ModelDeclaration[]) {
     const baseline = key ? this.baselines.get(key) : undefined;
-    if (baseline && (prefill === undefined || prefill === '')) baseline.models = update(baseline.models);
-    const prefillBaseline = key && prefill !== undefined ? this.prefillBaselines.get(key)?.get(prefill) : undefined;
-    if (prefillBaseline) prefillBaseline.models = update(prefillBaseline.models);
+    if (baseline) baseline.models = update(baseline.models);
   }
   get hasUnsavedDrafts() {
-    const changed = (key: string, value: ConnectionEditingDraft) => this.changed(key, value.draft)
+    const changed = (key: string, value: ConnectionEditingDraft, prefill = value.custom ? value.metadataPrefillKey : undefined) => this.changed(key, value.draft, prefill)
       || Boolean(value.secret || value.protectedInput || value.credentialReentry || value.selection?.refs.size);
     return Array.from(this.drafts, ([key, value]) => changed(key, value)).some(Boolean)
-      || Array.from(this.prefills, ([key, values]) => Array.from(values, ([prefill, value]) => {
-        const baseline = this.prefillBaselines.get(key)?.get(prefill);
-        const placeholders = this.placeholders.get(key);
-        const editableChanged = baseline
-          ? JSON.stringify(editableDraft(value.draft, placeholders)) !== JSON.stringify(editableDraft(baseline, placeholders))
-          : this.changed(key, value.draft);
-        return editableChanged || Boolean(value.secret || value.protectedInput || value.credentialReentry || value.selection?.refs.size);
-      }).some(Boolean)).some(Boolean);
+      || Array.from(this.prefills, ([key, values]) => Array.from(values, ([prefill, value]) => changed(key, value, prefill)).some(Boolean)).some(Boolean);
   }
   stashPrefill(key: string | null, prefill: string, value: ConnectionEditingDraft) {
     if (!key) return;
@@ -110,5 +120,6 @@ export class ConnectionEditingSession {
     this.placeholders.clear();
     this.prefills.clear();
     this.prefillBaselines.clear();
+    this.prefillAutomaticModels.clear();
   }
 }

@@ -50,6 +50,8 @@ function Harness() {
         trace.optionReads++;
         if (mode === 'fail') throw new Error('fixture options unavailable');
         const options = await invoke('compute_connection_options');
+        if (params.has('prefill_model')) options.options = options.options.map((option: { connection_option_id: string }) => option.connection_option_id === 'anthropic.platform.global.v1'
+          ? { ...option, known_models: { 'fixture-prefill-model': 'Fixture prefill model' } } : option);
         if (mode === 'hold-one' || mode === 'hold-fail') await new Promise<void>(resolve => pendingOptions.push(resolve));
         if (mode === 'hold-fail') throw new Error('fixture deferred read failure');
         if (mode === 'one-noauth') return { ...options, options: options.options.filter((option: { connection_option_id: string }) => option.connection_option_id === 'anthropic.platform.global.v1').map((option: { endpoints: object[] }) => ({ ...option, endpoints: option.endpoints.map(endpoint => ({ ...endpoint, authentication_semantics: { kind: 'none' } })) })) };

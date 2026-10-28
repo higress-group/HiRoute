@@ -29,6 +29,12 @@ async function field(label, value) {
   await evaluate(client, `(() => {const el=${expr}; const proto=el instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el instanceof HTMLSelectElement?'change':'input',{bubbles:true}));return true;})()`);
   await settle();
 }
+async function fieldAt(label, value, index) {
+  const expr = `Array.from(document.querySelectorAll('.field')).filter(el => el.getClientRects().length && el.querySelector('.field-label,.sr-only')?.textContent === ${JSON.stringify(label)})[${index}]?.querySelector('input,select')`;
+  await waitFor(client, `Boolean(${expr})`);
+  await evaluate(client, `(() => {const el=${expr}; const proto=el instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el instanceof HTMLSelectElement?'change':'input',{bubbles:true}));return true;})()`);
+  await settle();
+}
 async function screenshot(name) {
   await settle(); const shot = await client.send('Page.captureScreenshot', { format: 'png' });
   await writeFile(path.join(output, `${name}.png`), Buffer.from(shot.data, 'base64'));
@@ -39,6 +45,203 @@ async function run(name, fn) {
   catch (error) { await screenshot(`failure-${name}`).catch(() => {}); results.push({ name, state: 'red', error: error.stack || String(error) }); }
 }
 try {
+  await run('review-r6-protocol-auth-roundtrip', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await field('API Key', 'fixture-key-a'); await click('summary', 'Advanced settings');
+    await click('button', 'Add protocol endpoint'); await fieldAt('Authentication', 'none', 1);
+    await fieldAt('Protocol', 'responses', 0);
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('#mc-connection-form input[type=password]'))`), false);
+    await fieldAt('Protocol', 'chat_completions', 0);
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true, 'switching primary endpoints retains the same-context Key');
+  });
+  await run('review-r6-protocol-immediate-close-and-switch', async () => {
+    await open('connection-flow.html', 'lang=en'); await click('.connection-custom-entry');
+    await field('API Key', 'fixture-key-a'); await click('summary', 'Advanced settings');
+    await click('button', 'Add protocol endpoint'); await fieldAt('Authentication', 'none', 1);
+    const switchAnd = selector => evaluate(client, `(() => {const p=Array.from(document.querySelectorAll('.field')).find(e=>e.getClientRects().length && e.querySelector('.field-label')?.textContent==='Protocol').querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(p,'responses');p.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector(${JSON.stringify(selector)}).click();return true;})()`);
+    await switchAnd('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing'); await fieldAt('Protocol', 'chat_completions', 0);
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
+    await switchAnd('.modal-foot button'); await waitFor(client, `Boolean(document.querySelector('.connection-provider-card'))`);
+    await click('.connection-provider-card', 'Anthropic');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`), '');
+    await click('.modal-foot button', 'Back'); await click('.connection-custom-entry');
+    await fieldAt('Protocol', 'chat_completions', 0);
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
+  });
+  await run('review-r6-none-check-save-and-product-detour', async () => {
+    await open('connection-flow.html', 'lang=en'); await click('.connection-custom-entry');
+    await field('Base URL', 'https://example.test/v1'); await field('API Key', 'fixture-key-a');
+    await click('summary', 'Advanced settings'); await click('button', 'Add protocol endpoint');
+    await fieldAt('Base URL', 'https://example.test/v1', 1); await fieldAt('Authentication', 'none', 1); await fieldAt('Protocol', 'responses', 0);
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing');
+    await click('.modal-foot button', 'Back'); await click('.connection-provider-card', 'Anthropic');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`), '', 'the hidden Key does not cross products');
+    await click('.modal-foot button', 'Back'); await click('.connection-custom-entry');
+    await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `Boolean(document.querySelector('.model-selection input[type=checkbox]:not(:disabled)'))`);
+    await click('.model-selection input[type=checkbox]'); await click('.modal-foot button', 'Save connection');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    assert.deepEqual(await evaluate(client, `({registered:connectionFlowTrace.registered.length,checks:connectionFlowTrace.checks.length,usesKey:connectionFlowTrace.checks.some(x=>'input_candidate' in x || JSON.stringify(x).includes('fixture-key-a')),saves:connectionFlowTrace.saves.length})`), { registered: 0, checks: 1, usesKey: false, saves: 0 });
+    await click('.discard-dialog button', 'Keep editing'); await click('.modal-foot button', 'Back');
+    await fieldAt('Protocol', 'chat_completions', 0);
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
+  });
+  await run('review-r6-protocol-releases-protected-only-once', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await field('Base URL', 'https://example.test/v1'); await click('summary', 'Advanced settings');
+    await click('button', 'Add protocol endpoint'); await fieldAt('Authentication', 'none', 1);
+    await field('API Key', 'fixture-key-a'); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `Boolean(document.querySelector('#mc-manual-form:not([hidden])'))`);
+    await click('.modal-foot button', 'Back'); await fieldAt('Protocol', 'responses', 0);
+    assert.deepEqual(await evaluate(client, `connectionFlowTrace.released`), ['input/1']);
+    assert.ok(await evaluate(client, `document.querySelector('.connection-flow').innerText.includes('Re-enter the previous key')`));
+    await fieldAt('Protocol', 'chat_completions', 0);
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`), '');
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Discard changes');
+    assert.deepEqual(await evaluate(client, `connectionFlowTrace.released`), ['input/1']);
+  });
+  await run('review-r6-none-save-confirms-without-key', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await field('Base URL', 'https://example.test/v1'); await field('API Key', 'fixture-key-a');
+    await click('summary', 'Advanced settings'); await click('button', 'Add protocol endpoint');
+    await fieldAt('Base URL', 'https://example.test/v1', 1); await fieldAt('Authentication', 'none', 1); await fieldAt('Protocol', 'responses', 0);
+    await click('.connection-manual-entry'); await field('Model ID', 'example-model'); await click('.modal-foot button', 'Check and save');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.saves.length`), 0, 'the unsaved Key is protected before save');
+    await click('.discard-dialog button', 'Discard changes'); await waitFor(client, `!document.querySelector('.connection-flow')`);
+    assert.deepEqual(await evaluate(client, `({registered:connectionFlowTrace.registered.length,checks:connectionFlowTrace.checks.length,saves:connectionFlowTrace.saves.length,applies:connectionFlowTrace.applies.length,hasInput:'input_candidate' in connectionFlowTrace.checks[0],usesKey:JSON.stringify([connectionFlowTrace.checks,connectionFlowTrace.saves,connectionFlowTrace.applies]).includes('fixture-key-a')})`), { registered: 0, checks: 1, saves: 1, applies: 1, hasInput: false, usesKey: false });
+  });
+  await run('review-r6-discard-layout-captures', async () => {
+    for (const [lang, theme, width, height] of [['zh', 'dark', 755, 600], ['en', 'light', 755, 600], ['en', 'dark', 1200, 813], ['zh', 'light', 1200, 813]]) {
+      await open('connection-flow.html', `lang=${lang}&theme=${theme}&kind=custom`, width, height);
+      await field('API Key', 'fixture-key-a'); await click('summary', lang === 'zh' ? '高级设置' : 'Advanced settings');
+      await click('button', lang === 'zh' ? '添加协议端点' : 'Add protocol endpoint');
+      await fieldAt(lang === 'zh' ? '认证方式' : 'Authentication', 'none', 1);
+      await fieldAt(lang === 'zh' ? '协议' : 'Protocol', 'responses', 0); await click('.modal-head button');
+      await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+      const bounds = await evaluate(client, `(() => {const d=document.querySelector('.discard-dialog[open]');const r=d.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,overflow:d.scrollWidth-d.clientWidth};})()`);
+      assert.ok(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= width + 1 && bounds.bottom <= height + 1 && bounds.overflow <= 1, JSON.stringify(bounds));
+      await screenshot(`review-r6-discard-${lang}-${theme}-${width}`);
+    }
+  });
+  await run('review-r7-current-prefill-default-is-clean', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom&prefill_model=1');
+    await click('summary', 'Use connection prefill'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'an untouched current prefill is its own baseline');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
+  await run('review-r7-retained-prefill-default-is-clean', async () => {
+    await open('connection-flow.html', 'lang=en&prefill_model=1'); await click('.connection-custom-entry');
+    await click('summary', 'Use connection prefill'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    await click('.modal-foot button', 'Back'); await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'an untouched retained product prefill is its own baseline');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
+  await run('review-r7-save-another-product-with-clean-prefill', async () => {
+    await open('connection-flow.html', 'lang=en&prefill_model=1'); await click('.connection-custom-entry');
+    await click('summary', 'Use connection prefill'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    await click('.modal-foot button', 'Back'); await click('.connection-provider-card', 'Anthropic');
+    await field('API Key', 'fixture-key-a'); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `Boolean(document.querySelector('.model-selection input[type=checkbox]:not(:disabled)'))`);
+    await click('.model-selection input[type=checkbox]'); await click('.modal-foot button', 'Save connection');
+    await settle();
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'saving another product does not discard a fictitious prefill edit');
+    await waitFor(client, `!document.querySelector('.connection-flow')`);
+  });
+  await run('review-r7-prefill-detours-preserve-edits-and-reversion', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom'); await click('summary', 'Use connection prefill');
+    await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    const initial = await evaluate(client, `({name:Array.from(document.querySelectorAll('.field')).find(e=>e.querySelector('.field-label')?.textContent==='Connection name').querySelector('input').value,base:Array.from(document.querySelectorAll('.field')).find(e=>e.querySelector('.field-label')?.textContent==='Base URL').querySelector('input').value})`);
+    await field('Connection name', 'Edited account'); await field('Base URL', 'https://edited.example.test/v1'); await field('API Key', 'fixture-key-a');
+    await field('Connection prefill (optional)', 'template:deepseek.official.global.v1');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`), '', 'a different prefill receives no Key');
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
+    assert.equal(await evaluate(client, `Array.from(document.querySelectorAll('.field')).find(e=>e.querySelector('.field-label')?.textContent==='Connection name').querySelector('input').value`), 'Edited account');
+    await field('Connection name', initial.name); await field('Base URL', initial.base); await field('API Key', '');
+    await evaluate(client, `setConnectionLanguage('zh'); true`); await waitFor(client, `!document.querySelector('.connection-flow .oc-spinner')`);
+    await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'reverting to the first prefill baseline remains clean after a refresh');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
+  await run('review-r7-deleted-prefill-model-is-dirty', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom&prefill_model=1'); await click('summary', 'Use connection prefill');
+    await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1'); await click('.connection-manual-entry');
+    assert.ok(await evaluate(client, `document.querySelector('#mc-manual-form').innerText.includes('fixture-prefill-model') || Array.from(document.querySelectorAll('#mc-manual-form input')).some(e=>e.value==='fixture-prefill-model')`));
+    await click('#mc-manual-form button', 'Remove model'); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+  });
+  await run('review-r7-prefill-capability-reverts-to-clean', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom&prefill_model=1'); await click('summary', 'Use connection prefill');
+    await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1'); await click('.connection-manual-entry');
+    await click('summary', 'Capabilities and limits');
+    const initial = await evaluate(client, `Array.from(document.querySelectorAll('.field')).find(e=>e.querySelector('.field-label')?.textContent==='Image input').querySelector('select').value`);
+    await field('Image input', initial === 'supported' ? 'unsupported' : 'supported'); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing'); await field('Image input', initial); await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false);
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
+  await run('review-r7-prefill-model-selection-stays-dirty', async () => {
+    await open('connection-flow.html', 'lang=en&options=one-noauth'); await click('.connection-custom-entry');
+    await click('summary', 'Use connection prefill'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `Boolean(document.querySelector('.model-selection input[type=checkbox]:not(:disabled)'))`);
+    await click('.model-selection input[type=checkbox]'); await click('.modal-foot button', 'Back');
+    await field('Connection prefill (optional)', ''); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.registered.length`), 0, 'the pending model selection is protected without a Key');
+    await click('.discard-dialog button', 'Keep editing'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+  });
+  await run('review-r7-check-does-not-absorb-manual-model', async () => {
+    await open('connection-flow.html', 'lang=en&options=one-noauth'); await click('.connection-custom-entry');
+    await click('summary', 'Use connection prefill'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    await click('.connection-manual-entry'); await field('Model ID', 'qwen3-coder-plus'); await field('Model name (optional)', 'qwen3-coder-plus');
+    await click('.modal-foot button', 'Back'); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `Boolean(document.querySelector('.model-selection input[type=checkbox]:not(:disabled)'))`);
+    await click('.model-selection input[type=checkbox]'); await click('.model-selection button', 'Test tool calling');
+    await waitFor(client, `connectionFlowTrace.checks.length === 2 && Boolean(document.querySelector('.model-selection input[type=checkbox]:checked'))`);
+    await click('.model-selection input[type=checkbox]'); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+  });
+  await run('review-r7-check-retains-unknown-capability-edit', async () => {
+    await open('connection-flow.html', 'lang=en&options=one-noauth&prefill_model=1'); await click('.connection-custom-entry');
+    await click('summary', 'Use connection prefill'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    await click('.connection-manual-entry'); await click('summary', 'Capabilities and limits'); await field('Image input', 'unknown');
+    await click('.modal-foot button', 'Back'); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `Boolean(document.querySelector('.model-selection input[type=checkbox]:not(:disabled)'))`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.checks[0].draft.models[0].capabilities.vision.value`), false, 'the check receives the established fallback');
+    await click('.modal-foot button', 'Back'); await click('.connection-manual-entry'); await click('summary', 'Capabilities and limits');
+    assert.equal(await evaluate(client, `Array.from(document.querySelectorAll('.field')).find(e=>e.querySelector('.field-label')?.textContent==='Image input').querySelector('select').value`), 'unknown', 'checking does not erase the user edit');
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+  });
+  await run('review-r7-edited-prefill-blocks-other-save', async () => {
+    await open('connection-flow.html', 'lang=en'); await click('.connection-custom-entry'); await click('summary', 'Use connection prefill');
+    await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1'); await field('Base URL', 'https://edited.example.test/v1');
+    await click('.modal-foot button', 'Back'); await click('.connection-provider-card', 'Anthropic');
+    await field('API Key', 'fixture-key-a'); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `Boolean(document.querySelector('.model-selection input[type=checkbox]:not(:disabled)'))`);
+    await click('.model-selection input[type=checkbox]'); await click('.modal-foot button', 'Save connection');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.saves.length + connectionFlowTrace.applies.length`), 0);
+  });
+  await run('review-r7-customize-retains-earlier-user-edit', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    const initial = await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`);
+    await field('Connection name', 'Edited before customize'); await click('summary', 'Connection settings');
+    await click('button', 'Customize connection settings'); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing'); await field('Connection name', initial); await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'the original product name remains the baseline after customizing');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
   await run('review-key-auth-toggle', async () => {
     await open('connection-flow.html', 'lang=en&kind=custom');
     await field('API Key', 'fixture-key-a'); await click('summary', 'Advanced settings');

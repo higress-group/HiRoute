@@ -133,7 +133,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       ? metadataProviderCandidates(selectedPrefill.provider, connectionOptions.metadata_catalog, registeredOptions)
       : [], [selectedPrefill, connectionOptions, registeredOptions]);
   function hasUnsavedChanges() {
-    return editingSession.current.changed(editingKey.current, draftRef.current)
+    return editingSession.current.changed(editingKey.current, draftRef.current, custom ? metadataPrefillKey : undefined)
       || Boolean(password.current?.value || pendingSecret.current || protectedInputRef.current || credentialReentryRef.current || selectionRef.current?.refs.size)
       || editingSession.current.hasUnsavedDrafts;
   }
@@ -205,7 +205,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     }
   }, [backend, custom, free, cancelOptionsRecovery]);
 
-  function selectMetadataProvider(provider: ProviderMetadataRecord | null) {
+  function selectMetadataProvider(provider: ProviderMetadataRecord | null, credentialContextChanged = false) {
     if (!provider) return;
     const catalog = connectionOptions?.metadata_catalog;
     const option = catalog ? metadataProviderOption(provider, registeredOptions) : null;
@@ -253,10 +253,10 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         return record ? withCapabilityFallback(metadataModelPrefill(record, clientOperationId('model')))
           : blankModel(candidate.upstream_model_id, candidate.display_name);
       }),
-    }), true, 'connection');
+    }), true, 'connection', { credentialContextChanged });
   }
 
-  function selectRegisteredTemplate(option: ComputeConnectionOptions['options'][number], keepExistingModels = false) {
+  function selectRegisteredTemplate(option: ComputeConnectionOptions['options'][number], keepExistingModels = false, credentialContextChanged = false) {
     const endpoint = [...(option.endpoints ?? [])].sort((a, b) => a.stable_preference - b.stable_preference)[0];
     if (!endpoint) return;
     const candidates = registeredModelCandidates(option, connectionOptions?.metadata_catalog);
@@ -269,18 +269,21 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         request_path_override: other.request_path, inventory_path_override: other.inventory_path ?? null,
         protocol: other.protocol, protocol_profile_id: `profile/custom/${other.protocol}`,
         protocol_profile_revision: 1, authentication: other.authentication_semantics ?? { kind: 'bearer' as const } }));
-    setCustom(true);
-    setMetadataPrefillKey(`template:${option.connection_option_id}`);
-    invalidate(current => ({ ...current,
+    const prefillKey = `template:${option.connection_option_id}`;
+    const withTemplate = (current: ModelConnectionDraft): ModelConnectionDraft => ({ ...current,
       entry_kind: 'custom_api', display_template_id: option.connection_option_id,
-      display_name: draftRef.current.display_name.trim() || suggestedName(connectionName(option.connection_option_id, language, option.display_name)),
+      display_name: current.display_name.trim() || suggestedName(connectionName(option.connection_option_id, language, option.display_name)),
       base_url: endpoint.base_url, base_kind: 'api_root',
       request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null,
       protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`,
       protocol_profile_revision: current.protocol_profile_revision + 1,
       authentication: endpoint.authentication_semantics ?? { kind: 'bearer' },
       additional_endpoints, models: withRegisteredModels(keepExistingModels ? current.models : [], candidates),
-    }), true, 'connection');
+    });
+    if (!custom && keepExistingModels) editingSession.current.beginPrefillFromProduct(editingKey.current, prefillKey, withTemplate);
+    setCustom(true);
+    setMetadataPrefillKey(prefillKey);
+    invalidate(withTemplate, true, 'connection', { credentialContextChanged });
   }
 
   function selectMetadataPrefill(key: string) {
@@ -305,12 +308,12 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       pendingSecret.current = saved.secret;
       selectionRef.current = saved.selection;
       markCredentialReentry(saved.credentialReentry);
-      invalidate(() => saved.draft, true, 'connection');
+      invalidate(() => saved.draft, true, 'connection', { credentialContextChanged: true });
       return;
     }
     const prefill = metadataPrefills.find(value => value.key === key);
-    if (prefill?.kind === 'template') selectRegisteredTemplate(prefill.option);
-    else if (prefill?.kind === 'provider') selectMetadataProvider(prefill.provider);
+    if (prefill?.kind === 'template') selectRegisteredTemplate(prefill.option, false, true);
+    else if (prefill?.kind === 'provider') selectMetadataProvider(prefill.provider, true);
   }
 
   useEffect(() => { draftRef.current = draft; }, [draft]);
@@ -354,7 +357,14 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     update: (current: ModelConnectionDraft) => ModelConnectionDraft,
     securityChanged = false,
     nextScreen?: Screen,
+    options?: { credentialContextChanged?: boolean },
   ) => {
+    const current = draftRef.current;
+    const updated = update(current);
+    // Product/prefill changes park credentials separately. Within one context,
+    // capture the uncontrolled input before any transition can unmount it.
+    if (!options?.credentialContextChanged && current.authentication.kind !== 'none'
+      && updated.authentication.kind === 'none' && password.current) pendingSecret.current = password.current.value;
     const checkId = activeCheckRef.current;
     activeCheckRef.current = null;
     if (checkId) void backend.cancelModelConnectionCheck(checkId).catch(() => undefined);
@@ -363,23 +373,20 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       if (protectedInputRef.current) markCredentialReentry(true);
       releaseProtectedInput();
     }
-    setDraft(current => {
-      const nextRevision = current.edit_revision + 1;
-      const updated = update(current);
-      const next = securityChanged
-        ? {
-            ...updated,
-            candidate_ref: null,
-            provenance: updated.provenance.kind === 'registered'
-              ? { kind: 'user_configured' as const, configuration_revision: nextRevision }
-              : updated.provenance,
-            qualification: { free_access: null, evidence_ref: null },
-          }
-        : updated;
-      const versioned = { ...next, edit_revision: nextRevision, check_id: '' };
-      draftRef.current = versioned;
-      return versioned;
-    });
+    const nextRevision = current.edit_revision + 1;
+    const next = securityChanged
+      ? {
+          ...updated,
+          candidate_ref: null,
+          provenance: updated.provenance.kind === 'registered'
+            ? { kind: 'user_configured' as const, configuration_revision: nextRevision }
+            : updated.provenance,
+          qualification: { free_access: null, evidence_ref: null },
+        }
+      : updated;
+    const versioned = { ...next, edit_revision: nextRevision, check_id: '' };
+    draftRef.current = versioned;
+    setDraft(versioned);
     setResult(null);
     setSelected(new Set());
     setPhase('editing');
@@ -564,10 +571,14 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const base = !custom && !saveAfterCheck
       ? { ...draftRef.current, models: withRegisteredModels(draftRef.current.models, registeredCandidates) }
       : draftRef.current;
-    const selectedModels = inferenceModelId && !base.models.some(model => model.upstream_model_id === inferenceModelId)
-      ? [...base.models, blankModel(inferenceModelId)] : base.models;
-    const current = { ...base, inference_model_id: inferenceModelId,
-      models: selectedModels.map(withCapabilityFallback) };
+    const automaticInferenceModel = inferenceModelId && !base.models.some(model => model.upstream_model_id === inferenceModelId)
+      ? inferenceModelId : null;
+    const selectedModels = automaticInferenceModel
+      ? [...base.models, blankModel(automaticInferenceModel)] : base.models;
+    const current = { ...base, inference_model_id: inferenceModelId, models: selectedModels };
+    // The check needs complete execution defaults, but the editable draft must
+    // retain the user's declarations (including an explicit unknown value).
+    const checkedModels = selectedModels.map(withCapabilityFallback);
     if (current.display_name.trim().length > 60 || (!current.existing_source_id && (props.existingNames ?? []).includes(current.display_name.trim()))) { setError('CONNECTION_NAME_CONFLICT'); return; }
     const allowedIds = new Set([...preservedModelIds.current,
       ...(!custom ? registeredCandidates.map(model => model.upstream_model_id) : [])]);
@@ -594,15 +605,17 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       return;
     }
     if (saveAfterCheck) {
-      const validation = (new Set(current.models.map(model => model.upstream_model_id)).size !== current.models.length ? 'MODEL_ID_DUPLICATE' : '') || current.models.map(model => manualModelError(model, allowedIds)).find(Boolean) || (!current.models.length ? 'MODEL_ID_REQUIRED' : '');
+      const validation = (new Set(checkedModels.map(model => model.upstream_model_id)).size !== checkedModels.length ? 'MODEL_ID_DUPLICATE' : '') || checkedModels.map(model => manualModelError(model, allowedIds)).find(Boolean) || (!checkedModels.length ? 'MODEL_ID_REQUIRED' : '');
       if (validation) { setError(validation); return; }
     }
-    editingSession.current.applyModelDefaults(editingKey.current, models => {
-      const withCatalog = !custom && !saveAfterCheck ? withRegisteredModels(models, registeredCandidates) : models;
-      const withInference = inferenceModelId && !withCatalog.some(model => model.upstream_model_id === inferenceModelId)
-        ? [...withCatalog, blankModel(inferenceModelId)] : withCatalog;
-      return withInference.map(withCapabilityFallback);
-    }, custom ? metadataPrefillKey : undefined);
+    if (custom && automaticInferenceModel) {
+      // Record only the model inserted by this check, never an existing user declaration.
+      editingSession.current.recordAutomaticModel(editingKey.current, metadataPrefillKey, selectedModels[selectedModels.length - 1]);
+    } else if (!custom) editingSession.current.applyModelDefaults(editingKey.current, models => {
+      const withCatalog = !saveAfterCheck ? withRegisteredModels(models, registeredCandidates) : models;
+      return automaticInferenceModel && !withCatalog.some(model => model.upstream_model_id === automaticInferenceModel)
+        ? [...withCatalog, blankModel(automaticInferenceModel)] : withCatalog;
+    });
     const checkId = clientOperationId('check');
     const checkedProductKey = editingKey.current;
     const checkingDraft = { ...current, display_name: current.display_name.trim(), candidate_ref: enteredSecret ? null : current.candidate_ref, check_id: checkId };
@@ -633,13 +646,13 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       const inputCandidate = checkingDraft.authentication.kind === 'none' ? null : protectedInputRef.current;
       const checked = custom
         ? await backend.checkModelConnection({
-            draft: buildCheckDraft(checkingDraft),
+            draft: buildCheckDraft({ ...checkingDraft, models: checkedModels }),
             ...(inputCandidate ? { input_candidate: inputCandidate } : {}),
           })
         : await backend.checkRegisteredModelConnection({
             display_name: checkingDraft.display_name,
             inference_model_id: inferenceModelId,
-            models: checkingDraft.models.filter(model => model.upstream_model_id).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
+            models: checkedModels.filter(model => model.upstream_model_id).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
             connection_option_id: registeredOption!.connection_option_id,
             expected_catalog: connectionOptions!.catalog,
             candidate_ref: checkingDraft.candidate_ref,
@@ -686,7 +699,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         const initialManualModel = existing ?? blankModel(observed?.upstream_model_id, observed?.display_name);
         if (!acceptedDraft.models.length) {
           editingSession.current.recordAutoPlaceholder(editingKey.current, initialManualModel);
-          editingSession.current.applyModelDefaults(editingKey.current, models => models.length ? models : [initialManualModel], custom ? metadataPrefillKey : undefined);
+          editingSession.current.recordAutomaticModel(editingKey.current, metadataPrefillKey, initialManualModel);
         }
         const manualDraft = {
           ...acceptedDraft,
@@ -794,14 +807,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const blank = draftRef.current.models.length ? null : blankModel();
     if (blank) {
       editingSession.current.recordAutoPlaceholder(editingKey.current, blank);
-      editingSession.current.applyModelDefaults(editingKey.current, models => models.length ? models : [blank], custom ? metadataPrefillKey : undefined);
     }
     invalidate(current => ({ ...current, models: current.models.length ? current.models : blank ? [blank] : [] }), false, 'manual');
-  }
-
-  function changeAuthentication(authentication: ModelConnectionDraft['authentication']) {
-    if (authentication.kind === 'none' && password.current?.value) pendingSecret.current = password.current.value;
-    invalidate(current => ({ ...current, authentication }), true, 'connection');
   }
 
   async function saveSelected() {
@@ -895,7 +902,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
             {custom && <Disclosure className="connection-details" language={language} label={zh ? '高级设置' : 'Advanced settings'}><div className="connection-fields">
               <label className="field"><span className="field-label">{zh ? '请求路径（可选覆盖）' : 'Request path (optional override)'}</span><input className="input" value={draft.request_path_override ?? ''} onChange={event => invalidate(current => ({ ...current, request_path_override: event.target.value || null }), true, 'connection')} /></label>
               <label className="field"><span className="field-label">{zh ? '模型目录路径（可选）' : 'Model directory path (optional)'}</span><input className="input" placeholder="/v1/models" value={draft.inventory_path_override ?? ''} onChange={event => invalidate(current => ({ ...current, inventory_path_override: event.target.value || null }), true, 'connection')} /></label>
-              <label className="field"><span className="field-label">{zh ? '认证方式' : 'Authentication'}</span><select className="select" value={draft.authentication.kind} onChange={event => changeAuthentication(event.target.value === 'api_key_header' ? { kind: 'api_key_header', header: 'x-api-key' } : event.target.value === 'none' ? { kind: 'none' } : { kind: 'bearer' })}><option value="none">{zh ? '无认证' : 'None'}</option><option value="bearer">Bearer Token</option><option value="api_key_header">{zh ? '自定义 Header' : 'Custom header'}</option></select></label>
+              <label className="field"><span className="field-label">{zh ? '认证方式' : 'Authentication'}</span><select className="select" value={draft.authentication.kind} onChange={event => invalidate(current => ({ ...current, authentication: event.target.value === 'api_key_header' ? { kind: 'api_key_header', header: 'x-api-key' } : event.target.value === 'none' ? { kind: 'none' } : { kind: 'bearer' } }), true, 'connection')}><option value="none">{zh ? '无认证' : 'None'}</option><option value="bearer">Bearer Token</option><option value="api_key_header">{zh ? '自定义 Header' : 'Custom header'}</option></select></label>
               {draft.authentication.kind === 'api_key_header' && <label className="field"><span className="field-label">Header</span><input className="input" value={draft.authentication.header} onChange={event => invalidate(current => ({ ...current, authentication: { kind: 'api_key_header', header: event.target.value } }), true, 'connection')} /></label>}
               <div className="connection-fields" aria-label={zh ? '其他协议端点' : 'Additional protocol endpoints'}>
                 {draft.additional_endpoints.map((endpoint, index) => {
