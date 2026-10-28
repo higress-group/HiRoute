@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 use std::io::{BufReader, Read};
 
-use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation};
+use hiroute_gateway_core::runtime::body::{
+    ChargedBytes, ChargedBytesBuilder, MemoryRole, Reservation,
+};
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, de};
 use serde_json::Value;
@@ -15,6 +17,7 @@ mod schema;
 const MAX_JSON_DEPTH: usize = 128;
 const INLINE_CONTENT_BYTES: usize = 8 * 1024;
 const STRUCTURE_RESERVATION_BYTES: usize = 128;
+const MAX_SLICE_PARSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct IngressDocumentStats {
@@ -81,13 +84,6 @@ pub(crate) fn parse_ingress_document(
     stats: IngressDocumentStats,
 ) -> Result<(Value, IngressWorkspace), ReplayError> {
     let parse = stats.reserve_streaming_workspace(replay)?;
-    // serde's reader adapter asks for individual bytes. Amortize Replay range
-    // checks and copies without materializing another full request body.
-    let buffer_bytes = raw.byte_len().min(8 * 1024) as usize;
-    let buffer_reservation = replay
-        .budget()
-        .reserve(MemoryRole::ModelIrBacking, buffer_bytes)?;
-    let mut reader = BufReader::with_capacity(buffer_bytes, replay.reader(raw)?);
     let mut state = IngressParserState {
         replay,
         pool: None,
@@ -97,24 +93,22 @@ pub(crate) fn parse_ingress_document(
         inline_remaining: INLINE_CONTENT_BYTES,
         failure: None,
     };
-    let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
-    let parsed = IngressSeed {
-        state: &mut state,
-        field: None,
-        depth: 0,
-    }
-    .deserialize(&mut deserializer);
-    let mut document = match parsed.and_then(|value| {
-        deserializer.end()?;
-        Ok(value)
-    }) {
-        Ok(value) => value,
-        Err(_) => return Err(state.failure.take().unwrap_or(ReplayError::InvalidJson)),
+    let mut document = if let Some(bytes) = memory_parse_input(replay, raw, stats)? {
+        let mut decoder = serde_json::Deserializer::from_slice(bytes.bytes());
+        decode_document(&mut decoder, &mut state)?
+    } else {
+        // Disk and budget-constrained requests keep the bounded reader path.
+        let capacity = raw.byte_len().min(8 * 1024) as usize;
+        let _buffer = replay
+            .budget()
+            .reserve(MemoryRole::ModelIrBacking, capacity)?;
+        let mut reader = BufReader::with_capacity(capacity, replay.reader(raw)?);
+        let mut decoder = serde_json::Deserializer::from_reader(&mut reader);
+        let document = decode_document(&mut decoder, &mut state)?;
+        drop(decoder);
+        reader.get_mut().verify_terminal()?;
+        document
     };
-    drop(deserializer);
-    reader.get_mut().verify_terminal()?;
-    drop(reader);
-    drop(buffer_reservation);
     // serde's largest-string scratch is gone after the deserializer drops.
     // Restoration below may retain that string, but never overlaps the
     // parser's transient copy in the request memory budget.
@@ -133,6 +127,54 @@ pub(crate) fn parse_ingress_document(
             generated_markers: state.generated_markers,
         },
     ))
+}
+
+fn decode_document<'de, R: serde_json::de::Read<'de>>(
+    decoder: &mut serde_json::Deserializer<R>,
+    state: &mut IngressParserState<'_>,
+) -> Result<Value, ReplayError> {
+    let parsed = IngressSeed {
+        state,
+        field: None,
+        depth: 0,
+    }
+    .deserialize(&mut *decoder);
+    parsed
+        .and_then(|value| {
+            decoder.end()?;
+            Ok(value)
+        })
+        .map_err(|_| state.failure.take().unwrap_or(ReplayError::InvalidJson))
+}
+
+fn memory_parse_input(
+    replay: &ReplayStore,
+    raw: &super::ContentRef,
+    stats: IngressDocumentStats,
+) -> Result<Option<ChargedBytes>, ReplayError> {
+    let length = usize::try_from(raw.byte_len()).map_err(|_| ReplayError::LengthOverflow)?;
+    if length > MAX_SLICE_PARSE_BYTES || replay.snapshot().disk_backed {
+        return Ok(None);
+    }
+    // Leave conservative room for semantic backing, range metadata, retained
+    // strings and the next Replay segment. Scratch refusal is not an error.
+    let headroom = length
+        .saturating_mul(3)
+        .saturating_add(stats.structure_units.saturating_mul(256))
+        .saturating_add(64 * 1024);
+    if replay.budget().available_bytes()? < headroom {
+        return Ok(None);
+    }
+    let Ok(mut bytes) =
+        ChargedBytesBuilder::new(replay.budget(), MemoryRole::ModelIrBacking, length)
+    else {
+        return Ok(None);
+    };
+    bytes.resize_zeroed(length)?;
+    let mut reader = replay.reader(raw)?;
+    reader.read_exact(bytes.as_mut_slice())?;
+    reader.verify_terminal()?;
+    Ok(Some(bytes.finish()))
 }
 
 struct IngressParserState<'a> {
@@ -932,6 +974,10 @@ fn whole_json_field(protocol: IngressProtocol, field: &str, depth: usize, value:
 #[cfg(test)]
 #[path = "ingress/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ingress/parser_path_tests.rs"]
+mod parser_path_tests;
 
 #[derive(Default)]
 struct StructuralScanner {

@@ -418,6 +418,13 @@ integrity guarantee. ContextHold alone may stream HMAC relevant externalized fie
 through the existing reader for continuity without another cache; failed reads
 create no hold.
 
+For memory-backed ingress of at most 1 MiB, parsing MAY borrow a contiguous slice
+or gather one temporary, fully budget-charged slice using the same syntax and
+protocol decoder. It SHALL leave conservative capacity for semantic backing and
+fall back to the bounded reader when optional scratch cannot be admitted. This
+scratch is released before subsequent request preparation; it is not another
+sealed body owner, a cache, a size limit, or permission to gather large disk input.
+
 Semantic JSON ranges have one canonical writer: object keys are ordered
 recursively, while values and array order remain significant. Canonical provenance
 belongs to the exact registered request-owned range; a locator, containing range,
