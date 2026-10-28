@@ -96,7 +96,7 @@ fn sequential_bulk_runs_preserve_all_escapes_and_empty_parts_at_chunk_boundaries
         "a".repeat(8191),
         "z".repeat(8193)
     );
-    let wire = json!({"model":"alias", "input":[
+    let wire = json!({"model":"alias", "tools":[{"type":"function","name":"test","parameters":{"type":"object"}}], "input":[
         {"role":"user","content":[{"type":"input_text","text":text}, {"type":"input_text","text":""}]},
         {"type":"function_call", "call_id":"call-1", "name":"test", "arguments":serde_json::to_string(&json!({"text":text})).unwrap()},
         {"type":"function_call_output", "call_id":"call-1", "output":{"text":text, "empty":""}}
