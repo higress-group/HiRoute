@@ -189,3 +189,96 @@ fn replacing_the_database_file_invalidates_its_connection_binding() {
     std::fs::copy(&saved, &path).unwrap();
     assert!(stores.fence_agent_read(&stamp, |_, _| Ok(())).is_err());
 }
+
+#[test]
+fn physical_fences_reject_each_store_ddl_and_dml_in_both_intervals() {
+    for stage in ["capture", "fence"] {
+        for target in ["control", "secrets"] {
+            for change in ["dml", "ddl"] {
+                let root = crate::test_tempdir().unwrap();
+                let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+                let path = root.path().join(format!("live/{target}.db"));
+                let external = Connection::open(path).unwrap();
+                let mutate = || {
+                    if change == "ddl" {
+                        external
+                            .execute_batch("CREATE TABLE concurrent_stamp_change(id INTEGER)")
+                            .unwrap();
+                    } else if target == "control" {
+                        external
+                            .execute("UPDATE storage_meta SET store_uuid=store_uuid", [])
+                            .unwrap();
+                    } else {
+                        external
+                            .execute("UPDATE secret_store_meta SET updated_at=updated_at+1", [])
+                            .unwrap();
+                    }
+                };
+                let read_then_mutate =
+                    |control: &crate::ControlStore, secret: Option<&crate::LocalSecretStore>| {
+                        control
+                            .connection
+                            .borrow()
+                            .query_row("SELECT store_uuid FROM storage_meta", [], |r| {
+                                r.get::<_, String>(0)
+                            })
+                            .unwrap();
+                        secret
+                            .unwrap()
+                            .connection
+                            .borrow()
+                            .query_row("SELECT store_uuid FROM secret_store_meta", [], |r| {
+                                r.get::<_, String>(0)
+                            })
+                            .unwrap();
+                        mutate();
+                        Ok(())
+                    };
+                if stage == "capture" {
+                    assert!(
+                        stores.capture_agent_read(true, read_then_mutate).is_err(),
+                        "{stage}/{target}/{change}"
+                    );
+                } else {
+                    let (_, stamp) = stores.capture_agent_read(true, |_, _| Ok(())).unwrap();
+                    assert!(
+                        stores.fence_agent_read(&stamp, read_then_mutate).is_err(),
+                        "{stage}/{target}/{change}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_barriered_external_commit_during_capture_invalidates_the_whole_bundle() {
+    use std::sync::mpsc;
+    let root = crate::test_tempdir().unwrap();
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let path = root.path().join("live/control.db");
+    let (release, released) = mpsc::channel();
+    let (finished, complete) = mpsc::channel();
+    let writer = std::thread::spawn(move || {
+        let external = Connection::open(path).unwrap();
+        released.recv().unwrap();
+        external
+            .execute("UPDATE storage_meta SET store_uuid=store_uuid", [])
+            .unwrap();
+        finished.send(()).unwrap();
+    });
+    let result = stores.capture_agent_read(false, |control, _| {
+        control
+            .connection
+            .borrow()
+            .query_row("SELECT store_uuid FROM storage_meta", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .unwrap();
+        release.send(()).unwrap();
+        complete.recv().unwrap();
+        Ok(())
+    });
+    writer.join().unwrap();
+    assert!(result.is_err());
+}

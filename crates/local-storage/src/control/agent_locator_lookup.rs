@@ -530,17 +530,19 @@ impl ControlStore {
         workspace: &WorkspaceId,
         scope: AgentLocatorScope<'_>,
     ) -> PortResult<AgentLocatorResult> {
-        let db = self.connection.borrow();
-        let tx = if db.is_autocommit() {
-            Some(db.unchecked_transaction().map_err(|_| invalid())?)
-        } else {
-            None
+        let found = {
+            let db = self.connection.borrow();
+            let tx = if db.is_autocommit() {
+                Some(db.unchecked_transaction().map_err(|_| invalid())?)
+            } else {
+                None
+            };
+            let found = selected(&db, workspace, scope)?;
+            if let Some(tx) = tx {
+                tx.commit().map_err(|_| invalid())?;
+            }
+            found
         };
-        let found = selected(&db, workspace, scope)?;
-        if let Some(tx) = tx {
-            tx.commit().map_err(|_| invalid())?;
-        }
-        drop(db);
         Ok(match found {
             Some(found) => AgentLocatorResult::Found(found.verify()?),
             None => AgentLocatorResult::AbsentWithCompleteCoverage,

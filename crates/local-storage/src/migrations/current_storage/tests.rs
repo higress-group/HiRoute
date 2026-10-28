@@ -435,3 +435,67 @@ fn locator_upgrade_from_admitted_32_preserves_unrelated_publication_damage() {
     drop(upgraded);
     LocalStorageSet::open_for_daemon_startup(&root).unwrap();
 }
+
+#[test]
+fn locator_upgrade_refuses_missing_original_recovery_coverage() {
+    let directory = crate::test_tempdir().unwrap();
+    let root = directory.path().join("storage");
+    let stores = schema32_source(&root);
+    stores
+        .control
+        .connection
+        .borrow()
+        .execute("DELETE FROM operation_recovery_coverage", [])
+        .unwrap();
+    drop(stores);
+    assert!(LocalStorageSet::open_for_daemon_startup(&root).is_err());
+    assert_eq!(
+        database_version(&root.join("live/control.db")).unwrap(),
+        Some(32)
+    );
+    let restored = Connection::open(root.join("live/control.db")).unwrap();
+    assert_eq!(
+        restored
+            .query_row(
+                "SELECT count(*) FROM operation_recovery_coverage",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn locator_upgrade_refuses_damaged_current_publication() {
+    let directory = crate::test_tempdir().unwrap();
+    let root = directory.path().join("storage");
+    let stores = schema32_source(&root);
+    history(&stores, 3);
+    stores
+        .control
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE gateway_publications SET digest='corrupted-current' WHERE state='active'",
+            [],
+        )
+        .unwrap();
+    drop(stores);
+    assert!(LocalStorageSet::open_for_daemon_startup(&root).is_err());
+    assert_eq!(
+        database_version(&root.join("live/control.db")).unwrap(),
+        Some(32)
+    );
+    let restored = Connection::open(root.join("live/control.db")).unwrap();
+    assert_eq!(
+        restored
+            .query_row(
+                "SELECT digest FROM gateway_publications WHERE state='active'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+        "corrupted-current"
+    );
+}

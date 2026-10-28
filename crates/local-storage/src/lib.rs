@@ -20,8 +20,9 @@ pub mod secrets;
 pub use agents::*;
 pub use backup::{BackupSet, SingleWriterBackupBarrier, SqliteBackup};
 pub use control::{
-    AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope, ApplyCapabilityRegistrar,
-    ApplyCapabilityRegistrationV1, CapturedAgentLocator, ComputeSubscriptionValidationRecordV1,
+    ActivePublicationIdentity, AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope,
+    ApplyCapabilityRegistrar, ApplyCapabilityRegistrationV1, CapturedActivePublication,
+    CapturedAgentLocator, ComputeSubscriptionValidationRecordV1,
     ComputeSubscriptionValidationStateV1, ControlReadStamp, ControlStore, ManagedArtifactStore,
     SucceededAgentOperationV1,
 };

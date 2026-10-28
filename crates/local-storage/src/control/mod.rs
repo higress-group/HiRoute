@@ -93,6 +93,8 @@ mod native_file_tests;
 #[path = "../agents/plan_references.rs"]
 mod plan_references;
 mod publication;
+mod publication_snapshot;
+pub use publication_snapshot::{ActivePublicationIdentity, CapturedActivePublication};
 #[path = "../agents/skill_store.rs"]
 mod skill_store;
 
