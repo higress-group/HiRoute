@@ -24,7 +24,7 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
     let text = format!("late capture: {}", "escape \\\"\n路由🦀".repeat(2048));
     install_content(&store, &fixture, text.as_bytes(), 101);
     let detail = store
-        .get_session(&fixture.workspace, &fixture.session, ContentMode::Full)
+        .get_session(&fixture.workspace, &fixture.session, ContentMode::MessagesAndTools)
         .unwrap();
     assert_eq!(
         detail.summary.content_completeness,
@@ -41,7 +41,7 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
     let reopened = open_store(root.path());
     assert_eq!(
         reopened
-            .get_session(&fixture.workspace, &fixture.session, ContentMode::Full)
+            .get_session(&fixture.workspace, &fixture.session, ContentMode::MessagesAndTools)
             .unwrap(),
         detail
     );
@@ -55,7 +55,7 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
     install_content(&reopened, &fixture, text.as_bytes(), 101);
     assert_eq!(
         reopened
-            .get_session(&fixture.workspace, &fixture.session, ContentMode::Full)
+            .get_session(&fixture.workspace, &fixture.session, ContentMode::MessagesAndTools)
             .unwrap(),
         detail
     );
