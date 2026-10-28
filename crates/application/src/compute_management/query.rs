@@ -752,12 +752,13 @@ pub fn project_trial_source<T: ComputeRuntimeStateStoreV1>(
                     ComputeModelMembershipV2::UserDeclared
                 }
             },
-            catalog_admitted: candidate.is_some_and(|candidate| {
-                candidate.authority == CandidateFactAuthorityV1::RegisteredCatalog
-                    && candidate.is_routable()
-                    && model.catalog_configuration_id.as_deref()
-                        == Some(candidate.model.model_configuration_id.as_str())
-            }),
+            catalog_admitted: access_kind != ComputeConnectionAccessKindV1::Unknown
+                && candidate.is_some_and(|candidate| {
+                    candidate.authority == CandidateFactAuthorityV1::RegisteredCatalog
+                        && candidate.is_routable()
+                        && model.catalog_configuration_id.as_deref()
+                            == Some(candidate.model.model_configuration_id.as_str())
+                }),
             availability,
             reason_code,
         });

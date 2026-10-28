@@ -449,6 +449,10 @@ impl LocalControlAdapter {
                         control.compute_projection_rows().map_err(super::map_port)?,
                     )
                 };
+                // Exact saved-subscription validation is independent of CPA discovery. It
+                // cannot be inferred from a live connector or a remembered Ready flag.
+                let trusted_trial_sources =
+                    trial_capture.then(|| trial::trusted_sources(self, &catalog, &management));
                 let mut diagnostics =
                     CandidateDiagnostics::new(&management.sources, &rows, &catalog);
                 let needs_cpa = rows
@@ -901,7 +905,15 @@ impl LocalControlAdapter {
                 // Project trial choices while the same local rows and captured routing facts are
                 // held. The compact projection contains no credential or endpoint material.
                 let trial_projection = if trial_capture {
-                    let context = trial::capture(self, &catalog, &management, cpa_targets);
+                    let context = trial::capture(
+                        self,
+                        &catalog,
+                        &management,
+                        cpa_targets,
+                        trusted_trial_sources
+                            .as_deref()
+                            .ok_or(ControlReadError::Corrupt)?,
+                    );
                     let projected =
                         trial::project(&management, stores.runtime(), &facts.candidates, &context)?;
                     Some((context, projected))
@@ -923,6 +935,12 @@ impl LocalControlAdapter {
                     if projected != current
                         || !trial::maintenance_unchanged(self, &management, &context)
                     {
+                        return Err(ControlReadError::SnapshotChanged);
+                    }
+                    drop(stores);
+                    if trusted_trial_sources.as_ref().is_none_or(|before| {
+                        *before != trial::trusted_sources(self, &catalog, &management)
+                    }) {
                         return Err(ControlReadError::SnapshotChanged);
                     }
                     Some(projected)

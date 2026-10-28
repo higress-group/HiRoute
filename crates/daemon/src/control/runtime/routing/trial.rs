@@ -19,13 +19,31 @@ struct SourceContext {
 
 pub(super) struct CaptureContext(Vec<SourceContext>);
 
+/// Retained approval and successful-save evidence are read by exact source identity.
+/// This is separate from connector discovery and is checked again after the CPA fence.
+pub(super) fn trusted_sources(
+    adapter: &LocalControlAdapter,
+    catalog: &TrustedReleaseCatalog,
+    management: &ComputeManagementStoredSnapshotV2,
+) -> Vec<bool> {
+    management
+        .sources
+        .iter()
+        .map(|source| {
+            !source.provenance.is_connector_owned()
+                || adapter.trial_subscription_identity_is_trusted(catalog, source)
+        })
+        .collect()
+}
+
 pub(super) fn capture(
     adapter: &LocalControlAdapter,
     catalog: &TrustedReleaseCatalog,
     management: &ComputeManagementStoredSnapshotV2,
     batch: Option<&hiroute_cpa_bridge::CpaRoutingBatch<'_>>,
+    trusted: &[bool],
 ) -> CaptureContext {
-    CaptureContext(management.sources.iter().map(|source| {
+    CaptureContext(management.sources.iter().zip(trusted).map(|(source, trusted)| {
         let maintenance = adapter.subscription_maintenance_presentation(&source.source_id);
         let (access, runtime) = match &source.provenance {
             ComputeManagementProvenanceV2::UserConfigured { .. } => (Access::Api, None),
@@ -41,7 +59,7 @@ pub(super) fn capture(
             ComputeManagementProvenanceV2::ConnectorOwned { connector_id, account_ref } => {
                 let kind = hiroute_cpa_bridge::CpaAccountKind::from_connector(connector_id);
                 let access = kind.and_then(|kind| catalog.resolve_connection_option(kind.connection_option_id()).ok())
-                    .filter(|resolved| resolved.option.origin == ConnectionOrigin::AgentSubscription)
+                    .filter(|resolved| *trusted && resolved.option.origin == ConnectionOrigin::AgentSubscription)
                     .map_or(Access::Unknown, |_| Access::Subscription);
                 let runtime = match maintenance {
                     Some(Maintenance::Updating) => Runtime::SubscriptionUpdating,
