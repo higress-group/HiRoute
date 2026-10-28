@@ -5,6 +5,8 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 mod program_locations;
 mod seal;
+#[cfg(all(test, target_os = "macos"))]
+mod copy_benchmark;
 #[cfg(windows)]
 use std::io::{Read, Write};
 
