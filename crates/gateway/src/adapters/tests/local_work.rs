@@ -72,12 +72,14 @@ impl Fixture {
 #[test]
 fn local_work_protocol_oracle_preserves_complete_text_and_tool_history() {
     let text = format!("{}\"\\\n中文🦀{}", "a".repeat(24_577), "z".repeat(16_385));
-    let args = json!({"text":text, "empty":"", "nested":[null,true, {"n":17}]});
+    // Ingress already canonicalizes valid tool JSON. Keep this fixture in
+    // canonical key order so byte comparison measures text preservation.
+    let args = json!({"empty":"", "nested":[null,true, {"n":17}], "text":text});
     let arguments = serde_json::to_string(&args).unwrap();
     for (protocol, wire) in [
         (
             IngressProtocol::Responses,
-            json!({"model":"alias", "input":[
+            json!({"model":"alias", "tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}], "input":[
                 {"role":"user","content":text},
                 {"type":"function_call","call_id":"call-1","name":"lookup","arguments":arguments},
                 {"type":"function_call_output","call_id":"call-1","output":text}
@@ -85,7 +87,7 @@ fn local_work_protocol_oracle_preserves_complete_text_and_tool_history() {
         ),
         (
             IngressProtocol::ChatCompletions,
-            json!({"model":"alias", "messages":[
+            json!({"model":"alias", "tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}], "messages":[
                 {"role":"user","content":text},
                 {"role":"assistant","content":null,"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup","arguments":arguments}}]},
                 {"role":"tool","tool_call_id":"call-1","content":text}
@@ -93,7 +95,7 @@ fn local_work_protocol_oracle_preserves_complete_text_and_tool_history() {
         ),
         (
             IngressProtocol::Messages,
-            json!({"model":"alias","max_tokens":128,"messages":[
+            json!({"model":"alias","max_tokens":128,"tools":[{"name":"lookup","input_schema":{"type":"object"}}],"messages":[
                 {"role":"user","content":text},
                 {"role":"assistant","content":[{"type":"tool_use","id":"call-1","name":"lookup","input":args}]},
                 {"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":text}]}
