@@ -12,6 +12,16 @@ export function homeStartupScenarios({ until, control }) {
     await until(() => routeButton() && !routeButton().disabled, 'writable routing page');
   };
   return [
+    scenario('desktop.home.no-full-agent-scan', ['home-startup'], 'Cold Home uses a lightweight Agent summary', async () => {
+      const c = control();
+      try {
+        c.reset();
+        await until(() => health()?.querySelector('.good'), 'healthy service on Home');
+        await settled();
+        assert(!c.commands.some(call => call.command === 'agent_snapshot'), 'Home requested all Agent full settings');
+        await until(() => c.commands.some(call => call.command === 'agent_home_summary'), 'lightweight Agent summary');
+      } finally { c.reset(); await settled(); }
+    }),
     scenario('desktop.home.service-refresh-authority', ['home-startup'], 'Refreshing service display retains health without retaining permission', async () => {
       const c = control(); let release;
       try {

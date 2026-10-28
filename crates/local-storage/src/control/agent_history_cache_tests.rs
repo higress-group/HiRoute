@@ -591,6 +591,38 @@ fn target_operation(root: &str, key: &str, restore: bool) -> OperationV1 {
 }
 
 #[test]
+fn selected_settings_does_not_decode_newer_unrelated_contexts() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let selected_root = directory.path().join("selected");
+    let mut selected = target_operation(selected_root.to_str().unwrap(), "selected", false);
+    let context = selected.plan.spec().resource_id.clone().unwrap();
+    persist(&control, &mut selected);
+    for index in 0..10 {
+        let other_root = directory.path().join(format!("unrelated-{index}"));
+        let mut other = target_operation(
+            other_root.to_str().unwrap(),
+            &format!("other-{index}"),
+            false,
+        );
+        persist(&control, &mut other);
+    }
+    let before = super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
+    let found = control
+        .find_verified_agent_operation(&WorkspaceId::default(), KINDS, |fact| {
+            Ok(fact.plan.spec().resource_id.as_deref() == Some(context.as_str()))
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.operation_id, selected.operation_id);
+    let decoded = super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get) - before;
+    assert_eq!(
+        decoded, 1,
+        "unrelated contexts must not be authenticated before selection"
+    );
+}
+
+#[test]
 fn native_target_discovery_reads_only_current_targets_and_keeps_unfinished_tails() {
     let directory = tempdir().unwrap();
     let control = open(directory.path());

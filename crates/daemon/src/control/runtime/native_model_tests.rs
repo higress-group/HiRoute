@@ -86,6 +86,37 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
     );
     publish(adapter, &mut install);
     finish_fixture_operation(adapter, &mut install);
+    // Hold the production status path immediately before native file I/O. An
+    // unrelated request must be able to acquire the actual shared store lock.
+    let (reached_tx, reached_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let reader = std::sync::Arc::clone(&runtime.adapter);
+    let selected_context = context.clone();
+    let worker = std::thread::spawn(move || {
+        crate::control::runtime::settings_status::MODEL_NATIVE_READ_BARRIER.with(|slot| {
+            *slot.borrow_mut() = Some((reached_tx, release_rx));
+        });
+        reader.model_settings_status(&AgentSettingsStatusRequestV2 {
+            projection: hiroute_application_api::AgentSettingsStatusProjectionV2::Model,
+            effective: None,
+            include_skills: false,
+            native_target: None,
+            schema_version: AGENT_SETTINGS_SCHEMA_V2,
+            context_id: selected_context,
+        })
+    });
+    let reached = reached_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .is_ok();
+    let available = reached && runtime.adapter.stores.try_lock().is_ok();
+    let _ = release_tx.send(());
+    let read_result = worker.join().unwrap();
+    assert!(
+        reached,
+        "the selected status did not reach its native-read barrier"
+    );
+    assert!(available, "native verification held the shared storage lock");
+    assert!(read_result.is_ok());
     let revision = adapter
         .stores_lock()
         .unwrap()

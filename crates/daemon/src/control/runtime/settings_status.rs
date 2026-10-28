@@ -14,6 +14,23 @@ use hiroute_domain::{
     is_agent_access_grant_effect,
 };
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static MODEL_NATIVE_READ_BARRIER: std::cell::RefCell<Option<(
+        std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>,
+    )>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn wait_before_model_native_read() {
+    MODEL_NATIVE_READ_BARRIER.with(|slot| {
+        if let Some((reached, release)) = slot.borrow_mut().take() {
+            reached.send(()).unwrap();
+            release.recv().unwrap();
+        }
+    });
+}
+
 enum ModelAction {
     Configure,
     Restore,
@@ -271,6 +288,8 @@ impl LocalControlAdapter {
         status.operation_state = Some(operation.state.as_str().into());
         let (active_grant, configured_join) = match action {
             ModelAction::Configure => {
+                #[cfg(test)]
+                wait_before_model_native_read();
                 let file_applied = if matches!(
                     class,
                     SettingsAgentClass::Qoder
