@@ -146,6 +146,9 @@ run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory>
 form with controlled IPC. They cover the three classifier explanations, keyboard
 disclosure, exact single-product eligibility and return, per-product edit and Key
 retention, reverted edits, selected models, failure and same-Operation save states.
+The connection cases also cover authentication None and protected-input re-entry,
+prefill Key isolation, exact current option qualification, live provider details,
+cancelled or superseded catalog recovery, and pristine versus edited model rows.
 Chinese and English captures use production styles at 755×600 and 1200×813 with
 light and dark states. The fixture does not establish native save or provider behavior;
 the combined trial custom-connection path needs its own integration acceptance.

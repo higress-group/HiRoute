@@ -72,3 +72,18 @@ test('only editable values and session-owned input differ from a product baselin
   session.stash('api', { draft: withModel, custom: false, metadataPrefillKey: '', secret: 'fixture', protectedInput: null, selection: null });
   assert.equal(session.hasUnsavedDrafts, true);
 });
+
+test('only an exact pristine automatic model row is ignored', () => {
+  const session = new ConnectionEditingSession();
+  const initial = newModelConnectionDraft('custom');
+  const automatic = blankModel();
+  session.begin('custom', initial);
+  session.recordAutoPlaceholder('custom', automatic);
+  session.applyModelDefaults('custom', () => [automatic]);
+  assert.equal(session.changed('custom', initial), false);
+  assert.equal(session.changed('custom', { ...initial, models: [automatic] }), false);
+  assert.equal(session.changed('custom', { ...initial, models: [{ ...automatic, display_name: 'Partial' }] }), true);
+  assert.equal(session.changed('custom', { ...initial, models: [{ ...automatic, capabilities: { ...automatic.capabilities, vision: { value: true, basis: 'user_declared' } } }] }), true);
+  assert.equal(session.changed('custom', { ...initial, models: [blankModel()] }), true, 'another user-created blank row is not the automatic placeholder');
+  assert.equal(session.changed('custom', { ...initial, models: [blankModel('existing-model')] }), true);
+});

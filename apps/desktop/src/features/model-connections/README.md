@@ -14,6 +14,18 @@ automatic choice for the current opening. The host's custom-entry permission is
 unchanged. Per-product editable baselines distinguish real unsaved changes and
 model selections from generated defaults and check metadata; current and retained
 credential inputs are checked in memory when leaving, without serializing them.
+Authentication None preserves the current product's typed Key in that owner without
+using it in a check. Invalidating a protected-only input releases it and retains a
+visible re-entry requirement. Custom prefills retain separate editing contexts so a
+Key cannot move to another product template. Only an exact untouched automatic blank
+model row is excluded from the dirty comparison; validation still rejects zero models.
+
+The selected registered product is executable only after the latest successful
+options read qualifies that exact option. The form retains its identity and edits
+through removal, disabled qualification or read failure; Reload does not check it.
+Provider details derive from the current directory and locale. A catalog-changed
+recovery read belongs to its check, product, edit revision and page generation, so
+later edits, cancellation, reads or closure cannot apply an obsolete response.
 
 The password field is uncontrolled. Its value is passed only to `registerProtectedInput` and cleared immediately; checks, previews, public state, and callbacks use the returned safe candidate reference. Editing the target, protocol, or authentication releases that reference and invalidates the prior check. Once Apply is dispatched, the component stops releasing the protected input because the save operation may have taken ownership, including when the response is uncertain.
 

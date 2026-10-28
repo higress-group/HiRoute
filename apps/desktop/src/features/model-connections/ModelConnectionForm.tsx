@@ -55,6 +55,7 @@ import {
 
 type Phase = 'editing' | 'checking' | 'saving';
 type Screen = 'catalog' | 'connection' | 'manual' | 'models';
+type OptionsRecoveryOwner = { checkId: string; productKey: string | null; editRevision: number };
 
 function emptyAdditionalEndpoint(protocol: UpstreamProtocol, authentication: ModelConnectionDraft['authentication']): ModelConnectionEndpointDraft {
   return {
@@ -86,6 +87,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const [optionsError, setOptionsError] = useState('');
   const [registeredOptionId, setRegisteredOptionId] = useState('');
   const [metadataPrefillKey, setMetadataPrefillKey] = useState('');
+  const [credentialReentry, setCredentialReentry] = useState(false);
+  const credentialReentryRef = useRef(false);
   const password = useRef<HTMLInputElement>(null);
   const errorFeedback = useRef<HTMLDivElement>(null);
   const draftRef = useRef(draft);
@@ -104,6 +107,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const selectionRef = useRef<ConnectionSelection | null>(null);
   const shortcutDecided = useRef(false);
   const optionsGeneration = useRef(0);
+  const optionsRecovery = useRef<OptionsRecoveryOwner | null>(null);
   const backendRef = useRef(backend);
   backendRef.current = backend;
   const selectedOptionRef = useRef<ComputeConnectionOptions['options'][number] | null>(null);
@@ -114,6 +118,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   ) ?? []), [connectionOptions, free]);
   const registeredOption = registeredOptions.find(option => option.connection_option_id === registeredOptionId)
     ?? null;
+  const registeredExecutable = Boolean(optionsReady && registeredOption?.registered_check_available);
   const namedOption = registeredOption ?? selectedOptionRef.current;
   const productName = namedOption ? connectionName(namedOption.connection_option_id, language, namedOption.display_name) : '';
   const registeredCandidates = useMemo(() => registeredOption
@@ -129,10 +134,15 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       : [], [selectedPrefill, connectionOptions, registeredOptions]);
   function hasUnsavedChanges() {
     return editingSession.current.changed(editingKey.current, draftRef.current)
-      || Boolean(password.current?.value || pendingSecret.current || protectedInputRef.current || selectionRef.current?.refs.size)
+      || Boolean(password.current?.value || pendingSecret.current || protectedInputRef.current || credentialReentryRef.current || selectionRef.current?.refs.size)
       || editingSession.current.hasUnsavedDrafts;
   }
   useDiscardGuard('models', () => phase === 'saving' || (!saveCompletedRef.current && hasUnsavedChanges()), language, confirmReplacement);
+
+  function markCredentialReentry(value: boolean) {
+    credentialReentryRef.current = value;
+    setCredentialReentry(value);
+  }
 
   function suggestedName(base: string) {
     const names = new Set(props.existingNames ?? []);
@@ -152,26 +162,48 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     if (password.current) password.current.value = '';
   }, []);
 
-  const loadConnectionOptions = useCallback(async () => {
+  const cancelOptionsRecovery = useCallback(() => {
+    if (!optionsRecovery.current) return;
+    optionsRecovery.current = null;
+    optionsGeneration.current++;
+    setOptionsLoading(false);
+    setOptionsReady(false);
+    setOptionsError('MODEL_CONNECTION_OPTIONS_UNAVAILABLE');
+  }, []);
+
+  const loadConnectionOptions = useCallback(async (owner?: OptionsRecoveryOwner) => {
+    if (!owner && (activeCheckRef.current || optionsRecovery.current)) {
+      const checkId = activeCheckRef.current;
+      activeCheckRef.current = null;
+      if (checkId) void backendRef.current.cancelModelConnectionCheck(checkId).catch(() => undefined);
+      cancelOptionsRecovery();
+      setPhase('editing');
+    }
     const generation = ++optionsGeneration.current;
+    const current = () => aliveRef.current && generation === optionsGeneration.current
+      && (!owner || (optionsRecovery.current === owner && activeCheckRef.current === owner.checkId
+        && editingKey.current === owner.productKey && draftRef.current.edit_revision === owner.editRevision));
     setOptionsLoading(true);
     setOptionsReady(false);
     setOptionsError('');
     try {
       const options = await backend.listConnectionOptions();
-      if (!aliveRef.current || generation !== optionsGeneration.current) return;
+      if (!current()) return false;
       setConnectionOptions(options);
       setOptionsReady(true);
       const executable = sortRegisteredOptions(options.options.filter(option => option.origin !== 'agent_subscription' && (!free || option.billing_class === 'free')));
       if (!custom && executable.length === 0) {
         setOptionsError('MODEL_CONNECTION_OPTION_UNAVAILABLE');
       }
+      return true;
     } catch {
-      if (aliveRef.current && generation === optionsGeneration.current && !custom) setOptionsError('MODEL_CONNECTION_OPTIONS_UNAVAILABLE');
+      if (!current()) return false;
+      if (!custom) setOptionsError('MODEL_CONNECTION_OPTIONS_UNAVAILABLE');
+      return true;
     } finally {
-      if (aliveRef.current && generation === optionsGeneration.current) setOptionsLoading(false);
+      if (current()) setOptionsLoading(false);
     }
-  }, [backend, custom, free]);
+  }, [backend, custom, free, cancelOptionsRecovery]);
 
   function selectMetadataProvider(provider: ProviderMetadataRecord | null) {
     if (!provider) return;
@@ -252,8 +284,30 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   }
 
   function selectMetadataPrefill(key: string) {
-    if (key !== metadataPrefillKey && password.current) password.current.value = '';
+    if (key === metadataPrefillKey) return;
+    // A prefill can point at another product. Park this context with its own
+    // credential rather than restoring a hidden Key into the new template.
+    const hadProtectedInput = Boolean(protectedInputRef.current);
+    editingSession.current.stashPrefill(editingKey.current, metadataPrefillKey, {
+      draft: draftRef.current, custom, metadataPrefillKey,
+      secret: password.current?.value || pendingSecret.current || '', protectedInput: null,
+      credentialReentry: credentialReentryRef.current || hadProtectedInput, selection: selectionRef.current,
+    });
+    releaseProtectedInput();
+    if (password.current) password.current.value = '';
+    pendingSecret.current = null;
+    selectionRef.current = null;
+    markCredentialReentry(false);
+    const saved = editingSession.current.takePrefill(editingKey.current, key);
     setMetadataPrefillKey(key);
+    if (saved) {
+      setCustom(saved.custom);
+      pendingSecret.current = saved.secret;
+      selectionRef.current = saved.selection;
+      markCredentialReentry(saved.credentialReentry);
+      invalidate(() => saved.draft, true, 'connection');
+      return;
+    }
     const prefill = metadataPrefills.find(value => value.key === key);
     if (prefill?.kind === 'template') selectRegisteredTemplate(prefill.option);
     else if (prefill?.kind === 'provider') selectMetadataProvider(prefill.provider);
@@ -261,11 +315,12 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
 
   useEffect(() => { draftRef.current = draft; }, [draft]);
   useLayoutEffect(() => {
+    if (custom) editingSession.current.beginPrefill(editingKey.current, metadataPrefillKey, draftRef.current);
     if (screen === 'connection' && phase === 'editing' && pendingSecret.current !== null && password.current) {
       password.current.value = pendingSecret.current;
       pendingSecret.current = null;
     }
-  }, [screen, phase, registeredOptionId, custom]);
+  }, [screen, phase, registeredOptionId, custom, metadataPrefillKey, draft.authentication.kind]);
   useEffect(() => {
     if (phase !== 'editing') return;
     const frame = requestAnimationFrame(() => {
@@ -286,6 +341,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     return () => {
       aliveRef.current = false;
       optionsGeneration.current++;
+      optionsRecovery.current = null;
       const checkId = activeCheckRef.current;
       if (checkId) void backendRef.current.cancelModelConnectionCheck(checkId).catch(() => undefined);
       releaseProtectedInput();
@@ -302,7 +358,11 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const checkId = activeCheckRef.current;
     activeCheckRef.current = null;
     if (checkId) void backend.cancelModelConnectionCheck(checkId).catch(() => undefined);
-    if (securityChanged) releaseProtectedInput();
+    cancelOptionsRecovery();
+    if (securityChanged) {
+      if (protectedInputRef.current) markCredentialReentry(true);
+      releaseProtectedInput();
+    }
     setDraft(current => {
       const nextRevision = current.edit_revision + 1;
       const updated = update(current);
@@ -325,23 +385,25 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     setPhase('editing');
     setError('');
     if (nextScreen) setScreen(nextScreen);
-  }, [backend, releaseProtectedInput]);
+  }, [backend, releaseProtectedInput, cancelOptionsRecovery]);
 
   function retainEditingDraft() {
     if (!editingKey.current) return;
     editingSession.current.stash(editingKey.current, {
       draft: draftRef.current, custom, metadataPrefillKey,
       secret: password.current?.value || pendingSecret.current || '', protectedInput: protectedInputRef.current,
-      selection: selectionRef.current,
+      credentialReentry: credentialReentryRef.current, selection: selectionRef.current,
     });
     protectedInputRef.current = null;
     if (password.current) password.current.value = '';
     pendingSecret.current = null;
+    markCredentialReentry(false);
     selectionRef.current = null;
     editingKey.current = null;
   }
 
   function chooseConnection(option: ComputeConnectionOptions['options'][number] | null) {
+    if (activeCheckRef.current || optionsRecovery.current) cancelActiveCheck();
     shortcutDecided.current = true;
     const key = option?.connection_option_id ?? 'custom';
     retainEditingDraft();
@@ -360,6 +422,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     setMetadataPrefillKey(saved?.metadataPrefillKey ?? '');
     protectedInputRef.current = saved?.protectedInput ?? null;
     pendingSecret.current = saved?.secret ?? '';
+    markCredentialReentry(saved?.credentialReentry ?? false);
     selectionRef.current = saved?.selection ?? null;
     editingKey.current = key;
     draftRef.current = next;
@@ -372,6 +435,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   }
 
   function returnToCatalog() {
+    if (activeCheckRef.current || optionsRecovery.current) cancelActiveCheck();
     shortcutDecided.current = true;
     retainEditingDraft();
     setResult(null);
@@ -403,7 +467,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     }
     // Saving this product also leaves the editor. Other product drafts still
     // belong to this session and must not be silently discarded on success.
-    if (editingSession.current.hasUnsavedDrafts && !(await confirmDiscard(language))) {
+    const unusedCredential = draftRef.current.authentication.kind === 'none'
+      && Boolean(pendingSecret.current || credentialReentryRef.current);
+    if ((editingSession.current.hasUnsavedDrafts || unusedCredential) && !(await confirmDiscard(language))) {
       setPhase('editing');
       return;
     }
@@ -518,7 +584,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     }
     const connectionReady = custom
       ? validEndpoint(current.base_url)
-      : Boolean(optionsReady && connectionOptions && registeredOption);
+      : Boolean(connectionOptions && registeredExecutable);
     if (!connectionReady) {
       setError(custom ? 'MODEL_CONNECTION_FIELDS_REQUIRED' : 'MODEL_CONNECTION_OPTION_UNAVAILABLE');
       return;
@@ -536,8 +602,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       const withInference = inferenceModelId && !withCatalog.some(model => model.upstream_model_id === inferenceModelId)
         ? [...withCatalog, blankModel(inferenceModelId)] : withCatalog;
       return withInference.map(withCapabilityFallback);
-    });
+    }, custom ? metadataPrefillKey : undefined);
     const checkId = clientOperationId('check');
+    const checkedProductKey = editingKey.current;
     const checkingDraft = { ...current, display_name: current.display_name.trim(), candidate_ref: enteredSecret ? null : current.candidate_ref, check_id: checkId };
     draftRef.current = checkingDraft;
     setDraft(checkingDraft);
@@ -549,6 +616,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     // checked candidate crosses into the save phase.
     setPhase('checking');
     let newlyRegistered: ComputeCandidateRef | null = null;
+    let inputOwnedBySession = false;
     try {
       if (checkingDraft.authentication.kind !== 'none' && enteredSecret) {
         newlyRegistered = (await backend.registerProtectedInput(enteredSecret)).input_candidate;
@@ -559,8 +627,10 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         if (passwordElement) passwordElement.value = '';
         releaseProtectedInput();
         protectedInputRef.current = newlyRegistered;
+        inputOwnedBySession = true;
+        markCredentialReentry(false);
       }
-      const inputCandidate = protectedInputRef.current;
+      const inputCandidate = checkingDraft.authentication.kind === 'none' ? null : protectedInputRef.current;
       const checked = custom
         ? await backend.checkModelConnection({
             draft: buildCheckDraft(checkingDraft),
@@ -614,7 +684,10 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           model.upstream_model_id === observed?.upstream_model_id
         );
         const initialManualModel = existing ?? blankModel(observed?.upstream_model_id, observed?.display_name);
-        if (!acceptedDraft.models.length) editingSession.current.applyModelDefaults(editingKey.current, models => models.length ? models : [initialManualModel]);
+        if (!acceptedDraft.models.length) {
+          editingSession.current.recordAutoPlaceholder(editingKey.current, initialManualModel);
+          editingSession.current.applyModelDefaults(editingKey.current, models => models.length ? models : [initialManualModel], custom ? metadataPrefillKey : undefined);
+        }
         const manualDraft = {
           ...acceptedDraft,
           edit_revision: acceptedDraft.edit_revision + 1,
@@ -638,20 +711,21 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       setScreen('models');
       setPhase('editing');
     } catch (caught) {
-      if (activeCheckRef.current === checkId) {
-        activeCheckRef.current = null;
+      if (aliveRef.current && activeCheckRef.current === checkId && editingKey.current === checkedProductKey
+        && draftRef.current.edit_revision === checkingDraft.edit_revision) {
         const code = safeConnectionErrorCode(caught);
         if (!custom && code === 'compute.registered_catalog_changed') {
-          try {
-            const options = await backend.listConnectionOptions();
-            if (aliveRef.current) setConnectionOptions(options);
-          } catch {
-            // Keep the catalog-changed action visible; the next explicit retry can reload again.
-          }
+          const owner = { checkId, productKey: checkedProductKey, editRevision: checkingDraft.edit_revision };
+          optionsRecovery.current = owner;
+          if (!await loadConnectionOptions(owner)) return;
+          optionsRecovery.current = null;
         }
+        if (!aliveRef.current || activeCheckRef.current !== checkId || editingKey.current !== checkedProductKey
+          || draftRef.current.edit_revision !== checkingDraft.edit_revision) return;
+        activeCheckRef.current = null;
         setError(code);
         setPhase('editing');
-      } else if (newlyRegistered) {
+      } else if (newlyRegistered && !inputOwnedBySession) {
         await backend.releaseProtectedInput(newlyRegistered).catch(() => undefined);
       }
     }
@@ -661,6 +735,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const checkId = activeCheckRef.current;
     activeCheckRef.current = null;
     if (checkId) void backend.cancelModelConnectionCheck(checkId).catch(() => undefined);
+    cancelOptionsRecovery();
     setPhase('editing');
     setError('');
     if (screen === 'models') setScreen('connection');
@@ -717,8 +792,16 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
 
   function openManual() {
     const blank = draftRef.current.models.length ? null : blankModel();
-    if (blank) editingSession.current.applyModelDefaults(editingKey.current, models => models.length ? models : [blank]);
+    if (blank) {
+      editingSession.current.recordAutoPlaceholder(editingKey.current, blank);
+      editingSession.current.applyModelDefaults(editingKey.current, models => models.length ? models : [blank], custom ? metadataPrefillKey : undefined);
+    }
     invalidate(current => ({ ...current, models: current.models.length ? current.models : blank ? [blank] : [] }), false, 'manual');
+  }
+
+  function changeAuthentication(authentication: ModelConnectionDraft['authentication']) {
+    if (authentication.kind === 'none' && password.current?.value) pendingSecret.current = password.current.value;
+    invalidate(current => ({ ...current, authentication }), true, 'connection');
   }
 
   async function saveSelected() {
@@ -739,7 +822,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     : screen === 'catalog'
       ? <><button className="btn" type="button" onClick={() => void requestClose('back')}>{zh ? '返回' : 'Back'}</button><span className="field-help">{zh ? '选择服务后继续配置' : 'Choose a service to continue'}</span></>
       : screen === 'connection'
-      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && props.singleProductShortcut ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || (!custom && (optionsLoading || !optionsReady || !registeredOption))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
+      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && props.singleProductShortcut ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || (!custom && (optionsLoading || !registeredExecutable))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
       : screen === 'manual'
         ? <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><button className="btn btn-primary" type="submit" form="mc-manual-form" disabled={!props.mutable}>{zh ? '检查并保存' : 'Check and save'}</button></>
         : <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><span className="connection-selection-count">{zh ? `已选择 ${selectedCount} 个模型` : `${selectedCount} models selected`}</span><button className="btn btn-primary" type="button" disabled={!props.mutable || !selectedCount} onClick={() => void saveSelected()}>{zh ? '保存连接' : 'Save connection'}</button></>;
@@ -757,6 +840,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
             <div className="connection-config-heading"><ProviderIcon optionId={custom ? draft.display_template_id : registeredOption?.connection_option_id} language={language} /><div><h3>{custom ? (zh ? '自定义 API' : 'Custom API') : productName}</h3><p>{custom ? (zh ? '填写服务地址，连接兼容的模型服务' : 'Connect a compatible model service') : connectionTemplate(registeredOption?.connection_option_id)?.description[language]}</p></div></div>
             <label className="field"><span className="field-label">{zh ? '连接名称' : 'Connection name'}</span><input className="input" maxLength={60} data-autofocus={screen === 'connection' || undefined} value={draft.display_name} placeholder={zh ? '例如：团队模型服务' : 'e.g. Team models'} onChange={event => invalidate(current => ({ ...current, display_name: event.target.value }), false, 'connection')} /><span className="field-help">{zh ? '用于区分不同账号或用途，保存后可在模型列表中看到。' : 'Distinguish accounts or purposes. This name appears in your model list.'}</span></label>
             {draft.authentication.kind !== 'none' && <label className="field"><SecretTransportWarning language={props.language} /><span className="field-label">API Key</span><input className="input" disabled={!custom && (optionsLoading || !registeredOption)} ref={password} type="password" autoComplete="off" spellCheck={false} placeholder={protectedInputRef.current ? '••••••••••••••••' : draft.existing_source_id ? (zh ? '留空使用已保存的 Key' : 'Leave blank to use the saved key') : (zh ? '粘贴此产品的 API Key' : 'Paste this product’s API key')} onChange={() => invalidate(current => ({ ...current, candidate_ref: null }), true, 'connection')} /></label>}
+            {credentialReentry && !password.current?.value && !pendingSecret.current && <p className="field-help" role="status">{zh ? '使用需要认证的方式时，请重新输入之前的 Key。' : 'Re-enter the previous key when using authentication.'}</p>}
             {!custom && registeredOption && <div className="connection-key-help"><span className="field-help">{zh ? '请使用上方产品对应的 Key。' : 'Use the key for the product shown above.'}</span>{connectionTemplate(registeredOption.connection_option_id)?.documentation_url && <a href={connectionTemplate(registeredOption.connection_option_id)?.documentation_url} target="_blank" rel="noreferrer" onClick={event => void openDocumentation(event, connectionTemplate(registeredOption.connection_option_id)?.documentation_url)}>{zh ? '获取 API Key' : 'Get an API key'}<UiIcon name="arrow" /></a>}{externalLinkError && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{zh ? '无法打开默认浏览器；当前表单内容已保留。' : 'The default browser could not be opened. Your form input is retained.'}</span></div>}</div>}
             {custom ? <>
               {!optionsLoading && metadataPrefills.length > 0 && <Disclosure className="connection-details" language={language} label={zh ? '使用接入资料预填（可选）' : 'Use connection prefill (optional)'}><div className="connection-fields metadata-prefill-fields">
@@ -805,13 +889,13 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               }}><option value="chat_completions">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option><option value="messages">Anthropic Messages</option></select></label>
             </> : optionsLoading
               ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{zh ? '正在读取接入方式' : 'Loading connection'}</strong><p>{zh ? '从本机可信目录确认当前支持的产品。' : 'Checking supported products in the local trusted catalog.'}</p></div></div>
-              : registeredOption
+              : registeredExecutable && registeredOption
                 ? <Disclosure className="connection-details" language={language} label={zh ? '连接配置 · 已自动填写' : 'Connection settings · configured automatically'}><div className="connection-endpoint-list">{registeredOption.endpoints?.map(endpoint => <div key={`${endpoint.protocol}-${endpoint.base_url}-${endpoint.request_path}`}><strong>{({ chat_completions: 'OpenAI Chat Completions', responses: 'OpenAI Responses', messages: 'Anthropic Messages' })[endpoint.protocol]}</strong><code>{endpoint.base_url.replace(/\/+$/, '')}/{endpoint.request_path.replace(/^\/+/, '')}</code></div>)}{props.allowCustom !== false && Boolean(registeredOption.endpoints?.length) && <button className="btn btn-quiet" type="button" onClick={() => selectRegisteredTemplate(registeredOption, true)}>{zh ? '自定义连接配置' : 'Customize connection settings'}</button>}</div></Disclosure>
-                : <div className="callout warn"><UiIcon name="warning" /><div><strong>{zh ? '当前没有可用的内置接入' : 'No built-in connection is available'}</strong><p>{connectionErrorMessage(optionsError || (optionUnavailable ? error : 'MODEL_CONNECTION_OPTION_UNAVAILABLE'), zh)}</p><button className="btn" type="button" onClick={() => void loadConnectionOptions()}>{zh ? '重新读取' : 'Reload'}</button></div></div>}
+                : <div className="callout warn"><UiIcon name="warning" /><div><strong>{registeredOptionId ? (zh ? '当前选择的产品暂不可用' : 'The selected product is unavailable') : (zh ? '当前没有可用的内置接入' : 'No built-in connection is available')}</strong><p>{optionsError === 'MODEL_CONNECTION_OPTIONS_UNAVAILABLE' ? connectionErrorMessage(optionsError, zh) : registeredOptionId ? (zh ? '请重新读取，或更换服务后继续。' : 'Reload or change service to continue.') : connectionErrorMessage(optionUnavailable ? error : 'MODEL_CONNECTION_OPTION_UNAVAILABLE', zh)}</p><button className="btn" type="button" onClick={() => void loadConnectionOptions()}>{zh ? '重新读取' : 'Reload'}</button></div></div>}
             {custom && <Disclosure className="connection-details" language={language} label={zh ? '高级设置' : 'Advanced settings'}><div className="connection-fields">
               <label className="field"><span className="field-label">{zh ? '请求路径（可选覆盖）' : 'Request path (optional override)'}</span><input className="input" value={draft.request_path_override ?? ''} onChange={event => invalidate(current => ({ ...current, request_path_override: event.target.value || null }), true, 'connection')} /></label>
               <label className="field"><span className="field-label">{zh ? '模型目录路径（可选）' : 'Model directory path (optional)'}</span><input className="input" placeholder="/v1/models" value={draft.inventory_path_override ?? ''} onChange={event => invalidate(current => ({ ...current, inventory_path_override: event.target.value || null }), true, 'connection')} /></label>
-              <label className="field"><span className="field-label">{zh ? '认证方式' : 'Authentication'}</span><select className="select" value={draft.authentication.kind} onChange={event => invalidate(current => ({ ...current, authentication: event.target.value === 'api_key_header' ? { kind: 'api_key_header', header: 'x-api-key' } : event.target.value === 'none' ? { kind: 'none' } : { kind: 'bearer' } }), true, 'connection')}><option value="none">{zh ? '无认证' : 'None'}</option><option value="bearer">Bearer Token</option><option value="api_key_header">{zh ? '自定义 Header' : 'Custom header'}</option></select></label>
+              <label className="field"><span className="field-label">{zh ? '认证方式' : 'Authentication'}</span><select className="select" value={draft.authentication.kind} onChange={event => changeAuthentication(event.target.value === 'api_key_header' ? { kind: 'api_key_header', header: 'x-api-key' } : event.target.value === 'none' ? { kind: 'none' } : { kind: 'bearer' })}><option value="none">{zh ? '无认证' : 'None'}</option><option value="bearer">Bearer Token</option><option value="api_key_header">{zh ? '自定义 Header' : 'Custom header'}</option></select></label>
               {draft.authentication.kind === 'api_key_header' && <label className="field"><span className="field-label">Header</span><input className="input" value={draft.authentication.header} onChange={event => invalidate(current => ({ ...current, authentication: { kind: 'api_key_header', header: event.target.value } }), true, 'connection')} /></label>}
               <div className="connection-fields" aria-label={zh ? '其他协议端点' : 'Additional protocol endpoints'}>
                 {draft.additional_endpoints.map((endpoint, index) => {

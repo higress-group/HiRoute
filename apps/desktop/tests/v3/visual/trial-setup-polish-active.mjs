@@ -39,6 +39,299 @@ async function run(name, fn) {
   catch (error) { await screenshot(`failure-${name}`).catch(() => {}); results.push({ name, state: 'red', error: error.stack || String(error) }); }
 }
 try {
+  await run('review-key-auth-toggle', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await field('API Key', 'fixture-key-a'); await click('summary', 'Advanced settings');
+    await field('Authentication', 'none'); await field('Authentication', 'bearer');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]')?.value === 'fixture-key-a'`), true, 'authentication toggle retains the current product Key');
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+  });
+  await run('review-current-option-qualification', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&no-custom=1');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('Connection name', 'Retained account'); await field('API Key', 'fixture-key-a');
+    await evaluate(client, `setConnectionOptionMode('unavailable'); setConnectionLanguage('zh'); true`);
+    await waitFor(client, `!document.querySelector('.connection-flow .oc-spinner') && Boolean(document.querySelector('.connection-config-heading'))`);
+    assert.equal(await evaluate(client, `document.querySelector('.modal-foot button[type=submit]').disabled`), true, 'the same product is no longer executable');
+    assert.ok(await evaluate(client, `document.querySelector('.connection-flow').innerText.includes('当前选择的产品暂不可用')`));
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`), 'Retained account');
+  });
+  await run('review-current-option-submit', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('API Key', 'fixture-key-a');
+    await evaluate(client, `setConnectionOptionMode('unavailable'); setConnectionLanguage('zh'); true`);
+    await waitFor(client, `!document.querySelector('.connection-flow .oc-spinner') && Boolean(document.querySelector('.connection-config-heading'))`);
+    await evaluate(client, `document.querySelector('#mc-connection-form').requestSubmit(); true`); await settle();
+    assert.equal(await evaluate(client, `connectionFlowTrace.registered.length`), 0, 'the handler rejects unavailable eligibility before credential registration');
+    assert.equal(await evaluate(client, `connectionFlowTrace.checks.length`), 0);
+  });
+  await run('review-provider-detail-refresh', async () => {
+    await open('connection-flow.html', 'lang=en&options=same-brand');
+    await click('.connection-provider-card', 'Alibaba');
+    assert.equal(await evaluate(client, `document.querySelectorAll('.connection-product-card').length`), 2);
+    await evaluate(client, `setConnectionOptionMode('one-bailian'); setConnectionLanguage('zh'); true`);
+    await waitFor(client, `!document.querySelector('.connection-flow .oc-spinner') && Boolean(document.querySelector('.connection-directory'))`);
+    assert.equal(await evaluate(client, `document.querySelectorAll('.connection-product-card').length`), 1, 'provider detail derives products from the current directory');
+    assert.ok(await evaluate(client, `document.querySelector('.connection-product-heading h3').innerText.includes('百炼')`));
+  });
+  await run('review-stale-catalog-recovery', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&check_error=compute.registered_catalog_changed');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('API Key', 'fixture-key-a'); await evaluate(client, `setConnectionOptionMode('hold-one'); true`);
+    await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `pendingConnectionOptions() === 1`);
+    await click('.modal-foot button', 'Cancel check'); await click('.modal-foot button', 'Change service');
+    await evaluate(client, `setConnectionOptionMode('all'); setConnectionLanguage('zh'); true`);
+    await waitFor(client, `document.querySelectorAll('.connection-provider-card').length === 13`);
+    await evaluate(client, `finishConnectionOptions(); true`); await settle();
+    assert.equal(await evaluate(client, `document.querySelectorAll('.connection-provider-card').length`), 13, 'an older recovery read cannot replace the later catalog');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('[data-error-code="compute.registered_catalog_changed"]'))`), false, 'an old check cannot restore an obsolete error');
+  });
+  await run('review-pristine-automatic-model', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await click('.connection-manual-entry'); await click('#mc-manual-form button', 'Remove model');
+    await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'removing an untouched automatic placeholder is not an edit');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
+  await run('review-placeholder-keeps-other-product-key-dirty', async () => {
+    await open('connection-flow.html', 'lang=en');
+    await click('.connection-provider-card', 'Anthropic'); await field('API Key', 'fixture-key-a');
+    await click('.modal-foot button', 'Back'); await click('.connection-custom-entry');
+    await click('.connection-manual-entry'); await click('#mc-manual-form button', 'Remove model');
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing'); await click('.modal-foot button', 'Back');
+    await click('.modal-foot button', 'Back'); await click('.connection-provider-card', 'Anthropic');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true, 'another product remains dirty and retains its own Key');
+  });
+  await run('review-credential-none-and-product-isolation', async () => {
+    await open('connection-flow.html', 'lang=en'); await click('.connection-custom-entry');
+    await field('Base URL', 'https://example.test/v1'); await field('API Key', 'fixture-key-a');
+    await click('summary', 'Advanced settings'); await field('Authentication', 'none');
+    await click('.modal-foot button', 'Check and continue'); await waitFor(client, `connectionFlowTrace.checks.length === 1`);
+    const none = await evaluate(client, `({registered:connectionFlowTrace.registered.length, auth:connectionFlowTrace.checks[0].draft.authentication.kind, hasInput:'input_candidate' in connectionFlowTrace.checks[0], containsSecret:JSON.stringify(connectionFlowTrace.checks[0]).includes('fixture-key-a')})`);
+    assert.deepEqual(none, { registered: 0, auth: 'none', hasInput: false, containsSecret: false });
+    await waitFor(client, `Boolean(document.querySelector('#mc-manual-form') || document.querySelector('.model-selection'))`);
+    await click('.modal-foot button', 'Back'); await click('.modal-foot button', 'Back');
+    await click('.connection-provider-card', 'Anthropic');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`), '', 'a different product has no Key from the custom draft');
+    await click('.modal-foot button', 'Back'); await click('.connection-custom-entry');
+    await click('summary', 'Advanced settings'); await field('Authentication', 'api_key_header');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
+  });
+  await run('review-prefill-does-not-transfer-hidden-key', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await field('API Key', 'fixture-key-a'); await click('summary', 'Advanced settings'); await field('Authentication', 'none');
+    await click('summary', 'Use connection prefill'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]')?.value ?? ''`), '', 'a Key retained for the prior custom setup is not copied into another product template');
+    await field('Connection prefill (optional)', '');
+    await field('Authentication', 'bearer');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]')?.value === 'fixture-key-a'`), true, 'returning to the original custom setup restores its own Key');
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+  });
+  await run('review-none-save-protects-retained-key', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await field('Base URL', 'https://example.test/v1'); await field('API Key', 'fixture-key-a');
+    await click('summary', 'Advanced settings'); await field('Authentication', 'none');
+    await click('.connection-manual-entry'); await field('Model ID', 'example-model');
+    await click('.modal-foot button', 'Check and save'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    assert.deepEqual(await evaluate(client, `({registered:connectionFlowTrace.registered.length,saves:connectionFlowTrace.saves.length,applies:connectionFlowTrace.applies.length,hasInput:'input_candidate' in connectionFlowTrace.checks[0]})`), { registered: 0, saves: 0, applies: 0, hasInput: false });
+    await click('.discard-dialog button', 'Keep editing'); await click('.modal-foot button', 'Back');
+    await click('summary', 'Advanced settings'); await field('Authentication', 'bearer');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
+  });
+  await run('review-prefill-browsing-is-not-edit', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await click('summary', 'Use connection prefill'); await field('Connection prefill (optional)', 'template:anthropic.platform.global.v1');
+    await field('Connection prefill (optional)', ''); await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog[open]'))`), false, 'viewing and returning from an unedited template does not create a dirty draft');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
+  await run('review-protected-key-reentry-and-release', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom');
+    await field('Base URL', 'https://example.test/v1'); await field('API Key', 'fixture-key-a');
+    await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `Boolean(document.querySelector('#mc-manual-form') || document.querySelector('.model-selection'))`);
+    await click('.modal-foot button', 'Back'); await click('summary', 'Advanced settings');
+    await field('Authentication', 'none');
+    assert.deepEqual(await evaluate(client, `connectionFlowTrace.released`), ['input/1']);
+    assert.ok(await evaluate(client, `document.querySelector('.connection-flow').innerText.includes('Re-enter the previous key')`));
+    await field('Authentication', 'api_key_header');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`), '');
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Keep editing');
+    assert.ok(await evaluate(client, `document.querySelector('.connection-flow').innerText.includes('Re-enter the previous key')`));
+    await click('.modal-head button'); await click('.discard-dialog button', 'Discard changes');
+    assert.deepEqual(await evaluate(client, `connectionFlowTrace.released`), ['input/1'], 'the invalidated protected input is released once');
+  });
+  await run('review-product-eligibility-recovery', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&no-custom=1');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('Connection name', 'Retained account'); await field('API Key', 'fixture-key-a');
+    for (const [mode, lang] of [['unavailable', 'zh'], ['none', 'en'], ['fail', 'zh'], ['one', 'en']]) {
+      const before = await evaluate(client, `connectionFlowTrace.optionReads`);
+      await evaluate(client, `setConnectionOptionMode(${JSON.stringify(mode)}); setConnectionLanguage(${JSON.stringify(lang)}); true`);
+      await waitFor(client, `connectionFlowTrace.optionReads > ${before} && !document.querySelector('.connection-flow .oc-spinner')`);
+      assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`), 'Retained account');
+      assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
+      assert.equal(await evaluate(client, `document.querySelector('.modal-foot button[type=submit]').disabled`), mode !== 'one', mode);
+      if (mode === 'none') assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form .callout.warn').innerText.includes('advanced custom')`), false, 'do not offer a disabled custom entry');
+      assert.equal(await evaluate(client, `connectionFlowTrace.registered.length + connectionFlowTrace.checks.length`), 0);
+    }
+  });
+  await run('review-provider-current-products-and-restoration', async () => {
+    await open('connection-flow.html', 'lang=en&options=same-brand'); await click('.connection-provider-card', 'Alibaba');
+    const refresh = async (mode, lang) => {
+      const before = await evaluate(client, `connectionFlowTrace.optionReads`);
+      await evaluate(client, `setConnectionOptionMode(${JSON.stringify(mode)}); setConnectionLanguage(${JSON.stringify(lang)}); true`);
+      await waitFor(client, `connectionFlowTrace.optionReads > ${before} && !document.querySelector('.connection-flow .oc-spinner')`);
+    };
+    await refresh('bailian-disabled', 'zh');
+    assert.equal(await evaluate(client, `document.querySelectorAll('.connection-product-card').length`), 2);
+    assert.equal(await evaluate(client, `Array.from(document.querySelectorAll('.connection-product-card')).find(x=>x.textContent.includes('按量付费')).disabled`), true);
+    await refresh('all', 'en');
+    assert.equal(await evaluate(client, `document.querySelectorAll('.connection-product-card').length`), 3, 'new product appears in the current provider');
+    assert.ok(await evaluate(client, `document.querySelector('.connection-product-heading h3').innerText.includes('Alibaba')`));
+    await refresh('none', 'zh');
+    assert.equal(await evaluate(client, `document.querySelectorAll('.connection-product-card').length`), 0);
+    assert.ok(await evaluate(client, `document.querySelector('.connection-directory').innerText.includes('当前不可用')`));
+    await refresh('same-brand', 'en');
+    assert.equal(await evaluate(client, `document.querySelectorAll('.connection-product-card').length`), 2, 'same provider detail recovers when it returns');
+    await click('.connection-product-card', 'Pay as you go');
+    await field('API Key', 'fixture-key-a'); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `connectionFlowTrace.checks.length === 1`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.checks[0].connection_option_id`), 'bailian.payg.cn.v1');
+  });
+  await run('review-stale-recovery-failure-and-edit', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&check_error=compute.registered_catalog_changed');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('API Key', 'fixture-key-a'); await evaluate(client, `setConnectionOptionMode('hold-fail'); true`);
+    await click('.modal-foot button', 'Check and continue'); await waitFor(client, `pendingConnectionOptions() === 1`);
+    await click('.modal-foot button', 'Cancel check');
+    await field('Connection name', 'Edited after cancel');
+    await evaluate(client, `setConnectionOptionMode('all'); setConnectionLanguage('zh'); true`);
+    await waitFor(client, `!document.querySelector('.connection-flow .oc-spinner') && connectionFlowTrace.optionReads >= 3`);
+    await evaluate(client, `finishConnectionOptions(); true`); await settle();
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`), 'Edited after cancel');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('[data-error-code="compute.registered_catalog_changed"]'))`), false);
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('[data-error-code="MODEL_CONNECTION_OPTIONS_UNAVAILABLE"]'))`), false, 'late failure cannot replace the successful read');
+    assert.equal(await evaluate(client, `connectionFlowTrace.released.length`), 0, 'the current editor still owns its protected input');
+  });
+  await run('review-newer-read-supersedes-pending-check', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&hold_check=1&check_error=compute.registered_catalog_changed');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('API Key', 'fixture-key-a'); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `connectionFlowTrace.registered.length === 1`);
+    await evaluate(client, `setConnectionOptionMode('all'); setConnectionLanguage('zh'); true`);
+    await waitFor(client, `connectionFlowTrace.optionReads >= 2 && !document.querySelector('.connection-flow .oc-spinner')`);
+    await evaluate(client, `finishConnectionFlowCheck(); true`); await settle();
+    assert.equal(await evaluate(client, `pendingConnectionOptions()`), 0, 'a superseded check cannot begin another recovery read');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('[data-error-code="compute.registered_catalog_changed"]'))`), false);
+    assert.equal(await evaluate(client, `connectionFlowTrace.released.length`), 0);
+    assert.equal(await evaluate(client, `document.querySelector('.connection-config-heading h3').textContent.includes('Anthropic')`), true);
+  });
+  await run('review-new-read-supersedes-deferred-recovery', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&check_error=compute.registered_catalog_changed');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('Connection name', 'Keep this name'); await field('API Key', 'fixture-key-a');
+    await evaluate(client, `setConnectionOptionMode('hold-one'); true`); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `pendingConnectionOptions() === 1`);
+    await evaluate(client, `setConnectionOptionMode('all'); setConnectionLanguage('zh'); true`);
+    await waitFor(client, `connectionFlowTrace.optionReads >= 3 && !document.querySelector('.connection-flow .oc-spinner')`);
+    await evaluate(client, `finishConnectionOptions(); true`); await settle();
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`), 'Keep this name');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('[data-error-code="compute.registered_catalog_changed"]'))`), false);
+    assert.equal(await evaluate(client, `connectionFlowTrace.released.length`), 0);
+    await click('.modal-foot button', '更换服务');
+    assert.equal(await evaluate(client, `document.querySelectorAll('.connection-provider-card').length`), 13);
+  });
+  await run('review-current-catalog-recovery-and-retry', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&check_error=compute.registered_catalog_changed');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('API Key', 'fixture-key-a'); await evaluate(client, `setConnectionOptionMode('hold-fail'); true`);
+    await click('.modal-foot button', 'Check and continue'); await waitFor(client, `pendingConnectionOptions() === 1`);
+    await evaluate(client, `finishConnectionOptions(); true`);
+    await waitFor(client, `Boolean(document.querySelector('[data-error-code="compute.registered_catalog_changed"]'))`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.checks.length`), 1);
+    await evaluate(client, `setConnectionOptionMode('one'); setConnectionCheckError(null); true`);
+    await click('.connection-flow button', 'Reload');
+    await waitFor(client, `!document.querySelector('.connection-flow .oc-spinner') && !document.querySelector('.modal-foot button[type=submit]').disabled`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.checks.length`), 1, 'reload itself does not check');
+    await click('.modal-foot button', 'Check and continue'); await waitFor(client, `connectionFlowTrace.checks.length === 2`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.registered.length`), 1, 'retry reuses the same retained protected input');
+  });
+  await run('review-cancelled-check-does-not-release-owned-input', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&hold_check=1&check_error=compute.registered_catalog_changed');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('API Key', 'fixture-key-a'); await click('.modal-foot button', 'Check and continue');
+    await waitFor(client, `connectionFlowTrace.registered.length === 1`); await click('.modal-foot button', 'Cancel check');
+    await evaluate(client, `finishConnectionFlowCheck(); true`); await settle();
+    assert.deepEqual(await evaluate(client, `connectionFlowTrace.released`), []);
+    await click('.modal-head button'); await click('.discard-dialog button', 'Discard changes');
+    assert.deepEqual(await evaluate(client, `connectionFlowTrace.released`), ['input/1']);
+  });
+  await run('review-closed-recovery-releases-once', async () => {
+    await open('connection-flow.html', 'lang=en&shortcut=1&options=one&check_error=compute.registered_catalog_changed');
+    await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+    await field('API Key', 'fixture-key-a'); await evaluate(client, `setConnectionOptionMode('hold-one'); true`);
+    await click('.modal-foot button', 'Check and continue'); await waitFor(client, `pendingConnectionOptions() === 1`);
+    await click('.modal-head button'); await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', 'Discard changes'); await waitFor(client, `!document.querySelector('.connection-flow')`);
+    await evaluate(client, `finishConnectionOptions(); true`); await settle();
+    assert.deepEqual(await evaluate(client, `connectionFlowTrace.released`), ['input/1']);
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.connection-flow'))`), false);
+  });
+  await run('review-repair-layout-captures', async () => {
+    for (const [lang, theme, width, height] of [['en', 'light', 755, 600], ['zh', 'dark', 755, 600], ['en', 'dark', 1200, 813], ['zh', 'light', 1200, 813]]) {
+      const other = lang === 'zh' ? 'en' : 'zh';
+      await open('connection-flow.html', `lang=${other}&theme=${theme}&shortcut=1&options=one`, width, height);
+      await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
+      await field(other === 'zh' ? '连接名称' : 'Connection name', 'Review fixture'); await field('API Key', 'fixture-key-a');
+      const before = await evaluate(client, `connectionFlowTrace.optionReads`);
+      await evaluate(client, `setConnectionOptionMode('unavailable'); setConnectionLanguage(${JSON.stringify(lang)}); true`);
+      await waitFor(client, `connectionFlowTrace.optionReads > ${before} && !document.querySelector('.connection-flow .oc-spinner')`);
+      await evaluate(client, `document.querySelector('#mc-connection-form .callout.warn').scrollIntoView({block:'center'}); true`);
+      const bounds = await evaluate(client, `(() => {const m=document.querySelector('.modal').getBoundingClientRect(), f=document.querySelector('.modal-foot').getBoundingClientRect(), w=document.querySelector('#mc-connection-form .callout.warn').getBoundingClientRect(), b=document.querySelector('.modal-body');return {left:m.left,right:m.right,footerBottom:f.bottom,warningTop:w.top,warningBottom:w.bottom,footerTop:f.top,overflow:b.scrollWidth-b.clientWidth};})()`);
+      assert.ok(bounds.left >= 0 && bounds.right <= width + 1 && bounds.footerBottom <= height + 1 && bounds.warningTop >= 0 && bounds.warningBottom <= bounds.footerTop + 1 && bounds.overflow <= 1, JSON.stringify(bounds));
+      await screenshot(`review-unavailable-${lang}-${theme}-${width}`);
+      await open('connection-flow.html', `lang=${lang}&theme=${theme}&kind=custom`, width, height);
+      await field('Base URL', 'https://example.test/v1'); await field('API Key', 'fixture-key-a');
+      await click('.modal-foot button', lang === 'zh' ? '检查并继续' : 'Check and continue');
+      await waitFor(client, `Boolean(document.querySelector('#mc-manual-form') || document.querySelector('.model-selection'))`);
+      await click('.modal-foot button', lang === 'zh' ? '返回' : 'Back'); await click('summary', lang === 'zh' ? '高级设置' : 'Advanced settings');
+      await field(lang === 'zh' ? '认证方式' : 'Authentication', 'none');
+      await field(lang === 'zh' ? '认证方式' : 'Authentication', 'bearer');
+      const note = `Array.from(document.querySelectorAll('.connection-flow [role=status]')).find(e=>e.textContent.includes(${JSON.stringify(lang === 'zh' ? '重新输入' : 'Re-enter')}))`;
+      await waitFor(client, `Boolean(${note})`);
+      const noteBounds = await evaluate(client, `(() => {const e=${note};e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect(),f=document.querySelector('.modal-foot').getBoundingClientRect();return {top:r.top,bottom:r.bottom,footer:f.top};})()`);
+      assert.ok(noteBounds.top >= 0 && noteBounds.bottom <= noteBounds.footer + 1, JSON.stringify(noteBounds));
+      await screenshot(`review-reentry-${lang}-${theme}-${width}`);
+    }
+  });
+  await run('review-model-placeholder-boundaries', async () => {
+    await open('connection-flow.html', 'lang=en&kind=custom'); await click('.connection-manual-entry');
+    await click('#mc-manual-form button', 'Remove model'); await click('.modal-foot button', 'Back');
+    await click('.connection-manual-entry'); await click('#mc-manual-form button', 'Remove model'); await click('.modal-head button');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('.discard-dialog'))`), false);
+    await open('connection-flow.html', 'lang=en&kind=custom'); await click('.connection-manual-entry');
+    await field('Model name (optional)', 'Partial name'); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await open('connection-flow.html', 'lang=en&kind=custom'); await click('.connection-manual-entry');
+    await click('summary', 'Capabilities and limits'); await field('Image input', 'supported'); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await open('connection-flow.html', 'lang=en&kind=custom&initial_model=1'); await click('.connection-manual-entry');
+    await click('#mc-manual-form button', 'Remove model'); await click('.modal-head button');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await open('connection-flow.html', 'lang=en&kind=custom'); await field('Base URL', 'https://example.test/v1');
+    await click('summary', 'Advanced settings'); await field('Authentication', 'none'); await click('.connection-manual-entry');
+    await click('#mc-manual-form button', 'Remove model'); await click('.modal-foot button', 'Check and save');
+    await waitFor(client, `Boolean(document.querySelector('[data-error-code="MODEL_ID_REQUIRED"]'))`);
+    assert.equal(await evaluate(client, `connectionFlowTrace.checks.length + connectionFlowTrace.applies.length`), 0);
+  });
   await run('single-product-entry', async () => {
     await open('connection-flow.html', 'lang=en&shortcut=1&options=one');
     await waitFor(client, `Boolean(document.querySelector('#mc-connection-form:not([hidden])'))`);
@@ -95,7 +388,7 @@ try {
     await waitFor(client, `Boolean(document.querySelector('.connection-config-heading')) && !document.querySelector('.connection-flow .oc-spinner')`);
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`), 'My edited connection');
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value === 'fixture-key-a'`), true);
-    assert.ok(await evaluate(client, `document.querySelector('.connection-flow').innerText.includes('当前没有可用的内置接入')`));
+    assert.ok(await evaluate(client, `document.querySelector('.connection-flow').innerText.includes('当前选择的产品暂不可用')`));
     assert.equal(await evaluate(client, `connectionFlowTrace.checks.length`), 0);
   });
   await run('browse-and-revert-without-discard', async () => {

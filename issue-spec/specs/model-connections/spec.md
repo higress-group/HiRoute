@@ -537,6 +537,49 @@ The connection editor SHALL ask for confirmation before exiting only when the se
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/246#issuecomment-6461016031
 
+### Requirement: Connection editing retains credential intent and current catalog authority
+
+The connection editor SHALL retain an unsaved plaintext Key only in the current product’s existing in-memory credential owner when an authentication change removes the input. Restoring an authentication mode that needs a Key restores that product’s available plaintext; None neither sends nor uses the retained Key. Authentication or target changes invalidate the prior candidate/check and release a session-owned protected input that has not transferred to an Operation. If only a protected reference remains and its proof is invalidated, the editor SHALL retain an unsaved re-entry requirement and visibly request a new Key where needed, without revealing plaintext or using the stale proof. Product changes never transfer credentials; close and accepted or uncertain Operation ownership retain existing rules.
+
+A selected registered product remains identifiable and its edits remain available when current options disappear, fail to load, or retain its ID but report it unavailable. The visible action and the actual check handler SHALL both require the latest successful executable qualification before registering a credential or checking. The editor never silently replaces the product. A current successful reload can restore eligibility, but performs no automatic check. Provider detail retains stable provider identity while names, products, availability and selection arguments derive from the latest directory and locale. Removal, addition, lost or restored provider and same-ID qualification changes SHALL NOT expose stale selectable options or force a different provider.
+
+A catalog-changed recovery read SHALL share the current options generation and remain owned by the initiating check, product, edit revision and page lifecycle. Cancellation, product change, editing, newer reads or closure make its completion stale; a stale success or failure SHALL NOT change catalog, errors, phase or user input. A current recovery keeps an actionable retry and existing credential-release ownership.
+
+Removing or recreating the exact untouched automatically generated empty-model placeholder is not an edit. This exception SHALL NOT mask a partial ID or name, a capability change, an existing or catalog-prefilled model, a selected model or another product’s edited draft/Key. Empty model sets remain invalid for check/save under the existing validation.
+
+#### Scenario: Authentication changes with a typed Key
+
+- **WHEN** a user enters an unsaved Key, changes authentication to None and then to Bearer or a custom header
+- **THEN** the current product retains the Key in memory, None sends no Key, old check authority is invalidated, closing protects the change and another product never receives it
+
+#### Scenario: Only a protected reference remains
+
+- **WHEN** a protected input has replaced plaintext and an authentication or target change invalidates its proof
+- **THEN** the old session-owned input is released once, the need to re-enter remains visible and protected, and no plaintext or stale proof is recovered
+
+#### Scenario: A product loses or regains eligibility
+
+- **WHEN** a selected product is removed, becomes unavailable under the same ID, the directory read fails, or eligibility later returns
+- **THEN** the product identity and input stay visible; until the latest successful qualification both the action and handler reject before credential registration or check; recovery requires an explicit retry
+
+#### Scenario: Current provider details
+
+- **WHEN** the provider detail remains open while a product is added, removed or disabled, locale changes, or the provider disappears and returns
+- **THEN** details and selectable values follow the current directory and locale; no stale product or different provider is silently selected
+
+#### Scenario: Recovery read loses ownership
+
+- **WHEN** a catalog-changed check starts a deferred reload and the user cancels, edits, selects another product, closes, or starts a newer read
+- **THEN** the old success or failure cannot overwrite current catalog, error, phase or input and cannot release another owner’s credential
+
+#### Scenario: Pristine placeholder
+
+- **WHEN** a user opens manual model editing and removes the untouched automatically generated blank row
+- **THEN** exit does not prompt solely for that placeholder, but partial user values, capability changes, real models, pending selections and other product credentials remain protected; zero models cannot be checked and saved
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/246#issuecomment-6462728885
+
 ## Implementation references
 
 - [Connection form ownership](../../../apps/desktop/src/features/model-connections/README.md)
