@@ -48,6 +48,9 @@ unicode-segmentation.workspace = true
 rustls = { version = "0.23.43", optional = true }
 zeroize.workspace = true
 
+[dev-dependencies]
+ring = "0.17.14"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.175"
 rustix = { version = "1.1.4", features = ["fs", "process"] }
@@ -64,6 +67,10 @@ windows-sys = { version = "0.61.2", features = [
 
 [[bench]]
 name = "gateway_replay_paths"
+harness = false
+
+[[bench]]
+name = "gateway_hash_paths"
 harness = false
 
 [[bench]]

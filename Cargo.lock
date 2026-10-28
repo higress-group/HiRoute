@@ -2468,6 +2468,7 @@ dependencies = [
  "parking_lot",
  "pingora-core",
  "rcgen",
+ "ring",
  "rustix",
  "rustls",
  "serde",
