@@ -141,6 +141,20 @@ Small-window timeline captures use the product's Compact view. Browser suites in
 one checkout share the Vite dependency cache and should run serially. These
 fixtures do not establish native or provider effects.
 
+The [trial setup and connection-session scenarios](v3/visual/trial-setup-polish-active.mjs)
+run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory>
+--trial-setup-polish`. They mount the production trial explanation and connection
+form with controlled IPC. They cover the three classifier explanations, keyboard
+disclosure, exact single-product eligibility and return, per-product edit and Key
+retention, reverted edits, selected models, failure and same-Operation save states.
+The connection cases also cover authentication None, primary protocol swaps and
+protected-input re-entry; prefill Key isolation and current/retained prefill baselines;
+exact current option qualification, live provider details,
+cancelled or superseded catalog recovery, and pristine versus edited model rows.
+Chinese and English captures use production styles at 755×600 and 1200×813 with
+light and dark states. The fixture does not establish native save or provider behavior;
+the combined trial custom-connection path needs its own integration acceptance.
+
 Task-route save scenarios also cover Pi and Qoder executor reselection: an explicit
 Messages choice survives clicking the selected executor and reaches the saved draft.
 They reuse the real Plan editor and existing IPC trace, without launching a native Agent.

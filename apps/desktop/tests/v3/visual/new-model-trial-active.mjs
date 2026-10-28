@@ -631,7 +631,9 @@ try {
   await waitFor(client,`!!document.querySelector('.trial-page .trial-agent-choice input:not(:disabled)')`);
   await click('.trial-model-card','Kimi K3'); await click('.trial-connect-card button',lang==='zh'?'在此接入':'Connect here');
   await waitFor(client,`!!document.querySelector('.trial-inline-connection .connection-flow')`);
-  await click('.trial-inline-connection button','Kimi');
+  await waitFor(client,`document.querySelector('#mc-connection-form')?.hidden===false || !!document.querySelector('.connection-provider-card')`);
+  await evaluate(client,`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))`);
+  if (!await evaluate(client,`document.querySelector('#mc-connection-form')?.hidden===false`)) await click('.trial-inline-connection button','Kimi');
   await waitFor(client,`document.querySelector('#mc-connection-form')?.hidden===false`);
   await typeInto('#mc-connection-form input[maxlength="60"]','Kimi trial edit');
   const keep=lang==='zh'?'继续编辑':'Keep editing', discard=lang==='zh'?'放弃修改':'Discard changes';
@@ -647,7 +649,10 @@ try {
   await waitFor(client,`!!document.querySelector('.discard-dialog[open]')`); await click('.discard-dialog button',discard);
   await waitFor(client,`!document.querySelector('.trial-inline-connection') && ${pressed}?.includes(trialModel.display_name)`);
   await click('.trial-model-card','Kimi K3'); await click('.trial-connect-card button',lang==='zh'?'在此接入':'Connect here');
-  await waitFor(client,`!!document.querySelector('.trial-inline-connection .connection-flow')`); await click('.trial-inline-connection button','Kimi');
+  await waitFor(client,`!!document.querySelector('.trial-inline-connection .connection-flow')`);
+  await waitFor(client,`document.querySelector('#mc-connection-form')?.hidden===false || !!document.querySelector('.connection-provider-card')`);
+  await evaluate(client,`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))`);
+  if (!await evaluate(client,`document.querySelector('#mc-connection-form')?.hidden===false`)) await click('.trial-inline-connection button','Kimi');
   await waitFor(client,`document.querySelector('#mc-connection-form')?.hidden===false`); await typeInto('#mc-connection-form input[maxlength="60"]','Kimi back edit');
   await evaluate(client,`(()=>{[...document.querySelectorAll('.trial-page .toolbar-actions button')].find(e=>e.textContent.includes(${JSON.stringify(lang==='zh'?'返回':'Back')})).click();return true;})()`);
   await waitFor(client,`!!document.querySelector('.discard-dialog[open]')`); await click('.discard-dialog button',keep);

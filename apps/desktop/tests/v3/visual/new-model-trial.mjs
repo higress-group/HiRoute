@@ -71,6 +71,8 @@ try {
   await waitFor(`http://127.0.0.1:${cdpPort}/json/version`);
   const selectedRunner = [
     ['--setup-followup', 'trial-setup-followup-active.mjs'],
+
+    ['--trial-setup-polish', 'trial-setup-polish-active.mjs'],
     ['--trust-continuous', 'trust-continuous-active.mjs'],
     ['--trust-replay-stale', 'trust-replay-stale-active.mjs'],
     ['--routing-presentation', 'routing-presentation-active.mjs'],

@@ -23,7 +23,7 @@ import { createTrialAlias, currentPrimary, defaultTrialName, initialTrialMapping
 import { FeedDisclosure } from '../model-feed/FeedDisclosure';
 import { factTags, publisherName, rollingIdentity, shortDate } from '../model-feed/presentation';
 import './trial.css';
-import { protectionExplanation } from '../trust/protection-copy';
+import { TrialProtectionExplanation } from './TrialProtectionExplanation';
 import { agentEditorSeed } from '../agents/editor-state';
 import { useTrialAgents } from './useTrialAgents';
 import { ModelManagementPage } from '../../product/ModelManagementPage';
@@ -489,7 +489,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       {alias && <p className="field-help">{t('路由别名', 'Route alias')}: <code>{alias}</code></p>}
       {connect && data && <div className="trial-connect-card" hidden={connectionHidden}><TrialConnectModel key={connect.model_configuration_id} model={connect} language={language} management={data.management} mutable={mutable} onOperation={operationRef} onResolve={receipt => refresh(false, true, receipt)} onReceipt={() => setSavedReceipt(true)} onSelectionIntent={() => { ++pickerEpoch.current; return ++selectionEpoch.current; }} onStateChange={setConnectionState} onBack={recoverable => { if (recoverable) setConnectionHidden(true); else { if (!replacingConnection.current) ++selectionEpoch.current; setConnect(null); setConnectionState('editing'); setConnectionHidden(false); } void refresh(); }} onSaved={(_result, selection, intent) => { if (!live.current || (intent ?? connectionEpoch.current) !== selectionEpoch.current) return false; setSavedConnections(values => [...new Set([...values, selection.source])]); setTrialId(selection.modelId); setTrialBinding(selection.bindingId); setTrialChosen(undefined); setUnlinked(selection.linked ? '' : selection.bindingId); setConnect(null); setConnectionState('editing'); setConnectionHidden(false); void onRefresh(); return true; }} /></div>}
       {!connect && trial?.catalog && !unlinkedTrial && !trialCandidates.length && trial.availability.kind !== 'needs_newer_client' && data && <div className="trial-connect-card"><div><strong>{t(`先接入 ${trial.display_name}`, `Connect ${trial.display_name} first`)}</strong><p className="field-help">{t('只读取这个服务的模型目录，不会发起付费推理。API Key 保存在本机。', 'Only the service model list is read; no paid inference runs. The API key stays on this device.')}</p></div><button type="button" className="btn btn-primary" onClick={() => { connectionEpoch.current = ++selectionEpoch.current; setConnectionState('editing'); setConnectionHidden(false); setConnect(trial.catalog!); }}>{t('在此接入', 'Connect here')}</button></div>}
-      <div className="callout trial-rule"><UiIcon name="info" /><span>{t('新模型先放进常规组。', 'The new model starts in Regular. ')}{protectionExplanation(classifier, language)}{!custom && t('主力拿到低分不会再回退。熟悉之后，可以用分工把难的任务交给新模型。', ' Primary does not fall back after a low score. Once you know the new model, divide work to give it harder tasks.')}</span></div>
+      <TrialProtectionExplanation classifier={classifier} language={language} />
     </section>
     <section className="trial-card trial-card-pair">
       <div className="trial-column" data-trial-target="primary" tabIndex={-1}>
