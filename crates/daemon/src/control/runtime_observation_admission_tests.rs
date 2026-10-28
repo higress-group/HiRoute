@@ -58,6 +58,10 @@ fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
     ];
     for (index, intent) in intents.into_iter().enumerate() {
         let query = ObservationReadRequestV2::new(intent);
+        let detailed_error = matches!(
+            &query.intent,
+            ObservationReadIntentV2::PlanQuality(_) | ObservationReadIntentV2::RoutingTimeline(_)
+        );
         let capability = format!("bounded-observation-test-capability-{index}");
         runtime
             .register_apply_capability(
@@ -96,10 +100,20 @@ fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
             thread.join().unwrap();
             let wire =
                 serde_json::to_value(result.expect("ordinary V2 admission blocked")).unwrap();
-            assert_eq!(
-                wire["error"]["observation_read"]["reason"], "reader_busy",
-                "{wire}"
-            );
+            assert_eq!(wire["error"]["code"], "OBSERVATION_UNAVAILABLE", "{wire}");
+            if detailed_error {
+                assert_eq!(
+                    wire["error"]["observation_read"]["reason"], "reader_busy",
+                    "{wire}"
+                );
+            } else {
+                // Status/session callers retain their released legacy error shape.
+                assert_eq!(
+                    wire["error"]["details_schema"], "hiroute.error-details/none-v1",
+                    "{wire}"
+                );
+                assert!(wire["error"].get("observation_read").is_none(), "{wire}");
+            }
         }
     }
 }
