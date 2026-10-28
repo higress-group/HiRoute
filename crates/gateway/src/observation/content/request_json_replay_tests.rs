@@ -496,6 +496,7 @@ fn async_content_keeps_the_request_root_before_fast_response_after_foreground_dr
         Arc::get_mut(&mut observation.inner).unwrap().key = oracle.key;
         observation.capture_request_async(&input, &store);
         let attempt = content_attempt();
+        observation.lock_state().accepted_attempt = Some(attempt.clone());
         observation.begin_response_content(&attempt);
         observation.emit_canonical_response_delivery(
             &attempt,
