@@ -580,6 +580,28 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
             ),
         "a failed subscription must not hide the healthy API candidate"
     );
+    let safe = serde_json::to_value(&trial.management).unwrap();
+    let retained = safe["retained_api_connections"]
+        .as_array()
+        .expect("an admitted API candidate must be selectable without a V2 management source");
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0]["source_id"], current.source.source_id);
+    assert_eq!(retained[0]["source_revision"], current.source.revision);
+    assert_eq!(retained[0]["binding_id"], current.binding.binding_id);
+    assert_eq!(retained[0]["binding_revision"], current.binding.revision);
+    assert_eq!(
+        retained[0]["model_configuration_id"],
+        current.binding.model_configuration_id
+    );
+    for forbidden in [
+        "model_ref",
+        "actions",
+        "credentials",
+        "target",
+        "authentication",
+    ] {
+        assert!(retained[0].get(forbidden).is_none());
+    }
     assert!(trial.routing.unavailable_candidates.iter().any(|candidate|
         candidate.binding_id == cpa.binding.binding_id
             && candidate.reason == hiroute_application_api::PlanCandidateUnavailableReasonV1::RuntimeUnavailable));

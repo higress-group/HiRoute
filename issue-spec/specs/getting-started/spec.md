@@ -527,6 +527,37 @@ Selection SHALL join exact current management and executable-candidate facts wit
 
 The generated route name SHALL be valid under the domain's 128 Unicode scalar-value limit and preserve readable portions of both model names. Readiness, visible errors and the submitted editor SHALL use the same effective name. Manual blank or overlong input remains visible and invalid; explicitly clearing the field SHALL NOT restore a default. Built-in judgment edited in review SHALL remain parked across custom-extension, language and back-to-setup transitions. Unpublished review uses initial-trial context without current-version evidence copy or historical replay; existing published routes retain their evidence and replay semantics.
 
+Trial selection SHALL also offer an otherwise current and executable retained API binding without V2 management ownership using its exact captured source/binding/configuration identity and safe source description. This read-only choice SHALL NOT invent a management record or action, infer identity by name, perform another connector discovery, or bypass a V2 owner's existing checks. It SHALL NOT create a subscription authorization fallback. An explicit later trial binding choice SHALL survive reconciliation of an earlier saved operation, including a different binding of the same model; declining protected draft replacement SHALL preserve both selection and generation.
+
+A failed descriptive recommendation read SHALL show a localized independent retry without treating the catalog as empty or blocking previously proven saved connections. Retry SHALL preserve selections and inputs, be single-flight, ignore stale/closed-flow responses, and not grant executable admission merely because recommendations load.
+
+Trial names SHALL satisfy the complete existing `AgentPlanDisplayName` domain validation, including Unicode scalar length, whitespace/control, URL and sensitive-marker restrictions. If an automatically generated combination is invalid, use a safe localized default; manually entered invalid text remains visible with a specific error and is never silently replaced. Setup and review SHALL preserve the same text and domain boundary, accept 128 Unicode scalar values including supplementary characters, explicitly reject 129, and never silently truncate by UTF-16 units. An invalid name cannot be published.
+
+#### Scenario: Retained API candidate without V2 management ownership
+
+- **WHEN** a supported retained API binding is currently admitted as an executable routing candidate but has no V2 management owner
+- **THEN** it is selectable for either trial role by its exact captured identity and safe source description without inventing an editable management source; a disabled, credential-invalid, mismatched or V2-owned invalid entry is not selected through this fallback. Existing subscription proof remains required.
+
+#### Scenario: A later same-model binding choice wins
+
+- **WHEN** a saved binding A awaits recovery and the user explicitly selects binding B of the same model before A's reread succeeds
+- **THEN** B remains selected; A remains available as a saved result and can be selected explicitly, with no repeated Apply. Declining a protected replacement preserves the prior choice.
+
+#### Scenario: Recommendations recover independently
+
+- **WHEN** the initial descriptive recommendation read fails while an existing saved binding is usable
+- **THEN** the saved binding remains selectable and a visible retry independently rereads recommendations; retry failure and stale responses preserve the user's selections and do not establish admission.
+
+#### Scenario: Domain-valid route names in setup and review
+
+- **WHEN** a model name would make the generated route name violate the domain URL or sensitive-marker rules, or the user enters 128 or 129 Unicode scalars in either editor
+- **THEN** an invalid generated name uses the safe localized default, manual text is retained with a concrete error, 128 scalars are accepted and 129 are rejected without truncation, and only a valid exact name reaches Preview/publication.
+
+#### Scenario: Reject an unknown trial snapshot schema
+
+- **WHEN** the current session receives a trial snapshot with an unexpected schema identifier or invalidated read authority
+- **THEN** it returns a safe read failure without exposing candidates or raw data, and selection does not advance on that response.
+
 #### Scenario: All missing fields are discoverable together
 
 - **WHEN** the trial model lacks a selected usable binding and Primary reasoning still needs an explicit choice

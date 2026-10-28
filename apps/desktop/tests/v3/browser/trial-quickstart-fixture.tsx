@@ -38,6 +38,7 @@ if (new URLSearchParams(location.search).has('long-model-names')) {
  trialModel.display_name = '试'.repeat(80);
  primaryModel.display_name = '🚀'.repeat(80);
 }
+if (new URLSearchParams(location.search).has('unsafe-model-name')) trialModel.display_name='https://example.invalid';
 const trialManagement = structuredClone(readyManagement);
 const setupParams = new URLSearchParams(location.search);
 // This registered fixture represents the catalog member selected on entry.
@@ -47,6 +48,7 @@ else trialManagement.sources[1].models[0].catalog_configuration_id = trialModel.
 if (setupParams.has('catalog-unadmitted-user')) trialManagement.sources[1].provenance='user_configured';
 const setupControl = { failNextManagement: false, holdNextManagement: false, holdNextDecision: false, pending: [] as (()=>void)[], pendingDecision: [] as (()=>void)[],
  snapshotFailures: [] as string[], catalogAdmission: !setupParams.has('catalog-unadmitted-user'),
+ recommendationReads: 0, recommendationFailures: 0, holdNextRecommendation: false, pendingRecommendations: [] as (()=>void)[],
  pendingApply: [] as (()=>void)[],
  pendingCheck: [] as (()=>void)[], checkCount: 0,
  checkedSubscription: null as any,
@@ -64,6 +66,7 @@ const setupControl = { failNextManagement: false, holdNextManagement: false, hol
  releaseApply() { this.pendingApply.shift()?.(); },
  releaseDecision() { this.pendingDecision.shift()?.(); },
  releaseCheck() { this.pendingCheck.shift()?.(); },
+ releaseRecommendation() { this.pendingRecommendations.shift()?.(); },
  replacePending() { if (desktop.pending) desktop.pending.idempotency_key='synthetic-other-operation'; },
 };
 if (setupParams.has('disabled-trial')) setupControl.setTrialAvailability(false);
@@ -124,9 +127,25 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   const catalogAtCapture=structuredClone(catalog);
   const management:any=await quickStartInvoke('compute_management_snapshot',{},params);
   management.sources=management.sources.map((source:any)=>({source_id:source.source_id,revision:source.revision,display_name:source.display_name,provenance:source.provenance,access_kind:source.connection_identity?.access_kind??'unknown',state:source.state,actions:source.actions,models:source.models.map((member:any)=>({model_ref:member.model_ref,binding_id:member.binding_id,revision:member.revision,upstream_model_id:member.upstream_model_id,display_name:member.display_name,catalog_configuration_id:member.catalog_configuration_id,membership:member.membership,availability:member.presentation?.availability??'unknown',reason_code:member.presentation?.reason_code,catalog_admitted:setupControl.catalogAdmission && !!member.catalog_configuration_id && options.candidates.some((candidate:any)=>candidate.binding_id===member.binding_id && candidate.routable && candidate.model_configuration_id===member.catalog_configuration_id) && !!catalogAtCapture.find(item=>item.model_configuration_id===member.catalog_configuration_id)?.binding_ids.includes(member.binding_id)}))}));
+  management.retained_api_connections=[];
+  if (params.has('retained-api')) {
+   const source=management.sources.find((value:any)=>value.source_id==='source/bailian/coding');
+   const member=source.models[0];
+   management.retained_api_connections.push({source_id:source.source_id,source_revision:source.revision,binding_id:member.binding_id,binding_revision:member.revision,model_configuration_id:trialModel.model_configuration_id,display_name:'Retained fixture API'});
+   if (!params.has('retained-v2-owner')) management.sources=management.sources.filter((value:any)=>value.source_id!==source.source_id);
+  }
   return {schema:'hiroute.trial-setup-snapshot/v1',options,management};
  }
- if(command==='model_availability') return {featured:params.has('saved-only')?[]:featured,models:params.has('saved-only')?[]:catalog};
+ if(command==='model_availability') {
+  setupControl.recommendationReads++;
+  if ((params.has('recommendations-fail') && setupControl.recommendationReads===2) || setupControl.recommendationFailures>0) {
+   if (setupControl.recommendationFailures>0) setupControl.recommendationFailures--;
+   throw Error('SYNTHETIC_RECOMMENDATION_FAILURE');
+  }
+  const value=structuredClone({featured:params.has('saved-only')?[]:featured,models:params.has('saved-only')?[]:catalog});
+  if (setupControl.holdNextRecommendation) {setupControl.holdNextRecommendation=false;await new Promise<void>(release=>setupControl.pendingRecommendations.push(release));}
+  return value;
+ }
  if(command==='desktop_snapshot') return structuredClone(desktop);
  if(command==='compute_management_snapshot') {
   const value=structuredClone(trialManagement);
@@ -146,14 +165,14 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   const value:any = await mockProductInvoke(command,payload,'ready');
   if (payload?.input?.authoring?.plan_id === 'plan/trial') value.authoring=fixturePlanAuthoring(desktop.catalog.plans.find(plan=>plan.agent_plan_id==='plan/trial'));
   if (trialManagement.sources.some(source=>source.source_id==='source/fixture/new')) {
-   value.candidates.push({binding_id:'binding/fixture/saved-model',model_configuration_id:params.has('saved-registered') || params.has('saved-id-collision') || params.has('unlinked-existing-collision')?'model.trial':'fixture-unlinked-model',display_name:'Saved synthetic model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'paid',routable:true,ingress_protocols:['responses','messages']});
+   value.candidates.push({binding_id:'binding/fixture/saved-model',model_configuration_id:params.has('same-model-save')?trialModel.model_configuration_id:params.has('saved-registered') || params.has('saved-id-collision') || params.has('unlinked-existing-collision')?'model.trial':'fixture-unlinked-model',display_name:'Saved synthetic model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'paid',routable:true,ingress_protocols:['responses','messages']});
    if (params.has('saved-multiple') || params.has('saved-extra-binding')) value.candidates.push({binding_id:'binding/fixture/saved-second',model_configuration_id:'fixture-second-model',display_name:'Second synthetic model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'paid',routable:true,ingress_protocols:['responses','messages']});
   }
   if (trialManagement.sources[1].models.some(member=>member.binding_id==='binding/fixture/appended')) value.candidates.push({binding_id:'binding/fixture/appended',model_configuration_id:'fixture-added-model',display_name:'Added synthetic model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'paid',routable:true,ingress_protocols:['responses','messages']});
   if (trialManagement.sources[0].models.some(member=>member.binding_id==='binding/fixture/sub-added')) value.candidates.push({binding_id:'binding/fixture/sub-added',model_configuration_id:'fixture-sub-added',display_name:'Added subscription model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'subscription',routable:true,ingress_protocols:['responses']});
   if (setupControl.trialReasoningMode==='toggle') value.candidates.find((candidate:any)=>candidate.binding_id==='binding/bailian/qwen-coder').reasoning={kind:'toggle'};
   const primary = value.candidates.find((candidate:any) => candidate.binding_id === 'binding/codex/gpt-5.6-sol');
-  if (params.has('long-model-names')) {
+  if (params.has('long-model-names') || params.has('unsafe-model-name')) {
    value.candidates.find((candidate:any)=>candidate.binding_id==='binding/bailian/qwen-coder').display_name=trialModel.display_name;
    primary.display_name=primaryModel.display_name;
   }
@@ -276,10 +295,10 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   if (!trialManagement.sources.some(source=>source.source_id==='source/fixture/new')) {
    const source = structuredClone(trialManagement.sources[1]);
    source.source_id='source/fixture/new'; source.revision=1; source.display_name='Saved synthetic API'; source.state='ready';
-   source.models=[{...source.models[0], ...binding, revision:1, upstream_model_id:'fixture-unlinked-model', display_name:'Saved synthetic model', catalog_configuration_id:params.has('saved-registered')?'model.trial':undefined, membership:params.has('saved-registered')?'observed':'user_declared'}];
+   source.models=[{...source.models[0], ...binding, revision:1, upstream_model_id:'fixture-unlinked-model', display_name:'Saved synthetic model', catalog_configuration_id:params.has('saved-registered')?(params.has('same-model-save')?trialModel.model_configuration_id:'model.trial'):undefined, membership:params.has('saved-registered')?'observed':'user_declared'}];
    if (params.has('saved-multiple') || params.has('saved-extra-binding')) source.models.push({...structuredClone(source.models[0]),model_ref:'model-ref/qwen3-max',binding_id:'binding/fixture/saved-second',upstream_model_id:'fixture-second-model',display_name:'Second synthetic model'});
    trialManagement.sources.push(source);
-   if (params.has('saved-registered')) catalog.find(m=>m.model_configuration_id==='model.trial')!.binding_ids.push(binding.binding_id);
+   if (params.has('saved-registered')) catalog.find(m=>m.model_configuration_id===(params.has('same-model-save')?trialModel.model_configuration_id:'model.trial'))!.binding_ids.push(binding.binding_id);
   }
   if (params.has('saved-read-failure')) setupControl.failNextManagement=true;
   const bindings = params.has('saved-multiple') || params.has('saved-extra-binding') ? [binding,{model_ref:'model-ref/qwen3-max',binding_id:'binding/fixture/saved-second',revision:1}] : [binding];

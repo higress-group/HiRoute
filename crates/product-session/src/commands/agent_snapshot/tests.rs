@@ -70,6 +70,7 @@ enum Change {
     FinalEpoch,
     Hidden,
     ClientRevoked,
+    WrongTrialSchema,
 }
 
 #[tokio::test]
@@ -157,6 +158,14 @@ async fn narrow_trial_reads_keep_all_current_read_fences_without_unrelated_agent
             exercise_read(change, kind).await;
         }
     }
+}
+
+#[tokio::test]
+async fn trial_snapshot_schema_is_checked_at_the_command_boundary() {
+    exercise_read(Change::None, ReadKind::TrialSetup).await;
+    exercise_read(Change::WrongTrialSchema, ReadKind::TrialSetup).await;
+    exercise_read(Change::Epoch, ReadKind::TrialSetup).await;
+    exercise_read(Change::Authority, ReadKind::TrialSetup).await;
 }
 
 #[tokio::test]
@@ -315,7 +324,7 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                         assert_eq!(request.payload, json!({}));
                         assert!(request.protected_grant.is_none());
                         let new_revision = altered && change == Change::Revision;
-                        json!({"schema":"hiroute.trial-setup-snapshot/v1",
+                        json!({"schema":if change == Change::WrongTrialSchema {"hiroute.trial-setup-snapshot/unsupported"} else {"hiroute.trial-setup-snapshot/v1"},
                         "options":{"authoring":null,"claude_capabilities":null,"context_window":null,"suggested_alias":null,"candidates":[{
                             "binding_id":"binding/same", "model_configuration_id":"fixture-model", "display_name":"fixture model",
                             "reasoning":{"kind":"fixed","profile":if new_revision {"new"} else {"old"}},
@@ -409,7 +418,9 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
             ReadKind::TrialSetup => super::super::trial_setup_snapshot(&context, &state)
                 .await
                 .map(|snapshot| {
-                    assert_eq!(snapshot.schema, TRIAL_SETUP_SNAPSHOT_SCHEMA_V1);
+                    if change != Change::WrongTrialSchema {
+                        assert_eq!(snapshot.schema, TRIAL_SETUP_SNAPSHOT_SCHEMA_V1);
+                    }
                     let source = &snapshot.management.sources[0];
                     assert_eq!(source.display_name, "original source");
                     assert_eq!(source.models[0].binding_id, "binding/same");
@@ -519,7 +530,11 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
         release.notify_one();
     };
     let (result, _) = tokio::join!(snapshot, concurrent);
-    if matches!(change, Change::None | Change::OldLock | Change::Hidden) {
+    if change == Change::WrongTrialSchema {
+        assert!(
+            matches!(result, Err(DesktopFailure::Native { ref code }) if code == "RESPONSE_DATA_INVALID")
+        );
+    } else if matches!(change, Change::None | Change::OldLock | Change::Hidden) {
         assert!(result.is_ok());
     } else {
         assert!(result.is_err(), "old Agent facts escaped after {change:?}");
