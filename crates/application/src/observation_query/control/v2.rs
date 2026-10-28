@@ -24,32 +24,40 @@ impl ObservationControl {
         let now = self.clock.now_ms().map_err(map_control)?;
         let analysis = matches!(&request.intent, ObservationReadIntentV2::Analysis(_));
         let deadline = started + hiroute_domain::ObservationReaderContext::QUERY_BUDGET;
-        let admitted = if let Some(grant) = grant {
-            if grant.principal_kind.is_collaboration() {
-                return Err(ObservationQueryError::Unauthorized);
+        let generation = if analysis {
+            let result = if let Some(grant) = grant {
+                if grant.principal_kind.is_collaboration() {
+                    return Err(ObservationQueryError::Unauthorized);
+                }
+                let digest = hiroute_domain::CanonicalDigest::of(&request)
+                    .map_err(|_| ObservationQueryError::InvalidQuery)?;
+                self.state.try_validate_observation_capability(
+                    &grant.capability,
+                    &self.workspace_id,
+                    grant.principal_kind,
+                    request.protected_operation(),
+                    &digest,
+                    deadline,
+                )
+            } else {
+                self.state
+                    .try_observation_revision(&self.workspace_id, deadline)
+            };
+            if std::time::Instant::now() >= deadline {
+                return Err(ObservationQueryError::ReadTimeout);
             }
-            let digest = hiroute_domain::CanonicalDigest::of(&request)
-                .map_err(|_| ObservationQueryError::InvalidQuery)?;
-            self.state.try_validate_observation_capability(
-                &grant.capability,
-                &self.workspace_id,
-                grant.principal_kind,
-                request.protected_operation(),
-                &digest,
-                deadline,
-            )
+            match result.map_err(map_control)? {
+                crate::control::ControlReadAttempt::Ready(revision) => revision,
+                crate::control::ControlReadAttempt::Busy => {
+                    return Err(ObservationQueryError::ReaderBusy);
+                }
+            }
         } else {
             self.state
-                .try_observation_revision(&self.workspace_id, deadline)
-        };
-        if std::time::Instant::now() >= deadline {
-            return Err(ObservationQueryError::ReadTimeout);
-        }
-        let generation = match admitted.map_err(map_control)? {
-            crate::control::ControlReadAttempt::Ready(revision) => revision,
-            crate::control::ControlReadAttempt::Busy => {
-                return Err(ObservationQueryError::ReaderBusy);
-            }
+                .snapshot(&self.workspace_id)
+                .map_err(map_control)?
+                .revisions
+                .target
         };
         let content = matches!(
             request.intent,
@@ -63,6 +71,9 @@ impl ObservationControl {
             request.intent,
             ObservationReadIntentV2::Search(_) | ObservationReadIntentV2::SessionSearch(_)
         ) || matches!(&request.intent, ObservationReadIntentV2::Analysis(q) if q.query.is_some());
+        if grant.is_some() && !analysis {
+            self.protected_principal(grant, request.protected_operation(), &request)?;
+        }
         // The transport authenticates same-OS-user Local Control. Explicit content
         // selection needs no second GUI-issued ticket; supplied grants are still
         // validated on every page. Visibility, expiry and cursor scopes remain checked.
