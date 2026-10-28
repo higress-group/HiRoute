@@ -678,7 +678,7 @@ mod locator_projection;
 #[test]
 fn selected_settings_does_not_decode_newer_unrelated_contexts() {
     let directory = tempdir().unwrap();
-    let control = open(directory.path());
+    let mut control = open(directory.path());
     let selected_root = directory.path().join("selected");
     let mut selected = target_operation(selected_root.to_str().unwrap(), "selected", false);
     let context = selected.plan.spec().resource_id.clone().unwrap();
@@ -691,26 +691,35 @@ fn selected_settings_does_not_decode_newer_unrelated_contexts() {
             false,
         );
         persist(&control, &mut other);
+        if index == 0 || index == 9 {
+            // Compare N and 10N with a fresh connection each time: this must
+            // not depend on a cache warmed by the smaller history.
+            drop(control);
+            control = open(directory.path());
+            let before = super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
+            let found = control
+                .find_agent_locator(
+                    &WorkspaceId::default(),
+                    super::super::AgentLocatorScope::ContextFacet {
+                        context_id: &context,
+                        facet: hiroute_domain::AgentSettingsFacet::ManagementSkill,
+                    },
+                )
+                .unwrap();
+            let super::super::AgentLocatorResult::Found(found) = found else {
+                panic!("selected configuration must be present");
+            };
+            assert_eq!(found.operation_id, selected.operation_id);
+            let decoded =
+                super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get) - before;
+            assert_eq!(
+                decoded,
+                1,
+                "{} unrelated contexts must not be authenticated before selection",
+                index + 1
+            );
+        }
     }
-    let before = super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
-    let found = control
-        .find_agent_locator(
-            &WorkspaceId::default(),
-            super::super::AgentLocatorScope::ContextFacet {
-                context_id: &context,
-                facet: hiroute_domain::AgentSettingsFacet::ManagementSkill,
-            },
-        )
-        .unwrap();
-    let super::super::AgentLocatorResult::Found(found) = found else {
-        panic!("selected configuration must be present");
-    };
-    assert_eq!(found.operation_id, selected.operation_id);
-    let decoded = super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get) - before;
-    assert_eq!(
-        decoded, 1,
-        "unrelated contexts must not be authenticated before selection"
-    );
 }
 
 #[test]

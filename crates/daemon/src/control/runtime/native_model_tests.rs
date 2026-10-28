@@ -104,13 +104,18 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .control()
         .complete_operation_finalization(&install)
         .unwrap();
-    // Hold the production status path immediately before native file I/O. An
-    // unrelated request must be able to acquire the actual shared store lock.
+    // Pause the production status path before journal verification and again
+    // before native file I/O. An independent read must acquire the real lock.
+    let (verify_reached_tx, verify_reached_rx) = std::sync::mpsc::channel();
+    let (verify_release_tx, verify_release_rx) = std::sync::mpsc::channel();
     let (reached_tx, reached_rx) = std::sync::mpsc::channel();
     let (release_tx, release_rx) = std::sync::mpsc::channel();
     let reader = std::sync::Arc::clone(&runtime.adapter);
     let selected_context = context.clone();
     let worker = std::thread::spawn(move || {
+        crate::control::runtime::settings_status::MODEL_VERIFY_BARRIER.with(|slot| {
+            *slot.borrow_mut() = Some((verify_reached_tx, verify_release_rx));
+        });
         crate::control::runtime::settings_status::MODEL_NATIVE_READ_BARRIER.with(|slot| {
             *slot.borrow_mut() = Some((reached_tx, release_rx));
         });
@@ -123,12 +128,37 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
             context_id: selected_context,
         })
     });
+    let verify_reached = verify_reached_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .is_ok();
+    let verify_available = verify_reached
+        && runtime.adapter.stores.try_lock().is_ok_and(|stores| {
+            stores
+                .control()
+                .active_publication(&WorkspaceId::default())
+                .is_ok()
+        });
+    let _ = verify_release_tx.send(());
     let reached = reached_rx
         .recv_timeout(std::time::Duration::from_secs(10))
         .is_ok();
-    let available = reached && runtime.adapter.stores.try_lock().is_ok();
+    let available = reached
+        && runtime.adapter.stores.try_lock().is_ok_and(|stores| {
+            stores
+                .control()
+                .active_publication(&WorkspaceId::default())
+                .is_ok()
+        });
     let _ = release_tx.send(());
     let read_result = worker.join().unwrap();
+    assert!(
+        verify_reached,
+        "the selected status did not reach its journal-verification barrier: {read_result:?}"
+    );
+    assert!(
+        verify_available,
+        "journal verification held the shared storage lock"
+    );
     assert!(
         reached,
         "the selected status did not reach its native-read barrier: {read_result:?}"

@@ -22,9 +22,22 @@ use hiroute_local_storage::{
 
 #[cfg(test)]
 thread_local! {
+    pub(super) static MODEL_VERIFY_BARRIER: std::cell::RefCell<Option<(
+        std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>,
+    )>> = const { std::cell::RefCell::new(None) };
     pub(super) static MODEL_NATIVE_READ_BARRIER: std::cell::RefCell<Option<(
         std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>,
     )>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn wait_before_model_verify() {
+    MODEL_VERIFY_BARRIER.with(|slot| {
+        if let Some((reached, release)) = slot.borrow_mut().take() {
+            reached.send(()).unwrap();
+            release.recv().unwrap();
+        }
+    });
 }
 
 #[cfg(test)]
@@ -388,7 +401,11 @@ impl LocalControlAdapter {
                 self.fence_model_read(request, &stamp, &witness, native_witness.as_ref(), None)?;
                 return Ok((status, None, None));
             }
-            CapturedAgentLocator::Found(capture) => capture.verify().map_err(super::map_port)?,
+            CapturedAgentLocator::Found(capture) => {
+                #[cfg(test)]
+                wait_before_model_verify();
+                capture.verify().map_err(super::map_port)?
+            }
         };
         let publication_identity = publication.as_ref().map(|record| record.identity());
         let publication = publication
