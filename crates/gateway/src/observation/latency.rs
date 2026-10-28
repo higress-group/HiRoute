@@ -113,7 +113,7 @@ impl RequestLatency {
         let _ = self.0.request_outcome.set(outcome);
     }
 
-    pub(in crate::server::core_runtime) fn record(&self) -> AsyncRecordTiming {
+    pub(super) fn record(&self) -> AsyncRecordTiming {
         self.0.records.fetch_add(1, Relaxed);
         AsyncRecordTiming(Arc::new(RecordInner {
             request: self.clone(),

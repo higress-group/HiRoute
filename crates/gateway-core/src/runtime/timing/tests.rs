@@ -128,3 +128,28 @@ fn dropped_pending_request_can_be_frozen_without_task_local_context() {
     assert_eq!(partition(&snapshot), snapshot.elapsed_us);
     assert_eq!(snapshot.local_us[LocalPhase::Stream as usize], 0);
 }
+
+#[tokio::test]
+async fn dropped_pending_wait_does_not_label_later_local_wait() {
+    use std::task::Poll;
+    let clock = RequestClock::new();
+    clock
+        .run(async {
+            // A timeout/select may poll an I/O future Pending, then choose another
+            // branch in the same request poll and drop that I/O future.
+            {
+                let mut io = pin!(wait(WaitKind::UpstreamRead, std::future::pending::<()>()));
+                poll_fn(|cx| {
+                    assert!(io.as_mut().poll(cx).is_pending());
+                    Poll::Ready(())
+                })
+                .await;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        })
+        .await;
+    let snapshot = clock.finish();
+    assert_eq!(snapshot.wait_us[WaitKind::UpstreamRead as usize], 0);
+    assert!(snapshot.wait_us[WaitKind::Other as usize] >= 5_000);
+    assert_eq!(partition(&snapshot), snapshot.elapsed_us);
+}
