@@ -15,6 +15,10 @@ export type TrialSource = {
   access_kind: 'api' | 'subscription' | 'unknown'; state: MaterializationState;
   models: TrialMember[]; actions: string[];
 };
-export type TrialManagementSnapshot = { revisions: RevisionSet; sources: TrialSource[] };
+export type TrialRetainedApiConnection = {
+  source_id: string; source_revision: number; binding_id: string; binding_revision: number;
+  model_configuration_id: string; display_name: string;
+};
+export type TrialManagementSnapshot = { revisions: RevisionSet; sources: TrialSource[]; retained_api_connections: TrialRetainedApiConnection[] };
 export type TrialSetupSnapshot = { schema: 'hiroute.trial-setup-snapshot/v1'; options: Options; management: TrialManagementSnapshot };
 export type TrialCatalogSnapshot = { availability: ModelAvailabilityResult; options: Options; management: TrialManagementSnapshot };

@@ -65,6 +65,23 @@ try {
     const source=await evaluate(client, `(()=>{const s=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Retained fixture API'));return s&&{text:s.textContent,buttons:[...s.querySelectorAll('button')].map(b=>b.textContent)};})()`);
     assert.ok(source && source.text.includes('Qwen'));
     assert.ok(source.buttons.every(text=>!/Add model|Review connection|edit/i.test(text)),JSON.stringify(source));
+    await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await click('.trial-model-card','Kimi');
+    await click('[data-trial-target=primary] button','Choose an existing connection');
+    await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Retained fixture API'));source.querySelector('.trial-choice').click();return true;})()`);
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=primary]')?.textContent.includes('Retained fixture API')`);
+  });
+  await run('review-r2.retained-api-cannot-bypass-owner-or-identity', async () => {
+    for (const query of ['retained-api=1&retained-mismatch=1','retained-api=1&retained-v2-owner=1&disabled-trial=1']) {
+      await open(query); await click('.trial-choice-list .trial-choice','GPT');
+      await click('.trial-footer .btn-primary','Review changes');
+      await waitFor(client, `document.querySelector('.trial-validation-summary')?.textContent.includes('trial connection')`);
+      assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+      await click('[data-trial-target=trial] button','Choose an existing connection');
+      const retained=await evaluate(client, `(()=>{const s=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Retained fixture API'));return s?.querySelector('.trial-choice')?.disabled;})()`);
+      assert.equal(retained,true,'a mismatched or V2-owned retained description cannot grant selection');
+    }
   });
   await run('review-r2.recommendations-retry', async () => {
     await open('recommendations-fail=1');
@@ -75,6 +92,50 @@ try {
     assert.equal(await evaluate(client, `trialSetupControl.recommendationReads`),3);
     await click('.trial-footer .btn-primary','Review changes');
     await waitFor(client, `!!document.querySelector('.trial-review')`);
+  });
+  await run('review-r2.recommendations-fail-and-single-flight', async () => {
+    await open('recommendations-fail=1');
+    await waitFor(client, `document.querySelector('[role=alert]')?.textContent.includes('Recommended models')`);
+    await click('.trial-choice-list .trial-choice','GPT'); await field('[data-trial-target=name] input','Kept trial name');
+    await evaluate(client, `trialSetupControl.recommendationFailures=1;true`);
+    await click('[role=alert] button','Retry');
+    await waitFor(client, `trialSetupControl.recommendationReads===3 && document.querySelector('[role=alert]')?.textContent.includes('Recommended models')`);
+    assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'Kept trial name');
+    await evaluate(client, `trialSetupControl.holdNextRecommendation=true;true`);
+    await click('[role=alert] button','Retry');
+    await waitFor(client, `trialSetupControl.pendingRecommendations.length===1`);
+    await click('.trial-footer button','Refresh availability');
+    await waitFor(client, `!document.querySelector('.trial-setup')?.disabled`);
+    assert.equal(await evaluate(client, `trialSetupControl.recommendationReads`),4,'page refresh must not start a concurrent recommendation read');
+    const selectedBefore=await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] strong')?.textContent`);
+    await evaluate(client, `trialSetupControl.releaseRecommendation();true`);
+    await waitFor(client, `!![...document.querySelectorAll('.trial-model-card')].find(e=>e.textContent.includes('Kimi'))`);
+    assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'Kept trial name');
+    assert.equal(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] strong')?.textContent`),selectedBefore);
+  });
+  await run('review-r2.recommendation-error-layout', async () => {
+    for (const [language,theme,width,height] of [['en','light',755,600],['zh','dark',1200,813]]) {
+      await open(`recommendations-fail=1&theme=${theme}`,language,width,height);
+      await waitFor(client, `!!document.querySelector('[data-trial-target=trial] [role=alert]')`);
+      const bounds=await evaluate(client, `(()=>{const e=document.querySelector('[data-trial-target=trial] [role=alert]'),r=e.getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth,overflow:e.scrollWidth>e.clientWidth+1};})()`);
+      assert.ok(bounds.left>=0 && bounds.right<=bounds.width && !bounds.overflow,JSON.stringify(bounds));
+      await shot(`review-r2-recommendations-${language}-${theme}-${width}`);
+    }
+  });
+  await run('review-r2.old-recommendations-after-reopen', async () => {
+    await open('recommendations-fail=1');
+    await waitFor(client, `!!document.querySelector('[data-trial-target=trial] [role=alert]')`);
+    await evaluate(client, `trialSetupControl.holdNextRecommendation=true;true`);
+    await click('[data-trial-target=trial] [role=alert] button','Retry');
+    await waitFor(client, `trialSetupControl.pendingRecommendations.length===1`);
+    await click('.trial-footer button','Cancel');
+    await waitFor(client, `!!document.querySelector('.new-models button')`);
+    await evaluate(client, `trialModel.display_name='Fresh fixture model';true`);
+    await click('.new-models button','Try');
+    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true] strong')?.textContent==='Fresh fixture model'`);
+    await evaluate(client, `trialSetupControl.releaseRecommendation();true`);
+    await waitFor(client, `trialSetupControl.pendingRecommendations.length===0`);
+    assert.equal(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] strong')?.textContent`),'Fresh fixture model');
   });
   await run('review-r2.same-model-selection-wins', async () => {
     await open('additional-connection=1&same-names=1&saved-registered=1&saved-read-failure=1&same-model-save=1');
@@ -97,11 +158,42 @@ try {
     await waitFor(client, `document.querySelector('[data-trial-target=trial] .trial-connection-field select')?.value==='binding/fixture/saved-model'`);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
   });
+  await run('review-r2.same-model-selection-protects-draft', async () => {
+    await open('additional-connection=1&same-names=1');
+    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
+    await field('#mc-connection-form input[type=password]','synthetic-draft-key');
+    const chooseSecond = `(()=>{const e=document.querySelector('[data-trial-target=trial] .trial-connection-field select');e.value='binding/bailian/qwen-second';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`;
+    await evaluate(client, chooseSecond); await waitFor(client, `!!document.querySelector('.discard-dialog[open]')`);
+    await click('.discard-dialog button','Keep editing');
+    assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=trial] .trial-connection-field select').value`),'binding/bailian/qwen-coder');
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`),'synthetic-draft-key');
+    await click('[data-trial-target=primary] button','Choose an existing connection'); await click('.trial-picker .trial-choice','GPT-6-Astra');
+    await waitFor(client, `!document.querySelector('.trial-picker')`);
+    assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`),'synthetic-draft-key');
+    await evaluate(client, chooseSecond); await waitFor(client, `!!document.querySelector('.discard-dialog[open]')`);
+    await click('.discard-dialog button','Discard changes');
+    await waitFor(client, `document.querySelector('[data-trial-target=trial] .trial-connection-field select')?.value==='binding/bailian/qwen-second'`);
+    assert.equal(await evaluate(client, `!!document.querySelector('#mc-connection-form')`),false);
+  });
   await run('review-r2.safe-generated-name', async () => {
     await open('unsafe-model-name=1'); await click('.trial-choice-list .trial-choice','GPT');
     assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'Model trial');
     await click('.trial-footer .btn-primary','Review changes');
     await waitFor(client, `!!document.querySelector('.trial-review')`);
+  });
+  await run('review-r2.manual-sensitive-name', async () => {
+    for (const language of ['en','zh']) {
+      await open('',language); await click('.trial-choice-list .trial-choice','GPT');
+      await field('[data-trial-target=name] input','https://example.invalid');
+      await click('.trial-footer .btn-primary',language==='zh'?'检查改动':'Review changes');
+      assert.ok(await evaluate(client, `!!document.querySelector('[data-trial-target=name] .oc-inline-error') && !document.querySelector('.trial-review')`));
+      assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'https://example.invalid');
+      assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+      await field('[data-trial-target=name] input','API key rotation');
+      await click('.trial-footer .btn-primary',language==='zh'?'检查改动':'Review changes');
+      await waitFor(client, `!!document.querySelector('.trial-review')`);
+    }
   });
   await run('review-r2.review-name-scalar-boundary', async () => {
     await open(''); await click('.trial-choice-list .trial-choice','GPT');
@@ -111,9 +203,20 @@ try {
     await client.send('Input.insertText',{text:'🚀'.repeat(128)});
     assert.equal(await evaluate(client, `Array.from(document.querySelector(${JSON.stringify(input)}).value).length`),128,'paste must retain all 128 scalar values');
     await client.send('Input.insertText',{text:'🚀'});
-    await click('.trial-review > .actions .btn-primary','Save and publish route');
     await waitFor(client, `document.querySelector('.plan-identity-fields .oc-inline-error')?.textContent.includes('128')`);
+    await waitFor(client, `document.querySelector('.trial-review > .actions .btn-primary')?.disabled`);
+    await evaluate(client, `document.querySelector('.plan-identity-fields .oc-inline-error').scrollIntoView({block:'center'});true`);
+    await shot('review-r2-name-limit-en-755');
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+    await evaluate(client, `(()=>{const e=document.querySelector(${JSON.stringify(input)});e.focus();e.select();return true;})()`);
+    await client.send('Input.insertText',{text:'🚀'.repeat(128)});
+    await click('.trial-review > .actions button','Back to setup');
+    assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'🚀'.repeat(128));
+    await click('.trial-footer .btn-primary','Review changes');
+    await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+    await click('.trial-review > .actions .btn-primary','Save and publish route');
+    await waitFor(client, `trialTrace.some(x=>x.command==='preview_plan_editor' && x.payload.input.action==='save_draft')`);
+    assert.equal(await evaluate(client, `trialTrace.find(x=>x.command==='preview_plan_editor' && x.payload.input.action==='save_draft').payload.input.editor.display_name`),'🚀'.repeat(128));
   });
   await run('capture.retry-at-most-once', async () => {
     await open('');

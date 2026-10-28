@@ -1,3 +1,5 @@
+import { planDisplayNameError } from '../../plan-display-name.ts';
+
 export type TrialBlocker = {
   code: string;
   category: 'user_input' | 'loading' | 'recoverable_read' | 'authority' | 'unavailable';
@@ -32,9 +34,8 @@ export function trialReadiness(i: Inputs) {
   if (i.agentId && !i.agentMatches && !i.loading && !i.agentError) add('agent-current', 'recoverable_read', 'agent', '重新读取所选 Agent', 'Reload the selected Agent');
   if (i.agentId && i.agentMatches && !i.agentSeedKnown) add('agent-seed', 'unavailable', 'agent', '检查 Agent 的现有配置', 'Check the Agent’s current configuration');
   if (i.claude && !i.presets) add('presets', 'user_input', 'presets', '至少选择一个预设', 'Choose at least one preset');
-  if (!i.name.trim()) add('name', 'user_input', 'name', '填写有效的路由名称', 'Enter a valid route name');
-  else if (Array.from(i.name).length > 128) add('name', 'user_input', 'name', '路由名称最多 128 个字符', 'Use at most 128 characters for the route name');
-  else if (i.name !== i.name.trim() || /\p{Cc}/u.test(i.name)) add('name', 'user_input', 'name', '去除名称首尾空格和控制字符', 'Remove leading or trailing whitespace and control characters');
+  const nameError = planDisplayNameError(i.name, i.language);
+  if (nameError) blockers.push({code: 'name', category: 'user_input', target: 'name', message: nameError});
   if (!i.custom && (!Number.isInteger(i.threshold) || i.threshold < 0 || i.threshold > 1000)) add('threshold', 'user_input', 'trust', '选择有效的起始信任度', 'Choose a valid starting trust');
   if (i.loading) add('loading', 'loading', 'refresh', '正在读取当前配置', 'Reading the current configuration');
   if (i.readError) add('read', 'recoverable_read', 'refresh', '无法读取试用配置，请重试', 'Trial configuration could not be read. Retry');

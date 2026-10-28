@@ -4,7 +4,10 @@ use crate::control::runtime::subscriptions::maintenance::SubscriptionMaintenance
 use hiroute_application::compute_management::{
     ComputeManagementModelRuntimeAvailabilityFactV1 as Runtime, project_trial_source,
 };
-use hiroute_application_api::{ComputeConnectionAccessKindV1 as Access, TrialManagementSnapshotV1};
+use hiroute_application_api::{
+    ComputeConnectionAccessKindV1 as Access, TrialManagementSnapshotV1,
+    TrialRetainedApiConnectionV1,
+};
 use hiroute_domain::{
     ComputeManagementProvenanceV2, ComputeManagementStoredSnapshotV2, ComputeRuntimeStateStoreV1,
     ConnectionOrigin,
@@ -18,6 +21,69 @@ struct SourceContext {
 }
 
 pub(super) struct CaptureContext(Vec<SourceContext>);
+
+pub(super) struct ManagedOwnership<'a> {
+    sources: std::collections::HashSet<&'a str>,
+    bindings: std::collections::HashSet<&'a str>,
+}
+
+impl<'a> ManagedOwnership<'a> {
+    pub(super) fn new(management: &'a ComputeManagementStoredSnapshotV2) -> Self {
+        Self {
+            sources: management
+                .sources
+                .iter()
+                .map(|source| source.source_id.as_str())
+                .collect(),
+            bindings: management
+                .sources
+                .iter()
+                .flat_map(|source| source.models.iter().map(|model| model.binding_id.as_str()))
+                .collect(),
+        }
+    }
+
+    pub(super) fn owns(&self, source: &str, binding: &str) -> bool {
+        self.sources.contains(source) || self.bindings.contains(binding)
+    }
+}
+
+/// This only describes the exact legacy API fact admitted by the routing owner.
+/// An existing V2 owner always remains responsible for its own admission.
+pub(super) fn retained_api(
+    source: &hiroute_domain::ComputeSourceV1,
+    candidate: &CandidateCompilationFactV1,
+    option: &hiroute_domain::ResolvedConnectionOptionV1,
+    ownership: &ManagedOwnership<'_>,
+) -> Option<TrialRetainedApiConnectionV1> {
+    let binding = &candidate.binding;
+    if !matches!(
+        source.origin,
+        SourceOrigin::NativeApi | SourceOrigin::ReleaseFree
+    ) || !matches!(
+        option.option.origin,
+        ConnectionOrigin::NativeApi | ConnectionOrigin::FreeCatalog
+    ) || option.connector.runtime_kind != hiroute_domain::ConnectorRuntimeKind::BuiltinNative
+        || candidate.connector_runtime != hiroute_domain::ConnectorRuntimeKind::BuiltinNative
+        || candidate.authority
+            != hiroute_application::compiler::CandidateFactAuthorityV1::RegisteredCatalog
+        || ownership.owns(&source.source_id, &binding.binding_id)
+        || binding.source_id != source.source_id
+        || binding.source_revision != source.revision
+        || candidate.model.model_configuration_id != binding.model_configuration_id
+        || !candidate.is_routable()
+    {
+        return None;
+    }
+    Some(TrialRetainedApiConnectionV1 {
+        source_id: source.source_id.clone(),
+        source_revision: source.revision,
+        binding_id: binding.binding_id.clone(),
+        binding_revision: binding.revision,
+        model_configuration_id: binding.model_configuration_id.clone(),
+        display_name: option.option.display_name.clone(),
+    })
+}
 
 /// Retained approval and successful-save evidence are read by exact source identity.
 /// This is separate from connector discovery and is checked again after the CPA fence.
@@ -83,6 +149,7 @@ pub(super) fn project<T: ComputeRuntimeStateStoreV1>(
     runtime: &T,
     candidates: &[CandidateCompilationFactV1],
     context: &CaptureContext,
+    retained_api_connections: &[TrialRetainedApiConnectionV1],
 ) -> Result<TrialManagementSnapshotV1, ControlReadError> {
     let by_binding = candidates
         .iter()
@@ -109,10 +176,35 @@ pub(super) fn project<T: ComputeRuntimeStateStoreV1>(
             .cmp(&b.display_name.to_lowercase())
             .then_with(|| a.source_id.cmp(&b.source_id))
     });
+    let mut retained_api_connections = retained_api_connections.to_vec();
+    retained_api_connections.sort_by(|left, right| {
+        left.display_name
+            .cmp(&right.display_name)
+            .then_with(|| left.source_id.cmp(&right.source_id))
+            .then_with(|| left.binding_id.cmp(&right.binding_id))
+    });
     Ok(TrialManagementSnapshotV1 {
         revisions: management.revisions.clone(),
         sources,
+        retained_api_connections,
     })
+}
+
+pub(super) fn capture_projected<T: ComputeRuntimeStateStoreV1>(
+    adapter: &LocalControlAdapter,
+    catalog: &TrustedReleaseCatalog,
+    management: &ComputeManagementStoredSnapshotV2,
+    batch: Option<&hiroute_cpa_bridge::CpaRoutingBatch<'_>>,
+    trusted: &[bool],
+    runtime: &T,
+    facts: (
+        &[CandidateCompilationFactV1],
+        &[TrialRetainedApiConnectionV1],
+    ),
+) -> Result<(CaptureContext, TrialManagementSnapshotV1), ControlReadError> {
+    let context = capture(adapter, catalog, management, batch, trusted);
+    let projected = project(management, runtime, facts.0, &context, facts.1)?;
+    Ok((context, projected))
 }
 
 pub(super) fn maintenance_unchanged(

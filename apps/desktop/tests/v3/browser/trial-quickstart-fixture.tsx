@@ -131,7 +131,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   if (params.has('retained-api')) {
    const source=management.sources.find((value:any)=>value.source_id==='source/bailian/coding');
    const member=source.models[0];
-   management.retained_api_connections.push({source_id:source.source_id,source_revision:source.revision,binding_id:member.binding_id,binding_revision:member.revision,model_configuration_id:trialModel.model_configuration_id,display_name:'Retained fixture API'});
+   management.retained_api_connections.push({source_id:source.source_id,source_revision:source.revision,binding_id:member.binding_id,binding_revision:member.revision,model_configuration_id:params.has('retained-mismatch')?'model.different':trialModel.model_configuration_id,display_name:'Retained fixture API'});
    if (!params.has('retained-v2-owner')) management.sources=management.sources.filter((value:any)=>value.source_id!==source.source_id);
   }
   return {schema:'hiroute.trial-setup-snapshot/v1',options,management};

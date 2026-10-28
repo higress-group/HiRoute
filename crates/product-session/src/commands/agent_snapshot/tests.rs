@@ -330,7 +330,7 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                             "reasoning":{"kind":"fixed","profile":if new_revision {"new"} else {"old"}},
                             "billing_class":"paid","routable":true,"ingress_protocols":["responses"],"native_ingress_protocols":["responses"]
                         }],"free_suggestions":null,"ratings":null,"codex_capabilities":null,"revisions":{"target":if new_revision {2} else {1},"dependencies":{}}},
-                        "management":{"revisions":{"target":if new_revision {2} else {1},"dependencies":{}},"sources":[{
+                        "management":{"revisions":{"target":if new_revision {2} else {1},"dependencies":{}},"retained_api_connections":[],"sources":[{
                             "source_id":"source/same", "revision":if new_revision {2} else {1},
                             "display_name":if new_revision {"changed source"} else {"original source"},
                             "provenance":"user_configured","access_kind":"api","state":"ready","actions":[],

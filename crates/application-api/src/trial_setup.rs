@@ -23,6 +23,19 @@ pub struct TrialSetupSnapshotV1 {
 pub struct TrialManagementSnapshotV1 {
     pub revisions: RevisionSetV1,
     pub sources: Vec<TrialSourceViewV1>,
+    /// Already-admitted API projections without any V2 management owner.
+    pub retained_api_connections: Vec<TrialRetainedApiConnectionV1>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrialRetainedApiConnectionV1 {
+    pub source_id: String,
+    pub source_revision: u64,
+    pub binding_id: String,
+    pub binding_revision: u64,
+    pub model_configuration_id: String,
+    pub display_name: String,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

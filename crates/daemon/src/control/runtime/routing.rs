@@ -449,12 +449,13 @@ impl LocalControlAdapter {
                         control.compute_projection_rows().map_err(super::map_port)?,
                     )
                 };
-                // Exact saved-subscription validation is independent of CPA discovery. It
-                // cannot be inferred from a live connector or a remembered Ready flag.
                 let trusted_trial_sources =
                     trial_capture.then(|| trial::trusted_sources(self, &catalog, &management));
                 let mut diagnostics =
                     CandidateDiagnostics::new(&management.sources, &rows, &catalog);
+                let trial_ownership =
+                    trial_capture.then(|| trial::ManagedOwnership::new(&management));
+                let mut retained_api_connections = Vec::new();
                 let needs_cpa = rows
                     .iter()
                     .any(|(source, _, _)| source.origin == SourceOrigin::Cpa)
@@ -533,6 +534,14 @@ impl LocalControlAdapter {
                     binding
                         .validate_shape()
                         .map_err(|_| ControlReadError::Corrupt)?;
+                    // A V2 owner is authoritative for trial admission even if its
+                    // matching legacy projection would still be executable.
+                    if trial_ownership
+                        .as_ref()
+                        .is_some_and(|owners| owners.owns(&source.source_id, &binding.binding_id))
+                    {
+                        continue;
+                    }
                     if catalog.validate_source(&source, true).is_err()
                         || binding.validate(&source, catalog.model_data()).is_err()
                     {
@@ -725,7 +734,7 @@ impl LocalControlAdapter {
                         .observed_models
                         .iter()
                         .any(|model| model.upstream_model_id == binding.upstream_model_id);
-                    candidates.push(CandidateCompilationFactV1 {
+                    let candidate = CandidateCompilationFactV1 {
                 authority:
                     hiroute_application::compiler::CandidateFactAuthorityV1::RegisteredCatalog,
                 connection_option_id: source.connection_option_id.clone(),
@@ -746,7 +755,14 @@ impl LocalControlAdapter {
                 rating,
                 ordering_price,
                 free_evidence,
-            });
+            };
+                    if let Some(ownership) = &trial_ownership
+                        && let Some(connection) =
+                            trial::retained_api(&source, &candidate, &resolved, ownership)
+                    {
+                        retained_api_connections.push(connection);
+                    }
+                    candidates.push(candidate);
                 }
                 for source in &management.sources {
                     inventory_refs.push((
@@ -905,7 +921,7 @@ impl LocalControlAdapter {
                 // Project trial choices while the same local rows and captured routing facts are
                 // held. The compact projection contains no credential or endpoint material.
                 let trial_projection = if trial_capture {
-                    let context = trial::capture(
+                    Some(trial::capture_projected(
                         self,
                         &catalog,
                         &management,
@@ -913,10 +929,9 @@ impl LocalControlAdapter {
                         trusted_trial_sources
                             .as_deref()
                             .ok_or(ControlReadError::Corrupt)?,
-                    );
-                    let projected =
-                        trial::project(&management, stores.runtime(), &facts.candidates, &context)?;
-                    Some((context, projected))
+                        stores.runtime(),
+                        (&facts.candidates, &retained_api_connections),
+                    )?)
                 } else {
                     None
                 };
@@ -930,8 +945,13 @@ impl LocalControlAdapter {
                 }
                 let management_projection = if let Some((context, projected)) = trial_projection {
                     let stores = self.stores_lock().map_err(super::map_port)?;
-                    let current =
-                        trial::project(&management, stores.runtime(), &facts.candidates, &context)?;
+                    let current = trial::project(
+                        &management,
+                        stores.runtime(),
+                        &facts.candidates,
+                        &context,
+                        &retained_api_connections,
+                    )?;
                     if projected != current
                         || !trial::maintenance_unchanged(self, &management, &context)
                     {
