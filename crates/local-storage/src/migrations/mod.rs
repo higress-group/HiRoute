@@ -25,7 +25,7 @@ pub(crate) use startup_format::validate_startup_format;
 #[cfg(test)]
 mod stopped_read_tests;
 pub(crate) use current_storage::{
-    acquire_startup_lock, audit_current_storage, validate_current_storage,
+    StartupLock, acquire_startup_lock, audit_current_storage, validate_current_storage,
     validate_recovered_grant_publications,
 };
 mod collaboration_dependency;

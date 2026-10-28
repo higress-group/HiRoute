@@ -201,7 +201,7 @@ impl LocalStorageSet {
         authority: &DaemonStorageAuthority,
         barrier: &SingleWriterBackupBarrier,
         storage_root: &Path,
-        startup_lock: std::sync::Arc<std::fs::File>,
+        startup_lock: std::sync::Arc<migrations::StartupLock>,
         options: Option<&StorageStartupOptions>,
     ) -> Result<Self, LocalStorageError> {
         let live_root = storage_root.join("live");

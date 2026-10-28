@@ -378,6 +378,14 @@ pre-delivery attempt still cannot become an accepted ordinal.
 
 Request-local ReplayStore is the raw/semantic backing for later Attempts. Current
 production threshold is 1 MiB; explicit environment configuration may override it.
+Authenticated ingress writes into that same raw owner before model selection. The
+top-level model locator advances once through incoming bytes with bounded token and
+nesting state; field order and unrelated content size do not require an in-memory
+prefix. Authentication precedes body retention; alias authorization remains early,
+and the existing selector deadline, full canonical validation, original frame/total
+limits and declared-length checks still apply. Rejection, disconnect and timeout
+release the partially written owner.
+
 This is an allocation/spill choice, not a protocol message-size cap. Above threshold,
 private newly created plaintext spill is bounded by request/daemon resource ownership
 and read sequentially through pinned handles. System-temp aliases are canonicalized;
