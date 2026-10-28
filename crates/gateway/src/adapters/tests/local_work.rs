@@ -1,0 +1,192 @@
+//! Byte-equivalence at encoder boundaries and an opt-in, fixed-input benchmark.
+use super::*;
+use crate::content_ref::{
+    compact_ingress_document_with_markers, parse_ingress_document, scan_ingress_document,
+};
+use crate::replay::ReplayStore;
+use crate::server::core_runtime::model_ir::ModelRequestIRV1;
+use hiroute_gateway_core::runtime::body::StreamBudget;
+use std::time::{Duration, Instant};
+
+struct Fixture {
+    store: ReplayStore,
+    budget: StreamBudget,
+    root: std::path::PathBuf,
+}
+
+impl Fixture {
+    fn new(threshold: usize, record_bytes: usize) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-local-work-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = ReplayManager::open(ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: threshold,
+            record_bytes,
+            orphan_ttl: Duration::from_secs(60),
+        })
+        .unwrap();
+        let budget = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024)
+            .unwrap()
+            .stream(8 * 1024 * 1024)
+            .unwrap();
+        Self {
+            store: manager.begin_request(budget.clone()).unwrap(),
+            budget,
+            root,
+        }
+    }
+
+    fn parse(&self, body: &[u8]) -> ModelRequestIRV1 {
+        let mut raw = self.store.begin_raw().unwrap();
+        for chunk in body.chunks(16 * 1024) {
+            raw.append(chunk).unwrap();
+        }
+        let raw = raw.seal().unwrap();
+        let stats = scan_ingress_document(self.store.reader(&raw).unwrap()).unwrap();
+        let (mut document, mut workspace) =
+            parse_ingress_document(IngressProtocol::Responses, &self.store, &raw, stats).unwrap();
+        compact_ingress_document_with_markers(
+            IngressProtocol::Responses,
+            &mut document,
+            &self.store,
+            workspace.generated_markers(),
+        )
+        .unwrap();
+        let mut request = decode_ingress_request_with_replay(
+            IngressProtocol::Responses,
+            &document,
+            Some(&self.store),
+        )
+        .unwrap();
+        externalize_model_request(&mut request, &self.store, 8).unwrap();
+        request
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+fn encode(fixture: &Fixture, template: PreparedNativeTemplate, quantum: usize) -> Vec<u8> {
+    let mut reader =
+        sequential_attempt_body(template, fixture.store.clone(), &fixture.budget, quantum).unwrap();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = reader.next_chunk().unwrap() {
+        assert!(chunk.bytes().len() <= quantum);
+        bytes.extend_from_slice(chunk.bytes());
+    }
+    reader.release();
+    assert!(reader.next_chunk().unwrap().is_none());
+    bytes
+}
+
+#[test]
+fn sequential_bulk_runs_preserve_all_escapes_and_empty_parts_at_chunk_boundaries() {
+    let controls: String = (0..32).map(char::from).collect();
+    let text = format!(
+        "{}\"\\{controls}路由🦀{}",
+        "a".repeat(8191),
+        "z".repeat(8193)
+    );
+    let wire = json!({"model":"alias", "input":[
+        {"role":"user","content":[{"type":"input_text","text":text}, {"type":"input_text","text":""}]},
+        {"type":"function_call", "call_id":"call-1", "name":"test", "arguments":serde_json::to_string(&json!({"text":text})).unwrap()},
+        {"type":"function_call_output", "call_id":"call-1", "output":{"text":text, "empty":""}}
+    ]});
+    let canonical = decode_ingress_request(IngressProtocol::Responses, &wire).unwrap();
+    for threshold in [1, 1024 * 1024] {
+        let fixture = Fixture::new(threshold, 31);
+        let mut request = canonical.clone();
+        externalize_model_request(&mut request, &fixture.store, 0).unwrap();
+        fixture
+            .store
+            .prevalidate(&model_content_refs(&request))
+            .unwrap();
+        for target in [
+            IngressProtocol::Responses,
+            IngressProtocol::ChatCompletions,
+            IngressProtocol::Messages,
+        ] {
+            let profile = CandidateProtocolProfile::exact_portable_path(
+                IngressProtocol::Responses,
+                target,
+                "physical",
+                fixed_reasoning("fixed"),
+            );
+            let expected = project_candidate_request(&canonical, &profile)
+                .unwrap()
+                .body;
+            let template = project_candidate_request_template(&request, &profile).unwrap();
+            for quantum in [1, 2, 5, 31, 8192, 16384] {
+                let live = fixture.budget.snapshot().unwrap().live;
+                let actual = encode(&fixture, template.clone(), quantum);
+                assert_eq!(actual.len(), template.wire_len);
+                assert_eq!(
+                    serde_json::from_slice::<serde_json::Value>(&actual).unwrap(),
+                    expected
+                );
+                assert_eq!(fixture.budget.snapshot().unwrap().live, live);
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "opt-in release benchmark; reports timings without a flaky deadline assertion"]
+fn benchmark_local_text_processing() {
+    let text = "ordinary text 中文, quote \" and slash \\, newline\n".repeat(15);
+    let input: Vec<_> = (0..492)
+        .map(|index| json!({"role":if index % 2 == 0 {"user"} else {"assistant"}, "content":text}))
+        .collect();
+    let wire = json!({"model":"alias", "input":input});
+    let body = serde_json::to_vec(&wire).unwrap();
+    let profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let expected = project_candidate_request(
+        &decode_ingress_request(IngressProtocol::Responses, &wire).unwrap(),
+        &profile,
+    )
+    .unwrap()
+    .body;
+    for threshold in [1024 * 1024, 1] {
+        let mut samples = Vec::new();
+        for iteration in 0..21 {
+            let fixture = Fixture::new(threshold, 16 * 1024);
+            let started = Instant::now();
+            let request = fixture.parse(&body);
+            let parsed = started.elapsed();
+            let template = project_candidate_request_template(&request, &profile).unwrap();
+            fixture
+                .store
+                .prevalidate(&model_content_refs(&request))
+                .unwrap();
+            let started = Instant::now();
+            let actual = encode(&fixture, template, 16 * 1024);
+            let encoded = started.elapsed();
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&actual).unwrap(),
+                expected
+            );
+            if iteration > 0 {
+                samples.push((parsed.as_micros(), encoded.as_micros()));
+            }
+        }
+        eprintln!(
+            "local_text_benchmark bytes={} threshold={} samples_us={samples:?}",
+            body.len(),
+            threshold
+        );
+    }
+}

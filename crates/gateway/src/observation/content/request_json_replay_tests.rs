@@ -103,9 +103,86 @@ fn capture(request_ir: &ModelRequestIRV1, store: &ReplayStore) -> Captured {
             break;
         }
     }
+    assert_capture_ids(&observation, &records);
     Captured {
         key: observation.inner.key,
         records,
+    }
+}
+
+// Recompute the published identities from their original formula, independently
+// of the private chunk fields and the reused fork state.
+fn assert_capture_ids(observation: &RequestObservation, records: &[Value]) {
+    use super::super::crypto::{WorkspaceHmac, stable_id};
+    let key = &observation.inner.key;
+    let metadata = observation.metadata();
+    let fork = stable_id(
+        "fork",
+        key,
+        b"conversation-fork",
+        &[metadata.request_id.as_bytes(), b"request_input", b"request"],
+    );
+    let mut transcript = WorkspaceHmac::new(key, b"transcript-root");
+    for part in [
+        b"hiroute.model-request-ir/v1".as_slice(),
+        b"no-parent-root",
+        b"append",
+        metadata.request_id.as_bytes(),
+        b"request_input",
+        fork.as_bytes(),
+    ] {
+        transcript.update(part);
+    }
+    let mut previous = None;
+    for record in records {
+        assert_eq!(record["fork_id"], fork);
+        if record["phase"] != "append" {
+            continue;
+        }
+        let message = record["message_ordinal"].as_u64().unwrap() as u32;
+        let part = record["part_ordinal"].as_u64().unwrap() as u32;
+        let message_id = stable_id(
+            "message",
+            key,
+            b"conversation-message-instance",
+            &[
+                metadata.conversation_id.as_bytes(),
+                b"no-parent-root",
+                metadata.request_id.as_bytes(),
+                b"request_input",
+                &message.to_be_bytes(),
+                record["message_role"].as_str().unwrap().as_bytes(),
+            ],
+        );
+        let content_id = stable_id(
+            "content",
+            key,
+            b"conversation-content-id",
+            &[
+                message_id.as_bytes(),
+                &part.to_be_bytes(),
+                record["content_blob_digest"].as_str().unwrap().as_bytes(),
+            ],
+        );
+        assert_eq!(record["message_instance_id"], message_id);
+        assert_eq!(record["content_id"], content_id);
+        if !record["content_ref"].is_null() {
+            assert_eq!(record["content_ref"]["content_id"], content_id);
+        }
+        if previous != Some((message, part)) {
+            transcript.update(message_id.as_bytes());
+            transcript.update(content_id.as_bytes());
+            previous = Some((message, part));
+        }
+    }
+    if records.last().unwrap()["phase"] == "finish" {
+        assert_eq!(
+            records.last().unwrap()["result_transcript_root"],
+            format!(
+                "transcript-{}",
+                transcript.finish().trim_start_matches("sha256:")
+            )
+        );
     }
 }
 

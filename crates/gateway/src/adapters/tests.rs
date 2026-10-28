@@ -1,3 +1,6 @@
+#[path = "tests/local_work.rs"]
+mod local_work;
+
 use serde_json::json;
 
 use super::*;
