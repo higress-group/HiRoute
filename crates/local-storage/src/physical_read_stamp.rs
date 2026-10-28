@@ -18,16 +18,10 @@ fn changed() -> PortError {
 #[cfg(unix)]
 fn identity(path: &Path) -> std::io::Result<[u64; 2]> {
     use std::os::unix::fs::MetadataExt;
-    let file = rustix::fs::open(
-        path,
-        rustix::fs::OFlags::RDONLY
-            | rustix::fs::OFlags::NOFOLLOW
-            | rustix::fs::OFlags::CLOEXEC
-            | rustix::fs::OFlags::NONBLOCK,
-        rustix::fs::Mode::empty(),
-    )
-    .map_err(std::io::Error::from)?;
-    let metadata = std::fs::File::from(file).metadata()?;
+    // POSIX record locks are process-associated: closing another descriptor
+    // for this database can release SQLite's locks and leave its cache stale.
+    // Check the path without opening or closing an additional descriptor.
+    let metadata = std::fs::symlink_metadata(path)?;
     if !metadata.is_file() {
         return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
     }
