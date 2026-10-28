@@ -42,8 +42,20 @@
 .trial-connection-field { display: grid; gap: 6px; max-width: 420px; }
 .trial-connect-card { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; min-width: 0; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: var(--radius-md); background: var(--accent-soft); }
 .trial-connect-card > div { display: grid; gap: 4px; min-width: 0; flex: 1 1 260px; }
+.trial-connect-card[hidden] { display: none; }
 .trial-connect-card:has(.trial-inline-connection), .trial-connect-card:has(.trial-recovery) { display: block; background: var(--panel-high); }
 .trial-inline-connection h3, .trial-recovery h3 { margin-bottom: 10px; font-size: calc(14px * var(--hr-text-scale)); }
+.trial-saved-choice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-block: 12px; }
+.trial-saved-choice small { display: block; color: var(--text-muted); }
+.trial-picker, .trial-picker-source { display: grid; gap: 12px; min-width: 0; }
+.trial-picker-source { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.trial-picker-source h3 { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.trial-picker-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.trial-picker-row .trial-choice { flex: 1 1 260px; }
+.trial-picker-row .trial-choice:disabled, .trial-picker-row .trial-choice[aria-disabled="true"] { opacity: .65; cursor: not-allowed; }
+.trial-validation-summary { display: block; min-width: 0; }
+.trial-validation-summary ul { margin: 8px 0 0; padding-left: 22px; }
+.trial-validation-summary .btn { text-align: left; white-space: normal; }
 .trial-rule { margin: 0; }
 .trial-choice { position: relative; }
 .trial-choice > em { position: absolute; top: 14px; right: 16px; color: var(--accent-bright); font-size: calc(12px * var(--hr-text-scale)); font-style: normal; }

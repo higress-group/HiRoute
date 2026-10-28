@@ -1,0 +1,475 @@
+import assert from 'node:assert/strict';
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { connectPage, evaluate, waitFor } from './cdp-client.mjs';
+
+const [port, base, output] = process.argv.slice(2);
+const client = await connectPage(Number(port));
+const keepAlive = setInterval(() => {}, 1000);
+const results = [];
+await client.send('Page.addScriptToEvaluateOnNewDocument', {source:`window.setupErrors=[];addEventListener('error',e=>window.setupErrors.push({message:e.message,stack:e.error?.stack}));addEventListener('unhandledrejection',e=>window.setupErrors.push({message:String(e.reason),stack:e.reason?.stack}));`});
+async function open(query, language='en', width=755, height=600) {
+  const url = `${base}new-model-trial.html?view=quickstart&native=1&lang=${language}&${query}`;
+  await client.send('Page.enable'); await client.send('Runtime.enable');
+  await client.send('Emulation.setDeviceMetricsOverride', {width,height,deviceScaleFactor:1,mobile:false});
+  await client.send('Page.navigate',{url});
+  await waitFor(client, `location.href===${JSON.stringify(url)} && !!document.querySelector('.new-models button')`);
+  await click('.new-models button', language==='zh'?'试用':'Try');
+  await waitFor(client, `!!document.querySelector('.trial-agent-choice') && !!document.querySelector('.trial-footer')`);
+}
+async function click(selector, text = '') {
+  const expression = `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&!e.disabled&&e.textContent.includes(${JSON.stringify(text)}))`;
+  await waitFor(client, `!!(${expression})`);
+  await evaluate(client, `(${expression}).click();true`);
+}
+async function field(selector, value) {
+  await waitFor(client, `!!document.querySelector(${JSON.stringify(selector)})`);
+  await evaluate(client, `(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+}
+async function saveConnection(multiple=false) {
+  await click('.trial-model-card','Kimi K3');
+  await click('.trial-connect-card button','Connect here');
+  await waitFor(client, `!!document.querySelector('.trial-inline-connection .connection-flow')`);
+  await click('.trial-inline-connection button','Kimi');
+  await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
+  await field('#mc-connection-form input[type=password]', 'synthetic-fixture-key');
+  await click('.modal-foot button', 'Check and continue');
+  await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
+  await click('.model-selection input[type=checkbox]');
+  if (multiple) await evaluate(client, `document.querySelectorAll('.model-selection input[type=checkbox]')[1].click();true`);
+  await click('.modal-foot button', 'Save connection');
+}
+async function shot(name) {
+  await evaluate(client, `Promise.all(document.getAnimations().filter(animation=>animation.effect?.getComputedTiming().iterations!==Infinity).map(animation=>animation.finished.catch(()=>{}))).then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true)))))`);
+  const image = await client.send('Page.captureScreenshot',{format:'png'});
+  await writeFile(path.join(output,`${name}.png`),Buffer.from(image.data,'base64'));
+}
+async function run(id, test) {
+  if (process.env.TRIAL_SETUP_CASE && process.env.TRIAL_SETUP_CASE !== id) return;
+  try { await test(); results.push({id,state:'passed'}); }
+  catch (error) {
+    await shot(`failure-${id}`).catch(()=>{});
+    const page = await evaluate(client, `({text:document.body.innerText,trace:window.trialTrace,errors:window.setupErrors})`).catch(()=>null);
+    results.push({id,state:'failed',error:String(error.stack??error),page});
+  }
+}
+try {
+  await run('readiness.all-blockers', async () => {
+    await open('no-reasoning-default=1');
+    await click('.trial-choice-list .trial-choice', 'GPT');
+    const disabled = await evaluate(client, `document.querySelector('.trial-footer .btn-primary').disabled`);
+    assert.equal(disabled, false, 'ordinary missing reasoning must leave review available for validation');
+    await click('.trial-footer .btn-primary', 'Review changes');
+    await waitFor(client, `document.querySelector('.trial-validation-summary')?.textContent.includes('Complete')`);
+    assert.match(await evaluate(client, `document.querySelector('.trial-validation-summary').textContent`), /reasoning/i);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+  });
+  await run('save.user-declared-binding', async () => {
+    await open('saved-user-declared=1');
+    const catalogReads=await evaluate(client, `trialTrace.filter(x=>x.command==='model_availability').length`);
+    const serviceReads=await evaluate(client, `trialTrace.filter(x=>x.command==='decision_services').length`);
+    await saveConnection();
+    await waitFor(client, `!!document.querySelector('.trial-recovery')`);
+    await waitFor(client, `!document.querySelector('.trial-recovery button:disabled')`);
+    assert.match(await evaluate(client, `document.querySelector('.trial-recovery').textContent`),/Use this saved model/i,
+      'saved unlinked declaration must offer its actual executable binding explicitly');
+    await click('.trial-recovery button','Use this saved model');
+    await waitFor(client, `document.querySelector('.trial-page').textContent.includes('Saved synthetic model')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='check_registered_model_connection').some(x=>x.payload.request.inference_model_id)`),false);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='model_availability').length`),catalogReads,'unlinked save does not synchronously reread unrelated catalog history');
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='decision_services').length`),serviceReads,'saved model selection does not wait for unrelated decision services');
+  });
+  await run('save.unlinked-id-never-becomes-catalog-proof', async () => {
+    await open('saved-user-declared=1&saved-id-collision=1'); await saveConnection();
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    await click('.trial-recovery button','Use this saved model');
+    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Saved synthetic model')`);
+    assert.equal(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] .model-fact-tags')`),null);
+    assert.equal(await evaluate(client, `!!document.querySelector('.trial-model-facts')`),false);
+    assert.match(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent`),/catalog version unconfirmed/i);
+  });
+  await run('picker.unlinked-collision-requires-explicit-choice', async () => {
+    await open('unlinked-existing-collision=1');
+    await click('.trial-model-card','Kimi K3');
+    assert.match(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true]').textContent`),/catalog match unconfirmed/i);
+    assert.equal(await evaluate(client, `!!document.querySelector('[data-trial-target="trial-reasoning"]')`),false,'the catalog card cannot silently select an unlinked saved binding');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('.trial-picker .trial-choice','Saved synthetic model');
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Saved synthetic model')`);
+    assert.equal(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] .model-fact-tags')`),null);
+    assert.match(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent`),/catalog version unconfirmed/i);
+  });
+  await run('save.custom-check-path', async () => {
+    await open('saved-user-declared=1&saved-custom=1');
+    await click('.trial-model-card','Kimi K3'); await click('.trial-connect-card button','Connect here');
+    await click('.connection-custom-entry');
+    await waitFor(client, `!!document.querySelector('#mc-connection-form')`);
+    const setLabel = async (label, value) => {
+      const expression=`[...document.querySelectorAll('#mc-connection-form .field, #mc-manual-form .field')].find(e=>e.querySelector('.field-label')?.textContent.trim()===${JSON.stringify(label)})?.querySelector('input')`;
+      await waitFor(client, `!!(${expression})`);
+      await evaluate(client, `(()=>{const e=${expression};Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+    };
+    await setLabel('Connection name','Synthetic custom source');
+    await setLabel('Base URL','https://synthetic.invalid/v1');
+    await setLabel('API Key','synthetic-fixture-key');
+    await click('#mc-connection-form button','Edit models manually');
+    await setLabel('Model ID','fixture-unlinked-model');
+    await click('.modal-foot button','Check and save');
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='check_model_connection').length`),1);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('readiness.compound-live-focus', async () => {
+    await open('no-trial-reasoning-default=1&disabled-trial=1');
+    await click('.trial-choice-list .trial-choice','GPT');
+    await click('.trial-footer .btn-primary','Review changes');
+    await waitFor(client, `document.querySelector('.trial-validation-summary')?.textContent.includes('trial reasoning')`);
+    await waitFor(client, `!!document.activeElement.closest('[data-trial-target="trial"]')`);
+    const summary=await evaluate(client, `document.querySelector('.trial-validation-summary').textContent`);
+    assert.match(summary,/trial connection/i); assert.match(summary,/trial reasoning/i);
+    const geometry=await evaluate(client, `(()=>{const a=document.activeElement.getBoundingClientRect(), f=document.querySelector('.trial-footer').getBoundingClientRect();return {a:{top:a.top,bottom:a.bottom},footer:f.top}})()`);
+    assert.ok(geometry.a.top>=0 && geometry.a.bottom<=geometry.footer+1,JSON.stringify(geometry));
+    await shot('readiness-compound-en-755');
+    assert.equal(await evaluate(client, `document.querySelectorAll('.trial-validation-summary[role=alert]').length`),1);
+    await click('.trial-validation-summary button','trial reasoning');
+    await waitFor(client, `!!document.activeElement.closest('[data-trial-target="trial-reasoning"]')`);
+    const second=await evaluate(client, `(()=>{const a=document.activeElement.getBoundingClientRect(),f=document.querySelector('.trial-footer').getBoundingClientRect();return {top:a.top,bottom:a.bottom,footer:f.top};})()`);
+    assert.ok(second.top>=0 && second.bottom<=second.footer+1,JSON.stringify(second));
+    await evaluate(client, `trialSetupControl.setTrialAvailability(true);true`);
+    await click('.trial-footer button','Refresh availability');
+    await waitFor(client, `!!document.querySelector('.trial-validation-summary') && !document.querySelector('.trial-validation-summary').textContent.includes('trial connection')`);
+    assert.match(await evaluate(client, `document.querySelector('.trial-validation-summary').textContent`),/trial reasoning/i);
+    await click('[data-trial-target="trial-reasoning"] button','Choose reasoning');
+    await click('[role=dialog] .segment','On'); await click('[role=dialog] button','Apply');
+    await waitFor(client, `!document.querySelector('.trial-validation-summary')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+  });
+  await run('readiness.binding-and-primary-reasoning', async () => {
+    await open('disabled-trial=1&no-reasoning-default=1');
+    await click('.trial-choice-list .trial-choice','GPT');
+    assert.equal(await evaluate(client, `document.querySelector('.trial-footer .btn-primary').disabled`),false,'field errors keep review available for validation');
+    await click('.trial-footer .btn-primary','Review changes');
+    await waitFor(client, `!!document.querySelector('.trial-validation-summary')`);
+    const summary=await evaluate(client, `document.querySelector('.trial-validation-summary').textContent`);
+    assert.match(summary,/trial connection/i); assert.match(summary,/Primary reasoning/i);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+  });
+  await run('readiness.stale-reasoning-repair', async () => {
+    await open('no-trial-reasoning-default=1');
+    await click('[data-trial-target="trial-reasoning"] button','Choose reasoning');
+    await click('[role=dialog] .segment','On'); await click('[role=dialog] button','Apply');
+    await evaluate(client, `trialSetupControl.trialReasoningMode='default';true`);
+    await click('.trial-footer button','Refresh availability');
+    await waitFor(client, `document.querySelector('[data-trial-target="trial-reasoning"]')?.textContent.includes('current reasoning setting or capability is invalid')`);
+    assert.equal(await evaluate(client, `!!document.querySelector('.trial-validation-summary')`),false,'a known stale value is explained before an attempted review');
+    await click('[data-trial-target="trial-reasoning"] button','Use the model’s fixed setting');
+    await waitFor(client, `!document.querySelector('[data-trial-target="trial-reasoning"] .oc-inline-error')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+  });
+  await run('picker.exact-source-no-discovery', async () => {
+    await open('same-names=1');
+    const before=await evaluate(client, `trialTrace.length`);
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await waitFor(client, `!!document.querySelector('.trial-picker')`);
+    await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=trial]').textContent.includes('A second provider')`);
+    await click('[data-trial-target=primary] button','Choose an existing connection');
+    await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Codex'));[...source.querySelectorAll('.trial-choice')].find(e=>e.textContent.includes('GPT-5.6-Sol')).click();return true;})()`);
+    await waitFor(client, `!document.querySelector('.trial-picker') && !!document.querySelector('[data-trial-target=primary] .trial-choice.selected')`);
+    const commands=await evaluate(client, `trialTrace.slice(${before}).map(x=>x.command)`);
+    assert.equal(commands.some(command=>['compute_scan','compute_subscriptions','check_model_connection','check_registered_model_connection','apply_compute_save'].includes(command)),false,JSON.stringify(commands));
+    await shot('picker-selected-same-name-en-755');
+    await click('.trial-footer .btn-primary','Review changes');
+    await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+    await click('.trial-review > .actions .btn-primary','Save and publish route');
+    await waitFor(client, `!!document.querySelector('.trial-mapping')`);
+    const saved=await evaluate(client, `trialTrace.find(x=>x.command==='preview_plan_editor' && x.payload.input.action==='save_draft').payload.input.editor`);
+    assert.equal(saved.smart.economy[0].binding_id,'binding/second/same-name');
+    assert.equal(saved.smart.primary[0].binding_id,'binding/codex/gpt-5.6-sol');
+  });
+  await run('picker.keyboard-dialog-geometry', async () => {
+    for (const [language,theme,width,height] of [['en','light',755,600],['zh','dark',755,600],['en','dark',1200,813],['zh','light',1200,813]]) {
+      await open(`same-names=1&theme=${theme}`,language,width,height);
+      await evaluate(client, `document.querySelector('[data-trial-target=trial] [data-trial-focus]').focus();true`);
+      await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r',unmodifiedText:'\r'});
+      await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+      await waitFor(client, `!!document.querySelector('.trial-picker') && !!document.activeElement.closest('[role=dialog]')`);
+      const geometry=await evaluate(client, `(()=>{const modal=document.querySelector('[role=dialog]'),r=modal.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,overflow:[...modal.querySelectorAll('.trial-picker-source,.trial-picker-row,.trial-choice')].some(e=>e.scrollWidth>e.clientWidth+1)};})()`);
+      assert.ok(geometry.left>=-1 && geometry.right<=width+1 && geometry.top>=-1 && geometry.bottom<=height+1 && !geometry.overflow,JSON.stringify(geometry));
+      await shot(`picker-dialog-${language}-${theme}-${width}`);
+      await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+      await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+      await waitFor(client, `!document.querySelector('.trial-picker') && document.activeElement.matches('[data-trial-target=trial] [data-trial-focus]')`);
+    }
+  });
+  await run('picker.changed-binding-and-cancelled-read', async () => {
+    await open('');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await waitFor(client, `!!document.querySelector('.trial-picker')`);
+    await evaluate(client, `trialSetupControl.setTrialAvailability(false);true`);
+    await click('.trial-picker-source .trial-choice','Qwen3-Coder-Plus');
+    await waitFor(client, `document.querySelector('.trial-picker [role=alert]')?.textContent.includes('changed or could not be read')`);
+    assert.ok(await evaluate(client, `[...document.querySelectorAll('.trial-picker .trial-choice')].find(e=>e.textContent.includes('Qwen3-Coder-Plus')).disabled`));
+    assert.match(await evaluate(client, `[...document.querySelectorAll('.trial-picker .trial-choice')].find(e=>e.textContent.includes('Qwen3-Coder-Plus')).textContent`),/disabled/i);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),0);
+    await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await waitFor(client, `!document.querySelector('.trial-picker')`);
+    await open('same-names=1');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await evaluate(client, `trialSetupControl.holdNextManagement=true;true`);
+    await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
+    await waitFor(client, `trialSetupControl.pending.length===1`);
+    await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await waitFor(client, `!document.querySelector('.trial-picker')`);
+    await evaluate(client, `trialSetupControl.release();true`);
+    await waitFor(client, `trialSetupControl.pending.length===0 && !document.querySelector('.trial-footer .btn-primary').disabled`);
+    assert.ok(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Qwen3-Coder-Plus')`),'a late read cannot replace the role after cancellation');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    assert.ok(await evaluate(client, `!!document.querySelector('.trial-picker .trial-choice:not(:disabled)')`));
+  });
+  await run('picker.append-to-exact-saved-api', async () => {
+    await open('append-fixture=1');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('.trial-picker-source button','Add model to this connection');
+    await waitFor(client, `document.querySelectorAll('[role=dialog]').length===2 && !!document.querySelector('.model-result-list input:not(:disabled)')`);
+    await click('.model-result-list input:not(:disabled)');
+    await click('[role=dialog] .modal-foot button','Add 1 models');
+    await waitFor(client, `document.querySelectorAll('[role=dialog]').length===1 && trialSetupControl.appendChange!==null`);
+    const change=await evaluate(client, `trialSetupControl.appendChange`);
+    assert.equal(change.edit.action,'append_models');
+    assert.equal(change.subject.candidate.candidate_ref,'candidate/recheck/source/bailian/coding');
+    assert.deepEqual(change.selected_model_refs,['model-ref/append-new']);
+    assert.deepEqual(change.key_edits,[]);
+    await evaluate(client, `document.querySelector('[role=dialog] .modal-head .icon-btn').click();true`);
+    await waitFor(client, `!!document.querySelector('.trial-picker') && [...document.querySelectorAll('.trial-picker .trial-choice')].some(e=>e.textContent.includes('Added synthetic model'))`);
+    await click('.trial-picker .trial-choice','Added synthetic model');
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=trial]').textContent.includes('Added synthetic model')`);
+    const forbidden=await evaluate(client, `trialTrace.filter(x=>['compute_scan','compute_subscriptions','register_protected_model_input'].includes(x.command)).map(x=>x.command)`);
+    assert.deepEqual(forbidden,[]);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('picker.append-to-exact-saved-subscription', async () => {
+    await open('subscription-append=1');
+    await click('[data-trial-target=primary] button','Choose an existing connection');
+    await click('.trial-picker-source button','Add model to this connection');
+    await waitFor(client, `document.querySelectorAll('[role=dialog]').length===2 && [...document.querySelectorAll('[role=dialog] .modal-foot button')].some(e=>e.textContent.includes('Check subscription')&&!e.disabled)`);
+    await click('[role=dialog] .modal-foot button','Check subscription');
+    await waitFor(client, `[...document.querySelectorAll('.v3-catalog .check-row')].some(e=>e.textContent.includes('Added subscription model'))`);
+    await evaluate(client, `[...document.querySelectorAll('.v3-catalog .check-row')].find(e=>e.textContent.includes('Added subscription model')).querySelector('input').click();true`);
+    await click('[role=dialog] .modal-foot button','Save connection');
+    await waitFor(client, `document.querySelectorAll('[role=dialog]').length===1 && trialSetupControl.appendChange!==null`);
+    const change=await evaluate(client, `trialSetupControl.appendChange`);
+    assert.equal(change.edit.action,'append_models'); assert.deepEqual(change.selected_model_refs,['model-ref/sub-added']); assert.deepEqual(change.key_edits,[]);
+    await evaluate(client, `document.querySelector('[role=dialog] .modal-head .icon-btn').click();true`);
+    await waitFor(client, `!!document.querySelector('.trial-picker') && [...document.querySelectorAll('.trial-picker .trial-choice')].some(e=>e.textContent.includes('Added subscription model'))`);
+    await click('.trial-picker .trial-choice','Added subscription model');
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=primary]')?.textContent.includes('Added subscription model')`);
+    const forbidden=await evaluate(client, `trialTrace.filter(x=>['register_protected_model_input','manage_subscription_login'].includes(x.command)).map(x=>x.command)`);
+    assert.deepEqual(forbidden,[]); assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('save.registered-observed', async () => {
+    await open('saved-registered=1'); await saveConnection();
+    await waitFor(client, `document.querySelector('.trial-saved')?.textContent.includes('Saved synthetic API')`);
+    assert.ok(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent.includes('Saved synthetic model')`));
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('save.late-check-cannot-replace-current-evidence', async () => {
+    await open('saved-registered=1&check-race=1');
+    await click('.trial-model-card','Kimi K3'); await click('.trial-connect-card button','Connect here');
+    await click('.trial-inline-connection button','Kimi');
+    await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
+    await click('.modal-foot button','Check and continue');
+    await waitFor(client, `trialSetupControl.pendingCheck.length===1`);
+    await click('.modal-foot button','Cancel check');
+    await click('.modal-foot button','Check and continue');
+    await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
+    await evaluate(client, `trialSetupControl.releaseCheck();true`);
+    await waitFor(client, `trialSetupControl.pendingCheck.length===0`);
+    await click('.model-selection input[type=checkbox]');
+    await click('.modal-foot button','Save connection');
+    await waitFor(client, `document.querySelector('.trial-saved')?.textContent.includes('Saved synthetic API')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('save.multiple-needs-choice', async () => {
+    await open('saved-user-declared=1&saved-multiple=1'); await saveConnection(true);
+    await waitFor(client, `document.querySelectorAll('.trial-saved-choice').length===2`);
+    assert.equal(await evaluate(client, `document.querySelectorAll('.trial-saved-choice button').length`),2);
+    await evaluate(client, `[...document.querySelectorAll('.trial-saved-choice')].find(e=>e.textContent.includes('Second synthetic model')).querySelector('button').click();true`);
+    await waitFor(client, `document.querySelector('[data-trial-target=trial]').textContent.includes('Second synthetic model')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('save.excludes-unselected-later-binding', async () => {
+    await open('saved-user-declared=1&saved-extra-binding=1'); await saveConnection();
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.equal(await evaluate(client, `document.querySelectorAll('.trial-saved-choice').length`),1);
+    assert.doesNotMatch(await evaluate(client, `document.querySelector('.trial-recovery').textContent`),/Second synthetic model/);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('save.failed-read-retry-once', async () => {
+    await open('saved-user-declared=1&saved-read-failure=1'); await saveConnection();
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('could not be verified')`);
+    await click('.trial-recovery button','Refresh result');
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('save.lost-reply-recovers-original-operation', async () => {
+    await open('saved-user-declared=1&lost-apply=1'); await saveConnection();
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Verifying connection result')`);
+    await click('.trial-recovery button','Refresh result');
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='observe_operation').length`),1);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='get_compute_save_result').length`),1);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+    await click('.trial-recovery button','Use this saved model');
+    await waitFor(client, `document.querySelector('[data-trial-target=trial]').textContent.includes('Saved synthetic model')`);
+  });
+  await run('save.lost-reply-rejects-replaced-operation', async () => {
+    await open('saved-user-declared=1&lost-apply=1'); await saveConnection();
+    await waitFor(client, `!!document.querySelector('.trial-recovery')`);
+    await evaluate(client, `trialSetupControl.replacePending();true`);
+    await click('.trial-recovery button','Refresh result');
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('still unconfirmed')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='get_compute_save_result').length`),0);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('save.stale-revision-remains-saved', async () => {
+    for (const mismatch of ['saved-revision-mismatch','saved-candidate-mismatch']) {
+      await open(`saved-user-declared=1&${mismatch}=1`); await saveConnection();
+      await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('could not be confirmed')`);
+      assert.doesNotMatch(await evaluate(client, `document.querySelector('.trial-recovery').textContent`),/Use this saved model/);
+      await click('.trial-recovery button','Refresh result');
+      await waitFor(client, `!document.querySelector('.trial-recovery button:disabled')`);
+      assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+    }
+  });
+  await run('save.rechecks-renamed-disabled-and-removed', async () => {
+    for (const action of ['rename','disable','remove']) {
+      await open('saved-user-declared=1'); await saveConnection();
+      await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+      await evaluate(client, `trialSetupControl.changeSaved(${JSON.stringify(action)});true`);
+      await click('.trial-recovery button','Use this saved model');
+      if (action==='rename') {
+        await waitFor(client, `document.querySelector('[data-trial-target=trial]')?.textContent.includes('Renamed synthetic API')`);
+      } else {
+        await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('changed or is unavailable')`);
+        assert.equal(await evaluate(client, `document.querySelectorAll('.trial-saved-choice').length`),0);
+      }
+      assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+    }
+  });
+  await run('save.old-read-coalesces-then-refreshes', async () => {
+    await open('saved-user-declared=1&hold-apply=1'); await saveConnection();
+    await waitFor(client, `trialSetupControl.pendingApply.length===1`);
+    await evaluate(client, `trialSetupControl.holdNextManagement=true;[...document.querySelectorAll('.trial-footer button')].find(e=>e.textContent.includes('Refresh availability')).click();true`);
+    await waitFor(client, `trialSetupControl.pending.length===1`);
+    await evaluate(client, `trialSetupControl.releaseApply();true`);
+    await waitFor(client, `trialTrace.some(x=>x.command==='get_compute_save_result')`);
+    await evaluate(client, `trialSetupControl.release();true`);
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.ok(await evaluate(client, `trialTrace.filter(x=>x.command==='compute_management_snapshot').length>=3`));
+    await click('.trial-recovery button','Use this saved model');
+    await waitFor(client, `document.querySelector('[data-trial-target=trial]').textContent.includes('Saved synthetic model')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('save.does-not-wait-for-unrelated-services', async () => {
+    await open('saved-user-declared=1&hold-apply=1'); await saveConnection();
+    await waitFor(client, `trialSetupControl.pendingApply.length===1`);
+    await evaluate(client, `trialSetupControl.holdNextDecision=true;[...document.querySelectorAll('.trial-footer button')].find(e=>e.textContent.includes('Refresh availability')).click();true`);
+    await waitFor(client, `trialSetupControl.pendingDecision.length===1`);
+    await evaluate(client, `trialSetupControl.releaseApply();true`);
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.equal(await evaluate(client, `trialSetupControl.pendingDecision.length`),1,'model resolution must not wait for decision-service refresh');
+    await evaluate(client, `trialSetupControl.releaseDecision();true`);
+    await click('.trial-recovery button','Use this saved model');
+    await waitFor(client, `document.querySelector('[data-trial-target=trial]').textContent.includes('Saved synthetic model')`);
+  });
+  await run('save.closed-flow-ignores-late-read', async () => {
+    await open('saved-user-declared=1&hold-apply=1'); await saveConnection();
+    await waitFor(client, `trialSetupControl.pendingApply.length===1`);
+    await evaluate(client, `trialSetupControl.holdNextManagement=true;[...document.querySelectorAll('.trial-footer button')].find(e=>e.textContent.includes('Refresh availability')).click();true`);
+    await waitFor(client, `trialSetupControl.pending.length===1`);
+    await evaluate(client, `trialSetupControl.releaseApply();true`);
+    await waitFor(client, `!!document.querySelector('.trial-recovery')`);
+    await click('.trial-page .toolbar-actions button','Back');
+    await waitFor(client, `!!document.querySelector('.new-models') && !document.querySelector('.trial-page')`);
+    await evaluate(client, `trialSetupControl.release();true`);
+    await waitFor(client, `trialSetupControl.pending.length===0`);
+    assert.equal(await evaluate(client, `!!document.querySelector('.trial-page')`),false);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('trust.initial-presets-exact-review-back', async () => {
+    for (const [language,theme,width,height] of [['en','light',755,600],['zh','dark',755,600],['en','dark',1200,813],['zh','light',1200,813]]) {
+      await open(`theme=${theme}`,language,width,height);
+      await click('.trial-choice-list .trial-choice','GPT');
+      const selected=await evaluate(client, `document.querySelector('.trial-setup .trust-levels [aria-pressed=true]')?.textContent.trim()`);
+      assert.equal(selected,language==='zh'?'试用':'Trial');
+      const labels=await evaluate(client, `[...document.querySelectorAll('.trial-setup .trust-levels button')].map(e=>e.textContent.trim())`);
+      assert.equal(labels.length,5);
+      for (let i=0;i<labels.length;i++) {
+        await click('.trial-setup .trust-levels button',labels[i]);
+        assert.equal(await evaluate(client, `document.querySelector('.trial-setup .trust-levels [aria-pressed=true]').textContent.trim()`),labels[i]);
+      }
+      assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/0$/);
+      await field('.trial-setup .trust-slider','0');
+      assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/1$/);
+      await field('.trial-setup .trust-slider','1000');
+      await evaluate(client, `document.querySelector('.trial-setup .trust-slider').focus();true`);
+      await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowLeft',code:'ArrowLeft',windowsVirtualKeyCode:37});
+      await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowLeft',code:'ArrowLeft',windowsVirtualKeyCode:37});
+      assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/0\.001$/);
+      await field('.trial-setup .trust-slider','277');
+      assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/0\.723$/);
+      assert.equal(await evaluate(client, `document.querySelectorAll('.trial-setup .trust-levels [aria-pressed=true]').length`),0);
+      assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor' || (x.command==='observation_read' && x.payload?.request?.intent?.view==='plan_trust_replay')).length`),0);
+      await evaluate(client, `document.querySelector('.trial-setup .trust-control').scrollIntoView({block:'center'});true`);
+      await shot(`initial-trust-${language}-${theme}-${width}`);
+      await click('.trial-footer .btn-primary',language==='zh'?'检查改动':'Review changes');
+      await waitFor(client, `!!document.querySelector('.trial-review .trust-slider') && !!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+      assert.equal(await evaluate(client, `document.querySelector('.trial-review [data-decision-field$="-simple-threshold"]').value`),'0.723');
+      await field('.trial-review .trust-slider','500');
+      await field('.trial-review .plan-identity-fields input','Edited trial route');
+      await click('[data-route-group=primary] button.effort-select','high');
+      await click('[role=dialog] .segment','low'); await click('[role=dialog] button',language==='zh'?'应用':'Apply');
+      await click('.trial-review summary',language==='zh'?'判断设置':'Judgment settings');
+      await click('.trial-review summary',language==='zh'?'如何判断胜任':'How competence is assessed');
+      await evaluate(client, `(()=>{const e=document.querySelector('.trial-review [data-decision-field$="-criterion-0"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Edited trial criterion');e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+      if (language==='en' && width===755) await click('.trial-page .toolbar-actions button','Back');
+      else await click('.trial-review > .actions button',language==='zh'?'返回设置':'Back to setup');
+      await waitFor(client, `!!document.querySelector('.trial-setup .trust-slider')`);
+      assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/0\.5$/);
+      assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'Edited trial route');
+      assert.match(await evaluate(client, `document.querySelector('[data-trial-target="primary-reasoning"] button').textContent`),/low/);
+      await field('.trial-setup .trust-slider','277');
+      await click('.trial-footer .btn-primary',language==='zh'?'检查改动':'Review changes');
+      await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+      await click('.trial-review > .actions .btn-primary',language==='zh'?'保存并发布路由':'Save and publish route');
+      await waitFor(client, `!!document.querySelector('.trial-mapping')`);
+      const writes=await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').map(x=>x.payload.input)`);
+      assert.deepEqual(writes.map(x=>x.action),['save_draft','publish']);
+      for(const write of writes) {assert.equal(write.editor.smart.judgment.degree.simple_threshold_millis,723);assert.equal(write.editor.display_name,'Edited trial route');assert.equal(write.editor.smart.judgment.competence.criteria[0],'Edited trial criterion');assert.equal(write.editor.smart.primary[0].reasoning.profile,'low');}
+    }
+  });
+  await run('trust.publish-and-reopen-exact-values', async () => {
+    for (const threshold of [0,723,1000]) {
+      await open(''); await click('.trial-choice-list .trial-choice','GPT');
+      await field('.trial-setup .trust-slider',String(1000-threshold));
+      assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
+      await click('.trial-footer .btn-primary','Review changes');
+      await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
+      await click('.trial-review > .actions .btn-primary','Save and publish route');
+      await waitFor(client, `!!document.querySelector('.trial-mapping')`);
+      const writes=await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').map(x=>x.payload.input)`);
+      assert.deepEqual(writes.map(value=>value.action),['save_draft','publish']);
+      assert.ok(writes.every(value=>value.editor.smart.judgment.degree.simple_threshold_millis===threshold));
+      await evaluate(client, `reopenPublishedTrial();true`);
+      await waitFor(client, `!!document.querySelector('.plan-editor [data-trust-control="smart"] .trust-slider')`);
+      assert.equal(await evaluate(client, `document.querySelector('.plan-editor [data-trust-control="smart"] .trust-slider').value`),String(1000-threshold));
+    }
+  });
+  await writeFile(path.join(output,'report.json'),JSON.stringify({proof:'production components and synthetic IPC; no model calls',results},null,2));
+  console.log(JSON.stringify(results.map(({id,state,error})=>({id,state,error}))));
+  if (results.some(result=>result.state==='failed')) process.exitCode=1;
+} finally {clearInterval(keepAlive);client.close();}

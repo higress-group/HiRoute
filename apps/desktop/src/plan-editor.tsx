@@ -55,6 +55,7 @@ export type PlanEditorHandle = {
   saveDraft(): Promise<boolean>;
   publish(): Promise<boolean>;
   cancel(): void;
+  currentEditor(): Editor;
 };
 
 function workerProtocolAdvice(editor: Editor, options: Options | null): ProtocolAdvice | undefined {
@@ -182,6 +183,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     saveDraft: () => act('save_draft'),
     publish: () => act('publish'),
     cancel: onClose,
+    currentEditor: () => structuredClone(editor),
   }));
   useEffect(() => {
     if (!notice) return;
