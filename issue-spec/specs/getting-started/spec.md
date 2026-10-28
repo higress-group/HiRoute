@@ -49,6 +49,9 @@ an incomplete association read SHALL NOT be presented as unused.
   service evidence with an earlier failure. Independent startup checks and failed-read
   follow-ups MUST share the same ordering of accepted startup results.
 
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/249#issuecomment-6461278064
+
 ### Requirement: Preferences preserve the current interaction
 
 The production shell MUST support English and Chinese, light and dark themes,

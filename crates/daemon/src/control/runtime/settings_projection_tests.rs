@@ -59,13 +59,20 @@ fn model_projection_omits_unrequested_facets_and_preserves_full_v2_status() {
         );
     }
 
-    // A broken, unrequested Skill resource read must not block model selection.
-    // This is also a negative control: the existing complete view must still fail.
+    // A broken, unrequested Skill record must not block model selection. The
+    // complete view still reads that record and must report its actual failure.
     let db = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
-    db.execute("DROP TABLE agent_skill_installations", [])
-        .unwrap();
+    db.pragma_update(None, "foreign_keys", false).unwrap();
+    db.execute("INSERT INTO agent_skill_installations(workspace_id,root_ref,revision,record_json,owner_operation_id) VALUES(?1,?2,1,'{}','corrupt-skill-owner')",
+        rusqlite::params![WorkspaceId::DEFAULT, "skill-root/agent_codex_default"]).unwrap();
     let narrow = read(json!({"projection":"model"}));
     assert!(narrow.error.is_none(), "{narrow:?}");
     assert_eq!(narrow.data.unwrap(), model);
     assert!(read(json!({"include_skills":true})).error.is_some());
+
+    // A schema change is a different boundary: it invalidates the physical
+    // proof even if the removed table would not be needed by this projection.
+    db.execute("DROP TABLE agent_skill_installations", [])
+        .unwrap();
+    assert!(read(json!({"projection":"model"})).error.is_some());
 }

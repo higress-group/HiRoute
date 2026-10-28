@@ -123,6 +123,9 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **WHEN** startup enters backup publication, data conversion, final current-data validation and service recovery
 - **THEN** it reports the corresponding bounded phases on the existing readiness channel, without rescanning history for progress. Completing an older batch before the current batch does not repeat or regress visible phases. A failed stage remains the last entered phase; no later stage or ready result is fabricated. Ordinary current-format restart emits no upgrade phases and retains its normal readiness deadline.
 
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/249#issuecomment-6461279980
+
 ### Requirement: Journal progress does not rewrite immutable payloads
 
 Current Operations SHALL store their immutable admitted input and large compensation
