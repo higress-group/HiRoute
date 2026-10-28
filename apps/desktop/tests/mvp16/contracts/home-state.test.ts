@@ -35,6 +35,17 @@ test('first-use requires successful empty domain reads', () => {
   assert.equal(deriveHomePrimaryMode(failed), 'loading');
 });
 
+test('incomplete Agent coverage cannot establish first use', () => {
+  for (const state of ['unknown', 'unavailable'] as const) {
+    const reads = emptyReads();
+    reads.agents = { status: 'ready', data: { agents: [{
+      agentId: 'agent_codex_default', displayName: 'Codex', brand: 'codex',
+      model: state, collaboration: 'unconfigured',
+    }] } };
+    assert.equal(deriveHomePrimaryMode(reads), 'unavailable');
+  }
+});
+
 test('user-configured sources remain visible without catalog intersection', () => {
   const reads = emptyReads();
   reads.compute = { status: 'ready', data: { candidates: [], sources: [{ sourceId: 'source/custom', displayName: 'Custom', bindingIds: ['binding/custom'], origin: 'user_configured', authentication: 'header', capabilityKnowledge: 'unknown', priceKnowledge: 'unknown' }], saveAttempts: [], subscriptionChecks: [] } };

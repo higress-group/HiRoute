@@ -359,3 +359,52 @@ fn publication_timings_preserve_results_and_only_emit_at_debug() {
         assert!(!encoded.contains("private-error-payload"));
     }
 }
+
+#[test]
+fn agent_read_timings_are_bounded_counts_and_debug_only() {
+    use crate::agent_read::{AgentReadCategory, AgentReadStage, Timer};
+    for level in ["debug", "info"] {
+        let temp = crate::private_tempdir();
+        let root = temp.path().join("diagnostics");
+        write_settings(&root, 1, level);
+        let (runtime, plan) = DiagnosticRuntime::prepare(config(&root));
+        arm(plan);
+        {
+            let mut timer = Timer::start(
+                &runtime.port(),
+                AgentReadCategory::Model,
+                AgentReadStage::GrantAuthentication,
+            );
+            timer.counts.operations = 1;
+            timer.counts.operation_bytes = 1024;
+            timer.counts.payloads = 2;
+            timer.counts.payload_bytes = 4096;
+            timer.counts.grant_authentications = 1;
+        }
+        runtime.shutdown();
+        let records = role_log_records(&root);
+        let samples: Vec<_> = records
+            .iter()
+            .filter_map(|record| match &record.event {
+                DiagnosticEvent::AgentReadTiming(timing) => Some(timing),
+                _ => None,
+            })
+            .collect();
+        if level == "debug" {
+            assert_eq!(samples.len(), 1);
+            assert_eq!(samples[0].counts.operations, 1);
+            assert_eq!(samples[0].counts.payloads, 2);
+            assert_eq!(samples[0].counts.payload_bytes, 4096);
+            assert_eq!(samples[0].counts.grant_authentications, 1);
+            let encoded = serde_json::to_value(samples[0]).unwrap();
+            assert_eq!(encoded.as_object().unwrap().len(), 4);
+            assert!(serde_json::from_value::<crate::agent_read::AgentReadTiming>(serde_json::json!({
+                "category":"model", "stage":"native_read", "elapsed_us":0,
+                "counts":{"operations":0,"operation_bytes":0,"payloads":0,"payload_bytes":0,"grant_authentications":0},
+                "path":"sensitive"
+            })).is_err());
+        } else {
+            assert!(samples.is_empty());
+        }
+    }
+}

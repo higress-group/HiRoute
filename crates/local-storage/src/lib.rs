@@ -13,16 +13,20 @@ pub mod agents;
 pub mod backup;
 pub mod control;
 pub mod migrations;
+mod physical_read_stamp;
 pub mod runtime;
 pub mod secrets;
 
 pub use agents::*;
 pub use backup::{BackupSet, SingleWriterBackupBarrier, SqliteBackup};
 pub use control::{
-    ApplyCapabilityRegistrar, ApplyCapabilityRegistrationV1, ComputeSubscriptionValidationRecordV1,
-    ComputeSubscriptionValidationStateV1, ControlReadStamp, ControlStore, ManagedArtifactStore,
-    SucceededAgentOperationV1,
+    ActivePublicationIdentity, AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope,
+    AgentLocatorSummary, AgentLocatorWitness, AgentNativeTargetWitness, ApplyCapabilityRegistrar,
+    ApplyCapabilityRegistrationV1, CapturedActivePublication, CapturedAgentLocator,
+    ComputeSubscriptionValidationRecordV1, ComputeSubscriptionValidationStateV1, ControlReadStamp,
+    ControlStore, ManagedArtifactStore, SucceededAgentOperationV1,
 };
+pub use physical_read_stamp::AgentReadStamp;
 pub use runtime::RuntimeStore;
 pub use secrets::{LocalNativeCredentialAuthority, LocalSecretStore};
 
@@ -339,13 +343,31 @@ impl LocalStorageSet {
             progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
         }
         let integrity = if migration.durable_set_prepared() {
-            // A first format conversion audits its complete source/target. Ordinary opens
-            // establish only the complete current dependency closure, not all-history health.
-            migrations::audit_current_storage(&control, &runtime, &secrets)
-                .and_then(|_| migrations::validate_current_storage(&control, &runtime, &secrets))
+            if migration.is_admitted_locator_only_batch() {
+                // The complete original source was already admitted at exactly v32.
+                // This v33 derivation validates structure and current dependencies,
+                // without claiming a full semantic audit of unrelated history.
+                migrations::validate_sqlite_structure(&control, &runtime, &secrets).and_then(|_| {
+                    migrations::validate_current_storage(&control, &runtime, &secrets)
+                })
+            } else {
+                // Earlier source/target batches preserve their original full audit.
+                migrations::audit_current_storage(&control, &runtime, &secrets).and_then(|_| {
+                    migrations::validate_current_storage(&control, &runtime, &secrets)
+                })
+            }
         } else {
             migrations::validate_current_storage(&control, &runtime, &secrets)
-        };
+        }
+        .and_then(|_| {
+            if target_schema_version == 33 {
+                control
+                    .validate_agent_locator(migration.durable_set_prepared())
+                    .map_err(|_| LocalStorageError::InvalidData)
+            } else {
+                Ok(())
+            }
+        });
         if let Err(error) =
             integrity.map_err(|error| error.at_upgrade_stage("current storage validation"))
         {

@@ -10,20 +10,7 @@ use hiroute_domain::{
     PortResult, SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
 };
 
-pub(super) fn is_settings_additional_model(intent: &ExternalEffectIntentV1) -> bool {
-    intent.effect_id() == "agent-connection-managed-configuration"
-        && intent.desired()["transaction"] == "settings"
-        && matches!(
-            intent.desired()["subject"]["agent_id"].as_str(),
-            Some(
-                "agent_qoder_default"
-                    | "agent_pi_default"
-                    | "agent_dsh_default"
-                    | "agent_dsh_desktop"
-                    | "agent_opencode_default"
-            )
-        )
-}
+pub(super) use hiroute_domain::is_settings_additional_model;
 
 pub(super) fn additional_model_endpoint(
     kind: AgentKindV1,

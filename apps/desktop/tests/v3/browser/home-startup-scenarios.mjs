@@ -12,6 +12,46 @@ export function homeStartupScenarios({ until, control }) {
     await until(() => routeButton() && !routeButton().disabled, 'writable routing page');
   };
   return [
+    scenario('desktop.home.no-full-agent-scan', ['home-startup'], 'Cold Home uses a lightweight Agent summary', async () => {
+      const c = control();
+      try {
+        c.reset();
+        await until(() => health()?.querySelector('.good'), 'healthy service on Home');
+        await settled();
+        assert(!c.commands.some(call => call.command === 'agent_snapshot'), 'Home requested all Agent full settings');
+        await until(() => c.commands.some(call => call.command === 'agent_home_summary'), 'lightweight Agent summary');
+      } finally { c.reset(); await settled(); }
+    }),
+    scenario('desktop.home.saved-settings-are-not-verified', ['home-startup'], 'Home describes recorded settings neutrally until a full check', async () => {
+      const c = control();
+      try {
+        c.reset();
+        c.handlers.observation_read = payload => payload.request?.intent?.view === 'sessions'
+          ? { sessions: [], next_cursor: null }
+          : c.fixtureResponse('observation_read', payload);
+        await until(() => document.body.innerText.includes('已保存设置，使用前检查'), 'recorded settings explanation');
+        assert(!document.body.innerText.includes('配置已就绪'), 'Recorded settings were shown as verified readiness');
+        assert(!c.commands.some(call => call.command === 'agent_snapshot'), 'Home requested full Agent settings');
+      } finally { c.reset(); await settled(); }
+    }),
+    scenario('desktop.home.incomplete-agent-coverage', ['home-startup'], 'Incomplete Agent coverage cannot become a first-use claim', async () => {
+      const c = control();
+      try {
+        c.reset();
+        c.management.sources = [];
+        c.desktop.catalog.plans = [];
+        c.desktop.catalog.drafts = [];
+        c.agents.agents = [{ agent_id: 'agent_codex_default', context_id: 'context/unready',
+          configuration_state: 'registered', settings: null, status_error: null }];
+        c.handlers.observation_read = payload => payload.request?.intent?.view === 'sessions'
+          ? { sessions: [], next_cursor: null } : c.fixtureResponse('observation_read', payload);
+        c.remount();
+        await until(() => document.body.innerText.includes('暂时无法确认当前配置'), 'incomplete Agent coverage');
+        assert(document.querySelector('[data-home-mode="unavailable"]'), 'Incomplete coverage was presented as first use');
+        assert(!document.querySelector('.v3-steps'), 'Setup steps implied an empty Agent state');
+        assert(document.body.innerText.includes('重试 Agent'), 'Incomplete coverage did not offer a retry');
+      } finally { c.reset(); await settled(); }
+    }),
     scenario('desktop.home.service-refresh-authority', ['home-startup'], 'Refreshing service display retains health without retaining permission', async () => {
       const c = control(); let release;
       try {

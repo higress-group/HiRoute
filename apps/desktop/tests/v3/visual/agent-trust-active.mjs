@@ -157,6 +157,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(s => s.id === 'desktop.home.saved-settings-are-not-verified')) {
+        checks.push(...await (await import('./home-summary-captures.mjs')).homeSummaryCaptures(client, baseUrl, outputRoot));
+      }
       if (selected.some(s => s.capabilities.includes('home-trust-progress'))) {
         checks.push(...await (await import('./trust-progress-captures.mjs')).trustProgressCaptures(client, baseUrl, outputRoot));
       }

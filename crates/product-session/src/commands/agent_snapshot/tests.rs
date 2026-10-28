@@ -115,6 +115,8 @@ enum ReadKind {
     TrialChoices,
     TrialModel,
     TrialSetup,
+    HomeSummary,
+    Associations,
     Catalog,
     Observation,
 }
@@ -129,6 +131,8 @@ async fn hidden_window_reads_succeed_but_revocation_during_transport_is_rejected
         ReadKind::TrialChoices,
         ReadKind::TrialModel,
         ReadKind::TrialSetup,
+        ReadKind::HomeSummary,
+        ReadKind::Associations,
     ] {
         exercise_read(Change::Hidden, kind).await;
         exercise_read(Change::ClientRevoked, kind).await;
@@ -166,6 +170,25 @@ async fn trial_snapshot_schema_is_checked_at_the_command_boundary() {
     exercise_read(Change::WrongTrialSchema, ReadKind::TrialSetup).await;
     exercise_read(Change::Epoch, ReadKind::TrialSetup).await;
     exercise_read(Change::Authority, ReadKind::TrialSetup).await;
+}
+
+#[tokio::test]
+async fn home_and_routing_reads_release_session_and_reject_stale_results() {
+    for kind in [ReadKind::HomeSummary, ReadKind::Associations] {
+        for change in [
+            Change::None,
+            Change::Replace,
+            Change::Epoch,
+            Change::Revision,
+            Change::Publication,
+            Change::Recovery,
+            Change::Authority,
+            Change::Cancel,
+            Change::FinalEpoch,
+        ] {
+            exercise_read(change, kind).await;
+        }
+    }
 }
 
 #[tokio::test]
@@ -250,7 +273,10 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                 stream.read_line(&mut line).await.unwrap();
                 let request: LocalControlWireRequestV2 = serde_json::from_str(&line).unwrap();
                 let blocked = match read_kind {
-                    ReadKind::Agents | ReadKind::TrialChoices => "ListAgents",
+                    ReadKind::Agents
+                    | ReadKind::TrialChoices
+                    | ReadKind::HomeSummary
+                    | ReadKind::Associations => "ListAgents",
                     ReadKind::SelectedAgent => "ScanAgents",
                     ReadKind::TrialModel => "GetAgentConnectionStatus",
                     ReadKind::TrialSetup => "GetTrialSetupSnapshotV1",
@@ -286,7 +312,10 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                         }
                         let agents = if matches!(
                             read_kind,
-                            ReadKind::TrialChoices | ReadKind::SelectedAgent
+                            ReadKind::TrialChoices
+                                | ReadKind::SelectedAgent
+                                | ReadKind::HomeSummary
+                                | ReadKind::Associations
                         ) {
                             ["claude", "codex", "dsh", "pi", "qoder", "opencode"].into_iter()
                                 .filter(|name| read_kind != ReadKind::SelectedAgent || *name == "dsh")
@@ -299,25 +328,40 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                         json!({"agents":agents})
                     }
                     "GetAgentConnectionStatus" => {
-                        let selected = read_kind == ReadKind::SelectedAgent;
-                        assert!(selected || read_kind == ReadKind::TrialModel);
-                        let context = if selected {
-                            "agent-context/dsh"
-                        } else {
-                            "agent-context/selected"
-                        };
-                        assert_eq!(
-                            request.payload["context_id"], context,
-                            "unrelated Agent status must not be read"
-                        );
-                        if selected {
-                            assert_eq!(request.payload["include_skills"], true);
-                            assert_ne!(request.payload["projection"], "model");
-                        } else {
+                        if read_kind == ReadKind::Associations {
                             assert_eq!(request.payload["projection"], "model");
                             assert!(request.payload.get("include_skills").is_none());
+                            let context = request.payload["context_id"].as_str().unwrap();
+                            json!({"schema":"hiroute.agent-model-settings-status/v2", "context_id":context, "state":"not_configured", "operation_id":null, "operation_state":null, "restore_point_ref":null, "applied_revision":null, "surface_results":[], "model_verified":false})
+                        } else {
+                            let selected = read_kind == ReadKind::SelectedAgent;
+                            assert!(selected || read_kind == ReadKind::TrialModel);
+                            let context = if selected {
+                                "agent-context/dsh"
+                            } else {
+                                "agent-context/selected"
+                            };
+                            assert_eq!(
+                                request.payload["context_id"], context,
+                                "unrelated Agent status must not be read"
+                            );
+                            if selected {
+                                assert_eq!(request.payload["include_skills"], true);
+                                assert_ne!(request.payload["projection"], "model");
+                            } else {
+                                assert_eq!(request.payload["projection"], "model");
+                                assert!(request.payload.get("include_skills").is_none());
+                            }
+                            json!({"schema":"hiroute.agent-model-settings-status/v2", "context_id":context, "state":"not_configured", "operation_id":null, "operation_state":null, "restore_point_ref":null, "applied_revision":null, "surface_results":[], "model_verified":false})
                         }
-                        json!({"schema":"hiroute.agent-model-settings-status/v2", "context_id":context, "state":"not_configured", "operation_id":null, "operation_state":null, "restore_point_ref":null, "applied_revision":null, "surface_results":[], "model_verified":false})
+                    }
+                    "GetAgentSettingsSummary" => {
+                        assert_eq!(read_kind, ReadKind::HomeSummary);
+                        let facet = json!({"state":"absent","coverage":"complete","action":null,"native_checked":false});
+                        let entries = request.payload["context_ids"].as_array().unwrap().iter().map(|context| json!({
+                            "context_id":context,"model":facet,"collaboration":facet,"management_skill":facet
+                        })).collect::<Vec<_>>();
+                        json!({"entries":entries})
                     }
                     "GetTrialSetupSnapshotV1" => {
                         assert_eq!(read_kind, ReadKind::TrialSetup);
@@ -428,6 +472,25 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                     assert_eq!(snapshot.options.candidates[0].binding_id, "binding/same");
                     assert!(matches!(snapshot.options.candidates[0].reasoning,
                         hiroute_domain::NativeReasoningCapabilityV1::Fixed { ref profile } if profile == "old"));
+                }),
+            ReadKind::HomeSummary => super::super::agent_home_summary(&context, &state)
+                .await
+                .map(|snapshot| {
+                    assert_eq!(snapshot.agents.len(), 6);
+                    let value = serde_json::to_value(snapshot).unwrap();
+                    assert!(
+                        value["agents"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .all(|item| item.get("settings").is_none())
+                    );
+                }),
+            ReadKind::Associations => super::super::agent_model_associations(&context, &state)
+                .await
+                .map(|snapshot| {
+                    assert!(snapshot.complete);
+                    assert_eq!(snapshot.agents.len(), 6);
                 }),
             ReadKind::Catalog => super::super::desktop_snapshot(&context, &state)
                 .await

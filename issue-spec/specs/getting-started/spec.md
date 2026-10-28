@@ -23,6 +23,19 @@ Home MUST show current configured resources, recent sessions, active delegated
 work, and available valuation with its completeness. Empty usage is an onboarding
 state, never invented savings or a chart of fabricated zeros.
 
+Home SHALL obtain recorded Agent settings through a bounded summary without
+reading every Agent's complete settings or Skill state. A recorded configuration
+is not proof of native health, successful verification or permission to act.
+Incomplete summary coverage SHALL remain unknown or unavailable, not become an
+empty setup. Visible routing editors MAY request model associations separately;
+an incomplete association read SHALL NOT be presented as unused.
+
+#### Scenario: Open Home while Agent settings are unverified
+
+- **WHEN** saved settings are recorded but their native state has not been checked
+- **THEN** Home presents them as saved and awaiting a check, without showing verified readiness or requiring full settings reads for unrelated Agents.
+- **AND** an incomplete summary or association keeps its uncertainty and remains retryable; it cannot establish first use or an unused route.
+
 #### Scenario: Return while a resource query fails
 
 - **WHEN** service status succeeds but a model or history query is pending or fails
@@ -35,6 +48,9 @@ state, never invented savings or a chart of fabricated zeros.
 - **THEN** it MUST NOT clear the current startup failure or replace newer successful
   service evidence with an earlier failure. Independent startup checks and failed-read
   follow-ups MUST share the same ordering of accepted startup results.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/249#issuecomment-6461278064
 
 ### Requirement: Preferences preserve the current interaction
 

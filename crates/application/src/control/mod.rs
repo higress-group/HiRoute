@@ -344,6 +344,13 @@ pub trait AgentConnectionControlPort: Send + Sync {
         Err(ControlReadError::Unavailable)
     }
 
+    fn settings_summary(
+        &self,
+        _request: &hiroute_application_api::AgentSettingsSummaryRequestV1,
+    ) -> Result<hiroute_application_api::AgentSettingsSummaryV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+
     fn settings_facts(
         &self,
         _spec: &hiroute_application_api::AgentSettingsSpecV2,

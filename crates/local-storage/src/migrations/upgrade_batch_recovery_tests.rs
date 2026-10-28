@@ -35,6 +35,9 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
         // including its semantic initialization before publishing the schema marker.
         current_dependencies_v32::initialize(&transaction).unwrap();
     }
+    if kind == DatabaseKind::Control && version == 33 {
+        agent_locator_v33::initialize(&transaction).unwrap();
+    }
     transaction
         .pragma_update(None, "user_version", version)
         .unwrap();
@@ -205,8 +208,8 @@ fn missing_original_backup_for_old_mixed_versions_refuses_without_adopting_data(
 }
 
 #[test]
-fn prior_target24_or25_batch_finishes_and_archives_before_a_new_current_batch() {
-    for target in [24, 25] {
+fn prior_target_batch_finishes_and_archives_before_a_new_current_batch() {
+    for target in [24, 25, 32] {
         for persist_phase in [false, true] {
             let directory = crate::test_tempdir().unwrap();
             let root = directory.path().join("storage");

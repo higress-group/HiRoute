@@ -133,7 +133,7 @@ export function ModelManagementPage({
   onChanged,
   refreshVersion = 0,
   plans,
-  agents = [],
+  agents,
   onOpenPlan,
   onCreatePlan,
   onTryModel,

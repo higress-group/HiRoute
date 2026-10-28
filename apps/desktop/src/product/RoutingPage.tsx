@@ -10,15 +10,15 @@ import { persistenceTargetWasSuperseded, resolvePersistedEditor, type Persistenc
 import { requestEditorReplacement } from '../ui/discard-guard';
 import { ProductPage, UiIcon } from '../ui';
 import type { DesktopOperation, DesktopSnapshot } from './home-projections';
-import type { AgentSnapshot } from '../agents';
-import { agentModelPlanIds, agentModelStatus } from '../features/agents/status';
+import type { AgentModelSelection } from '../features/agents/types';
+import { agentModelPlanIds } from '../features/agents/status';
 import { agentBrand, agentDisplayName } from '../features/agents/ecosystems';
 import { routingEditorEntries } from '../routing-editor-entries';
 
 export type RoutingEditorIntent = { key: string; plan?: Plan; draft?: Draft; staleDraft?: boolean; initialBindingId?: string; initialContent?: Editor; editingMemory?: PlanEditorMemory; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string };
 
-export function RoutingPage({ language, active = true, refreshVersion = 0, snapshot, agentSnapshot, operation, loading, busy, mutationAllowed, suggestionPlanIds = [], initialEditor = null, notice, onRefresh, onOperation, onOpenAgent, onOpenSession, onOpenSessions, onOpenServices, onTryModel }: {
-  language: 'zh' | 'en'; snapshot: DesktopSnapshot | null; agentSnapshot?: AgentSnapshot | null; loading: boolean; busy: boolean;
+export function RoutingPage({ language, active = true, refreshVersion = 0, snapshot, operation, loading, busy, mutationAllowed, suggestionPlanIds = [], initialEditor = null, notice, onRefresh, onOperation, onOpenAgent, onOpenSession, onOpenSessions, onOpenServices, onTryModel }: {
+  language: 'zh' | 'en'; snapshot: DesktopSnapshot | null; loading: boolean; busy: boolean;
   active?: boolean; refreshVersion?: number; mutationAllowed: boolean; suggestionPlanIds?: string[];
   operation?: DesktopOperation | null;
   initialEditor?: RoutingEditorIntent | null; notice?: string; onRefresh(): Promise<void>;
@@ -27,6 +27,17 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
 }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const [editor, setEditor] = useState<RoutingEditorIntent | null>(() => initialEditor ? { ...initialEditor, editingMemory: {} } : null);
+  const [associations, setAssociations] = useState<{ planId: string; revision: number; status: 'loading' | 'ready' | 'error'; complete?: boolean; agents?: { agent_id: string; current_selection: AgentModelSelection | null }[] } | null>(null);
+  const associationPlanId = editor?.plan?.agent_plan_id;
+  useEffect(() => {
+    if (!active || !associationPlanId) { setAssociations(null); return; }
+    let current = true;
+    setAssociations({ planId: associationPlanId, revision: refreshVersion, status: 'loading' });
+    void invoke<{ complete: boolean; agents: { agent_id: string; current_selection: AgentModelSelection | null }[] }>('agent_model_associations')
+      .then(value => { if (current) setAssociations({ planId: associationPlanId, revision: refreshVersion, status: 'ready', ...value }); })
+      .catch(() => { if (current) setAssociations({ planId: associationPlanId, revision: refreshVersion, status: 'error' }); });
+    return () => { current = false; };
+  }, [active, associationPlanId, refreshVersion]);
   const [mappingPlan, setMappingPlan] = useState<Plan | null>(null);
   useEffect(() => { if (!active) setMappingPlan(null); }, [active]);
   const [dirty, setDirty] = useState(false);
@@ -121,14 +132,17 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
     setEditor({ key: randomId(), editingMemory: {} });
     setShowList(false);
   }
-  const usedBy = editor?.plan ? (agentSnapshot?.agents ?? []).flatMap(agent => {
-    const model = agentModelStatus(agent)?.current_selection;
+  const associationCurrent = associations && associations.planId === associationPlanId && associations.revision === refreshVersion ? associations : null;
+  const usedBy = editor?.plan ? (associationCurrent?.agents ?? []).flatMap(agent => {
+    const model = agent.current_selection;
     const isDefault = model?.mode === 'codex_default'
       && model.default_selection.kind === 'plan'
       && model.default_selection.plan_id === editor.plan!.agent_plan_id;
     const isAllowed = agentModelPlanIds(model).includes(editor.plan!.agent_plan_id);
     return isDefault || isAllowed ? [{ id: agent.agent_id, name: agentDisplayName(agent.agent_id, language), brand: agentBrand(agent.agent_id), isDefault }] : [];
   }) : [];
+  const usedByState = !associationCurrent || associationCurrent.status === 'loading' ? 'loading'
+    : associationCurrent.status === 'error' ? 'unavailable' : associationCurrent.complete ? 'complete' : 'partial';
   const pageLocked = busy || localBusy || editorBusy || !mutable;
   const pageActions = creating ? <>
     <button className="btn" type="button" disabled={pageLocked} onClick={() => void planEditor.current?.saveDraft()}>{text('保存草稿', 'Save draft')}</button>
@@ -152,7 +166,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
       returnEditor.current = editor; setPendingPersistence(null); setPersistedNotice(''); setDirty(false); setShowList(false);
       setEditor({ key: randomId(), initialContent, editingMemory: {} });
       return true;
-    }} editingMemory={editor.editingMemory} language={language} active={active} refreshVersion={refreshVersion} usedBy={usedBy} onOpenAgent={onOpenAgent} onOpenSession={onOpenSession} onOpenServices={onOpenServices} onDirty={next => { setDirty(next); if (next) setPersistedNotice(''); }} onEdit={() => setPendingPersistence(null)} onBusyChange={setEditorBusy} onOperation={onOperation} onPersisted={(next, action, identity, submitted) => { setPendingPersistence(next ? null : { action, identity, operationId: submitted?.operation_id ?? null }); if (next) { returnEditor.current = null; setEditor(current => ({ ...next, editingMemory: current?.editingMemory ?? {} })); setDirty(false); setPersistedNotice(action === 'save_draft' ? text('草稿已保存，可以继续编辑或发布。', 'Draft saved. Continue editing or publish.') : text('更改已发布，新请求将使用当前路由。', 'Changes published. New requests will use this routing.')); } }} onDone={onRefresh} onClose={closeEditor} />
+    }} editingMemory={editor.editingMemory} language={language} active={active} refreshVersion={refreshVersion} usedBy={usedBy} usedByState={usedByState} onOpenAgent={onOpenAgent} onOpenSession={onOpenSession} onOpenServices={onOpenServices} onDirty={next => { setDirty(next); if (next) setPersistedNotice(''); }} onEdit={() => setPendingPersistence(null)} onBusyChange={setEditorBusy} onOperation={onOperation} onPersisted={(next, action, identity, submitted) => { setPendingPersistence(next ? null : { action, identity, operationId: submitted?.operation_id ?? null }); if (next) { returnEditor.current = null; setEditor(current => ({ ...next, editingMemory: current?.editingMemory ?? {} })); setDirty(false); setPersistedNotice(action === 'save_draft' ? text('草稿已保存，可以继续编辑或发布。', 'Draft saved. Continue editing or publish.') : text('更改已发布，新请求将使用当前路由。', 'Changes published. New requests will use this routing.')); } }} onDone={onRefresh} onClose={closeEditor} />
   </fieldset> : null;
   return <ProductPage
     title={creating ? text('新建智能路由', 'New smart routing') : text('智能路由', 'Smart routing')}

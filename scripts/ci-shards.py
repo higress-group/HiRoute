@@ -63,6 +63,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-daemon", "discovered_model_product"),
         ("hiroute-daemon", "local_worker_platform"),
         ("hiroute-daemon", "publication_process"),
+        ("hiroute-daemon", "released_agent_locator_upgrade"),
         ("hiroute-daemon", "subscription_management_product"),
         ("hiroute-daemon", "windows_headless"),
         ("hiroute-daemon", "windows_background"),

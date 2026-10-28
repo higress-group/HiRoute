@@ -339,6 +339,33 @@ pub(crate) fn status(
     }
 }
 
+pub(crate) fn summary(
+    service: &ApplicationService,
+    request: LocalControlRequestV2,
+) -> MachineEnvelopeV2<Value> {
+    if request.protected_grant.is_some() {
+        return failed(ErrorCode::CapabilityDenied, request.request_id);
+    }
+    let payload = match serde_json::from_value::<
+        hiroute_application_api::AgentSettingsSummaryRequestV1,
+    >(request.payload)
+    {
+        Ok(payload) if payload.valid() => payload,
+        _ => return failed(ErrorCode::InvalidArguments, request.request_id),
+    };
+    let Some(port) = service
+        .ports
+        .as_ref()
+        .and_then(|ports| ports.agent_connection.as_deref())
+    else {
+        return failed(ErrorCode::DaemonUnavailable, request.request_id);
+    };
+    match port.settings_summary(&payload) {
+        Ok(result) => succeeded(result, request.request_id),
+        Err(error) => failed(map_control_error(error), request.request_id),
+    }
+}
+
 /// Read-only draft recovery. The ordinary settings preview must still admit every effect.
 pub(crate) fn previous_routing(
     service: &ApplicationService,

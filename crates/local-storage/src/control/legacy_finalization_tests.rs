@@ -121,7 +121,7 @@ fn legacy_initializer_uses_committed_content_without_reopening_settled_finalizat
         let encoded: String = db
             .query_row("SELECT operation_json FROM operations", [], |r| r.get(0))
             .unwrap();
-        let inline = crate::control::payloads::expand(&db, &encoded).unwrap();
+        let inline = crate::control::payloads::expand(&*db, &encoded).unwrap();
         db.execute("UPDATE operations SET operation_json=?1", [inline.as_str()])
             .unwrap();
         if scenario == "missing_head" {
