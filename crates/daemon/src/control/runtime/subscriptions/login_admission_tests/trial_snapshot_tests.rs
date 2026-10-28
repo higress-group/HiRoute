@@ -458,3 +458,100 @@ fn independent_routing_and_management_reads_are_a_cpa_mismatch_negative_control(
             .any(|member| member.binding_id == binding_id && member.catalog_admitted)
     );
 }
+
+#[test]
+fn trial_capture_rejects_revoked_retained_subscription_validation() {
+    if crate::test_support::isolated_agent_home(concat!(
+        "control::runtime::subscriptions::login_admission_tests::trial_snapshot_tests::",
+        "trial_capture_rejects_revoked_retained_subscription_validation"
+    )) {
+        return;
+    }
+    let fixture = fixture_with_saved_subscription();
+    let stored = fixture.snapshot();
+    let source = &stored.sources[0];
+    let approval = hiroute_domain::OperationId::parse(
+        &source.validation.as_ref().unwrap().approval_operation_id,
+    )
+    .unwrap();
+    let stable = fixture
+        .adapter()
+        .trial_routing_snapshot(&WorkspaceId::default())
+        .unwrap();
+    assert!(
+        stable
+            .management
+            .sources
+            .iter()
+            .flat_map(|source| &source.models)
+            .any(|member| member.catalog_admitted
+                && member.availability == ComputeModelAvailabilityV1::Available)
+    );
+    let root = fixture.root.path();
+    fs::write(root.join("probe-catalog-lock"), b"probe").unwrap();
+    let mut probes = 0;
+    std::thread::scope(|scope| {
+        let (sender, receiver) = mpsc::channel();
+        let adapter = fixture.adapter();
+        scope.spawn(move || {
+            sender
+                .send(adapter.trial_routing_snapshot(&WorkspaceId::default()))
+                .unwrap()
+        });
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            for entry in fs::read_dir(root).unwrap() {
+                let path = entry.unwrap().path();
+                if !path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("catalog-probe-")
+                    || path.extension().is_some()
+                    || path.with_extension("resume").exists()
+                {
+                    continue;
+                }
+                probes += 1;
+                if probes == 3 {
+                    fixture
+                        .adapter()
+                        .stores_lock()
+                        .unwrap()
+                        .control()
+                        .release_compute_subscription_validation(&approval)
+                        .unwrap();
+                    assert_eq!(fixture.snapshot().revisions, stored.revisions);
+                }
+                fs::write(path.with_extension("resume"), b"resume").unwrap();
+            }
+            if let Ok(result) = receiver.try_recv() {
+                assert!(
+                    matches!(result, Err(ControlReadError::SnapshotChanged)),
+                    "revoked validation escaped"
+                );
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "retained validation probe stalled"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    });
+    assert_eq!(probes, 4);
+    fs::remove_file(root.join("probe-catalog-lock")).unwrap();
+    let revoked = fixture
+        .adapter()
+        .trial_routing_snapshot(&WorkspaceId::default())
+        .unwrap();
+    assert!(
+        revoked
+            .management
+            .sources
+            .iter()
+            .flat_map(|source| &source.models)
+            .all(|member| !member.catalog_admitted
+                && member.availability != ComputeModelAvailabilityV1::Available)
+    );
+}
