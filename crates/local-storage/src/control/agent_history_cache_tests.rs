@@ -664,6 +664,9 @@ fn locator_input_binds_the_actual_selected_row() {
     assert!(agent_locator_input::classify(&db, &row).is_err());
 }
 
+#[path = "agent_locator_grant_tests.rs"]
+mod locator_grant;
+
 #[test]
 fn selected_settings_does_not_decode_newer_unrelated_contexts() {
     let directory = tempdir().unwrap();

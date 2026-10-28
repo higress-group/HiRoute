@@ -43,6 +43,7 @@ mod windows_native_reader_tests;
 
 mod agent_check;
 mod agent_history_cache;
+mod agent_locator_input;
 mod agent_read;
 mod artifact_dependencies;
 mod artifact_heads;
@@ -102,8 +103,6 @@ pub struct ControlStore {
     pub(crate) connection: RefCell<Connection>,
     pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
 }
-
-mod agent_locator_input;
 
 /// One exact grant received over the daemon launcher's protected inherited channel. The raw
 /// capability is zeroized by the domain wrapper and this type is intentionally neither Clone nor
