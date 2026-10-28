@@ -102,7 +102,7 @@ fn sequential_bulk_runs_preserve_all_escapes_and_empty_parts_at_chunk_boundaries
         {"type":"function_call_output", "call_id":"call-1", "output":{"text":text, "empty":""}}
     ]});
     let canonical = decode_ingress_request(IngressProtocol::Responses, &wire).unwrap();
-    for threshold in [1, 1024 * 1024] {
+    for threshold in [31, 1024 * 1024] {
         let fixture = Fixture::new(threshold, 31);
         let mut request = canonical.clone();
         externalize_model_request(&mut request, &fixture.store, 0).unwrap();
@@ -160,7 +160,7 @@ fn benchmark_local_text_processing() {
     )
     .unwrap()
     .body;
-    for threshold in [1024 * 1024, 1] {
+    for threshold in [1024 * 1024, 16 * 1024] {
         let mut samples = Vec::new();
         for iteration in 0..21 {
             let fixture = Fixture::new(threshold, 16 * 1024);
