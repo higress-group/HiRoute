@@ -162,6 +162,7 @@ pub(super) fn begin_request(
         observed_body_bytes: 0,
         body_eos: false,
         ir: Some(seed.ir),
+        templates: seed.templates,
         frozen_candidates,
         runtime_state_authority: seed.runtime_state_authority,
         route_context: Some(seed.route_context),
@@ -279,9 +280,21 @@ pub(super) async fn materialize_attempt(
         .as_ref()
         .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
     let cleanup_prefix = logical.reasoning_cleanup.prefix_for(context.binding_id());
-    let mut prepared =
-        adapters::project_candidate_request_template_with_cleanup(ir, profile, cleanup_prefix)
-            .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let mut prepared = match logical.templates.take(
+        candidate
+            .candidate_id
+            .as_ref()
+            .map(|id| id.as_str())
+            .unwrap_or(""),
+        expected_profile_digest,
+        cleanup_prefix,
+    ) {
+        Some(prepared) => prepared,
+        None => {
+            adapters::project_candidate_request_template_with_cleanup(ir, profile, cleanup_prefix)
+                .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+        }
+    };
     let streaming = ir.stream;
     let served_model_alias = ir.served_model_id.clone();
     let client_profile = client_profile_for_candidate(profile)?;

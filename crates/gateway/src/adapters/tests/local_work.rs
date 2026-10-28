@@ -227,6 +227,56 @@ fn buffered_ingress_still_rejects_trailing_invalid_and_truncated_json() {
 }
 
 #[test]
+fn prepared_candidate_reuse_keeps_bytes_and_rejects_profile_or_cleanup_changes() {
+    use crate::server::composition::RequestTemplates;
+    let wire =
+        json!({"model":"alias","input":[{"role":"user","content":"text 中文".repeat(4096)}]});
+    for (candidate, digest, cleanup, hit) in [
+        ("selected", "profile", None, true),
+        ("other", "profile", None, false),
+        ("selected", "changed", None, false),
+        ("selected", "profile", Some(1), false),
+    ] {
+        let fixture = Fixture::new(1024 * 1024, 16 * 1024);
+        let request = fixture.parse(&serde_json::to_vec(&wire).unwrap());
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        let template = project_candidate_request_template(&request, &profile).unwrap();
+        let bytes = template.bytes.clone();
+        let before = fixture.budget.snapshot().unwrap().live;
+        let mut templates = RequestTemplates::new(fixture.budget.clone());
+        templates.insert("selected", "profile", template);
+        assert!(fixture.budget.snapshot().unwrap().live > before);
+        let cached = templates.take(candidate, digest, cleanup);
+        assert_eq!(cached.is_some(), hit);
+        drop(templates);
+        assert_eq!(fixture.budget.snapshot().unwrap().live, before);
+        if let Some(template) = cached {
+            assert!(std::sync::Arc::ptr_eq(&bytes, &template.bytes));
+            fixture
+                .store
+                .prevalidate(&model_content_refs(&request))
+                .unwrap();
+            let actual = encode(&fixture, template, 127);
+            let expected = project_candidate_request(
+                &decode_ingress_request(IngressProtocol::Responses, &wire).unwrap(),
+                &profile,
+            )
+            .unwrap()
+            .body;
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&actual).unwrap(),
+                expected
+            );
+        }
+    }
+}
+
+#[test]
 #[ignore = "opt-in release benchmark; reports timings without a flaky deadline assertion"]
 fn benchmark_local_text_processing() {
     let text = "ordinary text 中文, quote \" and slash \\, newline\n".repeat(15);

@@ -35,6 +35,18 @@ pub trait PlannerInputAuthority: Send + Sync {
         request: ModelRequestIRV1,
         authorized: &AuthorizedRequestPlan,
     ) -> Result<PlannerInputV1, PortError>;
+
+    fn build_prepared_input(
+        &self,
+        request: ModelRequestIRV1,
+        authorized: &AuthorizedRequestPlan,
+        budget: &hiroute_gateway_core::runtime::body::StreamBudget,
+    ) -> Result<super::PreparedPlannerInput, PortError> {
+        Ok(super::PreparedPlannerInput {
+            input: self.build_input(request, authorized)?,
+            templates: super::RequestTemplates::new(budget.clone()),
+        })
+    }
 }
 
 #[derive(Default)]
@@ -113,7 +125,18 @@ impl PlannerInputAuthority for PublicationPlannerInputAuthority {
         request: ModelRequestIRV1,
         authorized: &AuthorizedRequestPlan,
     ) -> Result<PlannerInputV1, PortError> {
-        build_planner_input(request, authorized)
+        build_planner_input(request, authorized, None)
+    }
+
+    fn build_prepared_input(
+        &self,
+        request: ModelRequestIRV1,
+        authorized: &AuthorizedRequestPlan,
+        budget: &hiroute_gateway_core::runtime::body::StreamBudget,
+    ) -> Result<super::PreparedPlannerInput, PortError> {
+        let mut templates = super::RequestTemplates::new(budget.clone());
+        let input = build_planner_input(request, authorized, Some(&mut templates))?;
+        Ok(super::PreparedPlannerInput { input, templates })
     }
 }
 
@@ -136,13 +159,14 @@ impl PlannerInputAuthority for FilePlannerInputAuthority {
         request: ModelRequestIRV1,
         authorized: &AuthorizedRequestPlan,
     ) -> Result<PlannerInputV1, PortError> {
-        build_planner_input(request, authorized)
+        build_planner_input(request, authorized, None)
     }
 }
 
 fn build_planner_input(
     request: ModelRequestIRV1,
     authorized: &AuthorizedRequestPlan,
+    mut templates: Option<&mut super::RequestTemplates>,
 ) -> Result<PlannerInputV1, PortError> {
     let authorities = authorized
         .candidates()
@@ -254,6 +278,11 @@ fn build_planner_input(
         .map_err(|_| PortError::Rejected)?;
         candidate.statically_enabled = true;
         candidate.request_projection_exclusion = projection.exclusion;
+        if let Some(prepared) = projection.template
+            && let Some(templates) = templates.as_mut()
+        {
+            templates.insert(&candidate.candidate_id, &candidate.profile_digest, prepared);
+        }
         facts.push(candidate);
     }
     if facts.len() != authorities.len() {
@@ -282,6 +311,7 @@ fn domain_protocol(protocol: IngressProtocol) -> hiroute_domain::UpstreamProtoco
 }
 
 struct CandidateProjectionFacts {
+    template: Option<adapters::PreparedNativeTemplate>,
     target_serialized_bytes: u64,
     exclusion: Option<ExclusionReasonCodeV1>,
     rejection: Option<(
@@ -322,6 +352,7 @@ fn project_candidate_facts(
             target_serialized_bytes: 1,
             exclusion: Some(ExclusionReasonCodeV1::ToolInterfaceUnsupported),
             rejection: None,
+            template: None,
         });
     }
 
@@ -331,6 +362,7 @@ fn project_candidate_facts(
                 .map_err(|_| PortError::Rejected)?,
             exclusion: None,
             rejection: None,
+            template: Some(projected),
         }),
         Err(adapters::ProtocolAdapterError::RequestUnrepresentable {
             reason,
@@ -339,6 +371,7 @@ fn project_candidate_facts(
             target_serialized_bytes: 1,
             exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
             rejection: Some((reason, message_index)),
+            template: None,
         }),
         Err(
             adapters::ProtocolAdapterError::ClientUnrepresentable(_)
@@ -354,6 +387,7 @@ fn project_candidate_facts(
                 target_serialized_bytes: 1,
                 exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
                 rejection: None,
+                template: None,
             })
         }
         Err(
@@ -366,11 +400,13 @@ fn project_candidate_facts(
             target_serialized_bytes: 1,
             exclusion: Some(ExclusionReasonCodeV1::OpaqueStateUnportable),
             rejection: None,
+            template: None,
         }),
         Err(adapters::ProtocolAdapterError::Capability(_)) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: 1,
             exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
             rejection: None,
+            template: None,
         }),
         Err(_) => Err(PortError::Rejected),
     }

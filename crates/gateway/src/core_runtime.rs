@@ -869,33 +869,36 @@ impl ProductionGatewayRuntime {
             };
             drop(routing_view);
             set_phase(LocalPhase::Prepare);
-            let mut planner_input = match with_active_request(request_observation.clone(), async {
-                self.planner_inputs
-                    .build_input(*canonical_request, &authorized)
-                    .map(Box::new)
-            })
-            .await
-            {
-                Ok(input) => input,
-                Err(crate::server::composition::PortError::InvalidReasoningControl) => {
-                    return write_typed_error_phase(
-                        session,
-                        StatusCode::BAD_REQUEST,
-                        "FIXED_REASONING_UNSUPPORTED",
-                        "planner",
-                    )
-                    .await;
-                }
-                Err(_) => {
-                    return write_typed_error_phase(
-                        session,
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "PLANNER_INPUT_UNAVAILABLE",
-                        "planner",
-                    )
-                    .await;
-                }
-            };
+            let prepared_planner_input =
+                match with_active_request(request_observation.clone(), async {
+                    self.planner_inputs
+                        .build_prepared_input(*canonical_request, &authorized, &budget)
+                        .map(Box::new)
+                })
+                .await
+                {
+                    Ok(input) => input,
+                    Err(crate::server::composition::PortError::InvalidReasoningControl) => {
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::BAD_REQUEST,
+                            "FIXED_REASONING_UNSUPPORTED",
+                            "planner",
+                        )
+                        .await;
+                    }
+                    Err(_) => {
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "PLANNER_INPUT_UNAVAILABLE",
+                            "planner",
+                        )
+                        .await;
+                    }
+                };
+            let mut planner_input = Box::new(prepared_planner_input.input);
+            let prepared_templates = prepared_planner_input.templates;
             planner_input.context_hold =
                 hold_ticket.as_ref().and_then(|ticket| ticket.hint.clone());
             if let Some(previous) = hold_ticket
@@ -1314,6 +1317,7 @@ impl ProductionGatewayRuntime {
                 }),
             };
             let seed = Arc::new(ProductionReplaySeedEnvelope::new(ProductionReplaySeed {
+                templates: prepared_templates,
                 ingress: protocol,
                 replay,
                 raw_body,
