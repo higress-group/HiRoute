@@ -29,6 +29,7 @@ import {
   type ObservationValueSummary,
 } from './home-projections';
 import { safeDiagnosticCode } from '../error-code';
+import { readHomeObservation } from './home-observation';
 
 const HOME_TARGET = 'desktop/local-home';
 const loading = <T,>(): DomainReadSlot<T> => ({
@@ -39,15 +40,6 @@ const loading = <T,>(): DomainReadSlot<T> => ({
 
 function errorCode(error: unknown): string {
   return safeDiagnosticCode(error, 'READ_UNAVAILABLE');
-}
-
-function observationRequest(view: string, query: object) {
-  return {
-    request: {
-      schema: 'hiroute.observation.query/v2',
-      intent: { view, query },
-    },
-  };
 }
 
 export function useDesktopHome() {
@@ -66,6 +58,8 @@ export function useDesktopHome() {
   const invalidatedCatalog = useRef({ agents: false, compute: false });
   const [catalogInvalidation, setCatalogInvalidation] = useState(0);
   const startupSequence = useRef(0);
+  const activityRead = useRef<AbortController | null>(null);
+  const valueRead = useRef<AbortController | null>(null);
 
   const requestId = useCallback((domain: keyof HomeReads) =>
     `home/${domain}/${++sequence.current}`, []);
@@ -203,13 +197,15 @@ export function useDesktopHome() {
   }, [refreshAgents, refreshCompute]);
 
   const refreshActivity = useCallback(async () => {
+    activityRead.current?.abort();
+    const controller = new AbortController();
+    activityRead.current = controller;
     const request = requestId('activity');
     setActivity(current => beginDomainRead(current, request, HOME_TARGET));
     const to = Date.now();
     try {
-      const page = await invoke<ObservationSessionPage>(
-        'observation_read',
-        observationRequest('sessions', {
+      const page = await readHomeObservation<ObservationSessionPage>(
+        'sessions', {
           from_ms: to - 7 * 86_400_000,
           to_ms: to,
           session_id: null,
@@ -220,7 +216,7 @@ export function useDesktopHome() {
           native_model: null,
           outcome: null,
           only_model_switch: false,
-        }),
+        }, controller.signal,
       );
       setActivity(current => resolveDomainRead(
         current,
@@ -229,6 +225,7 @@ export function useDesktopHome() {
         projectHomeActivity(page),
       ));
     } catch (error) {
+      if (controller.signal.aborted) return;
       setActivity(current => failDomainRead(
         current,
         request,
@@ -239,16 +236,18 @@ export function useDesktopHome() {
   }, [requestId]);
 
   const refreshValue = useCallback(async () => {
+    valueRead.current?.abort();
+    const controller = new AbortController();
+    valueRead.current = controller;
     const request = requestId('value');
     setValue(current => beginDomainRead(current, request, HOME_TARGET));
     try {
-      const summary = await invoke<ObservationValueSummary>(
-        'observation_read',
-        observationRequest('home_value', {
+      const summary = await readHomeObservation<ObservationValueSummary>(
+        'home_value', {
           period: 'seven_days',
           session_id: null,
           currency: null,
-        }),
+        }, controller.signal,
       );
       setValue(current => resolveDomainRead(
         current,
@@ -257,6 +256,7 @@ export function useDesktopHome() {
         projectHomeValue(summary),
       ));
     } catch (error) {
+      if (controller.signal.aborted) return;
       setValue(current => failDomainRead(
         current,
         request,
@@ -287,6 +287,11 @@ export function useDesktopHome() {
   useEffect(() => {
     void refreshAll();
   }, [refreshAll]);
+
+  useEffect(() => () => {
+    activityRead.current?.abort();
+    valueRead.current?.abort();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

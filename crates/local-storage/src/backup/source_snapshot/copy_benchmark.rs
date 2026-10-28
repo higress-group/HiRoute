@@ -25,10 +25,19 @@ fn complete_small_file_snapshot_copy_timing() {
         let original = source.join(format!("body-{index:05}"));
         let copy = target.join(format!("body-{index:05}"));
         assert_eq!(fs::read(&copy).unwrap(), vec![(index % 251) as u8; BYTES]);
-        assert_eq!(fs::metadata(&copy).unwrap().permissions().mode() & 0o777, 0o600);
-        assert_ne!(fs::metadata(&original).unwrap().ino(), fs::metadata(&copy).unwrap().ino());
+        assert_eq!(
+            fs::metadata(&copy).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_ne!(
+            fs::metadata(&original).unwrap().ino(),
+            fs::metadata(&copy).unwrap().ino()
+        );
     }
     fs::write(source.join("body-00000"), b"later source change").unwrap();
     assert_eq!(fs::read(target.join("body-00000")).unwrap(), vec![0; BYTES]);
-    println!("snapshot_copy_timing files={FILES} bytes_per_file={BYTES} elapsed_ms={}", elapsed.as_millis());
+    println!(
+        "snapshot_copy_timing files={FILES} bytes_per_file={BYTES} elapsed_ms={}",
+        elapsed.as_millis()
+    );
 }

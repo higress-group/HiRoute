@@ -269,3 +269,8 @@ readback covers exact model proof, delayed/wrong-context responses, unrefreshed
 Skill states and fresh Skill editor selection. Readback captures use production
 styles in Chinese/dark and English/light at 1200×813 and 755×600. Native save
 confirmation and latency still require the normal Release app and real data.
+
+Home bounded-read regressions in `v3/browser/home-startup-scenarios.mjs` exercise
+shared queue capacity, typed busy recovery/exhaustion, terminal failures and
+superseded retries through the production hook. They remain React/mock-IPC
+evidence; native first-open/focus reads and retained data require the real Desktop.
