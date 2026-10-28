@@ -10,6 +10,7 @@ import re
 import stat
 import sys
 import tempfile
+import uuid
 
 VERSION = 1
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
@@ -17,6 +18,99 @@ HEADER = re.compile(r"^\s*Running (.+?) \(([^)]+)\)\s*$")
 SUMMARY = re.compile(r"^test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored(?:;.*)?$")
 CASE = re.compile(r"^test (\S+) \.\.\. (ok|FAILED|ignored)(?:\s.*)?$")
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def verify_evidence(run, expected=None):
+    """Verify a completed export without trusting manifest paths or replacing bytes."""
+    run = Path(run)
+    manifest = run / "evidence.json"
+    if run.is_symlink() or manifest.is_symlink():
+        raise ValueError("Evidence manifest is a link")
+    before = manifest.lstat()
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError("Evidence manifest is not a regular file")
+    raw = manifest.read_bytes()
+    after = manifest.lstat()
+    if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+            after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
+        raise ValueError("Evidence manifest changed during verification")
+    digest = hashlib.sha256(raw).hexdigest()
+    if expected and expected.get("manifest_sha256", digest) != digest:
+        raise ValueError("Previously exported evidence manifest differs")
+    value = json.loads(raw)
+    if not isinstance(value.get("files"), dict):
+        raise ValueError("Invalid evidence manifest")
+    for name, entry in value["files"].items():
+        relative = entry["path"]
+        if (not isinstance(relative, str) or not relative or relative.startswith("/")
+                or any(part in ("", ".", "..") for part in relative.split("/"))):
+            raise ValueError("Evidence manifest path escapes its export")
+        path = run
+        for part in relative.split("/"):
+            path = path / part
+            if path.is_symlink():
+                raise ValueError("Evidence destination contains a link")
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("Evidence destination is not a regular file")
+        saved = hashlib.sha256()
+        with path.open("rb") as source:
+            for data in iter(lambda: source.read(1024 * 1024), b""):
+                saved.update(data)
+        after = path.lstat()
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
+            raise ValueError("Previously exported evidence changed during verification: " + name)
+        if before.st_size != entry["bytes"] or saved.hexdigest() != entry["sha256"]:
+            raise ValueError("Previously exported evidence differs: " + name)
+    return value
+
+
+def verify_run_evidence(run, record):
+    """Old records without a manifest digest still require their original bytes."""
+    manifest = Path(run) / "evidence.json"
+    if os.path.lexists(manifest):
+        previous = verify_evidence(run, record.get("evidence_export"))
+        if previous.get("source_revision") != record.get("sha"):
+            raise ValueError("Original evidence source revision differs from its run")
+    elif record.get("evidence_export", {}).get("state") == "saved":
+        raise ValueError("Previously exported evidence manifest is missing")
+
+
+def preserve_cleanup_evidence(run, record, original):
+    """Commit a new capture under the checkout lease; completed exports are immutable.
+
+    Generation identity is independent of SHA because another command at the same
+    revision can change evidence. A capture describes the current checkout, not a
+    new verdict for every report accumulated there.
+    """
+    run = Path(run)
+    verify_run_evidence(run, original)
+    captures = run / "cleanup-evidence"
+    if captures.is_symlink():
+        raise ValueError("Cleanup evidence directory is a link")
+    captures.mkdir(exist_ok=True, mode=0o700)
+    for path in sorted(captures.iterdir()):
+        if path.is_symlink() or not path.is_dir():
+            raise ValueError("Invalid cleanup evidence directory")
+        if re.fullmatch(r"\.pending-[0-9a-f]{32}-[a-z0-9_]{8}", path.name):
+            # An interrupted copy is unpublished and never deletion authority.
+            # Leave it in place; the next attempt uses a distinct generation.
+            continue
+        if not re.fullmatch(r"[0-9a-f]{32}", path.name):
+            raise ValueError("Unknown cleanup evidence generation")
+        saved = verify_evidence(path)
+        if (saved.get("export_generation") != path.name or saved.get("export_kind") != "cleanup"
+                or saved.get("checkout_owner") != original["id"]):
+            raise ValueError("Cleanup evidence identity differs")
+    generation = uuid.uuid4().hex
+    destination = captures / generation
+    with tempfile.TemporaryDirectory(prefix=".pending-" + generation + "-", dir=captures) as folder:
+        staging = Path(folder)
+        exported = preserve_evidence(staging, dict(record, export_kind="cleanup", export_generation=generation))
+        verify_evidence(staging, exported)
+        staging.rename(destination)
+    return dict(exported, manifest=str(destination / "evidence.json"), generation=generation)
 
 
 def preserve_evidence(run, record):
@@ -29,6 +123,8 @@ def preserve_evidence(run, record):
     if record.get("validation_report", {}).get("error"):
         raise ValueError("Validation report was not saved")
     run = Path(run)
+    manifest = run / "evidence.json"
+    previous = verify_evidence(run, record.get("evidence_export")) if os.path.lexists(manifest) else None
     destination = run / "evidence"
     if destination.is_symlink():
         raise ValueError("Evidence destination is a link")
@@ -133,19 +229,25 @@ def preserve_evidence(run, record):
                 or source.parent.resolve() != Path(scratch["system_directory"]).resolve()):
             raise ValueError("Temporary evidence directory identity is unsafe")
         copy(source, Path("temporary"))
-    manifest = run / "evidence.json"
     value = dict(source_revision=record.get("sha"), files=files, excluded=excluded)
+    if record.get("export_kind") == "cleanup":
+        value.update(run_id=record["id"], checkout_owner=record["checkout_owner"],
+                     export_kind="cleanup", export_generation=record["export_generation"])
+    if previous is not None and previous != value:
+        raise ValueError("Previously exported evidence manifest differs")
     if manifest.is_symlink():
         raise ValueError("Evidence manifest is a link")
-    with tempfile.NamedTemporaryFile(dir=run, mode="w", delete=False) as output:
-        temporary = Path(output.name)
-        try:
-            output.write(json.dumps(value, indent=2) + "\n")
-            output.flush()
-            os.replace(temporary, manifest)
-        finally:
-            temporary.unlink(missing_ok=True)
+    if previous is None:
+        with tempfile.NamedTemporaryFile(dir=run, mode="w", delete=False) as output:
+            temporary = Path(output.name)
+            try:
+                output.write(json.dumps(value, indent=2) + "\n")
+                output.flush()
+                os.replace(temporary, manifest)
+            finally:
+                temporary.unlink(missing_ok=True)
     return dict(state="saved", manifest=str(manifest), files=len(files),
+                manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),
                 bytes=sum(value["bytes"] for value in files.values()))
 
 

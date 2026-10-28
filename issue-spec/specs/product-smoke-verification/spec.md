@@ -240,6 +240,28 @@ Developer source worktrees, shared compiler caches and other owners' resources
 MUST NOT be reclaimed by this terminal-run policy. Existing retained records keep
 their original retention and evidence-confirmation meaning.
 
+#### Scenario: Retire a retained checkout after reuse or source continuation
+
+Reusing a retained SSH checkout at the same revision or continuing it to a later
+recorded revision MUST preserve every earlier run's exported files, manifest,
+source identity and verdict. Explicit owner cleanup MUST capture current evidence
+in a separate immutable generation, identified independently of source revision.
+The capture MUST identify the owner, latest stopped run and actual checkout revision;
+it describes the collected checkout state and MUST NOT relabel accumulated reports
+as new execution. Each complete generation MUST carry its own manifest and hashes.
+
+Before deletion, the runner MUST verify existing completed exports and publish a
+new complete capture atomically under the checkout lease. Interrupted copies MUST
+remain unpublished; retry MUST NOT overwrite completed generations. Missing or
+altered historical exports, unsafe links or special files, a source file changing
+during copying, active leases/workers, dirty or unknown source, and unrecorded
+source advances MUST prevent reclamation of the owner's checkout and private
+scratch. Explicit cleanup refusal MUST return a nonzero process exit and retain
+actionable cleanup facts separately from the original export and test verdict.
+A borrower releasing its own resources MUST NOT count its retained shared checkout
+as an owner-cleanup failure. Repeated cleanup of already removed resources MUST
+remain safe and MUST preserve the completed captures.
+
 ### Requirement: Native Pilot App reopening preserves its isolated owner
 
 An explicitly requested macOS native Pilot App entry MUST belong to one registered
