@@ -70,6 +70,10 @@ impl ApplicationService {
             return failed(ErrorCode::FeatureNotEnabled, request.request_id);
         }
 
+        if request.operation_id == hiroute_application_api::GET_TRIAL_SETUP_SNAPSHOT_OPERATION_V1 {
+            return client_access::dispatch(self, request);
+        }
+
         if compute_management::is_compute_management_operation(&request.operation_id) {
             return compute_management::dispatch_compute_management(self, request);
         }

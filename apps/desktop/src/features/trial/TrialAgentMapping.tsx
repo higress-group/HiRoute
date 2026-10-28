@@ -1,5 +1,5 @@
 import { TrialSessionHandoff } from './TrialSessionHandoff';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import type { Outcome, Preview } from '../agents/types';
 import { trialModelChoices, type TrialAgentChoices, type TrialAgentSnapshot } from './agent-read';
@@ -14,10 +14,11 @@ import type { OperationReference } from '../model-connections/types';
 import type { Plan } from '../../plan-editor';
 import { initialTrialMapping, trialMappingValues, type TrialMapping } from './model';
 
-export function TrialAgentChoice({ snapshot, value, onChange, language, disabled = false, loading = false, onRetry }: {
-  snapshot: TrialAgentSnapshot; value: TrialMapping; onChange(value: TrialMapping): void; language: 'zh' | 'en'; disabled?: boolean; loading?: boolean; onRetry?(): void;
+export function TrialAgentChoice({ snapshot, value, onChange, language, disabled = false, loading = false, onRetry, agentError, presetError, presetTarget = false }: {
+  snapshot: TrialAgentSnapshot; value: TrialMapping; onChange(value: TrialMapping): void; language: 'zh' | 'en'; disabled?: boolean; loading?: boolean; onRetry?(): void; agentError?: string; presetError?: string; presetTarget?: boolean;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
+  const agentErrorId = useId(), presetErrorId = useId();
   const usable = trialModelChoices(snapshot.choices);
   const agent = snapshot.selected?.agent_id === value.agentId ? snapshot.selected : null;
   const known = !loading && !!agent && agentEditorSeed(agent, 'model', []).known;
@@ -28,11 +29,13 @@ export function TrialAgentChoice({ snapshot, value, onChange, language, disabled
     return t('原生模型', 'Native model');
   };
   return <fieldset disabled={disabled} className="trial-agent-choice">
-    {usable.length > 1 ? <label className="field"><span className="field-label">Agent</span><select className="input" value={value.agentId} onChange={e => onChange({ ...value, agentId: e.target.value })}><option value="">{t('选择 Agent', 'Select an Agent')}</option>{usable.map(item => <option key={item.agent_id} value={item.agent_id}>{agentDisplayName(item.agent_id, language)}</option>)}</select></label>
-      : !usable.length && <p className="field-help">{t('还没有可以修改模型设置的 Agent。发布后可以到 Agent 页面接入。', 'No Agent with editable model settings yet. You can connect one from Agents after publishing.')}</p>}
-    {agentEcosystem(value.agentId) === 'claude' ? <div className="trial-presets" role="group" aria-label={t('应用到哪些预设', 'Presets to change')}>
-      <span className="trial-presets-title">{t(`${agentDisplayName(value.agentId, language)} 的模型预设`, `${agentDisplayName(value.agentId, language)} model presets`)}</span>
-      {(['opus', 'sonnet', 'haiku'] as const).map(preset => <label key={preset} className="trial-preset"><input type="checkbox" disabled={!known} checked={value.presets.includes(preset)} onChange={e => onChange({ ...value, presets: e.target.checked ? [...value.presets, preset] : value.presets.filter(p => p !== preset) })} /><strong>{preset[0].toUpperCase() + preset.slice(1)}</strong><span>{t('现在：', 'Now: ')}{known ? current(preset) : t('尚未核实', 'Not yet verified')}</span></label>)}
+    {usable.length > 1 ? <label className="field"><span className="field-label">{t('Agent · 必填', 'Agent · Required')}</span><select className="input" aria-invalid={!!agentError} aria-describedby={agentError ? agentErrorId : undefined} value={value.agentId} onChange={e => onChange({ ...value, agentId: e.target.value })}><option value="">{t('选择 Agent', 'Select an Agent')}</option>{usable.map(item => <option key={item.agent_id} value={item.agent_id}>{agentDisplayName(item.agent_id, language)}</option>)}</select></label>
+      : !usable.length && <p className="field-help">{t('还没有可以修改模型设置的 Agent。请重新读取或到 Agent 页面接入。', 'No Agent with editable model settings yet. Reload or connect one from Agents.')}{onRetry && <button type="button" className="btn btn-quiet" onClick={onRetry}>{t('重新读取 Agent', 'Reload Agents')}</button>}</p>}
+    {agentError && <p id={agentErrorId} className="oc-inline-error">{agentError}</p>}
+    {agentEcosystem(value.agentId) === 'claude' ? <div className="trial-presets" role="group" data-trial-target={presetTarget ? 'presets' : undefined} aria-label={t('应用到哪些预设', 'Presets to change')}>
+      <span className="trial-presets-title">{t(`${agentDisplayName(value.agentId, language)} 的模型预设 · 必填`, `${agentDisplayName(value.agentId, language)} model presets · Required`)}</span>
+      {(['opus', 'sonnet', 'haiku'] as const).map(preset => <label key={preset} className="trial-preset"><input type="checkbox" disabled={!known} aria-invalid={!!presetError} aria-describedby={presetError ? presetErrorId : undefined} checked={value.presets.includes(preset)} onChange={e => onChange({ ...value, presets: e.target.checked ? [...value.presets, preset] : value.presets.filter(p => p !== preset) })} /><strong>{preset[0].toUpperCase() + preset.slice(1)}</strong><span>{t('现在：', 'Now: ')}{known ? current(preset) : t('尚未核实', 'Not yet verified')}</span></label>)}
+      {presetError && <p id={presetErrorId} className="oc-inline-error">{presetError}</p>}
     </div> : value.agentId && <p className="field-help">{agentDisplayName(value.agentId, language)} · {agentEcosystem(value.agentId) === 'codex' ? t('将此路由设为默认模型；保留已有可用路由。', 'Use this route as the default model and retain existing allowed routes.') : t('将此路由加入可用路由。', 'Add this route to the allowed routes.')}</p>}
     {loading ? <p role="status">{t('正在读取所选 Agent 的模型配置…', 'Reading the selected Agent model settings…')}</p>
       : value.agentId && !known && <p role="alert">{t('所选 Agent 的模型配置尚未确认。请重试或到 Agent 页面处理。', 'The selected Agent model settings are unconfirmed. Retry or inspect the Agent page.')}{onRetry && <button type="button" className="btn btn-quiet" onClick={onRetry}>{t('重试', 'Retry')}</button>}</p>}

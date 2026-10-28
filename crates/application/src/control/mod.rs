@@ -378,6 +378,12 @@ pub struct RoutingCompilationSnapshotV1 {
     pub active_publication: Option<hiroute_domain::GatewayPublicationV1>,
 }
 
+#[derive(Clone)]
+pub struct TrialRoutingSnapshotV1 {
+    pub routing: RoutingCompilationSnapshotV1,
+    pub management: hiroute_application_api::TrialManagementSnapshotV1,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComputeProjectionReadError {
     InvalidSelection,
@@ -650,6 +656,13 @@ pub trait RoutingFactsPort: Send + Sync {
         &self,
         workspace_id: &WorkspaceId,
     ) -> Result<RoutingCompilationSnapshotV1, ControlReadError>;
+
+    fn trial_routing_snapshot(
+        &self,
+        _workspace_id: &WorkspaceId,
+    ) -> Result<TrialRoutingSnapshotV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
 
     fn try_active_publication(
         &self,

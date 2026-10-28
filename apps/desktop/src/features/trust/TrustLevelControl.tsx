@@ -26,10 +26,10 @@ function ExactThreshold({ threshold, change, language, id }: { threshold: number
   </div>;
 }
 
-export function TrustLevelControl({ value, classifier, onChange, language, id, complete, evidenceError, replayScope }: {
+export function TrustLevelControl({ value, classifier, onChange, language, id, complete, evidenceError, replayScope, context }: {
   classifier: Classifier;
   value: Judgment; onChange(value: Judgment): void; language: 'zh' | 'en'; id: string;
-  complete?: number; evidenceError?: boolean; replayScope?: ReplayScope;
+  complete?: number; evidenceError?: boolean; replayScope?: ReplayScope; context?: 'initial-trial';
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   const threshold = value.degree.simple_threshold_millis;
@@ -40,7 +40,7 @@ export function TrustLevelControl({ value, classifier, onChange, language, id, c
     : t(`当前版本已有 ${complete} 个评分完整的常规阶段；信任设置由你决定，依据见「模型表现」。`, `The active version has ${complete} fully scored Regular stages. The setting is your choice; see Model performance for the evidence.`);
   return <section className="trust-control" data-trust-control={id}>
     <div className="trust-control-head"><h3>{t('信任度 · 交给常规模型的程度', 'Trust · how much goes to Regular')}</h3></div>
-    <p className="trust-control-help">{t('越往右，越多任务交给常规模型。实际保存的是简单概率阈值：任务越简单，越先交给它。只改变路由，不影响 Agent 权限、工具审批和沙箱。', 'Further right sends more tasks to Regular. The saved value is a simple-probability threshold: simpler tasks go first. Only routing changes; agent permissions, tool approval and sandboxing do not.')}</p>
+    <p className="trust-control-help">{context === 'initial-trial' ? t('设置试用模型最初承担多少工作，之后可以调整。适用的低分保护仍然生效。', 'Sets how much work the trial model receives initially. You can adjust it later. Applicable low-score protection still applies.') : t('越往右，越多任务交给常规模型。实际保存的是简单概率阈值：任务越简单，越先交给它。只改变路由，不影响 Agent 权限、工具审批和沙箱。', 'Further right sends more tasks to Regular. The saved value is a simple-probability threshold: simpler tasks go first. Only routing changes; agent permissions, tool approval and sandboxing do not.')}</p>
     <div className="trust-endpoints"><span>{t('谨慎', 'Cautious')}</span><span>{t('托付', 'Entrusted')}</span></div>
     <input className="trust-slider" style={{ '--fill': `${(1000 - threshold) / 10}%` } as CSSProperties} type="range" min={0} max={1000} step={1} value={1000 - threshold} aria-label={t('信任度', 'Trust')} aria-valuetext={t(`简单概率阈值 ${threshold / 1000}；向右增加信任，降低阈值`, `Simple probability threshold ${threshold / 1000}; moving right increases trust and lowers the threshold`)} onChange={event => change(1000 - Number(event.target.value))} />
     <p className="trust-threshold">{t('简单概率阈值', 'Simple probability threshold')}: {threshold / 1000}</p>
@@ -48,11 +48,11 @@ export function TrustLevelControl({ value, classifier, onChange, language, id, c
       {manualPresets.map(level => <button key={level.id} type="button" aria-pressed={threshold === level.threshold_millis} onClick={() => change(level.threshold_millis)}><strong>{level.label[language]}</strong></button>)}
     </div>
     <Disclosure className="trust-exact" label={t('精确值', 'Exact value')} language={language}><ExactThreshold threshold={threshold} change={change} language={language} id={id} /></Disclosure>
-    <div className="trust-safety-net">
+    {context !== 'initial-trial' && <div className="trust-safety-net">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" /></svg>
       <div><strong>{t(`低分保护 · 胜任下限 ${floor}`, `Low-score protection · competence floor ${floor}`)}</strong><span>{t('即使阈值为零，适用的低分保护仍然生效。', 'Applicable low-score protection still applies at zero. ')}{protectionExplanation(classifier, language)}</span></div>
-    </div>
-    {replayScope && <TrustReplayPreview scope={replayScope} threshold={threshold} language={language} />}
-    <p className="trust-control-evidence" role="status">{evidence}</p>
+    </div>}
+    {context !== 'initial-trial' && replayScope && <TrustReplayPreview scope={replayScope} threshold={threshold} language={language} />}
+    {context !== 'initial-trial' && <p className="trust-control-evidence" role="status">{evidence}</p>}
   </section>;
 }

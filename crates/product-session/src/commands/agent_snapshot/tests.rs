@@ -64,11 +64,13 @@ enum Change {
     Revision,
     Publication,
     Recovery,
+    Mutation,
     Authority,
     Cancel,
     FinalEpoch,
     Hidden,
     ClientRevoked,
+    WrongTrialSchema,
 }
 
 #[tokio::test]
@@ -112,6 +114,7 @@ enum ReadKind {
     SelectedAgent,
     TrialChoices,
     TrialModel,
+    TrialSetup,
     Catalog,
     Observation,
 }
@@ -125,6 +128,7 @@ async fn hidden_window_reads_succeed_but_revocation_during_transport_is_rejected
         ReadKind::Observation,
         ReadKind::TrialChoices,
         ReadKind::TrialModel,
+        ReadKind::TrialSetup,
     ] {
         exercise_read(Change::Hidden, kind).await;
         exercise_read(Change::ClientRevoked, kind).await;
@@ -136,6 +140,7 @@ async fn narrow_trial_reads_keep_all_current_read_fences_without_unrelated_agent
     for kind in [
         ReadKind::TrialChoices,
         ReadKind::TrialModel,
+        ReadKind::TrialSetup,
         ReadKind::SelectedAgent,
     ] {
         for change in [
@@ -145,6 +150,7 @@ async fn narrow_trial_reads_keep_all_current_read_fences_without_unrelated_agent
             Change::Revision,
             Change::Publication,
             Change::Recovery,
+            Change::Mutation,
             Change::Authority,
             Change::Cancel,
             Change::FinalEpoch,
@@ -152,6 +158,14 @@ async fn narrow_trial_reads_keep_all_current_read_fences_without_unrelated_agent
             exercise_read(change, kind).await;
         }
     }
+}
+
+#[tokio::test]
+async fn trial_snapshot_schema_is_checked_at_the_command_boundary() {
+    exercise_read(Change::None, ReadKind::TrialSetup).await;
+    exercise_read(Change::WrongTrialSchema, ReadKind::TrialSetup).await;
+    exercise_read(Change::Epoch, ReadKind::TrialSetup).await;
+    exercise_read(Change::Authority, ReadKind::TrialSetup).await;
 }
 
 #[tokio::test]
@@ -239,6 +253,7 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                     ReadKind::Agents | ReadKind::TrialChoices => "ListAgents",
                     ReadKind::SelectedAgent => "ScanAgents",
                     ReadKind::TrialModel => "GetAgentConnectionStatus",
+                    ReadKind::TrialSetup => "GetTrialSetupSnapshotV1",
                     ReadKind::Catalog => "ListAgentPlanCatalog",
                     ReadKind::Observation => "ListSessions",
                 };
@@ -258,7 +273,7 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                 let altered = changed.load(Ordering::SeqCst);
                 let data = match request.operation_id.as_str() {
                     "GetClientServiceStatus" => {
-                        json!({"schema":"hiroute.client-service-status/v1","daemon_role":"resident","recovery_ready":!(altered && change==Change::Recovery),"mutation_available":true,"gateway":"ready","active_publication": if altered && change==Change::Publication {json!({"revision":2,"digest":CanonicalDigest::of_bytes(b"new-publication")})} else {Value::Null},"revisions":{"target":if altered && change==Change::Revision {2} else {1},"dependencies":{}}})
+                        json!({"schema":"hiroute.client-service-status/v1","daemon_role":"resident","recovery_ready":!(altered && change==Change::Recovery),"mutation_available":!(altered && change==Change::Mutation),"gateway":"ready","active_publication": if altered && change==Change::Publication {json!({"revision":2,"digest":CanonicalDigest::of_bytes(b"new-publication")})} else {Value::Null},"revisions":{"target":if altered && change==Change::Revision {2} else {1},"dependencies":{}}})
                     }
                     "ListAgents" | "ScanAgents" => {
                         if read_kind == ReadKind::SelectedAgent {
@@ -303,6 +318,26 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                             assert!(request.payload.get("include_skills").is_none());
                         }
                         json!({"schema":"hiroute.agent-model-settings-status/v2", "context_id":context, "state":"not_configured", "operation_id":null, "operation_state":null, "restore_point_ref":null, "applied_revision":null, "surface_results":[], "model_verified":false})
+                    }
+                    "GetTrialSetupSnapshotV1" => {
+                        assert_eq!(read_kind, ReadKind::TrialSetup);
+                        assert_eq!(request.payload, json!({}));
+                        assert!(request.protected_grant.is_none());
+                        let new_revision = altered && change == Change::Revision;
+                        json!({"schema":if change == Change::WrongTrialSchema {"hiroute.trial-setup-snapshot/unsupported"} else {"hiroute.trial-setup-snapshot/v1"},
+                        "options":{"authoring":null,"claude_capabilities":null,"context_window":null,"suggested_alias":null,"candidates":[{
+                            "binding_id":"binding/same", "model_configuration_id":"fixture-model", "display_name":"fixture model",
+                            "reasoning":{"kind":"fixed","profile":if new_revision {"new"} else {"old"}},
+                            "billing_class":"paid","routable":true,"ingress_protocols":["responses"],"native_ingress_protocols":["responses"]
+                        }],"free_suggestions":null,"ratings":null,"codex_capabilities":null,"revisions":{"target":if new_revision {2} else {1},"dependencies":{}}},
+                        "management":{"revisions":{"target":if new_revision {2} else {1},"dependencies":{}},"retained_api_connections":[],"sources":[{
+                            "source_id":"source/same", "revision":if new_revision {2} else {1},
+                            "display_name":if new_revision {"changed source"} else {"original source"},
+                            "provenance":"user_configured","access_kind":"api","state":"ready","actions":[],
+                            "models":[{"model_ref":"model/same", "binding_id":"binding/same", "revision":if new_revision {2} else {1},
+                                "upstream_model_id":"fixture-model", "display_name":"fixture model", "membership":"user_declared",
+                                "catalog_admitted":false, "availability":if new_revision {"disabled"} else {"available"}}]
+                        }]}})
                     }
                     "ListAgentPlanCatalog" => {
                         json!({"schema":"hiroute.agent-plan-catalog/v2","plans":[],"drafts":[],"next_cursor":null})
@@ -380,6 +415,20 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                     .await
                     .map(|_| ())
             }
+            ReadKind::TrialSetup => super::super::trial_setup_snapshot(&context, &state)
+                .await
+                .map(|snapshot| {
+                    if change != Change::WrongTrialSchema {
+                        assert_eq!(snapshot.schema, TRIAL_SETUP_SNAPSHOT_SCHEMA_V1);
+                    }
+                    let source = &snapshot.management.sources[0];
+                    assert_eq!(source.display_name, "original source");
+                    assert_eq!(source.models[0].binding_id, "binding/same");
+                    assert_eq!(source.models[0].availability, ComputeModelAvailabilityV1::Available);
+                    assert_eq!(snapshot.options.candidates[0].binding_id, "binding/same");
+                    assert!(matches!(snapshot.options.candidates[0].reasoning,
+                        hiroute_domain::NativeReasoningCapabilityV1::Fixed { ref profile } if profile == "old"));
+                }),
             ReadKind::Catalog => super::super::desktop_snapshot(&context, &state)
                 .await
                 .map(|_| ()),
@@ -481,7 +530,11 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
         release.notify_one();
     };
     let (result, _) = tokio::join!(snapshot, concurrent);
-    if matches!(change, Change::None | Change::OldLock | Change::Hidden) {
+    if change == Change::WrongTrialSchema {
+        assert!(
+            matches!(result, Err(DesktopFailure::Native { ref code }) if code == "RESPONSE_DATA_INVALID")
+        );
+    } else if matches!(change, Change::None | Change::OldLock | Change::Hidden) {
         assert!(result.is_ok());
     } else {
         assert!(result.is_err(), "old Agent facts escaped after {change:?}");

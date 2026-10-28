@@ -111,7 +111,9 @@ async function trialIdentityChecks() {
   await evaluate(client,`(()=>{const e=document.querySelector('.trial-agent-choice select');e.value='agent_dsh_default';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
   await waitFor(client,`!!document.querySelector('.trial-choice-list .trial-choice')`);
   await evaluate(client,`[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name)).click();true`);
-  assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),true,'a selectable binding without a supported default needs an explicit choice');
+  await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
+  await enter('.trial-footer .btn-primary');
+  assert.match(await evaluate(client,`document.querySelector('.trial-validation-summary').textContent`),/reasoning|思考/i,'a binding without a supported default requires an explicit choice');
   await enter('.trial-column .trial-reasoning button');
   await waitFor(client,`!!document.querySelector('[role=dialog] .segment')`);
   await enter('[role=dialog] .segment');
@@ -129,7 +131,7 @@ async function trialIdentityChecks() {
   await evaluate(client,`document.querySelector('.trial-review > .actions .btn-primary').scrollIntoView({block:'center'});true`);
   await shot(`trial-review-action-${lang}-${theme}-${width}`);
   const before=await evaluate(client,`(()=>{const r=document.querySelector('.trial-review > .actions .btn-primary').getBoundingClientRect();return {left:r.left,top:r.top};})()`);
-  await enter('.trial-review > .actions button');
+  await enter('.trial-review > .actions .btn-primary');
   await waitFor(client,`trialWrites.pending.length===1`);
   const during=await evaluate(client,`(()=>{const r=document.querySelector('.trial-review > .actions .btn-primary').getBoundingClientRect();return {left:r.left,top:r.top};})()`);
   assert.ok(Math.abs(before.left-during.left)<=2 && Math.abs(before.top-during.top)<=2,`saving moved the action: ${JSON.stringify({before,during})}`);
@@ -588,7 +590,9 @@ try {
   assert.equal(await evaluate(client,`document.querySelector('.trial-steps [aria-current=step]').textContent.includes(${JSON.stringify(lang==='zh'?'选择模型':'Choose models')})`),true);
   assert.equal(await evaluate(client,`[...document.querySelectorAll('.trial-presets input:checked')].length`),1);
   assert.equal(await evaluate(client,`document.querySelector('.trial-choice-list .trial-choice[aria-pressed=true]')`),null);
-  assert.equal(await evaluate(client,`document.querySelector('.trial-footer .btn-primary').disabled`),true);
+  await waitFor(client,`!document.querySelector('.trial-footer .btn-primary').disabled`);
+  await click('.trial-footer button',lang==='zh'?'检查改动':'Review changes');
+  assert.match(await evaluate(client,`document.querySelector('.trial-validation-summary').textContent`),/Primary|主力/);
   await evaluate(client,`(()=>{const el=[...document.querySelectorAll('.trial-choice-list .trial-choice')].find(e=>e.textContent.includes(primaryModel.display_name));if(!el)throw Error('Missing primary choice');el.click();return true;})()`);
   await waitFor(client,`!!document.querySelector('.trial-choice.selected[aria-expanded=false]')`);
   await shot(`quickstart-setup-${lang}-${theme}`);
