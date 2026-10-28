@@ -48,7 +48,7 @@ fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
             after_watermark: None,
             limit: 50,
         }),
-        ObservationReadIntentV2::Status(Default::default()),
+        ObservationReadIntentV2::Status(hiroute_application_api::ObservationStatusQueryV2 {}),
         ObservationReadIntentV2::Sessions(
             serde_json::from_value(json!({
                 "from_ms":0, "to_ms":1000, "limit":50, "only_model_switch":false,
