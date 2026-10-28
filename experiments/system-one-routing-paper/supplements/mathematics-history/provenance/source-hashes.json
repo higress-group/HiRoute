@@ -1,0 +1,54 @@
+{
+  "hash_algorithm": "SHA-256",
+  "note": "Logical source identifiers replace private locations. Public transformed files have separate hashes in MANIFEST.json; source hashes are provenance records, not independently accessible originals.",
+  "sources": [
+    {
+      "source": "confirmation/requests",
+      "sha256": "99118dcca16647e6695b510314580ea2c13377949bf5b8168706593023b33a8f"
+    },
+    {
+      "source": "confirmation/saved-results",
+      "sha256": "b9ae5f68d25d7b849b954133fdbf999a8404841229a24b9c326b79d584e02f5e"
+    },
+    {
+      "source": "confirmation/aggregate",
+      "sha256": "3eafe4345729df844841ca33f863a7b063c0dd8aa255580c5c999a7b0fddf8a1"
+    },
+    {
+      "source": "extension/requests",
+      "sha256": "a088aa5766df47c48a8146d211d1c8dd30a49a4c1d10aa4537b782818454ffa1"
+    },
+    {
+      "source": "extension/saved-results",
+      "sha256": "f36549f416a221458a7361b1c156b3a933178a0687cba693ef4401874da8810a"
+    },
+    {
+      "source": "extension/aggregate",
+      "sha256": "ee8d08699eb7f50b0dcfa51752163976f6e1c22b92057eeaa9461aa5e37f59fc"
+    },
+    {
+      "source": "confirmation/inputs",
+      "sha256": "807660b14cea9c2a8b00ec6c4592eb98a97597cc81e4bccf233dba5c4c7bcb72"
+    },
+    {
+      "source": "confirmation/author-labels",
+      "sha256": "2a229900df3ec31b05e7116b901686b00ade62d75d02bc8f23bffbc7b3cd6dd8"
+    },
+    {
+      "source": "extension/inputs",
+      "sha256": "1249c2ad8d3bbf6ef69b4cb72ef4bcbee43c24f8b964dce9b7ec5b3dc6ad6789"
+    },
+    {
+      "source": "extension/reviewed-labels",
+      "sha256": "46f1792c11920102c1cc1f8aa9a03f0850fbeb38a476b69ff695c4d6f4aec7a1"
+    },
+    {
+      "source": "extension/initial-labels",
+      "sha256": "eb52a96206b79b65a141453c0c8ef92689eda259b959168f573bc6b9c82d71b0"
+    },
+    {
+      "source": "extension/exact-definitions",
+      "sha256": "e5782cfc5fffdf821ea14d3d144e1c25a36d3c8337ffbc393173db8d40a446a8"
+    }
+  ]
+}
