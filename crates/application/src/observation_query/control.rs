@@ -303,7 +303,7 @@ impl ObservationControl {
         let mut encoded_bytes = 0;
         let started = std::time::Instant::now();
         for agent_plan_id in plan_ids {
-            if started.elapsed() >= std::time::Duration::from_millis(500) {
+            if started.elapsed() >= hiroute_domain::ObservationReaderContext::QUERY_BUDGET {
                 return Err(ObservationQueryError::Unavailable);
             }
             plans.push(self.service.get_value(
@@ -322,7 +322,7 @@ impl ObservationControl {
                     .map_err(|_| ObservationQueryError::Corrupt)?
                     .len();
             if encoded_bytes > 1024 * 1024 - 4096
-                || started.elapsed() >= std::time::Duration::from_millis(500)
+                || started.elapsed() >= hiroute_domain::ObservationReaderContext::QUERY_BUDGET
             {
                 return Err(ObservationQueryError::Unavailable);
             }

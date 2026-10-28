@@ -1,6 +1,6 @@
 {
   "schema": "hiroute.system-one-research/v1",
-  "version": "2026-10-19",
+  "version": "2026-10-28",
   "files": [
     {
       "path": ".gitignore",
@@ -9,18 +9,18 @@
     },
     {
       "path": "DATA-CARD.md",
-      "sha256": "f7a7bafd2be9d13ec09c01716490c8adbd43a2f7ea8ba6c0b888cf9e2d03c8db",
-      "bytes": 10398
+      "sha256": "2709dccf130495685c4c3346e629f78ecbae2c3f09c13286f023bb5b154fda9d",
+      "bytes": 10678
     },
     {
       "path": "README.md",
-      "sha256": "bc13abb550483e332cb16c9d7af235a38c689859a8406675b188b2dbe5d06672",
-      "bytes": 8951
+      "sha256": "f8411791c9a710152dcae4a1f0a2c9e0f5e01974486f4f1cec5080e271dbb70e",
+      "bytes": 10312
     },
     {
       "path": "REPRODUCE.md",
-      "sha256": "4156a61d958a5d6313a7cc5268f2c8d979fbad42d53207add6f11c350212f029",
-      "bytes": 6523
+      "sha256": "860dc401f7b24cb5ccdef57591209988b6a9794aa7bd219da8cadbf8a0922524",
+      "bytes": 6941
     },
     {
       "path": "analysis/context_eval.py",
@@ -249,8 +249,8 @@
     },
     {
       "path": "main.md",
-      "sha256": "23aa59c4f9c237b90029c43eb98a24c6fd724bf1dd1d757d3dcc2bfd31d907b1",
-      "bytes": 66935
+      "sha256": "a218811f6bb87ead2d5fdd474b542417991dcfbc648b0b27c2e72874d57a7805",
+      "bytes": 78310
     },
     {
       "path": "policies/engineering-direct-explicit.json",
@@ -481,6 +481,151 @@
       "path": "sensitivities/mr010.json",
       "sha256": "d8b592c68136a9d2509fc65a31fc9f540b415c3e3810ff4aba04992ac9c607c9",
       "bytes": 796
+    },
+    {
+      "path": "supplements/mathematics-history/.gitignore",
+      "sha256": "c29139b29ad82144d7630b972251e9a8016bbdf7cc26abc0f25f1afc8751ecae",
+      "bytes": 22
+    },
+    {
+      "path": "supplements/mathematics-history/DATA-CARD.md",
+      "sha256": "5701e8e8d5c0a023a6aa329ea9bf5d0198e9a240cdac686a7cc3c265473c6d12",
+      "bytes": 10303
+    },
+    {
+      "path": "supplements/mathematics-history/MANIFEST.json",
+      "sha256": "a89e79621d840387b14ebc0e643342dda5c7946e7e6ead338575c6e1ed515d5c",
+      "bytes": 6048
+    },
+    {
+      "path": "supplements/mathematics-history/README.md",
+      "sha256": "22638cfe3e89224edcddaa7511a759d42721b1ef02c1e8c64c2d6dadba043d78",
+      "bytes": 5626
+    },
+    {
+      "path": "supplements/mathematics-history/datasets/chronological-inputs.jsonl",
+      "sha256": "282a93fe013b449bc48f66b48991122915f7c7098c0f4d7c0e067f39cef63a8e",
+      "bytes": 32482
+    },
+    {
+      "path": "supplements/mathematics-history/datasets/chronological-labels.jsonl",
+      "sha256": "2c9e6a81a5180871aa1f5ef7ce7319afc5a88e70ff8fabeafec79117a9282d30",
+      "bytes": 23926
+    },
+    {
+      "path": "supplements/mathematics-history/datasets/confirmation-inputs.jsonl",
+      "sha256": "4286c5ef4acc7270468bfe9cd17e8d2d12f6159bad448dae5b9460e3d191644c",
+      "bytes": 161807
+    },
+    {
+      "path": "supplements/mathematics-history/datasets/confirmation-labels.jsonl",
+      "sha256": "7b8aa0af0417c37c757ece478d014c0f6213c88f3b6aecf8f2cd41065d9ddbd2",
+      "bytes": 252186
+    },
+    {
+      "path": "supplements/mathematics-history/datasets/targeted-inputs.jsonl",
+      "sha256": "f34513640dade8aa26877907b5f36c759f3b138bc6985beb68a60e7927a64f49",
+      "bytes": 36078
+    },
+    {
+      "path": "supplements/mathematics-history/datasets/targeted-labels.jsonl",
+      "sha256": "3920eb37b40bbd7ad1119a8370f87f2ae345a34f6a264bad66fd1772cd6b90b1",
+      "bytes": 21121
+    },
+    {
+      "path": "supplements/mathematics-history/execution/requests.jsonl.gz",
+      "sha256": "09c568029db19874f735cf73643e31ff355564d00afac2e538b4fdc3a2cc0517",
+      "bytes": 2311133
+    },
+    {
+      "path": "supplements/mathematics-history/execution/studies.json",
+      "sha256": "8c36f6cf31c1a2a479c13d9a1a5f1d837449354376ed1185ffdc370870016fec",
+      "bytes": 1894
+    },
+    {
+      "path": "supplements/mathematics-history/provenance/source-hashes.json",
+      "sha256": "8c2b3625f15fa9559b22c389df3ebf7d6955a8289bbc93fcedcaf03a49ac0672",
+      "bytes": 1920
+    },
+    {
+      "path": "supplements/mathematics-history/questions/concise-direct.json",
+      "sha256": "00ac7420b01274845a493e97c94cba3ed18a501c999cdeb01cb0f78930fe7f45",
+      "bytes": 10502
+    },
+    {
+      "path": "supplements/mathematics-history/questions/concise-three.json",
+      "sha256": "d0eb7caeadd2348ee25f2baf7c1433a062947a3137e07ff6ee1490dd7f1802fb",
+      "bytes": 6880
+    },
+    {
+      "path": "supplements/mathematics-history/questions/existing-direct.json",
+      "sha256": "d822b8ffe24e241a9aa4100f3b60374228f6e13d415308541a5cbde481c0c21d",
+      "bytes": 12141
+    },
+    {
+      "path": "supplements/mathematics-history/questions/existing-three.json",
+      "sha256": "c45539e182fc26c6db18048ea954518dfe83ae0e75792ad22e1b07d1314a39e3",
+      "bytes": 8519
+    },
+    {
+      "path": "supplements/mathematics-history/reference-results.json",
+      "sha256": "9f8767458be94c9b337b89e16429a6275754d103a20dfe64e280d82a2d421534",
+      "bytes": 242690
+    },
+    {
+      "path": "supplements/mathematics-history/replay.py",
+      "sha256": "abf17ab0fd83c7af7f5645bbeb0da9c2a657f0d26c0595f3af04d9d49f667fd5",
+      "bytes": 19751
+    },
+    {
+      "path": "supplements/mathematics-history/responses/answers.jsonl.gz",
+      "sha256": "c27800d6aea3351268af694add5aaf22435fdf5ffcfcef3382408325ae59dad6",
+      "bytes": 140661
+    },
+    {
+      "path": "supplements/mathematics-history/reviews/README.md",
+      "sha256": "8794dc6e45033690a604141c4ad2bc79f96af07aeff33174b495ba87a5b60218",
+      "bytes": 2868
+    },
+    {
+      "path": "supplements/mathematics-history/reviews/anonymous-labeling-brief.md",
+      "sha256": "62b7c20a088b7a7b3df17fb1c2b5d647158190635cae662716f4d03a8e1b5e4b",
+      "bytes": 3535
+    },
+    {
+      "path": "supplements/mathematics-history/reviews/confirmation-author-audit.json",
+      "sha256": "90ce00d56adc1711d746c6a1fc459ea84d57dc844fc120702a94ea2888cfaf8c",
+      "bytes": 5181
+    },
+    {
+      "path": "supplements/mathematics-history/reviews/confirmation-author-labels.jsonl",
+      "sha256": "2a229900df3ec31b05e7116b901686b00ade62d75d02bc8f23bffbc7b3cd6dd8",
+      "bytes": 277282
+    },
+    {
+      "path": "supplements/mathematics-history/reviews/extension-adjudication.jsonl",
+      "sha256": "0c444676d9866f93f0675ac849d4f30b663484f654c13a91361eb035a5d1f560",
+      "bytes": 42540
+    },
+    {
+      "path": "supplements/mathematics-history/reviews/extension-author-labels.jsonl",
+      "sha256": "b50ed7a3f909705b28040d50ce5d6af8767f7511e35e058bea3d1ccdbd69ff6c",
+      "bytes": 65541
+    },
+    {
+      "path": "supplements/mathematics-history/reviews/extension-initial-labels.jsonl",
+      "sha256": "eb52a96206b79b65a141453c0c8ef92689eda259b959168f573bc6b9c82d71b0",
+      "bytes": 33135
+    },
+    {
+      "path": "supplements/mathematics-history/reviews/extension-review-summary.json",
+      "sha256": "94b556a16fd808b9c8ec8e17bcf42a6e8cc80481f927a1b9bb891883f3a4caae",
+      "bytes": 1378
+    },
+    {
+      "path": "supplements/mathematics-history/tests/test_replay.py",
+      "sha256": "8f3c105c4c8a2b88a8ab4e94ae37540f52802d4534611f33bd726cfdebd7c321",
+      "bytes": 5419
     },
     {
       "path": "tests/test_replay.py",

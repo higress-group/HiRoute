@@ -1,0 +1,75 @@
+{
+  "schema": "hiroute.math-history-supplement/v1",
+  "date": "2026-10-28",
+  "models": {
+    "jev113": "jev-1.13-20260917",
+    "jev114": "jev-1.14-20261014"
+  },
+  "definitions": [
+    "existing",
+    "concise"
+  ],
+  "forms": [
+    "direct",
+    "three_questions"
+  ],
+  "rule": {
+    "simple_probability_threshold": 0.5,
+    "history_strict_upper_bound": 1,
+    "applicability_probability_threshold": 0.5,
+    "history_score_source": "returned_scalar"
+  },
+  "panels": [
+    {
+      "id": "confirmation",
+      "records": 136,
+      "families": 16,
+      "repeats": 2,
+      "planned_calls": 2176,
+      "bootstrap_seed": 20261029,
+      "bootstrap_family_order": "label_order",
+      "bootstrap_draws": 10000,
+      "bootstrap_order_statistics": [
+        249,
+        9749
+      ]
+    },
+    {
+      "id": "targeted",
+      "records": 48,
+      "families": 6,
+      "repeats": 1,
+      "planned_calls": 384,
+      "bootstrap_seed": 2026102813,
+      "bootstrap_family_order": "sorted",
+      "bootstrap_draws": 10000,
+      "bootstrap_order_statistics": [
+        249,
+        9749
+      ]
+    },
+    {
+      "id": "chronological",
+      "records": 44,
+      "families": 22,
+      "repeats": 1,
+      "planned_calls": 352,
+      "bootstrap_seed": 2026102813,
+      "bootstrap_family_order": "sorted",
+      "bootstrap_draws": 10000,
+      "bootstrap_order_statistics": [
+        249,
+        9749
+      ]
+    }
+  ],
+  "execution": {
+    "planned_calls": 2912,
+    "observed_results": 2912,
+    "http_200": 2912,
+    "retries": 0,
+    "missing_results": 0,
+    "request_contexts_identical_within_record": true
+  },
+  "disclosure": "Saved request/answer semantics are retained. Access-service namespace, remote identifiers, timestamps, host configuration and operational start/result logs are omitted. Logical call IDs join the public plan and answers; they are not remote response IDs."
+}

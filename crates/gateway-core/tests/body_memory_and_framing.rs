@@ -334,3 +334,33 @@ fn framing_header_mutation_is_not_trusted_as_body_length_fact() {
     assert_eq!(exact[CONTENT_LENGTH], "4");
     assert!(!exact.contains_key(TRANSFER_ENCODING));
 }
+
+#[test]
+fn spooled_prefix_preserves_original_frame_total_and_framing_bounds() {
+    let make = || {
+        BodyPlanExecutor::new(
+            BodyDirection::LogicalRequest,
+            BodyPlan::StreamingReplay {
+                max_chunk_bytes: 4,
+                max_replay_bytes: 12,
+            },
+            12,
+        )
+        .unwrap()
+    };
+    let mut owner = make();
+    owner.preflight_content_length(12).unwrap();
+    owner.admit_prefix(9, 4).unwrap();
+    owner.admit_chunk(3).unwrap();
+    assert_eq!(owner.finish().unwrap(), 12);
+    assert_eq!(owner.admit_prefix(0, 0), Err(BodyError::BodyAfterEos));
+    let mut owner = make();
+    assert_eq!(owner.admit_prefix(9, 5), Err(BodyError::BodyLimitExceeded));
+    assert_eq!(owner.observed_bytes(), 0);
+    owner.admit_prefix(9, 4).unwrap();
+    assert_eq!(owner.admit_chunk(4), Err(BodyError::BodyLimitExceeded));
+    let mut owner = make();
+    owner.preflight_content_length(10).unwrap();
+    owner.admit_prefix(9, 4).unwrap();
+    assert_eq!(owner.finish(), Err(BodyError::ContentLengthMismatch));
+}

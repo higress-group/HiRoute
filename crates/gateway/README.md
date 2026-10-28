@@ -141,6 +141,12 @@ renderers omit foreign reasoning without inventing signatures. The
 [production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
 covers the listener boundary, including tool continuation.
 
+Authenticated request intake uses the same request-owned [Replay backing](src/replay.rs)
+before and after alias selection. The [model locator](src/dispatch/selector.rs)
+retains only bounded lexical state and the alias; canonical JSON/protocol validation
+still runs before Provider admission. [Real listener regressions](../../tools/e2e-harness/tests/p0_gateway_replay/ingress.rs)
+cover large model-last bodies across all ingress protocols and partial-owner cleanup.
+
 Same-protocol Responses forwarding preserves provider tool names and namespaces
 even when they disagree across snapshots of the same call. The call ID and
 native carrier (function, custom or provider-run web search) must remain stable.
@@ -233,6 +239,12 @@ stay request-scoped. Coherent generic Codex dimensions retain their historical
 namespace, including Pi's Codex transport. Claude header and metadata share the
 existing Claude namespace. Session storage uses the producer's scoped HMAC;
 raw IDs are not persisted and existing observations are not rewritten.
+Chat user messages may also carry a client `message_id` annotation: a nonempty,
+ASCII graphic string of at most 128 bytes. The adapter retains it in the native
+payload and excludes it from normalized history. It supplies no session identity
+or model-state authority. Opaque values, other roles and unknown semantic fields
+retain the conservative history boundary.
+
 [Claude identity](src/context_hold/identity/claude.rs) retains the released session
 namespace, requires header/metadata agreement and rejects duplicate metadata
 session claims. Its actual agent ID is a separate scope dimension; missing agent

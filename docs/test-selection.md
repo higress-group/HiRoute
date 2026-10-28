@@ -70,7 +70,7 @@ The mapping is implemented in `scripts/test-plan.py` and regression-tested by
 
 For focused observation-library checks on many-core hosts, explicitly use
 `-- --test-threads=8`, matching the existing workspace DAG's per-library bound.
-Each isolated store has its own query workers and a real 500 ms query deadline;
+Each isolated store has its own query workers and a real 1 s query deadline;
 starting one test per host CPU can create dozens of concurrent SQLite stores and
 interrupt otherwise bounded reads. Keep deadline/cancellation tests and their
 production limits intact. Diagnose suspected scheduling failures with the same

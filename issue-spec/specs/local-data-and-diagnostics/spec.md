@@ -59,6 +59,11 @@ not deletion of storage or a single database replacement. Archive/restart recove
 retains actual backup ownership and package identity. A changing filesystem device
 number after reboot cannot alone invalidate logically intact supported store identity.
 
+#### Scenario: Startup ownership follows the actual store lifetime
+
+- **WHEN** current stores are transferred to independent owners and an unrelated Unix child or duplicate descriptor retains a copy of their startup-lock handle
+- **THEN** each retained Control, Runtime or Secrets store continues to exclude another writer; releasing the last actual store relinquishes startup ownership without waiting for the unrelated descriptor to close or exec, preserving current storage and ordinary lock-conflict diagnostics.
+
 #### Scenario: Independent historical damage does not disable current routing
 
 - **WHEN** current dependencies and unresolved recovery work are verified, but an unrelated retained historical publication is damaged
@@ -280,6 +285,12 @@ HiRoute SHALL store repeated retained content and common observation metadata th
 - **WHEN** equal bytes appear in distinct logical conversations or authorization scopes
 - **THEN** physical reuse does not merge identities, grant access, change visibility, or assign one occurrence the other occurrence's execution facts.
 
+#### Scenario: Resolve an incoming sequence without rescanning expired gap ranges
+
+- **WHEN** a fact or content event arrives while retained gaps grow across producer epochs, streams and earlier sequences
+- **THEN** gap lookup seeks within that exact channel/producer/epoch/stream past ranges ending before the event, without scanning unrelated or already-ended gaps for each event; all overlapping gaps are resolved with their original scope, known-loss status and reason, preserving acknowledgement, replay and completeness semantics.
+- **AND** reopening an existing current-format store may install a derived lookup index without rewriting historical evidence or changing its format version; repeated reopen preserves the index and historical receipts.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248901316
 
@@ -474,6 +485,11 @@ HiRoute SHALL allow the local installation owner to save or disable one durable 
 
 - **WHEN** continued writes, contention or failed or ineffective release keeps usage above the threshold
 - **THEN** maintenance yields and backs off between bounded passes, reports pending/blocked overage, and never continuously consumes CPU or drops acknowledged writes to force the limit.
+
+#### Scenario: Logical retirement precedes physical cleanup
+
+- **WHEN** capacity retention commits a request's logical retirement and its physical cleanup is interrupted or deferred, including across restart
+- **THEN** fresh Plan-quality reads immediately omit stages ending in that request and omit assessments triggered by it from samples, filters and summary scores; existing quality cursors become stale, while unrelated retained evidence remains unchanged and physical cleanup resumes in bounded passes. Content-only deletion retains current request membership, stages and scores.
 
 #### Scenario: Physical release is reported honestly
 

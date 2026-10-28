@@ -10,6 +10,8 @@ mod input_selection;
 mod plan_quality;
 #[cfg(test)]
 mod plan_quality_bounds_tests;
+#[cfg(test)]
+mod plan_quality_field_tests;
 mod trust_cost;
 pub(crate) use plan_quality::routing_reason;
 mod relation;
@@ -165,7 +167,7 @@ impl QueryDeadline {
         let deadline = reader
             .as_ref()
             .and_then(ObservationReaderContext::query_deadline)
-            .unwrap_or(now + std::time::Duration::from_millis(500));
+            .unwrap_or(now + hiroute_domain::ObservationReaderContext::QUERY_BUDGET);
         if deadline <= now {
             return Err(ObservationV2Error::Timeout);
         }

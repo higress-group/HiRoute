@@ -30,9 +30,9 @@ impl crate::LocalObservationStore {
         if query.cursor.is_some() {
             return self.observed_sessions_once(reader, query, now_ms);
         }
-        let deadline = reader
-            .query_deadline()
-            .unwrap_or_else(|| std::time::Instant::now() + std::time::Duration::from_millis(500));
+        let deadline = reader.query_deadline().unwrap_or_else(|| {
+            std::time::Instant::now() + hiroute_domain::ObservationReaderContext::QUERY_BUDGET
+        });
         let reader = reader.clone().with_query_deadline(deadline);
         match self.observed_sessions_once(&reader, query, now_ms) {
             // Automatic retention can invalidate a snapshot while this first

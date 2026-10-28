@@ -376,10 +376,22 @@ fn decode_chat_message(
             "tool_call_id",
             "reasoning_content",
             "reasoning",
+            "message_id",
         ],
         "chat message",
     )?;
     let role = required_string(object, "role")?;
+    // Chat platforms attach their own user-message row IDs. Preserve the native
+    // payload, but do not mistake a transport annotation for model state or a
+    // conversation identity. Other roles and opaque shapes remain native-only.
+    if let Some(id) = object.get("message_id")
+        && (role != "user"
+            || !id.as_str().is_some_and(|id| {
+                !id.is_empty() && id.len() <= 128 && id.bytes().all(|byte| byte.is_ascii_graphic())
+            }))
+    {
+        context.native_only.set(true);
+    }
     let reasoning = chat_reasoning::canonical_reasoning(context, object, &role);
     if role == "system" || role == "developer" {
         ensure_absent(

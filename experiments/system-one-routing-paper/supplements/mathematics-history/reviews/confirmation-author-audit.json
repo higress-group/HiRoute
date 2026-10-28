@@ -1,0 +1,102 @@
+{
+  "role": "independent_dataset_author",
+  "independent_of_protocol_development": true,
+  "review_is_author_self_review": true,
+  "domain_expert_human_validation": false,
+  "counts": {
+    "cases": 136,
+    "families": 16,
+    "language": {
+      "en": 68,
+      "zh": 68
+    },
+    "state": {
+      "repaired": 32,
+      "unresolved": 32,
+      "healthy": 32,
+      "independent": 32,
+      "withdrawn": 8
+    },
+    "action": {
+      "enhanced": 56,
+      "regular": 80
+    },
+    "current_demand": {
+      "open_reasoning": 32,
+      "bounded": 104
+    },
+    "stage_grade": {
+      "0": 104,
+      "2": 32
+    }
+  },
+  "checks": {
+    "strict_input_schema": true,
+    "case_and_label_bijection": true,
+    "opaque_nonsemantic_ids": true,
+    "empty_prior_turns": true,
+    "post_stage_repair_only_in_current_request": true,
+    "unresolved_repaired_only_assistant_repair_evidence_differs": true,
+    "unresolved_independent_only_current_goal_differs": true,
+    "unresolved_repaired_healthy_identical_current_goals": true,
+    "withdrawal_only_current_goal_differs_from_unresolved": true,
+    "bilingual_gold_metadata_equivalence": true,
+    "bidirectional_translation_pairs": true,
+    "all_evidence_quotes_located": true,
+    "no_gold_route_terms_in_inputs": true,
+    "deterministic_exact_scoring_all_cases": true
+  },
+  "semantic_audit": [
+    "All initial failures are visible transcription, omitted-record, wrong-command, wrong-formula-execution, or failed-check facts. None depends on settling an open mathematical claim.",
+    "All repaired variants include actual file readback or completed execution evidence. Failed assessment-stage records remain unchanged.",
+    "Family f07 is a deliberate partial-repair trap: the identifier edit is completed in unresolved, but the required successful kernel check has not run. Withdrawn removes that check requirement and retains only the already edited text.",
+    "Families f09, f10, and f15 distinguish repeating the right content in chat from writing the required artifact; f16 distinguishes a correct sketch from repairing the archived graph.",
+    "All independent variants retain the same unresolved history and replace only the final current objective with a complete separate task. Their input does not state that the tasks are unrelated.",
+    "Four new-proof families remain enhanced in every state, including healthy, repaired, and independent. Proofs and derivations are not supplied as finite recipes.",
+    "Four withdrawal variants explicitly remove or replace the dependent requirement, with complete bounded remaining work and no implicit obligation to finish the withdrawn work.",
+    "Bilingual pairs were authored side by side and manually compared for numbers, symbols, filenames, execution status, scope, and evidence timing.",
+    "No conditional route labels or model capability assumptions were used."
+  ],
+  "limitations": [
+    "This is a deliberately controlled synthetic holdout, not an estimate of naturally occurring workflow frequencies.",
+    "Many families expose artifact-based dependencies to make histories auditable; broader natural-language distribution diversity should be assessed separately.",
+    "Semantic self-review was performed by the authoring agent; no external reviewer or model evaluator was invoked."
+  ],
+  "second_pass": {
+    "reviewed_cases": 136,
+    "reviewed_translation_pairs": 68,
+    "structural_results": {
+      "unique_conversations": 136,
+      "numeric_value_set_equivalence": true,
+      "artifact_name_set_equivalence": true,
+      "gold_decisions_match_stated_policy": true,
+      "original_stage_grade_preserved_after_repair": true
+    },
+    "lexical_findings": [
+      {
+        "finding": "Four paired original stage requests repeat the terminal index once in Chinese as an explicit parenthetical inclusion; English expresses the same inclusion with the word inclusive. All four are variants of one shared original request. Numerical value sets, closed endpoint scope, and labels are equivalent. No correction required.",
+        "affected_case_ids": [
+          "case_0d5d441da12d568b",
+          "case_520026567ff45369",
+          "case_b248718a8bc75b5a",
+          "case_b4fd980b98835844"
+        ]
+      }
+    ],
+    "manual_semantic_results": {
+      "all_original_failures_visible_and_core": true,
+      "unresolved_histories_still_have_specific_required_work_dependency": true,
+      "actual_repair_evidence_present_in_every_repaired_case": true,
+      "no_false_repair_from_intention_answer_repetition_or_unexecuted_command": true,
+      "partial_edit_without_required_run_not_treated_as_complete": true,
+      "independent_current_goals_self_contained": true,
+      "withdrawn_remaining_requirements_explicit_and_satisfiable_from_supplied_material": true,
+      "all_new_reasoning_goals_require_unsupplied_argument": true,
+      "all_bounded_goals_use_supplied_formulas_data_text_or_fixed_execution": true,
+      "bilingual_timing_speakers_obligations_and_execution_status_equivalent": true,
+      "no_mathematical_problem_answer_needed_to_assign_gold": true,
+      "no_conditional_gold_cases": true
+    },
+    "material_findings": []
+  }
+}

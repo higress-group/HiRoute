@@ -71,7 +71,7 @@ impl KeyMaterial {
 pub struct LocalSecretStore {
     pub(crate) connection: RefCell<Connection>,
     pub(crate) physical_binding: crate::physical_read_stamp::DatabaseBinding,
-    pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
+    pub(crate) startup_lock: Option<std::sync::Arc<crate::migrations::StartupLock>>,
     keys: KeyMaterial,
     #[cfg(test)]
     database_path: PathBuf,

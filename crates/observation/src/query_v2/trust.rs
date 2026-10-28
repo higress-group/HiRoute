@@ -95,7 +95,7 @@ impl LocalObservationStore {
         };
         let scope = if lean {
             format!(
-                "SELECT q.*, (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) AS assessment_covers_stage, NULL AS native_model, NULL AS reasoning_profile_id {}",
+                "SELECT q.*, retired_assessment.request_id IS NOT NULL AS assessment_retired, (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) AS assessment_covers_stage, NULL AS native_model, NULL AS reasoning_profile_id {}",
                 &SCOPE[SCOPE
                     .find("FROM plan_quality_segments q")
                     .expect("scope owner")..]

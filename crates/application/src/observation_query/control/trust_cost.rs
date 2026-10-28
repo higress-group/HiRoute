@@ -25,7 +25,7 @@ impl ObservationControl {
                 return Err("primary_not_unique");
             };
             let reader = reader.clone().with_query_deadline(
-                std::time::Instant::now() + std::time::Duration::from_millis(500),
+                std::time::Instant::now() + hiroute_domain::ObservationReaderContext::QUERY_BUDGET,
             );
             let capture = self
                 .analysis_prices(
