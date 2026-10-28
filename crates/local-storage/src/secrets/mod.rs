@@ -197,6 +197,33 @@ impl LocalSecretStore {
         })
     }
 
+    /// Construct a synthetic older-format source through the real migrations,
+    /// without changing a database version or marker by hand.
+    #[cfg(test)]
+    pub(crate) fn open_test_source_at_schema(
+        authority: &DaemonStorageAuthority,
+        database_path: &Path,
+        master_key_path: &Path,
+        backup_root: &Path,
+        target: u32,
+    ) -> Result<Self, LocalStorageError> {
+        let keys = create_key_material(master_key_path)?;
+        let binding = MigrationSecretBinding {
+            store_uuid: keys.store_uuid.clone(),
+            key_id: keys.key_id.clone(),
+            key_verifier: keys.verifier.clone(),
+        };
+        drop(keys);
+        Self::open_from_migration_set(
+            authority,
+            database_path,
+            master_key_path,
+            backup_root,
+            &binding,
+            target,
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn with_connection<T>(&self, function: impl FnOnce(&Connection) -> T) -> T {
         function(&self.connection.borrow())

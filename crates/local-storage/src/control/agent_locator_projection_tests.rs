@@ -4,6 +4,7 @@ use super::*;
 fn install(control: &ControlStore) {
     let db = control.connection.borrow();
     let tx = db.unchecked_transaction().unwrap();
+    crate::migrations::agent_locator_v33::remove_test_shape(&tx);
     tx.execute_batch(crate::migrations::agent_locator_v33::CONTROL)
         .unwrap();
     agent_locator::initialize(&tx).unwrap();

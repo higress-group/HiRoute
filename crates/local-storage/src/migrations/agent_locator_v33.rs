@@ -105,3 +105,22 @@ CREATE TRIGGER agent_locator_head_delete AFTER DELETE ON agent_locator_heads BEG
 CREATE TRIGGER agent_locator_dirty_update AFTER UPDATE ON agent_locator_dirty BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
 CREATE TRIGGER agent_locator_dirty_delete AFTER DELETE ON agent_locator_dirty BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
 "#;
+
+pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::LocalStorageError> {
+    crate::control::agent_locator::initialize(tx)
+}
+
+#[cfg(test)]
+pub(crate) fn remove_test_shape(db: &rusqlite::Connection) {
+    for definition in TRIGGERS.split("CREATE TRIGGER ").skip(1) {
+        let (name, _) = definition.split_once(' ').unwrap();
+        db.execute_batch(&format!("DROP TRIGGER IF EXISTS {name}"))
+            .unwrap();
+    }
+    db.execute_batch(
+        "DROP TABLE IF EXISTS agent_locator_heads;
+        DROP TABLE IF EXISTS agent_locator_members; DROP TABLE IF EXISTS agent_locator_dirty;
+        DROP TABLE IF EXISTS agent_locator_coverage;",
+    )
+    .unwrap();
+}

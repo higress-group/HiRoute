@@ -35,6 +35,9 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
         // including its semantic initialization before publishing the schema marker.
         current_dependencies_v32::initialize(&transaction).unwrap();
     }
+    if kind == DatabaseKind::Control && version == 33 {
+        agent_locator_v33::initialize(&transaction).unwrap();
+    }
     transaction
         .pragma_update(None, "user_version", version)
         .unwrap();

@@ -33,7 +33,7 @@ fn target(
     Ok(Some((context, target)))
 }
 
-fn validate_coverage(db: &Connection) -> PortResult<()> {
+pub(super) fn validate_coverage(db: &Connection) -> PortResult<()> {
     let complete: bool = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM agent_native_target_coverage c

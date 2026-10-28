@@ -508,6 +508,7 @@ impl ControlStore {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| port(PortErrorCode::Unavailable, "control.operation.begin"))?;
+        let locator_ticket = agent_locator::begin_write(&transaction);
         if let Some(existing) = load_operation_where(
             &self.diagnostics.borrow(),
             &transaction,
@@ -634,6 +635,7 @@ impl ControlStore {
             Some(&self.completed_operation_cache),
         )?;
         compute::begin_save_handoff_in(&transaction, operation)?;
+        agent_locator::finish_write(&transaction, operation, locator_ticket, false)?;
         transaction
             .commit()
             .map_err(|_| port(PortErrorCode::Unavailable, "control.operation.commit"))?;
@@ -802,7 +804,9 @@ impl ControlRepositoryPort for ControlStore {
                 let transaction = connection
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .map_err(|_| port(PortErrorCode::Unavailable, "control.journal.begin"))?;
+                let locator_ticket = agent_locator::begin_write(&transaction);
                 let generation = journal::save(&transaction, operation)?;
+                agent_locator::finish_write(&transaction, operation, locator_ticket, false)?;
                 transaction
                     .commit()
                     .map_err(|_| port(PortErrorCode::Unavailable, "control.journal.commit"))?;
@@ -1523,6 +1527,7 @@ impl ControlRepositoryPort for ControlStore {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.begin"))?;
+        let locator_ticket = agent_locator::begin_write(&transaction);
         plans::finish_draft_operation(&transaction, operation)?;
         plans::finish_plan_operation(&transaction, operation)
             .map_err(|_| port(PortErrorCode::Conflict, "control.finish.plan-head"))?;
@@ -1545,6 +1550,7 @@ impl ControlRepositoryPort for ControlStore {
                 return Err(port(PortErrorCode::Conflict, "control.finish.claim"));
             }
         }
+        agent_locator::finish_write(&transaction, operation, locator_ticket, true)?;
         transaction
             .commit()
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.commit"))?;
@@ -1575,6 +1581,7 @@ impl ControlRepositoryPort for ControlStore {
                 let transaction = connection
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .map_err(|_| port(PortErrorCode::Unavailable, "control.tail.begin"))?;
+                let locator_ticket = agent_locator::begin_write(&transaction);
                 let generation = journal::save(&transaction, operation)?;
                 transaction
                     .execute(
@@ -1591,6 +1598,7 @@ impl ControlRepositoryPort for ControlStore {
                     // The journal save above is not committed: another operation's claim stays intact.
                     return Err(port(PortErrorCode::Conflict, "control.tail.claim"));
                 }
+                agent_locator::finish_write(&transaction, operation, locator_ticket, false)?;
                 transaction
                     .commit()
                     .map_err(|_| port(PortErrorCode::Unavailable, "control.tail.commit"))?;

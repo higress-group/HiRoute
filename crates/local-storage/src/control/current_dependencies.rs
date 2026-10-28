@@ -146,6 +146,7 @@ impl ControlStore {
         let tx = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finalize.begin"))?;
+        let locator_ticket = super::agent_locator::begin_write(&tx);
         if !journal::is_current(&tx, operation)? {
             return Err(port(PortErrorCode::Conflict, "control.finalize.current"));
         }
@@ -154,6 +155,7 @@ impl ControlStore {
             params![operation.operation_id.as_str(), operation.generation],
         )
         .map_err(|_| port(PortErrorCode::Unavailable, "control.finalize.write"))?;
+        super::agent_locator::finish_write(&tx, operation, locator_ticket, false)?;
         tx.commit()
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finalize.commit"))
     }

@@ -60,7 +60,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 32;
+pub const LATEST_SCHEMA_VERSION: u32 = 33;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -313,6 +313,9 @@ fn migrate(
             initialize_storage_meta(&transaction, expected_store_uuid)?;
             current_dependencies_v32::initialize(&transaction)?;
         }
+        if kind == DatabaseKind::Control && version == 33 {
+            agent_locator_v33::initialize(&transaction)?;
+        }
         if kind == DatabaseKind::Secrets && version == 15 {
             convergence_v15::ensure_collaboration_preparation_column(&transaction)?;
         }
@@ -519,7 +522,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | 31 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | 31 | 32 | LATEST_SCHEMA_VERSION
         ) || (set.target_schema_version() == 24
             && [
                 set.control.manifest(),
@@ -921,6 +924,8 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 30) => Ok(NOOP_V9),
         (DatabaseKind::Control, 32) => Ok(current_dependencies_v32::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 32) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 33) => Ok(agent_locator_v33::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 33) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }

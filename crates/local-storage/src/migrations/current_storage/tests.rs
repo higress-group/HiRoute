@@ -347,3 +347,91 @@ fn historical_plan_bytes_become_strict_when_current_or_held() {
         }
     }
 }
+
+/// A synthetic retained source is produced by the real migration and writers at
+/// its requested old target. This is not a claim of exact released-producer input.
+fn schema32_source(root: &Path) -> LocalStorageSet {
+    crate::prepare_owner_directory(root).unwrap();
+    let live = root.join("live");
+    crate::prepare_owner_directory(&live).unwrap();
+    let backup = crate::upgrade_backup_root(root).unwrap();
+    let authority = crate::test_storage_authority();
+    let control = crate::ControlStore::open_from_migration_set(
+        &authority,
+        &live.join("control.db"),
+        &backup,
+        "00000000000000000000000000000001",
+        32,
+    )
+    .unwrap();
+    let runtime = crate::RuntimeStore::open_from_migration_set(
+        &authority,
+        &live.join("runtime.db"),
+        &backup,
+        "00000000000000000000000000000002",
+        32,
+    )
+    .unwrap();
+    let secrets = crate::LocalSecretStore::open_test_source_at_schema(
+        &authority,
+        &live.join("secrets.db"),
+        &root.join("master-key"),
+        &backup,
+        32,
+    )
+    .unwrap();
+    LocalStorageSet {
+        control,
+        runtime,
+        secrets,
+    }
+}
+
+#[test]
+fn locator_upgrade_from_admitted_32_preserves_unrelated_publication_damage() {
+    let directory = crate::test_tempdir().unwrap();
+    let root = directory.path().join("storage");
+    let stores = schema32_source(&root);
+    history(&stores, 3);
+    stores.control.connection.borrow().execute(
+        "UPDATE gateway_publications SET digest='corrupted-history' WHERE publication_revision=1", [],
+    ).unwrap();
+    validate_current_storage(stores.control(), stores.runtime(), stores.secrets()).unwrap();
+    assert!(audit_current_storage(stores.control(), stores.runtime(), stores.secrets()).is_err());
+    let original: Vec<u8> = stores
+        .control
+        .connection
+        .borrow()
+        .query_row(
+            "SELECT publication_bytes FROM gateway_publications WHERE publication_revision=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    drop(stores);
+    // The actual production three-store coordinator must own the upgrade and backup.
+    let upgraded = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+    assert_eq!(
+        database_version(&root.join("live/control.db")).unwrap(),
+        Some(33)
+    );
+    assert_eq!(
+        upgraded
+            .control
+            .connection
+            .borrow()
+            .query_row(
+                "SELECT publication_bytes FROM gateway_publications WHERE publication_revision=1",
+                [],
+                |r| r.get::<_, Vec<u8>>(0),
+            )
+            .unwrap(),
+        original
+    );
+    assert!(
+        audit_current_storage(upgraded.control(), upgraded.runtime(), upgraded.secrets()).is_err()
+    );
+    upgraded.validate_recovered_grant_publications().unwrap();
+    drop(upgraded);
+    LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+}

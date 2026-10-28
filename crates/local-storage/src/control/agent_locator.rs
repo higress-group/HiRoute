@@ -185,6 +185,13 @@ fn save_member(db: &Connection, ordinal: i64, row: Option<AgentHistoryRow>) -> P
 /// Called only as part of the existing Control upgrade transaction, after v32 has
 /// admitted its source. Optional effects are not expanded except exact Ensure receipts.
 pub(crate) fn initialize(db: &Connection) -> Result<(), LocalStorageError> {
+    // A version number alone cannot establish the admitted v32 dependency coverage.
+    super::current_dependencies::validate_recovery_members(db)
+        .map_err(|_| LocalStorageError::InvalidData)?;
+    super::native_targets::validate_coverage(db).map_err(|_| LocalStorageError::InvalidData)?;
+    super::artifact_heads::validate_coverage(db).map_err(|_| LocalStorageError::InvalidData)?;
+    crate::migrations::routing_read_v32::validate(db)
+        .map_err(|_| LocalStorageError::InvalidData)?;
     let mut query = db.prepare(
         "SELECT rowid FROM operations
          WHERE (state='succeeded' AND operation_kind IN ('ApplyAgentConnectionChange','ApplyAgentConnectionRestore'))
@@ -296,6 +303,7 @@ pub(super) fn finish_write(
     db: &Connection,
     operation: &OperationV1,
     before: Option<i64>,
+    publish_terminal: bool,
 ) -> PortResult<()> {
     let Some(before) = before else {
         return Ok(());
@@ -329,6 +337,10 @@ pub(super) fn finish_write(
             return Ok(());
         }
         if previous.is_none() {
+            if !publish_terminal {
+                // A success outside terminal commit is not an authoritative new head.
+                return Ok(());
+            }
             let ordinal: i64 = db
                 .query_row(
                     "SELECT rowid FROM operations WHERE operation_id=?1",
