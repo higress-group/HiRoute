@@ -553,10 +553,15 @@ input replacement still requires its existing guard, and the old connection dial
 must close before the selected source's flow takes input ownership. Choosing a
 saved model is distinct from adding a model to an existing connection point.
 
-Adjustable reasoning SHALL use a compact bordered control next to its required
-label, with an explicit disclosure affordance, keyboard focus and current value.
-Known native profiles have readable localized labels; the exact profile sent to
-Preview/Apply, provider defaults and reasoning policy remain unchanged. Fixed
+Trial section headings SHALL use consistent typography for peer model, decision
+and Agent sections. Required items use a small visual marker with an accessible
+required label and one shared explanation; missing values retain their existing
+inline errors and Review changes focus behavior.
+
+Adjustable reasoning SHALL use a compact bordered control next to its label, with
+an explicit disclosure affordance, keyboard focus and current value.
+Native profile names remain in English in both UI languages; the exact profile
+sent to Preview/Apply, provider defaults and reasoning policy remain unchanged. Fixed
 reasoning remains non-editable and invalid choices retain actionable field errors.
 
 The initial trial threshold defaults to 0.90 but is selectable before review using the shared continuous control and directly clickable presets, including Entrusted at zero. The chosen exact thousandth value SHALL survive connection detours, refresh, model/Agent changes, review/back/edit, ordinary save, publication and reopening. Review SHALL use the latest chosen/editor value rather than reset it to 0.90. Initial setup SHALL not show active-version evidence-loading copy or request historical replay. Custom extensions hide and park built-in controls. Existing ordinary authoring defaults, competence floors, English default prompts, protection, permissions and explicit publication remain unchanged.

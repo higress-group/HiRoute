@@ -29,11 +29,11 @@ import { useTrialAgents } from './useTrialAgents';
 import { ModelManagementPage } from '../../product/ModelManagementPage';
 import { modelAnnouncements } from '../model-feed/announcements';
 import { ReasoningDialog } from '../../ui/ReasoningDialog';
-import { reasoningProfileLabel } from '../../ui/reasoning-profile-label';
 import { trialReadiness, type TrialBlocker } from './readiness';
 import { candidateUnavailableMessage } from '../../plan-candidate-availability';
 import type { Options } from '../../plan-editor';
 import { TrialConnectedModelSelect, type ConnectedTrialModel } from './TrialConnectedModelSelect';
+import { TrialRequiredMark } from './TrialRequiredMark';
 
 const ignoreRepresentedOperations = (_ids: string[]) => {};
 
@@ -400,10 +400,10 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     const result = role === 'trial' ? trialReasoning : primaryReasoning;
     if (!candidate || !result) return null;
     const value = result.selection.reasoning;
-    const label = value?.kind === 'profile' ? reasoningProfileLabel(value.profile, language) : value?.kind === 'toggle' ? (value.enabled ? t('开启', 'On') : t('关闭', 'Off')) : value?.kind === 'budget' ? `${value.tokens} tokens` : candidate.reasoning.kind === 'fixed' ? t('固定', 'Fixed') : t('请选择', 'Choose reasoning');
+    const label = value?.kind === 'profile' ? value.profile : value?.kind === 'toggle' ? (value.enabled ? t('开启', 'On') : t('关闭', 'Off')) : value?.kind === 'budget' ? `${value.tokens} tokens` : candidate.reasoning.kind === 'fixed' ? t('固定', 'Fixed') : t('请选择', 'Choose reasoning');
     const hasError = result.state === 'invalid' || (attempted && result.state === 'choice_required');
     return <div className="field trial-reasoning" data-trial-target={`${role}-reasoning`} tabIndex={-1}>
-      <span className="field-label" id={`${role}-reasoning-label`}>{candidate.reasoning.kind === 'fixed' ? t('思考设置', 'Reasoning') : t('思考强度 · 必填', 'Reasoning · Required')}</span>
+      <span className="field-label" id={`${role}-reasoning-label`}>{candidate.reasoning.kind === 'fixed' ? t('思考设置', 'Reasoning') : <>{t('思考强度', 'Reasoning')}<TrialRequiredMark language={language} /></>}</span>
       {candidate.reasoning.kind === 'fixed' && result.state !== 'invalid' ? <span>{label}</span>
         : candidate.reasoning.kind === 'fixed' ? <button type="button" className="btn" aria-invalid={hasError} aria-describedby={`${role}-reasoning-error`} onClick={() => { const value = { binding_id: candidate.binding_id }; if (role === 'trial') setTrialChosen(value); else setPrimarySelection(value); }}>{t('使用模型固定设置', 'Use the model’s fixed setting')}</button>
           : <button type="button" className="btn trial-reasoning-control" aria-haspopup="dialog" aria-labelledby={`${role}-reasoning-label ${role}-reasoning-value`} aria-invalid={hasError} aria-describedby={hasError ? `${role}-reasoning-error` : undefined} onClick={() => setReasoningRole(role)}>
@@ -487,8 +487,9 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const step = mapped ? 4 : published ? 3 : review ? 2 : 1;
   const steps = [t('选择模型', 'Choose models'), t('核对并发布', 'Review and publish'), t('映射 Agent', 'Map the Agent'), t('开始使用', 'Start using it')];
   const setup = data && <fieldset disabled={catalogLoading || !mutable} className="trial-setup">
+    <p className="field-help trial-required-hint">{t('* 表示需要完成的项目', '* marks required items')}</p>
     <section className="trial-card" data-trial-target="trial" tabIndex={-1}>
-      <div className="trial-card-head"><h3>{t('要试用的模型 · 必填', 'Model to try · Required')}</h3>{featured.length > 0 && <span>{t('来自 hiroute.ai 模型目录和内置目录', 'From the hiroute.ai model directory and the built-in catalog')}</span>}</div>
+      <div className="trial-card-head"><h3>{t('要试用的模型', 'Model to try')}<TrialRequiredMark language={language} /></h3>{featured.length > 0 && <span>{t('来自 hiroute.ai 模型目录和内置目录', 'From the hiroute.ai model directory and the built-in catalog')}</span>}</div>
       {recommendationState === 'error' && <p role="alert" className="oc-inline-error">{t('推荐模型暂时无法读取。', 'Recommended models could not be read.')} <button type="button" className="btn btn-quiet" onClick={() => void refreshRecommendations()}>{t('重试', 'Retry')}</button></p>}
       {recommendationState === 'loading' && <p role="status" className="field-help">{t('正在读取推荐模型…', 'Reading recommended models…')}</p>}
       <div className="trial-model-grid" role="group" aria-label={t('要试用的模型', 'Model to try')}>{cards.map(model => { const state = cardState(model); const actual = unlinkedTrial && model.model_configuration_id === trialId; const facts = actual ? null : model.catalog?.facts ?? null; return <button type="button" key={model.model_configuration_id} className={`trial-model-card${trialId === model.model_configuration_id ? ' selected' : ''}`} aria-pressed={trialId === model.model_configuration_id} disabled={model.availability.kind === 'needs_newer_client' && !actual} onClick={() => chooseTrial(model.model_configuration_id)}>
@@ -524,7 +525,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     </section>
     <section className="trial-card trial-card-pair">
       <div className="trial-column" data-trial-target="primary" tabIndex={-1}>
-        <h3>{t('主力模型 · 必填', 'Primary model · Required')}</h3>
+        <h3>{t('主力模型', 'Primary model')}<TrialRequiredMark language={language} /></h3>
         <div className="actions"><button type="button" data-trial-focus className="btn" aria-invalid={!!fieldError('primary')} aria-describedby={fieldError('primary') ? 'trial-primary-error' : undefined} onClick={() => openPicker('primary')}>{t('选择已接入模型', 'Choose a connected model')}</button><button type="button" className="btn btn-quiet" onClick={() => onOpenModels?.()}>{t('添加模型…', 'Add a model…')}</button></div>
         {fieldError('primary') && <p id="trial-primary-error" className="oc-inline-error">{fieldError('primary')}</p>}
         {selectedPrimary && primary && !choosingPrimary ? <button type="button" className="trial-choice selected" aria-expanded={false} onClick={() => setChoosingPrimary(true)}><strong>{bindingInfo(selectedPrimary.binding_id)?.member.display_name ?? primary.display_name}</strong><span>{[source(selectedPrimary.binding_id) ?? t('来源未确认', 'Source unconfirmed'), sourceKind(selectedPrimary.binding_id), exactCatalogBinding(selectedPrimary.model_configuration_id, selectedPrimary.binding_id) ? '' : t('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed'), primaryOrigin.current.kind === 'agent' && mappedAgent ? t(`来自 ${agentDisplayName(mappedAgent.agent_id, language)} 现在使用的模型`, `What ${agentDisplayName(mappedAgent.agent_id, language)} uses now`) : ''].filter(Boolean).join(' · ')}</span><em>{t('更换', 'Change')}</em></button>
@@ -536,14 +537,14 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
         <button type="button" className="btn btn-quiet trial-inline-action" onClick={() => setSubscriptions(true)}>{t('扫描本机订阅', 'Scan local subscriptions')}</button>
       </div>
       <div className="trial-column trial-decision" data-trial-target="decision" tabIndex={-1}>
-        <span className="field-label">{t('决策连接 · 必填', 'Decision connection · Required')}</span>
+        <h3>{t('决策连接', 'Decision connection')}<TrialRequiredMark language={language} /></h3>
         <DecisionSelector classifier={classifier} smart allowHeuristic={false} announceError={false} trialFocus error={fieldError('decision')} services={services} language={language} onChange={value => { serviceTouched.current = true; setClassifier(value); }} onOpenServices={openDecision} />
         {servicesError && <p role="alert">{t('决策连接暂时无法读取。', 'Decision connections could not be read.')} <button type="button" data-trial-retry className="btn btn-quiet" onClick={() => void refreshServices()}>{t('重试', 'Retry')}</button></p>}
         <p className="field-help">{custom ? t('扩展直接选择执行组，可以提供仅用于观察的评分。', 'The extension selects the execution group directly and may provide scores for observation.') : t('试用需要给每个阶段打胜任分，所以不提供启发式规则。', 'A trial needs a competence score for every stage, so heuristic rules are not offered.')}</p>
       </div>
     </section>
     <section className="trial-card trial-card-pair">
-      <div className="trial-column" data-trial-target="agent" tabIndex={-1}><h3>{t('接入的 Agent · 必填', 'Agent · Required')}</h3>{agentRead.snapshot && <TrialAgentChoice snapshot={agentRead.snapshot} value={mapping} onChange={value => { mappingInitialized.current = true; if (value.agentId !== mapping.agentId) { ++selectionEpoch.current; ++pickerEpoch.current; primaryOrigin.current = { kind: 'unset', agentId: value.agentId }; setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); } setMapping(value); }} language={language} loading={agentRead.loading} presetTarget agentError={fieldError('agent')} presetError={fieldError('presets')} onRetry={() => void agentRead.refresh()} />}{agentRead.error && <p role="alert">{t('Agent 配置暂时无法读取，请重试。', 'Agent settings could not be read. Retry.')}<button type="button" data-trial-retry className="btn btn-quiet" onClick={() => void agentRead.refresh(true)}>{t('重试', 'Retry')}</button></p>}</div>
+      <div className="trial-column" data-trial-target="agent" tabIndex={-1}><h3>{t('接入的 Agent', 'Agent')}<TrialRequiredMark language={language} /></h3>{agentRead.snapshot && <TrialAgentChoice snapshot={agentRead.snapshot} value={mapping} onChange={value => { mappingInitialized.current = true; if (value.agentId !== mapping.agentId) { ++selectionEpoch.current; ++pickerEpoch.current; primaryOrigin.current = { kind: 'unset', agentId: value.agentId }; setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); } setMapping(value); }} language={language} loading={agentRead.loading} presetTarget agentError={fieldError('agent')} presetError={fieldError('presets')} onRetry={() => void agentRead.refresh()} />}{agentRead.error && <p role="alert">{t('Agent 配置暂时无法读取，请重试。', 'Agent settings could not be read. Retry.')}<button type="button" data-trial-retry className="btn btn-quiet" onClick={() => void agentRead.refresh(true)}>{t('重试', 'Retry')}</button></p>}</div>
       <div className="trial-column">
         <h3>{custom ? t('路由名称', 'Route name') : t('名称与起始信任度', 'Name and starting trust')}</h3>
         <label className="field" data-trial-target="name"><span className="field-label">{t('路由名称', 'Route name')}</span><input className="input" value={name ?? defaultName} placeholder={t('选好模型后自动填写', 'Filled in after choosing models')} aria-invalid={!!fieldError('name')} aria-describedby={fieldError('name') ? 'trial-name-error' : undefined} onChange={e => setName(e.target.value)} />{fieldError('name') && <span id="trial-name-error" className="oc-inline-error">{fieldError('name')}</span>}</label>

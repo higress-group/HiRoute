@@ -123,3 +123,6 @@
 .trial-connected-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; cursor: pointer; }
 .trial-connected-trigger > span { min-width: 0; overflow-wrap: anywhere; }
 .trial-connected-trigger > .icon { width: 16px; height: 16px; flex: none; color: var(--text-muted); }
+
+.trial-required-mark { margin-inline-start: 4px; color: var(--accent); font-size: .82em; font-weight: 650; vertical-align: .08em; }
+.trial-required-hint { margin: 0 2px; color: var(--text-muted); font-size: calc(12px * var(--hr-text-scale)); }

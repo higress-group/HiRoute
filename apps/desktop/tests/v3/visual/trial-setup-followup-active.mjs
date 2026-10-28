@@ -20,9 +20,10 @@ async function open(query, language='en', width=755, height=600) {
   await waitFor(client, `!!document.querySelector('.trial-agent-choice') && !!document.querySelector('.trial-footer')`);
 }
 async function click(selector, text = '') {
-  const expression = `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&!e.disabled&&e.textContent.includes(${JSON.stringify(text)}))`;
-  await waitFor(client, `!!(${expression})`);
-  await evaluate(client, `(${expression}).click();true`);
+  const expression = `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&!e.matches(':disabled')&&e.textContent.includes(${JSON.stringify(text)}))`;
+  // Check inherited fieldset disability and click in the same browser turn,
+  // rather than selecting just before a coherent refresh disables the form.
+  await waitFor(client, `(()=>{const element=${expression};if(!element)return false;element.click();return true;})()`);
 }
 async function field(selector, value) {
   await waitFor(client, `!!document.querySelector(${JSON.stringify(selector)})`);
@@ -669,7 +670,7 @@ try {
       await waitFor(client, `!!document.querySelector('.trial-setup .trust-slider')`);
       assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/0\.5$/);
       assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'Edited trial route');
-      assert.equal((await evaluate(client, `document.querySelector('[data-trial-target="primary-reasoning"] button').textContent`)).trim(),language==='zh'?'低':'low');
+      assert.equal((await evaluate(client, `document.querySelector('[data-trial-target="primary-reasoning"] button').textContent`)).trim(),'low');
       await field('.trial-setup .trust-slider','277');
       await click('.trial-footer .btn-primary',language==='zh'?'检查改动':'Review changes');
       await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
