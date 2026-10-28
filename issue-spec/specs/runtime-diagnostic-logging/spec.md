@@ -150,6 +150,7 @@ Storage startup SHALL retain bounded typed cause/action facts through its existi
 
 Source Issue:
 - https://github.com/higress-group/HiRoute/issues/176
+- https://github.com/higress-group/HiRoute/issues/245
 
 ## Implementation references
 

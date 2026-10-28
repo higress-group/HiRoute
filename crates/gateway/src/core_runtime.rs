@@ -646,6 +646,7 @@ impl ProductionGatewayRuntime {
                 .await;
             }
             let externalize_elapsed = externalize_started.elapsed();
+            set_phase(LocalPhase::History);
             let routing_view = native_routing_view::NativeRoutingView::prepare(
                 &request.headers,
                 &canonical_request,

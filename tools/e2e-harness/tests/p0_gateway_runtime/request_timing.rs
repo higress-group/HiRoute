@@ -80,7 +80,15 @@ fn info_request_timing_covers_all_ingress_protocols_large_replay_and_rejections(
     assert_eq!(rejected.status, 401);
     let malformed = fixture.request_body(br#"{"model":"runtime-model","input":["#);
     assert_eq!(malformed.status, 400);
-    let records = summaries(&fixture, 5);
+    let wrong_method = request(
+        fixture.address,
+        "GET",
+        "/v1/responses",
+        &[("X-HiRoute-Token", TOKEN)],
+        b"",
+    );
+    assert_eq!(wrong_method.status, 405);
+    let records = summaries(&fixture, 6);
     for record in &records {
         assert_partition(record);
     }
@@ -101,6 +109,29 @@ fn info_request_timing_covers_all_ingress_protocols_large_replay_and_rejections(
     assert!(!log.contains("private-history-marker"));
     assert!(!log.contains("private-invalid-token"));
     assert_eq!(provider.calls(), 3);
+}
+
+#[test]
+fn info_request_timing_partitions_a_real_dripped_stream() {
+    let provider = NativeProvider::start(vec![ProviderReply::StreamDrip {
+        status: 200,
+        chunks: RESPONSES_STREAM_OK
+            .chunks(64)
+            .map(|chunk| chunk.to_vec())
+            .collect(),
+        interval: Duration::from_millis(5),
+    }]);
+    let fixture = RuntimeFixture::launch_with_timing_diagnostics(&[&provider], 1, None);
+    let response =
+        fixture.request_body(br#"{"model":"runtime-model","input":"stream","stream":true}"#);
+    assert_eq!(response.status, 200);
+    assert!(String::from_utf8_lossy(&response.body).contains("response.completed"));
+    let records = summaries(&fixture, 1);
+    assert_partition(&records[0]);
+    let summary = &records[0]["event"]["request_timing_summary"];
+    assert_eq!(summary["outcome"], "completed");
+    assert!(summary["wait"]["upstream_read_us"].as_u64().unwrap() >= 25_000);
+    assert!(summary["local"]["stream_us"].as_u64().unwrap() > 0);
 }
 
 #[test]

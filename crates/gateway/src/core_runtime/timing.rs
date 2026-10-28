@@ -28,7 +28,10 @@ pub(super) async fn process(
     let request = session.request_head()?;
     let path = request.path_and_query.split('?').next().unwrap_or_default();
     // Readiness and model discovery are control reads, not model requests.
-    if request.method == http::Method::GET {
+    if request.method == http::Method::GET
+        && (matches!(path, "/_hiroute/ready" | "/v1/models")
+            || path.strip_prefix(hiroute_domain::QODER_MODEL_BASE_PATH) == Some("/models"))
+    {
         return runtime.process_request(session, request).await;
     }
     let protocol = IngressProtocol::from_path(path).map(|p| match p {
