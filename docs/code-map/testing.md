@@ -80,6 +80,11 @@ happy-path UI journey.
 
 ## What each layer proves
 
+For local request cost, start with the [timing guide](../diagnostic-troubleshooting.md#model-request-timing-at-info)
+and bounded CPU profiling. The [hash backend benchmark](../../crates/gateway/benches/gateway_hash_paths.rs)
+checks byte equivalence and throughput on the affected CPU; it does not replace
+whole-request measurement or change the production cryptographic backend.
+
 | Layer | Appropriate assertion | Evidence limit |
 | --- | --- | --- |
 | Pure state / policy | Intent, thresholds, branch isolation and request construction | No service dispatch or production wiring |

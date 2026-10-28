@@ -36,7 +36,9 @@ fn ring(bytes: &[u8], chunk_bytes: usize) -> [u8; 32] {
 }
 
 fn main() {
-    assert!(!cfg!(debug_assertions), "run this benchmark in release mode");
+    if cfg!(debug_assertions) {
+        panic!("run this benchmark in release mode");
+    }
     let payload: Vec<_> = (0..400 * 1024).map(|i| (i % 251) as u8).collect();
     // Include block/padding boundaries and fragmented updates. Both backends
     // see identical domain framing and bytes, including the empty input.

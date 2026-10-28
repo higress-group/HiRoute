@@ -207,3 +207,14 @@ released, so a slow sink can delay its appearance without delaying the response.
 The existing `request_end` remains immediate. If a sink never returns or the
 process is killed, the summary may be absent under the existing best-effort
 logging contract; inspect sink failures and the immediate lifecycle events.
+
+Use bounded function timings and CPU samples to locate local hotspots before
+changing algorithms. Nested timings overlap, and sample proportions are estimates,
+not exact whole-request CPU percentages. To compare equivalent HMAC-SHA256
+implementations, run `cargo bench --locked -p hiroute-gateway --bench gateway_hash_paths`
+through the configured validation runner. The benchmark checks identical framed
+bytes across padding and update boundaries, then alternates backends on fixed
+inputs. It changes no production backend. Measure its release executable on the
+affected CPU: SHA instruction support can reverse a result from another machine.
+Hash-only throughput does not establish a whole-request latency target; rerun the
+actual request path before claiming an improvement.
