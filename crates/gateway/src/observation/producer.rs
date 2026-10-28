@@ -81,12 +81,23 @@ impl ChannelProducer {
         T: Serialize,
         F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
     {
+        self.publish_timed(super::latency::RequestLatency::current(), build);
+    }
+
+    pub(super) fn publish_timed<T, F>(
+        &self,
+        timing: Option<super::latency::RequestLatency>,
+        build: F,
+    ) where
+        T: Serialize,
+        F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
+    {
         let component = Arc::clone(&self.component);
         let revision = Arc::clone(&self.revision);
         let Some(inner) = &self.inner else {
             return;
         };
-        inner.try_publish(move |stamp| {
+        inner.try_publish_timed(timing, move |stamp| {
             let producer = descriptor(&stamp, &component, &revision);
             let loss = stamp.loss_watermark.map(loss_watermark);
             serde_json::to_vec(&build(producer, stamp.sequence, loss)).unwrap_or_else(|_| {

@@ -368,10 +368,9 @@ impl RequestObservation {
         let request_id = self.metadata().request_id.clone();
         let key = self.inner.key;
         let event_kind = event.phase;
-        self.inner
-            .channels
-            .content
-            .publish(move |producer, sequence, loss| {
+        self.inner.channels.content.publish_timed(
+            self.inner.latency.clone(),
+            move |producer, sequence, loss| {
                 let sequence_bytes = sequence.to_be_bytes();
                 ConversationContentEnvelopeV1 {
                     schema_version: CONVERSATION_CONTENT_SCHEMA.into(),
@@ -418,7 +417,8 @@ impl RequestObservation {
                         .or(event.completeness_delta),
                     loss_watermark: loss,
                 }
-            });
+            },
+        );
     }
 }
 

@@ -1,3 +1,5 @@
+#[path = "p0_gateway_runtime/request_timing.rs"]
+mod request_timing;
 mod runtime_support;
 
 #[path = "p0_gateway_runtime/auxiliary_failure_isolation.rs"]

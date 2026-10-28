@@ -408,6 +408,9 @@ impl ProductionGatewayRuntime {
         } else {
             match request.classifier {
                 Some(classifier) => {
+                    hiroute_gateway_core::runtime::timing::set_phase(
+                        hiroute_gateway_core::runtime::timing::LocalPhase::History,
+                    );
                     let prepared = if classifier.system_one_model.is_some() {
                         system_one::request_template(
                             classifier,
@@ -748,6 +751,9 @@ impl ProductionGatewayRuntime {
             o.applicability_state = hiroute_domain::ApplicabilityStateV1::Unavailable;
             o.applicability_reason = hiroute_domain::ApplicabilityReasonV1::Pending;
         }
+        hiroute_gateway_core::runtime::timing::set_phase(
+            hiroute_gateway_core::runtime::timing::LocalPhase::Decision,
+        );
         let exchange_result = collect_response(&mut exchange, call_deadline, &mut diagnostic).await;
         diagnostic.protocol(exchange.transport_facts().upstream_protocol);
         let (status, body) = match exchange_result {

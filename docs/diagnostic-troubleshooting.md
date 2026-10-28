@@ -174,3 +174,36 @@ HMAC registration correlation, with the authority-loss transition on the host.
 A late successful daemon ACK can coexist with a host timeout; it does not authorize
 reuse. A successful later recovery is not proof of the earlier failure's cause.
 Keep raw diagnostics private and report only revision-bound observable outcomes.
+
+## Model request timing at Info
+
+`request_timing_summary` reuses the request token in `request_begin`,
+`request_end` and attempt events. It covers lifecycle entry through completion or
+cancellation, including early rejections (which may have a span but no request
+token). GET readiness/catalog calls are excluded. All timing fields use
+microseconds.
+
+The values in `local` and `wait` add up exactly to `elapsed_us`; do not also add
+legacy `model_stage`, attempt transport spans or reader-suppression durations.
+Local fields measure elapsed work while the request future is polled, including
+synchronous Replay I/O. They are not thread CPU counters. Pending gaps are labeled
+at the actual awaited boundary: client input, decision service, upstream
+connect/write/receipt, downstream write backpressure, or local background work.
+They include executor scheduling delay. Competing or unidentified pending work
+stays in `wait.other_us`; upstream receipt wait is not a provider-only inference
+measurement. Background reader/capture CPU requires a process profile.
+
+`asynchronous` is separate from HTTP latency. `queue_wait_max_us` is the maximum
+wait of a single observation record; `sink_work_us` sums sink-call durations across
+channels, including their projection/locking/commit work. These channels can run
+concurrently. `after_response_us` measures the release delay after the frozen
+request ends, including retained capture ownership. None of these fields should
+be added to `elapsed_us`. Lost records contribute to `dropped`, not fabricated
+successful ingestion. No exporter/network latency is implied for the local OTEL
+mapper.
+
+One summary is enqueued after existing request/capture/queued-record owners are
+released, so a slow sink can delay its appearance without delaying the response.
+The existing `request_end` remains immediate. If a sink never returns or the
+process is killed, the summary may be absent under the existing best-effort
+logging contract; inspect sink failures and the immediate lifecycle events.

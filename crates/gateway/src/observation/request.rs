@@ -80,6 +80,7 @@ pub(super) struct RequestObservationInner {
     pub(super) context: DiagnosticContext,
     pub(super) request_token: Option<CorrelationToken>,
     pub(super) started_at: Instant,
+    pub(super) latency: Option<super::latency::RequestLatency>,
     pub(super) state: Mutex<RequestObservationState>,
 }
 
@@ -208,8 +209,14 @@ impl RequestObservation {
         metadata: RequestObservationMetadata,
         diagnostics: DiagnosticsPort,
     ) -> Self {
-        let context = diagnostics.handle().context();
+        let latency = super::latency::RequestLatency::current();
+        let context = latency
+            .as_ref()
+            .map_or_else(|| diagnostics.handle().context(), |timing| timing.context());
         let request_token = context.token(CorrelationDomain::ModelRequest, &metadata.request_id);
+        if let Some(timing) = &latency {
+            timing.bind(request_token);
+        }
         let value = Self {
             inner: Arc::new(RequestObservationInner {
                 agent_turn_output: OnceLock::new(),
@@ -223,6 +230,7 @@ impl RequestObservation {
                 context,
                 request_token,
                 started_at: Instant::now(),
+                latency,
                 state: Mutex::new(RequestObservationState {
                     next_attempt_ordinal: 1,
                     ..RequestObservationState::default()
@@ -677,6 +685,9 @@ impl RequestObservation {
             outcome: outcome.into(),
         });
         if let Some(outcome) = request_outcome(outcome) {
+            if let Some(latency) = &self.inner.latency {
+                latency.request_outcome(outcome);
+            }
             self.emit_diagnostic(DiagnosticEvent::RequestEnd(RequestEnd {
                 request_token: self.inner.request_token,
                 outcome,

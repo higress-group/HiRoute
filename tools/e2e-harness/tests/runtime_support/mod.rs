@@ -770,6 +770,27 @@ impl RuntimeFixture {
         )
     }
 
+    pub fn launch_with_timing_diagnostics(
+        providers: &[&NativeProvider],
+        max_attempts: u32,
+        observation: Option<ObservationFaults>,
+    ) -> Self {
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                diagnostic_level: Some("info"),
+                all_ingress_protocols: true,
+                observation,
+                replay_threshold: 1024 * 1024,
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
     pub fn launch_with_info_diagnostics(providers: &[&NativeProvider], max_attempts: u32) -> Self {
         Self::launch_configured(
             providers,

@@ -18,6 +18,8 @@ mod native_routing_view;
 pub mod observation;
 #[path = "profiles/mod.rs"]
 pub mod profiles;
+#[path = "core_runtime/timing.rs"]
+mod timing;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -33,6 +35,7 @@ use hiroute_gateway_core::runtime::driver::{
     BoundRequestAdmission, DecisionCandidateAuthority, GatewayCoreLifecycle,
     GatewayCoreLifecycleLimits, NoopGatewayFilterManager, ObservationLabel,
 };
+use hiroute_gateway_core::runtime::timing::{LocalPhase, WaitKind, set_phase, wait};
 use hiroute_gateway_core::transport::pingora::PingoraConnectorAdapter;
 use hiroute_gateway_core::transport::{
     GatewayLifecycle, GatewayRequestHead, GatewayResponseHead, GatewaySession, SessionReuse,
@@ -222,7 +225,16 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
         &self,
         session: &mut dyn GatewaySession,
     ) -> Result<SessionReuse, TransportError> {
-        let request = session.request_head()?;
+        timing::process(self, session).await
+    }
+}
+
+impl ProductionGatewayRuntime {
+    async fn process_request(
+        &self,
+        session: &mut dyn GatewaySession,
+        request: GatewayRequestHead,
+    ) -> Result<SessionReuse, TransportError> {
         let path = request
             .path_and_query
             .split_once('?')
@@ -360,7 +372,12 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
         let selector_deadline = authenticated.selector_deadline();
         let mut selector = Box::new(ModelSelector::new(self.authority().selector_limit()));
         let served_model_id = loop {
-            match session.read_request_body_before(selector_deadline).await {
+            match wait(
+                WaitKind::ClientRead,
+                session.read_request_body_before(selector_deadline),
+            )
+            .await
+            {
                 Err(TransportError::DeadlineExceeded) => {
                     return write_dispatch_error(session, DispatchError::RequestDeadlineExceeded)
                         .await;
@@ -432,6 +449,7 @@ impl ProductionGatewayRuntime {
         budget: StreamBudget,
     ) -> Pin<Box<dyn Future<Output = Result<SessionReuse, TransportError>> + Send + 'a>> {
         Box::pin(async move {
+            set_phase(LocalPhase::Replay);
             let (replay, raw_body) = match read_replay_body(
                 session,
                 ingress,
@@ -483,6 +501,7 @@ impl ProductionGatewayRuntime {
                     .await;
                 }
             };
+            set_phase(LocalPhase::Parse);
             let ingress_stats = match replay.reader(&raw_body).and_then(scan_ingress_document) {
                 Ok(stats) => stats,
                 Err(ReplayError::StructureLimit) => {
@@ -564,6 +583,7 @@ impl ProductionGatewayRuntime {
                 };
                 return write_typed_error_phase(session, status, code, "canonical_request").await;
             }
+            set_phase(LocalPhase::Parse);
             let parse_started = Instant::now();
             let mut canonical_request = match adapters::decode_ingress_request_with_replay(
                 protocol,
@@ -614,6 +634,7 @@ impl ProductionGatewayRuntime {
             // Move large canonical content into the request-owned aggregate pool
             // before candidate facts or Planner input are built. Planner owns and
             // later returns this compact IR; no full request clone is retained.
+            set_phase(LocalPhase::Externalize);
             let externalize_started = Instant::now();
             if externalize_model_request(&mut canonical_request, &replay, 8 * 1024).is_err() {
                 return write_typed_error_phase(
@@ -654,6 +675,7 @@ impl ProductionGatewayRuntime {
                 || identity.input_origin_unverified(prepared_hold.as_ref());
             drop(document);
             drop(ingress_workspace);
+            set_phase(LocalPhase::Prevalidate);
             let prevalidate_started = Instant::now();
             let mut replay_references = model_content_refs(&canonical_request);
             replay_references.push(raw_body.clone());
@@ -667,6 +689,7 @@ impl ProductionGatewayRuntime {
                 .await;
             }
             let prevalidate_elapsed = prevalidate_started.elapsed();
+            set_phase(LocalPhase::Prepare);
             let request_observation = self.observation.begin_request_with_content(
                 &authorized,
                 protocol,
@@ -719,6 +742,7 @@ impl ProductionGatewayRuntime {
                         prepared_hold.as_ref(),
                     )
                 });
+                set_phase(LocalPhase::History);
                 let tracking = match self.begin_authorized_decision_history(
                     &request_observation,
                     PlanSnapshot {
@@ -750,6 +774,7 @@ impl ProductionGatewayRuntime {
                 correlated_branch = tracking.correlated;
                 hold_ticket = tracking.hold_ticket;
                 let turn_history = tracking.history;
+                set_phase(LocalPhase::Decision);
                 let mut classification = Box::pin(self.classify_for_planner(
                     &strategy,
                     classification::ClassificationRequest {
@@ -842,6 +867,7 @@ impl ProductionGatewayRuntime {
                 None
             };
             drop(routing_view);
+            set_phase(LocalPhase::Prepare);
             let mut planner_input = match with_active_request(request_observation.clone(), async {
                 self.planner_inputs
                     .build_input(*canonical_request, &authorized)
@@ -929,6 +955,7 @@ impl ProductionGatewayRuntime {
             // The Planner is invoked exactly once for this request. Everything
             // below consumes its frozen output; no runtime fallback path may
             // reconstruct order from the publication candidate set.
+            set_phase(LocalPhase::Plan);
             let plan_started = Instant::now();
             let planner_output = match profiles::Planner.plan(&planner_input).map(Box::new) {
                 Ok(output) => output,
@@ -943,6 +970,7 @@ impl ProductionGatewayRuntime {
                 }
             };
             request_observation.record_plan_stage(plan_started.elapsed());
+            set_phase(LocalPhase::Prepare);
             request_observation.record_planner(
                 &planner_input,
                 &planner_output,
@@ -1302,6 +1330,7 @@ impl ProductionGatewayRuntime {
                 runtime_state_authority: runtime_state_authority.clone(),
                 continuation_scanner: active_continuation.scanner(),
             });
+            set_phase(LocalPhase::Stream);
             let execution = Box::pin(self.execution.process_bound_with_context(
                 &mut *core_session,
                 admission,
@@ -1327,8 +1356,13 @@ impl ProductionGatewayRuntime {
                     request_cancelled,
                 )
             };
+            set_phase(LocalPhase::History);
             if let Some(mut guard) = agent_turn_guard.take() {
-                request_observation.finish_agent_turn_output().await;
+                wait(
+                    WaitKind::LocalWork,
+                    request_observation.finish_agent_turn_output(),
+                )
+                .await;
                 let executions = request_observation
                     .accepted_attempt_identity()
                     .and_then(|(candidate_id, _, _)| {
@@ -1658,7 +1692,7 @@ impl GatewaySession for ReplayBodySession<'_> {
         }
         let captured = head.clone();
         self.response_started = true;
-        self.inner.write_response_head(head).await?;
+        timing::write_head(self.inner, head).await?;
         self.response_capture.accepted_head(&captured);
         Ok(())
     }
@@ -1669,7 +1703,11 @@ impl GatewaySession for ReplayBodySession<'_> {
         end_stream: bool,
     ) -> Result<(), TransportError> {
         let captured = body.clone();
-        self.inner.write_response_body(body, end_stream).await?;
+        wait(
+            WaitKind::DownstreamWrite,
+            self.inner.write_response_body(body, end_stream),
+        )
+        .await?;
         self.continuation_scanner
             .accept_bytes(&captured, Instant::now());
         self.response_capture.accepted_frame(&captured, end_stream);
@@ -1748,13 +1786,15 @@ async fn read_replay_body(
         replay, mut body, ..
     } = ingress;
     loop {
-        let chunk = session
-            .read_request_body_before(authorized.deadline())
-            .await
-            .map_err(|error| match error {
-                TransportError::DeadlineExceeded => ReplayBodyError::Deadline,
-                error => ReplayBodyError::Transport(error),
-            })?;
+        let chunk = wait(
+            WaitKind::ClientRead,
+            session.read_request_body_before(authorized.deadline()),
+        )
+        .await
+        .map_err(|error| match error {
+            TransportError::DeadlineExceeded => ReplayBodyError::Deadline,
+            error => ReplayBodyError::Transport(error),
+        })?;
         let Some(chunk) = chunk else {
             break;
         };
@@ -1846,10 +1886,12 @@ async fn write_response(
                 .map_err(|error| TransportError::Io(error.to_string().into()))?,
         );
     }
-    session
-        .write_response_head(GatewayResponseHead { status, headers })
-        .await?;
-    session.write_response_body(body, true).await?;
+    timing::write_head(session, GatewayResponseHead { status, headers }).await?;
+    wait(
+        WaitKind::DownstreamWrite,
+        session.write_response_body(body, true),
+    )
+    .await?;
     Ok(SessionReuse::Close)
 }
 

@@ -11,6 +11,8 @@ mod content;
 mod contracts;
 #[path = "observation/crypto.rs"]
 mod crypto;
+#[path = "observation/latency.rs"]
+pub(super) mod latency;
 #[path = "observation/otel.rs"]
 mod otel;
 #[path = "observation/ports.rs"]

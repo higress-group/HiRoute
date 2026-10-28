@@ -176,6 +176,82 @@ fn identity(name: &str) -> ObservationProducerIdentity {
     }
 }
 
+#[test]
+fn request_timing_follows_bounded_delivery_without_waiting_on_the_request() {
+    use super::super::super::latency::RequestLatency;
+    use hiroute_diagnostics::runtime::{DiagnosticRuntime, RuntimeConfig};
+    use hiroute_diagnostics::{event::ProcessRole, level::DiagnosticLevel, record::Component};
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-async-timing-{}-{}",
+        std::process::id(),
+        super::super::super::unix_nanos()
+    ));
+    let runtime = DiagnosticRuntime::start(RuntimeConfig {
+        root: root.clone(),
+        role: ProcessRole::Daemon,
+        component: Component::Gateway,
+        parent_session_id: None,
+        level_override: Some(DiagnosticLevel::Info),
+    });
+    let latency = RequestLatency::new(runtime.port().handle().context(), None, Instant::now());
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer =
+        ByteBoundedObservationProducer::new(identity("timed"), 8_192, 64, sink.clone()).unwrap();
+    for _ in 0..2 {
+        assert!(matches!(
+            producer.try_publish_timed(Some(latency.clone()), |_| vec![1; 64]),
+            ObservationPublishOutcome::Enqueued { .. }
+        ));
+    }
+    assert!(matches!(
+        producer.try_publish_timed(Some(latency.clone()), |_| vec![1; 16_384]),
+        ObservationPublishOutcome::Dropped { .. }
+    ));
+    // The request completes while the sink is still blocked. Neither timing nor
+    // delivery requires a request-side flush or another worker.
+    latency.finish(
+        hiroute_diagnostics::event::RequestOutcome::Completed,
+        Some(200),
+    );
+    drop(latency);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while sink.slow.load(Ordering::Acquire) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(!sink.slow.load(Ordering::Acquire));
+    std::thread::sleep(Duration::from_millis(5));
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    producer.flush(Duration::from_secs(2)).unwrap();
+    runtime.shutdown();
+    let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
+    let summaries = log
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter_map(|record| record["event"].get("request_timing_summary").cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(summaries.len(), 1, "{log}");
+    let summary = &summaries[0];
+    assert_eq!(summary["asynchronous"]["records"], 3);
+    assert_eq!(summary["asynchronous"]["delivered"], 2);
+    assert_eq!(summary["asynchronous"]["dropped"], 1);
+    assert!(
+        summary["asynchronous"]["queue_wait_max_us"]
+            .as_u64()
+            .unwrap()
+            >= 5_000
+    );
+    assert!(summary["asynchronous"]["sink_work_us"].as_u64().unwrap() >= 5_000);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 fn content_record(sequence: u64, chunk_ordinal: u32) -> ObservationRecord {
     let producer_identity = identity(CONVERSATION_CONTENT_CHANNEL);
     let envelope = ConversationContentEnvelopeV1 {
@@ -230,6 +306,7 @@ fn content_record(sequence: u64, chunk_ordinal: u32) -> ObservationRecord {
     };
     let payload: Arc<[u8]> = serde_json::to_vec(&envelope).unwrap().into();
     ObservationRecord {
+        timing: None,
         stamp: ObservationSequenceStamp {
             identity: producer_identity,
             sequence,

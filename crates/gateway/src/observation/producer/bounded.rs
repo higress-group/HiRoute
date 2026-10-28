@@ -78,6 +78,7 @@ pub struct ObservationRecord {
     payload: Arc<[u8]>,
     accounted_bytes: usize,
     gap_heartbeat: bool,
+    timing: Option<super::super::latency::AsyncRecordTiming>,
 }
 
 impl ObservationRecord {
@@ -215,7 +216,19 @@ impl ByteBoundedObservationProducer {
     /// Reserves a monotonically increasing sequence before building the
     /// envelope. The closure is never allowed to await, and enqueue is always
     /// `try_send`; a data-plane caller therefore cannot inherit sink latency.
+    #[cfg(test)]
     pub fn try_publish<F>(&self, build: F) -> ObservationPublishOutcome
+    where
+        F: FnOnce(ObservationSequenceStamp) -> Vec<u8>,
+    {
+        self.try_publish_timed(None, build)
+    }
+
+    pub(super) fn try_publish_timed<F>(
+        &self,
+        timing: Option<super::super::latency::RequestLatency>,
+        build: F,
+    ) -> ObservationPublishOutcome
     where
         F: FnOnce(ObservationSequenceStamp) -> Vec<u8>,
     {
@@ -230,7 +243,12 @@ impl ByteBoundedObservationProducer {
             loss_watermark: None,
         };
         let payload: Arc<[u8]> = build(stamp.clone()).into();
-        let accounted_bytes = payload.len().saturating_add(RECORD_ACCOUNTING_BYTES);
+        let timing = timing.map(|timing| timing.record());
+        // Include the ephemeral timing owner in the existing byte bound.
+        let timing_bytes = if timing.is_some() { 64 } else { 0 };
+        let accounted_bytes = payload
+            .len()
+            .saturating_add(RECORD_ACCOUNTING_BYTES + timing_bytes);
         if accounted_bytes > self.shared.capacity_bytes {
             self.restore_and_drop(sequence, ObservationLossReason::EventTooLarge);
             return ObservationPublishOutcome::Dropped { sequence };
@@ -244,6 +262,7 @@ impl ByteBoundedObservationProducer {
             payload,
             accounted_bytes,
             gap_heartbeat: false,
+            timing,
         };
         match self.sender.try_send(ProducerMessage::Record(record)) {
             Ok(()) => {
@@ -487,7 +506,12 @@ fn producer_worker(
                 break;
             };
             let sequence = record.stamp.sequence;
+            let delivery_started = record.timing.as_ref().map(|timing| timing.begin_delivery());
             let result = catch_unwind(AssertUnwindSafe(|| sink.deliver(&record)));
+            if let (Some(timing), Some(started)) = (&record.timing, delivery_started) {
+                let delivered = matches!(&result, Ok(Ok(ack)) if acknowledgement_covers_record(&record, ack, contiguous_ceiling));
+                timing.end_delivery(started, delivered);
+            }
             release_bytes(&shared, record.accounted_bytes);
             match result {
                 Ok(Ok(ack)) if acknowledgement_covers_record(&record, &ack, contiguous_ceiling) => {
@@ -608,6 +632,7 @@ fn gap_heartbeat_record(
         accounted_bytes: payload.len().saturating_add(RECORD_ACCOUNTING_BYTES),
         payload,
         gap_heartbeat: true,
+        timing: None,
     }
 }
 
