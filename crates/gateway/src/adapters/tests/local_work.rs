@@ -43,6 +43,10 @@ impl Fixture {
     }
 
     fn parse(&self, body: &[u8]) -> ModelRequestIRV1 {
+        self.parse_protocol(IngressProtocol::Responses, body)
+    }
+
+    fn parse_protocol(&self, protocol: IngressProtocol, body: &[u8]) -> ModelRequestIRV1 {
         let mut raw = self.store.begin_raw().unwrap();
         for chunk in body.chunks(16 * 1024) {
             raw.append(chunk).unwrap();
@@ -50,22 +54,77 @@ impl Fixture {
         let raw = raw.seal().unwrap();
         let stats = scan_ingress_document(self.store.reader(&raw).unwrap()).unwrap();
         let (mut document, mut workspace) =
-            parse_ingress_document(IngressProtocol::Responses, &self.store, &raw, stats).unwrap();
+            parse_ingress_document(protocol, &self.store, &raw, stats).unwrap();
         compact_ingress_document_with_markers(
-            IngressProtocol::Responses,
+            protocol,
             &mut document,
             &self.store,
             workspace.generated_markers(),
         )
         .unwrap();
-        let mut request = decode_ingress_request_with_replay(
-            IngressProtocol::Responses,
-            &document,
-            Some(&self.store),
-        )
-        .unwrap();
+        let mut request =
+            decode_ingress_request_with_replay(protocol, &document, Some(&self.store)).unwrap();
         externalize_model_request(&mut request, &self.store, 8).unwrap();
         request
+    }
+}
+
+#[test]
+fn local_work_protocol_oracle_preserves_complete_text_and_tool_history() {
+    let text = format!("{}\"\\\n中文🦀{}", "a".repeat(24_577), "z".repeat(16_385));
+    let args = json!({"text":text, "empty":"", "nested":[null,true, {"n":17}]});
+    let arguments = serde_json::to_string(&args).unwrap();
+    for (protocol, wire) in [
+        (
+            IngressProtocol::Responses,
+            json!({"model":"alias", "input":[
+                {"role":"user","content":text},
+                {"type":"function_call","call_id":"call-1","name":"lookup","arguments":arguments},
+                {"type":"function_call_output","call_id":"call-1","output":text}
+            ]}),
+        ),
+        (
+            IngressProtocol::ChatCompletions,
+            json!({"model":"alias", "messages":[
+                {"role":"user","content":text},
+                {"role":"assistant","content":null,"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup","arguments":arguments}}]},
+                {"role":"tool","tool_call_id":"call-1","content":text}
+            ]}),
+        ),
+        (
+            IngressProtocol::Messages,
+            json!({"model":"alias","max_tokens":128,"messages":[
+                {"role":"user","content":text},
+                {"role":"assistant","content":[{"type":"tool_use","id":"call-1","name":"lookup","input":args}]},
+                {"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":text}]}
+            ]}),
+        ),
+    ] {
+        // The oracle bypasses ingress parsing and Replay. Neither expected
+        // content nor protocol meaning is derived from the optimized path.
+        let plain = decode_ingress_request(protocol, &wire).unwrap();
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            protocol,
+            protocol,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        let expected = project_candidate_request(&plain, &profile).unwrap().body;
+        for threshold in [1024 * 1024, 31] {
+            let fixture = Fixture::new(threshold, 31);
+            let request = fixture.parse_protocol(protocol, &serde_json::to_vec(&wire).unwrap());
+            let template = project_candidate_request_template(&request, &profile).unwrap();
+            fixture
+                .store
+                .prevalidate(&model_content_refs(&request))
+                .unwrap();
+            let encoded = encode(&fixture, template, 127);
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&encoded).unwrap(),
+                expected
+            );
+            assert!(fixture.budget.snapshot().unwrap().peak <= 8 * 1024 * 1024);
+        }
     }
 }
 

@@ -175,3 +175,49 @@ fn borrowed_semantic_view_cannot_replace_strict_execution_evidence_or_positions(
             .is_none()
     );
 }
+
+#[test]
+fn complete_history_fingerprints_detect_same_length_edits_and_part_boundaries() {
+    let mut original = request("system");
+    let text = "x".repeat(128 * 1024);
+    original.messages[1].content = vec![ContentPart::Text { text: text.clone() }];
+    let baseline = measure(&original, original.messages.len());
+    let anchors = branch_anchors(&original, &[37; 32], None, &[2]).unwrap();
+    for index in [0, text.len() / 2, text.len() - 1] {
+        let mut changed = original.clone();
+        let mut bytes = text.as_bytes().to_vec();
+        bytes[index] = b'y';
+        changed.messages[1].content = vec![ContentPart::Text {
+            text: String::from_utf8(bytes).unwrap(),
+        }];
+        let actual = measure(&changed, changed.messages.len());
+        assert_ne!(actual.complete_digest, baseline.complete_digest);
+        assert_ne!(
+            actual.semantic_complete_digest,
+            baseline.semantic_complete_digest
+        );
+        assert_ne!(
+            branch_anchors(&changed, &[37; 32], None, &[2])
+                .unwrap()
+                .prefixes,
+            anchors.prefixes
+        );
+    }
+    let mut split = original.clone();
+    split.messages[1].content = vec![
+        ContentPart::Text {
+            text: text[..text.len() / 2].into(),
+        },
+        ContentPart::Text {
+            text: text[text.len() / 2..].into(),
+        },
+    ];
+    assert_ne!(
+        measure(&split, split.messages.len()).complete_digest,
+        baseline.complete_digest
+    );
+    assert_eq!(
+        measure(&original, original.messages.len()).complete_digest,
+        baseline.complete_digest
+    );
+}
