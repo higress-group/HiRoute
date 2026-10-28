@@ -28,11 +28,16 @@ async function field(selector, value) {
   await waitFor(client, `!!document.querySelector(${JSON.stringify(selector)})`);
   await evaluate(client, `(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
 }
+// The combined trial skips the chooser when exactly one service is executable.
+// Preserve the saved-binding assertions while following that production journey.
+async function connectedService() {
+  await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false && document.querySelector('#mc-connection-form .connection-config-heading h3')?.textContent.includes('Kimi')`);
+}
 async function saveConnection(multiple=false) {
   await click('.trial-model-card','Kimi K3');
   await click('.trial-connect-card button','Connect here');
   await waitFor(client, `!!document.querySelector('.trial-inline-connection .connection-flow')`);
-  await click('.trial-inline-connection button','Kimi');
+  await connectedService();
   await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
   await field('#mc-connection-form input[type=password]', 'synthetic-fixture-key');
   await click('.modal-foot button', 'Check and continue');
@@ -154,7 +159,7 @@ try {
   await run('review-r2.same-model-selection-wins', async () => {
     await open('additional-connection=1&same-names=1&saved-registered=1&saved-read-failure=1&same-model-save=1');
     await click('.trial-choice-list .trial-choice','GPT');
-    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
     await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
@@ -174,7 +179,7 @@ try {
   });
   await run('review-r2.same-model-selection-protects-draft', async () => {
     await open('additional-connection=1&same-names=1');
-    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-draft-key');
     const chooseSecond = `(()=>{const e=document.querySelector('[data-trial-target=trial] .trial-connection-field select');e.value='binding/bailian/qwen-second';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`;
@@ -315,6 +320,8 @@ try {
   await run('save.custom-check-path', async () => {
     await open('saved-user-declared=1&saved-custom=1');
     await click('.trial-model-card','Kimi K3'); await click('.trial-connect-card button','Connect here');
+    await connectedService();
+    await click('.modal-foot button','Change service');
     await click('.connection-custom-entry');
     await waitFor(client, `!!document.querySelector('#mc-connection-form')`);
     const setLabel = async (label, value) => {
@@ -491,7 +498,7 @@ try {
   await run('save.late-check-cannot-replace-current-evidence', async () => {
     await open('saved-registered=1&check-race=1');
     await click('.trial-model-card','Kimi K3'); await click('.trial-connect-card button','Connect here');
-    await click('.trial-inline-connection button','Kimi');
+    await connectedService();
     await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
     await click('.modal-foot button','Check and continue');
     await waitFor(client, `trialSetupControl.pendingCheck.length===1`);
@@ -684,7 +691,7 @@ try {
   await run('review-repair.protected-existing-selection', async () => {
     await open('additional-connection=1&same-names=1');
     await click('[data-trial-target=trial] button','Add a connection');
-    await click('.trial-inline-connection button','Kimi');
+    await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[maxlength="60"]','Edited synthetic connection');
     await field('#mc-connection-form input[type=password]','synthetic-draft-key');
@@ -704,7 +711,7 @@ try {
   });
   await run('review-repair.primary-keeps-trial-editor', async () => {
     await open('additional-connection=1');
-    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-draft-key');
     await click('[data-trial-target=primary] button','Choose an existing connection');
@@ -716,7 +723,7 @@ try {
   await run('review-repair.uncertain-save-blocks-review', async () => {
     await open('additional-connection=1&saved-user-declared=1&lost-apply=1');
     await click('.trial-choice-list .trial-choice','GPT');
-    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
     await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
@@ -736,7 +743,7 @@ try {
     for (const [theme,width,height] of [['dark',755,600],['light',1200,813]]) {
       await open(`additional-connection=1&saved-user-declared=1&lost-apply=1&theme=${theme}`,'zh',width,height);
       await click('.trial-choice-list .trial-choice','GPT');
-      await click('[data-trial-target=trial] button','新增接入'); await click('.trial-inline-connection button','Kimi');
+      await click('[data-trial-target=trial] button','新增接入'); await connectedService();
       await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
       await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
       await click('.modal-foot button','检查并继续'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
@@ -751,7 +758,7 @@ try {
   await run('review-repair.saved-result-survives-review', async () => {
     await open('additional-connection=1&saved-user-declared=1&same-names=1');
     await click('.trial-choice-list .trial-choice','GPT');
-    await click('[data-trial-target=trial] button','Add a connection'); await click('.trial-inline-connection button','Kimi');
+    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
     await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
