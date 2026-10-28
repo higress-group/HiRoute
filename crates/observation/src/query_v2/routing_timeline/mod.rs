@@ -356,7 +356,10 @@ mod tests {
         assert_eq!(
             store
                 .routing_timeline_inner(&reader, &query, 5000, || {
-                    std::thread::sleep(std::time::Duration::from_millis(510));
+                    std::thread::sleep(
+                        ObservationReaderContext::QUERY_BUDGET
+                            + std::time::Duration::from_millis(10),
+                    );
                 })
                 .unwrap_err(),
             ObservationV2Error::Timeout
