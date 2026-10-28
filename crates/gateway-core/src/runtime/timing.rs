@@ -55,6 +55,7 @@ struct Clock {
     phase: LocalPhase,
     pending: Option<WaitKind>,
     pending_revision: u64,
+    poll_generation: u64,
     local_ns: [u64; 11],
     wait_ns: [u64; 8],
     finished: Option<TimingSnapshot>,
@@ -77,6 +78,7 @@ impl RequestClock {
             phase: LocalPhase::Ingress,
             pending: None,
             pending_revision: 0,
+            poll_generation: 0,
             local_ns: [0; 11],
             wait_ns: [0; 8],
             finished: None,
@@ -94,6 +96,7 @@ impl RequestClock {
                         clock.settle(Instant::now());
                         clock.active = true;
                         clock.pending = None;
+                        clock.poll_generation = clock.poll_generation.wrapping_add(1);
                     }
                     let result = future.as_mut().poll(cx);
                     let mut clock = self.0.lock();
@@ -171,36 +174,67 @@ pub fn set_phase(phase: LocalPhase) {
 /// conflicting concurrently pending operations remain unclassified.
 pub async fn wait<F: Future>(kind: WaitKind, future: F) -> F::Output {
     let mut future = pin!(future);
+    let mut marker = None;
     poll_fn(|cx| {
         let revision = CURRENT
             .try_with(|current| current.0.lock().pending_revision)
             .ok();
         let result = future.as_mut().poll(cx);
         if result.is_pending() {
-            let _ = CURRENT.try_with(|current| {
-                let mut clock = current.0.lock();
-                if Some(clock.pending_revision) != revision {
-                    return;
-                }
-                let kind = if clock.phase == LocalPhase::Decision
-                    && matches!(
-                        kind,
-                        WaitKind::Connect | WaitKind::UpstreamRead | WaitKind::UpstreamWrite
-                    ) {
-                    WaitKind::Decision
-                } else {
-                    kind
-                };
-                clock.pending = Some(match clock.pending {
-                    Some(previous) if previous != kind => WaitKind::Other,
-                    _ => kind,
-                });
-                clock.pending_revision = clock.pending_revision.wrapping_add(1);
-            });
+            marker = CURRENT
+                .try_with(|current| {
+                    let mut clock = current.0.lock();
+                    if Some(clock.pending_revision) != revision {
+                        return None;
+                    }
+                    let kind = if clock.phase == LocalPhase::Decision
+                        && matches!(
+                            kind,
+                            WaitKind::Connect | WaitKind::UpstreamRead | WaitKind::UpstreamWrite
+                        ) {
+                        WaitKind::Decision
+                    } else {
+                        kind
+                    };
+                    clock.pending = Some(match clock.pending {
+                        Some(previous) if previous != kind => WaitKind::Other,
+                        _ => kind,
+                    });
+                    clock.pending_revision = clock.pending_revision.wrapping_add(1);
+                    Some(PendingMarker {
+                        clock: current.clone(),
+                        generation: clock.poll_generation,
+                        revision: clock.pending_revision,
+                    })
+                })
+                .ok()
+                .flatten();
+        } else {
+            marker.take();
         }
         result
     })
     .await
+}
+
+/// A select/timeout can discard a Pending I/O future without suspending the
+/// request on it. Retire its label with that future; never let it label later
+/// cleanup. Revisions prevent an old marker from erasing a newer leaf/sibling.
+struct PendingMarker {
+    clock: RequestClock,
+    generation: u64,
+    revision: u64,
+}
+
+impl Drop for PendingMarker {
+    fn drop(&mut self) {
+        let mut clock = self.clock.0.lock();
+        if clock.poll_generation == self.generation && clock.pending_revision == self.revision {
+            clock.settle(Instant::now());
+            clock.pending = None;
+            clock.pending_revision = clock.pending_revision.wrapping_add(1);
+        }
+    }
 }
 
 fn micros(ns: u128) -> u64 {
