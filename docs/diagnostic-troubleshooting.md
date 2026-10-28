@@ -194,9 +194,9 @@ stays in `wait.other_us`; upstream receipt wait is not a provider-only inference
 measurement. Background reader/capture CPU requires a process profile.
 
 `asynchronous` is separate from HTTP latency. `queue_wait_max_us` is the maximum
-wait of a single observation record; `sink_work_us` sums sink-call durations across
-channels, including their projection/locking/commit work. These channels can run
-concurrently. `after_response_us` measures the release delay after the frozen
+wait of a single observation record; `sink_work_us` sums delivery durations across
+channels, including projection, locking, commit and ACK validation. These channels
+can run concurrently. `after_response_us` measures the release delay after the frozen
 request ends, including retained capture ownership. None of these fields should
 be added to `elapsed_us`. Lost records contribute to `dropped`, not fabricated
 successful ingestion. No exporter/network latency is implied for the local OTEL

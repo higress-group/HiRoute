@@ -187,7 +187,7 @@ partition. Report record counts, delivered/lost counts, maximum record queue wai
 summed sink-call work and the delay from frozen request completion until release.
 The summary may be emitted after existing bounded capture/ingestion work releases
 its request ownership; no request waits for this diagnostic summary or a sink
-flush. Sink-call work includes projection, locking and commit work for stores,
+flush. Sink delivery work includes projection, locking, commit and ACK validation,
 and may overlap other channels. It is not a CPU measurement or an additional
 request latency. Disabled observation still permits the timing summary.
 

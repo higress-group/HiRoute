@@ -508,13 +508,15 @@ fn producer_worker(
             let sequence = record.stamp.sequence;
             let delivery_started = record.timing.as_ref().map(|timing| timing.begin_delivery());
             let result = catch_unwind(AssertUnwindSafe(|| sink.deliver(&record)));
+            // Reuse the authoritative feedback result: content ACK validation
+            // decodes the envelope and must not run a second time for timing.
+            let delivered = matches!(&result, Ok(Ok(ack)) if acknowledgement_covers_record(&record, ack, contiguous_ceiling));
             if let (Some(timing), Some(started)) = (&record.timing, delivery_started) {
-                let delivered = matches!(&result, Ok(Ok(ack)) if acknowledgement_covers_record(&record, ack, contiguous_ceiling));
                 timing.end_delivery(started, delivered);
             }
             release_bytes(&shared, record.accounted_bytes);
             match result {
-                Ok(Ok(ack)) if acknowledgement_covers_record(&record, &ack, contiguous_ceiling) => {
+                Ok(Ok(_)) if delivered => {
                     shared.delivered.fetch_add(1, Ordering::Relaxed);
                     expected_sequence = sequence.saturating_add(1);
                 }
