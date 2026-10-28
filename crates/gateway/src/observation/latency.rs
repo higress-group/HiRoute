@@ -30,6 +30,10 @@ struct Inner {
     dropped: AtomicU64,
     queue_wait_max_us: AtomicU64,
     sink_work_us: AtomicU64,
+    capture_jobs: AtomicU64,
+    capture_dropped_jobs: AtomicU64,
+    capture_queue_wait_max_us: AtomicU64,
+    capture_work_us: AtomicU64,
 }
 
 struct Finished {
@@ -62,6 +66,10 @@ impl RequestLatency {
             dropped: AtomicU64::new(0),
             queue_wait_max_us: AtomicU64::new(0),
             sink_work_us: AtomicU64::new(0),
+            capture_jobs: AtomicU64::new(0),
+            capture_dropped_jobs: AtomicU64::new(0),
+            capture_queue_wait_max_us: AtomicU64::new(0),
+            capture_work_us: AtomicU64::new(0),
         }))
     }
 
@@ -120,6 +128,23 @@ impl RequestLatency {
             queued_at: Instant::now(),
             resolved: AtomicBool::new(false),
         }))
+    }
+
+    pub(super) fn capture_completed(&self, queued: Instant, started: Instant, dropped: bool) {
+        self.0.capture_jobs.fetch_add(1, Relaxed);
+        self.0.capture_queue_wait_max_us.fetch_max(
+            started
+                .saturating_duration_since(queued)
+                .as_micros()
+                .min(u128::from(u64::MAX)) as u64,
+            Relaxed,
+        );
+        self.0
+            .capture_work_us
+            .fetch_add(elapsed_us(started), Relaxed);
+        if dropped {
+            self.0.capture_dropped_jobs.fetch_add(1, Relaxed);
+        }
     }
 }
 
@@ -183,6 +208,10 @@ impl Drop for Inner {
                     other_us,
                 },
                 asynchronous: RequestAsyncTiming {
+                    capture_jobs: self.capture_jobs.load(Relaxed),
+                    capture_dropped_jobs: self.capture_dropped_jobs.load(Relaxed),
+                    capture_queue_wait_max_us: self.capture_queue_wait_max_us.load(Relaxed),
+                    capture_work_us: self.capture_work_us.load(Relaxed),
                     records: self.records.load(Relaxed),
                     delivered: self.delivered.load(Relaxed),
                     dropped: self.dropped.load(Relaxed),

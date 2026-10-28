@@ -66,6 +66,7 @@ pub struct RequestObservation {
 }
 
 pub(super) struct RequestObservationInner {
+    pub(super) async_content: OnceLock<Arc<super::content_work::ContentStatus>>,
     pub(super) agent_turn_output: OnceLock<(
         Arc<crate::agent_turn_history::AgentTurnHistoryStore>,
         crate::agent_turn_history::AgentTurnTicket,
@@ -221,6 +222,7 @@ impl RequestObservation {
         }
         let value = Self {
             inner: Arc::new(RequestObservationInner {
+                async_content: OnceLock::new(),
                 agent_turn_output: OnceLock::new(),
                 prices,
                 enabled: capture.enabled,

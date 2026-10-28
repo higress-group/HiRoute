@@ -7,6 +7,8 @@
 
 #[path = "observation/content.rs"]
 mod content;
+#[path = "observation/content_work.rs"]
+mod content_work;
 #[path = "observation/contracts.rs"]
 mod contracts;
 #[path = "observation/crypto.rs"]
@@ -82,6 +84,7 @@ struct ObservationChannels {
     native_continuation: ChannelProducer,
     otel: ChannelProducer,
     response_capture: CanonicalCaptureProducer,
+    content_work: content_work::ContentWorkProducer,
 }
 
 pub struct GatewayObservation {
@@ -445,6 +448,7 @@ impl GatewayObservation {
                 // In-memory agent history also uses this bounded canonical decoder;
                 // disabling persistent observation must not disable turn history.
                 response_capture: CanonicalCaptureProducer::new(true, queue_bytes),
+                content_work: Default::default(),
             },
             next_request: AtomicU64::new(1),
             content_policy,

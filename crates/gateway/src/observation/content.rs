@@ -490,10 +490,8 @@ impl AcceptedResponseCapture {
                         )
                     });
                 if let Err(reason) = result {
-                    self.request
-                        .begin_content("response_delivered", Some(&attempt));
-                    self.request
-                        .terminal_content("response_delivered", "abort", Some(reason));
+                    self.request.begin_response_content(&attempt);
+                    self.request.finish_response_content("abort", Some(reason));
                 }
             }
         }
@@ -509,11 +507,24 @@ impl RequestObservation {
         &self,
         attempt: &AttemptObservation,
         frame_id: &str,
-        delivery: CanonicalFrameDelivery,
+        mut delivery: CanonicalFrameDelivery,
     ) {
         if let Some((store, ticket)) = self.inner.agent_turn_output.get() {
             store.accept_output(ticket, &delivery.events);
         }
+        let usage = delivery.usage.take();
+        self.defer_response_content(attempt, frame_id, delivery);
+        if let Some(usage) = usage {
+            self.usage_model(&usage);
+        }
+    }
+
+    pub(super) fn emit_response_content(
+        &self,
+        attempt: &AttemptObservation,
+        frame_id: &str,
+        delivery: CanonicalFrameDelivery,
+    ) {
         if self.captures_content() {
             for event in delivery.events {
                 let Some(kind) = canonical_response_content_kind(&event.event) else {
@@ -564,9 +575,6 @@ impl RequestObservation {
                     });
                 }
             }
-        }
-        if let Some(usage) = delivery.usage {
-            self.usage_model(&usage);
         }
     }
 }
@@ -625,14 +633,10 @@ impl Drop for AcceptedResponseCapture {
             capture.cancel_unless_terminal("downstream_transport_incomplete");
         }
         if let Some(attempt) = &self.attempt {
-            self.request
-                .begin_content("response_delivered", Some(attempt));
+            self.request.begin_response_content(attempt);
         }
-        self.request.terminal_content(
-            "response_delivered",
-            "abort",
-            Some("downstream_transport_incomplete"),
-        );
+        self.request
+            .finish_response_content("abort", Some("downstream_transport_incomplete"));
     }
 }
 

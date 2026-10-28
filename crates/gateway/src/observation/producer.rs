@@ -20,6 +20,7 @@ mod bounded;
 mod feedback;
 
 pub(super) use bounded::ObservationProducerIdentity;
+pub(super) use bounded::ObservationWorkReservation;
 use bounded::{
     ByteBoundedObservationProducer, ObservationLossReason, ObservationLossWatermark,
     ObservationSequenceStamp, RECORD_ACCOUNTING_BYTES,
@@ -39,6 +40,16 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
+    pub(super) fn reserve_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
+        self.inner.as_ref()?.reserve_work(bytes)
+    }
+
+    pub(super) fn declare_work_loss(&self) {
+        if let Some(inner) = &self.inner {
+            inner.declare_work_loss();
+        }
+    }
+
     pub(super) fn disabled(component: &'static str, revision: &'static str) -> Self {
         Self {
             component: Arc::from(component),

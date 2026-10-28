@@ -70,6 +70,41 @@ fn production_default_spills_before_large_ingress_decode() {
     assert_eq!(config.record_bytes, 16 * 1024);
 }
 
+#[test]
+fn content_lease_releases_raw_and_keeps_charged_semantics_until_last_reader() {
+    for threshold in [31, 1024 * 1024] {
+        let root = TestRoot::new("capture-lease");
+        let manager = ReplayManager::open(config(&root.0, threshold, 31)).unwrap();
+        let budget = budget();
+        let store = manager.begin_request(budget.clone()).unwrap();
+        let mut writer = store.begin_raw().unwrap();
+        writer.append(&b"raw ingress".repeat(1024)).unwrap();
+        let raw = writer.seal().unwrap();
+        let content = store
+            .store_content(&b"exact canonical content".repeat(1024))
+            .unwrap();
+        store.prevalidate(&[raw.clone(), content.clone()]).unwrap();
+        let directory = fs::read_dir(&root.0)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| path.is_dir())
+            .unwrap();
+        let lease = store.content_lease().unwrap();
+        assert!(lease.reader(&raw).is_err());
+        assert!(lease.begin_raw().is_err());
+        drop(store);
+        assert!(directory.exists());
+        assert!(budget.snapshot().unwrap().live > 0);
+        assert_eq!(
+            read_all(&lease, &content),
+            b"exact canonical content".repeat(1024)
+        );
+        drop(lease);
+        assert!(!directory.exists());
+        assert_eq!(budget.snapshot().unwrap().live, 0);
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn production_default_supports_symlinked_system_temp() {

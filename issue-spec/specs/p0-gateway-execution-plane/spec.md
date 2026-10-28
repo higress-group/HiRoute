@@ -455,6 +455,13 @@ readable after externalization. Termination/cancel/deadline/orphan maintenance r
 owned spill, and IR/wire/scratch/config leases release at their last consumer under
 [Core ownership](../gateway-core-foundation/spec.md).
 
+Optional asynchronous content capture MAY retain a charged, immutable snapshot
+of only its canonical fields and a read-only view of registered semantic Replay
+streams. The view SHALL exclude raw ingress, preserve range/provenance checks and
+keep backing/metadata charged until the last consumer. Request-directory cleanup
+belongs to the final owning view; cancellation and failed queue admission release
+their ownership. This is not a second raw-body owner or a persistent body cache.
+
 ### Requirement: Native response output and evidence extraction are independent
 
 Actual selected same-protocol Attempt MUST use native output, not reconstruct it
@@ -532,6 +539,14 @@ nonstream capture does not duplicate it. Default OTel is zero-body small attribu
 references; explicit content policy is separate and secrets are never exportable.
 Each valid RequestFinished closes its [immutable request receipt](../session-history/spec.md)
 without waiting for AgentTurnFinished.
+
+Content encoding MAY run on a shared bounded worker before the existing storage
+producers. Retained work and encoded records share the Content channel's byte
+ceiling. Request content closes before response content begins, preserving the
+request transcript root as the response parent. Accepted runtime history and
+usage keep their actual delivery boundary and do not wait for content encoding
+or SQLite. Queue/worker failure records bounded loss and explicit partial content;
+it never fabricates complete roots, blocks delivery or causes a model retry.
 
 ### Requirement: Listening configuration cannot expose local management
 

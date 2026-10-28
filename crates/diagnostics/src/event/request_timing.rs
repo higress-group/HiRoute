@@ -51,6 +51,14 @@ pub struct RequestWaitTiming {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RequestAsyncTiming {
+    #[serde(default)]
+    pub capture_jobs: u64,
+    #[serde(default)]
+    pub capture_dropped_jobs: u64,
+    #[serde(default)]
+    pub capture_queue_wait_max_us: u64,
+    #[serde(default)]
+    pub capture_work_us: u64,
     pub records: u64,
     pub delivered: u64,
     pub dropped: u64,

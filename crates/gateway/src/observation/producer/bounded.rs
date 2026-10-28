@@ -81,6 +81,19 @@ pub struct ObservationRecord {
     timing: Option<super::super::latency::AsyncRecordTiming>,
 }
 
+/// Retained input and typed capture work share the content channel's existing
+/// byte ceiling with encoded records. This owner allocates no sequence number.
+pub struct ObservationWorkReservation {
+    shared: Arc<ProducerShared>,
+    bytes: usize,
+}
+
+impl Drop for ObservationWorkReservation {
+    fn drop(&mut self) {
+        release_bytes(&self.shared, self.bytes);
+    }
+}
+
 impl ObservationRecord {
     pub fn stamp(&self) -> &ObservationSequenceStamp {
         &self.stamp
@@ -175,6 +188,18 @@ enum ProducerMessage {
 }
 
 impl ByteBoundedObservationProducer {
+    pub(super) fn reserve_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
+        reserve_bytes(&self.shared, bytes).then(|| ObservationWorkReservation {
+            shared: Arc::clone(&self.shared),
+            bytes,
+        })
+    }
+
+    pub(super) fn declare_work_loss(&self) {
+        let sequence = self.shared.next_sequence.fetch_add(1, Ordering::Relaxed);
+        self.restore_and_drop(sequence, ObservationLossReason::QueueBytesExceeded);
+    }
+
     pub fn new(
         identity: ObservationProducerIdentity,
         capacity_bytes: usize,

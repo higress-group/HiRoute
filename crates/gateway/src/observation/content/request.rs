@@ -5,8 +5,8 @@ use serde_json::Value;
 use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt};
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
-    ContentPart, ImageSource, InstructionRole, MessageRole, ModelRequestIRV1, ToolOutput,
-    ToolResultStatusV1,
+    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource,
+    InstructionRole, MessageRole, ModelRequestIRV1, ToolOutput, ToolResultStatusV1,
 };
 
 use super::super::crypto::WorkspaceHmac;
@@ -75,6 +75,21 @@ impl RequestObservation {
         if !self.captures_content() {
             return;
         }
+        self.capture_request_payload(
+            &request.instructions,
+            &request.messages,
+            &request.tools,
+            replay,
+        );
+    }
+
+    pub(in crate::server::core_runtime::observation) fn capture_request_payload(
+        &self,
+        instructions: &[CanonicalInstruction],
+        messages: &[CanonicalMessage],
+        tools: &[CanonicalTool],
+        replay: &ReplayStore,
+    ) {
         let snapshot = replay.snapshot();
         self.emit_diagnostic(DiagnosticEvent::SpillBegin(SpillBegin {
             mode: if snapshot.disk_backed {
@@ -84,7 +99,7 @@ impl RequestObservation {
             },
         }));
         self.begin_content("request_input", None);
-        let result = self.capture_request_fields(request, replay);
+        let result = self.capture_request_fields(instructions, messages, tools, replay);
         match result {
             Ok(()) => self.terminal_content("request_input", "finish", None),
             Err(()) => self.terminal_content(
@@ -97,11 +112,13 @@ impl RequestObservation {
 
     fn capture_request_fields(
         &self,
-        request: &ModelRequestIRV1,
+        instructions: &[CanonicalInstruction],
+        messages: &[CanonicalMessage],
+        tools: &[CanonicalTool],
         replay: &ReplayStore,
     ) -> Result<(), ()> {
         let mut message_ordinal = 0_u32;
-        for instruction in &request.instructions {
+        for instruction in instructions {
             let role = match instruction.role {
                 InstructionRole::System => "system",
                 InstructionRole::Developer => "developer",
@@ -109,7 +126,7 @@ impl RequestObservation {
             self.capture_parts(replay, message_ordinal, role, &instruction.content)?;
             message_ordinal = message_ordinal.saturating_add(1);
         }
-        for message in &request.messages {
+        for message in messages {
             let role = match message.role {
                 MessageRole::User => "user",
                 MessageRole::Assistant => "assistant",
@@ -138,7 +155,7 @@ impl RequestObservation {
             )?;
             message_ordinal = message_ordinal.saturating_add(1);
         }
-        for tool in &request.tools {
+        for tool in tools {
             let mut part_ordinal = 0_u32;
             self.append_value(
                 replay,

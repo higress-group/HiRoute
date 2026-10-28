@@ -430,3 +430,191 @@ fn request_json_capture_aborts_when_a_replay_string_leaf_is_unavailable() {
             .any(|record| record["phase"] == "finish")
     );
 }
+
+fn asynchronous_observation() -> (
+    RequestObservation,
+    mpsc::Receiver<Value>,
+    super::super::content_work::ContentGate,
+) {
+    let (sender, receiver) = mpsc::channel();
+    let mut observation = request_with_sinks_capacity(
+        OtelContentPolicy::Disabled,
+        DiagnosticsPort::default(),
+        true,
+        GatewayObservationSinks {
+            conversation_content: Arc::new(RecordSink(sender)),
+            ..GatewayObservationSinks::discard()
+        },
+        16 * 1024 * 1024,
+    );
+    let (worker, gate) = super::super::content_work::ContentWorkProducer::paused();
+    Arc::get_mut(&mut observation.inner)
+        .unwrap()
+        .channels
+        .content_work = worker;
+    (observation, receiver, gate)
+}
+
+fn content_attempt() -> super::super::request::AttemptObservation {
+    super::super::request::AttemptObservation {
+        reasoning_fields_removed: 0,
+        response_cleanup_reported: false,
+        ordinal: 1,
+        attempt_id: "attempt:test".into(),
+        stable_binding_id: "binding:test".into(),
+        credential_ref: "credential:test".into(),
+        key_id: "key:test".into(),
+        provider_name: "provider:test".into(),
+        request_model: "actual-model".into(),
+        upstream_protocol: "responses".into(),
+        model_configuration_id: "model:test".into(),
+        adapter_revision: "adapter:test".into(),
+        candidate_id: "candidate:test".into(),
+        profile_digest: "profile:test".into(),
+        start_reason: "initial".into(),
+        previous_attempt_id: None,
+        started_at: std::time::Instant::now(),
+        effective_cost_micros: None,
+        cost_class: None,
+        credential_generation: 1,
+    }
+}
+
+#[test]
+fn async_content_keeps_the_request_root_before_fast_response_after_foreground_drop() {
+    use super::super::content::CanonicalFrameDelivery;
+    use crate::content_ref::model_content_refs;
+    use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
+    for threshold in [31, 1024 * 1024] {
+        let ReplayFixture { store, _root } = ReplayFixture::new(threshold);
+        let budget = store.budget().clone();
+        let mut input = state_request([json!({"blob":"complete text 中文".repeat(1024)})]);
+        externalize_model_request(&mut input, &store, 0).unwrap();
+        store.prevalidate(&model_content_refs(&input)).unwrap();
+        let oracle = capture(&input, &store);
+        let (mut observation, receiver, gate) = asynchronous_observation();
+        Arc::get_mut(&mut observation.inner).unwrap().key = oracle.key;
+        observation.capture_request_async(&input, &store);
+        let attempt = content_attempt();
+        observation.begin_response_content(&attempt);
+        observation.emit_canonical_response_delivery(
+            &attempt,
+            "accepted-frame",
+            CanonicalFrameDelivery {
+                events: vec![ModelStreamEventV1::new(
+                    1,
+                    ModelEvent::TextDelta {
+                        index: 0,
+                        text: "delivered answer".into(),
+                    },
+                )],
+                ..CanonicalFrameDelivery::default()
+            },
+        );
+        observation.finish_response_content("finish", None);
+        // No encoding has run, yet the request path and actual response
+        // handoff have completed. The original IR/backing can now disappear.
+        assert!(receiver.try_recv().is_err());
+        drop((input, store));
+        assert!(budget.snapshot().unwrap().live > 0);
+        gate.release();
+        let mut records = Vec::new();
+        loop {
+            let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert!(
+                record["loss_watermark"].is_null(),
+                "unexpected loss: {record}"
+            );
+            let end = record["direction"] == "response_delivered" && record["phase"] == "finish";
+            records.push(record);
+            if end {
+                break;
+            }
+        }
+        observation.inner.channels.content_work.flush(&observation);
+        assert_eq!(budget.snapshot().unwrap().live, 0);
+        let request_records = records
+            .iter()
+            .filter(|record| record["direction"] == "request_input")
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_capture_ids(&observation, &request_records);
+        let stable = |record: &Value| {
+            let mut fields = record.as_object().unwrap().clone();
+            for name in ["producer", "sequence", "event_id", "occurred_at_unix_nanos"] {
+                fields.remove(name);
+            }
+            fields
+        };
+        assert_eq!(
+            request_records.iter().map(stable).collect::<Vec<_>>(),
+            oracle.records.iter().map(stable).collect::<Vec<_>>()
+        );
+        let parent = &oracle.records.last().unwrap()["result_transcript_root"];
+        for record in records
+            .iter()
+            .filter(|record| record["direction"] == "response_delivered")
+        {
+            assert_eq!(&record["parent_transcript_root"], parent);
+            assert_eq!(record["attempt_id"], "attempt:test");
+        }
+    }
+}
+
+#[test]
+fn full_content_work_queue_declares_loss_without_waiting_and_next_request_recovers() {
+    use super::super::content::CanonicalFrameDelivery;
+    use crate::content_ref::model_content_refs;
+    let fixture = ReplayFixture::new(1024 * 1024);
+    let mut input = state_request([json!({"text":"bounded captured input"})]);
+    externalize_model_request(&mut input, &fixture.store, 0).unwrap();
+    fixture
+        .store
+        .prevalidate(&model_content_refs(&input))
+        .unwrap();
+    let (observation, receiver, gate) = asynchronous_observation();
+    observation.capture_request_async(&input, &fixture.store);
+    let attempt = content_attempt();
+    observation.begin_response_content(&attempt);
+    for _ in 0..512 {
+        observation.emit_canonical_response_delivery(
+            &attempt,
+            "accepted-frame",
+            CanonicalFrameDelivery::default(),
+        );
+    }
+    // The independent producer must report loss while the encoder is still
+    // blocked. A successful content terminal is forbidden in this state.
+    let gap = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(
+        gap["schema_version"],
+        "hiroute.observation.gap-heartbeat/v1"
+    );
+    assert!(gap["loss_watermark"].is_object());
+    gate.release();
+    observation.inner.channels.content_work.flush(&observation);
+    assert!(
+        receiver
+            .try_iter()
+            .all(|record| record["phase"] != "finish")
+    );
+
+    let mut recovered = request(OtelContentPolicy::Disabled);
+    let inner = Arc::get_mut(&mut recovered.inner).unwrap();
+    inner.channels = observation.inner.channels.clone();
+    inner.key = observation.inner.key;
+    inner.metadata.request_id = "request:recovered".into();
+    recovered.capture_request_async(&input, &fixture.store);
+    observation.inner.channels.content_work.flush(&recovered);
+    loop {
+        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(
+            record["loss_watermark"].is_null(),
+            "recovery retained a gap: {record}"
+        );
+        if record["phase"] == "finish" {
+            assert_eq!(record["correlation"]["request_id"], "request:recovered");
+            break;
+        }
+    }
+}

@@ -56,6 +56,10 @@ pub(super) struct ReplayStream {
 }
 
 impl ReplayStream {
+    pub(super) fn is_raw(&self) -> bool {
+        self.role == MemoryRole::RawRequest
+    }
+
     pub(super) fn contains(&self, reference: &ContentRef) -> bool {
         *reference == self.reference
             || self
