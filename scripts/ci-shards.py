@@ -30,6 +30,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-diagnostics", "files_safety"),
         ("hiroute-diagnostics", "product_read"),
         ("hiroute-diagnostics", "request_projection"),
+        ("hiroute-diagnostics", "request_timing"),
         ("hiroute-diagnostics", "response_failure_compatibility"),
         ("hiroute-diagnostics", "worker_probe_progress"),
         ("hiroute-diagnostics", "writer_bounds"),
