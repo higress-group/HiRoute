@@ -314,9 +314,21 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                         assert_eq!(read_kind, ReadKind::TrialSetup);
                         assert_eq!(request.payload, json!({}));
                         assert!(request.protected_grant.is_none());
+                        let new_revision = altered && change == Change::Revision;
                         json!({"schema":"hiroute.trial-setup-snapshot/v1",
-                            "options":{"authoring":null,"claude_capabilities":null,"context_window":null,"suggested_alias":null,"candidates":[],"free_suggestions":null,"ratings":null,"codex_capabilities":null,"revisions":{"target":1,"dependencies":{}}},
-                            "management":{"revisions":{"target":1,"dependencies":{}},"sources":[]}})
+                        "options":{"authoring":null,"claude_capabilities":null,"context_window":null,"suggested_alias":null,"candidates":[{
+                            "binding_id":"binding/same", "model_configuration_id":"fixture-model", "display_name":"fixture model",
+                            "reasoning":{"kind":"fixed","profile":if new_revision {"new"} else {"old"}},
+                            "billing_class":"paid","routable":true,"ingress_protocols":["responses"],"native_ingress_protocols":["responses"]
+                        }],"free_suggestions":null,"ratings":null,"codex_capabilities":null,"revisions":{"target":if new_revision {2} else {1},"dependencies":{}}},
+                        "management":{"revisions":{"target":if new_revision {2} else {1},"dependencies":{}},"sources":[{
+                            "source_id":"source/same", "revision":if new_revision {2} else {1},
+                            "display_name":if new_revision {"changed source"} else {"original source"},
+                            "provenance":"user_configured","access_kind":"api","state":"ready","actions":[],
+                            "models":[{"model_ref":"model/same", "binding_id":"binding/same", "revision":if new_revision {2} else {1},
+                                "upstream_model_id":"fixture-model", "display_name":"fixture model", "membership":"user_declared",
+                                "catalog_admitted":false, "availability":if new_revision {"disabled"} else {"available"}}]
+                        }]}})
                     }
                     "ListAgentPlanCatalog" => {
                         json!({"schema":"hiroute.agent-plan-catalog/v2","plans":[],"drafts":[],"next_cursor":null})
@@ -398,7 +410,13 @@ async fn exercise_read(change: Change, read_kind: ReadKind) {
                 .await
                 .map(|snapshot| {
                     assert_eq!(snapshot.schema, TRIAL_SETUP_SNAPSHOT_SCHEMA_V1);
-                    assert!(snapshot.management.sources.is_empty());
+                    let source = &snapshot.management.sources[0];
+                    assert_eq!(source.display_name, "original source");
+                    assert_eq!(source.models[0].binding_id, "binding/same");
+                    assert_eq!(source.models[0].availability, ComputeModelAvailabilityV1::Available);
+                    assert_eq!(snapshot.options.candidates[0].binding_id, "binding/same");
+                    assert!(matches!(snapshot.options.candidates[0].reasoning,
+                        hiroute_domain::NativeReasoningCapabilityV1::Fixed { ref profile } if profile == "old"));
                 }),
             ReadKind::Catalog => super::super::desktop_snapshot(&context, &state)
                 .await

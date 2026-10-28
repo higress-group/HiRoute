@@ -76,6 +76,18 @@ try {
     await waitFor(client, `document.querySelector('.trial-validation-summary')?.textContent.includes('trial connection')`);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
   });
+  await run('capture.unadmitted-user-binding-stays-unlinked', async () => {
+    await open('catalog-unadmitted-user=1');
+    const selected = `.trial-model-card[aria-pressed=true]`;
+    assert.equal(await evaluate(client, `!!document.querySelector(${JSON.stringify(selected)}+' .model-fact-tags')`),false,
+      'descriptive facts cannot be attached to a source-local candidate without catalog admission');
+    await click('.trial-model-card','Kimi');
+    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('.trial-picker .trial-choice','Qwen3-Coder-Plus');
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Qwen')`);
+    assert.equal(await evaluate(client, `!!document.querySelector(${JSON.stringify(selected)}+' .model-fact-tags')`),false);
+    assert.match(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent`),/catalog version unconfirmed/i);
+  });
   await run('readiness.all-blockers', async () => {
     await open('no-reasoning-default=1');
     await click('.trial-choice-list .trial-choice', 'GPT');
@@ -532,6 +544,7 @@ try {
     await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
     await click('.model-selection input[type=checkbox]'); await click('.modal-foot button','Save connection');
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('unconfirmed')`);
+    await evaluate(client, `document.querySelector('.trial-recovery').scrollIntoView({block:'center'});true`);
     await shot('repair-unconfirmed-en-755');
     await click('.trial-recovery button','Back to trial');
     assert.equal(await evaluate(client, `document.querySelector('.trial-footer .btn-primary').disabled`),true,'an unconfirmed original save cannot be abandoned by advancing');
@@ -540,6 +553,22 @@ try {
     await click('.trial-recovery button','Refresh result');
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('review-repair.uncertain-zh-geometry', async () => {
+    for (const [theme,width,height] of [['dark',755,600],['light',1200,813]]) {
+      await open(`additional-connection=1&saved-user-declared=1&lost-apply=1&theme=${theme}`,'zh',width,height);
+      await click('.trial-choice-list .trial-choice','GPT');
+      await click('[data-trial-target=trial] button','新增接入'); await click('.trial-inline-connection button','Kimi');
+      await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
+      await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
+      await click('.modal-foot button','检查并继续'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
+      await click('.model-selection input[type=checkbox]'); await click('.modal-foot button','保存连接');
+      await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('核实')`);
+      await evaluate(client, `document.querySelector('.trial-recovery').scrollIntoView({block:'center'});true`);
+      const geometry=await evaluate(client, `(()=>{const card=document.querySelector('.trial-recovery').getBoundingClientRect(),footer=document.querySelector('.trial-footer').getBoundingClientRect();return {left:card.left,right:card.right,top:card.top,bottom:card.bottom,footer:footer.top,width:innerWidth}})()`);
+      assert.ok(geometry.left>=0 && geometry.right<=geometry.width && geometry.top>=0 && geometry.bottom<=geometry.footer+1,JSON.stringify(geometry));
+      await shot(`repair-unconfirmed-zh-${theme}-${width}`);
+    }
   });
   await run('review-repair.saved-result-survives-review', async () => {
     await open('additional-connection=1&saved-user-declared=1&same-names=1');
@@ -573,6 +602,7 @@ try {
     assert.match(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent`),/Qwen/,
       'refreshing a retained result cannot replace the newer trial without an explicit choice');
     assert.match(await evaluate(client, `document.querySelector('.trial-recovery')?.textContent`),/Use this saved model/);
+    await evaluate(client, `document.querySelector('.trial-recovery').scrollIntoView({block:'center'});true`);
     await shot('repair-saved-result-en-755');
     await click('.trial-recovery button','Use this saved model');
     await waitFor(client, `document.querySelector('[data-trial-target=trial]')?.textContent.includes('Saved synthetic model')`);

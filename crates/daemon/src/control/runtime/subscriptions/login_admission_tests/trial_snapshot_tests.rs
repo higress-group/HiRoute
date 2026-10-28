@@ -282,3 +282,179 @@ fn trial_failed_initial_cpa_batch_cannot_be_promoted_by_a_later_read() {
             .all(|model| !model.catalog_admitted)
     );
 }
+
+#[test]
+fn trial_capture_rejects_binding_health_change_during_cpa_finish() {
+    use hiroute_domain::{
+        ComputeRuntimeStateStoreV1, RuntimeClockSampleV1, RuntimeStateIdentityV1, RuntimeStateV1,
+    };
+    if crate::test_support::isolated_agent_home(concat!(
+        "control::runtime::subscriptions::login_admission_tests::trial_snapshot_tests::",
+        "trial_capture_rejects_binding_health_change_during_cpa_finish"
+    )) {
+        return;
+    }
+    let fixture = fixture_with_saved_subscription();
+    let stable = fixture
+        .adapter()
+        .trial_routing_snapshot(&WorkspaceId::default())
+        .unwrap();
+    let member = stable
+        .management
+        .sources
+        .iter()
+        .flat_map(|source| &source.models)
+        .find(|member| {
+            member.catalog_admitted && member.availability == ComputeModelAvailabilityV1::Available
+        })
+        .expect("available subscription binding");
+    let binding_id = member.binding_id.clone();
+    let binding_revision = member.revision;
+    let revisions = fixture.snapshot().revisions;
+    let root = fixture.root.path();
+    fs::write(root.join("probe-catalog-lock"), b"probe").unwrap();
+    let mut probes = 0;
+    std::thread::scope(|scope| {
+        let (sender, receiver) = mpsc::channel();
+        let adapter = fixture.adapter();
+        scope.spawn(move || {
+            sender
+                .send(adapter.trial_routing_snapshot(&WorkspaceId::default()))
+                .unwrap()
+        });
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            for entry in fs::read_dir(root).unwrap() {
+                let path = entry.unwrap().path();
+                if !path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("catalog-probe-")
+                    || path.extension().is_some()
+                    || path.with_extension("resume").exists()
+                {
+                    continue;
+                }
+                probes += 1;
+                if probes == 3 {
+                    let identity = RuntimeStateIdentityV1::binding(binding_id.clone()).unwrap();
+                    let disabled = RuntimeStateV1::disabled(
+                        identity,
+                        1,
+                        RuntimeClockSampleV1::from_unix_millis(1_000).unwrap(),
+                    )
+                    .unwrap();
+                    fixture
+                        .adapter()
+                        .stores_lock()
+                        .unwrap()
+                        .runtime()
+                        .compare_and_set_runtime_state(0, &disabled)
+                        .unwrap();
+                    assert_eq!(fixture.snapshot().revisions, revisions);
+                }
+                fs::write(path.with_extension("resume"), b"resume").unwrap();
+            }
+            if let Ok(result) = receiver.try_recv() {
+                assert!(
+                    matches!(result, Err(ControlReadError::SnapshotChanged)),
+                    "old binding health escaped"
+                );
+                break;
+            }
+            assert!(Instant::now() < deadline, "binding health probe stalled");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    });
+    assert_eq!(probes, 4);
+    fs::remove_file(root.join("probe-catalog-lock")).unwrap();
+    let changed = fixture
+        .adapter()
+        .trial_routing_snapshot(&WorkspaceId::default())
+        .unwrap();
+    let member = changed
+        .management
+        .sources
+        .iter()
+        .flat_map(|source| &source.models)
+        .find(|member| member.binding_id == binding_id)
+        .unwrap();
+    assert_eq!(member.revision, binding_revision);
+    assert_eq!(member.availability, ComputeModelAvailabilityV1::Disabled);
+}
+
+#[test]
+fn independent_routing_and_management_reads_are_a_cpa_mismatch_negative_control() {
+    if crate::test_support::isolated_agent_home(concat!(
+        "control::runtime::subscriptions::login_admission_tests::trial_snapshot_tests::",
+        "independent_routing_and_management_reads_are_a_cpa_mismatch_negative_control"
+    )) {
+        return;
+    }
+    let fixture = fixture_with_saved_subscription();
+    let revisions = fixture.snapshot().revisions;
+    let options = fixture
+        .adapter()
+        .routing_compilation_snapshot(&WorkspaceId::default())
+        .unwrap();
+    let candidate = options
+        .facts
+        .candidates
+        .iter()
+        .find(|candidate| candidate.is_routable())
+        .unwrap();
+    let binding_id = candidate.binding.binding_id.clone();
+    fs::write(
+        fixture.root.path().join("catalog-auth-unavailable"),
+        b"changed",
+    )
+    .unwrap();
+    let management = fixture
+        .adapter()
+        .compute_management_snapshot_v3(
+            &hiroute_application_api::ComputeManagementQueryV2::default(),
+        )
+        .unwrap();
+    let member = management
+        .sources
+        .iter()
+        .flat_map(|source| &source.models)
+        .find(|member| member.binding_id == binding_id)
+        .unwrap();
+    assert_ne!(
+        member.presentation.availability,
+        ComputeModelAvailabilityV1::Available
+    );
+    assert_eq!(
+        fixture.snapshot().revisions,
+        revisions,
+        "the outer service revisions cannot detect this independent CPA change"
+    );
+    assert!(
+        candidate.is_routable(),
+        "the earlier options read remains independently valid"
+    );
+    // The old frontend could combine those independently valid values. The new owner must
+    // publish a conservative result after the failed batch, never the earlier candidate.
+    let combined = fixture
+        .adapter()
+        .trial_routing_snapshot(&WorkspaceId::default())
+        .unwrap();
+    assert!(
+        !combined
+            .routing
+            .facts
+            .candidates
+            .iter()
+            .any(|candidate| candidate.binding.binding_id == binding_id && candidate.is_routable())
+    );
+    assert!(
+        !combined
+            .management
+            .sources
+            .iter()
+            .flat_map(|source| &source.models)
+            .any(|member| member.binding_id == binding_id && member.catalog_admitted)
+    );
+}

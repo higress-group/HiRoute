@@ -189,7 +189,8 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const actualTrialBinding = selectedTrial?.binding_id ?? trialBinding;
   const actualTrialSource = data?.management.sources.find(source => source.models.some(member => member.binding_id === actualTrialBinding));
   const actualTrialMember = actualTrialSource?.models.find(member => member.binding_id === actualTrialBinding);
-  const unlinkedTrial = !!actualTrialBinding && (unlinked === actualTrialBinding || (!!actualTrialMember && (!actualTrialMember.catalog_configuration_id || actualTrialMember.catalog_configuration_id !== trialId)));
+  const unlinkedTrial = !!actualTrialBinding && (unlinked === actualTrialBinding || (!!actualTrialMember && (!actualTrialMember.catalog_admitted || actualTrialMember.catalog_configuration_id !== trialId)));
+  const explicitUnlinkedTrial = unlinkedTrial && (actualTrialSource?.provenance !== 'registered' || !actualTrialMember?.catalog_configuration_id);
   const trialName = unlinkedTrial ? actualTrialMember?.display_name ?? selectedTrial?.display_name ?? trial?.display_name : trial?.display_name;
   const trialReasoning = selectedTrial && trialSelection(selectedTrial, trialChosen);
   const primaryReasoning = selectedPrimary && trialSelection(selectedPrimary, primarySelection);
@@ -210,7 +211,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       const candidate = data?.options.candidates.find(value => value.binding_id === regular.binding_id);
       const member = data?.management.sources.flatMap(source => source.models).find(value => value.binding_id === regular.binding_id);
       setTrialId(candidate?.model_configuration_id ?? ''); setTrialBinding(regular.binding_id); setTrialChosen(regular);
-      setUnlinked(candidate && member?.catalog_configuration_id === candidate.model_configuration_id ? '' : regular.binding_id);
+      setUnlinked(candidate && member?.catalog_admitted && member.catalog_configuration_id === candidate.model_configuration_id ? '' : regular.binding_id);
     } else { setTrialId(''); setTrialBinding(''); setTrialChosen(undefined); setUnlinked(''); }
     if (primary) {
       const candidate = data?.options.candidates.find(value => value.binding_id === primary.binding_id);
@@ -245,7 +246,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     if (connections.length > 1) return t('多个接入', 'Multiple connections');
     if (connections.length === 1) {
       const label = source(connections[0].binding_id) ?? t('来源未确认', 'Source unconfirmed');
-      return model.catalog && !(unlinkedTrial && model.model_configuration_id === trialId) && !exactCatalogBinding(model.model_configuration_id, connections[0].binding_id) ? `${label} · ${t('目录匹配未确认', 'Catalog match unconfirmed')}` : label;
+      return model.catalog && !(explicitUnlinkedTrial && model.model_configuration_id === trialId) && !exactCatalogBinding(model.model_configuration_id, connections[0].binding_id) ? `${label} · ${t('目录匹配未确认', 'Catalog match unconfirmed')}` : label;
     }
     return [model.catalog?.facts ? publisherName(model.catalog.facts.publisher_id, language) : t('来源未确认', 'Source unconfirmed'), t('未接入', 'Not connected')].join(' · ');
   };
@@ -264,7 +265,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   useEffect(() => {
     if (!trialBinding && selectedTrial && usable(selectedTrial)) {
       setTrialBinding(selectedTrial.binding_id);
-      if (actualTrialMember && (!actualTrialMember.catalog_configuration_id || actualTrialMember.catalog_configuration_id !== selectedTrial.model_configuration_id)) setUnlinked(selectedTrial.binding_id);
+      if (actualTrialMember && (!actualTrialMember.catalog_admitted || actualTrialMember.catalog_configuration_id !== selectedTrial.model_configuration_id)) setUnlinked(selectedTrial.binding_id);
     }
   }, [data, trialBinding, selectedTrial?.binding_id]);
   useEffect(() => {
@@ -362,7 +363,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     if (role === 'trial') {
       ++selectionEpoch.current;
       setTrialId(freshCandidate.model_configuration_id); setTrialBinding(bindingId); setTrialChosen(undefined);
-      setUnlinked(freshMember.catalog_configuration_id && freshMember.catalog_configuration_id === freshCandidate.model_configuration_id ? '' : bindingId);
+      setUnlinked(freshMember.catalog_admitted && freshMember.catalog_configuration_id === freshCandidate.model_configuration_id ? '' : bindingId);
       if (connect && connectionState !== 'editing') setConnectionHidden(true); else { setConnect(null); setConnectionHidden(false); }
       if (freshCandidate.model_configuration_id === primaryId) { setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); }
     } else {
@@ -391,7 +392,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       </Disclosure>}
       {connectionPicker('trial')}
       {trialBinding && !selectedTrial && <p className="oc-inline-error" role="alert">{t('所选试用接入当前不可用，请重新选择。', 'The selected trial connection is unavailable. Choose again.')}</p>}
-      {selectedTrial && <p className="field-help"><strong>{bindingInfo(selectedTrial.binding_id)?.member.display_name ?? selectedTrial.display_name}</strong> · {source(selectedTrial.binding_id) ?? t('来源未确认', 'Source unconfirmed')} · {sourceKind(selectedTrial.binding_id)}{unlinkedTrial && <> · {t('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed')}</>}</p>}
+      {selectedTrial && <p className="field-help"><strong>{bindingInfo(selectedTrial.binding_id)?.member.display_name ?? selectedTrial.display_name}</strong> · {source(selectedTrial.binding_id) ?? t('来源未确认', 'Source unconfirmed')} · {sourceKind(selectedTrial.binding_id)}{explicitUnlinkedTrial && <> · {t('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed')}</>}</p>}
       <div className="actions"><button type="button" data-trial-focus className="btn" aria-invalid={!!fieldError('trial')} aria-describedby={fieldError('trial') ? 'trial-model-error' : undefined} onClick={() => openPicker('trial')}>{t('使用已有接入', 'Choose an existing connection')}</button>{!connect && <button type="button" className="btn btn-quiet" onClick={() => { if (trial?.catalog) { connectionEpoch.current = ++selectionEpoch.current; setConnectionState('editing'); setConnectionHidden(false); setConnect(trial.catalog); } else { openPicker('trial'); setAddingConnection(true); } }}>{t('新增接入', 'Add a connection')}</button>}{connectionHidden && <button type="button" className="btn btn-quiet" data-trial-retry onClick={() => setConnectionHidden(false)}>{t('查看接入结果', 'Review connection result')}</button>}</div>
       {fieldError('trial') && <p id="trial-model-error" className="oc-inline-error">{fieldError('trial')}</p>}
       {reasoningPicker('trial')}
@@ -405,7 +406,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
         <h3>{t('主力模型 · 必填', 'Primary model · Required')}</h3>
         <div className="actions"><button type="button" data-trial-focus className="btn" aria-invalid={!!fieldError('primary')} aria-describedby={fieldError('primary') ? 'trial-primary-error' : undefined} onClick={() => openPicker('primary')}>{t('使用已有接入', 'Choose an existing connection')}</button><button type="button" className="btn btn-quiet" onClick={() => { openPicker('primary'); setAddingConnection(true); }}>{t('新增接入', 'Add a connection')}</button></div>
         {fieldError('primary') && <p id="trial-primary-error" className="oc-inline-error">{fieldError('primary')}</p>}
-        {selectedPrimary && primary && !choosingPrimary ? <button type="button" className="trial-choice selected" aria-expanded={false} onClick={() => setChoosingPrimary(true)}><strong>{bindingInfo(selectedPrimary.binding_id)?.member.display_name ?? primary.display_name}</strong><span>{[source(selectedPrimary.binding_id) ?? t('来源未确认', 'Source unconfirmed'), sourceKind(selectedPrimary.binding_id), bindingInfo(selectedPrimary.binding_id)?.member.catalog_configuration_id === selectedPrimary.model_configuration_id ? '' : t('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed'), primaryOrigin.current.kind === 'agent' && mappedAgent ? t(`来自 ${agentDisplayName(mappedAgent.agent_id, language)} 现在使用的模型`, `What ${agentDisplayName(mappedAgent.agent_id, language)} uses now`) : ''].filter(Boolean).join(' · ')}</span><em>{t('更换', 'Change')}</em></button>
+        {selectedPrimary && primary && !choosingPrimary ? <button type="button" className="trial-choice selected" aria-expanded={false} onClick={() => setChoosingPrimary(true)}><strong>{bindingInfo(selectedPrimary.binding_id)?.member.display_name ?? primary.display_name}</strong><span>{[source(selectedPrimary.binding_id) ?? t('来源未确认', 'Source unconfirmed'), sourceKind(selectedPrimary.binding_id), exactCatalogBinding(selectedPrimary.model_configuration_id, selectedPrimary.binding_id) ? '' : t('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed'), primaryOrigin.current.kind === 'agent' && mappedAgent ? t(`来自 ${agentDisplayName(mappedAgent.agent_id, language)} 现在使用的模型`, `What ${agentDisplayName(mappedAgent.agent_id, language)} uses now`) : ''].filter(Boolean).join(' · ')}</span><em>{t('更换', 'Change')}</em></button>
           : <div className="trial-choice-list" role="group" aria-label={t('主力模型', 'Primary model')}>{(allPrimary ? primaryOptions : primaryOptions.slice(0, 4)).map(model => <button type="button" key={model.model_configuration_id} className={`trial-choice${primaryId === model.model_configuration_id ? ' selected' : ''}`} aria-pressed={primaryId === model.model_configuration_id} onClick={() => { primaryOrigin.current = { kind: 'manual', agentId: mapping.agentId }; setPrimaryId(model.model_configuration_id); setPrimaryBinding(''); setPrimarySelection(undefined); setChoosingPrimary(false); }}><strong>{model.display_name}</strong><span>{sourceLabel(model)}</span></button>)}{!allPrimary && primaryOptions.length > 4 && <button type="button" className="btn btn-quiet trial-inline-action" onClick={() => setAllPrimary(true)}>{t(`显示全部 ${primaryOptions.length} 个已连接模型`, `Show all ${primaryOptions.length} connected models`)}</button>}{!primaryOptions.length && <p className="field-help">{t('还没有其他已连接的模型。', 'No other connected model yet.')}</p>}</div>}
         {connectionPicker('primary')}
         {primaryId && !selectedPrimary && <p className="oc-inline-error" role="alert">{t('所选主力接入当前不可用，请重新选择。', 'The selected Primary connection is unavailable. Choose again.')}</p>}

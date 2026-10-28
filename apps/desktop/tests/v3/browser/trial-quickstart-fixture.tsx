@@ -44,8 +44,9 @@ const setupParams = new URLSearchParams(location.search);
 // The saved-only variant instead exercises a user-declared, unlinked model.
 if (setupParams.has('saved-only')) trialManagement.sources[1].models[0].membership = 'user_declared';
 else trialManagement.sources[1].models[0].catalog_configuration_id = trialModel.model_configuration_id;
+if (setupParams.has('catalog-unadmitted-user')) trialManagement.sources[1].provenance='user_configured';
 const setupControl = { failNextManagement: false, holdNextManagement: false, holdNextDecision: false, pending: [] as (()=>void)[], pendingDecision: [] as (()=>void)[],
- snapshotFailures: [] as string[], catalogAdmission: true,
+ snapshotFailures: [] as string[], catalogAdmission: !setupParams.has('catalog-unadmitted-user'),
  pendingApply: [] as (()=>void)[],
  pendingCheck: [] as (()=>void)[], checkCount: 0,
  checkedSubscription: null as any,
