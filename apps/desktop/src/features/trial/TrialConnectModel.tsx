@@ -12,11 +12,11 @@ import type { AvailableModel } from '../model-feed/types';
 type ResolvedBinding = { bindingId: string; modelId: string; name: string; source: string; linked: boolean };
 export type TrialConnectionState = 'editing' | 'saving' | 'uncertain' | 'saved';
 
-export function TrialConnectModel({ model, language, management, mutable, onResolve, onReceipt, onSaved, onBack, onOperation, onStateChange }: {
+export function TrialConnectModel({ model, language, management, mutable, onResolve, onReceipt, onSaved, onSelectionIntent, onBack, onOperation, onStateChange }: {
   model: AvailableModel; language: 'zh' | 'en'; management: TrialManagementSnapshot; mutable: boolean;
   onResolve(receipt: ComputeSaveResult): Promise<TrialCatalogSnapshot | undefined>;
   onReceipt(): void;
-  onSaved(result: ComputeSaveResult, selection: ResolvedBinding): boolean; onBack(recoverable: boolean): void; onOperation(operation: OperationReference): void;
+  onSaved(result: ComputeSaveResult, selection: ResolvedBinding, intent?: number): boolean; onSelectionIntent(): number; onBack(recoverable: boolean): void; onOperation(operation: OperationReference): void;
   onStateChange(state: TrialConnectionState): void;
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
@@ -157,6 +157,7 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
   }
   async function useSaved(selection: ResolvedBinding) {
     if (!saved || busyRef.current) return;
+    const intent = onSelectionIntent();
     busyRef.current = true; setBusy(true); setError('');
     try {
       const current = await onResolve(resolutionScope(saved));
@@ -172,7 +173,7 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
       if (!source || source.state !== 'ready' || !member || member.availability !== 'available' || !candidate || !observation || !selected || (selection.linked ? !linked : !!member.catalog_configuration_id)) {
         setResolved([]); setError(text('接入已保存，但所选模型已变化或不可用。请刷新结果。', 'The connection is saved, but this model changed or is unavailable. Refresh the result.')); return;
       }
-      onSaved(saved, { ...selection, name: member.display_name, source: source.display_name });
+      onSaved(saved, { ...selection, name: member.display_name, source: source.display_name }, intent);
     } catch { if (live.current) setError(text('接入已保存，但无法重新读取所选模型。请重试。', 'The connection is saved, but the selected model could not be reread. Retry.')); }
     finally { busyRef.current = false; if (live.current) setBusy(false); }
   }

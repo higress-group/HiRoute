@@ -86,8 +86,8 @@ fn trial_capture_uses_routing_candidate_and_safe_source_from_one_batch() {
         .filter(|line| line.contains("\"event\": \"inventory\""))
         .count();
     assert_eq!(
-        inventories, 2,
-        "one batch capture and its finish are the only inventory reads"
+        inventories, 4,
+        "the initial and final batch discoveries each perform the two pinned stock inventory probes"
     );
 }
 
@@ -132,7 +132,9 @@ fn trial_capture_rejects_cpa_change_with_unchanged_control_revisions_and_retries
                     "CPA transport must not hold local storage"
                 );
                 assert_eq!(fixture.snapshot().revisions, revisions);
-                if probes == 2 {
+                if probes == 3 {
+                    // Two inventory probes belong to the initial discovery. Change CPA at the
+                    // first probe of the final discovery, after the captured candidates exist.
                     fs::write(root.join("catalog-auth-unavailable"), b"changed").unwrap();
                 }
                 fs::write(path.with_extension("resume"), b"resume").unwrap();
@@ -148,7 +150,10 @@ fn trial_capture_rejects_cpa_change_with_unchanged_control_revisions_and_retries
             std::thread::sleep(Duration::from_millis(5));
         }
     });
-    assert_eq!(probes, 2);
+    assert!(
+        probes >= 3,
+        "the captured batch must reach final revalidation"
+    );
     fs::remove_file(root.join("probe-catalog-lock")).unwrap();
     fs::remove_file(root.join("catalog-auth-unavailable")).unwrap();
     assert_eq!(fixture.snapshot().revisions, revisions);
@@ -224,5 +229,56 @@ fn trial_capture_rejects_catalog_replacement_during_the_cpa_read() {
             std::thread::sleep(Duration::from_millis(5));
         }
     });
-    assert_eq!(probes, 2);
+    assert_eq!(probes, 4);
+}
+
+#[test]
+fn trial_failed_initial_cpa_batch_cannot_be_promoted_by_a_later_read() {
+    if crate::test_support::isolated_agent_home(concat!(
+        "control::runtime::subscriptions::login_admission_tests::trial_snapshot_tests::",
+        "trial_failed_initial_cpa_batch_cannot_be_promoted_by_a_later_read"
+    )) {
+        return;
+    }
+    let fixture = fixture_with_saved_subscription();
+    let revisions = fixture.snapshot().revisions;
+    let failure = fixture.root.path().join("catalog-auth-unavailable");
+    fs::write(&failure, b"unavailable").unwrap();
+    let unavailable = fixture
+        .adapter()
+        .trial_routing_snapshot(&WorkspaceId::default())
+        .unwrap();
+    assert!(
+        unavailable
+            .management
+            .sources
+            .iter()
+            .flat_map(|source| &source.models)
+            .all(|model| !model.catalog_admitted
+                && model.availability != ComputeModelAvailabilityV1::Available)
+    );
+    assert!(unavailable.routing.facts.candidates.is_empty());
+    fs::remove_file(failure).unwrap();
+    let recovered = fixture
+        .adapter()
+        .trial_routing_snapshot(&WorkspaceId::default())
+        .unwrap();
+    assert_eq!(fixture.snapshot().revisions, revisions);
+    assert!(
+        recovered
+            .management
+            .sources
+            .iter()
+            .flat_map(|source| &source.models)
+            .any(|model| model.catalog_admitted
+                && model.availability == ComputeModelAvailabilityV1::Available)
+    );
+    assert!(
+        unavailable
+            .management
+            .sources
+            .iter()
+            .flat_map(|source| &source.models)
+            .all(|model| !model.catalog_admitted)
+    );
 }

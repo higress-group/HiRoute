@@ -501,6 +501,7 @@ try {
     await click('[data-trial-target=trial] button','Choose an existing connection');
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
     await waitFor(client, `!!document.querySelector('.discard-dialog[open]')`);
+    await shot('repair-guard-en-755');
     await click('.discard-dialog button','Keep editing');
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`),'synthetic-draft-key');
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[maxlength="60"]').value`),'Edited synthetic connection');
@@ -531,6 +532,7 @@ try {
     await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
     await click('.model-selection input[type=checkbox]'); await click('.modal-foot button','Save connection');
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('unconfirmed')`);
+    await shot('repair-unconfirmed-en-755');
     await click('.trial-recovery button','Back to trial');
     assert.equal(await evaluate(client, `document.querySelector('.trial-footer .btn-primary').disabled`),true,'an unconfirmed original save cannot be abandoned by advancing');
     assert.match(await evaluate(client, `document.querySelector('.trial-footer-hint').textContent`),/confirm|verif/i);
@@ -557,6 +559,42 @@ try {
     await click('[data-trial-target=trial] button','Review connection result');
     assert.match(await evaluate(client, `document.querySelector('.trial-recovery').textContent`),/Use this saved model/i);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('review-repair.reopen-does-not-adopt-late-result', async () => {
+    await open('saved-registered=1&saved-read-failure=1');
+    await saveConnection();
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('could not be verified')`);
+    await click('.trial-recovery button','Back to trial');
+    await waitFor(client, `!document.querySelector('.trial-setup')?.disabled`);
+    await click('.trial-model-card','Qwen');
+    await click('[data-trial-target=trial] button','Review connection result');
+    await click('.trial-recovery button','Refresh result');
+    await waitFor(client, `!document.querySelector('.trial-recovery') || !document.querySelector('.trial-recovery button:disabled')`);
+    assert.match(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent`),/Qwen/,
+      'refreshing a retained result cannot replace the newer trial without an explicit choice');
+    assert.match(await evaluate(client, `document.querySelector('.trial-recovery')?.textContent`),/Use this saved model/);
+    await shot('repair-saved-result-en-755');
+    await click('.trial-recovery button','Use this saved model');
+    await waitFor(client, `document.querySelector('[data-trial-target=trial]')?.textContent.includes('Saved synthetic model')`);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('review-repair.parked-custom-first-judgment', async () => {
+    await open('custom-service=1'); await click('.trial-choice-list .trial-choice','GPT');
+    await click('.trial-setup [data-route-group=classifier] .decision-methods button','Custom extension');
+    await click('.trial-footer .btn-primary','Review changes'); await waitFor(client, `!!document.querySelector('.trial-review')`);
+    await click('.trial-review [data-route-group=classifier] .decision-methods button','Decision model');
+    await waitFor(client, `!!document.querySelector('.trial-review .trust-slider')`);
+    await field('.trial-review .trust-slider','277');
+    await click('.trial-review summary','Judgment settings'); await click('.trial-review summary','How competence is assessed');
+    await evaluate(client, `(()=>{const e=document.querySelector('.trial-review [data-decision-field$="-criterion-0"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Parked custom criterion');e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+    await click('.trial-review [data-route-group=classifier] .decision-methods button','Custom extension');
+    await click('.trial-review > .actions button','Back to setup');
+    await click('.trial-setup [data-route-group=classifier] .decision-methods button','Decision model');
+    await evaluate(client, `(()=>{const e=document.querySelector('.trial-setup .decision-selector select');e.value='decision/trial';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+    await click('.trial-footer .btn-primary','Review changes'); await waitFor(client, `!!document.querySelector('.trial-review .trust-slider')`);
+    assert.match(await evaluate(client, `document.querySelector('.trial-review .trust-threshold').textContent`),/0\.723$/);
+    await click('.trial-review summary','Judgment settings'); await click('.trial-review summary','How competence is assessed');
+    assert.equal(await evaluate(client, `document.querySelector('.trial-review [data-decision-field$="-criterion-0"]').value`),'Parked custom criterion');
   });
   await run('review-repair.parked-judgment', async () => {
     await open('custom-service=1'); await click('.trial-choice-list .trial-choice','GPT');
