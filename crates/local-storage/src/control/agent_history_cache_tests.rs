@@ -694,11 +694,17 @@ fn selected_settings_does_not_decode_newer_unrelated_contexts() {
     }
     let before = super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
     let found = control
-        .find_verified_agent_operation(&WorkspaceId::default(), KINDS, |fact| {
-            Ok(fact.plan.spec().resource_id.as_deref() == Some(context.as_str()))
-        })
-        .unwrap()
+        .find_agent_locator(
+            &WorkspaceId::default(),
+            super::super::AgentLocatorScope::ContextFacet {
+                context_id: &context,
+                facet: hiroute_domain::AgentSettingsFacet::ManagementSkill,
+            },
+        )
         .unwrap();
+    let super::super::AgentLocatorResult::Found(found) = found else {
+        panic!("selected configuration must be present");
+    };
     assert_eq!(found.operation_id, selected.operation_id);
     let decoded = super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get) - before;
     assert_eq!(

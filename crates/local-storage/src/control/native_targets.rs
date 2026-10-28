@@ -65,7 +65,7 @@ impl CapturedAgentNativeTarget {
             self.witness.owner.as_ref().ok_or_else(invalid)?;
         let row = frozen.row();
         if &row.operation_id != owner
-            || &row.workspace_id != self.witness.workspace.as_str()
+            || row.workspace_id != self.witness.workspace.as_str()
             || row.generation != *generation
             || &row.accepted_digest != accepted
             || &row.state != state

@@ -237,8 +237,9 @@ impl LocalControlAdapter {
                 {
                     return Err(changed());
                 }
-                if let Some((grant, publication, checks)) = dependencies {
-                    if control.active_publication_identity(&WorkspaceId::default())? != *publication
+                if let Some((grant, publication, checks)) = dependencies
+                    && (control.active_publication_identity(&WorkspaceId::default())?
+                        != *publication
                         || control
                             .agent_surface_checks(&WorkspaceId::default(), &request.context_id)?
                             != checks
@@ -246,10 +247,9 @@ impl LocalControlAdapter {
                             WorkspaceId::DEFAULT,
                             &format!("agent-connection/{}", request.context_id),
                             grant.as_ref(),
-                        )?
-                    {
-                        return Err(changed());
-                    }
+                        )?)
+                {
+                    return Err(changed());
                 }
                 Ok(())
             })
@@ -710,7 +710,7 @@ impl LocalControlAdapter {
                     .map_err(|_| ControlReadError::Corrupt)?;
                 let withdrawn = match &publication {
                     Some(record) => {
-                        self.publication_is_installed(&record)
+                        self.publication_is_installed(record)
                             .map_err(super::map_port)?
                             && !record
                                 .verify()

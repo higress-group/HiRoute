@@ -33,6 +33,8 @@ mod agent_transaction_tests;
 #[cfg(test)]
 mod surface_check_tests;
 #[cfg(test)]
+mod terminal_fault;
+#[cfg(test)]
 mod test_native_permissions;
 #[cfg(test)]
 mod transaction_v2_tests;
@@ -1555,6 +1557,8 @@ impl ControlRepositoryPort for ControlStore {
             operation,
             Some(&self.completed_operation_cache),
         )?;
+        #[cfg(test)]
+        terminal_fault::check(operation)?;
         let generation = journal::save(&transaction, operation)?;
         if operation.state != OperationState::NeedsAttention {
             let released = transaction

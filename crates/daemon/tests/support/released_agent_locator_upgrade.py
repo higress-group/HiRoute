@@ -8,8 +8,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
-import subprocess
 import sys
 import tarfile
 import tempfile
@@ -18,6 +18,22 @@ import urllib.request
 from publication_process import bootstrap
 from publication_product import Product
 from released_grant_upgrade import upstream_fixture
+
+RELEASE_FIXTURES = {
+    'd625e653048b2306c88da07826d52027e9891675': ('8.0.4-hiroute.2', 'fa01e83e8f2a9e1919b618a414e5e6cd3dcbbd23342d66144e9a88e26e447d2c'),
+    'ce4c480256c7590aacba080e701d7413a6736426': ('8.0.4-hiroute.4', '0975093534e2d60c7dbfc4606b20cdc5f76d752534859962b21deddce2cd9273'),
+    '13856abd873da5b4373d39322493b4cc105c4867': ('8.0.4-hiroute.4', '0975093534e2d60c7dbfc4606b20cdc5f76d752534859962b21deddce2cd9273'),
+}
+
+
+def released_upstream_fixture(repository, revision):
+    """Reconstruct and verify the exact released fixture without requiring Git history."""
+    version, expected = RELEASE_FIXTURES[revision]
+    current = (Path(repository) / 'crates/daemon/tests/support/cpa_upstream.py').read_bytes()
+    released, count = re.subn(rb"(?m)^VERSION = '[^']+'$",
+                              b"VERSION = '" + version.encode('ascii') + b"'", current)
+    assert count == 1 and hashlib.sha256(released).hexdigest() == expected, 'released fixture bytes changed'
+    return released
 
 
 def schema_versions(product):
@@ -57,9 +73,7 @@ def run_source(repository, release_file, current_bin, scratch):
         product.bin = released / 'bin'
         product.release_version = release['tag'][1:]
         product.enable_cpa()
-        upstream_fixture(product, subprocess.check_output([
-            'git', 'show', release['revision'] + ':crates/daemon/tests/support/cpa_upstream.py',
-        ], cwd=repository))
+        upstream_fixture(product, released_upstream_fixture(repository, release['revision']))
         bootstrap(product)
         assert schema_versions(product) == [record['storage']['sql_schema_version']] * 3
         context = product.agent_context_id

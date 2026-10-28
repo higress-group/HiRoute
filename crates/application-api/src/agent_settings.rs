@@ -76,17 +76,17 @@ impl AgentSettingsFacetSummaryV1 {
         use AgentSettingsSummaryCoverageV1 as Coverage;
         use AgentSettingsSummaryStateV1 as State;
         !self.native_checked
-            && match (self.state, self.coverage, self.action) {
-                (State::Recorded, Coverage::Complete, Some(_)) => true,
-                (
-                    State::Absent | State::Pending | State::NeedsAttention,
-                    Coverage::Complete,
-                    None,
-                )
-                | (State::Unavailable, Coverage::Unavailable, None)
-                | (State::NotReady, Coverage::NotReady, None) => true,
-                _ => false,
-            }
+            && matches!(
+                (self.state, self.coverage, self.action),
+                (State::Recorded, Coverage::Complete, Some(_))
+                    | (
+                        State::Absent | State::Pending | State::NeedsAttention,
+                        Coverage::Complete,
+                        None,
+                    )
+                    | (State::Unavailable, Coverage::Unavailable, None)
+                    | (State::NotReady, Coverage::NotReady, None)
+            )
     }
 }
 

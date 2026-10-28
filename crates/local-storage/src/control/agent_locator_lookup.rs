@@ -519,12 +519,11 @@ fn uncertain_changes(
         }) {
             return Ok(true);
         }
-        if flags & 1 != 0 || member.is_none() {
-            if let Some(row) = row_for_id(db, &id)?
-                && current_affects(db, &row, workspace, key)?
-            {
-                return Ok(true);
-            }
+        if (flags & 1 != 0 || member.is_none())
+            && let Some(row) = row_for_id(db, &id)?
+            && current_affects(db, &row, workspace, key)?
+        {
+            return Ok(true);
         }
     }
     Ok(false)

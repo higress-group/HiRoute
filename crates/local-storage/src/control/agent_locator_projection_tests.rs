@@ -100,6 +100,23 @@ fn coverage_rejects_projection_or_producer_damage_and_keeps_unknown_events() {
 }
 
 #[test]
+fn unrecognized_persistent_schema_edits_do_not_rebind_locator_coverage() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let db = control.connection.borrow();
+    agent_locator::validate_coverage(&db).unwrap();
+    db.execute_batch("CREATE TABLE unexpected_locator_test(value INTEGER)")
+        .unwrap();
+    assert!(agent_locator::validate_coverage(&db).is_err());
+    db.execute_batch("DROP TABLE unexpected_locator_test")
+        .unwrap();
+    assert!(
+        agent_locator::validate_coverage(&db).is_err(),
+        "restoring a schema definition cannot erase an unobserved interval"
+    );
+}
+
+#[test]
 fn exact_locator_skips_newer_unrelated_history_and_checks_current_bytes() {
     use super::super::super::{AgentLocatorResult, AgentLocatorScope};
     use hiroute_domain::AgentSettingsFacet;
