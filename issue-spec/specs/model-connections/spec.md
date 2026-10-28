@@ -30,6 +30,26 @@ ordinary persistence never stores them. Editing check-relevant facts invalidates
 the previous check. Internal navigation is not abandonment; close uses the normal
 unsaved-edit rule. None of these actions implicitly starts inference.
 
+For a new connection opened explicitly for one selected trial model, the caller may opt into a shortcut only after the options read succeeds and existing executable and model-scope filters leave exactly one product. It enters that product's normal configuration once per opening, with its actual name and an action to return to the directory. A provider with two eligible products is not unique. Loading, failure, unknown eligibility, an empty result, directory search or billing filters do not qualify. Returning or choosing a service prevents another automatic advance; asynchronous changes never overwrite an edited product. The ordinary directory and its permitted custom entry remain available, and this shortcut does not check, sign in, select a model, save or run inference.
+
+#### Scenario: One exact trial product
+
+- **WHEN** a new connection for an explicit trial model has one eligible product after a successful load
+- **THEN** configuration opens once with the product name; the user can return to service selection without automatic check, save or inference
+
+#### Scenario: Not unique or unknown
+
+- **WHEN** two products share a provider, no eligible product exists, the read fails, or a directory filter shows one result
+- **THEN** the user remains in the appropriate directory or error state; no shortcut selects a product
+
+#### Scenario: Return and refresh
+
+- **WHEN** the user returns to the directory or edits a selected product while options or language change
+- **THEN** the user remains in control and inputs are not overwritten or silently switched
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/246#issuecomment-6461015079
+
 ### Requirement: Connection identity survives supported lifecycle edits
 
 One template may create multiple independent connections even with identical
@@ -489,6 +509,33 @@ Public CLI help and schema discovery SHALL describe the shared views and control
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/191#issuecomment-6295421495
+
+### Requirement: Connection exit protects actual unsaved user changes
+
+The connection editor SHALL ask for confirmation before exiting only when the session would lose user-created editable changes, an unsaved exact model selection or a temporary credential, including any retained product draft. Compare each product against its stable initial editable values; generated identities, edit/check revisions, check results and unedited drafts do not by themselves require confirmation. Reverting all editable changes and selections to their baselines removes the need for confirmation. An unsaved password or protected-input reference is protected without serializing or copying plaintext for dirty calculation. Changing products retains each product's own drafts and credentials without transferring a Key. The shared discard mechanism handles close, Escape and navigation once, and continuing preserves input and focus. Confirmed save with no later edits needs no discard prompt. A pending, admitted or uncertain save remains attached to its original Operation and its transferred credential is not released or resubmitted as a side effect of closing.
+
+#### Scenario: Selection without edits
+
+- **WHEN** a user only selects and browses products or automatic initialization creates defaults and IDs
+- **THEN** closing or Escape does not prompt even when unedited product drafts were retained
+
+#### Scenario: Real edits across products
+
+- **WHEN** a user changes a name, endpoint, authentication, model declaration or selected model, or enters a Key, then changes products or a check fails
+- **THEN** closing prompts once and continuing retains every affected product input
+
+#### Scenario: Revert to baseline
+
+- **WHEN** the user restores the original editable values and selection with no remaining credential or other edited product
+- **THEN** closing does not prompt solely because a revision increased
+
+#### Scenario: Save uncertainty
+
+- **WHEN** an Apply is pending, accepted or its result is uncertain
+- **THEN** the original Operation and protected-input ownership remain intact; leaving is not represented as cancellation or a repeated Apply
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/246#issuecomment-6461016031
 
 ## Implementation references
 

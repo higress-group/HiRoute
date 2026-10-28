@@ -41,7 +41,7 @@ import { checkFailureCode, modelAvailabilityMessage } from './copy';
 import { metadataModelPrefill } from './metadata-prefill';
 import { customApiPrefillOptions, metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortRegisteredOptions, templateEndpointForProtocol } from './registered-metadata';
 import { ConnectionDirectory } from './ConnectionDirectory';
-import { ConnectionEditingSession } from './connection-session';
+import { ConnectionEditingSession, type ConnectionSelection } from './connection-session';
 import './connection-flow.css';
 import {
   connectionErrorMessage,
@@ -82,6 +82,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const [externalLinkError, setExternalLinkError] = useState(false);
   const [connectionOptions, setConnectionOptions] = useState<ComputeConnectionOptions | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(true);
+  const [optionsReady, setOptionsReady] = useState(false);
+  const [optionsError, setOptionsError] = useState('');
   const [registeredOptionId, setRegisteredOptionId] = useState('');
   const [metadataPrefillKey, setMetadataPrefillKey] = useState('');
   const password = useRef<HTMLInputElement>(null);
@@ -98,18 +100,22 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const saveCompletedRef = useRef(false);
   const editingSession = useRef(new ConnectionEditingSession());
   const editingKey = useRef<string | null>(catalogEnabled ? null : 'custom');
+  if (!catalogEnabled) editingSession.current.begin('custom', draft);
+  const selectionRef = useRef<ConnectionSelection | null>(null);
+  const shortcutDecided = useRef(false);
+  const optionsGeneration = useRef(0);
+  const backendRef = useRef(backend);
+  backendRef.current = backend;
+  const selectedOptionRef = useRef<ComputeConnectionOptions['options'][number] | null>(null);
   const pendingSecret = useRef<string | null>(null);
   const flow = useRef<HTMLElement>(null);
-  const dirty = JSON.stringify(draft) !== JSON.stringify({ ...props.initialDraft,
-    display_name: props.initialDraft.display_name || (catalogEnabled ? '' : zh ? '自定义 API' : 'Custom API'),
-  })
-    || Boolean(protectedInputRef.current) || editingSession.current.hasDrafts;
   const registeredOptions = useMemo(() => sortRegisteredOptions(connectionOptions?.options.filter(option =>
     option.origin !== 'agent_subscription' && (!free || option.billing_class === 'free')
   ) ?? []), [connectionOptions, free]);
   const registeredOption = registeredOptions.find(option => option.connection_option_id === registeredOptionId)
     ?? null;
-  const productName = registeredOption ? connectionName(registeredOption.connection_option_id, language, registeredOption.display_name) : '';
+  const namedOption = registeredOption ?? selectedOptionRef.current;
+  const productName = namedOption ? connectionName(namedOption.connection_option_id, language, namedOption.display_name) : '';
   const registeredCandidates = useMemo(() => registeredOption
     ? registeredModelCandidates(registeredOption, connectionOptions?.metadata_catalog)
     : [], [registeredOption, connectionOptions]);
@@ -121,7 +127,12 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     : selectedPrefill?.kind === 'provider' && connectionOptions?.metadata_catalog
       ? metadataProviderCandidates(selectedPrefill.provider, connectionOptions.metadata_catalog, registeredOptions)
       : [], [selectedPrefill, connectionOptions, registeredOptions]);
-  useDiscardGuard('models', () => dirty && !saveCompletedRef.current, language, confirmReplacement);
+  function hasUnsavedChanges() {
+    return editingSession.current.changed(editingKey.current, draftRef.current)
+      || Boolean(password.current?.value || pendingSecret.current || protectedInputRef.current || selectionRef.current?.refs.size)
+      || editingSession.current.hasUnsavedDrafts;
+  }
+  useDiscardGuard('models', () => phase === 'saving' || (!saveCompletedRef.current && hasUnsavedChanges()), language, confirmReplacement);
 
   function suggestedName(base: string) {
     const names = new Set(props.existingNames ?? []);
@@ -133,30 +144,32 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const releaseProtectedInput = useCallback(() => {
     const input = protectedInputRef.current;
     protectedInputRef.current = null;
-    if (input && !applyDispatchedRef.current) void backend.releaseProtectedInput(input).catch(() => undefined);
-  }, [backend]);
+    if (input && !applyDispatchedRef.current) void backendRef.current.releaseProtectedInput(input).catch(() => undefined);
+  }, []);
   const releaseSession = useCallback(() => {
-    editingSession.current.clear(input => { void backend.releaseProtectedInput(input).catch(() => undefined); });
+    editingSession.current.clear(input => { void backendRef.current.releaseProtectedInput(input).catch(() => undefined); });
     pendingSecret.current = null;
     if (password.current) password.current.value = '';
-  }, [backend]);
+  }, []);
 
   const loadConnectionOptions = useCallback(async () => {
+    const generation = ++optionsGeneration.current;
     setOptionsLoading(true);
-    if (!custom) setError('');
+    setOptionsReady(false);
+    setOptionsError('');
     try {
       const options = await backend.listConnectionOptions();
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || generation !== optionsGeneration.current) return;
       setConnectionOptions(options);
+      setOptionsReady(true);
       const executable = sortRegisteredOptions(options.options.filter(option => option.origin !== 'agent_subscription' && (!free || option.billing_class === 'free')));
-      setRegisteredOptionId(current => executable.some(option => option.connection_option_id === current) ? current : '');
       if (!custom && executable.length === 0) {
-        setError('MODEL_CONNECTION_OPTION_UNAVAILABLE');
+        setOptionsError('MODEL_CONNECTION_OPTION_UNAVAILABLE');
       }
     } catch {
-      if (aliveRef.current && !custom) setError('MODEL_CONNECTION_OPTIONS_UNAVAILABLE');
+      if (aliveRef.current && generation === optionsGeneration.current && !custom) setOptionsError('MODEL_CONNECTION_OPTIONS_UNAVAILABLE');
     } finally {
-      if (aliveRef.current) setOptionsLoading(false);
+      if (aliveRef.current && generation === optionsGeneration.current) setOptionsLoading(false);
     }
   }, [backend, custom, free]);
 
@@ -272,12 +285,13 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
+      optionsGeneration.current++;
       const checkId = activeCheckRef.current;
-      if (checkId) void backend.cancelModelConnectionCheck(checkId).catch(() => undefined);
+      if (checkId) void backendRef.current.cancelModelConnectionCheck(checkId).catch(() => undefined);
       releaseProtectedInput();
       releaseSession();
     };
-  }, [backend, releaseProtectedInput, releaseSession]);
+  }, [releaseProtectedInput, releaseSession]);
   useEffect(() => { void loadConnectionOptions(); }, [loadConnectionOptions]);
 
   const invalidate = useCallback((
@@ -317,14 +331,18 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     if (!editingKey.current) return;
     editingSession.current.stash(editingKey.current, {
       draft: draftRef.current, custom, metadataPrefillKey,
-      secret: password.current?.value ?? '', protectedInput: protectedInputRef.current,
+      secret: password.current?.value || pendingSecret.current || '', protectedInput: protectedInputRef.current,
+      selection: selectionRef.current,
     });
     protectedInputRef.current = null;
     if (password.current) password.current.value = '';
+    pendingSecret.current = null;
+    selectionRef.current = null;
     editingKey.current = null;
   }
 
   function chooseConnection(option: ComputeConnectionOptions['options'][number] | null) {
+    shortcutDecided.current = true;
     const key = option?.connection_option_id ?? 'custom';
     retainEditingDraft();
     const saved = editingSession.current.take(key);
@@ -335,19 +353,38 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       lineage_ref: clientOperationId('lineage'), candidate_ref: null, check_id: '', models: [],
       authentication: endpoint?.authentication_semantics ?? { kind: 'bearer' as const },
     };
+    editingSession.current.begin(key, next);
     setCustom(saved?.custom ?? !option);
     setRegisteredOptionId(option?.connection_option_id ?? '');
+    selectedOptionRef.current = option;
     setMetadataPrefillKey(saved?.metadataPrefillKey ?? '');
     protectedInputRef.current = saved?.protectedInput ?? null;
     pendingSecret.current = saved?.secret ?? '';
+    selectionRef.current = saved?.selection ?? null;
     editingKey.current = key;
-    invalidate(() => next, false, 'connection');
+    draftRef.current = next;
+    setDraft(next);
+    setResult(null);
+    setSelected(new Set());
+    setPhase('editing');
+    setError('');
+    setScreen('connection');
   }
 
   function returnToCatalog() {
+    shortcutDecided.current = true;
     retainEditingDraft();
-    invalidate(current => current, false, 'catalog');
+    setResult(null);
+    setSelected(new Set());
+    setError('');
+    setScreen('catalog');
   }
+
+  useEffect(() => {
+    if (!props.singleProductShortcut || !catalogEnabled || free || props.appendTo || props.savedSource || screen !== 'catalog' || shortcutDecided.current || optionsLoading || !optionsReady) return;
+    const executable = registeredOptions.filter(option => option.registered_check_available);
+    if (executable.length === 1) chooseConnection(executable[0]);
+  }, [props.singleProductShortcut, props.appendTo, props.savedSource, catalogEnabled, free, screen, optionsLoading, optionsReady, registeredOptions]);
 
   function updateManualModel(model: ModelDeclaration) {
     invalidate(current => ({ ...current, models: current.models.map(value => value.client_id === model.client_id ? model : value) }), false, 'manual');
@@ -361,6 +398,12 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const eligibility = saveEligibility(checked, true);
     if (!eligibility.allowed || !selectedRefs.length) {
       setError(selectedRefs.length ? 'MODEL_CONNECTION_FAILED' : 'MODEL_SELECTION_REQUIRED');
+      setPhase('editing');
+      return;
+    }
+    // Saving this product also leaves the editor. Other product drafts still
+    // belong to this session and must not be silently discarded on success.
+    if (editingSession.current.hasUnsavedDrafts && !(await confirmDiscard(language))) {
       setPhase('editing');
       return;
     }
@@ -475,7 +518,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     }
     const connectionReady = custom
       ? validEndpoint(current.base_url)
-      : Boolean(connectionOptions && registeredOption);
+      : Boolean(optionsReady && connectionOptions && registeredOption);
     if (!connectionReady) {
       setError(custom ? 'MODEL_CONNECTION_FIELDS_REQUIRED' : 'MODEL_CONNECTION_OPTION_UNAVAILABLE');
       return;
@@ -488,6 +531,12 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       const validation = (new Set(current.models.map(model => model.upstream_model_id)).size !== current.models.length ? 'MODEL_ID_DUPLICATE' : '') || current.models.map(model => manualModelError(model, allowedIds)).find(Boolean) || (!current.models.length ? 'MODEL_ID_REQUIRED' : '');
       if (validation) { setError(validation); return; }
     }
+    editingSession.current.applyModelDefaults(editingKey.current, models => {
+      const withCatalog = !custom && !saveAfterCheck ? withRegisteredModels(models, registeredCandidates) : models;
+      const withInference = inferenceModelId && !withCatalog.some(model => model.upstream_model_id === inferenceModelId)
+        ? [...withCatalog, blankModel(inferenceModelId)] : withCatalog;
+      return withInference.map(withCapabilityFallback);
+    });
     const checkId = clientOperationId('check');
     const checkingDraft = { ...current, display_name: current.display_name.trim(), candidate_ref: enteredSecret ? null : current.candidate_ref, check_id: checkId };
     draftRef.current = checkingDraft;
@@ -543,13 +592,16 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       draftRef.current = acceptedDraft;
       setDraft(acceptedDraft);
       setResult(checked);
-      setSelected(selectedModelRefsAfterRecheck(inferenceModelId ? result : null, selected, checked));
       const checkFailure = checkFailureCode(checked);
       if (checkFailure) {
         setError(checkFailure);
         setPhase('editing');
         return;
       }
+      const retained = selectionRef.current;
+      const nextSelection = selectedModelRefsAfterRecheck(retained?.result ?? null, retained?.refs ?? new Set(), checked);
+      setSelected(nextSelection);
+      selectionRef.current = { result: checked, refs: nextSelection };
       for (const model of checked.candidate.models) preservedModelIds.current.add(model.upstream_model_id);
       const selectable = checked.candidate.models.filter(model => model.selectable);
       if (saveAfterCheck) {
@@ -561,11 +613,13 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         const existing = acceptedDraft.models.find(model =>
           model.upstream_model_id === observed?.upstream_model_id
         );
+        const initialManualModel = existing ?? blankModel(observed?.upstream_model_id, observed?.display_name);
+        if (!acceptedDraft.models.length) editingSession.current.applyModelDefaults(editingKey.current, models => models.length ? models : [initialManualModel]);
         const manualDraft = {
           ...acceptedDraft,
           edit_revision: acceptedDraft.edit_revision + 1,
           check_id: '',
-          models: acceptedDraft.models.length ? acceptedDraft.models : [existing ?? blankModel(observed?.upstream_model_id, observed?.display_name)],
+          models: acceptedDraft.models.length ? acceptedDraft.models : [initialManualModel],
         };
         draftRef.current = manualDraft;
         setDraft(manualDraft);
@@ -627,14 +681,15 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   }
 
   async function confirmReplacement() {
-    if (dirty && !saveCompletedRef.current && !(await confirmDiscard(language))) return false;
+    if (phase === 'saving') return false;
+    if (!saveCompletedRef.current && hasUnsavedChanges() && !(await confirmDiscard(language))) return false;
     discardAndClose('cancel');
     return true;
   }
 
   async function requestClose(kind: 'back' | 'cancel') {
     if (phase === 'saving') return;
-    if (dirty && !saveCompletedRef.current && !(await confirmDiscard(language))) return;
+    if (!saveCompletedRef.current && hasUnsavedChanges() && !(await confirmDiscard(language))) return;
     discardAndClose(kind);
   }
 
@@ -660,6 +715,12 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     setScreen('connection');
   }
 
+  function openManual() {
+    const blank = draftRef.current.models.length ? null : blankModel();
+    if (blank) editingSession.current.applyModelDefaults(editingKey.current, models => models.length ? models : [blank]);
+    invalidate(current => ({ ...current, models: current.models.length ? current.models : blank ? [blank] : [] }), false, 'manual');
+  }
+
   async function saveSelected() {
     if (!props.mutable) { setError('TRUSTED_AUTHORITY_UNAVAILABLE'); return; }
     if (!result) return;
@@ -678,7 +739,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     : screen === 'catalog'
       ? <><button className="btn" type="button" onClick={() => void requestClose('back')}>{zh ? '返回' : 'Back'}</button><span className="field-help">{zh ? '选择服务后继续配置' : 'Choose a service to continue'}</span></>
       : screen === 'connection'
-      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{zh ? '返回' : 'Back'}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || (!custom && (optionsLoading || !registeredOption))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
+      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && props.singleProductShortcut ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || (!custom && (optionsLoading || !optionsReady || !registeredOption))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
       : screen === 'manual'
         ? <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><button className="btn btn-primary" type="submit" form="mc-manual-form" disabled={!props.mutable}>{zh ? '检查并保存' : 'Check and save'}</button></>
         : <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><span className="connection-selection-count">{zh ? `已选择 ${selectedCount} 个模型` : `${selectedCount} models selected`}</span><button className="btn btn-primary" type="button" disabled={!props.mutable || !selectedCount} onClick={() => void saveSelected()}>{zh ? '保存连接' : 'Save connection'}</button></>;
@@ -690,7 +751,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       {!props.mutable && !busy && <div className="callout warn" role="status"><UiIcon name="warning" /><span>{zh ? '本机服务连接中断。当前输入已保留，重新连接后再保存。' : 'The local service disconnected. Your input is retained; reconnect before saving.'}</span></div>}
       {busy && <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{phase === 'checking' ? (zh ? '正在检查接入' : 'Checking connection') : (zh ? '正在保存接入' : 'Saving connection')}</strong><p>{phase === 'checking' ? (zh ? '检查配置，并在提供目录时读取模型。' : 'Checking configuration and reading the model directory when configured.') : (zh ? '保存所选模型与凭据。' : 'Saving the selected models and credential.')}</p></div></div>}
       <div className="connection-screen" hidden={busy}>
-        {screen === 'catalog' && <ConnectionDirectory options={registeredOptions} loading={optionsLoading} language={language} free={free} onSelect={chooseConnection} onCustom={props.allowCustom === false ? undefined : () => chooseConnection(null)} onReload={() => void loadConnectionOptions()} />}
+        {screen === 'catalog' && <ConnectionDirectory options={registeredOptions} loading={optionsLoading} language={language} free={free} onSelect={chooseConnection} onCustom={props.allowCustom === false ? undefined : () => chooseConnection(null)} onReload={() => void loadConnectionOptions()} onInteraction={() => { shortcutDecided.current = true; }} />}
         <form hidden={screen !== 'connection'} id="mc-connection-form" onSubmit={event => { event.preventDefault(); void runCheck(false); }}>
           <fieldset className="connection-fields" disabled={!props.mutable || Boolean(props.appendTo)}>
             <div className="connection-config-heading"><ProviderIcon optionId={custom ? draft.display_template_id : registeredOption?.connection_option_id} language={language} /><div><h3>{custom ? (zh ? '自定义 API' : 'Custom API') : productName}</h3><p>{custom ? (zh ? '填写服务地址，连接兼容的模型服务' : 'Connect a compatible model service') : connectionTemplate(registeredOption?.connection_option_id)?.description[language]}</p></div></div>
@@ -746,7 +807,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{zh ? '正在读取接入方式' : 'Loading connection'}</strong><p>{zh ? '从本机可信目录确认当前支持的产品。' : 'Checking supported products in the local trusted catalog.'}</p></div></div>
               : registeredOption
                 ? <Disclosure className="connection-details" language={language} label={zh ? '连接配置 · 已自动填写' : 'Connection settings · configured automatically'}><div className="connection-endpoint-list">{registeredOption.endpoints?.map(endpoint => <div key={`${endpoint.protocol}-${endpoint.base_url}-${endpoint.request_path}`}><strong>{({ chat_completions: 'OpenAI Chat Completions', responses: 'OpenAI Responses', messages: 'Anthropic Messages' })[endpoint.protocol]}</strong><code>{endpoint.base_url.replace(/\/+$/, '')}/{endpoint.request_path.replace(/^\/+/, '')}</code></div>)}{props.allowCustom !== false && Boolean(registeredOption.endpoints?.length) && <button className="btn btn-quiet" type="button" onClick={() => selectRegisteredTemplate(registeredOption, true)}>{zh ? '自定义连接配置' : 'Customize connection settings'}</button>}</div></Disclosure>
-                : <div className="callout warn"><UiIcon name="warning" /><div><strong>{zh ? '当前没有可用的内置接入' : 'No built-in connection is available'}</strong><p>{connectionErrorMessage(error || 'MODEL_CONNECTION_OPTION_UNAVAILABLE', zh)}</p><button className="btn" type="button" onClick={() => void loadConnectionOptions()}>{zh ? '重新读取' : 'Reload'}</button></div></div>}
+                : <div className="callout warn"><UiIcon name="warning" /><div><strong>{zh ? '当前没有可用的内置接入' : 'No built-in connection is available'}</strong><p>{connectionErrorMessage(optionsError || (optionUnavailable ? error : 'MODEL_CONNECTION_OPTION_UNAVAILABLE'), zh)}</p><button className="btn" type="button" onClick={() => void loadConnectionOptions()}>{zh ? '重新读取' : 'Reload'}</button></div></div>}
             {custom && <Disclosure className="connection-details" language={language} label={zh ? '高级设置' : 'Advanced settings'}><div className="connection-fields">
               <label className="field"><span className="field-label">{zh ? '请求路径（可选覆盖）' : 'Request path (optional override)'}</span><input className="input" value={draft.request_path_override ?? ''} onChange={event => invalidate(current => ({ ...current, request_path_override: event.target.value || null }), true, 'connection')} /></label>
               <label className="field"><span className="field-label">{zh ? '模型目录路径（可选）' : 'Model directory path (optional)'}</span><input className="input" placeholder="/v1/models" value={draft.inventory_path_override ?? ''} onChange={event => invalidate(current => ({ ...current, inventory_path_override: event.target.value || null }), true, 'connection')} /></label>
@@ -776,7 +837,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               </div>
             </div></Disclosure>}
             {!custom && <p className="field-help">{zh ? '检查连接配置；提供目录时读取模型，不发送推理请求。' : 'Checks connection settings and reads the model directory when available, without inference requests.'}</p>}
-            <button className="btn btn-quiet connection-manual-entry" type="button" onClick={() => invalidate(current => ({ ...current, models: current.models.length ? current.models : [blankModel()] }), false, 'manual')}>{zh ? '手工维护模型' : 'Edit models manually'}</button>
+            <button className="btn btn-quiet connection-manual-entry" type="button" onClick={openManual}>{zh ? '手工维护模型' : 'Edit models manually'}</button>
           </fieldset>
         </form>
 
@@ -797,7 +858,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           {result.directory === 'partial' && <div className="callout warn"><UiIcon name="warning" /><span>{zh ? '模型目录只读取到一部分。可以先保存已确认的模型，稍后再重新检查。' : 'Only part of the model catalog was read. You can save confirmed models and check again later.'}</span></div>}
           <fieldset className="v3-catalog model-result-list" disabled={!props.mutable}><legend className="sr-only">{zh ? '选择保存的模型' : 'Select models to save'}</legend>{result.candidate.models.map((model, index) => {
             const canSelect = modelCanBeSelected(result, model, true);
-            return <div className="model-result-row" key={model.model_ref}><label className="check-row"><input type="checkbox" data-autofocus={index === 0 || undefined} disabled={!canSelect} checked={canSelect && selected.has(model.model_ref)} onChange={event => setSelected(current => { const next = new Set(current); if (event.target.checked) next.add(model.model_ref); else next.delete(model.model_ref); setError(''); return next; })} /><div><strong>{model.display_name}</strong><span>{draft.display_name}{model.fact_basis === 'runtime_fallback' ? ` · ${zh ? '运行时保守兜底' : 'Conservative runtime fallback'}` : ''}{!canSelect ? ` · ${modelAvailabilityMessage(model.reason, zh)}` : ''}</span></div></label>{custom && !canSelect && <button className="btn btn-quiet" type="button" onClick={() => {
+            return <div className="model-result-row" key={model.model_ref}><label className="check-row"><input type="checkbox" data-autofocus={index === 0 || undefined} disabled={!canSelect} checked={canSelect && selected.has(model.model_ref)} onChange={event => { const next = new Set(selected); if (event.target.checked) next.add(model.model_ref); else next.delete(model.model_ref); selectionRef.current = { result, refs: next }; setSelected(next); setError(''); }} /><div><strong>{model.display_name}</strong><span>{draft.display_name}{model.fact_basis === 'runtime_fallback' ? ` · ${zh ? '运行时保守兜底' : 'Conservative runtime fallback'}` : ''}{!canSelect ? ` · ${modelAvailabilityMessage(model.reason, zh)}` : ''}</span></div></label>{custom && !canSelect && <button className="btn btn-quiet" type="button" onClick={() => {
               const prefilled = draftRef.current.models.find(value => value.upstream_model_id === model.upstream_model_id);
               const manualDraft = { ...draftRef.current, edit_revision: draftRef.current.edit_revision + 1, check_id: '', models: [prefilled ?? blankModel(model.upstream_model_id, model.display_name)] };
               draftRef.current = manualDraft; setDraft(manualDraft); setResult(null); setScreen('manual'); setError('');
@@ -805,7 +866,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           })}</fieldset>
         </section>}
       </div>
-      {error && !busy && !optionUnavailable && <div ref={errorFeedback} role="alert" className="callout bad" data-error-code={error}><UiIcon name="warning" /><span>{connectionErrorMessage(error, zh)}</span></div>}
+      {optionsError && !busy && !custom && (screen === 'catalog' || Boolean(registeredOption)) && <div role="alert" className="callout bad" data-error-code={optionsError}><UiIcon name="warning" /><span>{connectionErrorMessage(optionsError, zh)}</span></div>}
+      {error && !busy && (!optionUnavailable || Boolean(registeredOption)) && <div ref={errorFeedback} role="alert" className="callout bad" data-error-code={error}><UiIcon name="warning" /><span>{connectionErrorMessage(error, zh)}</span></div>}
     </section>
   </Dialog>;
 }

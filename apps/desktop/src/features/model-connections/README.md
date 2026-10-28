@@ -8,6 +8,12 @@ service → configuration → model steps and editable source name. `ConnectionE
 retains each product's draft and credential only while that dialog is open; returning
 between steps preserves it, while closing or saving releases unused protected inputs.
 Saved-source edit and append enter configuration directly and retain their lifecycle rules.
+The trial host can opt in to entering a single eligible product after a successful
+scoped options read. Returning to the directory or interacting with it ends that
+automatic choice for the current opening. The host's custom-entry permission is
+unchanged. Per-product editable baselines distinguish real unsaved changes and
+model selections from generated defaults and check metadata; current and retained
+credential inputs are checked in memory when leaving, without serializing them.
 
 The password field is uncontrolled. Its value is passed only to `registerProtectedInput` and cleared immediately; checks, previews, public state, and callbacks use the returned safe candidate reference. Editing the target, protocol, or authentication releases that reference and invalidates the prior check. Once Apply is dispatched, the component stops releasing the protected input because the save operation may have taken ownership, including when the response is uncertain.
 

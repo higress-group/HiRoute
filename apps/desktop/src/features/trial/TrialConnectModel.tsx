@@ -62,7 +62,7 @@ export function TrialConnectModel({ model, language, management, mutable, onSave
     finally { setBusy(false); }
   }
   if (saved || uncertain) return <section className="trial-recovery"><h3>{saved ? text('接入已保存', 'Connection saved') : text('正在核实接入结果', 'Verifying connection result')}</h3><p>{error || text('请刷新并核实所选模型。', 'Refresh to verify the selected model.')}</p><div className="actions"><button className="btn" disabled={busy} onClick={() => void confirm()}>{text('刷新结果', 'Refresh result')}</button><button className="btn" disabled={busy} onClick={onBack}>{text('返回试用', 'Back to trial')}</button></div></section>;
-  return <section className="trial-inline-connection"><h3>{text('接入', 'Connect')} {model.display_name}</h3>{error && <p role="alert">{error}</p>}<ModelConnectionForm language={language} mutable={mutable} allowCustom={false} initialDraft={draft} existingNames={management.sources.map(s => s.display_name)} expectedRevisions={management.revisions} backend={backend}
+  return <section className="trial-inline-connection"><h3>{text('接入', 'Connect')} {model.display_name}</h3>{error && <p role="alert">{error}</p>}<ModelConnectionForm language={language} mutable={mutable} allowCustom={false} singleProductShortcut initialDraft={draft} existingNames={management.sources.map(s => s.display_name)} expectedRevisions={management.revisions} backend={backend}
     onBack={onBack} onCancel={() => { if (!uncertainRef.current) onBack(); }}
     onSaveAccepted={operation => { accepted.current = operation; onOperation(operation); }}
     onSaveResult={result => { if (result.disposition === 'saved') { setSaved(result); void confirm(result); } }}

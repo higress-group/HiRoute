@@ -23,7 +23,7 @@ import { createTrialAlias, currentPrimary, initialTrialMapping, trialCriteria, t
 import { FeedDisclosure } from '../model-feed/FeedDisclosure';
 import { factTags, publisherName, rollingIdentity, shortDate } from '../model-feed/presentation';
 import './trial.css';
-import { protectionExplanation } from '../trust/protection-copy';
+import { TrialProtectionExplanation } from './TrialProtectionExplanation';
 import { agentEditorSeed } from '../agents/editor-state';
 import { useTrialAgents } from './useTrialAgents';
 import { ModelManagementPage } from '../../product/ModelManagementPage';
@@ -207,7 +207,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       {trial?.catalog && !trialCandidates.length && trial.availability.kind !== 'needs_newer_client' && data && (connect?.model_configuration_id === trial.model_configuration_id
         ? <div className="trial-connect-card"><TrialConnectModel key={connect.model_configuration_id} model={connect} language={language} management={data.management} mutable={mutable} onOperation={operationRef} onBack={() => { setConnect(null); void refresh(); }} onSaved={(_result, model) => { setSavedConnections(values => [...new Set([...values, model.display_name])]); setConnect(null); void refresh(); void onRefresh(); }} /></div>
         : <div className="trial-connect-card"><div><strong>{t(`先接入 ${trial.display_name}`, `Connect ${trial.display_name} first`)}</strong><p className="field-help">{t('只读取这个服务的模型目录，不会发起付费推理。API Key 保存在本机。', 'Only the service model list is read; no paid inference runs. The API key stays on this device.')}</p></div><button type="button" className="btn btn-primary" onClick={() => setConnect(trial.catalog!)}>{t('在此接入', 'Connect here')}</button></div>)}
-      <div className="callout trial-rule"><UiIcon name="info" /><span>{t('新模型先放进常规组。', 'The new model starts in Regular. ')}{protectionExplanation(classifier, language)}{!custom && t('主力拿到低分不会再回退。熟悉之后，可以用分工把难的任务交给新模型。', ' Primary does not fall back after a low score. Once you know the new model, divide work to give it harder tasks.')}</span></div>
+      <TrialProtectionExplanation classifier={classifier} language={language} />
     </section>
     <section className="trial-card trial-card-pair">
       <div className="trial-column">

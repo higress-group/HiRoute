@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { connectionDirectory, filterConnectionDirectory } from '../src/features/model-connections/connection-directory.ts';
 import { ConnectionEditingSession } from '../src/features/model-connections/connection-session.ts';
+import { newModelConnectionDraft } from '../src/features/model-connections/new-draft.ts';
+import { blankModel } from '../src/features/model-connections/state.ts';
 
 const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const registry = read('../../../assets/release-facts/current/bundle/connector-registry.json');
@@ -47,4 +49,26 @@ test('editing credentials stay scoped to a product and unused protected inputs a
   assert.equal(second.secret, '');
   assert.equal(second.protectedInput, null);
   assert.equal(session.hasDrafts, false);
+});
+
+test('only editable values and session-owned input differ from a product baseline', () => {
+  const session = new ConnectionEditingSession();
+  const draft = { ...newModelConnectionDraft('known'), display_name: 'API' };
+  session.begin('api', draft);
+  const generated = { ...draft, lineage_ref: 'new-lineage', candidate_ref: 'checked', edit_revision: 7, check_id: 'check' };
+  assert.equal(session.changed('api', generated), false);
+  assert.equal(session.changed('api', { ...generated, display_name: 'Edited' }), true);
+  assert.equal(session.changed('api', { ...generated, display_name: 'API' }), false);
+  const model = blankModel('model-a');
+  session.applyModelDefaults('api', () => [model]);
+  const withModel = { ...generated, models: [model] };
+  assert.equal(session.changed('api', withModel), false);
+  const changed = { ...model, capabilities: { ...model.capabilities, vision: { value: true, basis: 'user_declared' } } };
+  assert.equal(session.changed('api', { ...withModel, models: [changed] }), true);
+  const restored = { ...changed, capabilities: { ...changed.capabilities, vision: { ...model.capabilities.vision, basis: 'user_declared' } } };
+  assert.equal(session.changed('api', { ...withModel, models: [restored] }), false);
+  session.stash('api', { draft: withModel, custom: false, metadataPrefillKey: '', secret: '', protectedInput: null, selection: null });
+  assert.equal(session.hasUnsavedDrafts, false);
+  session.stash('api', { draft: withModel, custom: false, metadataPrefillKey: '', secret: 'fixture', protectedInput: null, selection: null });
+  assert.equal(session.hasUnsavedDrafts, true);
 });

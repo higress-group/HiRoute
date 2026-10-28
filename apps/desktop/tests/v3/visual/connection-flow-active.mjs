@@ -96,7 +96,10 @@ try {
     await click('.modal-foot button', '检查并继续'); await waitFor(client, `Boolean(document.querySelector('.model-selection'))`);
     await click('.model-selection input[type=checkbox]');
     await screenshot('models');
-    await click('.modal-foot button', '保存连接'); await waitFor(client, `!document.querySelector('.modal')`);
+    await click('.modal-foot button', '保存连接');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', '放弃修改');
+    await waitFor(client, `!document.querySelector('.modal')`);
     const trace = await evaluate(client, 'window.connectionFlowTrace');
     assert.deepEqual(trace.registered, ['a', 'b']);
     assert.deepEqual(trace.checks.map(item => item.display_name), ['团队 · 生产', '个人 · 备用']);

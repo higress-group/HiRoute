@@ -6,13 +6,18 @@ import { Models } from '../../../src/features/models/Models';
 import type { ModelConnectionBackend } from '../../../src/features/model-connections/types';
 import { mockProductInvoke, readyManagement } from './product-fixtures';
 import { PresentationRoot } from '../../../src/ui/PresentationRoot';
+import { requestEditorReplacement } from '../../../src/ui/discard-guard';
 import '../../../src/occami/styles.css';
 
 const params = new URLSearchParams(location.search);
 const kind = params.get('kind') === 'free' ? 'free' : params.get('kind') === 'custom' ? 'custom' : 'known';
-const trace = { checks: [] as unknown[], registered: [] as string[], released: [] as string[], saves: [] as unknown[] };
+const trace = { checks: [] as unknown[], registered: [] as string[], released: [] as string[], saves: [] as unknown[], applies: [] as unknown[], accepted: [] as unknown[], uncertain: [] as unknown[] };
 const pendingChecks: (() => void)[] = [];
-Object.assign(window, { connectionFlowTrace: trace, finishConnectionFlowCheck: () => pendingChecks.shift()?.() });
+const pendingApplies: (() => void)[] = [];
+let optionMode = params.get('options') ?? 'all';
+Object.assign(window, { connectionFlowTrace: trace, finishConnectionFlowCheck: () => pendingChecks.shift()?.(),
+  finishConnectionFlowApply: () => pendingApplies.shift()?.(), requestConnectionReplacement: () => requestEditorReplacement('models'),
+  setConnectionOptionMode: (mode: string) => { optionMode = mode; } });
 
 function Harness() {
   const [open, setOpen] = useState(true);
@@ -21,7 +26,8 @@ function Harness() {
   const initial = useMemo(() => appendTo ? { ...newModelConnectionDraft('custom'),
     existing_source_id: appendTo.source_id, display_name: appendTo.display_name, base_url: 'https://api.example.test',
   } : newModelConnectionDraft(kind), []);
-  const language = params.get('lang') === 'en' ? 'en' : 'zh';
+  const [language, setLanguage] = useState<'zh' | 'en'>(params.get('lang') === 'en' ? 'en' : 'zh');
+  Object.assign(window, { setConnectionLanguage: setLanguage });
   const backend = useMemo<ModelConnectionBackend>(() => {
     const invoke = async (command: string, payload?: Record<string, unknown>) => mockProductInvoke(command, payload, kind === 'custom' && !appendTo ? 'unknown_model' : 'ready') as any;
     const check = async (command: string, request: any) => {
@@ -35,7 +41,16 @@ function Harness() {
         correlation: { ...result.candidate.correlation, candidate_ref: ref } } };
     };
     return {
-      listConnectionOptions: () => invoke('compute_connection_options'),
+      listConnectionOptions: async () => {
+        if (optionMode === 'fail') throw new Error('fixture options unavailable');
+        const options = await invoke('compute_connection_options');
+        if (optionMode === 'one-noauth') return { ...options, options: options.options.filter((option: { connection_option_id: string }) => option.connection_option_id === 'anthropic.platform.global.v1').map((option: { endpoints: object[] }) => ({ ...option, endpoints: option.endpoints.map(endpoint => ({ ...endpoint, authentication_semantics: { kind: 'none' } })) })) };
+        const allowed = optionMode === 'one' ? ['anthropic.platform.global.v1']
+          : optionMode === 'same-brand' ? ['bailian.payg.cn.v1', 'bailian.coding-plan.cn.v1']
+            : optionMode === 'none' ? [] : null;
+        if (optionMode === 'unavailable') return { ...options, options: options.options.filter((option: { connection_option_id: string }) => option.connection_option_id === 'anthropic.platform.global.v1').map((option: object) => ({ ...option, registered_check_available: false })) };
+        return allowed ? { ...options, options: options.options.filter((option: { connection_option_id: string }) => allowed.includes(option.connection_option_id)) } : options;
+      },
       registerProtectedInput: async secret => {
         // Test labels identify fixture credentials without putting them into a wire draft.
         trace.registered.push(secret === 'fixture-key-a' ? 'a' : secret === 'fixture-key-b' ? 'b' : 'other');
@@ -46,10 +61,18 @@ function Harness() {
       checkRegisteredModelConnection: async request => { trace.checks.push(request); setSavedName(request.display_name); return check('check_registered_model_connection', request); },
       cancelModelConnectionCheck: async () => undefined,
       previewComputeSave: async change => { trace.saves.push(change); return invoke('preview_compute_save', { change }); },
-      applyComputeSave: request => invoke('apply_compute_save', { request }),
-      getComputeSaveResult: operation => invoke('get_compute_save_result', { operation }),
+      applyComputeSave: async request => {
+        trace.applies.push(request);
+        if (params.has('hold_apply')) await new Promise<void>(resolve => pendingApplies.push(resolve));
+        if (params.get('save_mode') === 'uncertain') throw new Error('fixture uncertain response');
+        return invoke('apply_compute_save', { request });
+      },
+      getComputeSaveResult: async operation => {
+        const result = await invoke('get_compute_save_result', { operation });
+        return params.get('save_mode') === 'pending' ? { ...result, disposition: 'pending' } : result;
+      },
     };
-  }, []);
+  }, [language]);
   const management = useMemo(() => ({ ...readyManagement, sources: readyManagement.sources.map(source =>
     source.provenance === 'registered' ? { ...source, display_name: savedName || '团队模型服务' } : source) }), [savedName]);
   return <PresentationRoot language={language} theme={params.get('theme') === 'dark' ? 'dark' : 'light'} textScale={params.get('scale') === '2' ? 2 : 1}>
@@ -58,9 +81,10 @@ function Harness() {
       onPreview={async () => { throw new Error('Credential editing is outside this fixture'); }}
       onApply={async () => 'saved'} onDiscardProtectedInputs={() => undefined} />
     {open && <ModelConnectionForm language={language} initialDraft={initial} expectedRevisions={readyManagement.revisions} mutable backend={backend}
+      singleProductShortcut={params.has('shortcut')} allowCustom={!params.has('no-custom')}
       appendTo={appendTo} existingNames={params.has('occupied') ? ['百炼 · Token Plan', '百炼 · Token Plan · 2'] : []}
-      onBack={() => setOpen(false)} onCancel={() => setOpen(false)} onSaveAccepted={() => undefined}
-      onSaveResult={() => setOpen(false)} onSaveUncertain={() => setOpen(false)} restoreFocus={() => undefined} />}
+      onBack={() => setOpen(false)} onCancel={() => setOpen(false)} onSaveAccepted={operation => trace.accepted.push(operation)}
+      onSaveResult={() => setOpen(false)} onSaveUncertain={input => { trace.uncertain.push(input); setOpen(false); }} restoreFocus={() => undefined} />}
   </PresentationRoot>;
 }
 createRoot(document.getElementById('root')!).render(<Harness />);

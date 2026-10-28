@@ -6,7 +6,7 @@ import { connectionDirectory, filterConnectionDirectory } from './connection-dir
 import type { BillingFilter, DirectoryProvider } from './connection-directory';
 import type { ComputeConnectionOption } from './types';
 
-export function ConnectionDirectory({ options, loading, language, free, onSelect, onCustom, onReload }: {
+export function ConnectionDirectory({ options, loading, language, free, onSelect, onCustom, onReload, onInteraction }: {
   options: ComputeConnectionOption[];
   loading: boolean;
   language: 'zh' | 'en';
@@ -14,6 +14,7 @@ export function ConnectionDirectory({ options, loading, language, free, onSelect
   onSelect: (option: ComputeConnectionOption) => void;
   onCustom?: () => void;
   onReload: () => void;
+  onInteraction?: () => void;
 }) {
   const zh = language === 'zh';
   const [query, setQuery] = useState('');
@@ -39,7 +40,7 @@ export function ConnectionDirectory({ options, loading, language, free, onSelect
   })[value];
 
   if (loading) return <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{zh ? '正在读取服务目录' : 'Loading services'}</strong><p>{zh ? '正在确认当前版本支持的接入方式。' : 'Checking connections supported by this version.'}</p></div></div>;
-  if (provider) return <section className="connection-directory" ref={content}>
+  if (provider) return <section className="connection-directory" ref={content} onClickCapture={onInteraction} onInputCapture={onInteraction}>
     <button className="btn btn-quiet connection-directory-back" type="button" onClick={() => setProvider(null)}><UiIcon name="arrowLeft" />{zh ? '所有供应商' : 'All providers'}</button>
     <div className="connection-product-heading"><ProviderIcon optionId={provider.products[0].option.connection_option_id} language={language} /><div><h3>{provider.name}</h3><p>{zh ? '选择与你的 API Key 对应的产品' : 'Choose the product associated with your API key'}</p></div></div>
     <div className="connection-product-list">{provider.products.map(product => <button className="connection-product-card" key={product.option.connection_option_id} type="button" disabled={!product.option.registered_check_available} onClick={() => onSelect(product.option)}>
@@ -47,7 +48,7 @@ export function ConnectionDirectory({ options, loading, language, free, onSelect
       <span className="connection-billing">{billingLabel(product.option.billing_class)}</span><UiIcon name="chevronRight" />
     </button>)}</div>
   </section>;
-  return <section className="connection-directory" ref={content}>
+  return <section className="connection-directory" ref={content} onClickCapture={onInteraction} onInputCapture={onInteraction}>
     <div className="connection-directory-intro"><h3>{free ? (zh ? '选择免费资源' : 'Choose free resources') : (zh ? '选择 API 服务' : 'Choose an API service')}</h3><p>{zh ? `当前支持 ${directory.length} 家供应商 · ${productCount} 种接入方式` : `${directory.length} providers · ${productCount} connection options`}</p></div>
     <label className="field"><span className="sr-only">{zh ? '搜索供应商或产品' : 'Search providers or products'}</span><span className="connection-search"><UiIcon name="search" /><input className="input" data-autofocus type="search" value={query} placeholder={zh ? '搜索供应商或产品，如百炼、Coding Plan' : 'Search providers or products, e.g. Coding Plan'} onChange={event => setQuery(event.target.value)} /></span></label>
     {!free && <div className="connection-billing-filters" role="group" aria-label={zh ? '计费方式' : 'Billing'}>{(['all', 'paid', 'subscription', 'free'] as const).map(value => <button type="button" key={value} aria-pressed={billing === value} onClick={() => setBilling(value)}>{value === 'all' ? (zh ? '全部' : 'All') : billingLabel(value)}</button>)}</div>}

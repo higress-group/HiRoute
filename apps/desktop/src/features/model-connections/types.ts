@@ -383,6 +383,8 @@ export type ModelConnectionBackend = {
 
 export type ModelConnectionFormProps = {
   allowCustom?: boolean;
+  /** The caller has already scoped the options to an explicitly selected trial model. */
+  singleProductShortcut?: boolean;
   existingNames?: string[];
   appendTo?: import('../models/types').ManagedSource;
   savedSource?: import('../models/types').ManagedSource;

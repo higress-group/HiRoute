@@ -496,6 +496,28 @@ Suggestion failures SHALL be isolated per Plan: an oversized or unavailable Plan
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6236472105
 
+### Requirement: Trial guidance progressively explains routing and protection
+
+The trial setup SHALL initially show a concise explanation matching the active classifier and an accessible disclosure of the complete current protection explanation and applicable trial supplement. System One explains suitable work for the trial model, complex work for Primary, and Primary for a turn when low-score protection applies. Local rules explain current task signals and no low-score protection. Custom extensions explain their own choice and that HiRoute adds no trust threshold or low-score protection. The full explanation retains score eligibility, the previous actual stage, problem relevance, conservative protection when unknown, difficulty selection after resolution or irrelevance, conditional continuation of Primary and mode-specific exceptions. Toggling, changing language or classifier SHALL preserve other input and cause no backend action. The candidate area and existing protection policy remain unchanged.
+
+#### Scenario: Built-in protection
+
+- **WHEN** System One is selected
+- **THEN** the concise explanation is visible by default and the disclosure explains the complete applicability conditions without promising every low score triggers a change
+
+#### Scenario: Other classifiers
+
+- **WHEN** local rules or a custom extension is selected
+- **THEN** the concise and expanded explanation describe that mode without claiming built-in protection
+
+#### Scenario: Disclosure and localization
+
+- **WHEN** the user operates the disclosure by keyboard or changes language or classifier
+- **THEN** the correct text is available without duplicate focusable hidden content and without a write or loss of unrelated input
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/246#issuecomment-6461014114
+
 ## Implementation references
 
 - [Native updater](../../../apps/desktop/src-tauri/src/updates.rs) and
