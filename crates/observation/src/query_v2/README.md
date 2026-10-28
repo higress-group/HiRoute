@@ -1,7 +1,7 @@
 # Session content search
 
 Management reads share `ObservationReaderContext::QUERY_BUDGET` (one second).
-Admission and composed reads carry one absolute deadline; nested contexts only
+V2 admission and deadline-aware composition carry one absolute deadline; nested contexts only
 shorten it. Four reader permits, the 100 ms SQLite busy cap, row/byte limits and
 cancellation remain independent bounds. Gateway and maintenance budgets are separate.
 

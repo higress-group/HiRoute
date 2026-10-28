@@ -38,6 +38,9 @@ mod worker_read_empty_tests;
 #[path = "runtime_timeline_retry_tests.rs"]
 mod timeline_retry_tests;
 
+#[path = "runtime_observation_admission_tests.rs"]
+mod observation_admission_tests;
+
 #[test]
 fn analysis_does_not_wait_for_a_busy_control_writer() {
     #[cfg(unix)]

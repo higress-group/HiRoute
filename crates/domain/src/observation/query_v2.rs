@@ -20,7 +20,7 @@ pub struct ObservationReaderContext {
 }
 
 impl ObservationReaderContext {
-    /// Total budget for a management observation read, shared by composed owners.
+    /// Query budget for a management observation read, shared by composed owners.
     /// Gateway execution and background maintenance use their own budgets.
     pub const QUERY_BUDGET: std::time::Duration = std::time::Duration::from_secs(1);
 

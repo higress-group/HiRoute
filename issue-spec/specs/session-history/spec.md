@@ -298,9 +298,12 @@ Source SPEC comments:
 
 ### Requirement: Management observation reads share one bounded budget
 
-Management observation reads SHALL have a default total budget of one second.
-Composed admission, control/price reads and storage queries share the same
-absolute deadline; a nested reader or later SQL statement SHALL NOT restart it.
+SQL-backed management observation reads SHALL have a default query budget of
+one second. V2 entry admission, deadline-aware analysis control/price reads and
+storage queries share the same absolute deadline; a nested reader or later SQL
+statement SHALL NOT restart it. The query deadline bounds SQLite work and
+existing deadline-aware composition, not all legacy or trust metadata operations
+outside those owners. It is not a hard end-to-end latency guarantee.
 An explicitly shorter deadline or cancellation remains effective. Successful
 reads return immediately rather than waiting for the budget to expire.
 
