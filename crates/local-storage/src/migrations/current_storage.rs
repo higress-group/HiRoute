@@ -193,17 +193,32 @@ pub(crate) fn audit_current_storage(
     // Cross-store grant/publication equality is checked only after Operation recovery.
     // Each store's format and integrity must already be valid before recovery writes.
     let secret_connection = secrets.connection.borrow();
-    for store in [
-        &*connection,
-        &*runtime.connection.borrow(),
-        &*secret_connection,
-    ] {
+    let runtime_connection = runtime.connection.borrow();
+    validate_sqlite_integrity([&connection, &runtime_connection, &secret_connection])
+}
+
+fn validate_sqlite_integrity(stores: [&Connection; 3]) -> Result<(), LocalStorageError> {
+    for store in stores {
         let result: String = store.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
         if result != "ok" {
             return Err(LocalStorageError::InvalidData);
         }
     }
     Ok(())
+}
+
+/// The same structural checks used by the explicit full audit, without claiming
+/// that unrelated historical business content was semantically authenticated.
+pub(crate) fn validate_sqlite_structure(
+    control: &crate::ControlStore,
+    runtime: &crate::RuntimeStore,
+    secrets: &crate::LocalSecretStore,
+) -> Result<(), LocalStorageError> {
+    validate_sqlite_integrity([
+        &control.connection.borrow(),
+        &runtime.connection.borrow(),
+        &secrets.connection.borrow(),
+    ])
 }
 
 /// Validate every retained publication, retaining only one decoded runtime object at a time.

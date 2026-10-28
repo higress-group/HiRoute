@@ -92,7 +92,18 @@ fn replay_keeps_equality_protection_and_actual_relay_separate() {
     let mut equality = stage("equal", None, false);
     equality.sample.selection = Some(selection(0.8, "simple_task", "regular"));
     let mut protected = stage("protected", None, false);
-    protected.sample.selection = Some(selection(0.99, "low_competence", "primary"));
+    protected.sample.selection = Some(selection(0.7, "low_competence", "primary"));
+    protected
+        .sample
+        .selection
+        .as_mut()
+        .unwrap()
+        .competence_trigger = Some(CompetenceProtectionV1 {
+        segment_id: "previous-primary".into(),
+        score: serde_json::Number::from_f64(0.24).unwrap(),
+        floor_millis: 500,
+        from_group: ExecutionGroupV1::Primary,
+    });
     protected.sample.branch_execution.as_mut().unwrap().group = ExecutionGroupV1::Primary;
     let mut newly_regular = stage("new", None, false);
     newly_regular.sample.selection = Some(selection(0.72, "complex_task", "primary"));
@@ -198,10 +209,10 @@ fn live_trust_suggestion_counts_protected_primary_stages() {
     let mut population = trial_population(40, 0.9);
     let mut protected = stage("protected", Some((0.9, false)), true);
     protected.sample.branch_execution.as_mut().unwrap().group = ExecutionGroupV1::Primary;
-    let mut decision = selection(0.98, "low_competence", "primary");
+    let mut decision = selection(0.7, "low_competence", "primary");
     decision.competence_trigger = Some(
         serde_json::from_value(json!({
-            "segment_id":"stage/0", "score":0.1, "floor_millis":500, "from_group":"regular"
+            "segment_id":"stage/0", "score":0.1, "floor_millis":500, "from_group":"primary"
         }))
         .unwrap(),
     );
@@ -219,6 +230,15 @@ fn live_trust_suggestion_counts_protected_primary_stages() {
     let evidence = suggestion_evidence(&query, &context, &population, &BTreeMap::new());
     assert_eq!(evidence["branches"][0]["protection_count"], 1);
     assert_eq!(evidence["branches"][0]["upward_cohort"]["complete"], 40);
+    let full = report(&query, &context, &population, &BTreeMap::new(), &[]);
+    let protections = full
+        .rows
+        .iter()
+        .flat_map(|row| &row.protections)
+        .collect::<Vec<_>>();
+    assert_eq!(protections.len(), 1);
+    assert_eq!(protections[0].segment_id, "protected");
+    assert_eq!(protections[0].trigger_segment_id, "stage/0");
 }
 
 #[test]

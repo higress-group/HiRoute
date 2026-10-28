@@ -8,6 +8,14 @@ Real product smoke uses the [Desktop/Pilot entry](desktop-tauri-pilot.md). Its `
 
 Unit tests that do not start the diagnostics runtime do not generate product logs or create diagnostics directories merely for testing. Inspect assertions, command output and the test's own evidence first. A Debug binary does not prove that product logging was initialized; verify the actual level and log state.
 
+For a slow current Agent read, Debug `agent_read_timing` separates the bounded
+read category, lock wait and hold, snapshot/locator work, selected verification,
+native checks, final fence and current grant authentication. Counts are aggregate
+captured operations, payloads and byte lengths; they contain no paths, payloads or
+credentials. Stages can nest, so their inclusive durations must not be summed.
+An absent event may mean diagnostics were disabled or dropped, not that a stage
+did no work. A Home summary is a recorded hint and is not native verification.
+
 ## Diagnose failures before rerunning
 
 1. Record the exact SHA, managed build/run ID, scenario, observed result, failure time and your session path. Classify observed failures and batch related fixes. A fail-fast stop leaves the failure set incomplete and unexecuted or unknown checks pending. For diagnosis across test binaries, declare the scope and explicitly use `--no-fail-fast` under the [failure collection rules](test-selection.md#failure-policy-and-completeness). Do not rerun the full suite immediately after one failure.

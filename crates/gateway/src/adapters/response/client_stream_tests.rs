@@ -5,6 +5,9 @@ use super::*;
 use crate::server::core_runtime::model_ir::ResponseItemStatus;
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
+#[path = "message_phase_tests.rs"]
+mod message_phase;
+
 #[test]
 fn synthetic_responses_item_ids_are_scoped_to_the_response_and_stable_across_renderers() {
     let candidate = CandidateProtocolProfile::exact_portable_path(

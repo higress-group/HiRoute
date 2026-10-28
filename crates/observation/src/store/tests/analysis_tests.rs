@@ -531,6 +531,7 @@ fn a_recorded_stage_is_evidence_for_a_selected_transition_not_a_switch() {
         .observed_routing_timeline(
             &reader(),
             &RoutingTimelineQueryV1 {
+                include_presentation: false,
                 session_id: f.session.to_string(),
                 after_watermark: None,
                 limit: 50,

@@ -38,13 +38,13 @@ export function RoutingObservations({ summary, language }: { summary: RoutingSum
       <dl className="routing-counts">
         <div><dt>{text('适用性决策 / 同轮继承', 'Applicability decisions / inherited')}</dt><dd>{counts.c_decisions} / {counts.inherited}</dd></div>
         <div><dt>{text('适用性判断不可用 / 实际请求', 'Applicability unavailable / requested')}</dt><dd>{counts.unavailable} / {counts.requested} · {rate(counts.unavailable_per_requested)}</dd></div>
-        <div><dt>{text('保护被抑制 / 保护机会', 'Suppressed / protection opportunities')}</dt><dd>{counts.suppressed} / {counts.gate_opportunities} · {rate(counts.suppressed_per_opportunity)}</dd></div>
+        <div><dt>{text('低分保护被解除 / 已记录保护机会', 'Low-score protection released / recorded opportunities')}</dt><dd>{counts.suppressed} / {counts.gate_opportunities} · {rate(counts.suppressed_per_opportunity)}</dd></div>
         <div><dt>{text('抑制占适用性决策', 'Suppressed per applicability decision')}</dt><dd>{rate(counts.suppressed_per_c_decision)}</dd></div>
         <div><dt>{text('无目标 / 部分目标省略', 'No-target / partial-target omissions')}</dt><dd>{counts.no_target_omissions} / {counts.partial_target_omissions}</dd></div>
         <div><dt>{text('内部缺失必需判断', 'Internally missing required judgment')}</dt><dd>{counts.required_question_missing}</dd></div>
       </dl>
     </section>)}
-    <p className="oc-meta">{text('比例仅描述保留记录中的路由行为，不代表准确率或质量提升。零分母与覆盖缺口均显示为 —。', 'Rates describe retained routing behavior, not accuracy or quality improvement. A zero denominator or incomplete coverage is shown as —.')}</p>
+    <p className="oc-meta">{text('机会按当时实际记录的保护动作统计，可能混合不同时期的规则；解除低分保护不一定避免使用主力模型。这些比例不能比较统一规则下的效果，也不代表准确率或质量提升。零分母与覆盖缺口均显示为 —。', 'Opportunities count protection actions recorded under the rules in effect at the time; a scope may mix earlier and current rules. Releasing low-score protection does not necessarily avoid Primary. These rates do not compare effectiveness under a uniform rule or establish accuracy or quality improvement. A zero denominator or incomplete coverage is shown as —.')}</p>
   </Disclosure>;
 }
 

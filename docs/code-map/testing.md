@@ -20,6 +20,9 @@ reclaiming their managed checkout/TMPDIR, including failed or blocked runs.
 Explicit retention covers diagnosis and consumers that still need build artifacts;
 [local lifecycle regressions](../../scripts/test-local-rust.py) and
 [SSH worker regressions](../../scripts/test-remote-rust.py) protect both paths.
+The SSH cleanup owner preserves original run exports while the shared exporter
+publishes independent cleanup generations; its filesystem regressions cover
+same-revision reuse, source continuation, immutable manifests and refusal exits.
 [Scheduler preparation regressions](../../scripts/test-validation-schedule.py)
 verify complete smoke receipt export without preserving executable snapshots;
 the shared exporter keeps Pilot's existing target-artifact consumer paths.
@@ -117,6 +120,11 @@ component assertions do not replace the real DSH Web/HiRoute acceptance.
 [Quality snapshot cases](../../crates/observation/src/query_v2/plan_quality_snapshot_tests.rs)
 exercise concurrent production ingestion, deletion fences and strict pagination
 without making ordinary appends invalidate a fresh summary/detail read.
+[Cost presentation cases](../../apps/desktop/tests/trust-cost-presentation.test.mjs)
+exercise safe integer amounts, full-scope bounds and invalid evidence; the
+[production-style browser scenarios](../../apps/desktop/tests/v3/visual/trust-cost-presentation.mjs)
+cover the card, tiles, suggestion populations, disclosures and supported layouts
+with controlled IPC. Real retained-data and native acceptance remain separate.
 The [native encrypted listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_encrypted_continuation.rs)
 and [cross-protocol continuation cases](../../tools/e2e-harness/tests/p0_gateway_runtime/cross_protocol_encrypted_continuation.rs)
 exercise accepted-event delivery, repeated tool requests, complete assessment membership
@@ -154,6 +162,7 @@ trust root or transport override. The test does not establish live production si
 | Prove exact Continue, concurrent routes and cancellation | [Native context](../../crates/daemon/tests/support/native_context_product.py), [boundary journey](../../crates/daemon/tests/support/native_context_boundaries.py), [boundary oracle guide](../../crates/daemon/tests/support/NATIVE_CONTEXT_BOUNDARIES.md) |
 | Prove restoration of old durable state | [Frozen producer fixtures](../../crates/local-storage/src/migrations/fixtures/README.md), [crash-boundary tests](../../crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs): old bytes through the current consumer, not a new serializer pretending to be history |
 | Upgrade connected Agents from a released package | [Released grant upgrade](../../crates/daemon/tests/support/released_grant_upgrade.py): pass the repository and checksum-pinned v0.3.1 Linux archive, with current binaries in `HIROUTE_VALIDATION_PRODUCT_BIN_DIR`; released transactions create both connections, current startup preserves grants/native files, and real requests plus public session queries prove attribution across restart. Native probes and the upstream are bounded fixtures. |
+| Upgrade Agent settings without model inference | [Released locator upgrade](../../crates/daemon/tests/released_agent_locator_upgrade.rs) explicitly downloads checksum-pinned supported Linux archives and uses their own writers before current startup and reopen. Its isolated native and upstream fixtures make no inference request. This supplements, rather than replaces, native OS and same-data acceptance. |
 | Recover interrupted Agent settings before the service receipt | [Publication process](../../crates/daemon/tests/publication_process.rs) runs [Agent recovery](../../crates/daemon/tests/support/publication_agent_recovery.py) at `after_target` and `after_active`; startup completes the journal before Apply replay, authenticated requests acquire the Agent, user native files remain byte-identical, and the recovered managed profile is stable across restart. |
 | Drain before upgrade replacement | [Gateway upgrade journey](../../crates/daemon/tests/support/upgrade_requests.py) pauses admission and observes Status until both call/task counts are zero before replacing the process. [Harness protocol checks](../../scripts/test-upgrade-drain-product.py) retain response-tail, task-tail, deadline and unexpected-resume failures; receiving an HTTP response alone is not a server-side drain acknowledgement. |
 | Keep session reads responsive during discovery, catalog and body reads | [Product-session transport barriers](../../crates/product-session/src/commands/agent_snapshot/tests.rs) prove observation reads and cursor updates proceed before a delayed Agent scan, trial choice/model read, catalog read or body read completes. Live hidden clients may read; revocation during transport rejects publication. Narrow trial reads retain the same replaced Session/epoch, changed revisions/publication/recovery/authority and cancellation checks. The old locked path is a negative control. |
@@ -204,6 +213,11 @@ The [Home startup scenarios](../../apps/desktop/tests/v3/browser/home-startup-sc
 exercise delayed snapshot and startup-status results through the production
 [Home reader](../../apps/desktop/src/product/use-desktop-home.ts); stale replies
 cannot replace newer service evidence or clear the current failure.
+Its summary and route-association scenarios distinguish saved hints, incomplete
+coverage and visible-page reads. [Locator projection](../../crates/local-storage/src/control/agent_locator_projection_tests.rs)
+and [physical fences](../../crates/local-storage/src/physical_read_stamp_tests.rs)
+cover selected ownership, pending work, external writes and caller transactions;
+browser fixtures do not establish native Agent or upgrade acceptance.
 
 The [Rust installation journal](../../crates/host-runtime/src/standalone_install/journal/tests.rs)
 covers current-schema interruption recovery. Package tests verify x64 and ARM64
@@ -291,6 +305,9 @@ assessment through the listener. [Projection diagnostics](../../crates/diagnosti
 describe preflight or materialization without claiming provider execution.
 [Response lifecycle tests](../../crates/gateway/src/adapters/response/client_stream_tests.rs)
 check response-scoped synthetic IDs across incremental, buffered and terminal output.
+[Message phase cases](../../crates/gateway/src/adapters/response/message_phase_tests.rs)
+check provisional-to-final metadata reconciliation without relaxing identity,
+accepted content or live cross-protocol capability checks.
 Protocol changes reuse saved-route and native-context journeys across Responses
 and Messages. Assert actual request paths, trusted receipt identity, rotation and
 independent restore. A removed-route witness uses its previously working protocol

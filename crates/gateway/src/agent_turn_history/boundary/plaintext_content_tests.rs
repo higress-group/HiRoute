@@ -206,6 +206,7 @@ fn plaintext_content_requires_exact_accepted_text_and_closed_shape() {
             text: "READY".into(),
             annotations: vec![],
             status: ResponseItemStatus::Completed,
+            final_phase: None,
         });
         let wire = json!({"model":"route","instructions":"x".repeat(8*1024),
             "input":[reasoning("Accepted thought."),{"role":"assistant","content":"READY"}]});

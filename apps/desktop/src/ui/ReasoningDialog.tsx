@@ -6,7 +6,7 @@ import type { Selection } from '../plan-editor';
 export type NativeReasoning =
   | { kind: 'fixed'; profile: string }
   | { kind: 'toggle'; parameter: string }
-  | { kind: 'discrete'; parameter: string; profiles: string[] }
+  | { kind: 'discrete'; parameter: string; profiles: string[]; default_profile?: string }
   | { kind: 'budget'; parameter: string; minimum_tokens: number; maximum_tokens: number; step_tokens: number };
 
 /** Apply commits to the route draft. Escape, backdrop and Cancel discard local edits. */

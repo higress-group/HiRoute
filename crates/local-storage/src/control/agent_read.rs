@@ -74,6 +74,61 @@ impl AgentOperationRead for SucceededAgentOperationV1 {
     }
 }
 
+/// The strict decoder accepts either the live store or one captured, operation-bound closure.
+/// The source cannot execute operations or provide secret material.
+pub(super) trait AgentReadSource: payloads::PayloadRead {
+    fn identity(&self, durable: &DurableOperation) -> PortResult<bool>;
+    fn indexed_steps(&self, operation_id: &str) -> PortResult<Vec<IndexedStep>>;
+}
+
+#[derive(Clone)]
+pub(super) struct IndexedStep {
+    pub(super) number: usize,
+    pub(super) kind: String,
+    pub(super) state: String,
+    pub(super) encoded: String,
+}
+
+impl AgentReadSource for Connection {
+    fn identity(&self, durable: &DurableOperation) -> PortResult<bool> {
+        self.query_row(
+            "SELECT EXISTS(SELECT 1 FROM operations WHERE operation_id=?1 AND workspace_id=?2
+         AND principal=?3 AND operation_kind=?4 AND idempotency_key=?5 AND request_digest=?6
+         AND accepted_change_digest=?7 AND state='succeeded' AND generation=?8)",
+            params![
+                durable.operation_id.as_str(),
+                durable.workspace_id.as_str(),
+                durable.idempotency.principal,
+                durable.idempotency.operation_kind,
+                durable.idempotency.key,
+                durable.request_digest.as_str(),
+                durable.accepted_digest.as_str(),
+                durable.generation
+            ],
+            |r| r.get(0),
+        )
+        .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.identity"))
+    }
+
+    fn indexed_steps(&self, operation_id: &str) -> PortResult<Vec<IndexedStep>> {
+        let mut statement = self.prepare(
+            "SELECT step_no,step_kind,state,step_json FROM operation_steps WHERE operation_id=?1 ORDER BY step_no LIMIT 7"
+        ).map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.steps"))?;
+        let rows = statement
+            .query_map([operation_id], |r| {
+                Ok(IndexedStep {
+                    number: r.get(0)?,
+                    kind: r.get(1)?,
+                    state: r.get(2)?,
+                    encoded: r.get(3)?,
+                })
+            })
+            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.steps"))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|_| port(PortErrorCode::Corrupt, "control.agent-read.journal"))
+    }
+}
+
 pub(super) fn decode_succeeded_agent(
     connection: &Connection,
     encoded: &str,
@@ -86,10 +141,18 @@ pub(super) fn decode_selected_agent(
     encoded: &str,
     selected: Option<&super::agent_history_cache::AgentHistoryRow>,
 ) -> PortResult<SucceededAgentOperationV1> {
+    decode_from_source(connection, encoded, selected)
+}
+
+pub(super) fn decode_from_source(
+    source: &impl AgentReadSource,
+    encoded: &str,
+    selected: Option<&super::agent_history_cache::AgentHistoryRow>,
+) -> PortResult<SucceededAgentOperationV1> {
     #[cfg(test)]
     DECODE_COUNT.with(|count| count.set(count.get() + 1));
     let invalid = || port(PortErrorCode::Corrupt, "control.agent-read.journal");
-    let expanded = payloads::expand(connection, encoded)?;
+    let expanded = payloads::expand(source, encoded)?;
     let encoded = expanded.as_str();
     let durable: DurableOperation = serde_json::from_str(encoded).map_err(|_| invalid())?;
     if selected.is_some_and(|row| !row.matches(&durable))
@@ -173,59 +236,10 @@ pub(super) fn decode_selected_agent(
     {
         return Err(invalid());
     }
-    let identity: bool = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM operations WHERE operation_id=?1 AND workspace_id=?2
-         AND principal=?3 AND operation_kind=?4 AND idempotency_key=?5 AND request_digest=?6
-         AND accepted_change_digest=?7 AND state='succeeded' AND generation=?8)",
-            params![
-                durable.operation_id.as_str(),
-                durable.workspace_id.as_str(),
-                durable.idempotency.principal,
-                durable.idempotency.operation_kind,
-                durable.idempotency.key,
-                durable.request_digest.as_str(),
-                durable.accepted_digest.as_str(),
-                durable.generation
-            ],
-            |r| r.get(0),
-        )
-        .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.identity"))?;
-    if !identity {
+    if !source.identity(&durable)? {
         return Err(invalid());
     }
-    let mut statement = connection.prepare("SELECT step_no,step_kind,state,step_json FROM operation_steps WHERE operation_id=?1 ORDER BY step_no")
-        .map_err(|_| port(PortErrorCode::Unavailable,"control.agent-read.steps"))?;
-    let rows = statement
-        .query_map([durable.operation_id.as_str()], |r| {
-            Ok((
-                r.get::<_, usize>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, String>(3)?,
-            ))
-        })
-        .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.steps"))?;
-    let mut count = 0;
-    for row in rows {
-        let (number, kind, state, encoded) = row.map_err(|_| invalid())?;
-        let step =
-            payloads::expand_step_record(connection, durable.operation_id.as_str(), &encoded)?;
-        if number != count
-            || number >= 6
-            || step.as_object().is_none_or(|o| o.len() != 2)
-            || step["schema"] != "hiroute.operation-step/v1"
-            || step["step"] != raw["steps"][number]
-            || step["step"]["kind"] != kind
-            || step["step"]["status"] != state
-        {
-            return Err(invalid());
-        }
-        count += 1;
-    }
-    if count != 6 {
-        return Err(invalid());
-    }
+    validate_indexed_steps(source, durable.operation_id.as_str(), &raw)?;
     Ok(SucceededAgentOperationV1 {
         service_publication_revision: durable.steps[5]
             .terminal_result
@@ -245,6 +259,40 @@ pub(super) fn decode_selected_agent(
             .expect("validated fixed journal")
             .effects,
     })
+}
+
+pub(super) fn validate_indexed_steps(
+    source: &impl AgentReadSource,
+    operation_id: &str,
+    raw: &Value,
+) -> PortResult<()> {
+    let invalid = || port(PortErrorCode::Corrupt, "control.agent-read.journal");
+    let rows = source.indexed_steps(operation_id)?;
+    let mut count = 0;
+    for row in rows {
+        let IndexedStep {
+            number,
+            kind,
+            state,
+            encoded,
+        } = row;
+        let step = payloads::expand_step_record(source, operation_id, &encoded)?;
+        if number != count
+            || number >= 6
+            || step.as_object().is_none_or(|o| o.len() != 2)
+            || step["schema"] != "hiroute.operation-step/v1"
+            || step["step"] != raw["steps"][number]
+            || step["step"]["kind"] != kind
+            || step["step"]["status"] != state
+        {
+            return Err(invalid());
+        }
+        count += 1;
+    }
+    if count != 6 {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 impl ControlStore {

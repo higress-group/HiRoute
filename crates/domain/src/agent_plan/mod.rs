@@ -319,6 +319,34 @@ mod routing_identity_tests {
     use super::*;
 
     #[test]
+    fn plan_display_name_matches_shared_frontend_cases() {
+        let cases: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/routing/plan-display-name-conformance.v1.json"
+        ))
+        .unwrap();
+        for case in cases.as_array().unwrap() {
+            let value = case["parts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|part| match part.as_str() {
+                    Some(text) => text.to_owned(),
+                    None => part["repeat"]
+                        .as_str()
+                        .unwrap()
+                        .repeat(part["count"].as_u64().unwrap() as usize),
+                })
+                .collect::<String>();
+            assert_eq!(
+                AgentPlanDisplayName::parse(value).is_ok(),
+                case["valid"].as_bool().unwrap(),
+                "{}",
+                case["case"]
+            );
+        }
+    }
+
+    #[test]
     fn routing_alias_is_stable_and_tombstoned_after_retirement() {
         let id = AgentPlanId::parse("plan/daily").unwrap();
         let mut registry = AliasRegistryV1::default();

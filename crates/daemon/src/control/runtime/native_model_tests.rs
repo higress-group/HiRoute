@@ -85,7 +85,89 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         "the activated configuration must point at the immutable catalog artifact: {configured}"
     );
     publish(adapter, &mut install);
-    finish_fixture_operation(adapter, &mut install);
+    finish_fixture_operation_unsettled(adapter, &mut install);
+    let pending = adapter
+        .model_settings_status(&AgentSettingsStatusRequestV2 {
+            projection: hiroute_application_api::AgentSettingsStatusProjectionV2::Model,
+            effective: None,
+            include_skills: false,
+            native_target: None,
+            schema_version: AGENT_SETTINGS_SCHEMA_V2,
+            context_id: context.clone(),
+        })
+        .unwrap();
+    assert_eq!(pending.state, AgentModelSettingsStateV2::Pending);
+    assert_eq!(pending.operation_state.as_deref(), Some("succeeded"));
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .complete_operation_finalization(&install)
+        .unwrap();
+    // Pause the production status path before journal verification and again
+    // before native file I/O. An independent read must acquire the real lock.
+    let (verify_reached_tx, verify_reached_rx) = std::sync::mpsc::channel();
+    let (verify_release_tx, verify_release_rx) = std::sync::mpsc::channel();
+    let (reached_tx, reached_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let reader = std::sync::Arc::clone(&runtime.adapter);
+    let selected_context = context.clone();
+    let worker = std::thread::spawn(move || {
+        crate::control::runtime::settings_status::MODEL_VERIFY_BARRIER.with(|slot| {
+            *slot.borrow_mut() = Some((verify_reached_tx, verify_release_rx));
+        });
+        crate::control::runtime::settings_status::MODEL_NATIVE_READ_BARRIER.with(|slot| {
+            *slot.borrow_mut() = Some((reached_tx, release_rx));
+        });
+        reader.model_settings_status(&AgentSettingsStatusRequestV2 {
+            projection: hiroute_application_api::AgentSettingsStatusProjectionV2::Model,
+            effective: None,
+            include_skills: false,
+            native_target: None,
+            schema_version: AGENT_SETTINGS_SCHEMA_V2,
+            context_id: selected_context,
+        })
+    });
+    let verify_reached = verify_reached_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .is_ok();
+    let verify_available = verify_reached
+        && runtime.adapter.stores.try_lock().is_ok_and(|stores| {
+            stores
+                .control()
+                .active_publication(&WorkspaceId::default())
+                .is_ok()
+        });
+    let _ = verify_release_tx.send(());
+    let reached = reached_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .is_ok();
+    let available = reached
+        && runtime.adapter.stores.try_lock().is_ok_and(|stores| {
+            stores
+                .control()
+                .active_publication(&WorkspaceId::default())
+                .is_ok()
+        });
+    let _ = release_tx.send(());
+    let read_result = worker.join().unwrap();
+    assert!(
+        verify_reached,
+        "the selected status did not reach its journal-verification barrier: {read_result:?}"
+    );
+    assert!(
+        verify_available,
+        "journal verification held the shared storage lock"
+    );
+    assert!(
+        reached,
+        "the selected status did not reach its native-read barrier: {read_result:?}"
+    );
+    assert!(
+        available,
+        "native verification held the shared storage lock"
+    );
+    assert!(read_result.is_ok());
     let revision = adapter
         .stores_lock()
         .unwrap()
@@ -948,6 +1030,16 @@ fn apply_fixture_catalog(adapter: &LocalControlAdapter, operation: &mut Operatio
 }
 
 fn finish_fixture_operation(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
+    finish_fixture_operation_unsettled(adapter, operation);
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .complete_operation_finalization(operation)
+        .unwrap();
+}
+
+fn finish_fixture_operation_unsettled(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
     // These adapter tests apply effects manually. Seal the same completed journal shape as
     // the coordinator, so read-only status verifies all six steps and the service receipt.
     let effect = operation

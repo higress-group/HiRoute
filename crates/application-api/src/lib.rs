@@ -62,6 +62,8 @@ pub use prices::*;
 mod protocol;
 mod standalone_protected_input;
 mod subscription_login;
+mod trial_setup;
+pub use trial_setup::*;
 
 pub use agent_connection::*;
 pub use agent_grant_raw::*;

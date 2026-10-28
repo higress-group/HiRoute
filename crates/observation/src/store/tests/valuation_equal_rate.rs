@@ -130,6 +130,7 @@ fn frozen_equal_rate_amount_is_settled_and_retained_timeline_recovers_without_re
             .observed_routing_timeline(
                 &reader,
                 &RoutingTimelineQueryV1 {
+                    include_presentation: false,
                     session_id: fixture.session.to_string(),
                     after_watermark: None,
                     limit: 50,

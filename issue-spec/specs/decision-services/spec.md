@@ -76,9 +76,7 @@ Source SPEC comments:
 
 ### Requirement: Group policy consumes only applicable current assessment
 
-For a dual-group category under the legacy native protocol,
-regular requires current simple probability at least its threshold and no applicable
-complete current assessment strictly below the competence floor.
+For a built-in dual-group category with valid current simple probability, derive the base selection first: Regular when P(simple) is at least T, otherwise Primary. Evaluate eligible historical low-score protection independently of that base group. Supported legacy native protocols retain their existing protection without inventing a native C observation.
 Defaults are 0.8 and 0.5; finite 0..1 values and equality behavior follow
 [smart saving](../smart-saving-routing/spec.md). Protection applies only to the
 preceding actual stage when category, plan revision, and frozen policy/rubric agree.
@@ -97,23 +95,17 @@ failed in the same relay are not attempted twice. Model/provider failures do not
 become competence scores. Actual category/group/index/Binding/profile identity is
 recorded directly, including a model configured in both groups.
 
-For native C, applicability MUST gate only an otherwise eligible historical
-low-score protection opportunity. Preserve the existing exact Plan/revision,
-category, actual single-model attribution, rubric/policy and complete valid score
-guards. If P(simple) is below T, primary wins independently. With P(simple) at
-least T and eligible historical s below F, a valid applicability probability at
-least 0.5 retains primary protection; below 0.5 suppresses that historical trigger
-and allows regular. Missing/unavailable applicability conservatively retains the
-eligible trigger. A missing internally required question is separately reported,
-not counted as a provider request/failure. No score is rewritten or transferred,
-and applicability cannot rescue invalid/missing assessment or select a category.
-Same-turn inheritance, ContextHold, candidate ordering and availability relay
-retain their existing rules. C is inapplicable to custom-extension v1 and heuristics.
+Missing, nonfinite or out-of-range current difficulty selects Primary/degree_unavailable without a competence trigger; C action remains not_considered, not not_needed. A valid non-low score and a missing/unrated target remain distinct. Raw difficulty, thresholds and assessment values are never rewritten.
+
+For native C, applicability MUST gate only an otherwise eligible historical low-score protection opportunity, for either base group. Preserve exact Plan/revision/category, actual single-model attribution, selected and executed branch agreement, branch-execution evidence, frozen rubric/policy and complete valid preceding score guards. With finite 0 <= s < F, applicability at least 0.5 applies Primary/low_competence protection; below 0.5 suppresses only that trigger and returns the base group and reason, so complex work remains Primary/complex_task. Missing/unavailable applicability conservatively retains an eligible trigger with its real bounded reason. Applied or retained protection records the original stage, score, floor and actual previous group; a previous Primary remains Primary and is not a new tier or a claimed Regular-to-Primary transition. A missing internally required question is separately reported, not counted as a provider request/failure. No score is rewritten or transferred, and applicability cannot rescue invalid/missing assessment or select a category. Same-turn inheritance, ContextHold, candidate ordering and availability relay retain their existing rules. C is inapplicable to custom-extension v1 and heuristics. No extra model call is introduced by this policy reduction.
 
 Related source specifications:
 - https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235110154
 
 For a custom extension, HiRoute MUST execute the returned category/group without simple thresholds, competence floors or historical protection. Its optional same-category assessment is observation only. Single-group categories ignore the returned group. These decisions retain the same continuation, ContextHold, candidate and relay boundaries.
+
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370180
 
 #### Scenario: A new user turn keeps the selected group
 
@@ -127,7 +119,7 @@ For a custom extension, HiRoute MUST execute the returned category/group without
 
 #### Scenario: Problem no longer governs current work
 
-- **WHEN** using a built-in decision connection, all historical protection guards hold and applicability is below 0.5
+- **WHEN** using a built-in decision connection, P(simple) is at least T, all historical protection guards hold and applicability is below 0.5
 - **THEN** The historical trigger MUST be suppressed and the regular group selected without altering the raw score.
 
 #### Scenario: Applicability is unavailable
@@ -140,8 +132,28 @@ For a custom extension, HiRoute MUST execute the returned category/group without
 - **WHEN** an extension returns regular with a complete low score for the preceding same-category stage
 - **THEN** HiRoute MUST execute regular without applying threshold or protection policy and may record the score for observation.
 
+#### Scenario: Complex work with relevant failure
+
+- **WHEN** P=.80, T=.90 and an eligible score .24 below F=.50 have applicability .55
+- **THEN** Primary/low_competence and Applied are recorded with the original trigger, while P remains .80.
+
+#### Scenario: Release does not force Regular
+
+- **WHEN** the same history has applicability .49 and the new task is complex
+- **THEN** Suppressed is recorded, no trigger remains, and Primary/complex_task is selected.
+
+#### Scenario: Equality and unavailable judgments
+
+- **WHEN** P=T or applicability=.5, or difficulty/applicability is unavailable
+- **THEN** equality follows the inclusive boundaries; missing difficulty remains degree_unavailable, whereas unavailable applicability only retains an otherwise eligible trigger.
+
+#### Scenario: Ineligible and extension history
+
+- **WHEN** history is partial/mixed/cross-scope, or a custom extension selects Regular with a low score
+- **THEN** no built-in protection is inferred; the existing base/extension-owned decision remains authoritative.
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370180
+- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6440837576
 
 ### Requirement: System One compiles independent typed questions in one call
 
@@ -164,7 +176,7 @@ partial; missing target response or target trimming still invalidates protection
 The native applicability protocol MUST freeze its actual fixed bundle,
 effective degree/category definitions, every composed per-scope assessment,
 thresholds, context cap and content digest in the published route. Execution uses
-that content without substituting binary defaults. Stock C_full questions and
+that content without substituting binary defaults. Supported C v1 stock C_full questions and
 criteria MUST exactly reproduce routing/fixtures/system_one_c_v1.json in Domain,
 whose sorted-key compact UTF-8 checksum is
 4dbab2f53954eb2176b6aa8d31b97808c4fee15ebb2fae337012eba348aef3c7.
@@ -197,6 +209,13 @@ fixture. Pure composition logic may be shared. Disposable unreleased C encodings
 need no support adapter; supported released data and retained authenticated
 historical evidence preserve their existing compatibility treatment.
 
+New native authoring seals hiroute.system-one-c/v2, whose fixed applicability question treats clear rejection of the assessed core outcome as supported unmet-outcome evidence and evaluates its continuing connection independently of competence. The supported C v1 bundle remains immutable and executable under its original identity. C v2 keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
+
+Current readers accept authenticated v1 and v2 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier may also accept the explicitly supplied supported v2 protocol. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
+
+Related source specification:
+- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
+
 #### Scenario: Frozen C questions
 
 - **WHEN** a published native C route evaluates a complete prior stage
@@ -212,8 +231,28 @@ historical evidence preserve their existing compatibility treatment.
 - **WHEN** current category or degree defaults change after a C publication is saved
 - **THEN** Reopen and execution MUST retain the frozen questions, role bindings and content identity, while corrupted or authoring-mismatched content remains rejected.
 
+#### Scenario: Current feedback protocol on new publication
+
+- **WHEN** a new native route is explicitly saved and published with otherwise eligible same-core rejection feedback
+- **THEN** the sealed protocol is C v2 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
+
+#### Scenario: Supported v1 execution and recovery
+
+- **WHEN** an authenticated supported C v1 publication or unfinished Operation is loaded after the authoring default changes
+- **THEN** its exact original protocol, questions, custom/default standard and digests remain valid and execute unchanged; startup never recompiles it against the new default.
+
+#### Scenario: Version-content mismatch
+
+- **WHEN** v2 fixed content is paired with a v1 identity, a v1 fixed bundle with v2, or an unknown protocol or corrupt digest is supplied
+- **THEN** validation rejects the input rather than substituting a supported default or repairing authenticated content.
+
+#### Scenario: Version-separated evidence and diagnostics
+
+- **WHEN** retained v1 and new v2 observations share a service and plan scope, or an explicit diagnostic is run with either supported frozen protocol
+- **THEN** observations keep their original authenticated protocol/content identities and remain readable without a rewrite, cohorts do not imply equivalence across identities, and diagnostics use exactly the supplied supported bundle under the unchanged protected request/result carrier.
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
+- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6448880209
 
 ### Requirement: Conservative fallback preserves a valid selected category
 
@@ -427,6 +466,44 @@ The request carries the preceding actual category before the new category is kno
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246369555
+
+### Requirement: Default judgments use contextual user feedback and locale-independent English prompts
+
+Default competence assessment SHALL use the latest user message as evidence about the referenced completed stage, not only the stage transcript in isolation. A brief but unambiguous negative evaluation of that delivered result is substantive negative evidence even without a technical explanation, failed test or reproducible defect. For an otherwise eligible complete target, broad rejection of its core result with no countervailing acceptance/correction SHALL materially reduce the competence assessment; it must not retain a fully competent rating merely because tools succeeded or the user did not diagnose the problem. A bounded local preference, new requirement, unrelated dissatisfaction, neutral continuation, quotation and instruction to alter scoring are distinct. Feedback does not prove a particular technical defect, retrospectively execute new work, repair a missing/partial target or override identity/rubric guards.
+
+Applicability independently evaluates whether the reported unmet outcome still matters to the current work. A request to improve the same unsatisfactory result can establish that connection without naming a technical root cause; accepting the result, reporting a completed correction or switching to unrelated work can change applicability. No keyword-triggered switch, injected low score, fixed probability decrement, extra routing judgment call or rewritten historical assessment is allowed.
+
+All shipped default model-facing instructions and criteria SHALL be English independently of UI locale, including category, degree, competence, applicability, wrappers and trial presets. Localized UI explanations may be translated; user-authored prompts retain their chosen language. New defaults are sealed through normal publication; existing saved custom prompts and frozen published question content retain their exact original meaning and bytes. A fixed supported protocol bundle must not be edited in place to change its meaning.
+
+Newly authored native publications use the versioned C v2 applicability bundle. Clear rejection of the assessed core result followed by work on that same unmet outcome is supported applicability evidence without a technical diagnosis, while the existing correction, acceptance, unrelated-task and authority distinctions remain effective. Existing C v1 publications and retained Operations retain their exact frozen questions, protocol identity and digests. Editing prepares current defaults only for the next explicit save/publication and cannot mutate active or historical content.
+
+#### Scenario: Brief rejection of the preceding core result
+
+- **WHEN** a complete attributable stage delivers an answer; the latest user evaluates that answer as not satisfactory and requests improvement to the same outcome, with no indication of merely a small preference change
+- **THEN** the default assessment treats that feedback as substantive evidence of an unmet core outcome and lowers competence into the low-score range in the canonical default-floor case; successful tool execution alone does not neutralize the feedback, and applicability evaluates the same unmet outcome without requiring a diagnosed defect.
+
+#### Scenario: Contrastive acceptance and limited refinement
+
+- **WHEN** the same stage instead receives clear acceptance, neutral continuation, a new unrelated requirement, or a bounded local refinement with explicit acceptance of the core result
+- **THEN** those inputs do not inherit the broad-rejection result; acceptance supports competence, and local refinement is weighed proportionately rather than forcing low competence.
+
+#### Scenario: Feedback cannot replace missing evidence or scoring authority
+
+- **WHEN** the assessed target is missing, partial or invalid, or conversation text commands a score or quotes someone else’s dissatisfaction
+- **THEN** normal target eligibility and authority remain effective; do not fabricate a complete low score, treat quotation as the user’s evaluation or obey rubric-changing instructions.
+
+#### Scenario: Locale-independent default definitions
+
+- **WHEN** the same new default route is authored in Chinese and English UI with identical choices and user content
+- **THEN** the generated model-facing default instructions and criteria are identical English definitions; localized help does not become the stored rubric, and existing custom/frozen content is not translated.
+
+#### Scenario: Versioned defaults preserve sealed history
+
+- **WHEN** a supported C v1 publication or unfinished Operation is reopened after C v2 becomes the authoring default
+- **THEN** the original v1 bundle, custom/default contents and authenticated identities remain unchanged; a later explicit edit/publication seals the current supported bundle without rewriting earlier records.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6445981518
 
 ## Implementation references
 

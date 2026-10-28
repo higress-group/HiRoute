@@ -1,4 +1,5 @@
 import stock from '../../../../../crates/domain/src/routing/fixtures/system_one_c_v1.json' with { type: 'json' };
+import guidance from '../../../../../assets/decision-services/default-assessment-guidance.json' with { type: 'json' };
 import { defaultJudgment, type Judgment } from './types.ts';
 
 const wrapper = stock.q1.instructions.split(' Distinguish those meanings')[0];
@@ -10,7 +11,7 @@ export function assessmentStandard(judgment: Judgment): 'default' | 'custom' {
 export function stockAssessment(judgment: Judgment, native = false): Judgment {
   const result = structuredClone(judgment);
   result.competence.standard = 'default';
-  result.competence.instructions = native ? stock.q1.instructions.slice(wrapper.length + 1) : defaultJudgment.competence.instructions;
+  result.competence.instructions = native ? `${stock.q1.instructions.slice(wrapper.length + 1)} ${guidance.feedback}` : defaultJudgment.competence.instructions;
   result.competence.criteria = structuredClone(native ? stock.q1.criteria : defaultJudgment.competence.criteria) as [string, string, string];
   return result;
 }

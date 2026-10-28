@@ -100,6 +100,45 @@ fn probability_and_competence_boundaries_select_the_current_group() {
         assert_eq!(result.decision.selection_reason, reason);
     }
 }
+
+#[test]
+fn zero_threshold_keeps_equality_and_independent_protection() {
+    let mut input = fixture();
+    let MaterializedRouteV1::Branches { branches, .. } = &mut input.policy.route else {
+        unreachable!()
+    };
+    branches[0]
+        .judgment
+        .as_mut()
+        .unwrap()
+        .degree
+        .simple_threshold_millis = 0;
+    for (probability, score, group, reason) in [
+        (
+            Some(0.0),
+            Some(0.5),
+            ExecutionGroupV1::Regular,
+            ModelGroupReasonV1::SimpleTask,
+        ),
+        (
+            Some(0.0),
+            Some(0.499),
+            ExecutionGroupV1::Primary,
+            ModelGroupReasonV1::LowCompetence,
+        ),
+        (
+            None,
+            Some(0.5),
+            ExecutionGroupV1::Primary,
+            ModelGroupReasonV1::DegreeUnavailable,
+        ),
+    ] {
+        let mut result = outcome(&input, probability, score);
+        apply(&input, &history(), &mut result);
+        assert_eq!(result.decision.execution_group, group);
+        assert_eq!(result.decision.selection_reason, reason);
+    }
+}
 #[test]
 fn new_turn_redecides_instead_of_resetting_or_preserving_the_old_group() {
     let input = fixture();
@@ -231,6 +270,42 @@ fn with_applicability(
     result.decision.routing_observation = Some(observation);
     result
 }
+
+#[test]
+fn complex_work_still_records_applicable_low_score_protection() {
+    use hiroute_domain::HistoricalProtectionActionV1 as A;
+    let input = c_input();
+    let mut result = with_applicability(&input, Some(0.7), Some(0.24), true, Some(0.55));
+    result
+        .assessment
+        .as_mut()
+        .unwrap()
+        .target
+        .branch_execution
+        .as_mut()
+        .unwrap()
+        .group = ExecutionGroupV1::Primary;
+
+    apply(&input, &history(), &mut result);
+
+    assert_eq!(result.decision.execution_group, ExecutionGroupV1::Primary);
+    assert_eq!(
+        result.decision.selection_reason,
+        ModelGroupReasonV1::LowCompetence
+    );
+    let trigger = result.decision.competence_trigger.as_ref().unwrap();
+    assert_eq!(trigger.segment_id, "stage-1");
+    assert_eq!(trigger.from_group, ExecutionGroupV1::Primary);
+    assert_eq!(
+        result
+            .decision
+            .routing_observation
+            .as_ref()
+            .unwrap()
+            .protection_action,
+        A::Applied
+    );
+}
 #[test]
 fn c_gate_boundaries_and_missing_required_question_preserve_independent_signals() {
     use hiroute_domain::{ApplicabilityReasonV1 as R, HistoricalProtectionActionV1 as A};
@@ -274,7 +349,7 @@ fn c_gate_boundaries_and_missing_required_question_preserve_independent_signals(
             true,
             Some(0.1),
             ExecutionGroupV1::Primary,
-            A::NotNeeded,
+            A::Suppressed,
         ),
         (
             Some(0.9),
@@ -298,7 +373,7 @@ fn c_gate_boundaries_and_missing_required_question_preserve_independent_signals(
             true,
             Some(0.0),
             ExecutionGroupV1::Primary,
-            A::NotNeeded,
+            A::NotConsidered,
         ),
     ] {
         let mut result = with_applicability(&input, p, s, requested, a);
@@ -313,11 +388,144 @@ fn c_gate_boundaries_and_missing_required_question_preserve_independent_signals(
         }
     }
 }
+
+#[test]
+fn historical_gate_is_independent_of_valid_difficulty_and_preserves_base_on_release() {
+    use hiroute_domain::HistoricalProtectionActionV1 as A;
+    let input = c_input();
+    for (p, score, a, reason, action, trigger) in [
+        (
+            0.9,
+            0.0,
+            Some(0.5),
+            ModelGroupReasonV1::LowCompetence,
+            A::Applied,
+            true,
+        ),
+        (
+            0.7,
+            0.24,
+            Some(0.55),
+            ModelGroupReasonV1::LowCompetence,
+            A::Applied,
+            true,
+        ),
+        (
+            0.7,
+            0.24,
+            Some(0.49),
+            ModelGroupReasonV1::ComplexTask,
+            A::Suppressed,
+            false,
+        ),
+        (
+            0.9,
+            0.24,
+            Some(0.49),
+            ModelGroupReasonV1::SimpleTask,
+            A::Suppressed,
+            false,
+        ),
+        (
+            0.7,
+            0.24,
+            None,
+            ModelGroupReasonV1::LowCompetence,
+            A::RetainedUnavailable,
+            true,
+        ),
+        (
+            0.7,
+            0.5,
+            Some(0.55),
+            ModelGroupReasonV1::ComplexTask,
+            A::NotNeeded,
+            false,
+        ),
+    ] {
+        let mut result = with_applicability(&input, Some(p), Some(score), true, a);
+        apply(&input, &history(), &mut result);
+        assert_eq!(result.decision.selection_reason, reason, "p={p}, a={a:?}");
+        assert_eq!(result.decision.competence_trigger.is_some(), trigger);
+        assert_eq!(
+            result
+                .decision
+                .simple_probability
+                .as_ref()
+                .unwrap()
+                .as_f64(),
+            Some(p)
+        );
+        let observation = result.decision.routing_observation.as_ref().unwrap();
+        assert_eq!(observation.protection_action, action);
+        assert!(observation.validate(), "{observation:?}");
+    }
+}
+
+#[test]
+fn invalid_difficulty_and_ineligible_scores_never_claim_protection() {
+    use hiroute_domain::HistoricalProtectionActionV1 as A;
+    let input = c_input();
+    for p in [None, Some(-0.1), Some(1.1)] {
+        let mut result = with_applicability(&input, p, Some(0.1), true, Some(0.9));
+        apply(&input, &history(), &mut result);
+        assert_eq!(
+            result.decision.selection_reason,
+            ModelGroupReasonV1::DegreeUnavailable
+        );
+        assert!(result.decision.competence_trigger.is_none());
+        assert_eq!(
+            result
+                .decision
+                .routing_observation
+                .unwrap()
+                .protection_action,
+            A::NotConsidered
+        );
+    }
+    for score in [-0.1, 0.5, 1.1, f64::NAN] {
+        let mut result = with_applicability(&input, Some(0.7), Some(score), true, Some(0.9));
+        apply(&input, &history(), &mut result);
+        assert_eq!(
+            result.decision.selection_reason,
+            ModelGroupReasonV1::ComplexTask
+        );
+        assert!(result.decision.competence_trigger.is_none());
+    }
+}
+
+#[test]
+fn invalid_applicability_retains_a_valid_complex_trigger_and_marks_unavailable() {
+    use hiroute_domain::{
+        ApplicabilityReasonV1 as R, ApplicabilityStateV1 as S, HistoricalProtectionActionV1 as A,
+    };
+    let input = c_input();
+    for invalid in [-0.1, 1.1] {
+        let mut result = with_applicability(&input, Some(0.7), Some(0.1), true, Some(invalid));
+        apply(&input, &history(), &mut result);
+        assert_eq!(
+            result.decision.selection_reason,
+            ModelGroupReasonV1::LowCompetence
+        );
+        assert!(result.decision.competence_trigger.is_some());
+        let observation = result.decision.routing_observation.unwrap();
+        assert_eq!(
+            (
+                observation.applicability_state,
+                observation.applicability_reason,
+                observation.protection_action
+            ),
+            (S::Unavailable, R::InvalidOutput, A::RetainedUnavailable)
+        );
+        assert!(observation.applicability_probability.is_none());
+        assert!(observation.validate());
+    }
+}
 #[test]
 fn c_applicability_never_overrides_attribution_or_a_partial_target() {
     let input = c_input();
-    for variant in 0..5 {
-        let mut result = with_applicability(&input, Some(0.9), Some(0.1), true, Some(1.0));
+    for (variant, p) in (0..8).flat_map(|variant| [0.7, 0.9].map(|p| (variant, p))) {
+        let mut result = with_applicability(&input, Some(p), Some(0.1), true, Some(1.0));
         let a = result.assessment.as_mut().unwrap();
         match variant {
             0 => {
@@ -339,7 +547,7 @@ fn c_applicability_never_overrides_attribution_or_a_partial_target() {
                     .criteria_digest = None
             }
             3 => a.target.attribution = ExecutionAttribution::Mixed,
-            _ => {
+            4 => {
                 if let ExecutionAttribution::Single {
                     executed_branch_id, ..
                 } = &mut a.target.attribution
@@ -347,9 +555,20 @@ fn c_applicability_never_overrides_attribution_or_a_partial_target() {
                     *executed_branch_id = "docs".into();
                 }
             }
+            5 => a.target.target_partial = true,
+            6 => a.target.plan.plan_id = "another-plan".into(),
+            _ => a.target.branch_execution = None,
         }
         apply(&input, &history(), &mut result);
-        assert_eq!(result.decision.execution_group, ExecutionGroupV1::Regular);
+        assert_eq!(
+            result.decision.execution_group,
+            if p < 0.8 {
+                ExecutionGroupV1::Primary
+            } else {
+                ExecutionGroupV1::Regular
+            }
+        );
+        assert!(result.decision.competence_trigger.is_none());
         assert_eq!(
             result
                 .decision

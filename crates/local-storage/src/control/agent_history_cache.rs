@@ -68,17 +68,18 @@ impl ReadEpoch {
 
 /// These are the columns of the selected row, not another matching row found by
 /// an EXISTS query. Raw substitution between two valid operations must fail.
+#[derive(Clone)]
 pub(super) struct AgentHistoryRow {
-    operation_id: String,
-    workspace_id: String,
-    principal: String,
-    operation_kind: String,
-    idempotency_key: String,
-    request_digest: String,
-    accepted_digest: String,
-    state: String,
-    generation: u64,
-    encoded: String,
+    pub(super) operation_id: String,
+    pub(super) workspace_id: String,
+    pub(super) principal: String,
+    pub(super) operation_kind: String,
+    pub(super) idempotency_key: String,
+    pub(super) request_digest: String,
+    pub(super) accepted_digest: String,
+    pub(super) state: String,
+    pub(super) generation: u64,
+    pub(super) encoded: String,
 }
 impl AgentHistoryRow {
     pub(super) fn matches(&self, durable: &DurableOperation) -> bool {
@@ -105,7 +106,7 @@ impl AgentHistoryRow {
             &self.encoded,
         ]
     }
-    fn read(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+    pub(super) fn read(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
             operation_id: row.get(0)?,
             workspace_id: row.get(1)?,

@@ -1,0 +1,4 @@
+.trial-rule-content { flex: 1; min-width: 0; }
+.trial-rule-content > p { margin: 0; }
+.trial-rule-content .disclosure { margin-top: 8px; }
+.trial-rule-content .disclosure-body p { margin: 0; }

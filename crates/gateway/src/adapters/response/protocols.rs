@@ -272,7 +272,7 @@ fn decode_responses_sse(
                         .into());
                     }
                     responses_lifecycle::register_item(core, native_index, item)?;
-                    core.observe_message_phase(native_index, optional_str(item, "phase")?, false)?;
+                    core.observe_message_phase(native_index, item, false, false)?;
                 }
                 "reasoning" => {
                     allow(

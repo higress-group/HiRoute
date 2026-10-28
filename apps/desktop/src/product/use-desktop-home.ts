@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '../host/index.ts';
-import type { AgentSnapshot } from '../agents';
 import {
   beginDomainRead,
   failDomainRead,
@@ -19,12 +18,13 @@ import type {
 import type { ManagementSnapshot } from '../features/models/types';
 import {
   projectHomeActivity,
-  projectHomeAgents,
+  projectHomeAgentSummary,
   projectHomeCompute,
   projectHomePlans,
   projectHomeService,
   projectHomeValue,
   type DesktopSnapshot,
+  type AgentHomeSummary,
   type ObservationSessionPage,
   type ObservationValueSummary,
 } from './home-projections';
@@ -59,7 +59,7 @@ export function useDesktopHome() {
   const [activity, setActivity] = useState<DomainReadSlot<HomeActivity>>(loading);
   const [value, setValue] = useState<DomainReadSlot<HomeValue>>(loading);
   const [desktopSnapshot, setDesktopSnapshot] = useState<DesktopSnapshot | null>(null);
-  const [agentSnapshot, setAgentSnapshot] = useState<AgentSnapshot | null>(null);
+  const [agentDirectory, setAgentDirectory] = useState<AgentHomeSummary['agents'] | null>(null);
   const sequence = useRef(0);
   const activeDesktopRequest = useRef<string | null>(null);
   const activeAgentsRequest = useRef<string | null>(null);
@@ -70,11 +70,26 @@ export function useDesktopHome() {
   const requestId = useCallback((domain: keyof HomeReads) =>
     `home/${domain}/${++sequence.current}`, []);
 
+  const invalidateService = useCallback((connectionLost = false) => {
+    activeDesktopRequest.current = null;
+    setService({
+      requestId: null,
+      targetKey: HOME_TARGET,
+      read: connectionLost
+        ? { status: 'ready', data: { daemon: 'unavailable', gateway: 'unknown', recoveryReady: false, nativeConnectionLost: true } }
+        : { status: 'loading' },
+    });
+  }, []);
+
   const refreshDesktop = useCallback(async () => {
     const serviceRequest = requestId('service');
     const plansRequest = requestId('plans');
     activeDesktopRequest.current = serviceRequest;
-    setService(current => beginDomainRead(current, serviceRequest, HOME_TARGET));
+    setService(current => beginDomainRead(
+      current.read.status === 'error' ? { ...current, read: { status: 'loading' } } : current,
+      serviceRequest,
+      HOME_TARGET,
+    ));
     setPlans(current => beginDomainRead(current, plansRequest, HOME_TARGET));
     try {
       const snapshot = await invoke<DesktopSnapshot>('desktop_snapshot');
@@ -149,16 +164,17 @@ export function useDesktopHome() {
     activeAgentsRequest.current = request;
     setAgents(current => beginDomainRead(current, request, HOME_TARGET));
     try {
-      const snapshot = await invoke<AgentSnapshot>('agent_snapshot');
+      const snapshot = await invoke<AgentHomeSummary>('agent_home_summary');
       if (activeAgentsRequest.current !== request) return;
-      setAgentSnapshot(snapshot);
+      setAgentDirectory(snapshot.agents);
       setAgents(current => resolveDomainRead(
         current,
         request,
         HOME_TARGET,
-        projectHomeAgents(snapshot),
+        projectHomeAgentSummary(snapshot),
       ));
     } catch (error) {
+      if (activeAgentsRequest.current === request) setAgentDirectory(null);
       setAgents(current => failDomainRead(
         current,
         request,
@@ -173,7 +189,7 @@ export function useDesktopHome() {
   const invalidateCatalog = useCallback(() => {
     invalidatedCatalog.current = { agents: true, compute: true };
     activeAgentsRequest.current = requestId('agents');
-    setAgentSnapshot(null);
+    setAgentDirectory(null);
     setAgents(current => beginDomainRead(current, activeAgentsRequest.current!, HOME_TARGET));
     const computeRequest = requestId('compute');
     setCompute(current => beginDomainRead(current, computeRequest, HOME_TARGET));
@@ -303,9 +319,10 @@ export function useDesktopHome() {
       value: value.read,
     } satisfies HomeReads,
     desktopSnapshot,
-    agentSnapshot,
+    agentDirectory,
     refreshAll,
     refreshDesktop,
+    invalidateService,
     refreshCompute,
     refreshAgents,
     refreshActivity,

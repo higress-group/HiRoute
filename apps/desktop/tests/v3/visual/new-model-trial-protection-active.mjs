@@ -63,7 +63,11 @@ try {
         const numeric=state==='valid'||state==='zero';
         await waitFor(client,`document.querySelector('.trust-release')?.dataset.releaseState===${JSON.stringify(numeric?'available':'unavailable')}`);
         const value=await evaluate(client,`document.querySelector('.trust-release').textContent`);
-        if(numeric) assert.ok(value.includes(lang==='zh'?`解除 ${state==='zero'?0:5} 次`:`${state==='zero'?0:5} protections released`),value);
+        if(numeric) {
+          assert.ok(value.includes(lang==='zh'?`解除 ${state==='zero'?0:5} 次`:`${state==='zero'?0:5} protections released`),value);
+          assert.ok(value.includes(lang==='zh'?'本轮重新按难度选择模型':'this turn selects a model based on difficulty'),value);
+          assert.doesNotMatch(value,/allowing Regular to continue|允许新模型继续/);
+        }
         else {assert.ok(value.includes('—'),value);assert.ok(!/5 protections|解除 5/.test(value),value);}
         if(!['valid','zero','missing'].includes(state)) await waitFor(client,`!!document.querySelector('.routing-observations')`);
         const reasons={partial:lang==='zh'?'覆盖不完整':'incomplete coverage',plan:lang==='zh'?'路由范围不同':'different route scope',revision:lang==='zh'?'路由版本不同':'different route version',time:lang==='zh'?'时间范围不同':'different time range',branch:lang==='zh'?'分支范围不同':'different branches'};

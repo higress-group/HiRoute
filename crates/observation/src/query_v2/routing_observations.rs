@@ -170,19 +170,21 @@ pub(super) fn summarize(
             ApplicabilityReasonV1::RequiredQuestionMissing => counts.required_question_missing += 1,
             _ => {}
         }
-        if o.eligibility == ProtectionEligibilityV1::Eligible
-            && o.simple_probability
-                .as_ref()
-                .and_then(serde_json::Number::as_f64)
-                .is_some_and(|p| p >= f64::from(o.simple_threshold_millis) / 1000.0)
+        let opportunity = o.eligibility == ProtectionEligibilityV1::Eligible
             && o.score
                 .as_ref()
                 .and_then(serde_json::Number::as_f64)
                 .is_some_and(|s| s < f64::from(o.competence_floor_millis) / 1000.0)
-        {
+            && matches!(
+                o.protection_action,
+                HistoricalProtectionActionV1::Applied
+                    | HistoricalProtectionActionV1::RetainedUnavailable
+                    | HistoricalProtectionActionV1::Suppressed
+            );
+        if opportunity {
             counts.gate_opportunities += 1;
         }
-        if o.protection_action == HistoricalProtectionActionV1::Suppressed {
+        if opportunity && o.protection_action == HistoricalProtectionActionV1::Suppressed {
             counts.suppressed += 1;
         }
     }

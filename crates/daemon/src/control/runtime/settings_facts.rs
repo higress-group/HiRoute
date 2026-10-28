@@ -16,6 +16,9 @@ use hiroute_application_api::{
     AgentSettingsFacet, AgentSettingsSpecV2,
 };
 use hiroute_cpa_bridge::BorrowedCodexAuthSpec;
+use hiroute_diagnostics::agent_read::{
+    AgentReadCategory as Category, AgentReadStage as Stage, Timer,
+};
 use hiroute_domain::{
     AgentAccessGrantRefV1, AgentCapabilitySet, AgentFixedModelSelectionV2, AgentModelRouteV2,
     CandidateSelectionV1, CanonicalDigest, ComputeManagementRepositoryPort,
@@ -115,6 +118,16 @@ impl LocalControlAdapter {
         &self,
         spec: &AgentSettingsSpecV2,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
+        match self.capture_settings_facts_once(spec) {
+            Err(ControlReadError::SnapshotChanged) => self.capture_settings_facts_once(spec),
+            result => result,
+        }
+    }
+
+    fn capture_settings_facts_once(
+        &self,
+        spec: &AgentSettingsSpecV2,
+    ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         let class = self
             .settings_agent_for_context(&spec.context_id)
             .ok_or(ControlReadError::NotFound)?;
@@ -182,6 +195,8 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
+        let diagnostics = self.agent_read_diagnostics();
+        let _total = Timer::start(&diagnostics, Category::SettingsPlanning, Stage::Total);
         if matches!(
             class,
             SettingsAgentClass::Qoder
@@ -348,53 +363,11 @@ impl LocalControlAdapter {
             .map_err(|_| ControlReadError::Unavailable)?
             .clone()
             .ok_or(ControlReadError::Unavailable)?;
+        let waiting = Timer::start(&diagnostics, Category::SettingsPlanning, Stage::LockWait);
         let stores = self.stores_lock().map_err(super::map_port)?;
+        drop(waiting);
+        let held = Timer::start(&diagnostics, Category::SettingsPlanning, Stage::LockHeld);
         let workspace = WorkspaceId::default();
-        let expected_revisions = stores
-            .control()
-            .current_revisions(&workspace)
-            .map_err(super::map_port)?;
-        let publication = stores
-            .control()
-            .active_publication(&workspace)
-            .map_err(super::map_port)?;
-        if publication.is_none() && !matches!(spec.model, AgentFacetIntent::Keep) {
-            // Model grants and their file effects are always coupled to an exact publication.
-            // Only the independent collaboration facet is valid before the first publication.
-            return Err(ControlReadError::NotFound);
-        }
-        let active = publication
-            .as_ref()
-            .map(|record| record.verify().map_err(|_| ControlReadError::Corrupt))
-            .transpose()?;
-        let current_grant = stores
-            .secrets()
-            .inspect_agent_access_grant(
-                WorkspaceId::DEFAULT,
-                &format!("agent-connection/{}", spec.context_id),
-            )
-            .map_err(super::map_port)?;
-        let token_input_fingerprint = match &spec.access_token {
-            AgentAccessTokenIntentV1::Keep => None,
-            AgentAccessTokenIntentV1::Regenerate if current_grant.is_some() => None,
-            AgentAccessTokenIntentV1::Set { input_slot } if current_grant.is_some() => {
-                let inputs = self
-                    .agent_token_inputs
-                    .lock()
-                    .map_err(|_| ControlReadError::Unavailable)?;
-                let secret = inputs.get(input_slot).ok_or(ControlReadError::NotFound)?;
-                if !hiroute_domain::valid_user_agent_token(secret.expose()) {
-                    return Err(ControlReadError::Denied);
-                }
-                Some(
-                    stores
-                        .secrets()
-                        .fingerprint(secret)
-                        .map_err(super::map_port)?,
-                )
-            }
-            _ => return Err(ControlReadError::Denied),
-        };
         // New settings saves do not manage startup. Keep the preview field for V2 clients;
         // only an older, journal-owned login item may require cleanup on final restore.
         let other_context = match class {
@@ -411,34 +384,116 @@ impl LocalControlAdapter {
                 return Err(ControlReadError::Denied);
             }
         };
-        let other_grant = stores
-            .secrets()
-            .inspect_agent_access_grant(
-                WorkspaceId::DEFAULT,
-                &format!("agent-connection/{}", self.settings_context(other_context)),
-            )
-            .map_err(super::map_port)?;
+        let connection_id = format!("agent-connection/{}", spec.context_id);
+        let other_connection_id =
+            format!("agent-connection/{}", self.settings_context(other_context));
         let login_item_required = false;
         // Releasing the last managed connection also releases the login item this feature
         // owns. Ownership is proven only by journaled evidence — the newest login-item
         // declaration across succeeded settings operations: an establishment this feature
         // created owns the item, a removal releases it, and a pre-existing user item
         // (established without creation) is never owned and never removed.
-        let login_item_removal_required = !runtime.resident_service_ready
-            && current_grant.is_some()
-            && other_grant.is_none()
-            && matches!(spec.model, AgentFacetIntent::Restore { .. })
-            && login_item_owned_by_this_feature(&stores, &workspace)?;
-        let expected_grant_generation = stores
-            .secrets()
-            .agent_access_grant_generation(
-                WorkspaceId::DEFAULT,
-                &format!("agent-connection/{}", spec.context_id),
-            )
+        let copy = Timer::start(
+            &diagnostics,
+            Category::SettingsPlanning,
+            Stage::SnapshotCopy,
+        );
+        let (
+            (
+                expected_revisions,
+                captured_publication,
+                current_grant,
+                other_grant,
+                token_input_fingerprint,
+                expected_grant_generation,
+                skill_before,
+                resident,
+            ),
+            stamp,
+        ) = stores
+            .capture_agent_read(true, |control, secret| {
+                let unavailable =
+                    || PortError::new(PortErrorCode::Unavailable, "agent.settings.read");
+                let denied =
+                    || PortError::new(PortErrorCode::PermissionDenied, "agent.settings.input");
+                let secret = secret.ok_or_else(unavailable)?;
+                let revisions = control.current_revisions(&workspace)?;
+                let publication = control.capture_active_publication(&workspace)?;
+                let mut auth = Timer::start(
+                    &diagnostics,
+                    Category::SettingsPlanning,
+                    Stage::GrantAuthentication,
+                );
+                auth.counts.grant_authentications = 1;
+                let current =
+                    secret.inspect_agent_access_grant(workspace.as_str(), &connection_id)?;
+                drop(auth);
+                let mut auth = Timer::start(
+                    &diagnostics,
+                    Category::SettingsPlanning,
+                    Stage::GrantAuthentication,
+                );
+                auth.counts.grant_authentications = 1;
+                let other =
+                    secret.inspect_agent_access_grant(workspace.as_str(), &other_connection_id)?;
+                drop(auth);
+                let token = match &spec.access_token {
+                    AgentAccessTokenIntentV1::Keep => None,
+                    AgentAccessTokenIntentV1::Regenerate if current.is_some() => None,
+                    AgentAccessTokenIntentV1::Set { input_slot } if current.is_some() => {
+                        let inputs = self.agent_token_inputs.lock().map_err(|_| unavailable())?;
+                        let input = inputs.get(input_slot).ok_or_else(|| {
+                            PortError::new(PortErrorCode::NotFound, "agent.settings.input")
+                        })?;
+                        if !hiroute_domain::valid_user_agent_token(input.expose()) {
+                            return Err(denied());
+                        }
+                        Some(secret.fingerprint(input)?)
+                    }
+                    _ => return Err(denied()),
+                };
+                let generation =
+                    secret.agent_access_grant_generation(workspace.as_str(), &connection_id)?;
+                let skill = control.skill_installation(&workspace, class.skill_root_ref())?;
+                let resident = if !runtime.resident_service_ready
+                    && current.is_some()
+                    && other.is_none()
+                    && matches!(spec.model, AgentFacetIntent::Restore { .. })
+                {
+                    let mut locator =
+                        Timer::start(&diagnostics, Category::ResidentService, Stage::Locator);
+                    let capture = control.capture_agent_locator(
+                        &workspace,
+                        hiroute_local_storage::AgentLocatorScope::ResidentService,
+                    )?;
+                    super::agent_read_diagnostics::count_locator(&mut locator, &capture);
+                    Some(capture)
+                } else {
+                    None
+                };
+                Ok((
+                    revisions,
+                    publication,
+                    current,
+                    other,
+                    token,
+                    generation,
+                    skill,
+                    resident,
+                ))
+            })
             .map_err(super::map_port)?;
-        let skill_before = stores
-            .control()
-            .skill_installation(&workspace, class.skill_root_ref())
+        drop(copy);
+        if captured_publication.is_none() && !matches!(spec.model, AgentFacetIntent::Keep) {
+            return Err(ControlReadError::NotFound);
+        }
+        let publication_identity = captured_publication
+            .as_ref()
+            .map(|record| record.identity());
+        let resident_witness = resident
+            .as_ref()
+            .map(|capture| capture.witness())
+            .transpose()
             .map_err(super::map_port)?;
 
         let mut restore_points = BTreeMap::new();
@@ -555,7 +610,23 @@ impl LocalControlAdapter {
                 );
             }
         }
+        drop(held);
         drop(stores);
+        let publication = captured_publication
+            .map(|record| record.verify())
+            .transpose()
+            .map_err(super::map_port)?;
+        let active = publication
+            .as_ref()
+            .map(|record| record.verify().map_err(|_| ControlReadError::Corrupt))
+            .transpose()?;
+        let login_item_removal_required = match resident {
+            Some(capture) => {
+                let _verify = Timer::start(&diagnostics, Category::ResidentService, Stage::Verify);
+                login_item_owned_by_this_feature(capture)?
+            }
+            None => false,
+        };
         let (restore_native_model_ids, restored_native_model) = if class
             == SettingsAgentClass::Codex
             && matches!(&spec.model, AgentFacetIntent::Restore { .. })
@@ -869,6 +940,53 @@ impl LocalControlAdapter {
                 .scanner
                 .claude_context_override()
                 .map_err(|_| ControlReadError::Unavailable)?;
+        {
+            let waiting = Timer::start(&diagnostics, Category::SettingsPlanning, Stage::LockWait);
+            let stores = self.stores_lock().map_err(super::map_port)?;
+            drop(waiting);
+            let _held = Timer::start(&diagnostics, Category::SettingsPlanning, Stage::LockHeld);
+            let _fence = Timer::start(&diagnostics, Category::SettingsPlanning, Stage::Fence);
+            stores
+                .fence_agent_read(&stamp, |control, secret| {
+                    let changed =
+                        || PortError::new(PortErrorCode::Conflict, "agent.settings.read-fence");
+                    let secret = secret.ok_or_else(changed)?;
+                    if control.current_revisions(&workspace)? != expected_revisions
+                        || control.active_publication_identity(&workspace)? != publication_identity
+                        || control.skill_installation(&workspace, class.skill_root_ref())?
+                            != skill_before
+                        || !secret.current_agent_grant_matches(
+                            workspace.as_str(),
+                            &connection_id,
+                            current_grant.as_ref(),
+                        )?
+                        || !secret.current_agent_grant_matches(
+                            workspace.as_str(),
+                            &other_connection_id,
+                            other_grant.as_ref(),
+                        )?
+                        || secret
+                            .agent_access_grant_generation(workspace.as_str(), &connection_id)?
+                            != expected_grant_generation
+                    {
+                        return Err(changed());
+                    }
+                    if let Some(witness) = &resident_witness
+                        && !witness.matches_current(control)?
+                    {
+                        return Err(changed());
+                    }
+                    if let AgentAccessTokenIntentV1::Set { input_slot } = &spec.access_token {
+                        let inputs = self.agent_token_inputs.lock().map_err(|_| changed())?;
+                        let input = inputs.get(input_slot).ok_or_else(changed)?;
+                        if Some(secret.fingerprint(input)?) != token_input_fingerprint {
+                            return Err(changed());
+                        }
+                    }
+                    Ok(())
+                })
+                .map_err(super::map_port)?;
+        }
         let dependency_digest = CanonicalDigest::of(&serde_json::json!({
             "codex_profile_dependencies": self.codex_profile_dependencies(class, spec, active_configuration.as_ref())?,
             "claude_context_override": claude_context_override,
@@ -1021,28 +1139,27 @@ impl LocalControlAdapter {
 /// item: an establishment this feature created owns it, a removal releases it, and a
 /// pre-existing user item is never owned. Succeeded operations are visited newest first.
 fn login_item_owned_by_this_feature(
-    stores: &hiroute_local_storage::LocalStorageSet,
-    workspace: &WorkspaceId,
+    capture: hiroute_local_storage::CapturedAgentLocator,
 ) -> Result<bool, ControlReadError> {
-    let original = stores
-        .control()
-        .find_verified_agent_operation(
-            workspace,
-            &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
-            |operation| Ok(operation.plan.external().iter().any(is_settings_login_item)),
-        )
-        .map_err(super::map_port)?;
-    if let Some(original) = original
-        && let Some(intent) = original
-            .plan
-            .external()
-            .iter()
-            .find(|intent| is_settings_login_item(intent))
-    {
-        let payload = decode_settings_login_item(intent).map_err(super::map_port)?;
-        return Ok(payload.created());
+    match capture {
+        hiroute_local_storage::CapturedAgentLocator::Found(found) => {
+            let original = found.verify().map_err(super::map_port)?;
+            let intent = original
+                .plan
+                .external()
+                .iter()
+                .find(|intent| is_settings_login_item(intent))
+                .ok_or(ControlReadError::Corrupt)?;
+            Ok(decode_settings_login_item(intent)
+                .map_err(super::map_port)?
+                .created())
+        }
+        hiroute_local_storage::CapturedAgentLocator::Pending(pending, _) => {
+            pending.verify().map_err(super::map_port)?;
+            Err(ControlReadError::SnapshotChanged)
+        }
+        hiroute_local_storage::CapturedAgentLocator::AbsentWithCompleteCoverage(_) => Ok(false),
     }
-    Ok(false)
 }
 
 fn collaboration_template(

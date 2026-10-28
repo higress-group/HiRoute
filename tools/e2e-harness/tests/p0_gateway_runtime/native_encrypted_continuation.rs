@@ -19,12 +19,17 @@ const SESSION: &str = "native-encrypted-retry";
 
 #[test]
 fn real_listener_encrypted_tool_retry_preserves_complete_stage_with_native_window() {
-    assert_encrypted_tool_retry(true);
+    assert_encrypted_tool_retry(true, false);
 }
 
 #[test]
 fn real_listener_encrypted_tool_retry_preserves_complete_stage_without_origin_proof() {
-    assert_encrypted_tool_retry(false);
+    assert_encrypted_tool_retry(false, false);
+}
+
+#[test]
+fn real_listener_final_phase_correction_preserves_tool_stage_and_assessment_members() {
+    assert_encrypted_tool_retry(true, true);
 }
 
 fn reply(body: &'static [u8]) -> ProviderReply {
@@ -47,6 +52,10 @@ fn edit(id: &str, justification: &str) -> Value {
 }
 
 pub(super) fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
+    streamed_phases(id, output, false)
+}
+
+fn streamed_phases(id: &str, output: Vec<Value>, correct_phase: bool) -> ProviderReply {
     let mut events = vec![json!({"type":"response.created","response":{
         "id":id,"model":"runtime-native","status":"in_progress","output":[]}})];
     for (index, item) in output.iter().enumerate() {
@@ -59,6 +68,11 @@ pub(super) fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
             }
             "message" => {
                 start["content"] = json!([]);
+                if correct_phase && item["phase"] == "commentary" {
+                    // Derived provider-shaped regression: the done item remains
+                    // authoritative and every item ID/body/tool byte is unchanged.
+                    start["phase"] = json!("final_answer");
+                }
             }
             "function_call" => {
                 start["arguments"] = json!("");
@@ -364,16 +378,17 @@ fn assert_observed_retention(fixture: &RuntimeFixture, decisions: &[&Value], opa
         && row["phase"] == "finish"));
 }
 
-fn assert_encrypted_tool_retry(proved: bool) {
+fn assert_encrypted_tool_retry(proved: bool, correct_phase: bool) {
     let opaque = "synthetic-opaque-state-".repeat(121);
     let regular = NativeProvider::start(vec![
-        streamed(
+        streamed_phases(
             "a-edit-error",
             vec![
                 json!({"type":"reasoning","id":"rs-a","status":"completed","summary":[],"encrypted_content":opaque}),
                 message("a-commentary", "commentary", COMMENTARY),
                 edit("edit-invalid", ""),
             ],
+            correct_phase,
         ),
         streamed(
             "a-edit-retry",

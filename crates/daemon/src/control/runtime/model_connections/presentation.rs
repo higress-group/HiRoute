@@ -1,5 +1,9 @@
 //! Safe catalog and price facts captured before the management storage lock.
 
+#[cfg(test)]
+#[path = "presentation_price_tests.rs"]
+mod price_tests;
+
 use super::LocalControlAdapter;
 use hiroute_application::compute_management::{
     ComputeCandidateCapabilityFactsV2, ComputeCandidateFactBasisV2, ComputeCandidateFactValueV2,
@@ -77,6 +81,31 @@ impl LocalControlAdapter {
                 Reason::RuntimeUnavailable
             }
         }
+    }
+
+    /// The narrow trial read uses the same retained-validation and exact catalog identity
+    /// admission as management, without running management's price or connector discovery.
+    pub(in crate::control::runtime) fn trial_subscription_identity_is_trusted(
+        &self,
+        catalog: &TrustedReleaseCatalog,
+        source: &ComputeManagementSourceV2,
+    ) -> bool {
+        let ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } = &source.provenance
+        else {
+            return false;
+        };
+        let Some(kind) = CpaAccountKind::from_connector(connector_id) else {
+            return false;
+        };
+        let Some(checked) = self
+            .retained_subscription_candidate_for_source(source)
+            .ok()
+            .flatten()
+        else {
+            return false;
+        };
+        crate::control::runtime::subscriptions::target::logical_target(catalog, kind)
+            .is_ok_and(|target| trusted_subscription(catalog, source, &checked, &target, kind))
     }
 
     pub(super) fn compute_management_presentation_facts(
@@ -254,8 +283,15 @@ impl LocalControlAdapter {
                             PriceBillingContextV1::StandardTokens,
                         )
                         .ok()?;
-                    matches!(quote.rates.input_uncached, TokenRateV1::Known { .. }).then_some(())?;
-                    matches!(quote.rates.output, TokenRateV1::Known { .. }).then_some(())?;
+                    // An existing source-specific setting identifies an editable target even
+                    // when its current catalog quote has unknown rates. Entries without one
+                    // still need known rates so generated currencies do not become edit targets.
+                    if entry.source_override.is_none()
+                        && (!matches!(quote.rates.input_uncached, TokenRateV1::Known { .. })
+                            || !matches!(quote.rates.output, TokenRateV1::Known { .. }))
+                    {
+                        return None;
+                    }
                     Some(ComputePriceContextV1 {
                         currency: entry.target.currency.clone(),
                         valuation_kind: entry.target.valuation_kind,

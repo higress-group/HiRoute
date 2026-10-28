@@ -16,6 +16,8 @@ use super::{
     synthetic_responses_item_id,
 };
 
+#[path = "client_message_phase.rs"]
+mod message_phase;
 #[path = "client_projection.rs"]
 mod projection;
 #[cfg(test)]
@@ -228,7 +230,9 @@ impl IncrementalClientSseRenderer {
                 text,
                 annotations,
                 status,
+                final_phase,
             } => {
+                self.finalize_message_phase(*index, final_phase)?;
                 let item_id = self.item_id(*index)?.to_owned();
                 let part = json!({"type":"output_text","text":text,"annotations":annotations});
                 self.named(&mut output, "response.output_text.done", json!({"type":"response.output_text.done","sequence_number":self.native_sequence,"item_id":item_id,"output_index":index,"content_index":0,"text":text}));
@@ -258,7 +262,9 @@ impl IncrementalClientSseRenderer {
                 index,
                 text,
                 status,
+                final_phase,
             } => {
+                self.finalize_message_phase(*index, final_phase)?;
                 let item_id = self.item_id(*index)?.to_owned();
                 let part = json!({"type":"refusal","refusal":text});
                 self.named(&mut output, "response.refusal.done", json!({"type":"response.refusal.done","sequence_number":self.native_sequence,"item_id":item_id,"output_index":index,"content_index":0,"refusal":text}));
@@ -712,6 +718,7 @@ impl IncrementalClientSseRenderer {
     }
 
     fn validate_event_capability(&self, event: &ModelEvent) -> Result<(), ProtocolAdapterError> {
+        self.validate_final_message_phase(event)?;
         if self.profile.protocol != IngressProtocol::Responses
             && matches!(event,
             ModelEvent::ToolCallFinished { encrypted_function_args: Some(paths), .. } if !paths.is_empty())

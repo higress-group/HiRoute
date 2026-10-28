@@ -18,6 +18,12 @@ Agents become unverified and are read when selected. An inactive page defers glo
 refresh invalidations until activation; background summaries do not scan during
 save confirmation.
 
+Home uses the recorded-only [summary](../../product/home-projections.ts) and
+never treats it as native or model verification. The visible routing editor reads
+model associations separately; a failed or incomplete read remains unknown rather
+than claiming that no Agent uses a route. Full Agent details continue to own their
+verified settings and actions.
+
 | Entry | Responsibility |
 | --- | --- |
 | [types.ts](types.ts) | WebView projections and current serialized model choices. These describe the existing native/API contract, not a second capability authority. |

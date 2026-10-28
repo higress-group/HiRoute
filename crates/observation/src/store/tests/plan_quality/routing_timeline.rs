@@ -30,6 +30,7 @@ fn known_native_auxiliary_keeps_receipts_without_manufacturing_a_user_turn() {
         ));
     }
     let query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: main.session.to_string(),
         after_watermark: None,
         limit: 100,
@@ -98,6 +99,7 @@ fn native_timeline_identity_uses_the_executed_candidate_not_the_last_evaluated_o
             ));
         }
         let query = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: fixture.session.to_string(),
             after_watermark: None,
             limit: 100,
@@ -248,6 +250,7 @@ fn timeline_pages_replay_late_scores_without_losing_or_repeating_changes() {
         ));
     }
     let mut query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 1,
@@ -350,6 +353,7 @@ fn timeline_refuses_oversized_stored_fact_before_deserializing_it() {
         store.observed_routing_timeline(
             &reader(),
             &RoutingTimelineQueryV1 {
+                include_presentation: false,
                 session_id: fixture.session.to_string(),
                 after_watermark: None,
                 limit: 100,
@@ -368,6 +372,7 @@ fn timeline_incremental_pending_and_late_range_match_cold_projection() {
     let channel = fact_channel(&first, 256 * 1024);
     let writer = writer(&store);
     let mut query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 200,
@@ -523,6 +528,7 @@ fn timeline_long_session_read_cost() {
         )
         .unwrap();
         let mut q = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: first.session.to_string(),
             after_watermark: None,
             limit: 200,
@@ -686,6 +692,7 @@ fn timeline_other_session_changes_advance_scan_without_reading_this_session() {
         WriterCycleOutcome::Ack(_)
     ));
     let mut q = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: f.session.to_string(),
         after_watermark: None,
         limit: 50,

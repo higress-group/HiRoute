@@ -56,6 +56,9 @@ For an otherwise eligible historical low-score protection opportunity, applicabi
 at least 0.5 retains protection and a lower value suppresses it. Unavailable answers
 retain protection conservatively. Attribution, version, category, score/rubric
 validity, same-turn inheritance and availability relay retain their existing rules.
+This check is independent of valid current difficulty. Releasing the historical
+constraint returns to the difficulty-based group, which remains Primary for complex
+work. The preceding actual stage may already have used Primary; no third group exists.
 
 The connection page retains one connectivity test with the existing contract and a
 current-default synthetic example. There is no route-editor test. CLI and
@@ -72,6 +75,8 @@ coverage gaps: counts stay visible, while exact rates are
 unavailable. Content-only deletion keeps safe evidence; full fact deletion/expiry
 removes it. Every scope records its authored default/custom assessment intent before sealing. Rates describe
 routing behavior and do not claim accuracy or quality improvement.
+Opportunities count recorded protection actions under the rule in effect at the time;
+retained scopes can mix rules, so their rates do not compare one uniform policy.
 
 The CLI keeps `decision services list/apply/test` and the existing routing preview/apply workflow.
 Editor data uses `smart.judgment`, or `branch_routing.judgment` with branch `primary_candidates` and optional

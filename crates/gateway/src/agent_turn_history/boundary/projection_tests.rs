@@ -16,6 +16,7 @@ fn accepted(reasoning: &str, visible: bool) -> BoundaryCapture {
             text: "READY".into(),
             annotations: vec![],
             status: ResponseItemStatus::Completed,
+            final_phase: None,
         });
     }
     capture
@@ -208,6 +209,7 @@ fn finish_output(
                     text: answer.into(),
                     annotations: vec![],
                     status: ResponseItemStatus::Completed,
+                    final_phase: None,
                 },
             ),
         ],

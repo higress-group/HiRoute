@@ -57,6 +57,10 @@ struct Request {
     run_id: Option<String>,
     decision: Option<RouteDecisionFactV1>,
     candidate: Option<(String, Option<String>)>,
+    identities: std::collections::BTreeSet<(String, String)>,
+    identity_gap: bool,
+    request_finished: bool,
+    stage_finished: bool,
     models: BTreeMap<u32, String>,
     credentials: BTreeMap<u32, (String, String)>,
     partial: bool,
@@ -109,9 +113,18 @@ impl crate::LocalObservationStore {
         connection.pragma_update(None, "cache_size", -16_384)?;
         let tx = connection.transaction()?;
         let visibility: u64 = tx.query_row("SELECT CAST(value AS INTEGER) FROM observation_meta WHERE key='query_visibility_generation'", [], |r| r.get(0))?;
-        let binding = CanonicalDigest::of(&(reader.binding()?, &query.session_id, query.limit))
-            .map_err(|_| ObservationV2Error::Invalid)?
-            .to_string();
+        let binding = if query.include_presentation {
+            CanonicalDigest::of(&(
+                reader.binding()?,
+                &query.session_id,
+                query.limit,
+                "presentation/v1",
+            ))
+        } else {
+            CanonicalDigest::of(&(reader.binding()?, &query.session_id, query.limit))
+        }
+        .map_err(|_| ObservationV2Error::Invalid)?
+        .to_string();
         let mut cursor = match &query.after_watermark {
             Some(value) => {
                 let cursor: Cursor = self.decode_observation_cursor(value)?;
@@ -168,14 +181,7 @@ impl crate::LocalObservationStore {
             } else {
                 None
             };
-            state.refresh(
-                &tx,
-                reader,
-                &query.session_id,
-                target,
-                now_ms,
-                changed.as_ref(),
-            )?;
+            state.refresh(&tx, reader, query, target, now_ms, changed.as_ref())?;
         }
         state.visibility = visibility;
         cursor.expires_at = state.expires_at;
@@ -204,7 +210,16 @@ impl crate::LocalObservationStore {
             cursor.snapshot = Some(target);
             cursor.after = Some((last.view.started_at_ms, last.view.turn_id.clone()));
         }
-        let turns = changed.into_iter().map(|turn| turn.view.clone()).collect();
+        let turns = changed
+            .into_iter()
+            .map(|turn| {
+                let mut view = turn.view.clone();
+                if !query.include_presentation {
+                    view.presentation = None;
+                }
+                view
+            })
+            .collect();
         let result = RoutingTimelinePageV1 {
             turns,
             watermark: self.encode_observation_cursor(&cursor)?,
@@ -250,6 +265,7 @@ mod tests {
                     )
                     .unwrap();
                     let query = RoutingTimelineQueryV1 {
+                        include_presentation: false,
                         session_id: id.into(),
                         after_watermark: None,
                         limit: 50,
@@ -309,6 +325,7 @@ mod tests {
         .unwrap()
         .with_query_deadline(std::time::Instant::now() - std::time::Duration::from_millis(1));
         let query = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: "session/test".into(),
             after_watermark: None,
             limit: 50,
@@ -349,6 +366,7 @@ mod tests {
         )
         .unwrap();
         let query = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: "session/test".into(),
             after_watermark: None,
             limit: 50,
@@ -385,6 +403,7 @@ mod tests {
         )
         .unwrap();
         let mut query = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: "session/test".into(),
             after_watermark: None,
             limit: 50,

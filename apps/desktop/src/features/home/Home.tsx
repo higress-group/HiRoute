@@ -20,6 +20,7 @@ export function Home({ language, reads, onAction, hasTasks = false, trustSuggest
   const activityPending = !activity && reads.activity.status === 'loading';
   const activityUnavailable = !activity && reads.activity.status === 'error';
   const done = [Boolean(compute?.sources.length), Boolean(plans?.plans.some(p => p.publication === 'published')), Boolean(agents?.agents.some(a => ['configured', 'verified'].includes(a.model) || ['configured', 'verified'].includes(a.collaboration)))];
+  const savedAgent = Boolean(agents?.agents.some(a => a.model === 'recorded' || a.collaboration === 'recorded'));
   const complete = done.every(Boolean);
   const errors = (Object.keys(reads) as (keyof HomeReads)[]).filter(k => reads[k].status === 'error');
   const unresolvedRequiredRead = (['compute', 'plans', 'agents', 'activity'] as const).some(domain => {
@@ -37,7 +38,7 @@ export function Home({ language, reads, onAction, hasTasks = false, trustSuggest
   const steps = [
     [text('添加模型', 'Add models'), text('连接 API，或复用本机订阅', 'Connect an API or reuse a local subscription')],
     [text('创建智能路由', 'Create routing'), text('决定怎样选模型，以及由哪个 Agent 执行任务', 'Choose models and an optional task executor')],
-    [text('接入 Agent', 'Connect an agent'), text('选择默认路由或启用 Agent 路由，两者可独立使用', 'Choose a default route or enable Agent routing independently')],
+    [text('接入 Agent', 'Connect an agent'), savedAgent ? text('已保存设置，使用前检查', 'Settings saved; checked before use') : text('选择默认路由或启用 Agent 路由，两者可独立使用', 'Choose a default route or enable Agent routing independently')],
   ];
   const timeLabel = (milliseconds: number | undefined, fallback: string) => {
     if (milliseconds === undefined) return fallback;
@@ -56,7 +57,7 @@ export function Home({ language, reads, onAction, hasTasks = false, trustSuggest
   return <ProductPage title={text('首页', 'Home')} subtitle={recent.length ? text('近期使用与需要你处理的事', 'Recent work and things that need your attention') : undefined}>
     <div className="home-wrap v3-home" data-home-mode={mode}>
       {!!errors.length && <div className="callout bad home-read-error" role="alert"><UiIcon name="warning" /><div><strong>{text('部分信息暂时无法读取', 'Some information is temporarily unavailable')}</strong><p>{errors.map(domain => reads[domain]).map(read => read.status === 'error' ? nativeConnectionReadText(read.code, language) : undefined).find(Boolean) ?? text('已有数据会保留；首次读取完成前不会把当前状态当作首次使用。', 'Existing data is retained. The app will not treat this as first use until the initial reads finish.')}</p><div className="actions">{errors.map(domain => <button className="btn btn-quiet" key={domain} type="button" onClick={() => onAction({kind:'retry-read', domain})}>{text('重试', 'Retry')} {domainLabels[domain]}</button>)}</div></div></div>}
-      {unresolvedRequiredRead && !recent.length ? <section className="surface v3-ready"><UiIcon name="warning" /><div><strong>{text('暂时无法确认当前配置', 'Current setup cannot be confirmed')}</strong><p>{text('请先重试上方读取；确认实际状态后再继续配置。', 'Retry the reads above before changing setup.')}</p></div></section> : mode === 'loading' && !recent.length ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><span>{text('正在读取本机配置与记录…', 'Reading local configuration and records…')}</span></div> : activityPending && !recent.length ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><span>{text('正在确认会话记录…', 'Checking session records…')}</span></div> : !recent.length ? <>
+      {(unresolvedRequiredRead || mode === 'unavailable') && !recent.length ? <section className="surface v3-ready"><UiIcon name="warning" /><div><strong>{text('暂时无法确认当前配置', 'Current setup cannot be confirmed')}</strong><p>{text('请重试读取；确认实际状态后再继续配置。', 'Retry the read before changing setup.')}</p>{mode === 'unavailable' && <button className="btn btn-quiet" type="button" onClick={() => onAction({kind:'retry-read', domain:'agents'})}>{text('重试 Agent', 'Retry agents')}</button>}</div></section> : mode === 'loading' && !recent.length ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><span>{text('正在读取本机配置与记录…', 'Reading local configuration and records…')}</span></div> : activityPending && !recent.length ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><span>{text('正在确认会话记录…', 'Checking session records…')}</span></div> : !recent.length ? <>
         <section className="v3-welcome"><div className="eyebrow"><UiIcon name="route" />{text('模型与 Agent 的智能路由', 'Smart routing for models and agents')}</div>
           <h1>{complete ? text('准备好了，回到你常用的 Agent', 'Ready. Open your usual agent.') : text('让合适的模型和 Agent\n处理合适的任务', 'The right models and agents\nfor each task')}</h1>
           <p>{complete ? text('从 Codex 或 Claude Code 开始一次任务。实际使用后，会话与路由结果会出现在这里。', 'Start a task in Codex or Claude Code. Sessions and routing results will appear here.') : text('连接已有订阅或 API，配置一次，在原来的 Agent 中继续工作。', 'Connect subscriptions or APIs. Configure once and keep working in your usual agent.')}</p>

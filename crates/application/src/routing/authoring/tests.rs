@@ -271,25 +271,38 @@ fn consumed_draft_binds_identity_and_revision_but_publishes_the_submitted_editor
 
 #[test]
 fn complete_content_operation_binds_the_version_head_and_publication() {
-    assert_complete_content_operation(false, None);
+    assert_complete_content_operation(false, None, false);
 }
 
 #[test]
 fn retained_native_operation_uses_frozen_semantics_and_still_rejects_tampering() {
-    assert_complete_content_operation(true, None);
+    assert_complete_content_operation(true, None, false);
+}
+
+#[test]
+fn retained_v1_native_operation_reconstructs_its_sealed_publication() {
+    assert_complete_content_operation(false, None, true);
+}
+
+pub(crate) fn retained_v1_operation_plan() -> TransactionPlanV1 {
+    assert_complete_content_operation(false, None, true)
 }
 
 #[test]
 fn current_custom_operations_preserve_parked_source_and_reject_sealed_input_tampering() {
     for mode in [PlanEditorMode::SmartSaving, PlanEditorMode::CustomBranches] {
-        assert_complete_content_operation(false, Some(mode));
+        assert_complete_content_operation(false, Some(mode), false);
     }
 }
 
-fn assert_complete_content_operation(legacy_native: bool, custom_mode: Option<PlanEditorMode>) {
+fn assert_complete_content_operation(
+    legacy_native: bool,
+    custom_mode: Option<PlanEditorMode>,
+    sealed_v1: bool,
+) -> TransactionPlanV1 {
     let mut change = change();
     let mut state = state();
-    if legacy_native {
+    if legacy_native || sealed_v1 {
         let service = DecisionServiceV1 {
             id: "decision/retained-operation".into(),
             revision: 1,
@@ -416,6 +429,44 @@ fn assert_complete_content_operation(legacy_native: bool, custom_mode: Option<Pl
                 .is_none()
         );
     }
+    if sealed_v1 {
+        let baseline: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../domain/src/routing/fixtures/baseline-c-default-publication.json"
+        ))
+        .unwrap();
+        let mut configuration = preview.plan_version.configuration.clone();
+        let AgentPlanStrategyV2::SmartSaving {
+            native_protocol,
+            judgment,
+            ..
+        } = &mut configuration.strategy
+        else {
+            unreachable!()
+        };
+        *native_protocol = Some(NativeProtocolSelectionV1 {
+            schema: SYSTEM_ONE_C_V1.into(),
+            prior_context_max_turns: 8,
+        });
+        *judgment = serde_json::from_value(baseline["judgment"].clone()).unwrap();
+        let compiled = crate::compiler::compile_agent_plan_v2(
+            preview.plan_version.compiled.body.identity.clone(),
+            preview.plan_version.reference.content_revision,
+            &configuration,
+            &state.facts,
+        )
+        .unwrap();
+        let RequestOwnedRouteV1::Classified {
+            native_protocol: Some(frozen),
+            ..
+        } = &compiled.body.materialized.request_owned
+        else {
+            panic!("sealed v1 protocol missing")
+        };
+        assert_eq!(serde_json::to_value(frozen).unwrap(), baseline["frozen"]);
+        preview.plan_version =
+            PlanVersionV1::new(state.workspace.clone(), configuration, compiled).unwrap();
+        preview.plan_head.reference = preview.plan_version.reference.clone();
+    }
     let mut aliases = state.aliases.clone();
     aliases
         .allocate_custom(
@@ -475,6 +526,26 @@ fn assert_complete_content_operation(legacy_native: bool, custom_mode: Option<Pl
     )
     .unwrap();
     assert_eq!(roundtrip.plan_content_control().unwrap().unwrap(), content);
+    if sealed_v1 {
+        let stored = StoredOperationInputV1::freeze(&plan).unwrap();
+        let bytes = serde_json::to_vec(&stored).unwrap();
+        let reopened: StoredOperationInputV1 = serde_json::from_slice(&bytes).unwrap();
+        let rebuilt = reopened.build().unwrap();
+        assert_eq!(rebuilt, plan);
+        assert_eq!(serde_json::to_vec(&reopened).unwrap(), bytes);
+        assert_eq!(
+            rebuilt
+                .plan_content_control()
+                .unwrap()
+                .unwrap()
+                .plan_version
+                .configuration
+                .native_protocol()
+                .unwrap()
+                .schema,
+            SYSTEM_ONE_C_V1
+        );
+    }
     // Alter both envelope copies and the change digest consistently: rejection must
     // still come from the editor-to-sealed-configuration check.
     let mut tampered = plan.spec().clone();
@@ -510,6 +581,7 @@ fn assert_complete_content_operation(legacy_native: bool, custom_mode: Option<Pl
         )
         .is_err()
     );
+    plan
 }
 
 #[test]
@@ -606,11 +678,14 @@ fn ordinary_preview_resolves_defaults_and_seals_concrete_contents_without_review
         panic!("native execution missing")
     };
     assert_eq!(frozen.scopes[SMART_SAVING_SCOPE_ID].standard, "default");
+    let protocol = NativeProtocolV1::default();
+    let mut current = JudgmentSettingsV1::default();
+    protocol.current_assessment(&mut current);
     assert_eq!(
         frozen.scopes[SMART_SAVING_SCOPE_ID].assessment,
-        stock_c_questions()["q1"]
+        composed_assessment(Some(&protocol), &current)
     );
-    assert_eq!(frozen.protocol.fixed, NativeFixedContentV1::c_v1());
+    assert_eq!(frozen.protocol.fixed, NativeFixedContentV1::c_v2());
     let reopened = enabled.plan_version.configuration.editor(None).unwrap();
     change.editor = reopened;
     let off = preview_plan_content(&change, &state).unwrap();
@@ -619,11 +694,7 @@ fn ordinary_preview_resolves_defaults_and_seals_concrete_contents_without_review
         off.plan_version.configuration.assessment_scopes()[SMART_SAVING_SCOPE_ID]
             .competence
             .instructions,
-        stock_c_questions()["q1"]["instructions"]
-            .as_str()
-            .unwrap()
-            .strip_prefix(&(NativeFixedContentV1::c_v1().assessment_wrapper + " "))
-            .unwrap()
+        current.competence.instructions
     );
     assert_eq!(serde_json::to_vec(&legacy.plan_version).unwrap(), old_bytes);
 }

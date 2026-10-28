@@ -663,6 +663,7 @@ mod tests {
             text: String::new(),
             annotations: Vec::new(),
             status: crate::server::core_runtime::model_ir::ResponseItemStatus::Completed,
+            final_phase: None,
         });
         assert!(capture.digest().is_none());
     }
@@ -680,6 +681,7 @@ mod tests {
             text: String::new(),
             annotations: Vec::new(),
             status: crate::server::core_runtime::model_ir::ResponseItemStatus::Completed,
+            final_phase: None,
         });
         assert!(
             capture.digest().is_none(),
@@ -703,6 +705,7 @@ mod tests {
             text: "small suffix".into(),
             annotations: Vec::new(),
             status: crate::server::core_runtime::model_ir::ResponseItemStatus::Completed,
+            final_phase: None,
         });
         assert!(captured.digest().is_none());
     }

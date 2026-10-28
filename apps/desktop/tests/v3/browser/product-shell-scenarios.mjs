@@ -68,6 +68,7 @@ const scenarios = [
     await until(() => all('.native-list .list-row').length > 0 && !text().includes('正在读取本地 Agent'), 'Agent page loaded');
     await click('会话');
     const reads = calls('agent_snapshot').length;
+    const summaries = calls('agent_home_summary').length;
     c().desktop.pending = { plan_id: 'plan/daily', operation_id: null, idempotency_key: 'key/deferred-summaries' };
     c().handlers.observe_operation = () => operation('succeeded', 'operation/deferred-summaries');
     window.dispatchEvent(new Event('focus'));
@@ -75,9 +76,20 @@ const scenarios = [
     await pause(150);
     assert(calls('agent_snapshot').length === reads, 'Hidden summary or Agent page performed a full scan');
     await click('首页');
-    await until(() => calls('agent_snapshot').length === reads + 1, 'Invalidated summary reread when opened');
+    await until(() => calls('agent_home_summary').length === summaries + 1, 'Invalidated summary reread when opened');
+    assert(calls('agent_snapshot').length === reads, 'Home summary requested full Agent settings');
   }),
   ...homeStartupScenarios({ until, control: c }),
+  scenario('desktop.routing.associations-remain-unknown-while-loading', ['routing-editor'], 'The visible routing editor does not describe missing or partial Agent associations as unused', async () => {
+    let release;
+    await fresh(() => { c().handlers.agent_model_associations = () => new Promise(resolve => { release = resolve; }); });
+    await routing();
+    await until(() => release && text().includes('正在读取 Agent 关联'), 'association read is pending');
+    assert(!text().includes('尚未被任何 Agent 用作模型路由'), 'Loading was presented as no associations');
+    release({ complete: false, agents: [] });
+    await until(() => text().includes('部分 Agent 关联暂不可用'), 'partial association result');
+    assert(!text().includes('尚未被任何 Agent 用作模型路由'), 'Partial coverage was presented as no associations');
+  }),
   ...operationRecoveryScenarios({ fresh, until, control: c, calls }),
   ...trustProgressScenarios({ fresh, until, control: c }),
   ...nativeConnectionScenarios({ fresh, click, until, text, calls, control: c }),

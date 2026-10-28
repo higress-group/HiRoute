@@ -527,6 +527,7 @@ fn captured_tool_boundary_inherits_matching_output_independently_of_model_setup(
                         text: String::new(),
                         annotations: Vec::new(),
                         status: ResponseItemStatus::Completed,
+                        final_phase: None,
                     },
                 )],
             );

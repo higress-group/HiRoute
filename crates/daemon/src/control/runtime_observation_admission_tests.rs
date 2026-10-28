@@ -47,6 +47,7 @@ fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
             session_id: "session-bounded-read".into(),
             after_watermark: None,
             limit: 50,
+            include_presentation: false,
         }),
         ObservationReadIntentV2::Status(hiroute_application_api::ObservationStatusQueryV2 {}),
         ObservationReadIntentV2::Sessions(

@@ -1,14 +1,18 @@
 //! Current non-secret collaboration projection for the native Desktop task surface.
 
 use super::LocalControlAdapter;
+use super::settings_facet_read::FacetSelection;
 use hiroute_application::control::ControlReadError;
 use hiroute_application_api::{
     AgentCollaborationSettingsStatusV2, AgentModelSettingsStateV2 as State,
     AgentSettingsStatusRequestV2,
 };
+use hiroute_diagnostics::agent_read::{
+    AgentReadCategory as Category, AgentReadStage as Stage, Timer,
+};
 use hiroute_domain::{
     AgentFacetIntent, AgentOperationRead, AgentSettingsSpecV2, CanonicalDigest,
-    NativeAgentArtifactPort, OperationState, WorkspaceId,
+    NativeAgentArtifactPort, OperationState,
 };
 
 impl LocalControlAdapter {
@@ -16,75 +20,58 @@ impl LocalControlAdapter {
         &self,
         request: &AgentSettingsStatusRequestV2,
     ) -> Result<AgentCollaborationSettingsStatusV2, ControlReadError> {
-        let (root_ref, target) = self.settings_skill_resource(
-            &request.context_id,
-            request.native_target.as_ref(),
-            hiroute_domain::AgentSettingsFacet::Collaboration,
-        )?;
+        let diagnostics = self.agent_read_diagnostics();
+        let _total = Timer::start(&diagnostics, Category::Collaboration, Stage::Total);
+        match self.collaboration_settings_status_once(request) {
+            Err(ControlReadError::SnapshotChanged) => {
+                self.collaboration_settings_status_once(request)
+            }
+            result => result,
+        }
+    }
+
+    fn collaboration_settings_status_once(
+        &self,
+        request: &AgentSettingsStatusRequestV2,
+    ) -> Result<AgentCollaborationSettingsStatusV2, ControlReadError> {
+        let read = self
+            .capture_settings_facet(request, hiroute_domain::AgentSettingsFacet::Collaboration)?;
+        let diagnostics = self.agent_read_diagnostics();
+        let native = Timer::start(&diagnostics, Category::Collaboration, Stage::NativeRead);
         let mut status = empty_status();
         if request.include_skills {
             status.resource = Some(self.skill_resource_status(
-                request,
                 hiroute_domain::AgentSettingsFacet::Collaboration,
+                &read.target,
+                read.skill.as_ref().and_then(Option::as_ref),
             )?);
         }
-        let stores = self.stores_lock().map_err(super::map_port)?;
-        let belongs =
-            |operation: &dyn hiroute_domain::AgentOperationRead| -> Result<bool, ControlReadError> {
-                if operation.agent_input().spec.command_id != "agents.settings.apply"
-                    || operation.agent_input().spec.resource_id.as_deref()
-                        != Some(&request.context_id)
-                {
-                    return Ok(false);
-                }
-                let spec: AgentSettingsSpecV2 =
-                    serde_json::from_value(operation.agent_input().spec.desired_state.clone())
-                        .map_err(|_| ControlReadError::Corrupt)?;
-                Ok(!matches!(spec.collaboration, AgentFacetIntent::Keep))
-            };
-        if let Some(pending) = stores
-            .control()
-            .writer_claim_operation()
-            .map_err(super::map_port)?
-            && belongs(&pending)?
-        {
-            status.state = if pending.state == OperationState::NeedsAttention {
-                State::NeedsAttention
-            } else {
-                State::Pending
-            };
-            status.operation_id = Some(pending.operation_id.to_string());
-            status.operation_state = Some(pending.state.as_str().into());
-            return Ok(status);
-        }
-        let selected = stores
-            .control()
-            .find_verified_agent_operation(
-                &WorkspaceId::default(),
-                &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
-                |operation| {
-                    belongs(operation).map_err(|_| {
-                        hiroute_domain::PortError::new(
-                            hiroute_domain::PortErrorCode::Corrupt,
-                            "agent.collaboration.current-fact",
-                        )
-                    })
-                },
-            )
-            .map_err(super::map_port)?;
-        let Some(operation) = selected else {
-            return Ok(status);
+        let operation = match &read.selection {
+            FacetSelection::Pending(pending) => {
+                status.state = if pending.state == OperationState::NeedsAttention {
+                    State::NeedsAttention
+                } else {
+                    State::Pending
+                };
+                status.operation_id = Some(pending.operation_id.to_string());
+                status.operation_state = Some(pending.state.as_str().into());
+                drop(native);
+                self.fence_settings_facet(&read)?;
+                return Ok(status);
+            }
+            FacetSelection::Absent => {
+                drop(native);
+                self.fence_settings_facet(&read)?;
+                return Ok(status);
+            }
+            FacetSelection::Found(operation) => operation,
         };
         let spec: AgentSettingsSpecV2 =
             serde_json::from_value(operation.agent_input().spec.desired_state.clone())
                 .map_err(|_| ControlReadError::Corrupt)?;
         status.operation_id = Some(operation.operation_id.to_string());
         status.operation_state = Some(operation.state.as_str().into());
-        let skill = stores
-            .control()
-            .skill_installation(&operation.workspace_id, &root_ref)
-            .map_err(super::map_port)?;
-        drop(stores);
+        let skill = read.skill.as_ref().ok_or(ControlReadError::Corrupt)?;
         match &spec.collaboration {
             AgentFacetIntent::Restore { .. } => {
                 status.state = if skill
@@ -97,7 +84,7 @@ impl LocalControlAdapter {
                 };
             }
             AgentFacetIntent::Configure { settings } => {
-                let skill_current = match skill {
+                let skill_current = match skill.as_ref() {
                     Some(record) if record.contexts.contains(&spec.context_id) => {
                         let ownership_current = match record.file_ownership {
                             hiroute_domain::CollaborationSkillFileOwnership::Managed => {
@@ -110,7 +97,7 @@ impl LocalControlAdapter {
                         ownership_current
                             && self
                                 .artifacts
-                                .read_native_target(&target)
+                                .read_native_target(&read.target)
                                 .ok()
                                 .flatten()
                                 .is_some_and(|bytes| {
@@ -145,6 +132,8 @@ impl LocalControlAdapter {
             }
             AgentFacetIntent::Keep => unreachable!("filtered above"),
         }
+        drop(native);
+        self.fence_settings_facet(&read)?;
         Ok(status)
     }
 }

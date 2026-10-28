@@ -83,7 +83,8 @@
           "type": "integer"
         },
         "from_group": {
-          "$ref": "#/$defs/ExecutionGroupV1"
+          "$ref": "#/$defs/ExecutionGroupV1",
+          "description": "Actual group of the assessed preceding stage, including Primary."
         },
         "score": {
           "type": "number"
@@ -355,7 +356,8 @@
           "type": "integer"
         },
         "outcome": {
-          "$ref": "#/$defs/HistoricalProtectionActionV1"
+          "$ref": "#/$defs/HistoricalProtectionActionV1",
+          "description": "Recorded historical protection action. Suppression removes only that constraint;\nthe current difficulty can still select Primary."
         },
         "previous_score": {
           "type": [

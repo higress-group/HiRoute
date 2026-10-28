@@ -197,12 +197,10 @@ fn unavailable_models_and_reasoning_budgets_stay_explicit_choices() {
 fn old_options_request_omits_the_new_projection() {
     let request: PlanEditorOptionsRequestV1 = serde_json::from_str("{}").unwrap();
     assert!(request.authoring.is_none());
-    assert!(
-        serde_json::to_value(request)
-            .unwrap()
-            .get("authoring")
-            .is_none()
-    );
+    assert!(request.preview_agent.is_none());
+    let serialized = serde_json::to_value(request).unwrap();
+    assert!(serialized.get("authoring").is_none());
+    assert!(serialized.get("preview_agent").is_none());
     assert!(
         serde_json::from_str::<PlanEditorOptionsRequestV1>(
             r#"{"authoring":{"maximum_attempts":1}}"#

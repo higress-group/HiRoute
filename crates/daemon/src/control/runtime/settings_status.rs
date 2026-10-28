@@ -9,10 +9,46 @@ use hiroute_application_api::{
     AgentModelCheckStateV2, AgentModelSettingsStateV2 as State, AgentModelSettingsStatusV2,
     AgentModelSurfaceResultV2, AgentSettingsStatusRequestV2,
 };
-use hiroute_domain::{
-    AgentAccessGrantRefV1, OperationState, PublicationRepositoryPort, SecretStorePort,
-    is_agent_access_grant_effect,
+use hiroute_diagnostics::agent_read::{
+    AgentReadCategory as Category, AgentReadStage as Stage, Timer,
 };
+use hiroute_domain::{
+    AgentAccessGrantRefV1, OperationState, SecretStorePort, is_agent_access_grant_effect,
+};
+use hiroute_local_storage::{
+    ActivePublicationIdentity, AgentLocatorScope, AgentLocatorWitness, AgentNativeTargetWitness,
+    AgentReadStamp, CapturedAgentLocator,
+};
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static MODEL_VERIFY_BARRIER: std::cell::RefCell<Option<(
+        std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>,
+    )>> = const { std::cell::RefCell::new(None) };
+    pub(super) static MODEL_NATIVE_READ_BARRIER: std::cell::RefCell<Option<(
+        std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>,
+    )>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn wait_before_model_verify() {
+    MODEL_VERIFY_BARRIER.with(|slot| {
+        if let Some((reached, release)) = slot.borrow_mut().take() {
+            reached.send(()).unwrap();
+            release.recv().unwrap();
+        }
+    });
+}
+
+#[cfg(test)]
+fn wait_before_model_native_read() {
+    MODEL_NATIVE_READ_BARRIER.with(|slot| {
+        if let Some((reached, release)) = slot.borrow_mut().take() {
+            reached.send(()).unwrap();
+            release.recv().unwrap();
+        }
+    });
+}
 
 enum ModelAction {
     Configure,
@@ -177,6 +213,74 @@ impl LocalControlAdapter {
         ),
         ControlReadError,
     > {
+        let diagnostics = self.agent_read_diagnostics();
+        let _total = Timer::start(&diagnostics, Category::Model, Stage::Total);
+        match self.evaluate_model_settings_once(request) {
+            Err(ControlReadError::SnapshotChanged) => self.evaluate_model_settings_once(request),
+            result => result,
+        }
+    }
+
+    fn fence_model_read(
+        &self,
+        request: &AgentSettingsStatusRequestV2,
+        stamp: &AgentReadStamp,
+        witness: &AgentLocatorWitness,
+        native_target: Option<&AgentNativeTargetWitness>,
+        dependencies: Option<(
+            &Option<AgentAccessGrantRefV1>,
+            &Option<ActivePublicationIdentity>,
+            &[hiroute_domain::AgentSurfaceCheckRecordV1],
+        )>,
+    ) -> Result<(), ControlReadError> {
+        let diagnostics = self.agent_read_diagnostics();
+        let waiting = Timer::start(&diagnostics, Category::Model, Stage::LockWait);
+        let stores = self.stores_lock().map_err(super::map_port)?;
+        drop(waiting);
+        let _held = Timer::start(&diagnostics, Category::Model, Stage::LockHeld);
+        let _fence = Timer::start(&diagnostics, Category::Model, Stage::Fence);
+        stores
+            .fence_agent_read(stamp, |control, secrets| {
+                let changed = || PortError::new(PortErrorCode::Conflict, "agent.model.read-fence");
+                if !witness.matches_current(control)? {
+                    return Err(changed());
+                }
+                if let Some(target) = native_target
+                    && !target.matches_current(control)?
+                {
+                    return Err(changed());
+                }
+                if let Some((grant, publication, checks)) = dependencies
+                    && (control.active_publication_identity(&WorkspaceId::default())?
+                        != *publication
+                        || control
+                            .agent_surface_checks(&WorkspaceId::default(), &request.context_id)?
+                            != checks
+                        || !secrets.ok_or_else(changed)?.current_agent_grant_matches(
+                            WorkspaceId::DEFAULT,
+                            &format!("agent-connection/{}", request.context_id),
+                            grant.as_ref(),
+                        )?)
+                {
+                    return Err(changed());
+                }
+                Ok(())
+            })
+            .map_err(super::map_port)
+    }
+
+    fn evaluate_model_settings_once(
+        &self,
+        request: &AgentSettingsStatusRequestV2,
+    ) -> Result<
+        (
+            AgentModelSettingsStatusV2,
+            Option<AgentAccessGrantRefV1>,
+            Option<ConfiguredModelSettings>,
+        ),
+        ControlReadError,
+    > {
+        let diagnostics = self.agent_read_diagnostics();
         let class = self
             .settings_agent_for_context(&request.context_id)
             .ok_or(ControlReadError::NotFound)?;
@@ -191,24 +295,9 @@ impl LocalControlAdapter {
             } else {
                 None
             };
-        let native_target = if class == SettingsAgentClass::Hermes {
-            self.stores_lock()
-                .map_err(super::map_port)?
-                .control()
-                .agent_settings_native_targets(&WorkspaceId::default())
-                .map_err(super::map_port)?
-                .into_iter()
-                .find(|target| {
-                    hiroute_integrations::hermes_context_id(target.config_root())
-                        == request.context_id
-                })
-                .or(requested_target)
-        } else {
-            None
-        };
         let mut status = AgentModelSettingsStatusV2 {
             effective: None,
-            native_target,
+            native_target: None,
             native_adapter: None,
             schema: "hiroute.agent-model-settings-status/v2".into(),
             context_id: request.context_id.clone(),
@@ -225,52 +314,114 @@ impl LocalControlAdapter {
             collaboration: None,
             management_skill: None,
         };
-        let stores = self.stores_lock().map_err(super::map_port)?;
-        let belongs = |operation: &dyn hiroute_domain::AgentOperationRead| {
-            operation.agent_input().spec.command_id == "agents.settings.apply"
-                && operation.agent_input().spec.resource_id.as_deref() == Some(&request.context_id)
-                && model_intent(class, operation).is_some()
+        let scope = AgentLocatorScope::ContextFacet {
+            context_id: &request.context_id,
+            facet: hiroute_domain::AgentSettingsFacet::Model,
         };
-        if let Some(pending) = stores
-            .control()
-            .recoverable_operations()
-            .map_err(super::map_port)?
-            .into_iter()
-            .find(|op| belongs(op))
-        {
-            status.state = if pending.state == OperationState::NeedsAttention {
-                State::NeedsAttention
-            } else {
-                State::Pending
-            };
-            status.operation_id = Some(pending.operation_id.to_string());
-            status.operation_state = Some(pending.state.as_str().into());
-            return Ok((status, None, None));
-        }
-        let operation = stores
-            .control()
-            .find_verified_agent_operation(
-                &WorkspaceId::default(),
-                &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
-                |operation| Ok(belongs(operation)),
-            )
+        let (capture, stamp, current, publication, checks, native_target) = {
+            let waiting = Timer::start(&diagnostics, Category::Model, Stage::LockWait);
+            let stores = self.stores_lock().map_err(super::map_port)?;
+            drop(waiting);
+            let _held = Timer::start(&diagnostics, Category::Model, Stage::LockHeld);
+            let _copy = Timer::start(&diagnostics, Category::Model, Stage::SnapshotCopy);
+            let include_secrets = stores
+                .control()
+                .may_need_agent_model_grant(&WorkspaceId::default(), &request.context_id)
+                .map_err(super::map_port)?;
+            let ((capture, current, publication, checks, native_target), stamp) = stores
+                .capture_agent_read(include_secrets, |control, secrets| {
+                    let mut locator = Timer::start(&diagnostics, Category::Model, Stage::Locator);
+                    let capture = control.capture_agent_locator(&WorkspaceId::default(), scope)?;
+                    super::agent_read_diagnostics::count_locator(&mut locator, &capture);
+                    drop(locator);
+                    let native_target = if class == SettingsAgentClass::Hermes {
+                        Some(control.capture_agent_native_target(
+                            &WorkspaceId::default(),
+                            &request.context_id,
+                        )?)
+                    } else {
+                        None
+                    };
+                    let found = matches!(capture, CapturedAgentLocator::Found(_));
+                    if found != include_secrets {
+                        return Err(PortError::new(
+                            PortErrorCode::Conflict,
+                            "agent.model.capture-changed",
+                        ));
+                    }
+                    if !found {
+                        return Ok((capture, None, None, Vec::new(), native_target));
+                    }
+                    let mut authentication =
+                        Timer::start(&diagnostics, Category::Model, Stage::GrantAuthentication);
+                    authentication.counts.grant_authentications = 1;
+                    let current = secrets
+                        .ok_or_else(|| {
+                            PortError::new(PortErrorCode::Conflict, "agent.model.secret-snapshot")
+                        })?
+                        .inspect_agent_access_grant(
+                            WorkspaceId::DEFAULT,
+                            &format!("agent-connection/{}", request.context_id),
+                        )?;
+                    drop(authentication);
+                    let publication = control.capture_active_publication(&WorkspaceId::default())?;
+                    let checks = control
+                        .agent_surface_checks(&WorkspaceId::default(), &request.context_id)?;
+                    Ok((capture, current, publication, checks, native_target))
+                })
+                .map_err(super::map_port)?;
+            (capture, stamp, current, publication, checks, native_target)
+        };
+        let verify = Timer::start(&diagnostics, Category::Model, Stage::Verify);
+        let witness = capture.witness().map_err(super::map_port)?;
+        let native_witness = native_target.as_ref().map(|target| target.witness());
+        status.native_target = match native_target {
+            Some(target) => target
+                .verify()
+                .map_err(super::map_port)?
+                .or(requested_target),
+            None => requested_target,
+        };
+        let operation = match capture {
+            CapturedAgentLocator::Pending(pending, _) => {
+                let pending = pending.verify().map_err(super::map_port)?;
+                drop(verify);
+                status.state = if pending.state == OperationState::NeedsAttention {
+                    State::NeedsAttention
+                } else {
+                    State::Pending
+                };
+                status.operation_id = Some(pending.operation_id.to_string());
+                status.operation_state = Some(pending.state.as_str().into());
+                self.fence_model_read(request, &stamp, &witness, native_witness.as_ref(), None)?;
+                return Ok((status, None, None));
+            }
+            CapturedAgentLocator::AbsentWithCompleteCoverage(_) => {
+                drop(verify);
+                self.fence_model_read(request, &stamp, &witness, native_witness.as_ref(), None)?;
+                return Ok((status, None, None));
+            }
+            CapturedAgentLocator::Found(capture) => {
+                #[cfg(test)]
+                wait_before_model_verify();
+                capture.verify().map_err(super::map_port)?
+            }
+        };
+        let publication_identity = publication.as_ref().map(|record| record.identity());
+        let publication = publication
+            .map(|record| record.verify())
+            .transpose()
             .map_err(super::map_port)?;
-        let Some(operation) = operation else {
-            return Ok((status, None, None));
-        };
         let intent = model_intent(class, operation.as_ref()).ok_or(ControlReadError::Corrupt)?;
         let action = model_action(class, operation.as_ref(), intent).map_err(super::map_port)?;
-        let current = stores
-            .secrets()
-            .inspect_agent_access_grant(
-                WorkspaceId::DEFAULT,
-                &format!("agent-connection/{}", request.context_id),
-            )
-            .map_err(super::map_port)?;
+        drop(verify);
         status.operation_id = Some(operation.operation_id.to_string());
         status.operation_state = Some(operation.state.as_str().into());
+        let native = Timer::start(&diagnostics, Category::Model, Stage::NativeRead);
         let (active_grant, configured_join) = match action {
             ModelAction::Configure => {
+                #[cfg(test)]
+                wait_before_model_native_read();
                 let file_applied = if matches!(
                     class,
                     SettingsAgentClass::Qoder
@@ -377,15 +528,6 @@ impl LocalControlAdapter {
                     .ok_or(ControlReadError::Corrupt)?;
                 let expected = AgentAccessGrantRefV1::from_ensure_effect(effect, mutation)
                     .map_err(|_| ControlReadError::Corrupt)?;
-                let publication = stores
-                    .control()
-                    .active_publication(&operation.workspace_id)
-                    .map_err(super::map_port)?;
-                let checks = stores
-                    .control()
-                    .agent_surface_checks(&operation.workspace_id, &request.context_id)
-                    .map_err(super::map_port)?;
-                drop(stores);
                 let published = match &publication {
                     Some(record) => {
                         self.publication_is_installed(record)
@@ -583,14 +725,9 @@ impl LocalControlAdapter {
                 reference
                     .validate()
                     .map_err(|_| ControlReadError::Corrupt)?;
-                let publication = stores
-                    .control()
-                    .active_publication(&operation.workspace_id)
-                    .map_err(super::map_port)?;
-                drop(stores);
-                let withdrawn = match publication {
+                let withdrawn = match &publication {
                     Some(record) => {
-                        self.publication_is_installed(&record)
+                        self.publication_is_installed(record)
                             .map_err(super::map_port)?
                             && !record
                                 .verify()
@@ -612,6 +749,14 @@ impl LocalControlAdapter {
                 (None, None)
             }
         };
+        drop(native);
+        self.fence_model_read(
+            request,
+            &stamp,
+            &witness,
+            native_witness.as_ref(),
+            Some((&current, &publication_identity, &checks)),
+        )?;
         Ok((status, active_grant, configured_join))
     }
 }

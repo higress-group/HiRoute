@@ -506,7 +506,12 @@ same `--sha` and branch, and the same build-slot class. The workbench checks the
 run, SHA, origin, committed executor, clean worktree and Git registration before using
 its default `target/`. A checkout lease serializes reuse and prevents owner cleanup
 while a borrower runs. Borrower cleanup keeps the owner checkout; after borrowers
-finish, `backend cleanup FIRST_RUN_ID` releases it.
+finish, `backend cleanup FIRST_RUN_ID` releases it. Owner cleanup preserves each
+run's original export and writes current evidence to an independent cleanup
+generation, even when the SHA has not changed. Its manifest records the actual
+checkout revision and latest stopped run. Inspect `cleanup.evidence_export` for
+that capture; see [retention and cleanup](remote-rust-validation.md#checkout-retention-and-cleanup).
+Refused explicit cleanup returns nonzero and retains the owner resources.
 
 Same-candidate reuse remains available after a non-timeout test failure, including
 when no `--plan` was supplied or the original `on-failure` owner stopped at a

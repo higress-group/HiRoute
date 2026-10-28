@@ -37,6 +37,7 @@ fn unsigned_messages_thinking_boundary_survives_production_replay() {
                     text: "READY".into(),
                     annotations: vec![],
                     status: ResponseItemStatus::Completed,
+                    final_phase: None,
                 });
                 let mut block = json!({"type":"thinking","thinking":thinking});
                 if let Some(signature) = signature {

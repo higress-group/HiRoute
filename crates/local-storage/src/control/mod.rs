@@ -33,6 +33,8 @@ mod agent_transaction_tests;
 #[cfg(test)]
 mod surface_check_tests;
 #[cfg(test)]
+mod terminal_fault;
+#[cfg(test)]
 mod test_native_permissions;
 #[cfg(test)]
 mod transaction_v2_tests;
@@ -42,14 +44,26 @@ mod windows_artifacts_tests;
 mod windows_native_reader_tests;
 
 mod agent_check;
+mod agent_frozen_read;
 mod agent_history_cache;
+pub(crate) mod agent_locator;
+mod agent_locator_input;
+mod agent_locator_integrity;
+mod agent_locator_lookup;
+mod agent_locator_pending;
+pub use agent_locator_pending::{PendingAgentCapture, PendingAgentStatus};
 mod agent_read;
 mod artifact_dependencies;
 mod artifact_heads;
 mod artifact_validation;
 mod completed_operation_cache;
 mod native_targets;
+pub use agent_locator_lookup::{
+    AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope, AgentLocatorSizes,
+    AgentLocatorSummary, AgentLocatorWitness, CapturedAgentLocator,
+};
 pub use agent_read::SucceededAgentOperationV1;
+pub use native_targets::{AgentNativeTargetWitness, CapturedAgentNativeTarget};
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
 mod compute;
@@ -85,6 +99,8 @@ mod native_file_tests;
 #[path = "../agents/plan_references.rs"]
 mod plan_references;
 mod publication;
+mod publication_snapshot;
+pub use publication_snapshot::{ActivePublicationIdentity, CapturedActivePublication};
 #[path = "../agents/skill_store.rs"]
 mod skill_store;
 
@@ -100,6 +116,7 @@ pub struct ControlStore {
     active_publication_cache: RefCell<Option<hiroute_domain::PublicationRecordV1>>,
     diagnostics: RefCell<hiroute_diagnostics::DiagnosticsPort>,
     pub(crate) connection: RefCell<Connection>,
+    pub(crate) physical_binding: crate::physical_read_stamp::DatabaseBinding,
     pub(crate) startup_lock: Option<std::sync::Arc<crate::migrations::StartupLock>>,
 }
 
@@ -257,22 +274,26 @@ impl ControlStore {
         *self.diagnostics.borrow_mut() = port;
     }
     pub(crate) fn open(
-        _authority: &DaemonStorageAuthority,
+        authority: &DaemonStorageAuthority,
         path: impl AsRef<Path>,
         migration_backup_root: impl AsRef<Path>,
     ) -> Result<Self, LocalStorageError> {
+        let path = path.as_ref();
+        let connection = open_database(
+            authority,
+            path,
+            DatabaseKind::Control,
+            migration_backup_root,
+        )?;
+        let physical_binding = crate::physical_read_stamp::DatabaseBinding::new(path)?;
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
             agent_history_cache: RefCell::new(Default::default()),
             completed_operation_cache: RefCell::new(Default::default()),
             active_publication_cache: RefCell::new(None),
             startup_lock: None,
-            connection: RefCell::new(open_database(
-                _authority,
-                path,
-                DatabaseKind::Control,
-                migration_backup_root,
-            )?),
+            connection: RefCell::new(connection),
+            physical_binding,
         })
     }
 
@@ -283,21 +304,24 @@ impl ControlStore {
         expected_store_uuid: &str,
         target_schema_version: u32,
     ) -> Result<Self, LocalStorageError> {
+        let connection = open_database_from_set(
+            authority,
+            path,
+            DatabaseKind::Control,
+            migration_backup_root,
+            Some(expected_store_uuid),
+            None,
+            target_schema_version,
+        )?;
+        let physical_binding = crate::physical_read_stamp::DatabaseBinding::new(path)?;
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
             agent_history_cache: RefCell::new(Default::default()),
             completed_operation_cache: RefCell::new(Default::default()),
             active_publication_cache: RefCell::new(None),
             startup_lock: None,
-            connection: RefCell::new(open_database_from_set(
-                authority,
-                path,
-                DatabaseKind::Control,
-                migration_backup_root,
-                Some(expected_store_uuid),
-                None,
-                target_schema_version,
-            )?),
+            connection: RefCell::new(connection),
+            physical_binding,
         })
     }
 
@@ -503,6 +527,7 @@ impl ControlStore {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| port(PortErrorCode::Unavailable, "control.operation.begin"))?;
+        let locator_ticket = agent_locator::begin_write(&transaction);
         if let Some(existing) = load_operation_where(
             &self.diagnostics.borrow(),
             &transaction,
@@ -629,6 +654,7 @@ impl ControlStore {
             Some(&self.completed_operation_cache),
         )?;
         compute::begin_save_handoff_in(&transaction, operation)?;
+        agent_locator::finish_write(&transaction, operation, locator_ticket, false)?;
         transaction
             .commit()
             .map_err(|_| port(PortErrorCode::Unavailable, "control.operation.commit"))?;
@@ -797,7 +823,9 @@ impl ControlRepositoryPort for ControlStore {
                 let transaction = connection
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .map_err(|_| port(PortErrorCode::Unavailable, "control.journal.begin"))?;
+                let locator_ticket = agent_locator::begin_write(&transaction);
                 let generation = journal::save(&transaction, operation)?;
+                agent_locator::finish_write(&transaction, operation, locator_ticket, false)?;
                 transaction
                     .commit()
                     .map_err(|_| port(PortErrorCode::Unavailable, "control.journal.commit"))?;
@@ -1518,6 +1546,7 @@ impl ControlRepositoryPort for ControlStore {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.begin"))?;
+        let locator_ticket = agent_locator::begin_write(&transaction);
         plans::finish_draft_operation(&transaction, operation)?;
         plans::finish_plan_operation(&transaction, operation)
             .map_err(|_| port(PortErrorCode::Conflict, "control.finish.plan-head"))?;
@@ -1528,6 +1557,8 @@ impl ControlRepositoryPort for ControlStore {
             operation,
             Some(&self.completed_operation_cache),
         )?;
+        #[cfg(test)]
+        terminal_fault::check(operation)?;
         let generation = journal::save(&transaction, operation)?;
         if operation.state != OperationState::NeedsAttention {
             let released = transaction
@@ -1540,6 +1571,7 @@ impl ControlRepositoryPort for ControlStore {
                 return Err(port(PortErrorCode::Conflict, "control.finish.claim"));
             }
         }
+        agent_locator::finish_write(&transaction, operation, locator_ticket, true)?;
         transaction
             .commit()
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.commit"))?;
@@ -1570,6 +1602,7 @@ impl ControlRepositoryPort for ControlStore {
                 let transaction = connection
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .map_err(|_| port(PortErrorCode::Unavailable, "control.tail.begin"))?;
+                let locator_ticket = agent_locator::begin_write(&transaction);
                 let generation = journal::save(&transaction, operation)?;
                 transaction
                     .execute(
@@ -1586,6 +1619,7 @@ impl ControlRepositoryPort for ControlStore {
                     // The journal save above is not committed: another operation's claim stays intact.
                     return Err(port(PortErrorCode::Conflict, "control.tail.claim"));
                 }
+                agent_locator::finish_write(&transaction, operation, locator_ticket, false)?;
                 transaction
                     .commit()
                     .map_err(|_| port(PortErrorCode::Unavailable, "control.tail.commit"))?;

@@ -479,6 +479,24 @@
     "host_only": false
   },
   {
+    "name": "trial_setup_snapshot",
+    "args": [],
+    "result": "Result<TrialSetupSnapshotV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "agent_model_associations",
+    "args": [],
+    "result": "Result<AgentModelAssociations, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "agent_home_summary",
+    "args": [],
+    "result": "Result<AgentHomeSummary, DesktopFailure>",
+    "host_only": false
+  },
+  {
     "name": "trial_agent_choices",
     "args": [],
     "result": "Result<TrialAgentChoices, DesktopFailure>",

@@ -20,6 +20,10 @@ fn request(id: &str, model: &str, at: i64) -> Request {
         run_id: None,
         decision: None,
         candidate: Some((model.into(), Some("default".into()))),
+        identities: Default::default(),
+        identity_gap: false,
+        request_finished: true,
+        stage_finished: false,
         models: BTreeMap::from([(1, model.into())]),
         credentials: BTreeMap::new(),
         partial: false,
@@ -56,6 +60,7 @@ fn turn(id: &str, ids: &[&str], requests: &BTreeMap<String, Request>) -> Routing
         requests: ids.iter().map(|id| requests[*id].view.clone()).collect(),
         cost_by_model: vec![],
         evidence_partial: false,
+        presentation: None,
         content_digest: String::new(),
     }
 }
