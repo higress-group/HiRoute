@@ -1,65 +1,66 @@
 //! The management Skill reports its own file ownership, never model or Worker authority.
+use super::settings_facet_read::FacetSelection;
 use super::*;
 use hiroute_application_api::{
     AgentManagementSkillStatusV1, AgentModelSettingsStateV2 as State, AgentSettingsStatusRequestV2,
 };
+use hiroute_diagnostics::agent_read::{
+    AgentReadCategory as Category, AgentReadStage as Stage, Timer,
+};
 use hiroute_domain::{
-    AgentFacetIntent, AgentOperationRead, AgentSettingsSpecV2, NativeAgentArtifactPort,
-    OperationState,
+    AgentFacetIntent, AgentSettingsSpecV2, NativeAgentArtifactPort, OperationState,
 };
 
 impl LocalControlAdapter {
     pub(super) fn skill_resource_status(
         &self,
-        request: &AgentSettingsStatusRequestV2,
         facet: hiroute_domain::AgentSettingsFacet,
+        target: &str,
+        record: Option<&hiroute_domain::ManagedCollaborationSkill>,
     ) -> Result<hiroute_application_api::AgentSkillResourceStatusV1, ControlReadError> {
-        let (root_ref, target) = self.settings_skill_resource(
-            &request.context_id,
-            request.native_target.as_ref(),
-            facet,
-        )?;
         let path = self
             .artifacts
-            .native_target_path(&target)
+            .native_target_path(target)
             .map_err(super::map_port)?;
-        let record = self
-            .stores_lock()
-            .map_err(super::map_port)?
-            .control()
-            .skill_installation(&WorkspaceId::default(), &root_ref)
-            .map_err(super::map_port)?;
-        let native_available = self
-            .artifacts
-            .read_native_target(&target)
-            .ok()
-            .map(|bytes| {
-                bytes.as_ref().is_some_and(|bytes| {
-                    let digest = CanonicalDigest::of_bytes(bytes);
-                    if let Some(record) = &record {
-                        return digest == record.content_digest;
-                    }
-                    facet == hiroute_domain::AgentSettingsFacet::ManagementSkill
-                        && digest
-                            == CanonicalDigest::of_bytes(include_bytes!(
-                                "../../../../../assets/skills/hiroute-management/SKILL.md"
-                            ))
-                })
-            });
+        let native_available = self.artifacts.read_native_target(target).ok().map(|bytes| {
+            bytes.as_ref().is_some_and(|bytes| {
+                let digest = CanonicalDigest::of_bytes(bytes);
+                if let Some(record) = record {
+                    return digest == record.content_digest;
+                }
+                facet == hiroute_domain::AgentSettingsFacet::ManagementSkill
+                    && digest
+                        == CanonicalDigest::of_bytes(include_bytes!(
+                            "../../../../../assets/skills/hiroute-management/SKILL.md"
+                        ))
+            })
+        });
         Ok(hiroute_application_api::AgentSkillResourceStatusV1 {
             directory: path
                 .parent()
                 .and_then(|p| p.to_str())
                 .ok_or(ControlReadError::Corrupt)?
                 .to_owned(),
-            file_ownership: record.as_ref().map(|r| r.file_ownership),
-            shared_context_count: record.as_ref().map_or(0, |r| r.contexts.len()),
+            file_ownership: record.map(|r| r.file_ownership),
+            shared_context_count: record.map_or(0, |r| r.contexts.len()),
             native_available,
             runtime_loading: hiroute_application_api::AgentNativeRuntimeLoadingV1::Unobserved,
         })
     }
 
     pub(super) fn management_settings_status(
+        &self,
+        request: &AgentSettingsStatusRequestV2,
+    ) -> Result<AgentManagementSkillStatusV1, ControlReadError> {
+        let diagnostics = self.agent_read_diagnostics();
+        let _total = Timer::start(&diagnostics, Category::Management, Stage::Total);
+        match self.management_settings_status_once(request) {
+            Err(ControlReadError::SnapshotChanged) => self.management_settings_status_once(request),
+            result => result,
+        }
+    }
+
+    fn management_settings_status_once(
         &self,
         request: &AgentSettingsStatusRequestV2,
     ) -> Result<AgentManagementSkillStatusV1, ControlReadError> {
@@ -71,39 +72,19 @@ impl LocalControlAdapter {
             operation_state: None,
             restore_point_ref: None,
         };
-        let (root_ref, file_target) = self.settings_skill_resource(
-            &request.context_id,
-            request.native_target.as_ref(),
-            hiroute_domain::AgentSettingsFacet::ManagementSkill,
-        )?;
+        let read = self
+            .capture_settings_facet(request, hiroute_domain::AgentSettingsFacet::ManagementSkill)?;
+        let diagnostics = self.agent_read_diagnostics();
+        let native = Timer::start(&diagnostics, Category::Management, Stage::NativeRead);
         if request.include_skills {
             status.resource = Some(self.skill_resource_status(
-                request,
                 hiroute_domain::AgentSettingsFacet::ManagementSkill,
+                &read.target,
+                read.skill.as_ref().and_then(Option::as_ref),
             )?);
         }
-        let stores = self.stores_lock().map_err(super::map_port)?;
-        let belongs = |operation: &dyn AgentOperationRead| -> Result<bool, ControlReadError> {
-            let input = operation.agent_input();
-            if input.spec.command_id != "agents.settings.apply"
-                || input.spec.resource_id.as_deref() != Some(&request.context_id)
-            {
-                return Ok(false);
-            }
-            let spec: AgentSettingsSpecV2 =
-                serde_json::from_value(input.spec.desired_state.clone())
-                    .map_err(|_| ControlReadError::Corrupt)?;
-            Ok(spec
-                .management_skill
-                .as_ref()
-                .is_some_and(|i| !matches!(i, AgentFacetIntent::Keep)))
-        };
-        for pending in stores
-            .control()
-            .recoverable_operations()
-            .map_err(super::map_port)?
-        {
-            if belongs(&pending)? {
+        let operation = match &read.selection {
+            FacetSelection::Pending(pending) => {
                 status.state = if pending.state == OperationState::NeedsAttention {
                     State::NeedsAttention
                 } else {
@@ -111,40 +92,29 @@ impl LocalControlAdapter {
                 };
                 status.operation_id = Some(pending.operation_id.to_string());
                 status.operation_state = Some(pending.state.as_str().into());
+                drop(native);
+                self.fence_settings_facet(&read)?;
                 return Ok(status);
             }
-        }
-        let selected = stores
-            .control()
-            .find_verified_agent_operation(
-                &WorkspaceId::default(),
-                &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
-                |operation| {
-                    belongs(operation).map_err(|_| {
-                        hiroute_domain::PortError::new(
-                            hiroute_domain::PortErrorCode::Corrupt,
-                            "agent.management.current-fact",
-                        )
-                    })
-                },
-            )
-            .map_err(super::map_port)?;
-        let Some(operation) = selected else {
-            return Ok(status);
+            FacetSelection::Absent => {
+                drop(native);
+                self.fence_settings_facet(&read)?;
+                return Ok(status);
+            }
+            FacetSelection::Found(operation) => operation,
         };
         let spec: AgentSettingsSpecV2 =
             serde_json::from_value(operation.plan.spec().desired_state.clone())
                 .map_err(|_| ControlReadError::Corrupt)?;
-        let record = stores
-            .control()
-            .skill_installation(&WorkspaceId::default(), &root_ref)
-            .map_err(super::map_port)?;
-        drop(stores);
+        let record = read.skill.as_ref().ok_or(ControlReadError::Corrupt)?;
         status.operation_id = Some(operation.operation_id.to_string());
         status.operation_state = Some(operation.state.as_str().into());
         match spec.management_skill {
             Some(AgentFacetIntent::Restore { .. }) => {
-                status.state = if record.is_none_or(|r| !r.contexts.contains(&request.context_id)) {
+                status.state = if record
+                    .as_ref()
+                    .is_none_or(|r| !r.contexts.contains(&request.context_id))
+                {
                     State::Restored
                 } else {
                     State::Drift
@@ -153,10 +123,10 @@ impl LocalControlAdapter {
             Some(AgentFacetIntent::Configure { .. }) => {
                 let bytes = self
                     .artifacts
-                    .read_native_target(&file_target)
+                    .read_native_target(&read.target)
                     .ok()
                     .flatten();
-                let current = record.is_some_and(|r| {
+                let current = record.as_ref().is_some_and(|r| {
                     r.contexts.contains(&request.context_id)
                         && bytes
                             .as_ref()
@@ -181,6 +151,8 @@ impl LocalControlAdapter {
             }
             _ => return Err(ControlReadError::Corrupt),
         }
+        drop(native);
+        self.fence_settings_facet(&read)?;
         Ok(status)
     }
 }

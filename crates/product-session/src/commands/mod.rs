@@ -2,7 +2,8 @@
 use crate::failure::DesktopFailure;
 pub use crate::session::{
     AgentCheckCompletion, AgentCheckConfirmation, AgentCheckDispatch, AgentCheckInput,
-    AgentConfirmation, AgentOutcome, AgentPreparation, AgentSettingsInput, AgentSnapshot,
+    AgentConfirmation, AgentHomeEntry, AgentHomeSummary, AgentModelAssociation,
+    AgentModelAssociations, AgentOutcome, AgentPreparation, AgentSettingsInput, AgentSnapshot,
     Confirmation, DesktopSnapshot, EditorInput, ModelSaveAccepted, ModelSaveConfirmation,
     MutationOutcome, PriceConfirmation, PriceDisplayResult, PriceEditInput, RenameInput,
     RestoreInput, Session, SubscriptionCheckConfirmation, TrialAgentChoices, TrialAgentModel,
@@ -35,8 +36,10 @@ mod worker_tasks;
 pub use worker_tasks::*;
 mod web_confirmation;
 use web_confirmation::*;
+mod agent_home;
 mod read_context;
 mod trial_agents;
+pub use agent_home::{agent_home_summary, agent_model_associations};
 pub use read_context::{desktop_snapshot, observation_read};
 pub use trial_agents::{trial_agent_choices, trial_agent_model};
 mod context;

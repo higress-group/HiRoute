@@ -54,6 +54,33 @@ pub struct TrialAgentChoices {
     pub choices: Vec<TrialAgentChoice>,
     pub trusted_authority: bool,
 }
+
+/// Read-only Home hints cannot authorize a settings action or claim native health.
+#[derive(Serialize)]
+pub struct AgentHomeEntry {
+    pub agent_id: String,
+    pub configuration_state: String,
+    pub context_id: Option<String>,
+    pub facets: Option<hiroute_application_api::AgentSettingsSummaryEntryV1>,
+}
+
+#[derive(Serialize)]
+pub struct AgentModelAssociation {
+    pub agent_id: String,
+    pub current_selection: Option<hiroute_application_api::AgentModelSelectionV2>,
+}
+
+#[derive(Serialize)]
+pub struct AgentModelAssociations {
+    pub agents: Vec<AgentModelAssociation>,
+    pub complete: bool,
+}
+
+#[derive(Serialize)]
+pub struct AgentHomeSummary {
+    pub agents: Vec<AgentHomeEntry>,
+    pub trusted_authority: bool,
+}
 #[derive(Serialize)]
 pub struct TrialAgentModel {
     pub settings: hiroute_application_api::AgentModelSettingsStatusV2,

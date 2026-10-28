@@ -122,6 +122,7 @@ fn head_at_least(
 
 fn validate_all(db: &Connection) -> PortResult<()> {
     agent_locator::validate_coverage(db)?;
+    super::agent_locator_pending::validate_all(db)?;
     let dirty: bool = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM agent_locator_dirty)",

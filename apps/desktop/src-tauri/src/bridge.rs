@@ -31,6 +31,8 @@ mod previous_routing;
 use previous_routing::*;
 mod trial_agents;
 use trial_agents::*;
+mod agent_home;
+use agent_home::*;
 mod model_feed;
 use model_feed::*;
 mod model_connections;
@@ -806,6 +808,8 @@ pub fn run() {
             web_confirmation_snapshot,
             resolve_web_confirmation,
             agent_snapshot,
+            agent_home_summary,
+            agent_model_associations,
             trial_agent_choices,
             trial_agent_model,
             preview_agent_previous_routing,

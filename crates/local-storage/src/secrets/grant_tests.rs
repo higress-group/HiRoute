@@ -658,3 +658,41 @@ fn prepared_material_is_bound_to_the_original_uncompensated_operation_and_scope(
             .is_err()
     );
 }
+
+#[test]
+fn unchanged_grant_witness_rechecks_exact_head_without_authenticating_again() {
+    let (_directory, store) = store();
+    let mutation = ensure(scope(b"fence-grant"), 0);
+    let effect = store
+        .apply_agent_access_grant(&operation_id('7'), &mutation, None)
+        .unwrap();
+    store.activate_agent_access_grant(&effect).unwrap();
+    let authenticated = store
+        .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+        .unwrap()
+        .unwrap();
+    assert!(
+        store
+            .current_agent_grant_matches(OWNER_SCOPE, CONNECTION_ID, Some(&authenticated))
+            .is_err()
+    );
+    let db = store.connection.borrow();
+    let tx = db.unchecked_transaction().unwrap();
+    assert!(
+        store
+            .current_agent_grant_matches(OWNER_SCOPE, CONNECTION_ID, Some(&authenticated))
+            .unwrap()
+    );
+    assert!(
+        !store
+            .current_agent_grant_matches(OWNER_SCOPE, CONNECTION_ID, None)
+            .unwrap()
+    );
+    tx.execute("UPDATE agent_access_grant_versions SET material_sha256=?1 WHERE connection_id=?2 AND generation=1", rusqlite::params![CanonicalDigest::of_bytes(b"other").as_str(),CONNECTION_ID]).unwrap();
+    assert!(
+        !store
+            .current_agent_grant_matches(OWNER_SCOPE, CONNECTION_ID, Some(&authenticated))
+            .unwrap()
+    );
+    tx.rollback().unwrap();
+}

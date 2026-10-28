@@ -239,31 +239,7 @@ pub(super) fn decode_from_source(
     if !source.identity(&durable)? {
         return Err(invalid());
     }
-    let rows = source.indexed_steps(durable.operation_id.as_str())?;
-    let mut count = 0;
-    for row in rows {
-        let IndexedStep {
-            number,
-            kind,
-            state,
-            encoded,
-        } = row;
-        let step = payloads::expand_step_record(source, durable.operation_id.as_str(), &encoded)?;
-        if number != count
-            || number >= 6
-            || step.as_object().is_none_or(|o| o.len() != 2)
-            || step["schema"] != "hiroute.operation-step/v1"
-            || step["step"] != raw["steps"][number]
-            || step["step"]["kind"] != kind
-            || step["step"]["status"] != state
-        {
-            return Err(invalid());
-        }
-        count += 1;
-    }
-    if count != 6 {
-        return Err(invalid());
-    }
+    validate_indexed_steps(source, durable.operation_id.as_str(), &raw)?;
     Ok(SucceededAgentOperationV1 {
         service_publication_revision: durable.steps[5]
             .terminal_result
@@ -283,6 +259,40 @@ pub(super) fn decode_from_source(
             .expect("validated fixed journal")
             .effects,
     })
+}
+
+pub(super) fn validate_indexed_steps(
+    source: &impl AgentReadSource,
+    operation_id: &str,
+    raw: &Value,
+) -> PortResult<()> {
+    let invalid = || port(PortErrorCode::Corrupt, "control.agent-read.journal");
+    let rows = source.indexed_steps(operation_id)?;
+    let mut count = 0;
+    for row in rows {
+        let IndexedStep {
+            number,
+            kind,
+            state,
+            encoded,
+        } = row;
+        let step = payloads::expand_step_record(source, operation_id, &encoded)?;
+        if number != count
+            || number >= 6
+            || step.as_object().is_none_or(|o| o.len() != 2)
+            || step["schema"] != "hiroute.operation-step/v1"
+            || step["step"] != raw["steps"][number]
+            || step["step"]["kind"] != kind
+            || step["step"]["status"] != state
+        {
+            return Err(invalid());
+        }
+        count += 1;
+    }
+    if count != 6 {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 impl ControlStore {

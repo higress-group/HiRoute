@@ -23,14 +23,110 @@ pub enum AgentLocatorScope<'a> {
 
 pub enum AgentLocatorResult {
     Found(Arc<SucceededAgentOperationV1>),
+    Pending(super::agent_locator_pending::PendingAgentStatus),
     AbsentWithCompleteCoverage,
+}
+
+/// A locator-only Home hint. Recorded never means native or grant verification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentLocatorSummary {
+    Absent,
+    RecordedConfigure,
+    RecordedRestore,
+    Pending,
+    NeedsAttention,
 }
 
 /// A non-authoritative raw closure captured under an owned Control read snapshot.
 /// Verify it outside the shared store lock and perform the separate final fence.
 pub enum CapturedAgentLocator {
     Found(AgentLocatorCapture),
-    AbsentWithCompleteCoverage,
+    Pending(
+        super::agent_locator_pending::PendingAgentCapture,
+        AgentLocatorWitness,
+    ),
+    AbsentWithCompleteCoverage(AgentLocatorWitness),
+}
+
+/// Counts and byte lengths only; does not expose the captured data.
+#[derive(Clone, Copy, Default)]
+pub struct AgentLocatorSizes {
+    pub operations: usize,
+    pub operation_bytes: usize,
+    pub payloads: usize,
+    pub payload_bytes: usize,
+}
+
+#[derive(Clone)]
+pub struct AgentLocatorWitness {
+    workspace: WorkspaceId,
+    scope: OwnedScope,
+    head: Option<HeadWitness>,
+    pending: Option<super::agent_locator_pending::PendingWitness>,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct HeadWitness {
+    ordinal: i64,
+    operation: String,
+    generation: u64,
+    accepted: String,
+    plan_digest: String,
+    action: String,
+}
+
+impl CapturedAgentLocator {
+    pub fn sizes(&self) -> AgentLocatorSizes {
+        match self {
+            Self::Found(capture) => capture.frozen.sizes(),
+            Self::Pending(capture, _) => capture.sizes(),
+            Self::AbsentWithCompleteCoverage(_) => AgentLocatorSizes::default(),
+        }
+    }
+    pub fn witness(&self) -> PortResult<AgentLocatorWitness> {
+        match self {
+            Self::AbsentWithCompleteCoverage(witness) | Self::Pending(_, witness) => {
+                Ok(witness.clone())
+            }
+            Self::Found(capture) => capture.witness(),
+        }
+    }
+}
+
+impl AgentLocatorWitness {
+    /// Compare the exact head and selected SQL identity during the final owned
+    /// read. This does not replace the physical stamp or full frozen proof.
+    pub fn matches_current(&self, control: &ControlStore) -> PortResult<bool> {
+        let db = control.connection.borrow();
+        if db.is_autocommit() {
+            return Err(port(PortErrorCode::Conflict, "control.agent-locator.fence"));
+        }
+        agent_locator::validate_coverage(&db)?;
+        if let Some(pending) = &self.pending {
+            return pending.matches_current(&db);
+        }
+        let key = Key::new(self.scope.borrow())?;
+        let current: Option<HeadWitness> = db.query_row(
+            "SELECT h.ordinal,m.operation_id,m.generation,m.accepted_digest,m.plan_digest,h.action
+             FROM agent_locator_heads h JOIN agent_locator_members m ON m.ordinal=h.ordinal
+             JOIN operations o ON o.rowid=m.ordinal AND o.operation_id=m.operation_id
+             WHERE h.workspace_id=?1 AND h.scope=?2 AND h.context_id=?3 AND h.grant_key=?4
+               AND o.workspace_id=m.workspace_id AND o.state='succeeded'
+               AND o.generation=m.generation AND o.accepted_change_digest=m.accepted_digest",
+            params![self.workspace.as_str(),key.scope,key.context,key.hash],
+            |r| Ok(HeadWitness { ordinal:r.get(0)?, operation:r.get(1)?, generation:r.get(2)?, accepted:r.get(3)?, plan_digest:r.get(4)?, action:r.get(5)? }),
+        ).optional().map_err(|_| invalid())?;
+        if current.is_none() {
+            let present: bool = db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM agent_locator_heads WHERE workspace_id=?1 AND scope=?2 AND context_id=?3 AND grant_key=?4)",
+                params![self.workspace.as_str(),key.scope,key.context,key.hash], |r| r.get(0),
+            ).map_err(|_| invalid())?;
+            if present {
+                return Err(invalid());
+            }
+        }
+        Ok(current == self.head)
+    }
 }
 
 #[derive(Clone)]
@@ -84,6 +180,22 @@ pub struct AgentLocatorCapture {
 }
 
 impl AgentLocatorCapture {
+    fn witness(&self) -> PortResult<AgentLocatorWitness> {
+        Ok(AgentLocatorWitness {
+            workspace: self.workspace.clone(),
+            scope: self.scope.clone(),
+            head: Some(HeadWitness {
+                ordinal: self.member.ordinal,
+                operation: self.member.id.clone().ok_or_else(invalid)?,
+                generation: self.member.generation.ok_or_else(invalid)?,
+                accepted: self.member.accepted.clone().ok_or_else(invalid)?,
+                plan_digest: self.member.plan_digest.clone().ok_or_else(invalid)?,
+                action: self.head_action.clone(),
+            }),
+            pending: None,
+        })
+    }
+
     /// Complete the same strict selected-journal validation over the captured
     /// bytes. The caller must still fence current business/native dependencies.
     pub fn verify(self) -> PortResult<Arc<SucceededAgentOperationV1>> {
@@ -433,11 +545,11 @@ fn action(input: &agent_locator_input::LocatorInput, key: &Key<'_>) -> Option<&'
     }
 }
 
-fn selected(
+fn selected_metadata_after_coverage(
     db: &Connection,
     workspace: &WorkspaceId,
     scope: AgentLocatorScope<'_>,
-) -> PortResult<Option<AgentLocatorCapture>> {
+) -> PortResult<Option<(Member, String)>> {
     let key = Key::new(scope)?;
     if key
         .grant
@@ -445,7 +557,6 @@ fn selected(
     {
         return Err(invalid());
     }
-    agent_locator::validate_coverage(db)?;
     let head: Option<(i64,String)> = db.query_row(
         "SELECT ordinal,action FROM agent_locator_heads WHERE workspace_id=?1 AND scope=?2 AND context_id=?3 AND grant_key=?4",
         params![workspace.as_str(),key.scope,key.context,key.hash], |r| Ok((r.get(0)?,r.get(1)?)),
@@ -478,20 +589,45 @@ fn selected(
         return Err(invalid());
     }
     let id = member.id.as_deref().ok_or_else(invalid)?;
-    let row = row_for_id(db, id)?.ok_or_else(invalid)?;
-    let actual_ordinal: i64 = db
+    let (actual_ordinal, generation, accepted, actual_workspace, state): (i64,u64,String,String,String) = db
         .query_row(
-            "SELECT rowid FROM operations WHERE operation_id=?1",
+            "SELECT rowid,generation,accepted_change_digest,workspace_id,state FROM operations WHERE operation_id=?1",
             [id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
         )
         .map_err(|_| invalid())?;
     if actual_ordinal != ordinal
-        || member.generation != Some(row.generation)
-        || member.accepted.as_deref() != Some(row.accepted_digest.as_str())
+        || member.generation != Some(generation)
+        || member.accepted.as_deref() != Some(accepted.as_str())
+        || actual_workspace != workspace.as_str()
+        || state != "succeeded"
     {
         return Err(invalid());
     }
+    let expected = match key.scope {
+        "model" => member.model.as_deref(),
+        "collaboration" => member.collaboration.as_deref(),
+        "management" => member.management.as_deref(),
+        "resident" => Some("declaration"),
+        "grant" => Some("grant"),
+        _ => None,
+    };
+    if expected != Some(head_action.as_str()) {
+        return Err(invalid());
+    }
+    Ok(Some((member, head_action)))
+}
+
+fn selected(
+    db: &Connection,
+    workspace: &WorkspaceId,
+    scope: AgentLocatorScope<'_>,
+) -> PortResult<Option<AgentLocatorCapture>> {
+    let Some((member, head_action)) = selected_metadata_after_coverage(db, workspace, scope)?
+    else {
+        return Ok(None);
+    };
+    let row = row_for_id(db, member.id.as_deref().ok_or_else(invalid)?)?.ok_or_else(invalid)?;
     let frozen = FrozenAgentJournal::capture(db, row)?;
     Ok(Some(AgentLocatorCapture {
         frozen,
@@ -502,7 +638,116 @@ fn selected(
     }))
 }
 
+fn summary_after_coverage(
+    db: &Connection,
+    workspace: &WorkspaceId,
+    context_id: &str,
+    facet: AgentSettingsFacet,
+) -> PortResult<AgentLocatorSummary> {
+    let scope = AgentLocatorScope::ContextFacet { context_id, facet };
+    if let Some(attention) = super::agent_locator_pending::summary(db, workspace, scope)? {
+        return Ok(if attention {
+            AgentLocatorSummary::NeedsAttention
+        } else {
+            AgentLocatorSummary::Pending
+        });
+    }
+    let selected = selected_metadata_after_coverage(db, workspace, scope)?;
+    if let Some((member, _)) = &selected {
+        let dirty: bool = db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM agent_locator_dirty WHERE operation_id=?1)",
+                [member.id.as_deref().ok_or_else(invalid)?],
+                |r| r.get(0),
+            )
+            .map_err(|_| invalid())?;
+        if dirty {
+            return Err(invalid());
+        }
+    }
+    Ok(match selected {
+        None => AgentLocatorSummary::Absent,
+        Some((_, action)) if action == "configure" => AgentLocatorSummary::RecordedConfigure,
+        Some((_, action)) if action == "restore" => AgentLocatorSummary::RecordedRestore,
+        _ => return Err(invalid()),
+    })
+}
+
 impl ControlStore {
+    /// The whole Home batch shares one owned snapshot and one coverage check.
+    /// Individual scope errors remain explicit, never a fabricated empty result.
+    pub fn agent_locator_summaries(
+        &self,
+        workspace: &WorkspaceId,
+        contexts: &[String],
+    ) -> PortResult<Vec<[PortResult<AgentLocatorSummary>; 3]>> {
+        let db = self.connection.borrow();
+        if db.is_autocommit() {
+            return Err(port(
+                PortErrorCode::Conflict,
+                "control.agent-locator.summary-snapshot",
+            ));
+        }
+        agent_locator::validate_coverage(&db)?;
+        Ok(contexts
+            .iter()
+            .map(|context| {
+                [
+                    summary_after_coverage(&db, workspace, context, AgentSettingsFacet::Model),
+                    summary_after_coverage(
+                        &db,
+                        workspace,
+                        context,
+                        AgentSettingsFacet::Collaboration,
+                    ),
+                    summary_after_coverage(
+                        &db,
+                        workspace,
+                        context,
+                        AgentSettingsFacet::ManagementSkill,
+                    ),
+                ]
+            })
+            .collect())
+    }
+
+    #[cfg(test)]
+    pub fn agent_locator_summary(
+        &self,
+        workspace: &WorkspaceId,
+        context_id: &str,
+        facet: AgentSettingsFacet,
+    ) -> PortResult<AgentLocatorSummary> {
+        let db = self.connection.borrow();
+        if db.is_autocommit() {
+            return Err(port(
+                PortErrorCode::Conflict,
+                "control.agent-locator.summary-snapshot",
+            ));
+        }
+        agent_locator::validate_coverage(&db)?;
+        summary_after_coverage(&db, workspace, context_id, facet)
+    }
+
+    /// A non-authoritative preflight that only selects which physical stores to
+    /// stamp. The caller must capture the locator again and reject any mismatch.
+    pub fn may_need_agent_model_grant(
+        &self,
+        workspace: &WorkspaceId,
+        context_id: &str,
+    ) -> PortResult<bool> {
+        let db = self.connection.borrow();
+        db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM agent_locator_heads WHERE workspace_id=?1
+                       AND scope='model' AND context_id=?2 AND grant_key='')
+               AND NOT EXISTS(SELECT 1 FROM agent_locator_pending p
+                       WHERE (p.workspace_id IS NULL OR p.workspace_id=?1)
+                         AND (p.classification='unresolved'
+                           OR (p.classification='settings' AND p.context_id=?2 AND p.model_action IS NOT NULL)))",
+            params![workspace.as_str(), context_id], |r| r.get(0),
+        ).map_err(|_| invalid())
+    }
+
     /// Capture inside a caller-owned, bounded Control read transaction. The
     /// snapshot does not grant status authority until verified and fenced.
     pub fn capture_agent_locator(
@@ -517,9 +762,26 @@ impl ControlStore {
                 "control.agent-locator.snapshot",
             ));
         }
+        agent_locator::validate_coverage(&db)?;
+        if !matches!(scope, AgentLocatorScope::GrantProvenance { .. })
+            && let Some(pending) = super::agent_locator_pending::capture(&db, workspace, scope)?
+        {
+            let witness = AgentLocatorWitness {
+                workspace: workspace.clone(),
+                scope: scope.into(),
+                head: None,
+                pending: Some(pending.witness()),
+            };
+            return Ok(CapturedAgentLocator::Pending(pending, witness));
+        }
         Ok(match selected(&db, workspace, scope)? {
             Some(found) => CapturedAgentLocator::Found(found),
-            None => CapturedAgentLocator::AbsentWithCompleteCoverage,
+            None => CapturedAgentLocator::AbsentWithCompleteCoverage(AgentLocatorWitness {
+                workspace: workspace.clone(),
+                scope: scope.into(),
+                head: None,
+                pending: None,
+            }),
         })
     }
 
@@ -537,15 +799,20 @@ impl ControlStore {
             } else {
                 None
             };
-            let found = selected(&db, workspace, scope)?;
+            let found = self.capture_agent_locator(workspace, scope)?;
             if let Some(tx) = tx {
                 tx.commit().map_err(|_| invalid())?;
             }
             found
         };
         Ok(match found {
-            Some(found) => AgentLocatorResult::Found(found.verify()?),
-            None => AgentLocatorResult::AbsentWithCompleteCoverage,
+            CapturedAgentLocator::Found(found) => AgentLocatorResult::Found(found.verify()?),
+            CapturedAgentLocator::Pending(pending, _) => {
+                AgentLocatorResult::Pending(pending.verify()?)
+            }
+            CapturedAgentLocator::AbsentWithCompleteCoverage(_) => {
+                AgentLocatorResult::AbsentWithCompleteCoverage
+            }
         })
     }
 }

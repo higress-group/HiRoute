@@ -468,34 +468,140 @@ fn locator_upgrade_refuses_missing_original_recovery_coverage() {
 
 #[test]
 fn locator_upgrade_refuses_damaged_current_publication() {
-    let directory = crate::test_tempdir().unwrap();
-    let root = directory.path().join("storage");
-    let stores = schema32_source(&root);
-    history(&stores, 3);
-    stores
-        .control
-        .connection
-        .borrow()
-        .execute(
-            "UPDATE gateway_publications SET digest='corrupted-current' WHERE state='active'",
-            [],
+    for role in ["active", "last-known-good", "prepared"] {
+        let directory = crate::test_tempdir().unwrap();
+        let root = directory.path().join("storage");
+        let stores = schema32_source(&root);
+        history(&stores, 3);
+        if role == "prepared" {
+            let mut publication: GatewayPublicationV1 =
+                serde_json::from_slice(include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../e2e/product/fixtures/routing/current-publication.v3.json"
+                )))
+                .unwrap();
+            publication.grants.clear();
+            publication.aliases.clear();
+            publication.publication_revision = GatewayPublicationRevision::new(4).unwrap();
+            let record =
+                PublicationRecordV1::from_publication(WorkspaceId::default(), &publication)
+                    .unwrap();
+            stores
+                .control()
+                .prepare_publication(&record, Some(GatewayPublicationRevision::new(3).unwrap()))
+                .unwrap();
+        }
+        let revision = match role {
+            "active" => 3,
+            "last-known-good" => 2,
+            _ => 4,
+        };
+        stores.control.connection.borrow().execute(
+            "UPDATE gateway_publications SET digest='corrupted-current' WHERE publication_revision=?1", [revision],
+        ).unwrap();
+        drop(stores);
+        assert!(
+            LocalStorageSet::open_for_daemon_startup(&root).is_err(),
+            "{role}"
+        );
+        assert_eq!(
+            database_version(&root.join("live/control.db")).unwrap(),
+            Some(32)
+        );
+        let restored = Connection::open(root.join("live/control.db")).unwrap();
+        assert_eq!(
+            restored
+                .query_row(
+                    "SELECT digest FROM gateway_publications WHERE publication_revision=?1",
+                    [revision],
+                    |r| r.get::<_, String>(0),
+                )
+                .unwrap(),
+            "corrupted-current",
+            "{role}"
+        );
+    }
+}
+
+#[test]
+fn locator_upgrade_distinguishes_unheld_plan_history_from_current_and_held_versions() {
+    for role in ["unreferenced", "head", "hold"] {
+        let directory = crate::test_tempdir().unwrap();
+        let root = directory.path().join("storage");
+        let stores = schema32_source(&root);
+        let publication: GatewayPublicationV1 = serde_json::from_slice(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../e2e/product/fixtures/routing/current-publication.v3.json"
+        )))
+        .unwrap();
+        let compiled = publication.into_current().unwrap().plans.remove(0);
+        let version =
+            PlanVersionV1::from_unversioned_compiled_recovery(WorkspaceId::default(), compiled)
+                .unwrap();
+        let r = &version.reference;
+        let db = stores.control.connection.borrow();
+        db.execute(
+            "INSERT INTO plan_versions VALUES(?1,?2,?3,?4,?5,?6,'isolated-fixture')",
+            params![
+                r.workspace_id.as_str(),
+                r.plan_id.as_str(),
+                r.content_revision,
+                r.content_digest.as_str(),
+                serde_json::to_string(&version).unwrap(),
+                "published"
+            ],
         )
         .unwrap();
-    drop(stores);
-    assert!(LocalStorageSet::open_for_daemon_startup(&root).is_err());
-    assert_eq!(
-        database_version(&root.join("live/control.db")).unwrap(),
-        Some(32)
-    );
-    let restored = Connection::open(root.join("live/control.db")).unwrap();
-    assert_eq!(
-        restored
-            .query_row(
-                "SELECT digest FROM gateway_publications WHERE state='active'",
-                [],
-                |r| r.get::<_, String>(0)
+        if role == "head" {
+            let head = PlanHeadV1 {
+                head_revision: r.content_revision,
+                reference: r.clone(),
+                model_alias: version.compiled.model_alias().clone(),
+                status: PlanLifecycleV1::Enabled,
+            };
+            db.execute(
+                "INSERT INTO plan_heads VALUES(?1,?2,?3,?4)",
+                params![
+                    r.workspace_id.as_str(),
+                    r.plan_id.as_str(),
+                    head.head_revision,
+                    serde_json::to_string(&head).unwrap()
+                ],
             )
-            .unwrap(),
-        "corrupted-current"
-    );
+            .unwrap();
+        } else if role == "hold" {
+            db.execute(
+                "INSERT INTO plan_version_holds VALUES(?1,'retained-worker',?2,?3,?4,0,1)",
+                params![
+                    r.workspace_id.as_str(),
+                    r.plan_id.as_str(),
+                    r.content_revision,
+                    r.content_digest.as_str()
+                ],
+            )
+            .unwrap();
+        }
+        drop(db);
+        validate_current_storage(stores.control(), stores.runtime(), stores.secrets()).unwrap();
+        stores
+            .control
+            .connection
+            .borrow()
+            .execute("UPDATE plan_versions SET version_json='{}'", [])
+            .unwrap();
+        drop(stores);
+        let result = LocalStorageSet::open_for_daemon_startup(&root);
+        assert_eq!(result.is_ok(), role == "unreferenced", "{role}");
+        if let Ok(upgraded) = result {
+            assert!(
+                audit_current_storage(upgraded.control(), upgraded.runtime(), upgraded.secrets())
+                    .is_err()
+            );
+        } else {
+            assert_eq!(
+                database_version(&root.join("live/control.db")).unwrap(),
+                Some(32)
+            );
+        }
+    }
 }

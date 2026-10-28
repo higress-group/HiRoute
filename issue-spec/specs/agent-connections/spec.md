@@ -8,6 +8,35 @@ published routes converge through the common recoverable settings workflow.
 
 ## Requirements
 
+### Requirement: Current settings reads isolate unrelated history
+
+Current settings SHALL locate the last applicable declaration by exact workspace,
+context and facet; grant provenance SHALL additionally match the complete current
+grant identity, and resident service ownership SHALL use its workspace-wide latest
+declaration. Keep, Configure, Restore and unresolved recovery retain their distinct
+meanings. Unknown coverage, newer unresolved work or damaged current proof cannot
+be reported as absent or as a settled success. Explicit history and Restore reads
+retain their original strict scope.
+
+The selected journal and required dependencies SHALL be captured from independently
+owned database snapshots, with store and connection identities and physical epochs
+fenced before capture, after capture and after lock-free verification. The current
+grant is authenticated in its own snapshot without exporting secret material.
+Selected journal validation and native reads occur outside the shared storage lock;
+the final fence rechecks the exact consumed dependencies. A changed read may be
+retried once and continued change remains a retryable failure. These snapshots do
+not create a cross-database transaction or grant Preview/Apply authority.
+
+#### Scenario: Older or unrelated Agent history is damaged
+
+- **WHEN** the selected current owner and recovery closure are valid but an unrelated older completed record is damaged
+- **THEN** current settings use the selected owner's complete proof without expanding unrelated history, while explicit access to that damaged record still reports its actual failure.
+
+#### Scenario: Grant or recovery changes during a read
+
+- **WHEN** the active grant, selected owner, pending/finalization work or physical database epoch changes during capture or verification
+- **THEN** the reader discards the mixed result, retries the complete read at most once and never represents unresolved work as a completed or absent configuration.
+
 ### Requirement: Settings confirmation reads its current target
 
 After a settings change, Desktop SHALL read the exact selected context and confirm

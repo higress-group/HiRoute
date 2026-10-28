@@ -7,6 +7,7 @@ CREATE TABLE agent_locator_coverage (
     store_uuid TEXT NOT NULL CHECK(length(store_uuid)>0),
     schema_version INTEGER NOT NULL,
     member_count INTEGER NOT NULL CHECK(member_count>=0),
+    pending_count INTEGER NOT NULL CHECK(pending_count>=0),
     head_count INTEGER NOT NULL CHECK(head_count>=0),
     tampered INTEGER NOT NULL CHECK(tampered IN (0,1))
 );
@@ -33,6 +34,26 @@ CREATE UNIQUE INDEX agent_locator_member_operation ON agent_locator_members(oper
     WHERE operation_id IS NOT NULL;
 CREATE INDEX agent_locator_unresolved ON agent_locator_members(classification,workspace_id,ordinal);
 CREATE INDEX agent_locator_grant_unresolved ON agent_locator_members(grant_unresolved,workspace_id,context_id,ordinal);
+CREATE TABLE agent_locator_pending (
+    operation_id TEXT PRIMARY KEY,
+    ordinal INTEGER NOT NULL UNIQUE,
+    workspace_id TEXT,
+    context_id TEXT,
+    generation INTEGER,
+    accepted_digest TEXT,
+    plan_digest TEXT,
+    state TEXT,
+    finalization_pending INTEGER,
+    model_action TEXT,
+    collaboration_action TEXT,
+    management_action TEXT,
+    resident_declaration INTEGER NOT NULL CHECK(resident_declaration IN (0,1)),
+    classification TEXT NOT NULL CHECK(classification IN ('settings','other','unresolved')),
+    CHECK(model_action IS NULL OR model_action IN ('configure','restore')),
+    CHECK(collaboration_action IS NULL OR collaboration_action IN ('configure','restore')),
+    CHECK(management_action IS NULL OR management_action IN ('configure','restore'))
+);
+CREATE INDEX agent_locator_pending_scope ON agent_locator_pending(workspace_id,context_id,classification,ordinal);
 CREATE TABLE agent_locator_heads (
     workspace_id TEXT NOT NULL,
     scope TEXT NOT NULL CHECK(scope IN ('model','collaboration','management','grant','resident')),
@@ -99,6 +120,9 @@ END;
 CREATE TRIGGER agent_locator_member_insert AFTER INSERT ON agent_locator_members BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
 CREATE TRIGGER agent_locator_member_update AFTER UPDATE ON agent_locator_members BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
 CREATE TRIGGER agent_locator_member_delete AFTER DELETE ON agent_locator_members BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
+CREATE TRIGGER agent_locator_pending_insert AFTER INSERT ON agent_locator_pending BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
+CREATE TRIGGER agent_locator_pending_update AFTER UPDATE ON agent_locator_pending BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
+CREATE TRIGGER agent_locator_pending_delete AFTER DELETE ON agent_locator_pending BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
 CREATE TRIGGER agent_locator_head_insert AFTER INSERT ON agent_locator_heads BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
 CREATE TRIGGER agent_locator_head_update AFTER UPDATE ON agent_locator_heads BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
 CREATE TRIGGER agent_locator_head_delete AFTER DELETE ON agent_locator_heads BEGIN UPDATE agent_locator_coverage SET tampered=1 WHERE singleton=1; END;
@@ -119,7 +143,7 @@ pub(crate) fn remove_test_shape(db: &rusqlite::Connection) {
     }
     db.execute_batch(
         "DROP TABLE IF EXISTS agent_locator_heads;
-        DROP TABLE IF EXISTS agent_locator_members; DROP TABLE IF EXISTS agent_locator_dirty;
+        DROP TABLE IF EXISTS agent_locator_members; DROP TABLE IF EXISTS agent_locator_pending; DROP TABLE IF EXISTS agent_locator_dirty;
         DROP TABLE IF EXISTS agent_locator_coverage;",
     )
     .unwrap();

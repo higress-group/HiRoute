@@ -48,6 +48,8 @@ pub(crate) mod agent_locator;
 mod agent_locator_input;
 mod agent_locator_integrity;
 mod agent_locator_lookup;
+mod agent_locator_pending;
+pub use agent_locator_pending::{PendingAgentCapture, PendingAgentStatus};
 mod agent_read;
 mod artifact_dependencies;
 mod artifact_heads;
@@ -55,9 +57,11 @@ mod artifact_validation;
 mod completed_operation_cache;
 mod native_targets;
 pub use agent_locator_lookup::{
-    AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope, CapturedAgentLocator,
+    AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope, AgentLocatorSizes,
+    AgentLocatorSummary, AgentLocatorWitness, CapturedAgentLocator,
 };
 pub use agent_read::SucceededAgentOperationV1;
+pub use native_targets::{AgentNativeTargetWitness, CapturedAgentNativeTarget};
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
 mod compute;

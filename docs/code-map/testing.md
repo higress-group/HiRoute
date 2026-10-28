@@ -204,6 +204,11 @@ The [Home startup scenarios](../../apps/desktop/tests/v3/browser/home-startup-sc
 exercise delayed snapshot and startup-status results through the production
 [Home reader](../../apps/desktop/src/product/use-desktop-home.ts); stale replies
 cannot replace newer service evidence or clear the current failure.
+Its summary and route-association scenarios distinguish saved hints, incomplete
+coverage and visible-page reads. [Locator projection](../../crates/local-storage/src/control/agent_locator_projection_tests.rs)
+and [physical fences](../../crates/local-storage/src/physical_read_stamp_tests.rs)
+cover selected ownership, pending work, external writes and caller transactions;
+browser fixtures do not establish native Agent or upgrade acceptance.
 
 The [Rust installation journal](../../crates/host-runtime/src/standalone_install/journal/tests.rs)
 covers current-schema interruption recovery. Package tests verify x64 and ARM64

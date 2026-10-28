@@ -6,7 +6,7 @@ use hiroute_domain::{
     CompensationOutcome, EffectReconciliation, OperationId, OwnedEffectV1, PortErrorCode,
     PortResult, ProtectedSecret, is_agent_access_grant_effect,
 };
-use rusqlite::{Connection, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde_json::Value;
 
 use super::{KEY_VERSION, LocalSecretStore, NONCE_BYTES, port};
@@ -24,6 +24,66 @@ const AAD_SCHEMA: &str = "hiroute.agent-access-grant-entry/v1";
 const GRANT_ID_RANDOM_BYTES: usize = 16;
 
 impl LocalSecretStore {
+    /// Recheck safe head identity after the caller authenticated this exact grant
+    /// within an owned Secret snapshot and proved the physical epoch unchanged.
+    /// This does not authenticate material and cannot be used as a grant proof alone.
+    pub fn current_agent_grant_matches(
+        &self,
+        owner_scope: &str,
+        connection_id: &str,
+        expected: Option<&AgentAccessGrantRefV1>,
+    ) -> PortResult<bool> {
+        let connection = self.connection.borrow();
+        if connection.is_autocommit() {
+            return Err(port(
+                PortErrorCode::Conflict,
+                "agent_access_grant.fence.snapshot",
+            ));
+        }
+        let Some(head) = read_head(&connection, connection_id)? else {
+            return Ok(expected.is_none());
+        };
+        if head.owner_scope != owner_scope {
+            return Err(port(
+                PortErrorCode::PermissionDenied,
+                "agent_access_grant.inspect.owner",
+            ));
+        }
+        let Some(generation) = head.active_version_generation else {
+            return Ok(expected.is_none());
+        };
+        let Some(expected) = expected else {
+            return Ok(false);
+        };
+        expected
+            .validate()
+            .map_err(|_| port(PortErrorCode::Corrupt, "agent_access_grant.fence.reference"))?;
+        let row: Option<(String,String,String,String,String)> = connection.query_row(
+            "SELECT grant_id,owner_scope,scope_json,scope_hash,material_sha256 FROM agent_access_grant_versions WHERE connection_id=?1 AND generation=?2",
+            params![connection_id,generation], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
+        ).optional().map_err(|_| port(PortErrorCode::Unavailable, "agent_access_grant.fence.read"))?;
+        let Some((id, owner, scope_json, scope_hash, material)) = row else {
+            return Err(port(
+                PortErrorCode::Corrupt,
+                "agent_access_grant.fence.version",
+            ));
+        };
+        let scope: AgentAccessGrantScopeV1 = serde_json::from_str(&scope_json)
+            .map_err(|_| port(PortErrorCode::Corrupt, "agent_access_grant.fence.scope"))?;
+        let actual_hash = scope
+            .digest()
+            .map_err(|_| port(PortErrorCode::Corrupt, "agent_access_grant.fence.scope"))?;
+        Ok(head.generation == generation
+            && expected.generation() == generation
+            && expected.owner_scope() == owner_scope
+            && owner == owner_scope
+            && expected.connection_id() == connection_id
+            && expected.grant_id() == id
+            && expected.material_sha256().as_str() == material
+            && actual_hash.as_str() == scope_hash
+            && expected.scope() == &scope)
+    }
+
     /// Provenance lookup only: callers still authenticate the exact publication/effect
     /// join. The latest head may reuse a version created by a different operation;
     /// consider both bounded owners, rather than replaying every historical ensure.

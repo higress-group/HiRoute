@@ -44,6 +44,7 @@ pub use worker::*;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DiagnosticEvent {
+    AgentReadTiming(crate::agent_read::AgentReadTiming),
     PublicationTiming(crate::publication::PublicationTiming),
     ProcessStart(ProcessStart),
     StartupEnd(StartupEnd),
@@ -114,7 +115,8 @@ impl DiagnosticEvent {
                 StartupOutcome::Failure { .. } => Error,
                 StartupOutcome::Cancelled => Warn,
             },
-            DiagnosticEvent::PublicationTiming(_)
+            DiagnosticEvent::AgentReadTiming(_)
+            | DiagnosticEvent::PublicationTiming(_)
             | DiagnosticEvent::StageBegin(_)
             | DiagnosticEvent::StageEnd(_)
             | DiagnosticEvent::StageProgress(_) => Debug,
@@ -256,6 +258,7 @@ impl DiagnosticEvent {
     /// Stable event name used in JSON and by tests.
     pub fn kind(&self) -> &'static str {
         match self {
+            DiagnosticEvent::AgentReadTiming(_) => "agent_read_timing",
             DiagnosticEvent::PublicationTiming(_) => "publication_timing",
             DiagnosticEvent::ProcessStart(_) => "process_start",
             DiagnosticEvent::StartupEnd(_) => "startup_end",

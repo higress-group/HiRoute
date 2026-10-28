@@ -81,6 +81,10 @@ impl ApplicationService {
             return delegation::tasks::dispatch(self, request);
         }
 
+        if request.operation_id == hiroute_application_api::AGENT_SETTINGS_SUMMARY_OPERATION_V1 {
+            return control_plane::agent_settings::summary(self, request);
+        }
+
         let Some(descriptor) = command_by_operation(&request.operation_id) else {
             return failed(ErrorCode::UnknownCommand, request.request_id);
         };

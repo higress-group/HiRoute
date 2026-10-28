@@ -258,3 +258,232 @@ fn raw_locator_capture_requires_a_transaction_and_verifies_afterward() {
         operation.operation_id
     );
 }
+
+#[test]
+fn pending_and_finalization_overlay_the_prior_head_until_settled() {
+    use super::super::super::{AgentLocatorResult, AgentLocatorScope};
+    use hiroute_domain::{AgentSettingsFacet, OperationState};
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let root = directory.path().join("pending");
+    let mut previous = target_operation(root.to_str().unwrap(), "overlay-previous", false);
+    persist(&control, &mut previous);
+    let mut pending = target_operation(root.to_str().unwrap(), "overlay-pending", true);
+    let context = pending.plan.spec().resource_id.as_ref().unwrap().clone();
+    let scope = || AgentLocatorScope::ContextFacet {
+        context_id: &context,
+        facet: AgentSettingsFacet::ManagementSkill,
+    };
+    let token = "overlay-capability";
+    control
+        .grant_apply_capability(token, &pending, i64::MAX)
+        .unwrap();
+    let authorization = control
+        .verify_apply_authorization(
+            &ProtectedApplyCapability::new(token.to_owned()).unwrap(),
+            &pending.workspace_id,
+            &pending.idempotency.principal,
+            &pending.idempotency.operation_kind,
+            &pending.accepted_digest,
+            &pending.expected_revisions,
+        )
+        .unwrap();
+    control.begin_operation(&pending, &authorization).unwrap();
+    assert!(
+        matches!(control.find_agent_locator(&WorkspaceId::default(), scope()).unwrap(),
+        AgentLocatorResult::Pending(status) if status.operation_id == pending.operation_id && status.state == OperationState::Accepted)
+    );
+    assert!(matches!(
+        control
+            .find_agent_locator(
+                &WorkspaceId::default(),
+                AgentLocatorScope::ContextFacet {
+                    context_id: &context,
+                    facet: AgentSettingsFacet::Model,
+                }
+            )
+            .unwrap(),
+        AgentLocatorResult::AbsentWithCompleteCoverage
+    ));
+    pending.state = OperationState::Succeeded;
+    for step in &mut pending.steps {
+        step.status = hiroute_domain::OperationStepStatus::Applied;
+    }
+    add_component_file_receipts(&mut pending);
+    control.finish_operation(&mut pending).unwrap();
+    assert!(
+        matches!(control.find_agent_locator(&WorkspaceId::default(), scope()).unwrap(),
+        AgentLocatorResult::Pending(status) if status.operation_id == pending.operation_id && status.state == OperationState::Succeeded && status.finalization_pending)
+    );
+    control.complete_operation_finalization(&pending).unwrap();
+    assert!(
+        matches!(control.find_agent_locator(&WorkspaceId::default(), scope()).unwrap(),
+        AgentLocatorResult::Found(operation) if operation.operation_id == pending.operation_id)
+    );
+}
+
+#[test]
+fn pending_projection_damage_cannot_be_reported_as_absence() {
+    use super::super::super::AgentLocatorScope;
+    use hiroute_domain::AgentSettingsFacet;
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let pending = target_operation(
+        directory.path().join("pending-damage").to_str().unwrap(),
+        "pending-damage",
+        false,
+    );
+    let token = "pending-damage-capability";
+    control
+        .grant_apply_capability(token, &pending, i64::MAX)
+        .unwrap();
+    let authorization = control
+        .verify_apply_authorization(
+            &ProtectedApplyCapability::new(token.to_owned()).unwrap(),
+            &pending.workspace_id,
+            &pending.idempotency.principal,
+            &pending.idempotency.operation_kind,
+            &pending.accepted_digest,
+            &pending.expected_revisions,
+        )
+        .unwrap();
+    control.begin_operation(&pending, &authorization).unwrap();
+    let context = pending.plan.spec().resource_id.as_deref().unwrap();
+    let scope = || AgentLocatorScope::ContextFacet {
+        context_id: context,
+        facet: AgentSettingsFacet::ManagementSkill,
+    };
+    {
+        let db = control.connection.borrow();
+        db.execute_batch("BEGIN").unwrap();
+        db.execute(
+            "DELETE FROM agent_locator_pending WHERE operation_id=?1",
+            [pending.operation_id.as_str()],
+        )
+        .unwrap();
+    }
+    assert!(
+        control
+            .find_agent_locator(&WorkspaceId::default(), scope())
+            .is_err()
+    );
+    control
+        .connection
+        .borrow()
+        .execute_batch("ROLLBACK")
+        .unwrap();
+    {
+        let db = control.connection.borrow();
+        db.execute_batch("BEGIN").unwrap();
+        db.execute(
+            "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=0",
+            [pending.operation_id.as_str()],
+        )
+        .unwrap();
+    }
+    assert!(
+        control
+            .find_agent_locator(&WorkspaceId::default(), scope())
+            .is_err()
+    );
+    control
+        .connection
+        .borrow()
+        .execute_batch("ROLLBACK")
+        .unwrap();
+    assert!(
+        control
+            .find_agent_locator(&WorkspaceId::default(), scope())
+            .is_ok()
+    );
+}
+
+#[test]
+fn native_target_capture_authenticates_only_the_selected_owner_and_fences_the_head() {
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let root = directory.path().join("captured-native-target");
+    let mut first = target_operation(root.to_str().unwrap(), "target-owner-first", false);
+    let mut latest = target_operation(root.to_str().unwrap(), "target-owner-latest", true);
+    persist(&control, &mut first);
+    persist(&control, &mut latest);
+    let context = latest.plan.spec().resource_id.as_deref().unwrap();
+    let captured = {
+        let db = control.connection.borrow();
+        let tx = db.unchecked_transaction().unwrap();
+        let captured = control
+            .capture_agent_native_target(&WorkspaceId::default(), context)
+            .unwrap();
+        tx.commit().unwrap();
+        captured
+    };
+    let witness = captured.witness();
+    assert_eq!(
+        captured.verify().unwrap().unwrap().config_root(),
+        root.to_str().unwrap()
+    );
+    let db = control.connection.borrow();
+    let tx = db.unchecked_transaction().unwrap();
+    assert!(witness.matches_current(&control).unwrap());
+    db.execute(
+        "UPDATE agent_native_target_heads SET owner_operation_id=?1 WHERE context_id=?2",
+        rusqlite::params![first.operation_id.as_str(), context],
+    )
+    .unwrap();
+    assert!(!witness.matches_current(&control).unwrap());
+    tx.rollback().unwrap();
+}
+
+#[test]
+fn home_summary_reads_only_locator_metadata_and_keeps_restore_distinct() {
+    use super::super::super::AgentLocatorSummary;
+    use hiroute_domain::AgentSettingsFacet;
+    let directory = tempdir().unwrap();
+    let control = open(directory.path());
+    let root = directory.path().join("home-summary");
+    let mut configure = target_operation(root.to_str().unwrap(), "summary-configure", false);
+    let mut restore = target_operation(root.to_str().unwrap(), "summary-restore", true);
+    persist(&control, &mut configure);
+    persist(&control, &mut restore);
+    let context = restore.plan.spec().resource_id.as_deref().unwrap();
+    let before = super::super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get);
+    let db = control.connection.borrow();
+    let tx = db.unchecked_transaction().unwrap();
+    assert_eq!(
+        control
+            .agent_locator_summary(
+                &WorkspaceId::default(),
+                context,
+                AgentSettingsFacet::ManagementSkill
+            )
+            .unwrap(),
+        AgentLocatorSummary::RecordedRestore
+    );
+    assert_eq!(
+        control
+            .agent_locator_summary(&WorkspaceId::default(), context, AgentSettingsFacet::Model)
+            .unwrap(),
+        AgentLocatorSummary::Absent
+    );
+    assert_eq!(
+        super::super::super::agent_read::DECODE_COUNT.with(std::cell::Cell::get),
+        before
+    );
+    tx.commit().unwrap();
+    db.execute(
+        "UPDATE operation_steps SET step_json='{}' WHERE operation_id=?1 AND step_no=0",
+        [restore.operation_id.as_str()],
+    )
+    .unwrap();
+    let tx = db.unchecked_transaction().unwrap();
+    assert!(
+        control
+            .agent_locator_summary(
+                &WorkspaceId::default(),
+                context,
+                AgentSettingsFacet::ManagementSkill
+            )
+            .is_err()
+    );
+    tx.commit().unwrap();
+}

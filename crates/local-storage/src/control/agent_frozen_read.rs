@@ -91,6 +91,23 @@ impl FrozenAgentJournal {
         &self.row
     }
 
+    pub(super) fn sizes(&self) -> super::AgentLocatorSizes {
+        super::AgentLocatorSizes {
+            operations: 1,
+            operation_bytes: self
+                .steps
+                .iter()
+                .fold(self.row.encoded.len(), |total, step| {
+                    total.saturating_add(step.encoded.len())
+                }),
+            payloads: self.payloads.len(),
+            payload_bytes: self
+                .payloads
+                .values()
+                .fold(0usize, |total, value| total.saturating_add(value.len())),
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn payload_count(&self) -> usize {
         self.payloads.len()
@@ -99,6 +116,40 @@ impl FrozenAgentJournal {
     pub(super) fn verify(&self) -> PortResult<SucceededAgentOperationV1> {
         super::agent_read::decode_from_source(self, &self.row.encoded, Some(&self.row))
     }
+
+    /// Recovery validation yields only non-executable status facts. The temporary
+    /// reconstructed Operation is dropped here and never enters the bundle.
+    pub(super) fn verify_pending(&self) -> PortResult<PendingJournal> {
+        let encoded = payloads::expand(self, &self.row.encoded)?;
+        let durable: DurableOperation = serde_json::from_str(&encoded).map_err(|_| invalid())?;
+        if !self.row.matches(&durable) {
+            return Err(invalid());
+        }
+        let plan =
+            hiroute_domain::AgentPlanReadV1::from_stored(&durable.plan).map_err(|_| invalid())?;
+        if plan.operation_kind().map_err(|_| invalid())? != durable.idempotency.operation_kind {
+            return Err(invalid());
+        }
+        let raw: Value = serde_json::from_str(&encoded).map_err(|_| invalid())?;
+        if serde_json::to_value(&durable.steps).map_err(|_| invalid())? != raw["steps"] {
+            return Err(invalid());
+        }
+        super::agent_read::validate_indexed_steps(self, durable.operation_id.as_str(), &raw)?;
+        let operation = super::decode_operation(&Default::default(), &encoded)?;
+        Ok(PendingJournal {
+            operation_id: operation.operation_id,
+            workspace: operation.workspace_id,
+            state: operation.state,
+            plan,
+        })
+    }
+}
+
+pub(super) struct PendingJournal {
+    pub(super) operation_id: OperationId,
+    pub(super) workspace: WorkspaceId,
+    pub(super) state: OperationState,
+    pub(super) plan: hiroute_domain::AgentPlanReadV1,
 }
 
 impl payloads::PayloadRead for FrozenAgentJournal {

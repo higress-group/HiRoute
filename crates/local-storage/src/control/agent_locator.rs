@@ -186,7 +186,7 @@ fn save_member(db: &Connection, ordinal: i64, row: Option<AgentHistoryRow>) -> P
 /// admitted its source. Optional effects are not expanded except exact Ensure receipts.
 pub(crate) fn initialize(db: &Connection) -> Result<(), LocalStorageError> {
     // A version number alone cannot establish the admitted v32 dependency coverage.
-    super::current_dependencies::validate_recovery_members(db)
+    let pending = super::current_dependencies::validate_recovery_members(db)
         .map_err(|_| LocalStorageError::InvalidData)?;
     super::native_targets::validate_coverage(db).map_err(|_| LocalStorageError::InvalidData)?;
     super::artifact_heads::validate_coverage(db).map_err(|_| LocalStorageError::InvalidData)?;
@@ -227,10 +227,14 @@ pub(crate) fn initialize(db: &Connection) -> Result<(), LocalStorageError> {
         save_member(db, ordinal, row).map_err(|_| LocalStorageError::InvalidData)?;
     }
     drop(selected);
+    for id in pending {
+        super::agent_locator_pending::initialize_member(db, &id)
+            .map_err(|_| LocalStorageError::InvalidData)?;
+    }
     db.execute_batch(crate::migrations::agent_locator_v33::TRIGGERS)?;
     let schema: i64 = db.query_row("PRAGMA main.schema_version", [], |r| r.get(0))?;
-    let inserted = db.execute("INSERT INTO agent_locator_coverage(singleton,format_version,store_uuid,schema_version,member_count,head_count,tampered)
-        SELECT 1,1,store_uuid,?1,(SELECT count(*) FROM agent_locator_members),(SELECT count(*) FROM agent_locator_heads),0
+    let inserted = db.execute("INSERT INTO agent_locator_coverage(singleton,format_version,store_uuid,schema_version,member_count,pending_count,head_count,tampered)
+        SELECT 1,1,store_uuid,?1,(SELECT count(*) FROM agent_locator_members),(SELECT count(*) FROM agent_locator_pending),(SELECT count(*) FROM agent_locator_heads),0
         FROM storage_meta WHERE singleton=1", [schema])?;
     if inserted != 1 {
         return Err(LocalStorageError::InvalidData);
@@ -244,9 +248,11 @@ pub(super) fn validate_coverage(db: &Connection) -> PortResult<()> {
     let temporary_shadow: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_temp_schema WHERE
            name IN ('operations','operation_steps','operation_payloads','storage_meta',
-                    'agent_locator_coverage','agent_locator_members','agent_locator_heads','agent_locator_dirty')
+                    'operation_recovery_members','operation_recovery_coverage','writer_claim',
+                    'agent_locator_coverage','agent_locator_members','agent_locator_pending','agent_locator_heads','agent_locator_dirty')
            OR (type='trigger' AND tbl_name IN ('operations','operation_steps','operation_payloads',
-                    'agent_locator_coverage','agent_locator_members','agent_locator_heads','agent_locator_dirty'))) ",
+                    'operation_recovery_members','operation_recovery_coverage','writer_claim',
+                    'agent_locator_coverage','agent_locator_members','agent_locator_pending','agent_locator_heads','agent_locator_dirty'))) ",
         [], |row| row.get(0),
     ).map_err(|_| invalid())?;
     if temporary_shadow {
@@ -278,6 +284,13 @@ pub(super) fn validate_coverage(db: &Connection) -> PortResult<()> {
            ON s.singleton=c.singleton AND s.store_uuid=c.store_uuid
          WHERE c.singleton=1 AND c.format_version=1 AND c.schema_version=?1 AND c.tampered=0
            AND c.member_count=(SELECT count(*) FROM agent_locator_members NOT INDEXED)
+           AND c.pending_count=(SELECT count(*) FROM agent_locator_pending NOT INDEXED)
+           AND c.pending_count=(SELECT pending_count FROM operation_recovery_coverage WHERE singleton=1)
+           AND NOT EXISTS(SELECT 1 FROM operation_recovery_members r LEFT JOIN agent_locator_pending p USING(operation_id) WHERE p.operation_id IS NULL)
+           AND NOT EXISTS(SELECT 1 FROM agent_locator_pending p LEFT JOIN operation_recovery_members r USING(operation_id) WHERE r.operation_id IS NULL)
+           AND NOT EXISTS(SELECT 1 FROM operation_recovery_members r LEFT JOIN operations o USING(operation_id)
+               WHERE o.operation_id IS NULL OR (o.state IN ('succeeded','rolled_back') AND o.finalization_pending=0))
+           AND NOT EXISTS(SELECT 1 FROM writer_claim w LEFT JOIN operation_recovery_members r USING(operation_id) WHERE r.operation_id IS NULL)
            AND c.head_count=(SELECT count(*) FROM agent_locator_heads NOT INDEXED))",
             [schema],
             |row| row.get(0),
@@ -355,6 +368,9 @@ pub(super) fn finish_write(
             save_member(db, ordinal, Some(row))?;
         }
     }
+    if !super::agent_locator_pending::sync_member(db, id)? {
+        return Ok(());
+    }
     // No other connection can interleave while this transaction owns SQLite's
     // writer lock. The delete triggers flag our own mutation until this final update.
     db.execute(
@@ -363,6 +379,7 @@ pub(super) fn finish_write(
     )
     .map_err(|_| invalid())?;
     db.execute("UPDATE agent_locator_coverage SET member_count=(SELECT count(*) FROM agent_locator_members NOT INDEXED),
+        pending_count=(SELECT count(*) FROM agent_locator_pending NOT INDEXED),
         head_count=(SELECT count(*) FROM agent_locator_heads NOT INDEXED),tampered=0 WHERE singleton=1", []).map_err(|_| invalid())?;
     Ok(())
 }

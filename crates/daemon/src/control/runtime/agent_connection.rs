@@ -465,6 +465,13 @@ impl AgentConnectionControlPort for LocalControlAdapter {
         self.agent_settings_status(request)
     }
 
+    fn settings_summary(
+        &self,
+        request: &hiroute_application_api::AgentSettingsSummaryRequestV1,
+    ) -> Result<hiroute_application_api::AgentSettingsSummaryV1, ControlReadError> {
+        self.agent_settings_summary(request)
+    }
+
     fn settings_facts(
         &self,
         spec: &hiroute_application_api::AgentSettingsSpecV2,

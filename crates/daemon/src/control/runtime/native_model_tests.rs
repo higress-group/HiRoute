@@ -85,7 +85,25 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         "the activated configuration must point at the immutable catalog artifact: {configured}"
     );
     publish(adapter, &mut install);
-    finish_fixture_operation(adapter, &mut install);
+    finish_fixture_operation_unsettled(adapter, &mut install);
+    let pending = adapter
+        .model_settings_status(&AgentSettingsStatusRequestV2 {
+            projection: hiroute_application_api::AgentSettingsStatusProjectionV2::Model,
+            effective: None,
+            include_skills: false,
+            native_target: None,
+            schema_version: AGENT_SETTINGS_SCHEMA_V2,
+            context_id: context.clone(),
+        })
+        .unwrap();
+    assert_eq!(pending.state, AgentModelSettingsStateV2::Pending);
+    assert_eq!(pending.operation_state.as_deref(), Some("succeeded"));
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .complete_operation_finalization(&install)
+        .unwrap();
     // Hold the production status path immediately before native file I/O. An
     // unrelated request must be able to acquire the actual shared store lock.
     let (reached_tx, reached_rx) = std::sync::mpsc::channel();
@@ -113,9 +131,12 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
     let read_result = worker.join().unwrap();
     assert!(
         reached,
-        "the selected status did not reach its native-read barrier"
+        "the selected status did not reach its native-read barrier: {read_result:?}"
     );
-    assert!(available, "native verification held the shared storage lock");
+    assert!(
+        available,
+        "native verification held the shared storage lock"
+    );
     assert!(read_result.is_ok());
     let revision = adapter
         .stores_lock()
@@ -979,6 +1000,16 @@ fn apply_fixture_catalog(adapter: &LocalControlAdapter, operation: &mut Operatio
 }
 
 fn finish_fixture_operation(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
+    finish_fixture_operation_unsettled(adapter, operation);
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .complete_operation_finalization(operation)
+        .unwrap();
+}
+
+fn finish_fixture_operation_unsettled(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
     // These adapter tests apply effects manually. Seal the same completed journal shape as
     // the coordinator, so read-only status verifies all six steps and the service receipt.
     let effect = operation
