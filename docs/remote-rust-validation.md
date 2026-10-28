@@ -216,8 +216,27 @@ cleanup does not change the command's exit or scenario verdict.
 Automatic cleanup first verifies a terminal result, the recorded worker lifecycle, the
 direct managed-worktree path and Git registration. New records also reject modified
 source and unknown untracked/ignored files, preserving the checkout and TMPDIR until
-the owner saves or removes that material. Explicit cleanup re-exports evidence under
-the checkout lease. Known generated roots such as target, exported artifacts and
+the owner saves or removes that material. Explicit owner cleanup verifies historical
+exports and captures current evidence under the checkout lease into
+`runs/ID/cleanup-evidence/GENERATION/`. Each generation has its own `artifacts/`,
+`evidence/` and `evidence.json`, identifying the fixed owner, latest stopped run,
+actual checkout revision and file hashes. Generations are independent of SHA:
+another command at the same SHA can change compiler metadata or test evidence.
+The initial export, source identity and test verdict remain unchanged. A capture
+describes accumulated checkout state; existing reports retain their own provenance.
+Interrupted copies are unpublished, and retry never replaces a completed generation.
+Ordinary finishing workers reverify their just-saved export without duplicating it.
+
+Missing or altered completed exports, unsafe links/special files, changes during
+copying, unrecorded source advances and active borrowers retain the owner's checkout
+and private TMPDIR. Cleanup export facts live under `cleanup.evidence_export`;
+the original run's `evidence_export` keeps its original success or failure.
+Explicit cleanup returns nonzero when owned resources cannot be safely reclaimed;
+an already removed resource is successful, and a borrower keeping its owner's
+checkout is expected. Applied GC counts only completed cleanup as cleaned and also
+returns nonzero for refused candidates. These exits do not change test verdicts.
+Maintenance transports the matching committed export helper with its controller.
+Known generated roots such as target, exported artifacts and
 Python `__pycache__` may use Git's force removal **only after** those checks.
 It never force-removes an arbitrary
 path, an active run, a shared cache or a user checkout.
