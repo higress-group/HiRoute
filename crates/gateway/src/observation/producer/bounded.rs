@@ -227,7 +227,7 @@ enum ProducerMessage {
 }
 
 impl ByteBoundedObservationProducer {
-    #[cfg(feature = "e2e-test-control")]
+    #[cfg(any(test, feature = "e2e-test-control"))]
     pub(super) fn work_state(&self) -> (usize, usize, usize) {
         (
             self.shared.queued_bytes.load(Ordering::Acquire),

@@ -740,7 +740,7 @@ fn queued_snapshot_pressure_falls_back_before_async_content_ownership() {
         .inner
         .channels
         .content
-        .reserve_work(340 * 1024)
+        .reserve_work(400 * 1024)
         .unwrap();
     observation.capture_request_async(&input, &fixture.store);
     assert!(observation.inner.async_content.get().is_none());
@@ -760,6 +760,71 @@ fn queued_snapshot_pressure_falls_back_before_async_content_ownership() {
         }
     }
     assert_eq!(captured, text.as_bytes());
+}
+
+#[test]
+fn two_queued_snapshots_use_the_existing_content_ceiling_without_sync_fallback() {
+    use crate::server::core_runtime::adapters::decode_ingress_request;
+    let fixture = ReplayFixture::new(1024 * 1024);
+    fixture.store.prevalidate(&[]).unwrap();
+    let text = "x".repeat(190 * 1024);
+    let input = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"route","input":text}),
+    )
+    .unwrap();
+    let (sender, receiver) = mpsc::channel();
+    let mut first = request_with_sinks_capacity(
+        OtelContentPolicy::Disabled,
+        DiagnosticsPort::default(),
+        true,
+        GatewayObservationSinks {
+            conversation_content: Arc::new(RecordSink(sender)),
+            ..GatewayObservationSinks::discard()
+        },
+        512 * 1024,
+    );
+    let (worker, gate) = super::super::content_work::ContentWorkProducer::paused();
+    Arc::get_mut(&mut first.inner)
+        .unwrap()
+        .channels
+        .content_work = worker;
+    let mut second = request(OtelContentPolicy::Disabled);
+    let inner = Arc::get_mut(&mut second.inner).unwrap();
+    inner.channels = first.inner.channels.clone();
+    inner.key = first.inner.key;
+    inner.metadata.request_id = "request:other".into();
+    first.capture_request_async(&input, &fixture.store);
+    second.capture_request_async(&input, &fixture.store);
+    assert!(first.inner.async_content.get().is_some());
+    assert!(
+        second.inner.async_content.get().is_some(),
+        "preallocating 256 inline jobs forced this snapshot into foreground encoding"
+    );
+    assert!(receiver.try_recv().is_err());
+    let (total, _, capacity) = first.inner.channels.content.work_state().unwrap();
+    assert_eq!(capacity, 512 * 1024);
+    assert!(total <= capacity);
+    gate.release();
+    first.inner.channels.content_work.flush(&first);
+    let mut bodies = BTreeMap::<String, Vec<u8>>::new();
+    let mut finished = 0;
+    for record in receiver.try_iter() {
+        assert!(record["loss_watermark"].is_null(), "{record}");
+        assert_ne!(record["phase"], "abort");
+        if record["phase"] == "append" {
+            bodies
+                .entry(record["correlation"]["request_id"].as_str().unwrap().into())
+                .or_default()
+                .extend(decoded_base64(
+                    record["canonical_bytes_base64"].as_str().unwrap(),
+                ));
+        }
+        finished += usize::from(record["phase"] == "finish");
+    }
+    assert_eq!(finished, 2);
+    assert_eq!(bodies.len(), 2);
+    assert!(bodies.values().all(|body| body == text.as_bytes()));
 }
 
 #[test]

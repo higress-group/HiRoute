@@ -40,7 +40,7 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
-    #[cfg(feature = "e2e-test-control")]
+    #[cfg(any(test, feature = "e2e-test-control"))]
     pub(super) fn work_state(&self) -> Option<(usize, usize, usize)> {
         self.inner.as_ref().map(|producer| producer.work_state())
     }
