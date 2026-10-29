@@ -1,8 +1,9 @@
 //! Independent content may reach SQLite after the execution terminal.
 use crate::WriterCycleOutcome;
 use hiroute_domain::{
-    AttemptId, ContentCompleteness, ContentId, ContentMode, ConversationContentDirectionV2,
-    EventId, MessageInstanceId, ObservationQueryPort, ReceiptId, TranscriptRoot,
+    AttemptId, CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1, ContentCompleteness,
+    ContentDownstreamDeliveryV2, ContentId, ContentMode, ConversationContentDirectionV2, EventId,
+    MessageInstanceId, ObservationQueryPort, ReceiptId, TranscriptRoot,
 };
 
 use super::support::*;
@@ -42,7 +43,8 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
         .transcript_root
         .clone()
         .unwrap();
-    let mut response = fixture.request_content_events(b"42", 104);
+    let response_bytes = br#"{"event":{"kind":"text_delta","delta":"42"}}"#;
+    let mut response = fixture.request_content_events(response_bytes, 104);
     for event in &mut response {
         event.sequence += 3;
         event.event_id = EventId::parse(format!("late-response-{}", event.sequence)).unwrap();
@@ -54,20 +56,29 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
             event.message_instance_id = Some(MessageInstanceId::parse("response-message").unwrap());
             event.content_id = Some(ContentId::parse("response-content").unwrap());
             event.message_role = Some("assistant".into());
+            event.content_kind = Some("text_delta".into());
+            event.canonical_media_type = Some(CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1.into());
+            event.content_blob_digest = Some(
+                authority()
+                    .content_blob_digest(CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1, response_bytes),
+            );
+            event.transport_frame_id = Some("accepted-frame".into());
+            event.downstream_delivery =
+                Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted);
         }
         if event.result_transcript_root.is_some() {
             event.result_transcript_root =
                 Some(TranscriptRoot::parse(format!("transcript-{}", "42".repeat(32))).unwrap());
+            event.downstream_delivery =
+                Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted);
         }
     }
     let persist_response = |store: &std::sync::Arc<crate::LocalObservationStore>| {
         let writer = writer(store);
         let channel = content_channel(&fixture, 128 * 1024);
         for event in response.clone() {
-            assert!(matches!(
-                offer_content(&writer, &channel, event),
-                WriterCycleOutcome::Ack(_)
-            ));
+            let outcome = offer_content(&writer, &channel, event);
+            assert!(matches!(outcome, WriterCycleOutcome::Ack(_)), "{outcome:?}");
         }
     };
     persist_response(&store);
@@ -83,7 +94,7 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
         ContentCompleteness::Complete
     );
     assert_eq!(detail.turns[0].messages[0].bytes, text.as_bytes());
-    assert_eq!(detail.turns[0].messages[1].bytes, b"42");
+    assert_eq!(detail.turns[0].messages[1].bytes, response_bytes);
     assert_eq!(
         store.get_receipt(&fixture.workspace, &receipt_id).unwrap(),
         receipt
