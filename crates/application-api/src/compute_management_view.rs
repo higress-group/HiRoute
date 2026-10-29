@@ -189,6 +189,10 @@ pub struct ComputeManagementSnapshotV2 {
     pub sources: Vec<ComputeManagedSourceViewV2>,
 }
 
+fn is_false(value: &bool) -> bool {
+    !value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,8 +210,4 @@ mod tests {
             .is_err()
         );
     }
-}
-
-fn is_false(value: &bool) -> bool {
-    !value
 }
