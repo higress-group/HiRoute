@@ -130,6 +130,18 @@ recover failed active-revision resolution and reject late earlier trust/quality
 responses while respecting the production reader capacity. Unknown and genuinely
 mismatched evidence keep the existing unavailable-state assertions above.
 
+The targeted trial connection-reuse cases run with
+`node tests/v3/visual/new-model-trial.mjs /path/to/evidence --trial-reuse`.
+The same production-component group checks several available subscription logins
+against a source/revision-scoped lookup and confirms a saved original operation
+after later model or Agent changes without overwriting those choices.
+They retain the chosen model while reusing an API/subscription, verify exact saved
+binding reuse without writes, one-target append and automatic selection, editable
+or missing defaults, failure and original-save recovery, and localized form geometry.
+Production components and styles use controlled IPC; these are not provider or
+native persistence evidence. The `ListConnectionOptions` mapping is opt-in and
+catalog-only; ordinary responses preserve their released shape.
+
 The [trial interaction refinements](v3/visual/new-model-trial-polish-active.mjs)
 run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --polish`.
 They cover cached trust-level replay, precise-value debounce, shared reason labels,

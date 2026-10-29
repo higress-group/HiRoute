@@ -686,6 +686,68 @@ Trial names SHALL satisfy the complete existing `AgentPlanDisplayName` domain va
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/228#issuecomment-6460225695
 
+### Requirement: Trial connection reuse retains the selected model intent
+
+Choosing an existing connection from Connect here SHALL retain the already selected
+trial model. The interaction SHALL request only the connection and an editable
+upstream request model ID, rather than reopen the general model chooser. The ID
+defaults to one unambiguous saved catalog binding or the selected connection
+product's exact executable catalog mapping. Display names and internal model
+configuration IDs SHALL NOT be guessed as request IDs. An unavailable or ambiguous
+default leaves the field empty with a localized explanation.
+
+An exact usable saved binding SHALL be reread and selected without creating an
+Operation or checking a provider directory. Otherwise the existing API or
+subscription owner SHALL check the selected source and append only the requested
+supported model through normal Preview/Apply. The current source revision,
+credential owner, other models and enabled state SHALL remain protected. An edited
+ID does not establish catalog identity, capabilities or verification. An unsupported
+ID or failed read SHALL retain the ID and explain the failure without choosing
+another model or running paid inference.
+
+A completed save SHALL be reconciled to its exact returned source/model/binding and
+current routable trial candidate, then return selected without a second chooser.
+An uncertain save SHALL only observe its original accepted Operation and SHALL NOT
+submit another Apply. Returning to setup SHALL retain that submission and offer
+Review connection result to reopen it; ordinary review cannot advance past the
+unresolved connection. Cancellation and stale results SHALL NOT replace later user
+choices. Other trial selections, explicit route name and exact trust remain intact.
+
+#### Scenario: Existing binding
+
+- **WHEN** the selected connection already has one usable binding for the request ID
+- **THEN** confirmation selects its exact current identity without adding a model,
+  registering a credential or reading a provider directory
+
+#### Scenario: Add the selected target
+
+- **WHEN** the existing API or subscription owner confirms the requested supported model
+- **THEN** only that model is appended, existing membership and credentials remain
+  unchanged, and the resulting binding returns selected in trial setup
+
+#### Scenario: Unknown or edited ID
+
+- **WHEN** no unambiguous source-specific default exists, or the user edits the ID
+- **THEN** the field remains editable and explicit; unsupported input gets a local
+  explanation without granting the recommended model's identity or capabilities
+
+#### Scenario: Save reply is lost
+
+- **WHEN** a submitted append has an unknown result or its saved binding cannot be reread
+- **THEN** Refresh reconciles only that submission and never repeats Apply
+
+#### Scenario: Several subscription sign-ins exist
+
+- **WHEN** both native and independently authorized subscription sign-ins are available
+- **THEN** saved-source reuse locates only the persisted source's original candidate and credential owner, bound to its current source revision; it does not choose the first provider match or request a different sign-in
+- **AND** the original owner still performs a new Check and the normal Preview/Apply; consumed saved validation is not reused as new approval
+- **AND** normal saved-source renaming, model removal and prior targeted appends do not invalidate the credential-owner lookup when its account, candidate, committed validation and successful-save identity remain valid
+
+#### Scenario: Selection changes while a save is unconfirmed
+
+- **WHEN** the user returns to setup, selects another trial model or Agent, and later confirms the original save succeeded
+- **THEN** confirmation ends the original recovery state without replacing the newer selection or repeating Apply; unresolved or mismatched receipts remain protected
+
 ### Requirement: Trial guidance progressively explains routing and protection
 
 The trial setup SHALL initially show a concise explanation matching the active classifier and an accessible disclosure of the complete current protection explanation and applicable trial supplement. System One explains suitable work for the trial model, complex work for Primary, and Primary for a turn when low-score protection applies. Local rules explain current task signals and no low-score protection. Custom extensions explain their own choice and that HiRoute adds no trust threshold or low-score protection. The full explanation retains score eligibility, the previous actual stage, problem relevance, conservative protection when unknown, difficulty selection after resolution or irrelevance, conditional continuation of Primary and mode-specific exceptions. Toggling, changing language or classifier SHALL preserve other input and cause no backend action. The candidate area and existing protection policy remain unchanged.
@@ -709,6 +771,8 @@ Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/246#issuecomment-6461014114
 
 ## Implementation references
+
+- [Retain the selected trial model when reusing a saved connection](https://github.com/higress-group/HiRoute/issues/263).
 
 - [Native updater](../../../apps/desktop/src-tauri/src/updates.rs) and
   [installer handoff tests](../../../apps/desktop/src-tauri/src/updates/installer/control/tests.rs).

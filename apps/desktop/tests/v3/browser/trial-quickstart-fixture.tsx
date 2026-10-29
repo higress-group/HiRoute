@@ -78,6 +78,11 @@ if (setupParams.has('unlinked-existing-collision')) {
  source.models=[{...source.models[0],model_ref:'model-ref/qwen3-coder-plus',binding_id:'binding/fixture/saved-model',revision:1,upstream_model_id:'fixture-unlinked-model',display_name:'Saved synthetic model',catalog_configuration_id:undefined,membership:'user_declared'}];
  trialManagement.sources.push(source);
 }
+if (setupParams.has('reuse-target')) {
+ for (const source of trialManagement.sources.slice(0,2)) if (!source.actions.includes('append_models')) source.actions.push('append_models');
+ trialManagement.sources[1].connection_identity={access_kind:'api',connection_option_id:'fixture.reuse-api',product_label:'Saved API'};
+ trialManagement.sources[0].connection_identity={access_kind:'subscription',connection_option_id:'fixture.reuse-subscription',product_label:'Saved subscription'};
+}
 Object.assign(window,{trialSetupControl:setupControl});
 if (sameNames) {
  const duplicate = structuredClone(trialManagement.sources[0]);
@@ -172,6 +177,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   }
   if (trialManagement.sources[1].models.some(member=>member.binding_id==='binding/fixture/appended')) value.candidates.push({binding_id:'binding/fixture/appended',model_configuration_id:'fixture-added-model',display_name:'Added synthetic model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'paid',routable:true,ingress_protocols:['responses','messages']});
   if (trialManagement.sources[0].models.some(member=>member.binding_id==='binding/fixture/sub-added')) value.candidates.push({binding_id:'binding/fixture/sub-added',model_configuration_id:'fixture-sub-added',display_name:'Added subscription model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'subscription',routable:true,ingress_protocols:['responses']});
+  if (trialManagement.sources.some(source=>source.models.some(member=>member.binding_id==='binding/fixture/reuse-target'))) value.candidates.push({binding_id:'binding/fixture/reuse-target',model_configuration_id:'fixture-actual-model',display_name:'Actual saved trial model',reasoning:{kind:'fixed',profile:'provider-default'},billing_class:'paid',routable:true,ingress_protocols:['responses','messages']});
   if (setupControl.trialReasoningMode==='toggle') value.candidates.find((candidate:any)=>candidate.binding_id==='binding/bailian/qwen-coder').reasoning={kind:'toggle'};
   const primary = value.candidates.find((candidate:any) => candidate.binding_id === 'binding/codex/gpt-5.6-sol');
   if (params.has('long-model-names') || params.has('unsafe-model-name')) {
@@ -192,7 +198,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   return value;
  }
  if(command==='observe_operation') {
-  if(params.has('lost-apply') && desktop.pending && observed) desktop.pending.operation_id=observed.operation_id;
+  if((params.has('lost-apply') || params.has('reuse-lost')) && desktop.pending && observed) desktop.pending.operation_id=observed.operation_id;
   return observed;
  }
  if(command==='preview_plan_editor') {
@@ -228,6 +234,53 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  if(command==='observation_read') {
   if (payload.request.intent.view==='plan_trust_replay') return {included:0,excluded_by_reason:{},recorded_share_at_current:null,estimate_only:true,thresholds:payload.request.intent.query.thresholds_millis.map((threshold:number)=>({threshold_millis:threshold,regular:0,primary:0,protected_as_primary:0,regular_share:null,primary_share:null,newly_regular:0}))};
   return {rows:[],branches:[],sessions:[],announcements:[]};
+ }
+ if(params.has('reuse-target')) {
+  if(command==='compute_subscriptions' && params.has('reuse-multiple-logins')) {
+   const value:any=await mockProductInvoke(command,payload,'ready');
+   const owner=value.candidates.find((candidate:any)=>candidate.existing_source_id==='source/codex/subscription');
+   if(payload.sourceId==='source/codex/subscription' && payload.expectedSourceRevision===trialManagement.sources[0].revision) return {...value,candidates:[owner]};
+   return {...value,candidates:[owner,...['native-other','managed-other'].map(id=>({...structuredClone(owner),candidate:{candidate_ref:id,candidate_revision:1}}))]};
+  }
+  if(command==='compute_connection_options') {
+   const value:any=await mockProductInvoke(command,payload,'ready');
+   for (const [id,requestId,origin] of [['fixture.reuse-api','fixture-added-model','native_api'],['fixture.reuse-subscription','fixture-sub-added','agent_subscription']]) value.options.push({...structuredClone(value.options[0]),connection_option_id:id,origin,model_configuration_ids:['model.trial'],request_model_ids:params.has('reuse-no-default')?{}:{'model.trial':[requestId]}});
+   return value;
+  }
+  if(command==='check_saved_model_connection') {
+   if (params.has('reuse-check-failure')) throw Error('MODEL_CONNECTION_TRANSPORT_FAILED');
+   const result:any=await mockProductInvoke(command,payload,'ready');
+   result.candidate.models.push({model_ref:'model-ref/reuse-target',upstream_model_id:'fixture-added-model',display_name:'Actual saved trial model',membership:'observed',fact_basis:'observed',selectable:true});
+   return result;
+  }
+  if(command==='check_subscription') {
+   const result:any=await mockProductInvoke(command,payload,'ready');
+   result.checked_candidate.existing_source_id='source/codex/subscription';
+   result.checked_candidate.models=[...trialManagement.sources[0].models.map(member=>({...member,selectable:true})),{model_ref:'model-ref/reuse-target',upstream_model_id:'fixture-sub-added',display_name:'Actual saved trial model',membership:'observed',selectable:true}];
+   setupControl.checkedSubscription=result;
+   return result;
+  }
+  if(command==='get_subscription_check_result' && setupControl.checkedSubscription) return structuredClone(setupControl.checkedSubscription);
+  if(command==='preview_compute_save') { setupControl.appendChange=structuredClone(payload.change); return mockProductInvoke(command,payload,'ready'); }
+  if(command==='apply_compute_save' && setupControl.appendChange?.edit?.action==='append_models') {
+   if (params.has('reuse-save-failed')) return mockProductInvoke(command,payload,'ready');
+   const subscription=setupControl.appendChange.subject.candidate.candidate_ref==='candidate/codex-local-subscription';
+   const source=trialManagement.sources[subscription?0:1];
+   source.revision++;
+   source.models.push({...structuredClone(source.models[0]),model_ref:'model-ref/reuse-target',binding_id:'binding/fixture/reuse-target',revision:1,upstream_model_id:subscription?'fixture-sub-added':'fixture-added-model',display_name:'Actual saved trial model',catalog_configuration_id:undefined,membership:'observed'});
+   if (params.has('reuse-lost')) {
+    desktop.pending={plan_id:'compute-management',operation_id:null,idempotency_key:payload.request.idempotency_key,operation_kind:'ApplyComputeSave',accepted_digest:payload.request.accept_digest} as typeof desktop.pending;
+    observed={operation_id:'operation/reuse-target',state:'succeeded',sequence:1,cancellable:false,safe_error_code:null,accepted_digest:payload.request.accept_digest};
+    throw Error('SYNTHETIC_REPLY_LOST_AFTER_ACCEPTANCE');
+   }
+   return mockProductInvoke(command,payload,'ready');
+  }
+  if(command==='get_compute_save_result' && setupControl.appendChange) {
+   if (params.has('reuse-save-failed')) return {disposition:'failed',reason:'MODEL_SAVE_FAILED',bindings:[]};
+   if (params.has('reuse-pending') && !(setupControl as any).pendingSaveReleased) return {disposition:'pending',bindings:[]};
+   const source=trialManagement.sources.find(source=>source.models.some(member=>member.binding_id==='binding/fixture/reuse-target'))!;
+   return {disposition:'saved',source_id:source.source_id,saved_revision:source.revision,candidate:setupControl.appendChange.subject.candidate,bindings:source.models.filter(member=>member.model_ref==='model-ref/reuse-target').map(member=>({model_ref:member.model_ref,binding_id:member.binding_id,revision:member.revision}))};
+  }
  }
  if(command==='compute_connection_options') { const value:any=await mockProductInvoke(command,payload,'ready'); for(const option of value.options) if(option.connection_option_id==='kimi.open-platform.cn.v1') option.model_configuration_ids=[params.has('additional-connection')?trialModel.model_configuration_id:'model.trial']; return value; }
  if(command==='check_registered_model_connection' && params.has('saved-registered')) {
@@ -278,6 +331,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   }
   return mockProductInvoke(command,payload,'ready');
  }
+ if(command==='get_compute_save_result' && params.has('append-fixture')) return {disposition:'saved',source_id:'source/bailian/coding',saved_revision:trialManagement.sources[1].revision,bindings:trialManagement.sources[1].models.map(member=>({model_ref:member.model_ref,binding_id:member.binding_id,revision:member.revision}))};
  if(command==='get_compute_save_result' && params.has('subscription-append')) return {disposition:'saved',source_id:'source/codex/subscription',saved_revision:trialManagement.sources[0].revision,bindings:trialManagement.sources[0].models.map(member=>({model_ref:member.model_ref,binding_id:member.binding_id,revision:member.revision}))};
  if(command==='apply_compute_save' && params.has('lost-apply')) {
   const request=payload.request;

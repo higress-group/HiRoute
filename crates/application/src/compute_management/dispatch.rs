@@ -2,14 +2,14 @@ use hiroute_application_api::{
     APPLY_COMPUTE_SAVE_OPERATION_V2, APPLY_SUBSCRIPTION_CHECK_OPERATION_V2, ApplyResultV1,
     CANCEL_NATIVE_MODEL_CONNECTION_CHECK_OPERATION_V1, CHECK_NATIVE_MODEL_CONNECTION_OPERATION_V1,
     CHECK_REGISTERED_MODEL_CONNECTION_OPERATION_V1, CHECK_SAVED_MODEL_CONNECTION_OPERATION_V1,
-    CanonicalDigest, ClientEmptyRequestV1, ComputeCandidateQueryV2,
-    ComputeConnectionApplyRequestV1, ComputeManagementQueryV2, ComputeSavePreviewRequestV2,
-    ComputeSaveResultQueryV2, ComputeSubscriptionCheckPreviewRequestV2,
-    ComputeSubscriptionCheckResultQueryV2, ComputeValidationRefV2, ErrorCode, ErrorV1,
-    GET_COMPUTE_CANDIDATE_OPERATION_V2, GET_COMPUTE_OPERATION_V3,
-    GET_COMPUTE_SAVE_RESULT_OPERATION_V2, GET_SUBSCRIPTION_CHECK_RESULT_OPERATION_V2,
-    LIST_COMPUTE_OPERATION_V3, LIST_COMPUTE_SUBSCRIPTIONS_OPERATION_V2, LocalControlRequestV2,
-    MachineEnvelopeV2, NativeModelConnectionCancelRequestV1, NativeModelConnectionCheckRequestV1,
+    CanonicalDigest, ComputeCandidateQueryV2, ComputeConnectionApplyRequestV1,
+    ComputeManagementQueryV2, ComputeSavePreviewRequestV2, ComputeSaveResultQueryV2,
+    ComputeSubscriptionCheckPreviewRequestV2, ComputeSubscriptionCheckResultQueryV2,
+    ComputeValidationRefV2, ErrorCode, ErrorV1, GET_COMPUTE_CANDIDATE_OPERATION_V2,
+    GET_COMPUTE_OPERATION_V3, GET_COMPUTE_SAVE_RESULT_OPERATION_V2,
+    GET_SUBSCRIPTION_CHECK_RESULT_OPERATION_V2, LIST_COMPUTE_OPERATION_V3,
+    LIST_COMPUTE_SUBSCRIPTIONS_OPERATION_V2, LocalControlRequestV2, MachineEnvelopeV2,
+    NativeModelConnectionCancelRequestV1, NativeModelConnectionCheckRequestV1,
     PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1, PREVIEW_COMPUTE_SAVE_OPERATION_V2,
     PREVIEW_SUBSCRIPTION_CHECK_OPERATION_V2, PrepareDiscoveredModelConnectionRequestV1,
     PrincipalKind, RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2,
@@ -64,10 +64,21 @@ pub(crate) fn dispatch_compute_management(
             if request.protected_grant.is_some() {
                 return failed(ErrorCode::CapabilityDenied, request_id);
             }
-            if serde_json::from_value::<ClientEmptyRequestV1>(request.payload).is_err() {
+            let Ok(query) = serde_json::from_value::<
+                hiroute_application_api::ComputeSubscriptionCandidatesQueryV1,
+            >(request.payload) else {
                 return failed(ErrorCode::InvalidArguments, request_id);
+            };
+            match query.source {
+                Some(source)
+                    if source.source_id.trim().is_empty()
+                        || source.expected_source_revision == 0 =>
+                {
+                    failed(ErrorCode::InvalidArguments, request_id)
+                }
+                Some(source) => result(management.saved_subscription_candidate(source), request_id),
+                None => result(management.compute_subscriptions(), request_id),
             }
-            result(management.compute_subscriptions(), request_id)
         }
         PREVIEW_SUBSCRIPTION_CHECK_OPERATION_V2 => {
             if request.protected_grant.is_some() {

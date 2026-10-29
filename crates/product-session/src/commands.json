@@ -269,7 +269,7 @@
   },
   {
     "name": "compute_connection_options",
-    "args": [],
+    "args": [{ "name": "include_request_model_ids", "type": "Option<bool>" }],
     "result": "Result<ComputeConnectionOptionsResultV1, DesktopFailure>",
     "host_only": false
   },
@@ -382,7 +382,10 @@
   },
   {
     "name": "compute_subscriptions",
-    "args": [],
+    "args": [
+      { "name": "source_id", "type": "Option<String>" },
+      { "name": "expected_source_revision", "type": "Option<u64>" }
+    ],
     "result": "Result<WebComputeSubscriptionCandidatesV2, DesktopFailure>",
     "host_only": false
   },

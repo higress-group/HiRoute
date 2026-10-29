@@ -5,7 +5,7 @@
     "agent-launch-descriptor-request.v1.schema.json": "sha256:28f2f9d2d7f9a1618bea0f13383002429bc9e0ff56166cbee86958a245d0fd48",
     "agent-plan-catalog-query.v2.schema.json": "sha256:3e9ccab78eca526fb8e9ef3786ed9cb7a0eba284b63a5f0fcfd5f8dc7ef39948",
     "agent-scan-request.v1.schema.json": "sha256:2112519120417189cfea67dbc23bcbbeabd573073df6a167fa774a5a766c6653",
-    "compute-connection-options-request.v1.schema.json": "sha256:4bc609ffeac30f22dbccb34b907b778722fb45c44d7d8d501afb0b74bf8b58ba",
+    "compute-connection-options-request.v1.schema.json": "sha256:a4a0df34091a0a9b4788fa1c498e4047958d028d7614642925f2934ad4fad74f",
     "compute-scan-request.union.schema.json": "sha256:0b3fa6c790441aab8dc5a2f8002490ffbd19530fc6e7fd251dead24565d31159",
     "console-launch-request.v1.schema.json": "sha256:bb201709ef64e99036a97d5879a32a8e4e3a9517010e1041def223e723e7f385",
     "console-token-create.v1.schema.json": "sha256:10cc9b80ed0bec4a5ca80e098cf0ee94710eedd7dfce292cf4a8770a11be78ec",
