@@ -958,7 +958,8 @@ fn compile_routing(
                 hiroute_domain::ComplexityClassifierModeV1::LocalRules => {
                     (CompiledClassifierKindV1::LocalRules, None)
                 }
-                hiroute_domain::ComplexityClassifierModeV1::DecisionService { .. } => (
+                hiroute_domain::ComplexityClassifierModeV1::DecisionService { .. }
+                | hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { .. } => (
                     CompiledClassifierKindV1::Rest,
                     Some(
                         CanonicalDigest::of(&routing.request_owned)

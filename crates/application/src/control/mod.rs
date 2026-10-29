@@ -43,6 +43,8 @@ pub enum ControlReadError {
     Unavailable,
     Corrupt,
     Denied,
+    /// A retained service uses a representation that this legacy operation cannot return.
+    ClientVersionRequired,
     /// A model-only Codex profile cannot own the collaboration Skill in the original HOME.
     CollaborationRootRequired,
 }

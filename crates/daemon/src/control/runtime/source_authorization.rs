@@ -235,6 +235,9 @@ fn map_control_read(error: hiroute_application::control::ControlReadError) -> Po
             PortErrorCode::PermissionDenied
         }
         hiroute_application::control::ControlReadError::Corrupt => PortErrorCode::Corrupt,
+        hiroute_application::control::ControlReadError::ClientVersionRequired => {
+            PortErrorCode::InvalidData
+        }
     };
     PortError::new(code, "release.compute.discovery")
 }

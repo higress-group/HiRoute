@@ -21,11 +21,13 @@ impl LocalControlAdapter {
             None,
             None,
             || {
-                let selected_service = change
-                    .editor
-                    .effective()
-                    .ok()
+                let configuration = change.editor.effective().ok();
+                let selected_service = configuration
+                    .as_ref()
                     .and_then(|configuration| configuration.decision_service().cloned());
+                let selected_service_v2 = configuration
+                    .as_ref()
+                    .and_then(|configuration| configuration.decision_service_v2().cloned());
                 let local_before = self.routing_read_stamp()?;
                 let read_rows = || {
                     let stores = self.stores_lock().map_err(super::map_port)?;
@@ -61,9 +63,33 @@ impl LocalControlAdapter {
                         })
                         .transpose()?
                         .flatten();
-                    Ok::<_, ControlReadError>((head, draft, heads, decision_service))
+                    let decision_service_v2 = selected_service_v2
+                        .as_ref()
+                        .map(|service| {
+                            stores
+                                .control()
+                                .decision_service_record(workspace, &service.id, service.revision)
+                                .map_err(super::map_port)
+                                .and_then(|record| match record {
+                                    Some(hiroute_domain::DecisionServiceRecord::V2(service)) => {
+                                        Ok(Some(service))
+                                    }
+                                    Some(_) => Err(ControlReadError::Corrupt),
+                                    None => Ok(None),
+                                })
+                        })
+                        .transpose()?
+                        .flatten();
+                    Ok::<_, ControlReadError>((
+                        head,
+                        draft,
+                        heads,
+                        decision_service,
+                        decision_service_v2,
+                    ))
                 };
-                let (mut current_head, draft, mut heads, decision_service) = read_rows()?;
+                let (mut current_head, draft, mut heads, decision_service, decision_service_v2) =
+                    read_rows()?;
                 let after = self.routing_compilation_snapshot(workspace)?;
                 // Plan rows and routing inputs are collected once. The routing collector
                 // validates CPA/source facts after capture; this wider local fence also
@@ -144,6 +170,7 @@ impl LocalControlAdapter {
                     draft,
                     facts: after.facts,
                     decision_service,
+                    decision_service_v2,
                     expected_revisions: after.expected_revisions,
                 })
             },

@@ -136,7 +136,7 @@ pub struct DecisionServiceTestResultV2 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hiroute_domain::DecisionClassifierSelectorV2;
+    use hiroute_domain::ComplexityClassifierModeV1;
     use serde_json::Value;
 
     #[test]
@@ -159,7 +159,7 @@ mod tests {
                 .unwrap();
         let result: DecisionServiceTestResultV2 =
             serde_json::from_value(fixture["test_decision_service_v2"]["result"].clone()).unwrap();
-        let _: DecisionClassifierSelectorV2 =
+        let _: ComplexityClassifierModeV1 =
             serde_json::from_value(fixture["classifier_v2"].clone()).unwrap();
 
         assert_eq!(sources.sources[0].source_id, "source/example");

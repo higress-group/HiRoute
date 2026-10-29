@@ -165,6 +165,14 @@ impl ApplicationService {
                         hiroute_application_api::DecisionServicesListV1 { services },
                         request.request_id,
                     ),
+                    Err(control::ControlReadError::ClientVersionRequired) => {
+                        let mut response =
+                            failed(ErrorCode::SchemaIncompatible, request.request_id);
+                        if let Some(error) = response.error.as_mut() {
+                            error.message_key = "decision_service.client_version_required".into();
+                        }
+                        response
+                    }
                     Err(error) => failed(map_control_error(error), request.request_id),
                 }
             }
@@ -864,6 +872,7 @@ fn map_control_error(error: control::ControlReadError) -> ErrorCode {
     match error {
         control::ControlReadError::NotFound => ErrorCode::ResourceNotFound,
         control::ControlReadError::SnapshotChanged => ErrorCode::ChangePreviewStale,
+        control::ControlReadError::ClientVersionRequired => ErrorCode::SchemaIncompatible,
         control::ControlReadError::Unavailable | control::ControlReadError::Corrupt => {
             ErrorCode::DaemonUnavailable
         }

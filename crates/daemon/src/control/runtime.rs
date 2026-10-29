@@ -1696,6 +1696,9 @@ fn discovered_agent(
 }
 
 fn map_port(error: PortError) -> ControlReadError {
+    if error.context == "decision_service.client_version_required" {
+        return ControlReadError::ClientVersionRequired;
+    }
     match error.code {
         PortErrorCode::Conflict => ControlReadError::SnapshotChanged,
         PortErrorCode::NotFound => ControlReadError::NotFound,

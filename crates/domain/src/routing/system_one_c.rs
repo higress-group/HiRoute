@@ -31,6 +31,7 @@ pub fn stock_c_v2_questions() -> Value {
 
 pub fn native_mode(mode: &super::ComplexityClassifierModeV1) -> bool {
     matches!(mode, super::ComplexityClassifierModeV1::DecisionService { service } if matches!(service.connection, super::DecisionConnectionV1::SystemOne { .. }))
+        || matches!(mode, super::ComplexityClassifierModeV1::DecisionServiceV2 { service } if matches!(service.connection, super::DecisionConnectionV2::Native { .. }))
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

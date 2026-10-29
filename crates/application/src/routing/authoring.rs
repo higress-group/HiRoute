@@ -18,6 +18,7 @@ pub struct PlanAuthoringSnapshotV2 {
     pub facts: AgentPlanCompilationFactsV1,
     /// Exact saved connection revision selected by the effective editor, not its latest version.
     pub decision_service: Option<DecisionServiceV1>,
+    pub decision_service_v2: Option<DecisionServiceV2>,
     pub expected_revisions: RevisionSetV1,
 }
 
@@ -61,6 +62,11 @@ pub fn preview_plan_content(
     })?;
     if let Some(service) = configuration.decision_service()
         && state.decision_service.as_ref() != Some(service)
+    {
+        return Err(PlanPreviewError::InvalidDecisionService);
+    }
+    if let Some(service) = configuration.decision_service_v2()
+        && state.decision_service_v2.as_ref() != Some(service)
     {
         return Err(PlanPreviewError::InvalidDecisionService);
     }
