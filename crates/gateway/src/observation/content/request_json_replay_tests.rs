@@ -661,3 +661,38 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
     assert!(records.iter().any(|record| record["phase"] == "abort"));
     assert!(!records.iter().any(|record| record["phase"] == "finish"));
 }
+
+#[test]
+fn optional_retention_pressure_preserves_the_original_synchronous_capture() {
+    use crate::server::core_runtime::adapters::decode_ingress_request;
+    use hiroute_gateway_core::runtime::body::MemoryRole;
+    let fixture = ReplayFixture::new(1024 * 1024);
+    let input = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"route","input":"already owned inline content"}),
+    )
+    .unwrap();
+    fixture.store.prevalidate(&[]).unwrap();
+    let budget = fixture.store.budget();
+    let guard = budget
+        .reserve(
+            MemoryRole::ModelIrBacking,
+            budget.available_bytes().unwrap() - 64,
+        )
+        .unwrap();
+    let (observation, receiver, _gate) = asynchronous_observation();
+    observation.capture_request_async(&input, &fixture.store);
+    assert!(
+        observation.inner.async_content.get().is_none(),
+        "no async ownership was admitted"
+    );
+    loop {
+        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(record["loss_watermark"].is_null(), "{record}");
+        assert_ne!(record["phase"], "abort");
+        if record["phase"] == "finish" {
+            break;
+        }
+    }
+    drop(guard);
+}

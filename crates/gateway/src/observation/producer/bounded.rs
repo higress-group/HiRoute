@@ -188,6 +188,10 @@ enum ProducerMessage {
 }
 
 impl ByteBoundedObservationProducer {
+    pub(super) fn work_can_fit(&self, bytes: usize) -> bool {
+        bytes <= self.shared.capacity_bytes
+    }
+
     pub(super) fn reserve_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
         reserve_bytes(&self.shared, bytes).then(|| ObservationWorkReservation {
             shared: Arc::clone(&self.shared),

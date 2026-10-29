@@ -15,7 +15,7 @@ fn undersized_capture_queue_reports_loss_without_waiting_or_poisoning_the_next_r
         1,
         ObservationFaults {
             lifecycle_mode: "slow_once:1000",
-            queue_bytes: 4 * 1024,
+            queue_bytes: 512,
             ..ObservationFaults::healthy()
         },
     );

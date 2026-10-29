@@ -24,6 +24,10 @@ use super::schema::LifecycleFactV1;
 const JOB_SLOTS: usize = 256;
 const JOB_OVERHEAD: usize = 1024;
 
+fn queue_storage_bytes() -> usize {
+    JOB_SLOTS * (std::mem::size_of::<Job>() + 2 * std::mem::size_of::<usize>()) + JOB_OVERHEAD
+}
+
 #[derive(Clone, Default)]
 pub(super) struct ContentWorkProducer {
     shared: Arc<OnceLock<Arc<WorkQueue>>>,
@@ -133,7 +137,7 @@ impl ContentWorkProducer {
         if let Some(queue) = self.shared.get() {
             return Some(Arc::clone(queue));
         }
-        let slots = content.reserve_work(JOB_SLOTS * std::mem::size_of::<Job>() + JOB_OVERHEAD)?;
+        let slots = content.reserve_work(queue_storage_bytes())?;
         let (sender, receiver) = sync_channel::<Job>(JOB_SLOTS);
         #[cfg(test)]
         let gate = self.gate.clone();
@@ -240,21 +244,37 @@ impl RequestObservation {
         if !self.captures_content() {
             return;
         }
+        let bytes = snapshot_bytes(request);
+        if !self.inner.channels.content.work_can_fit(
+            bytes
+                .saturating_add(JOB_OVERHEAD)
+                .saturating_add(queue_storage_bytes()),
+        ) {
+            self.capture_request_fallback(request, replay);
+            return;
+        }
+        // Shared Replay bytes are not a second payload in the Content queue.
+        // Charge their optional extended lifetime to the existing request /
+        // process budget, including disk bytes. Under pressure, retain the
+        // original synchronous path rather than lose previously capturable data.
+        let retained = bytes.saturating_add(replay.content_retention_bytes());
+        let Ok(memory) = replay
+            .budget()
+            .reserve(MemoryRole::ModelIrBacking, retained)
+        else {
+            self.capture_request_fallback(request, replay);
+            return;
+        };
+        let Ok(lease) = replay.content_lease() else {
+            drop(memory);
+            self.capture_request_fallback(request, replay);
+            return;
+        };
         let status = self
             .inner
             .async_content
             .get_or_init(|| Arc::new(ContentStatus::default()));
-        let bytes = snapshot_bytes(request);
-        let retained = bytes.saturating_add(replay.content_retention_bytes());
-        let Some((queue, reservation)) = self.reserve_content_work(status, retained) else {
-            return;
-        };
-        let Ok(memory) = replay.budget().reserve(MemoryRole::ModelIrBacking, bytes) else {
-            self.fail_content_work(status, "content_capture_snapshot_budget");
-            return;
-        };
-        let Ok(lease) = replay.content_lease() else {
-            self.fail_content_work(status, "content_capture_backing_unavailable");
+        let Some((queue, reservation)) = self.reserve_content_work(status, bytes) else {
             return;
         };
         // Capture only the fields consumed by the existing observation encoder.
@@ -274,6 +294,21 @@ impl RequestObservation {
                 replay: lease,
             },
         );
+    }
+
+    fn capture_request_fallback(&self, request: &ModelRequestIRV1, replay: &ReplayStore) {
+        if !self.capture_request_payload(
+            &request.instructions,
+            &request.messages,
+            &request.tools,
+            replay,
+        ) {
+            let status = self
+                .inner
+                .async_content
+                .get_or_init(|| Arc::new(ContentStatus::default()));
+            self.fail_content_work(status, "content_capture_unavailable");
+        }
     }
 
     pub(super) fn begin_response_content(&self, attempt: &AttemptObservation) {

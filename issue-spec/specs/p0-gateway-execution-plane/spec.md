@@ -541,8 +541,12 @@ Each valid RequestFinished closes its [immutable request receipt](../session-his
 without waiting for AgentTurnFinished.
 
 Content encoding MAY run on a shared bounded worker before the existing storage
-producers. Retained work and encoded records share the Content channel's byte
-ceiling. Request content closes before response content begins, preserving the
+producers. Additional snapshot/job memory and encoded records share the Content
+channel's byte ceiling. The optional extended lifetime of shared semantic Replay
+backing, including disk bytes, is charged to the existing request/process budget;
+it is not a second payload in the Content queue. If this retention cannot be
+reserved, request capture uses its original synchronous path without introducing
+a capture gap solely for that optimization. Request content closes before response content begins, preserving the
 request transcript root as the response parent. Accepted runtime history and
 usage keep their actual delivery boundary and do not wait for content encoding
 or SQLite. Queue/worker failure records bounded loss and explicit partial content;

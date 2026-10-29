@@ -40,6 +40,12 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
+    pub(super) fn work_can_fit(&self, bytes: usize) -> bool {
+        self.inner
+            .as_ref()
+            .is_some_and(|producer| producer.work_can_fit(bytes))
+    }
+
     pub(super) fn reserve_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
         self.inner.as_ref()?.reserve_work(bytes)
     }
