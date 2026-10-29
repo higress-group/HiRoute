@@ -99,9 +99,9 @@ fn saved_reuse_resolves_original_owner_among_multiple_logins() {
                     serde_json::json!({"source":{"source_id":source.source_id}})
                 ))
                 .status,
-            MachineStatus::Failed
+            MachineStatus::UsageError
         );
-        assert_eq!(application.dispatch(request(serde_json::json!({"source":{"source_id":source.source_id,"expected_source_revision":0}}))).status, MachineStatus::Failed);
+        assert_eq!(application.dispatch(request(serde_json::json!({"source":{"source_id":source.source_id,"expected_source_revision":0}}))).status, MachineStatus::UsageError);
         assert_eq!(
             fixture.snapshot(),
             snapshot,

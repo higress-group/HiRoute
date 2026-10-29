@@ -5,6 +5,14 @@ use hiroute_application_api::{ComputeCandidateViewV2, ComputeManagementEditV1};
 fn reuse_candidate(fixture: &Fixture) -> ComputeCandidateViewV2 {
     let before = fixture.snapshot();
     let source = &before.sources[0];
+    assert!(
+        fixture
+            .adapter()
+            .retained_subscription_candidate_for_source(source)
+            .unwrap()
+            .is_none(),
+        "the old complete-presentation lookup must reject this legitimately edited source"
+    );
     let spawns = fixture.spawns();
     let mut result = fixture
         .adapter()
