@@ -12,7 +12,7 @@ def expose_native_installation(product, harness, binary, node=None):
     entries = [({'pi':'pi','qoder':'qodercli','dsh':'dsh','opencode':'opencode'}[harness], binary)]
     if harness == 'dsh':
         import shutil
-        runtime = Path(shutil.which('node')).resolve(strict=True)
+        runtime = Path(os.environ.get('HIROUTE_WORKER_NODE') or shutil.which('node')).resolve(strict=True)
         entries.append(('node',runtime))
     if harness == 'pi':
         entries.append(('node', node))

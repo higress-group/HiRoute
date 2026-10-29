@@ -540,7 +540,10 @@ async fn request_cancellation_aborts_real_upstream_without_publishing_dispositio
     let error = tokio::time::timeout(Duration::from_secs(2), &mut process)
         .await?
         .expect_err("cancelled lifecycle must fail closed");
-    assert!(error.to_string().contains("request was cancelled"));
+    assert_eq!(
+        error,
+        hiroute_gateway_core::transport::TransportError::Cancelled
+    );
     assert!(
         tokio::time::timeout(Duration::from_secs(2), upstream_closed_rx).await??,
         "cancellation must close/reset the active upstream"

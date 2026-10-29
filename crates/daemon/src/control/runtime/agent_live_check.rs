@@ -142,6 +142,7 @@ impl LocalControlAdapter {
             let result = match target.surface {
                 AgentModelSurfaceV2::PiCli
                 | AgentModelSurfaceV2::DshCli
+                | AgentModelSurfaceV2::DshDesktop
                 | AgentModelSurfaceV2::OpenCodeCli
                 | AgentModelSurfaceV2::HermesCli => {
                     return Err(ControlReadError::Denied);

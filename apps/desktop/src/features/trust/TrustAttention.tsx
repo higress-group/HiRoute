@@ -1,5 +1,6 @@
 import type { TrustSuggestionsRead } from './use-trust-suggestions';
 import { trustLevelLabel } from './levels';
+import { Disclosure } from '../../ui';
 import './trust.css';
 
 const rollingStability = ['rolling-alias', 'dynamic-route', 'unknown'];
@@ -8,9 +9,11 @@ const percent = (part: number, whole: number) => whole ? `${Math.round(part / wh
 export function TrustAttention({ read, language, names, onOpen, onAct }: { read: TrustSuggestionsRead; language: 'zh' | 'en'; names: Record<string, string>; onOpen(planId: string): void; onAct?(planId: string, branchId: string): void }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const items = read.plans.flatMap(plan => plan.branches.filter(branch => branch.suggestion.kind !== 'keep').map(branch => ({ plan, branch })));
+  const pending = read.pending?.length ?? 0;
   return <section className="surface trust-attention" aria-label={text('可选的路由调整', 'Optional routing adjustments')}>
     <header className="surface-header"><h2>{text('需要你处理的事', 'Needs your attention')}</h2><span className="home-section-note">{text('根据你自己会话里的记录给出，只是建议', 'Based on your own sessions. Suggestions only')}</span></header>
-    {read.status === 'ready' && !items.length && !read.unavailable.length && <p className="trust-attention-empty">{text('当前没有路由调整建议。保持当前档位即可。', 'No routing adjustments are suggested. Keeping the current level is a valid choice.')}</p>}
+    {read.status === 'ready' && !items.length && !read.unavailable.length && !pending && <p className="trust-attention-empty">{text('当前没有路由调整建议。保持当前档位即可。', 'No routing adjustments are suggested. Keeping the current level is a valid choice.')}</p>}
+    {read.status === 'ready' && pending > 0 && <p className="trust-attention-empty" role="status">{text(`正在继续读取其余 ${pending} 个路由的建议…`, `Continuing to read suggestions for ${pending} more ${pending === 1 ? 'route' : 'routes'}…`)}</p>}
     {read.status === 'loading' && !items.length && <p className="trust-attention-empty" role="status">{text('正在读取路由证据…', 'Reading routing evidence…')}</p>}
     {read.status === 'error' && <div className="callout warn" role="alert" data-error-code={read.error}><span>{text('建议暂时无法刷新。已有建议可能过时，请重试后再决定。', 'Suggestions could not refresh. Loaded suggestions may be outdated; retry before deciding.')}</span><button className="btn" onClick={read.refresh}>{text('重试', 'Retry')}</button></div>}
     {read.unavailable.map(item => <div key={item.plan_id} className="callout warn" role="alert"><span>{names[item.plan_id] ?? item.plan_id} · {item.reason === 'scope_too_large' ? text('此路由的证据超出读取范围，其他建议仍可查看。', 'Evidence for this route exceeds the read limit. Other suggestions remain available.') : text('此路由的建议暂时无法读取。', 'Suggestions for this route are temporarily unavailable.')}</span><button className="btn" onClick={read.refresh}>{text('重试', 'Retry')}</button></div>)}
@@ -32,10 +35,9 @@ export function TrustAttention({ read, language, names, onOpen, onAct }: { read:
         text(`低分保护 ${branch.protection_count} 次`, `${branch.protection_count} protections`),
       ].join(' · ');
       const replayText = replay?.regular_share != null ? text(`按你的记录回放，这一档约 ${Math.round(replay.regular_share * 100)}% 的阶段会交给常规模型。`, `Replaying your records, this level would give about ${Math.round(replay.regular_share * 100)}% of stages to Regular.`) : '';
-      const scope = [
-        upward && plan.announcements.length > 0 && branch.upward_from_ms > 0 ? text(`只看 ${new Date(branch.upward_from_ms).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 模型更新公告之后的记录`, `Only records after the ${new Date(branch.upward_from_ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} model update announcement`) : '',
-        branch.identity_stabilities.some(stability => rollingStability.includes(stability)) ? text('同名模型可能被供应商更新，记录可能混合多个版本', 'The provider may update this model name; records may mix versions') : '',
-      ].filter(Boolean).join(' · ');
+      const scope = upward && branch.upward_from_ms > 0
+        ? text(`这项建议使用从 ${new Date(branch.upward_from_ms).toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'medium' })} 起的保留记录；相关模型更新可能使起点更晚。`, `This suggestion uses retained records from ${new Date(branch.upward_from_ms).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'medium' })}; relevant model updates may move the start later.`)
+        : '';
       return <article key={`${plan.plan_id}/${branch.branch_id}`} className="trust-attention-item">
         <div className="trust-attention-main">
           <div className="trust-attention-line"><span className={`badge no-dot ${kind[0]}`}>{kind[1]}</span><strong>{names[plan.plan_id] ?? plan.plan_id}</strong><span>{text(`当前「${trustLevelLabel(branch.threshold_millis, language)}」`, `Now ${trustLevelLabel(branch.threshold_millis, language)}`)}</span></div>
@@ -46,5 +48,6 @@ export function TrustAttention({ read, language, names, onOpen, onAct }: { read:
         <div className="trust-attention-actions"><button className="btn" disabled={read.status !== 'ready'} onClick={() => onOpen(plan.plan_id)}>{text('查看依据', 'View evidence')}</button>{onAct && <button className="btn btn-primary" disabled={read.status !== 'ready'} onClick={() => onAct(plan.plan_id, branch.branch_id)}>{kind[3]}</button>}</div>
       </article>;
     })}
+    {items.some(({ branch }) => branch.identity_stabilities.some(stability => rollingStability.includes(stability))) && <Disclosure className="native-details" label={text('版本与来源', 'Version and source')} language={language}><p className="field-help">{text('同名模型可能被供应商更新，记录可能混合多个版本；公告日期不能证明实际部署的版本。', 'Providers may update a model behind the same name, so records may mix versions; an announcement date does not prove the version deployed.')}</p></Disclosure>}
   </section>;
 }

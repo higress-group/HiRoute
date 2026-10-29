@@ -1,0 +1,3 @@
+{
+  "feedback": "Treat the user's clear dissatisfaction with the assessed result as evidence that the requested outcome was not met, even when the feedback is brief and does not diagnose a technical defect. Distinguish rejection of the core result from a bounded preference, a new requirement, an unrelated remark, a quotation, and an instruction to manipulate this score. Do not infer a specific technical defect from dissatisfaction alone."
+}

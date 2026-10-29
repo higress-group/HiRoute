@@ -27,6 +27,7 @@ import {
 import {
   Home,
   HomeNavigation,
+  deriveHomeServicePresentation,
   deriveHomeServiceStatus,
   visibleData,
   type HomeAction,
@@ -58,6 +59,7 @@ import {
   OPERATION_RESULT_UNVERIFIED,
   operationFeedback,
   pendingFeedbackIdentity,
+  representedByTrial,
   shouldObservePendingOperation,
   type OperationPresentation,
 } from './operation-feedback';
@@ -125,9 +127,9 @@ export function DesktopApp() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [operation, setOperation] = useState<DesktopOperation | null>(null);
+  const [trialOperationIds, setTrialOperationIds] = useState<string[]>([]);
   const [operationPresentation, setOperationPresentation] = useState<OperationPresentation>({ kind: 'background' });
   const [observing, setObserving] = useState(true);
-  const trustSuggestions = useTrustSuggestions(observing && Boolean(home.desktopSnapshot), `${refreshVersion}:${home.desktopSnapshot?.catalog.plans.map(p => `${p.agent_plan_id}:${p.head.head_revision}`).join(',') ?? ''}`, page === 'home');
   const [operationRecoveryPending, setOperationRecoveryPending] = useState(false);
   const [pollingRevision, setPollingRevision] = useState(0);
   const [operationError, setOperationError] = useState('');
@@ -143,13 +145,18 @@ export function DesktopApp() {
   const pollingGeneration = useRef(0);
   const supersededPendingKey = useRef<string | null>(null);
 
+  const serviceStatus = deriveHomeServiceStatus(home.reads.service);
+  const servicePresentation = deriveHomeServicePresentation(home.reads.service);
+  const serviceOperational = serviceStatus.operational;
+  const mutationAllowed = serviceOperational && Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available);
+
   useEffect(() => {
-    if (!home.desktopSnapshot?.trusted_authority || !home.desktopSnapshot.service.mutation_available) return;
+    if (!mutationAllowed) return;
     if (!takeSubscriptionProxyReturn()) return;
     setModelIntent({ key: 'models/proxy-return', startScanning: true });
     setVisited(current => new Set([...current, 'models']));
     setPage('models');
-  }, [home.desktopSnapshot?.trusted_authority, home.desktopSnapshot?.service.mutation_available]);
+  }, [mutationAllowed]);
 
   const text = language === 'zh'
     ? {
@@ -180,11 +187,10 @@ export function DesktopApp() {
   ];
 
   useEffect(() => {
-    const refresh = () => { void home.refreshDesktop(); };
+    const refresh = () => { home.invalidateService(true); void home.refreshDesktop(); };
     window.addEventListener('hiroute-native-connection-unavailable', refresh);
     return () => window.removeEventListener('hiroute-native-connection-unavailable', refresh);
-  }, [home.refreshDesktop]);
-  const serviceStatus = deriveHomeServiceStatus(home.reads.service);
+  }, [home.invalidateService, home.refreshDesktop]);
   const startupFailure = home.startup?.state === 'failed' ? home.startup : null;
   const startupMessage = startupFailureText(startupFailure?.code, startupFailure?.storage_recovery, language, 'macos');
   const upgradePhase = home.startup?.state === 'starting' ? home.startup.upgrade_phase : undefined;
@@ -201,14 +207,19 @@ export function DesktopApp() {
     unavailable: text.serviceUnavailable,
     ready: text.serviceReady,
     unknown: text.serviceUnknown,
-  }[serviceStatus.state];
-  const serviceOperational = serviceStatus.operational;
-  const navigationLabel = serviceOperational
+  }[servicePresentation.state];
+  const trustSuggestions = useTrustSuggestions(observing && serviceOperational && Boolean(home.desktopSnapshot), `${refreshVersion}:${home.desktopSnapshot?.catalog.plans.map(p => `${p.agent_plan_id}:${p.head.head_revision}`).join(',') ?? ''}`, page === 'home');
+  const navigationBaseLabel = servicePresentation.state === 'ready'
       ? language === 'zh' ? '仅在本机运行' : 'Running locally'
       : serviceLabel;
-  const settingsServiceLabel = serviceOperational
-    ? language === 'zh' ? '可用' : 'Available'
-    : serviceLabel;
+  const navigationLabel = servicePresentation.checkFailed
+    ? language === 'zh' ? '状态读取失败' : 'Status check failed'
+    : servicePresentation.refreshing
+      ? `${navigationBaseLabel} · ${language === 'zh' ? '正在更新' : 'Updating'}`
+      : navigationBaseLabel;
+  const settingsServiceLabel = servicePresentation.state === 'ready'
+    ? `${language === 'zh' ? '可用' : 'Available'}${servicePresentation.refreshing ? language === 'zh' ? ' · 正在更新' : ' · Updating' : ''}`
+    : navigationLabel;
 
   useEffect(() => {
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
@@ -242,11 +253,15 @@ export function DesktopApp() {
 
   useEffect(() => {
     const refreshOnFocus = () => {
-      if (!document.hidden) void home.refreshAll();
+      if (!document.hidden) void (page === 'home' && !trialOpen ? home.refreshAll() : home.refreshDesktop());
     };
     window.addEventListener('focus', refreshOnFocus);
     return () => window.removeEventListener('focus', refreshOnFocus);
-  }, [home.refreshAll]);
+  }, [home.refreshAll, home.refreshDesktop, page, trialOpen]);
+
+  useEffect(() => {
+    if (!trialOpen && ['home', 'routing', 'models'].includes(page)) void home.refreshInvalidatedCatalog();
+  }, [page, trialOpen, home.catalogInvalidation, home.refreshInvalidatedCatalog]);
 
   useEffect(() => {
     const generation = ++pollingGeneration.current;
@@ -274,13 +289,19 @@ export function DesktopApp() {
           if (value) {
             unconfirmedSince = null;
             setOperationError('');
+            // This guarded lookup has reconciled the snapshot's discovery hint
+            // with the current native operation. Do not treat that same hint as
+            // another submission while the terminal Home readback is in flight.
+            supersededPendingKey.current = home.desktopSnapshot?.pending?.idempotency_key
+              ?? supersededPendingKey.current;
             setOperation(current => acceptObservedOperation(current, value));
             setOperationRecoveryPending(false);
           } else {
             noteUnconfirmed(OPERATION_RESULT_UNVERIFIED);
           }
           if (value && isTerminalOperation(value.state)) {
-            await home.refreshAll();
+            home.invalidateCatalog();
+            await home.refreshDesktop();
             return;
           }
         }
@@ -302,7 +323,8 @@ export function DesktopApp() {
     Boolean(home.desktopSnapshot?.pending),
     home.desktopSnapshot?.pending?.operation_id,
     home.desktopSnapshot?.pending?.idempotency_key,
-    home.refreshAll,
+    home.refreshDesktop,
+    home.invalidateCatalog,
     observing,
     operation?.operation_id,
     operation?.state,
@@ -666,6 +688,7 @@ export function DesktopApp() {
   const feedbackId = pendingId ?? (operationRecoveryPending || pendingRecovery ? 'pending/unknown' : null);
   const presentedOperationError = operationError;
   const operationView = operationFeedback(operation, presentedOperationError, language, operationPresentation);
+  const trialRepresentsFeedback = representedByTrial(feedbackId, operationView.phase, presentedOperationError, operationRecoveryPending, trialOperationIds);
   useEffect(() => {
     if (!feedbackId || operationView.phase !== 'succeeded') return;
     const timeout = window.setTimeout(() => setDismissedOperationId(feedbackId), 4500);
@@ -696,7 +719,9 @@ export function DesktopApp() {
         current={page}
         routingAttention={trustSuggestions.plans.length > 0}
         serviceLabel={navigationLabel}
-        serviceReady={serviceOperational}
+        serviceReady={servicePresentation.state === 'ready'}
+        serviceCheckFailed={servicePresentation.checkFailed}
+        onRetryService={() => void home.refreshDesktop()}
         onNavigate={id => void navigate(id)}
         onOpenSettings={() => void (async () => { if (await leaveTrial()) await openPageSafely('settings'); })()}
       />
@@ -704,7 +729,7 @@ export function DesktopApp() {
         <HostNotices language={language} />
         {notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="info" /><span>{notice}</span></div></div>}
         {upgradePhaseText && <div className="callout" role="status" aria-live="polite"><UiIcon name="info" /><div><strong>{upgradePhaseText}</strong><p>{language === 'zh' ? '请等待升级完成；请保留原数据与完整安装包。' : 'Wait for the upgrade to finish. Keep the original data and complete installation package.'}</p></div></div>}
-        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} serviceResponsive={home.reads.service.status === 'ready'} onRefresh={home.refreshDesktop} onRecovered={async () => { await home.refreshAll(); setRefreshVersion(value => value + 1); }} />
+        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} serviceResponsive={home.reads.service.status === 'ready'} onRefresh={home.refreshDesktop} onRecovered={async () => { home.invalidateService(); await home.refreshAll(); setRefreshVersion(value => value + 1); }} />
         {startupFailure && <div className="callout bad startup-recovery" role="alert" data-error-code={startupFailure.code}>
           <UiIcon name="warning" />
           <div>
@@ -725,23 +750,23 @@ export function DesktopApp() {
           </div>
         </div>}
 
-        {trialIntent && <div className="trial-page-host"><TrialQuickStart onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)} snapshot={home.desktopSnapshot} operation={operation} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); await home.refreshAll(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
+        {trialIntent && <div className="trial-page-host"><TrialQuickStart onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={mutationAllowed} snapshot={home.desktopSnapshot} operation={operation} onRepresentedOperations={setTrialOperationIds} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); home.invalidateCatalog(); await home.refreshDesktop(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
         <div hidden={trialOpen || page !== 'home'}><Home
             language={language}
             reads={home.reads}
             operation={homeOperation}
             trustSuggestions={trustSuggestions}
             onTrustAction={(plan, branch) => void reviewTrustAction(plan, branch)}
-            newModels={<NewModels language={language} mutable={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)} active={page === 'home'} plans={home.desktopSnapshot?.catalog.plans ?? []} refreshVersion={refreshVersion} onTry={modelId => void openTrial({ modelId })} onOpenPlan={planId => { const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId); if (plan) void showRouting({ key: `models/${randomId()}`, plan, initialView: 'performance' }); }} />}
+            newModels={<NewModels language={language} mutable={mutationAllowed} active={!trialOpen && page === 'home'} plans={home.desktopSnapshot?.catalog.plans ?? []} refreshVersion={refreshVersion} onTry={modelId => void openTrial({ modelId })} onOpenPlan={planId => { const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId); if (plan) void showRouting({ key: `models/${randomId()}`, plan, initialView: 'performance' }); }} />}
             hasTasks={taskRead.status === 'ready' && taskRead.tasks.length > 0}
             onAction={handleHomeAction}
           /></div>
         {visited.has('models') && <div hidden={trialOpen || page !== 'models' || modelTab !== 'general'}><ModelManagementPage
             key={modelIntent.key}
             language={language}
-            active={page === 'models' && modelTab === 'general'}
+            active={!trialOpen && page === 'models' && modelTab === 'general'}
             tabs={modelTabs}
-            trustedAuthority={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)}
+            trustedAuthority={mutationAllowed}
             refreshVersion={refreshVersion}
             initialSourceId={modelIntent.sourceId}
             startAdding={modelIntent.startAdding}
@@ -751,7 +776,7 @@ export function DesktopApp() {
             onRecoveryRefresh={() => void home.refreshAll()}
             onChanged={() => void Promise.allSettled([home.refreshCompute(), home.refreshDesktop()])}
             plans={home.desktopSnapshot?.catalog.plans}
-            agents={home.agentSnapshot?.agents}
+            agents={home.agentDirectory ?? undefined}
             onOpenPlan={planId => {
               const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId);
               if (plan) void showRouting({ key: plan.agent_plan_id, plan });
@@ -760,8 +785,8 @@ export function DesktopApp() {
             onCreatePlan={bindingId => void showRouting({ key: `routing/${randomId()}`, initialBindingId: bindingId })}
           /></div>}
         {visited.has('models') && <div hidden={trialOpen || page !== 'models' || modelTab !== 'decisions'}><DecisionServicesPage
-          language={language} active={page === 'models' && modelTab === 'decisions'}
-          mutable={!!home.desktopSnapshot?.trusted_authority && !!home.desktopSnapshot?.service.mutation_available}
+          language={language} active={!trialOpen && page === 'models' && modelTab === 'decisions'}
+          mutable={mutationAllowed}
           tabs={modelTabs} intent={decisionIntent}
           plans={home.desktopSnapshot?.catalog.plans} drafts={home.desktopSnapshot?.catalog.drafts}
           onChanged={() => void home.refreshDesktop()}
@@ -772,10 +797,10 @@ export function DesktopApp() {
         {visited.has('routing') && <div hidden={trialOpen || page !== 'routing'}><RoutingPage
             key={routingIntent.key}
             language={language}
-            active={page === 'routing'}
+            active={!trialOpen && page === 'routing'}
             refreshVersion={refreshVersion}
             snapshot={home.desktopSnapshot}
-            agentSnapshot={home.agentSnapshot}
+            mutationAllowed={mutationAllowed}
             operation={operation}
             loading={home.reads.plans.status === 'loading'}
             busy={refreshing}
@@ -787,12 +812,13 @@ export function DesktopApp() {
             onRefresh={async () => { setObserving(true); await home.refreshDesktop(); setRefreshVersion(v => v + 1); }}
             onOpenAgent={agentId => { void (async () => { if (!await allowPageChange('agents')) return; setAgentIntent({ key: `agents/${randomId()}`, agentId }); openPage('agents'); })(); }}
             onOpenSession={(sessionId, requestId) => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId, requestId, returnToQuality: true }); openPage('sessions'); })(); }}
+            onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }}
             onOperation={value => acceptOperation(value, { kind: 'routing' })}
           /></div>}
         {visited.has('agents') && <div hidden={trialOpen || page !== 'agents'}><Agents
             key={agentIntent.key}
             language={language}
-            active={page === 'agents'}
+            active={!trialOpen && page === 'agents'}
             operation={operation}
             initialAgentId={agentIntent.agentId}
             initialFacet={agentIntent.facet}
@@ -800,10 +826,11 @@ export function DesktopApp() {
             initialTaskId={agentIntent.taskId}
             taskRead={taskRead}
             refreshVersion={refreshVersion}
-            mutationAllowed={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)}
+            mutationAllowed={mutationAllowed}
             onMutation={() => {
               setObserving(true);
-              void Promise.allSettled([home.refreshAgents(), home.refreshDesktop()]);
+              home.invalidateCatalog();
+              void home.refreshDesktop();
             }}
             onOperation={acceptOperation}
             onUnverifiedOperation={acceptUnverifiedOperation}
@@ -824,7 +851,7 @@ export function DesktopApp() {
           /></div>}
         {visited.has('sessions') && <div hidden={trialOpen || page !== 'sessions'}><Sessions
             key={sessionIntent.key}
-            active={page === 'sessions'}
+            active={!trialOpen && page === 'sessions'}
             initialSession={sessionIntent.sessionId ?? null}
             initialRequest={sessionIntent.requestId ?? null}
             onReturnToQuality={sessionIntent.returnToQuality ? () => void openPageSafely('routing') : undefined}
@@ -833,12 +860,12 @@ export function DesktopApp() {
             onOpenAgents={() => void openPageSafely('agents')}
           /></div>}
         <div hidden={trialOpen || page !== 'settings'}><SettingsPage
-          active={page === 'settings'}
+          active={!trialOpen && page === 'settings'}
           language={language}
           languagePreference={preferences.languagePreference}
           theme={preferences.theme}
           serviceLabel={settingsServiceLabel}
-          serviceReady={serviceOperational}
+          serviceReady={servicePresentation.state === 'ready'}
           onServiceChanged={home.refreshDesktop}
           onLanguageChange={preferences.setLanguage}
           onThemeChange={preferences.setTheme}
@@ -851,7 +878,7 @@ export function DesktopApp() {
           }}
         /></div>
 
-        {feedbackId && feedbackId !== dismissedOperationId && <article className={`operation-status surface ${operationView.phase}`} aria-live={operationView.phase === 'failed' ? 'assertive' : 'polite'} data-operation-state={operation?.state ?? 'unknown'} data-operation-phase={operationView.phase} data-observation-error-code={presentedOperationError || undefined}>
+        {feedbackId && feedbackId !== dismissedOperationId && !trialRepresentsFeedback && <article className={`operation-status surface ${operationView.phase}`} aria-live={operationView.phase === 'failed' ? 'assertive' : 'polite'} data-operation-state={operation?.state ?? 'unknown'} data-operation-phase={operationView.phase} data-observation-error-code={presentedOperationError || undefined}>
           <div className="operation-status-head">
             <strong>{['pending', 'unverified'].includes(operationView.phase) && <span className="oc-spinner" aria-hidden="true" />}{operationView.title}</strong>
             <div className="operation-status-actions">

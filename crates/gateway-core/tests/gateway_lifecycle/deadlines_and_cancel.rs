@@ -403,7 +403,10 @@ async fn cancellation_after_downstream_semantic_write_completes_once_without_fal
     let error = process.as_mut().await.unwrap_err();
     drop(process);
 
-    assert!(error.to_string().contains("cancelled"));
+    assert_eq!(
+        error,
+        hiroute_gateway_core::transport::TransportError::Cancelled
+    );
     assert_eq!(selection.selected(), 1);
     assert_eq!(selection.published(), [Disposition::Accept]);
     let completed = selection.completed();

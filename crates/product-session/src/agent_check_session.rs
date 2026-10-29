@@ -124,7 +124,8 @@ impl AgentCheckConfirmation {
             "agent_claude_default" => "Claude Code",
             "agent_qoder_default" => "Qoder",
             "agent_pi_default" => "Pi",
-            "agent_dsh_default" => "DeepSeek Harness",
+            "agent_dsh_default" => "DeepSeek Harness Web",
+            "agent_dsh_desktop" => "DeepSeek Harness Desktop",
             "agent_opencode_default" => "OpenCode",
             _ => "Codex",
         };
@@ -140,7 +141,8 @@ impl AgentCheckConfirmation {
                 AgentModelSurfaceV2::ClaudeCli => "Claude Code CLI",
                 AgentModelSurfaceV2::QoderCli => "Qoder CLI",
                 AgentModelSurfaceV2::PiCli => "Pi CLI",
-                AgentModelSurfaceV2::DshCli => "DeepSeek Harness",
+                AgentModelSurfaceV2::DshCli => "DeepSeek Harness Web",
+                AgentModelSurfaceV2::DshDesktop => "DeepSeek Harness Desktop",
                 AgentModelSurfaceV2::OpenCodeCli => "OpenCode",
                 AgentModelSurfaceV2::HermesCli => "Hermes",
             };

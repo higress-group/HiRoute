@@ -277,6 +277,7 @@ pub fn previous_routing_targets(
         "agent_claude_default",
         "agent_codex_default",
         "agent_dsh_default",
+        "agent_dsh_desktop",
         "agent_pi_default",
         "agent_qoder_default",
         "agent_opencode_default",

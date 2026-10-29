@@ -77,7 +77,8 @@ mockIPC(async (command, payload: any) => {
     // Production cleanup removes catalog rows and transcript roots; it does not
     // leave a synthetic entry whose state is deleted.
     const cleared = fixture.deletedRequests.has(query.request_id);
-    return { contents: cleared || fixture.body === 'pending' ? [] : [{ content_id: 'content/one', role: fixture.onlyResponse ? 'assistant' : 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: 'message/one', message_ordinal: 1, part_ordinal: 1 }], transcript_roots: [], roots_partial: cleared || fixture.rootsPartial, next_cursor: null };
+    return { contents: cleared || fixture.body === 'pending' ? [] : [{ content_id: 'content/one', role: fixture.onlyResponse ? 'assistant' : 'user', kind: 'text', state: 'complete', direction: 'request_input', media_type: 'text/plain', message_occurrence_id: 'message/one', message_ordinal: 1, part_ordinal: 1 }], transcript_roots: [], roots_partial: cleared || fixture.rootsPartial, next_cursor: null,
+      ...(query.include_input_selection ? { input_selection: { version: 1, evidence: 'native_matched', message_ordinal: 1, source_unverified: true } } : {}) };
   }
   if (view === 'content') {
     const result = body(query.request_id, fixture.deletedRequests.has(query.request_id) ? 'deleted' : fixture.body);

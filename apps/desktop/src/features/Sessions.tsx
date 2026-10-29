@@ -10,11 +10,13 @@ import { nativeConnectionReadText } from '../native-connection';
 import { safeDiagnosticCode } from '../error-code';
 import { observationRead as read } from './observation-client';
 import { PlanQuality } from './PlanQuality';
+import { agentDisplayName } from './agents/ecosystems';
 import { RoutingTimeline, type TimelineAvailability, type TimelineRequest } from './RoutingTimeline';
+import { useModelLabels } from './use-model-labels';
 type Page<T> = { next_cursor: string | null } & T;
 type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; last_request_at_ms: number; correlation_kind: CorrelationKind; content_completeness: string };
 type RoutingContext = { state: 'recorded' | 'unavailable' | 'conflicted'; display_name: string | null; name_state: 'recorded' | 'unavailable'; plan_id?: string | null; plan_revision?: string | null };
-type Request = { request_id: string; started_at_ms: number; outcome: string | null; native_turn_id: string | null; within_request_fallback: boolean | null; final_native_model: string | null; between_turn_model_change: boolean | null; previous_native_turn_id: string | null; previous_turn_model: string | null; turn_final_native_model: string | null; routing_context?: RoutingContext };
+type Request = { request_id: string; started_at_ms: number; outcome: string | null; native_turn_id: string | null; within_request_fallback: boolean | null; final_native_model: string | null; between_turn_model_change: boolean | null; previous_native_turn_id: string | null; previous_turn_model: string | null; turn_final_native_model: string | null; routing_context?: RoutingContext; native_auxiliary?: boolean | null };
 type Content = { content_id: string; role: string; kind: string; state: string; direction: string; media_type: string; message_occurrence_id: string; message_ordinal?: number; part_ordinal?: number; fork_id?: string; downstream_delivery?: string | null };
 type Hit = { session_id: string; request_id: string; content_id: string; original_text_offset: number };
 type Ancestry = { roots: { state: string }[]; gap: string | null };
@@ -39,6 +41,7 @@ function currentWindow(): ObservationQueryWindow {
 export function Sessions({ initialSession = null, initialRequest = null, language = 'zh', refreshVersion = 0, active = true, onOpenAgents, onReturnToQuality }: { initialSession?: string | null; initialRequest?: string | null; language?: 'zh' | 'en'; refreshVersion?: number; active?: boolean; onOpenAgents?: () => void; onReturnToQuality?: () => void }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const [reload, setReload] = useState(0);
+  const modelLabels = useModelLabels(active, refreshVersion + reload);
   const sessionQuery = useRef(currentWindow());
   const searchQuery = useRef(currentWindow());
   const timelineQuery = useRef<ObservationQueryWindow>({ from_ms: 0, to_ms: Date.now() + 1 });
@@ -290,9 +293,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   const selectedContentCleared = Boolean(session && sessionContentStates[session] === 'cleared') || isCleared(selectedSummary?.content_completeness);
   const agentName = (id?: string) => !id
     ? text('未关联 Agent', 'Unlinked Agent')
-    : id.toLowerCase().includes('codex') ? 'Codex'
-      : id.toLowerCase().includes('claude') ? 'Claude Code'
-        : text('本机 Agent', 'Local Agent');
+    : agentDisplayName(id, language);
   const emptyFirstUse = listLoaded && !listBusy && !listError && !keyword.trim() && !onlySwitch && sessions.length === 0;
   const selectedRequest = requests.find(item => item.request_id === request);
   const displayedRequestIds = request ? (readingRequests.length ? readingRequests : [request]) : [];
@@ -374,7 +375,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
           {timelineError && <div className="callout bad session-detail-feedback" role="alert" data-error-code={timelineError}><UiIcon name="warning" /><div><strong>{text('会话详情没有刷新', 'The session details were not refreshed')}</strong><p>{nativeConnectionReadText(timelineError, language) ?? (requests.length ? text('已加载的请求仍然保留。', 'Previously loaded requests are still available.') : text('暂时无法读取这条会话。', 'This session is temporarily unavailable.'))}</p><button className="btn" type="button" onClick={() => void timeline(session, null, undefined, focusedRequest)}>{text('重试', 'Retry')}</button></div></div>}
           <div className={`session-routing-and-conversation show-${pane}`}>
           <Disclosure className="native-details session-model-performance" label={text('本会话的模型表现', 'Model performance in this session')} language={language} onOpenChange={setQualityOpen}><PlanQuality key={session} sessionId={session} language={language} compact active={active && qualityOpen} refreshVersion={refreshVersion + reload} onOpenEvidence={(targetSession, targetRequest) => void timeline(targetSession, null, undefined, targetRequest)} /></Disclosure>
-          <div className="session-pane" hidden={pane !== 'timeline'}><RoutingTimeline key={session} session={session} contentCleared={selectedContentCleared} clearedRequestIds={Object.keys(requestContentStates).filter(id => requestContentStates[id] === 'cleared')} language={language} active={active} displayed={pane === 'timeline'} refreshVersion={refreshVersion + reload} requestId={routingRequestId} onOpenPerformance={setQualityPlan} onAvailability={setRouting} onSelectRequest={selectTimelineRequest} onViewConversation={item => { selectTimelineRequest(item); setSessionView('conversation'); }} /></div>
+          <div className="session-pane" hidden={pane !== 'timeline'}><RoutingTimeline key={session} session={session} modelLabels={modelLabels} contentCleared={selectedContentCleared} clearedRequestIds={Object.keys(requestContentStates).filter(id => requestContentStates[id] === 'cleared')} language={language} active={active} displayed={pane === 'timeline'} refreshVersion={refreshVersion + reload} requestId={routingRequestId} onOpenPerformance={setQualityPlan} onAvailability={setRouting} onSelectRequest={selectTimelineRequest} onViewConversation={item => { selectTimelineRequest(item); setSessionView('conversation'); }} /></div>
           <section className="routing-conversation" hidden={pane !== 'conversation'} aria-label={text('对话', 'Conversation')}>
           {requests.length > 1 && <Disclosure className="native-details request-timeline" label={text(`请求记录（${requests.length}）`, `Requests (${requests.length})`)} language={language}><nav className="native-list" aria-label={text('请求时间线', 'Request timeline')}>{requests.map((item, index) => <button className={`list-row${request === item.request_id ? ' active' : ''}`} key={item.request_id} aria-current={request === item.request_id ? 'true' : undefined} onClick={() => { setRequestPicked(true); setRequest(item.request_id); setReadingRequests([item.request_id]); setAnchor(null); }}><span className="row-main"><span className="row-title">{text('请求', 'Request')} {index + 1}</span><span className="row-meta">{item.routing_context?.state === 'recorded' && item.routing_context.display_name ? item.routing_context.display_name : item.final_native_model ?? text('路由未记录', 'Route not recorded')}{item.within_request_fallback === true ? text(' · 请求内回退', ' · Request fallback') : item.between_turn_model_change === true ? text(' · 跨轮切换', ' · Turn change') : ''}</span></span></button>)}{requestCursor && <button className="btn" disabled={busy} onClick={() => void timeline(session, requestCursor)}>{text('加载更多请求', 'Load more requests')}</button>}</nav></Disclosure>}
           {displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody contentCleared={selectedContentCleared || requestContentStates[id] === 'cleared'} request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setRequestPicked(true); setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
@@ -636,7 +637,8 @@ function MaintenanceStatus({ language }: { language: 'zh' | 'en' }) {
   return !status.running || !status.index_running || status.error_count > 0 ? <div className="callout warn session-page-feedback" role="status"><UiIcon name="clock" /><span>{language === 'zh' ? '部分会话仍在整理，搜索或清理结果可能稍后更新。' : 'Some sessions are still being prepared. Search or cleanup results may update shortly.'}</span></div> : null;
 }
 
-type TitleScanState = { sawContent: boolean; allDeleted: boolean; incomplete: boolean };
+type TitleScanState = { sawContent: boolean; allDeleted: boolean; incomplete: boolean; inputUnconfirmed?: boolean };
+type InputSelection = { version: number; evidence: 'native_matched' | 'wire_observed' | 'unavailable'; message_ordinal: number | null; source_unverified: boolean };
 const TITLE_CONTENT_LIMIT = 1024 * 1024;
 
 async function completeTitlePart(requestId: string, contentId: string, signal: AbortSignal): Promise<{ text: string | null; incomplete: boolean }> {
@@ -663,8 +665,12 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
   let cursor: string | null = null;
   const contents: Content[] = [];
   const seen = new Set<string>();
+  let selection: InputSelection | undefined;
+  let firstPage = true;
   do {
-    const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null } = await read('catalog', { request_id: requestId, limit: 200, cursor }, signal);
+    const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null; input_selection?: InputSelection } = await read('catalog', { request_id: requestId, limit: 200, cursor, ...(latest ? { include_input_selection: true } : {}) }, signal);
+    if (firstPage) selection = page.input_selection;
+    firstPage = false;
     contents.push(...page.contents);
     state.sawContent ||= page.contents.length > 0;
     state.allDeleted &&= page.contents.every(item => ['deleted', 'expired'].includes(item.state));
@@ -674,16 +680,25 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
     if (cursor) seen.add(cursor);
   } while (cursor && !signal.aborted);
 
+  if (latest && (!selection || selection.version !== 1 || !['native_matched', 'wire_observed'].includes(selection.evidence)
+    || !Number.isSafeInteger(selection.message_ordinal) || selection.message_ordinal === null
+    || selection.message_ordinal < 0 || selection.message_ordinal > 65_535)) {
+    // Older records did not retain a selected-input witness. The original
+    // transcript stays readable; a late User envelope is not a substitute.
+    state.inputUnconfirmed = true;
+    return null;
+  }
+
   const groups = new Map<string, Content[]>();
   for (const content of contents) {
     if (content.role !== 'user' || content.kind !== 'text' || ['deleted', 'expired', 'unavailable'].includes(content.state)) continue;
+    if (latest && (content.direction !== 'request_input' || content.message_ordinal !== selection?.message_ordinal)) continue;
     const key = `${content.direction}\u0000${content.fork_id ?? ''}\u0000${content.message_occurrence_id || content.content_id}`;
     const group = groups.get(key) ?? [];
     group.push(content);
     groups.set(key, group);
   }
   const messages = [...groups.values()].sort((left, right) => (left[0]?.message_ordinal ?? 0) - (right[0]?.message_ordinal ?? 0));
-  if (latest) messages.reverse();
   for (const message of messages) {
     message.sort((left, right) => (left.part_ordinal ?? 0) - (right.part_ordinal ?? 0));
     const parts: string[] = [];
@@ -701,14 +716,19 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
   return null;
 }
 
-/** `request` shows that request's latest user message, e.g. the message that opened an agent turn. */
-export function ContentExcerpt({ session, request, hit, language, fallback = '', limit = 160, revision = 0, active = true, contentCleared = false, onCompleteness, onContentState, onModel, onRoute }: { session?: string; request?: string; hit?: Hit; language: 'zh' | 'en'; fallback?: string; limit?: number; revision?: number | string; active?: boolean; contentCleared?: boolean; onCompleteness?: (incomplete: boolean) => void; onContentState?: (state: ContentState) => void; onModel?: (model: string) => void; onRoute?: (route: string) => void }) {
+/** `request` uses the recorded selected-input position; it never guesses from late User context. */
+export function ContentExcerpt({ session, request, requestRunning, hit, language, fallback = '', limit = 160, revision = 0, active = true, contentCleared = false, onCompleteness, onContentState, onModel, onRoute }: { session?: string; request?: string; requestRunning?: boolean; hit?: Hit; language: 'zh' | 'en'; fallback?: string; limit?: number; revision?: number | string; active?: boolean; contentCleared?: boolean; onCompleteness?: (incomplete: boolean) => void; onContentState?: (state: ContentState) => void; onModel?: (model: string) => void; onRoute?: (route: string) => void }) {
   const node = useRef<HTMLSpanElement>(null);
-  const [value, setValue] = useState('');
-  const [status, setStatus] = useState<'pending' | 'ready' | 'absent' | 'cleared' | 'error'>('pending');
+  const key = JSON.stringify([session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset, limit, revision]);
+  type ExcerptStatus = 'loading' | 'pending' | 'ready' | 'absent' | 'cleared' | 'error' | 'unconfirmed';
+  const [result, setResult] = useState<{ key: string; value: string; status: ExcerptStatus }>({ key, value: '', status: 'loading' });
+  const current = result.key === key ? result : { key, value: '', status: 'loading' as const };
+  const { value, status } = current;
+  const setValue = (value: string) => setResult(previous => ({ ...(previous.key === key ? previous : current), key, value }));
+  const setStatus = (status: ExcerptStatus) => setResult(previous => ({ ...(previous.key === key ? previous : current), key, status }));
   const callbacks = useRef({ onCompleteness, onContentState, onModel, onRoute });
   callbacks.current = { onCompleteness, onContentState, onModel, onRoute };
-  useEffect(() => { setValue(''); setStatus('pending'); }, [session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset]);
+  useEffect(() => { setResult({ key, value: '', status: 'loading' }); }, [key]);
   useEffect(() => {
     if (contentCleared) {
       setValue(''); setStatus('cleared');
@@ -728,10 +748,10 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
       }
     };
     function report(title: string | null, state: TitleScanState) {
-      const cleared = state.sawContent && state.allDeleted;
+      const cleared = state.sawContent && state.allDeleted && !state.incomplete;
       resolved = cleared || (state.sawContent && !state.incomplete);
       setValue(title === null ? '' : excerpt(title, limit));
-      setStatus(cleared ? 'cleared' : !resolved ? 'pending' : title !== null ? 'ready' : 'absent');
+      setStatus(cleared ? 'cleared' : !resolved ? 'pending' : state.inputUnconfirmed ? 'unconfirmed' : title !== null ? 'ready' : 'absent');
       callbacks.current.onCompleteness?.(!resolved);
       callbacks.current.onContentState?.(cleared ? 'cleared' : resolved ? 'recorded' : 'partial');
     }
@@ -767,6 +787,9 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
           const timeline: Page<{ requests: Request[] }> = await read('timeline', { session_id: session, limit: 50, cursor, from_ms: 0, to_ms: toMs, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: false }, signal);
           if (signal.aborted) return;
           for (const item of timeline.requests) {
+            // Only affirmative native-purpose evidence excludes a title input.
+            // Direct request/hit navigation still exposes the original content.
+            if (item.native_auxiliary === true) continue;
             if (firstRequest) {
               firstRequest = false;
               if (item.final_native_model) callbacks.current.onModel?.(item.final_native_model);
@@ -817,8 +840,15 @@ export function ContentExcerpt({ session, request, hit, language, fallback = '',
   }, [session, request, hit?.request_id, hit?.content_id, hit?.original_text_offset, limit, revision, active, contentCleared]);
   // Mask cached text in the same render that receives a visibility change.
   const currentStatus = contentCleared ? 'cleared' : status;
+  const directRequest = Boolean(request && !hit);
   const statusText = currentStatus === 'cleared' ? (language === 'zh' ? '正文已清理' : 'Content cleared')
-    : currentStatus === 'error' ? (language === 'zh' ? '正文暂时无法读取' : 'Content is temporarily unavailable')
-      : currentStatus === 'pending' ? (language === 'zh' ? '正文尚未就绪' : 'Content is not ready yet') : undefined;
+    : currentStatus === 'unconfirmed' ? (language === 'zh' ? '本轮输入位置未记录，可查看原始对话' : 'This turn’s input position was not recorded; view the original conversation')
+    : currentStatus === 'loading' ? (language === 'zh' ? '正在读取消息…' : 'Loading message…')
+      : directRequest && currentStatus === 'error' ? (language === 'zh' ? '消息暂时无法读取' : 'Message could not be read')
+        : directRequest && currentStatus === 'pending' && requestRunning === true ? (language === 'zh' ? '消息记录正在准备…' : 'Message record pending…')
+        : directRequest && currentStatus === 'pending' && requestRunning === false ? (language === 'zh' ? '消息记录尚不完整' : 'Message record is incomplete')
+        : directRequest && currentStatus === 'pending' ? (language === 'zh' ? '这一轮的消息暂不可用' : 'This turn’s message is unavailable')
+        : currentStatus === 'error' ? (language === 'zh' ? '正文暂时无法读取' : 'Content is temporarily unavailable')
+          : currentStatus === 'pending' ? (language === 'zh' ? '正文尚未就绪' : 'Content is not ready yet') : undefined;
   return <span ref={node} data-content-state={currentStatus} title={statusText}>{(contentCleared ? '' : value) || ((request || hit || currentStatus === 'cleared') && statusText) || fallback || (hit ? (language === 'zh' ? '查看命中正文' : 'Open matching content') : '')}</span>;
 }

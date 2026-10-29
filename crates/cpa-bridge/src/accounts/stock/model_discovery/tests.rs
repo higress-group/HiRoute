@@ -15,6 +15,55 @@ fn payload() -> Value {
 }
 
 #[test]
+fn recovery_requires_current_quiescent_transient_failure() {
+    for reason in [
+        "timeout",
+        "dns_failure",
+        "connect_failure",
+        "body_read_failure",
+    ] {
+        let mut value = payload();
+        value["hiroute_model_discovery"]["latest"]["reason"] = json!(reason);
+        assert_eq!(retryable_failure(&value), Some(123));
+        value["hiroute_model_discovery"]["registration_pending"] = json!(true);
+        assert_eq!(retryable_failure(&value), None);
+        value["hiroute_model_discovery"]["registration_pending"] = json!(false);
+        value["hiroute_model_discovery"]["first_failure"] =
+            value["hiroute_model_discovery"]["latest"].clone();
+        value["hiroute_model_discovery"]["latest"]["reason"] = json!("account_changed");
+        assert_eq!(
+            retryable_failure(&value),
+            None,
+            "retained failure cannot trigger recovery"
+        );
+    }
+    for status in [200, 400, 401, 403, 408, 429, 500, 502, 503, 504] {
+        let mut value = payload();
+        value["hiroute_model_discovery"]["latest"]["reason"] = json!("http_rejected");
+        value["hiroute_model_discovery"]["latest"]["http_status"] = json!(status);
+        assert_eq!(
+            retryable_failure(&value).is_some(),
+            matches!(status, 408 | 500 | 502 | 503 | 504)
+        );
+    }
+    for reason in [
+        "missing_access_token",
+        "client_version_unavailable",
+        "cancelled",
+        "tls_failure",
+        "invalid_catalog",
+        "empty_catalog",
+        "account_disabled",
+        "account_missing",
+    ] {
+        let mut value = payload();
+        value["hiroute_model_discovery"]["latest"]["reason"] = json!(reason);
+        assert_eq!(retryable_failure(&value), None);
+    }
+    assert_eq!(retryable_failure(&json!({"models":[]})), None);
+}
+
+#[test]
 fn retains_first_failure_after_recovery_and_deduplicates_polling() {
     let mut observations = Observations::default();
     let mut value = payload();

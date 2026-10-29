@@ -252,6 +252,7 @@ mod tests {
                     native_turn_id: Some(turn.into()),
                     relation_conflicted: false,
                     routing_context: ObservationRoutingContextV1::unavailable(),
+                    native_auxiliary: None,
                     attempted_model_count: 1,
                     within_request_fallback: Some(false),
                     final_native_model: Some(model.into()),

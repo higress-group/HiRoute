@@ -108,6 +108,7 @@ fn append(
                     native_turn_id: raw.native_turn.clone(),
                     relation_conflicted: raw.partial,
                     routing_context: ObservationRoutingContextV1::unavailable(),
+                    native_auxiliary: None,
                     attempted_model_count: models
                         .iter()
                         .collect::<std::collections::BTreeSet<_>>()

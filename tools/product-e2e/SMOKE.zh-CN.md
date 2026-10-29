@@ -35,6 +35,10 @@ target/debug/hiroute-smoke run --case gateway.responses.controlled
 
 报告分别保存工具退出、产品步骤退出/信号、逐例 green/expected_red/red、未执行原因、源码/产物身份、构建与执行时间、清理状态和能力缺口。大体积调试产物的完整性复核仍在每次产品命令启动前后执行，但这段 runner 证据开销不消耗 30 秒产品场景或 10 秒产品步骤等待预算。当前目录资源的 schema 或摘要篡改被正确拒绝时，daemon 非零退出与该负向案例 green 可以同时成立。未交付的 Agent、真实账号、Desktop 和安装适配只能返回 not_executed，不能返回 expected_red。`Report::verify` 是结构一致性检查，不能将外来 JSON 认证为生产证据。
 
+两个 control 案例先记录 `control_storage_prepare`：经验证的同候选 daemon 在全新私有存储上完成初始化、实际打开 control endpoint，然后停止。准备阶段单独使用 45 秒上限，与既有 publication 真实进程 fixture 的首次启动预算一致；失败仍为 red，后续普通启动和 CLI 步骤不执行。存储和合成输入均准备完成后，业务场景仍为 30 秒、单步仍为 10 秒。这些是验证看门狗，不是已发布的冷启动时限承诺。独立的 `control_shell`、`publication_process` 真实进程测试继续从空存储启动。
+
+`execution_ms` 继续表示扣除构建后的全部案例墙钟时间，包含准备、清理和完整性检查；`timing_complete` 不将这个合计解释为纯业务延迟。私有 `control-storage-prepare.json` 记录准备结果、原因、实际耗时、上限和执行文件摘要，并由步骤证据摘要绑定。准备耗时不计入 `build_ms`，不从 execution 中扣除，失败也不隐藏；失败存储及初始化进程证据继续保留供诊断。
+
 子进程只使用本次隔离目录。控制面发现脚本是合成输入，不会调用日常 Codex/Claude。Agent 正式适配尚未接通；已有组件合同要求先证明全部配置层隔离，变更后经正式恢复并核对，再清理。冲突或恢复失败保留恢复上下文，不用复制备份覆盖用户配置。
 
 日志和恢复定位信息仅存放在私有区域，不自动上传。正常取消先停止新操作并回收本次进程；强制 SIGKILL、主机重启或远端硬期限可能留下 interrupted 资源。发现未结束的 private/run.journal 时应人工检查该次 PID/资源，不能把旧记录转成 green，也不能批量清理仍活动的任务。失败 runtime 使用私有短临时目录并保留，成功后清理；Cargo 始终使用本 checkout 默认 target。

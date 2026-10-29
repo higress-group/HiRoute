@@ -15,9 +15,9 @@ impl LocalObservationStore {
         capture: Option<&AnalysisPricesV1>,
         now: i64,
     ) -> Result<ObservationAnalysisPageV1, Error> {
-        let deadline = reader
-            .query_deadline()
-            .unwrap_or_else(|| std::time::Instant::now() + std::time::Duration::from_millis(500));
+        let deadline = reader.query_deadline().unwrap_or_else(|| {
+            std::time::Instant::now() + hiroute_domain::ObservationReaderContext::QUERY_BUDGET
+        });
         reader.check(now, q.view.content(), q.query.is_some())?;
         if reader.allowed_runs().is_some() {
             return Err(Error::Unauthorized);

@@ -10,6 +10,80 @@ fn declaration() -> serde_json::Value {
 }
 
 #[test]
+fn opencode_routing_resource_root_is_independent_of_an_explicit_config_file() {
+    for use_extra in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path();
+        let xdg = home.join("xdg-config");
+        let selected = home.join("selected/custom.jsonc");
+        let extra_root = use_extra.then(|| home.join("extra-resources"));
+        let context = crate::agents::OpenCodeNativeContext::from_lookup(home, |name| match name {
+            "XDG_CONFIG_HOME" => Some(xdg.clone().into_os_string()),
+            "OPENCODE_CONFIG" => Some(selected.clone().into_os_string()),
+            "OPENCODE_CONFIG_DIR" => extra_root.clone().map(PathBuf::into_os_string),
+            _ => None,
+        })
+        .unwrap();
+        let resource = extra_root.unwrap_or_else(|| xdg.join("opencode"));
+        let mut configured = layout(home);
+        configured.opencode_context = Some(context);
+        let scanner = FilesystemAgentScannerV1::new(configured, registry());
+        assert_eq!(scanner.opencode_user_models_target(), selected);
+        assert_eq!(
+            scanner.native_routing_adapter_target(AgentKindV1::OpenCode),
+            Some(resource.join("plugins/hiroute-routing.js"))
+        );
+        assert!(!selected.exists());
+        assert!(
+            !resource.exists(),
+            "passive target selection must not write native resources"
+        );
+    }
+}
+
+#[test]
+fn installed_opencode_routing_plugin_preserves_passive_import_but_foreign_plugins_do_not() {
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    write_secret_settings(&scanner.opencode_user_models_target(), declaration());
+    let plugins = scanner
+        .opencode_native_context()
+        .unwrap()
+        .resource_root()
+        .join("plugins");
+    std::fs::create_dir_all(&plugins).unwrap();
+    let adapter = plugins.join("hiroute-routing.js");
+    std::fs::write(&adapter, crate::agents::OPENCODE_ROUTING_ADAPTER).unwrap();
+    let sources = scanner.opencode_api_sources().unwrap();
+    assert_eq!(sources.len(), 1);
+    assert!(sources[0].supported_auth);
+    assert_eq!(
+        scanner
+            .read_opencode_api_source(&sources[0])
+            .unwrap()
+            .1
+            .expose(),
+        b"static-only"
+    );
+
+    for (path, content) in [
+        (adapter.clone(), "user-edited routing plugin"),
+        (
+            plugins.join("foreign.js"),
+            crate::agents::OPENCODE_ROUTING_ADAPTER,
+        ),
+    ] {
+        std::fs::write(&path, content).unwrap();
+        let blocked = scanner.opencode_api_sources().unwrap();
+        assert_eq!(blocked.len(), 1);
+        assert!(!blocked[0].supported_auth && blocked[0].credential.is_none());
+        assert!(scanner.read_opencode_api_source(&sources[0]).is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&adapter, crate::agents::OPENCODE_ROUTING_ADAPTER).unwrap();
+    }
+}
+
+#[test]
 fn opencode_provider_credential_failures_do_not_hide_independent_sources_or_relax_stale_reads() {
     let root = tempfile::tempdir().unwrap();
     let scanner = scanner(root.path());

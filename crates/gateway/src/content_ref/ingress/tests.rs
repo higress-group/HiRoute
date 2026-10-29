@@ -983,16 +983,17 @@ fn literal_marker_in_native_reasoning_extension_is_not_replaced_by_another_field
     .unwrap();
     let key = [43; 32];
     let actual_history =
-        crate::context_hold::visible_history_with_replay(&request, &key, Some(&store))
+        crate::context_hold::observed_history_with_replay(&request, &key, Some(&store))
             .unwrap()
             .measure(None)
             .unwrap()
             .complete_digest;
-    let different_history = crate::context_hold::visible_history(&different, &key)
-        .unwrap()
-        .measure(None)
-        .unwrap()
-        .complete_digest;
+    let different_history =
+        crate::context_hold::observed_history_with_replay(&different, &key, None)
+            .unwrap()
+            .measure(None)
+            .unwrap()
+            .complete_digest;
     assert_ne!(actual_history, different_history);
     super::super::externalize_model_request(&mut request, &store, 8 * 1024).unwrap();
     let profile =

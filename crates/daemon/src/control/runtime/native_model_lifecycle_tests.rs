@@ -39,6 +39,7 @@ fn settings_codex_daemon_stages_real_grant_reopens_and_restores_native_file() {
             None,
         )
         .unwrap();
+    super::apply_fixture_catalog(adapter, &mut install);
     let file_effect = adapter.apply_external(&install, &intent).unwrap();
     record_agent_effect(adapter, &mut install, &file_effect);
     assert_eq!(

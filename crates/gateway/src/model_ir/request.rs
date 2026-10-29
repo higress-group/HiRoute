@@ -18,6 +18,10 @@ pub struct ModelRequestIRV1 {
     /// or history-prefix reuse/cleanup admission.
     #[serde(skip)]
     pub native_only: bool,
+    /// Request-local positions and semantic coverage produced by ingress.
+    /// These facts never authorize conversion, affinity or source identity.
+    #[serde(skip)]
+    pub native_history: Option<Vec<NativeHistoryItem>>,
     pub schema_version: String,
     pub ingress_protocol: IngressProtocol,
     pub served_model_id: String,
@@ -64,8 +68,8 @@ pub struct ModelRequestIRV1 {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_item_statuses: std::collections::BTreeMap<usize, String>,
     /// Responses message phases are native input-item semantics. They are indexed by the
-    /// canonical message produced from that exact input item and may only be replayed to a
-    /// Responses upstream.
+    /// canonical message produced from that exact input item. Native Responses replay
+    /// preserves them; supported candidate-local history projections declare any loss.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_message_phases: std::collections::BTreeMap<usize, ResponsesMessagePhaseV1>,
     /// Bounded Codex transport metadata carried by Responses history items. This is neither
@@ -73,11 +77,18 @@ pub struct ModelRequestIRV1 {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_internal_chat_message_metadata:
         std::collections::BTreeMap<usize, ResponsesInternalChatMessageMetadataV1>,
-    /// Native Responses reasoning-item history retained for an exact same-provider
-    /// continuation. The opaque encrypted state remains a ProviderState content part;
-    /// this sidecar preserves other native fields without interpreting their format.
+    /// Native Responses reasoning-item history retained for same-protocol forwarding.
+    /// The opaque encrypted state remains a ProviderState content part; known text
+    /// has declared cross-protocol mappings, while unknown fields make ingress native-only.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_reasoning_history: std::collections::BTreeMap<usize, ResponsesReasoningHistoryV1>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NativeHistoryItem {
+    /// None represents the scalar Responses input; otherwise a native array index.
+    pub native_index: Option<usize>,
+    pub modeled: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -111,8 +122,9 @@ pub struct ResponsesInternalChatMessageMetadataV1 {
 #[serde(deny_unknown_fields)]
 pub struct ResponsesReasoningHistoryV1 {
     /// Native, non-authority fields of a Responses reasoning item. These are
-    /// preserved for Responses; standard summary/content text may also be
-    /// projected to a protocol with a plaintext reasoning field.
+    /// preserved for Responses; supported summary_text/reasoning_text parts may
+    /// also project to a plaintext reasoning field. Unknown fields are not covered
+    /// by declared reasoning omission and make the decoded request native-only.
     pub native_fields: serde_json::Map<String, serde_json::Value>,
     /// Wire shape of the native `encrypted_content` sibling. Only `Opaque`
     /// corresponds to a ProviderState payload; no source registration is required.
@@ -287,6 +299,9 @@ pub enum ContentPart {
         namespace: Option<ContentValue>,
         name: ContentValue,
         arguments: Value,
+        /// Responses distinguishes an absent encoding declaration from explicit plaintext [].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        encrypted_function_args: Option<Vec<String>>,
         /// Native Responses/Chat can carry model-generated, non-JSON argument text.
         /// When present, this is the sole argument value; `arguments` is null.
         #[serde(default, skip_serializing_if = "Option::is_none")]

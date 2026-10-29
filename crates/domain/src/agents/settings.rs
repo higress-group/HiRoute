@@ -22,6 +22,13 @@ pub enum AgentFacetIntent<T> {
 pub enum AgentModelSelectionV2 {
     #[serde(rename = "opencode_additional")]
     OpenCodeAdditional {
+        /// Optional native metadata only; disabling it does not disable model routing.
+        /// Omission preserves existing selection bytes and the normal plugin installation.
+        #[serde(
+            default = "routing_metadata_enabled",
+            skip_serializing_if = "is_enabled"
+        )]
+        routing_metadata: bool,
         allowed_plan_ids: BTreeSet<AgentPlanId>,
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         plan_protocols: BTreeMap<AgentPlanId, crate::AgentIngressProtocolV1>,
@@ -76,6 +83,7 @@ pub enum AgentModelSurfaceV2 {
     QoderCli,
     PiCli,
     DshCli,
+    DshDesktop,
     #[serde(rename = "opencode_cli")]
     OpenCodeCli,
     HermesCli,
@@ -119,7 +127,24 @@ pub struct AgentClaudePresetValuesV2 {
     pub haiku: Option<String>,
 }
 
+fn routing_metadata_enabled() -> bool {
+    true
+}
+fn is_enabled(value: &bool) -> bool {
+    *value
+}
+
 impl AgentModelSelectionV2 {
+    pub fn installs_native_routing_metadata(&self) -> bool {
+        !matches!(
+            self,
+            Self::OpenCodeAdditional {
+                routing_metadata: false,
+                ..
+            }
+        )
+    }
+
     pub fn plan_protocol(
         &self,
         id: &AgentPlanId,
@@ -369,4 +394,23 @@ pub enum AgentSettingsFacet {
     Model,
     Collaboration,
     ManagementSkill,
+}
+
+#[cfg(test)]
+mod routing_metadata_tests {
+    use super::*;
+    #[test]
+    fn opencode_metadata_omission_preserves_previous_selection_bytes() {
+        let old =
+            serde_json::json!({"mode":"opencode_additional","allowed_plan_ids":["plan/example"]});
+        let selection: AgentModelSelectionV2 = serde_json::from_value(old.clone()).unwrap();
+        assert!(selection.installs_native_routing_metadata());
+        assert_eq!(serde_json::to_value(&selection).unwrap(), old);
+        let mut degraded = old;
+        degraded["routing_metadata"] = serde_json::json!(false);
+        let selection: AgentModelSelectionV2 = serde_json::from_value(degraded.clone()).unwrap();
+        assert!(!selection.installs_native_routing_metadata());
+        assert_eq!(serde_json::to_value(&selection).unwrap(), degraded);
+        assert_eq!(selection.allowed_plan_ids().len(), 1);
+    }
 }

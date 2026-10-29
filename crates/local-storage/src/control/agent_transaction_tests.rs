@@ -13,6 +13,39 @@ use serde_json::json;
 
 use super::{ArtifactBackupAad, ControlStore, ManagedArtifactStore};
 
+#[path = "artifact_dependency_tests.rs"]
+mod artifact_dependency_tests;
+
+// Narrow store fixtures do not run an external adapter. Supply its bound receipt;
+// real protected file execution remains covered by artifact_dependency_tests.
+fn add_component_file_receipts(operation: &mut OperationV1) {
+    // This history-reader fixture uses bound adapter receipts. File-byte/backup
+    // authentication is exercised separately by the artifact dependency scenarios.
+    let receipts = operation
+        .plan
+        .external()
+        .iter()
+        .filter(|intent| intent.kind() == hiroute_domain::OwnedEffectKind::AgentArtifact)
+        .map(|intent| hiroute_domain::OwnedEffectV1 {
+            effect_id: intent.effect_id().into(),
+            kind: intent.kind(),
+            target: intent.target().into(),
+            before_fingerprint: intent.before_fingerprint().cloned(),
+            after_fingerprint: Some(CanonicalDigest::of_bytes(b"component-file-receipt")),
+            compensation: json!({"schema":"hiroute.managed-artifact-compensation/v1",
+                "operation_id":operation.operation_id,"effect_id":intent.effect_id()})
+            .into(),
+        })
+        .collect();
+    let step = operation
+        .steps
+        .iter_mut()
+        .find(|s| s.kind == hiroute_domain::OperationStepKind::ApplyAgentArtifacts)
+        .unwrap();
+    step.effects = receipts;
+    step.status = hiroute_domain::OperationStepStatus::Applied;
+}
+
 fn rewrite_marker_as_legacy(
     store: &ManagedArtifactStore,
     operation: &OperationId,
@@ -209,6 +242,14 @@ fn agent_transaction_plan(
     transaction: AgentConnectionTransactionKindV1,
     before: Option<CanonicalDigest>,
 ) -> TransactionPlanV1 {
+    agent_transaction_plan_payload(transaction, before, "")
+}
+
+fn agent_transaction_plan_payload(
+    transaction: AgentConnectionTransactionKindV1,
+    before: Option<CanonicalDigest>,
+    payload: &str,
+) -> TransactionPlanV1 {
     let spec = ChangeSpecV1 {
         schema_version: hiroute_domain::CHANGE_SPEC_SCHEMA_V1,
         command_id: transaction.command_id().to_owned(),
@@ -256,7 +297,7 @@ fn agent_transaction_plan(
             } else {
                 None
             },
-            &json!({"role": format!("{role:?}"), "content_digest": "sha256:fixture"}),
+            &json!({"role": format!("{role:?}"), "content_digest": "sha256:fixture", "payload": payload}),
             if role == AgentConnectionEffectRoleV1::ManagedConfiguration {
                 0o640
             } else {
@@ -537,6 +578,14 @@ fn managed_artifact_v2_backup_migrates_to_v4_and_restores_exact_bytes() {
         "hiroute.managed-artifact-marker/v2",
         ArtifactBackupAad::LegacyV2,
     );
+    // Exact access also upgrades/authenticates this legacy record; it must not
+    // require a scan of unrelated history on a later ordinary open.
+    let upgraded = store
+        .load_marker(&operation, intent.effect_id())
+        .unwrap()
+        .unwrap();
+    assert_eq!(upgraded.schema, "hiroute.managed-artifact-marker/v4");
+    assert_eq!(upgraded.backup_aad, ArtifactBackupAad::LegacyV2);
     drop(store);
 
     let reopened =
@@ -601,6 +650,14 @@ fn managed_delete_v3_backup_migrates_to_v4_and_restores_exact_bytes() {
         "hiroute.managed-artifact-marker/v3",
         ArtifactBackupAad::LegacyV3,
     );
+    // Exact access also upgrades/authenticates this legacy record; it must not
+    // require a scan of unrelated history on a later ordinary open.
+    let upgraded = store
+        .load_marker(&operation, intent.effect_id())
+        .unwrap()
+        .unwrap();
+    assert_eq!(upgraded.schema, "hiroute.managed-artifact-marker/v4");
+    assert_eq!(upgraded.backup_aad, ArtifactBackupAad::LegacyV3);
     drop(store);
 
     let reopened =
@@ -628,3 +685,6 @@ mod plan_references_tests;
 
 #[path = "delegation_tests.rs"]
 mod delegation_tests;
+
+#[path = "agent_history_cache_tests.rs"]
+mod history_cache;

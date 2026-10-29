@@ -16,12 +16,11 @@ pub(in crate::control::runtime) fn skill_restore_ref(
 }
 
 impl LocalControlAdapter {
-    pub(in crate::control::runtime) fn settings_skill_resource(
+    pub(in crate::control::runtime) fn settings_skill_root(
         &self,
         context: &str,
-        supplied: Option<&hiroute_domain::AgentNativeTargetV1>,
         facet: AgentSettingsFacet,
-    ) -> Result<(String, String), ControlReadError> {
+    ) -> Result<String, ControlReadError> {
         let class = self
             .settings_agent_for_context(context)
             .ok_or(ControlReadError::NotFound)?;
@@ -40,6 +39,19 @@ impl LocalControlAdapter {
         } else {
             format!("{root}/additional")
         };
+        Ok(root)
+    }
+
+    pub(in crate::control::runtime) fn settings_skill_resource(
+        &self,
+        context: &str,
+        supplied: Option<&hiroute_domain::AgentNativeTargetV1>,
+        facet: AgentSettingsFacet,
+    ) -> Result<(String, String), ControlReadError> {
+        let class = self
+            .settings_agent_for_context(context)
+            .ok_or(ControlReadError::NotFound)?;
+        let root = self.settings_skill_root(context, facet)?;
         let role = AgentConnectionEffectRoleV1::settings_skill(context, facet)
             .ok_or(ControlReadError::Denied)?;
         let target = if class == SettingsAgentClass::Hermes {
@@ -169,6 +181,7 @@ impl LocalControlAdapter {
             let discovery = match class {
                 SettingsAgentClass::Pi => self.scanner.pi_settings_discovery(),
                 SettingsAgentClass::Dsh => self.scanner.dsh_settings_discovery(),
+                SettingsAgentClass::DshDesktop => self.scanner.dsh_desktop_settings_discovery(),
                 SettingsAgentClass::OpenCode => self.scanner.opencode_settings_discovery(),
                 _ => self.scanner.qoder_settings_discovery(true),
             };

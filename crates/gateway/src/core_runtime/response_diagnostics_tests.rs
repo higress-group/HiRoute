@@ -33,6 +33,19 @@ use crate::server::test_control::{
 mod capture;
 use capture::{assert_capture, create_capture_session, wait_for_captured_request_eof};
 
+#[path = "response_diagnostics_tests/request_projection.rs"]
+mod request_projection;
+
+#[path = "response_diagnostics_tests/composite_stage.rs"]
+mod composite_stage;
+#[path = "response_diagnostics_tests/native_retry.rs"]
+mod native_retry;
+#[path = "response_diagnostics_tests/pre_attempt_cancel.rs"]
+mod pre_attempt_cancel;
+
+#[path = "response_diagnostics_tests/native_evidence.rs"]
+mod native_evidence;
+
 const CHILD_CASE: &str = "HIROUTE_STREAM_DIAGNOSTIC_CASE";
 const CHILD_ROOT: &str = "HIROUTE_STREAM_DIAGNOSTIC_ROOT";
 const TOKEN: &str = "SENTINEL_CLIENT_CREDENTIAL";
@@ -319,7 +332,10 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             value["usage"] = json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
             (frame(value), None, None, 2)
         }
-        "capture_disabled" => {
+        "capture_disabled"
+        | "native_evidence_applied"
+        | "native_evidence_rejected"
+        | "native_evidence_disabled" => {
             let mut value = chat(json!({"content":"SENTINEL_PROVIDER_TEXT"}), json!("stop"));
             value["usage"] = json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
             (frame(value), None, None, 2)
@@ -334,6 +350,9 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             | "capture_known_usage_first"
             | "capture_unknown"
             | "capture_disabled"
+            | "native_evidence_applied"
+            | "native_evidence_rejected"
+            | "native_evidence_disabled"
     ) {
         wire.extend_from_slice(b"data: [DONE]\n\n");
     }
@@ -341,6 +360,18 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
 }
 
 fn run_case(case: &str, root: &Path) {
+    if case == "composite_stage" {
+        return composite_stage::run_case(root);
+    }
+    if case == "native_failed_retry" {
+        return native_retry::run_case(root);
+    }
+    if case.starts_with("pre_attempt_") {
+        return pre_attempt_cancel::run_case(case, root);
+    }
+    if case.starts_with("request_projection_") {
+        return request_projection::run_case(case, root);
+    }
     let facts = Facts::default();
     let capture_enabled = std::env::var_os("HIROUTE_PRIVATE_STREAM_CAPTURE").is_some();
     if capture_enabled {
@@ -453,8 +484,13 @@ fn run_case(case: &str, root: &Path) {
     });
     let mut sinks = GatewayObservationSinks::discard();
     sinks.execution_fact = Arc::new(facts.clone());
-    let observation =
-        GatewayObservation::with_sinks(512 * 1024, sinks).with_diagnostics(diagnostics.port());
+    let observation = GatewayObservation::with_sinks(512 * 1024, sinks).with_diagnostics(
+        if case == "native_evidence_disabled" {
+            Default::default()
+        } else {
+            diagnostics.port()
+        },
+    );
     let runtime = ProductionGatewayRuntime::compose_with_planner_and_observation(
         ports,
         Arc::new(PublicationPlannerInputAuthority),
@@ -475,7 +511,8 @@ fn run_case(case: &str, root: &Path) {
     client
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
-    write!(client, "POST /v1/messages HTTP/1.1\r\nHost: {address}\r\nX-HiRoute-Token: {TOKEN}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+    let native_headers = native_evidence::headers(case);
+    write!(client, "POST /v1/messages HTTP/1.1\r\nHost: {address}\r\nX-HiRoute-Token: {TOKEN}\r\n{native_headers}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
     client.write_all(&body).unwrap();
     let mut response = Vec::new();
     if after_body {
@@ -573,6 +610,7 @@ fn run_case(case: &str, root: &Path) {
             .any(|r| payload(r, "level_applied").is_some_and(|v| v["level"] == "debug")),
         "actual Debug level missing: {log}"
     );
+    native_evidence::assert_evidence(case, &records, &upstream_request, &response);
     if relay {
         assert_prebody_relay_business(&facts);
     } else {
@@ -582,6 +620,7 @@ fn run_case(case: &str, root: &Path) {
         let failures: Vec<_> = records
             .iter()
             .filter_map(|r| payload(r, "response_failure"))
+            .filter(|failure| failure.get("capture").is_none())
             .collect();
         assert_eq!(failures.len(), 1, "{case}: {log}");
         let failure = failures[0];
@@ -620,6 +659,43 @@ fn run_case(case: &str, root: &Path) {
         }
         assert!(!failure["request_token"].is_null());
         assert_eq!(failure["request_token"], end["request_token"]);
+        let capture_failures: Vec<_> = records
+            .iter()
+            .filter_map(|r| payload(r, "response_failure"))
+            .filter(|failure| failure.get("capture").is_some())
+            .collect();
+        if case == "resource_limit" {
+            // Previously accepted partial chunks may exhaust the capture
+            // decoder's independent 512 KiB budget before the main decoder
+            // rejects the 6 MiB frame. Cancellation may instead reach that
+            // worker first. Neither ordering creates a second main failure.
+            assert!(capture_failures.len() <= 1, "{case}: {log}");
+        } else {
+            // Afterbody semantic failures cancel the offending chunk before
+            // capture commit. Prebody capture still reports its own failure,
+            // independently of opt-in private wire capture.
+            assert_eq!(
+                capture_failures.len(),
+                usize::from(prebody),
+                "{case}: {log}"
+            );
+        }
+        for capture in capture_failures {
+            // The independent decoder records its first failure once, even
+            // when the failed attempt is followed by a successful fallback.
+            for key in [
+                "request_token",
+                "attempt_index",
+                "stage",
+                "reason",
+                "frame_index",
+            ] {
+                assert_eq!(capture[key], failure[key], "{case}: {key}");
+            }
+            assert!(capture["attempt_token"].is_null());
+            assert_eq!(capture["capture"]["ingress_protocol"], "anthropic_messages");
+            assert_eq!(capture["capture"]["upstream_protocol"], "open_ai_chat");
+        }
     } else {
         assert!(
             records

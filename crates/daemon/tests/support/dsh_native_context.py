@@ -97,10 +97,10 @@ class DshModelSettings:
         assert self.path.is_file() and not self.path.is_symlink()
         value = {}
         for row in read_patch(self.path):
-            if row['id']=='llm-pi-ai': value['providers']=row['config']['providers']
-            elif row['id']=='agent-default-model':
+            if row.get('id')=='llm-pi-ai': value['providers']=row['config']['providers']
+            elif row.get('id')=='agent-default-model':
                 value['model']={'name':row['config']['provider']+'/'+row['config']['model']}
-            elif row['id']=='fixture-preserved': value.update(row['config'])
+            elif row.get('id')=='fixture-preserved': value.update(row['config'])
         return value
 
     def write(self, value):
@@ -110,6 +110,16 @@ class DshModelSettings:
                 {'id':'fixture-preserved','config':{k:v for k,v in value.items() if k not in ('providers','model')}}]
         self.path.write_text(encode_patch(rows))
         self.path.chmod(0o600)
+
+    def assert_restored(self):
+        provider, model = self.baseline['model']['name'].split('/', 1)
+        expected = [
+            {'id':'llm-pi-ai','config':{'providers':self.baseline['providers']}},
+            {'id':'agent-default-model','config':{'provider':provider,'model':model}},
+            {'id':'fixture-preserved','config':{k:v for k,v in self.baseline.items() if k not in ('providers','model')}},
+        ]
+        assert read_patch(self.path) == expected, 'DSH Restore left an extra or changed native patch row'
+        assert not self.path.with_name('hiroute-routing.mjs').exists(), 'DSH Restore retained its owned adapter file'
 
     def assert_preserved(self, provider_id, selected_default=None):
         from additional_model_fixture import OwnedModelSettings

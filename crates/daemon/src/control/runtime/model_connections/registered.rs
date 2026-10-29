@@ -1,5 +1,9 @@
 //! Trusted synthesis for catalog-registered model checks and same-source edit fencing.
 
+#[cfg(test)]
+#[path = "registered_token_plan_tests.rs"]
+mod token_plan_tests;
+
 use super::{LocalControlAdapter, map_port};
 use hiroute_application::control::ComputeManagementControlError;
 use hiroute_application_api::{

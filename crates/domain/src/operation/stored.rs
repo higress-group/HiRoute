@@ -1,6 +1,11 @@
 //! Versioned admission facts. Only validated command codecs can create an execution view.
 use super::*;
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static CANONICAL_PLAN_ENCODINGS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub const OPERATION_INPUT_SCHEMA: &str = "hiroute.operation-input/v1";
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -262,6 +267,8 @@ impl StoredOperationInputV1 {
     }
 
     pub fn canonical_json(&self) -> Result<String, OperationValidationError> {
+        #[cfg(test)]
+        CANONICAL_PLAN_ENCODINGS.with(|count| count.set(count.get() + 1));
         Ok(crate::canonicalize_json(serde_json::to_value(self)?).to_string())
     }
     pub fn digest(&self) -> Result<CanonicalDigest, OperationValidationError> {

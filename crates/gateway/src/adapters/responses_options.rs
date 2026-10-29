@@ -79,7 +79,7 @@ pub(super) fn message_phase(
             Some("commentary") => Ok(Some(ResponsesMessagePhaseV1::Commentary)),
             Some("final_answer") => Ok(Some(ResponsesMessagePhaseV1::FinalAnswer)),
             Some(_) => {
-                context.native_only.set(true);
+                context.mark_native_only();
                 Ok(None)
             }
             _ => Err(ModelIrError::InvalidField("input[].phase")),
@@ -114,11 +114,50 @@ pub(super) fn internal_chat_message_metadata(
 }
 
 pub(super) fn reasoning_history(
+    context: &DecodeContext,
     value: &Value,
 ) -> Result<ResponsesReasoningHistoryV1, ModelIrError> {
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("input[]"))?;
+    // Known reasoning omission is not a mapping for arbitrary native state.
+    // Resolve the shape before Replay externalization, keeping unknown bytes
+    // native-only through the existing request/affinity/cleanup boundaries.
+    ensure_keys(
+        context,
+        object,
+        &[
+            "type",
+            "id",
+            "status",
+            "summary",
+            "content",
+            "encrypted_content",
+            "internal_chat_message_metadata_passthrough",
+        ],
+        "responses reasoning history",
+    )?;
+    for (field, part_type) in [("summary", "summary_text"), ("content", "reasoning_text")] {
+        let Some(value) = object.get(field).filter(|value| !value.is_null()) else {
+            continue;
+        };
+        let Some(parts) = value.as_array() else {
+            context.mark_native_only();
+            continue;
+        };
+        for part in parts {
+            let Some(part) = part.as_object() else {
+                context.mark_native_only();
+                continue;
+            };
+            ensure_keys(context, part, &["type", "text"], "responses reasoning text")?;
+            if part.get("type").and_then(Value::as_str) != Some(part_type)
+                || !part.get("text").is_some_and(Value::is_string)
+            {
+                context.mark_native_only();
+            }
+        }
+    }
     let native_fields = object
         .iter()
         .filter(|(key, value)| {

@@ -123,6 +123,45 @@ fn publication_recovery_rejects_corrupt_markers_and_upgrades_verified_legacy() {
         .control()
         .save_operation(&mut operation)
         .unwrap();
+    let decodes = || super::super::super::publication::MARKER_DECODES.with(std::cell::Cell::get);
+    let produced = decodes();
+    assert!(matches!(
+        runtime
+            .adapter
+            .observe_external(&operation, &intent)
+            .unwrap(),
+        EffectReconciliation::Staged(_)
+    ));
+    assert_eq!(
+        decodes(),
+        produced,
+        "a locally encoded marker retains its authenticated record"
+    );
+    // A cold/reopened marker must still authenticate all stored bytes once.
+    *runtime.adapter.publication_marker_cache.lock().unwrap() = None;
+    let before = decodes();
+    for _ in 0..3 {
+        assert!(matches!(
+            runtime
+                .adapter
+                .observe_external(&operation, &intent)
+                .unwrap(),
+            EffectReconciliation::Staged(_)
+        ));
+    }
+    assert_eq!(
+        decodes() - before,
+        1,
+        "unchanged immutable marker is decoded once"
+    );
+    let mut changed_identity = effect.clone();
+    changed_identity.effect_id.push_str("-foreign");
+    assert!(
+        runtime
+            .adapter
+            .prepare_publication_activation(&operation, &changed_identity)
+            .is_err()
+    );
     let invalid_values = [
         ("schema", json!("hiroute.publication-effect/v999")),
         (

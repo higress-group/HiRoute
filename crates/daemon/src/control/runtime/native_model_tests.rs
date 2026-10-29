@@ -18,6 +18,8 @@ use std::{collections::BTreeSet, fs, os::unix::fs::PermissionsExt};
 mod codex_cache;
 #[path = "native_model_lifecycle_tests.rs"]
 mod lifecycle;
+#[path = "settings_projection_tests.rs"]
+mod projection;
 #[path = "native_model_tests/recovery_admission.rs"]
 mod recovery_admission;
 
@@ -67,6 +69,7 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .find(|intent| is_settings_codex_model(intent))
         .unwrap()
         .clone();
+    apply_fixture_catalog(adapter, &mut install);
     let file_effect = adapter.apply_external(&install, &intent).unwrap();
     record_agent_effect(adapter, &mut install, &file_effect);
     adapter
@@ -82,7 +85,89 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         "the activated configuration must point at the immutable catalog artifact: {configured}"
     );
     publish(adapter, &mut install);
-    finish_fixture_operation(adapter, &mut install);
+    finish_fixture_operation_unsettled(adapter, &mut install);
+    let pending = adapter
+        .model_settings_status(&AgentSettingsStatusRequestV2 {
+            projection: hiroute_application_api::AgentSettingsStatusProjectionV2::Model,
+            effective: None,
+            include_skills: false,
+            native_target: None,
+            schema_version: AGENT_SETTINGS_SCHEMA_V2,
+            context_id: context.clone(),
+        })
+        .unwrap();
+    assert_eq!(pending.state, AgentModelSettingsStateV2::Pending);
+    assert_eq!(pending.operation_state.as_deref(), Some("succeeded"));
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .complete_operation_finalization(&install)
+        .unwrap();
+    // Pause the production status path before journal verification and again
+    // before native file I/O. An independent read must acquire the real lock.
+    let (verify_reached_tx, verify_reached_rx) = std::sync::mpsc::channel();
+    let (verify_release_tx, verify_release_rx) = std::sync::mpsc::channel();
+    let (reached_tx, reached_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let reader = std::sync::Arc::clone(&runtime.adapter);
+    let selected_context = context.clone();
+    let worker = std::thread::spawn(move || {
+        crate::control::runtime::settings_status::MODEL_VERIFY_BARRIER.with(|slot| {
+            *slot.borrow_mut() = Some((verify_reached_tx, verify_release_rx));
+        });
+        crate::control::runtime::settings_status::MODEL_NATIVE_READ_BARRIER.with(|slot| {
+            *slot.borrow_mut() = Some((reached_tx, release_rx));
+        });
+        reader.model_settings_status(&AgentSettingsStatusRequestV2 {
+            projection: hiroute_application_api::AgentSettingsStatusProjectionV2::Model,
+            effective: None,
+            include_skills: false,
+            native_target: None,
+            schema_version: AGENT_SETTINGS_SCHEMA_V2,
+            context_id: selected_context,
+        })
+    });
+    let verify_reached = verify_reached_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .is_ok();
+    let verify_available = verify_reached
+        && runtime.adapter.stores.try_lock().is_ok_and(|stores| {
+            stores
+                .control()
+                .active_publication(&WorkspaceId::default())
+                .is_ok()
+        });
+    let _ = verify_release_tx.send(());
+    let reached = reached_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .is_ok();
+    let available = reached
+        && runtime.adapter.stores.try_lock().is_ok_and(|stores| {
+            stores
+                .control()
+                .active_publication(&WorkspaceId::default())
+                .is_ok()
+        });
+    let _ = release_tx.send(());
+    let read_result = worker.join().unwrap();
+    assert!(
+        verify_reached,
+        "the selected status did not reach its journal-verification barrier: {read_result:?}"
+    );
+    assert!(
+        verify_available,
+        "journal verification held the shared storage lock"
+    );
+    assert!(
+        reached,
+        "the selected status did not reach its native-read barrier: {read_result:?}"
+    );
+    assert!(
+        available,
+        "native verification held the shared storage lock"
+    );
+    assert!(read_result.is_ok());
     let revision = adapter
         .stores_lock()
         .unwrap()
@@ -93,15 +178,31 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .publication_revision;
 
     let status = || {
-        adapter
-            .model_settings_status(&AgentSettingsStatusRequestV2 {
-                effective: None,
-                include_skills: false,
-                native_target: None,
-                schema_version: AGENT_SETTINGS_SCHEMA_V2,
-                context_id: context.clone(),
-            })
-            .unwrap()
+        let mut request = AgentSettingsStatusRequestV2 {
+            projection: Default::default(),
+            effective: None,
+            include_skills: false,
+            native_target: None,
+            schema_version: AGENT_SETTINGS_SCHEMA_V2,
+            context_id: context.clone(),
+        };
+        let full = adapter.model_settings_status(&request).unwrap();
+        request.projection = hiroute_application_api::AgentSettingsStatusProjectionV2::Model;
+        let narrow = adapter.model_settings_status(&request).unwrap();
+        assert!(
+            narrow.management_skill.is_none()
+                && narrow.collaboration.is_none()
+                && narrow.effective.is_none()
+        );
+        let mut expected = full.clone();
+        expected.management_skill = None;
+        expected.collaboration = None;
+        expected.effective = None;
+        assert_eq!(
+            narrow, expected,
+            "model-only preserves configured, drift, grant, surface and publication facts"
+        );
+        full
     };
     let result = |surface: AgentModelSurfaceV2,
                   state: AgentModelCheckStateV2,
@@ -320,6 +421,7 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .find(|intent| is_settings_codex_model(intent))
         .unwrap()
         .clone();
+    apply_fixture_catalog(adapter, &mut update);
     let update_file = adapter.apply_external(&update, &update_intent).unwrap();
     record_agent_effect(adapter, &mut update, &update_file);
     adapter
@@ -892,10 +994,17 @@ fn record_agent_effect(
     operation: &mut OperationV1,
     effect: &OwnedEffectV1,
 ) {
-    operation
+    let effects = &mut operation
         .step_mut(OperationStepKind::ApplyAgentArtifacts)
-        .effects
-        .push(effect.clone());
+        .effects;
+    if let Some(existing) = effects
+        .iter_mut()
+        .find(|old| old.effect_id == effect.effect_id)
+    {
+        *existing = effect.clone();
+    } else {
+        effects.push(effect.clone());
+    }
     adapter
         .stores_lock()
         .unwrap()
@@ -904,7 +1013,33 @@ fn record_agent_effect(
         .unwrap();
 }
 
+fn apply_fixture_catalog(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
+    let Some(intent) = operation
+        .plan
+        .external()
+        .iter()
+        .find(|intent| is_settings_codex_catalog(intent))
+        .cloned()
+    else {
+        return;
+    };
+    let effect = adapter.apply_external(operation, &intent).unwrap();
+    record_agent_effect(adapter, operation, &effect);
+    let effect = adapter.activate_external(operation, &effect).unwrap();
+    record_agent_effect(adapter, operation, &effect);
+}
+
 fn finish_fixture_operation(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
+    finish_fixture_operation_unsettled(adapter, operation);
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .complete_operation_finalization(operation)
+        .unwrap();
+}
+
+fn finish_fixture_operation_unsettled(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
     // These adapter tests apply effects manually. Seal the same completed journal shape as
     // the coordinator, so read-only status verifies all six steps and the service receipt.
     let effect = operation
@@ -1086,8 +1221,14 @@ fn operation(
     .unwrap();
     let stores = adapter.stores_lock().unwrap();
     let workspace = WorkspaceId::default();
-    let scope =
-        IdempotencyScopeV1::new("interactive-user", "ApplyAgentSettingsChange", key).unwrap();
+    // Match the public settings entry: current file owners authenticate the
+    // configure operation, while restoration has its own idempotency scope.
+    let operation_kind = if original.is_some() {
+        "ApplyAgentConnectionRestore"
+    } else {
+        "ApplyAgentConnectionChange"
+    };
+    let scope = IdempotencyScopeV1::new("interactive-user", operation_kind, key).unwrap();
     let mut operation = OperationV1::new(
         OperationId::derive(&workspace, &scope, &accept),
         workspace.clone(),

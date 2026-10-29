@@ -269,3 +269,15 @@ for (const ecosystem of ['codex', 'claude', 'qoder', 'pi', 'dsh', 'hermes']) tes
   assert.deepEqual(agentSettingsSpec(agent, 'management_skill', true, draft).management_skill,
     { intent: 'restore', restore_point_ref: 'restore/management' });
 });
+
+test('OpenCode metadata fallback survives status reload and ordinary route edits', () => {
+  const current = { mode: 'opencode_additional', routing_metadata: false, allowed_plan_ids: ['route/a'], plan_protocols: { 'route/a': 'responses' } };
+  const agent = { ...claude, agent_id: 'agent_opencode_default', settings: { ...codex.settings, current_selection: current } };
+  const values = agentEditorSeed(agent, 'model', ['route/a']);
+  assert.equal(values.routingMetadata, false);
+  const request = agentSettingsSpec(agent, 'model', false, { ...draft, values });
+  assert.equal(request.model.settings.routing_metadata, false);
+  assert.deepEqual(request.model.settings.allowed_plan_ids, ['route/a']);
+  const enabled = agentSettingsSpec(agent, 'model', false, { ...draft, values: { ...values, routingMetadata: true } });
+  assert.equal(Object.hasOwn(enabled.model.settings, 'routing_metadata'), false);
+});

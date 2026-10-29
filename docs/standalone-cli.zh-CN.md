@@ -316,7 +316,7 @@ registered 模板。当前内置 OpenRouter 选项没有远端目录探测路径
 set -eu
 umask 077
 KEY_FILE='/absolute/private/openrouter-key'
-work=$(mktemp -d)
+work=$(mktemp -d "${TMPDIR:-/tmp}/hiroute-connection.XXXXXXXX")
 candidate="candidate/native/openrouter-$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 hiroute schema show --command-id compute.connection.test --include-schema --output json > "$work/contract.json"
 hiroute compute connection options --output json > "$work/options.json"
@@ -1171,8 +1171,12 @@ Coding Plan 的订阅支出与 API 等价估算分开。选定实际基准 Bindi
 hiroute value show --routing PLAN_ID --period 7d --basis api-equivalent --reference-binding PRIMARY_BINDING --currency CNY --output json
 ```
 
-该显式视图用**当前来源下的 API 等价单价**计算已记录用量，计入重试，列出基准、价格来源/时间、路由估算成本、基准估算成本和带正负号的估算差额。它不会改写历史回执，也不证明回答质量相同、订阅账单或现金节省。不完整的总额和差额保持 null；可比较子集的小计会同时报告完整请求数。负差额不会截成零。过期、缺少用量或单价均降低覆盖率；查询范围过大时可缩短区间；该视图暂不支持按日分组。普通 `value show` 保留历史估值含义。
+该显式视图用**当前来源下的 API 等价单价**计算已记录用量，计入重试，列出基准、价格来源/时间、路由估算成本、基准估算成本和带正负号的估算差额。它不会改写历史回执，也不证明回答质量相同、订阅账单或现金节省。路由侧的全范围金额可独立计算时，即使基准侧缺少数据也会显示；基准金额及差额仍需全部请求可成对比较，否则保持 null。可比较子集的小计会同时报告完整请求数，覆盖率描述的是成对比较。负差额不会截成零。过期、缺少用量或单价均降低覆盖率；查询范围过大时可缩短区间；该视图暂不支持按日分组。普通 `value show` 保留历史估值含义。
 
 缺单价时，读取已安装的 `prices.effective` / `prices.override.preview` schema，以实际 Binding、币种和 `valuation_kind: "api_equivalent"` 查询，使用返回的 `edit_context` 修订号生成价格 Preview。手动 rates 单位是每百万 token 的整数货币微单位，输入/输出/缓存分别设置；使用有依据的价格或让用户提供这些非敏感数值，不猜测单价。保留原设置，提前给出填好参数的价格恢复 Preview/Apply 命令；原先没有手动覆盖时可用 `follow_catalog` 恢复目录价格。使用 Preview 返回的完整 spec/digest/revisions 和同一个提交 key 应用。订阅也能设置 API 等价参考价，不改变权益或普通计费分类；免费、订阅、付费和未知保持区别。
 
 若参考计价中缓存创建按普通输入单价收费，可将参考缓存写入价设为输入价。此时金额与未上报的普通输入/缓存创建拆分无关，HiRoute 可合并同价计算桶，但不会补造或改写用量；两者单价不同时仍需要该细分计数。
+
+新请求的历史估值也可在该请求冻结的输入价与缓存写入价相同、包含及互斥关系已确认时合并计算。金额可以完整，而缓存写入 token 仍为未知。对尚留存的旧记录，会话时间线可用匹配的冻结证据推导金额，不修改原有结算；旧结算汇总和已过期记录不会自动重算。
+
+当路由侧全范围金额可计算、输入和缓存命中已知且缓存桶的包含与互斥关系已确认时，缺少缓存写入量的参考侧可以给出区间：假设参考模型使用相同输入与缓存命中量，未上报的写入量介于零和输入减缓存命中之间。区间按所选参考价计算，是明确假设下的估算，不证明参考模型实际会产生的缓存、输出或账单；它不会将成对比较覆盖标记为完整。缺少其他必要用量、单价或范围证据时不提供区间。

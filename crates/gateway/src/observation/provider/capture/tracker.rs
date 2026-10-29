@@ -1,11 +1,15 @@
+use hiroute_diagnostics::event::{
+    IngressProtocol as DiagnosticProtocol, ResponseCaptureFailure, ResponseEventShape,
+    ResponseFailure, ResponseFailureStage,
+};
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::server::core_runtime::adapters::{
-    ChatToolProjection, ClientResponseRenderer, IncrementalClientSseRenderer,
-    NativeResponseDecoder, NativeResponseProjector, RenderedClientResponse, ResponseDecodeStatus,
-    ToolIdProjection,
+    ChatToolProjection, ClientResponseRenderer, DecodedNativeResponse,
+    IncrementalClientSseRenderer, NativeResponseDecoder, NativeResponseProjector,
+    ProtocolAdapterError, RenderedClientResponse, ResponseDecodeStatus, ToolIdProjection,
 };
 use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, ClientProtocolProfile};
@@ -24,6 +28,10 @@ mod memory_tests;
 #[path = "usage_tests.rs"]
 mod usage_tests;
 
+#[cfg(test)]
+#[path = "diagnostic_tests.rs"]
+mod diagnostic_tests;
+
 pub(super) struct CanonicalResponseTracker {
     budget: StreamBudget,
     profile: Arc<CandidateProtocolProfile>,
@@ -32,8 +40,10 @@ pub(super) struct CanonicalResponseTracker {
     streaming: bool,
     tool_id_projection: ToolIdProjection,
     chat_tool_projection: Option<ChatToolProjection>,
+    function_encoding_projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
     decoder: Option<NativeResponseDecoder>,
     renderer: Option<IncrementalClientSseRenderer>,
+    client_profile: Option<ClientProtocolProfile>,
     projector: Option<Box<NativeResponseProjector>>,
     native_output: bool,
     pending: VecDeque<CanonicalWireUnit>,
@@ -41,6 +51,9 @@ pub(super) struct CanonicalResponseTracker {
     native_pending: Vec<u8>,
     native_pending_reservation: Option<Reservation>,
     source_ended: bool,
+    failure_context: Option<ResponseFailure>,
+    decode_failure: Option<ResponseFailure>,
+    decode_failed: bool,
 }
 
 struct CanonicalWireUnit {
@@ -50,6 +63,14 @@ struct CanonicalWireUnit {
 }
 
 impl CanonicalResponseTracker {
+    pub(super) fn with_function_encoding(
+        mut self,
+        projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
+    ) -> Self {
+        self.function_encoding_projection = projection;
+        self
+    }
+
     #[cfg(test)]
     pub(super) fn new(
         profile: Arc<CandidateProtocolProfile>,
@@ -90,15 +111,90 @@ impl CanonicalResponseTracker {
             streaming,
             tool_id_projection,
             chat_tool_projection,
+            function_encoding_projection: Default::default(),
             decoder: None,
             renderer: None,
+            client_profile: None,
             projector: None,
             pending: VecDeque::new(),
             pending_delivery: CanonicalFrameDelivery::default(),
             native_pending: Vec::new(),
             native_pending_reservation: None,
             source_ended: false,
+            failure_context: None,
+            decode_failure: None,
+            decode_failed: false,
         }
+    }
+
+    pub(super) fn with_failure_context(mut self, context: ResponseFailure) -> Self {
+        self.failure_context = Some(context);
+        self
+    }
+
+    pub(super) fn take_decode_failure(&mut self) -> Option<ResponseFailure> {
+        self.decode_failure.take()
+    }
+
+    fn note_decode_failure(
+        &mut self,
+        error: &ProtocolAdapterError,
+        stage: ResponseFailureStage,
+        position: (u64, u64),
+        shape: Option<ResponseEventShape>,
+    ) {
+        if self.decode_failed {
+            return;
+        }
+        self.decode_failed = true;
+        if let Some(mut failure) = self.failure_context.clone() {
+            let (reason, field) = crate::runtime::response_failure_category(error);
+            failure.stage = stage;
+            failure.reason = reason;
+            failure.field = field;
+            failure.frame_index = (position.0 != 0).then_some(position.0);
+            failure.received_bytes = Some(position.1);
+            failure.capture = Some(ResponseCaptureFailure {
+                ingress_protocol: diagnostic_protocol(self.ingress),
+                upstream_protocol: diagnostic_protocol(self.profile.capability.upstream_protocol),
+                last_event: shape,
+            });
+            self.decode_failure = Some(failure);
+        }
+    }
+
+    fn decode_status(
+        &mut self,
+        action: impl FnOnce(
+            &mut NativeResponseDecoder,
+        ) -> Result<ResponseDecodeStatus, ProtocolAdapterError>,
+    ) -> Result<ResponseDecodeStatus, &'static str> {
+        let decoder = self
+            .decoder
+            .as_mut()
+            .ok_or("canonical_response_decoder_unavailable")?;
+        match action(decoder) {
+            Ok(status) => Ok(status),
+            Err(error) => {
+                let position = decoder.diagnostic_position();
+                let shape = decoder.diagnostic_shape();
+                self.note_decode_failure(&error, ResponseFailureStage::Decode, position, shape);
+                Err("canonical_response_decode_failed")
+            }
+        }
+    }
+
+    fn finish_decoder(&mut self) -> Result<DecodedNativeResponse, &'static str> {
+        let decoder = self
+            .decoder
+            .take()
+            .ok_or("canonical_response_decoder_unavailable")?;
+        let position = decoder.diagnostic_position();
+        let shape = decoder.diagnostic_shape();
+        decoder.finish().map_err(|error| {
+            self.note_decode_failure(&error, ResponseFailureStage::EndOfStream, position, shape);
+            "canonical_response_terminal_malformed"
+        })
     }
 
     pub(super) fn observe(&mut self, event: CapturedNativeEvent) -> Result<(), &'static str> {
@@ -128,7 +224,8 @@ impl CanonicalResponseTracker {
                     self.tool_id_projection.clone(),
                     self.budget.clone(),
                 )
-                .map_err(|_| "native_response_projector_unavailable")?,
+                .map_err(|_| "native_response_projector_unavailable")?
+                .with_function_encoding(self.function_encoding_projection),
             ));
         }
         self.decoder = Some(
@@ -140,10 +237,12 @@ impl CanonicalResponseTracker {
                 self.chat_tool_projection.take(),
                 self.budget.clone(),
             )
-            .map_err(|_| "canonical_response_decoder_unavailable")?,
+            .map_err(|_| "canonical_response_decoder_unavailable")?
+            .with_function_encoding(self.function_encoding_projection),
         );
         let client_profile = ClientProtocolProfile::for_candidate(&self.profile)
             .map_err(|_| "canonical_response_client_profile_unavailable")?;
+        self.client_profile = Some(client_profile.clone());
         self.renderer = (streaming && !self.native_output)
             .then(|| IncrementalClientSseRenderer::new(client_profile, self.alias.clone()))
             .transpose()
@@ -156,12 +255,10 @@ impl CanonicalResponseTracker {
         if self.native_output && self.streaming {
             return self.feed_native_stream(bytes, end_stream);
         }
-        let mut status = self
-            .decoder
-            .as_mut()
-            .ok_or("canonical_response_body_before_head")?
-            .feed(bytes, end_stream)
-            .map_err(|_| "canonical_response_decode_failed")?;
+        if self.decoder.is_none() {
+            return Err("canonical_response_body_before_head");
+        }
+        let mut status = self.decode_status(|decoder| decoder.feed(bytes, end_stream))?;
         loop {
             let events = self
                 .decoder
@@ -172,21 +269,11 @@ impl CanonicalResponseTracker {
             if status != ResponseDecodeStatus::NeedDrain {
                 break;
             }
-            status = self
-                .decoder
-                .as_mut()
-                .ok_or("canonical_response_decoder_unavailable")?
-                .resume()
-                .map_err(|_| "canonical_response_decode_failed")?;
+            status = self.decode_status(NativeResponseDecoder::resume)?;
         }
         if end_stream {
             self.source_ended = true;
-            let decoded = self
-                .decoder
-                .take()
-                .ok_or("canonical_response_decoder_unavailable")?
-                .finish()
-                .map_err(|_| "canonical_response_terminal_malformed")?;
+            let decoded = self.finish_decoder()?;
             self.observe_events(decoded.events)?;
             if !self.streaming && !self.native_output {
                 let rendered = ClientResponseRenderer::render_nonstream(
@@ -263,22 +350,13 @@ impl CanonicalResponseTracker {
             }
             self.feed_capture_decoder(&[], true)?;
             self.source_ended = true;
-            self.decoder
-                .take()
-                .ok_or("canonical_response_decoder_unavailable")?
-                .finish()
-                .map_err(|_| "canonical_response_terminal_malformed")?;
+            self.finish_decoder()?;
         }
         Ok(())
     }
 
     fn feed_capture_decoder(&mut self, bytes: &[u8], end_stream: bool) -> Result<(), &'static str> {
-        let mut status = self
-            .decoder
-            .as_mut()
-            .ok_or("canonical_response_decoder_unavailable")?
-            .feed(bytes, end_stream)
-            .map_err(|_| "canonical_response_decode_failed")?;
+        let mut status = self.decode_status(|decoder| decoder.feed(bytes, end_stream))?;
         loop {
             let events = self
                 .decoder
@@ -289,12 +367,7 @@ impl CanonicalResponseTracker {
             if status != ResponseDecodeStatus::NeedDrain {
                 return Ok(());
             }
-            status = self
-                .decoder
-                .as_mut()
-                .ok_or("canonical_response_decoder_unavailable")?
-                .resume()
-                .map_err(|_| "canonical_response_decode_failed")?;
+            status = self.decode_status(NativeResponseDecoder::resume)?;
         }
     }
 
@@ -317,7 +390,14 @@ impl CanonicalResponseTracker {
             {
                 self.pending_delivery.merge_usage(usage);
             }
-            if captures_conversation_content(&event.event) {
+            // Projection decides what can reach this client. Empty rendered
+            // output is not omission: terminal snapshots can be deferred until
+            // a later wire unit. Native passthrough uses its actual wire as-is.
+            let retained = self.native_output
+                || self.client_profile.as_ref().is_some_and(|profile| {
+                    IncrementalClientSseRenderer::retains_event(profile, &event.event)
+                });
+            if retained && captures_accepted_evidence(&event.event) {
                 // Count without allocating a serialized copy. The native job
                 // covers decode temporaries; this charge survives until the
                 // exact projected wire unit is accepted and published.
@@ -411,6 +491,14 @@ impl CanonicalResponseTracker {
     }
 }
 
+fn diagnostic_protocol(protocol: IngressProtocol) -> DiagnosticProtocol {
+    match protocol {
+        IngressProtocol::Responses => DiagnosticProtocol::OpenAiResponses,
+        IngressProtocol::ChatCompletions => DiagnosticProtocol::OpenAiChat,
+        IngressProtocol::Messages => DiagnosticProtocol::AnthropicMessages,
+    }
+}
+
 struct SerializedSize(usize);
 
 impl std::io::Write for SerializedSize {
@@ -427,12 +515,19 @@ impl std::io::Write for SerializedSize {
     }
 }
 
-fn captures_conversation_content(event: &ModelEvent) -> bool {
+// Internal evidence must see the accepted lifecycle before each consumer applies
+// its own projection. In particular, provider state is needed for exact replay
+// comparison but remains excluded by the retained-content policy in content.rs.
+fn captures_accepted_evidence(event: &ModelEvent) -> bool {
     matches!(
         event,
         ModelEvent::ContentBlockStarted { .. }
             | ModelEvent::TextDelta { .. }
             | ModelEvent::ReasoningDelta { .. }
+            | ModelEvent::ReasoningFinished { .. }
+            | ModelEvent::ProviderState { .. }
+            | ModelEvent::TextAnnotation { .. }
+            | ModelEvent::ResponseFailed { .. }
             | ModelEvent::RefusalDelta { .. }
             | ModelEvent::ToolCallStarted { .. }
             | ModelEvent::ToolArgumentsDelta { .. }

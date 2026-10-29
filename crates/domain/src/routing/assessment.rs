@@ -20,17 +20,22 @@ pub struct NativeProtocolSelectionV1 {
 impl Default for NativeProtocolSelectionV1 {
     fn default() -> Self {
         Self {
-            schema: SYSTEM_ONE_C_V1.into(),
+            schema: SYSTEM_ONE_C_V2.into(),
             prior_context_max_turns: 8,
         }
     }
 }
 impl NativeProtocolSelectionV1 {
     pub fn resolve(&self) -> Result<NativeProtocolV1, NativeProtocolError> {
+        let fixed = match self.schema.as_str() {
+            SYSTEM_ONE_C_V1 => NativeFixedContentV1::c_v1(),
+            SYSTEM_ONE_C_V2 => NativeFixedContentV1::c_v2(),
+            _ => return Err(NativeProtocolError::Unsupported),
+        };
         let value = NativeProtocolV1 {
             schema: self.schema.clone(),
+            fixed,
             prior_context_max_turns: self.prior_context_max_turns,
-            ..Default::default()
         };
         value.validate()?;
         Ok(value)
@@ -65,7 +70,7 @@ impl JudgmentSettingsV1 {
         if standard == AssessmentStandardV1::Default {
             let floor = value.competence.floor_millis;
             if let Some(p) = &resolved {
-                p.stock_assessment(&mut value);
+                p.current_assessment(&mut value);
             } else {
                 value.competence = Default::default();
             }
@@ -75,6 +80,29 @@ impl JudgmentSettingsV1 {
         value.competence.standard =
             (protocol.is_some() || self.competence.standard.is_some()).then_some(standard);
         Ok(value)
+    }
+
+    /// Retained Operations validate against their sealed stock default, not today's text.
+    pub(crate) fn resolve_assessment_for_frozen(
+        &self,
+        protocol: Option<&NativeProtocolSelectionV1>,
+        frozen: Option<&Self>,
+    ) -> Result<Self, NativeProtocolError> {
+        if let (Some(selection), Some(frozen)) = (protocol, frozen) {
+            let native = selection.resolve()?;
+            if selection.schema == SYSTEM_ONE_C_V1
+                && self.assessment_standard() == AssessmentStandardV1::Default
+                && frozen.competence.standard == Some(AssessmentStandardV1::Default)
+                && native.is_stock_assessment(frozen)
+            {
+                let mut value = self.clone();
+                value.competence.instructions = frozen.competence.instructions.clone();
+                value.competence.criteria = frozen.competence.criteria.clone();
+                value.competence.standard = frozen.competence.standard;
+                return Ok(value);
+            }
+        }
+        self.resolve_assessment(protocol)
     }
 }
 

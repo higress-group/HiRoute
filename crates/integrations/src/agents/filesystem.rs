@@ -31,6 +31,8 @@ use super::{
 
 #[path = "filesystem/claude_settings.rs"]
 mod claude_settings;
+#[path = "dsh_desktop.rs"]
+mod dsh_desktop;
 #[path = "dsh_native.rs"]
 mod dsh_native;
 #[path = "claude_observation.rs"]
@@ -135,6 +137,8 @@ pub struct AgentFilesystemLayoutV1 {
     pub opencode_executable: PathBuf,
     pub opencode_context: Option<super::OpenCodeNativeContext>,
     pub dsh_executable: PathBuf,
+    /// Official macOS Desktop carrier, independently installed from the npm CLI.
+    pub dsh_desktop_executable: Option<PathBuf>,
     pub dsh_config_root: PathBuf,
     pub qoder_home: PathBuf,
     pub qoder_config_root: PathBuf,
@@ -183,6 +187,7 @@ impl AgentFilesystemLayoutV1 {
             qoder_executable: PathBuf::from("qoder"),
             pi_executable: PathBuf::from("pi"),
             dsh_executable: PathBuf::from("dsh"),
+            dsh_desktop_executable: dsh_desktop::installed_executable(home),
             opencode_executable: PathBuf::from("opencode"),
             opencode_context: super::OpenCodeNativeContext::from_environment(home).ok(),
             dsh_config_root: std::env::var_os("DSH_HOME")
@@ -409,22 +414,64 @@ impl FilesystemAgentScannerV1 {
         })
     }
 
+    /// Configuration-only facts for startup's protected-input registry. Native
+    /// version, capability and managed-launch observations are not returned or
+    /// asserted here. Reading the secret still rechecks its exact source revision.
+    pub fn claude_protected_configuration_inputs(
+        &self,
+    ) -> (
+        Option<DiscoveredCredentialRefV1>,
+        Option<PermissionHardeningRequiredV1>,
+    ) {
+        let configuration = self.scan_claude(None, None, false);
+        (
+            configuration.discovered_credential,
+            configuration.permission_hardening,
+        )
+    }
+
     pub fn scan(&self) -> Vec<FilesystemAgentDiscoveryV1> {
-        let mut results = vec![
-            self.scan_codex(),
-            self.qoder_settings_discovery(false),
-            self.pi_settings_discovery(),
-            self.dsh_settings_discovery(),
-            self.opencode_settings_discovery(),
-        ];
-        match executable_probe(&self.layout.claude_executable) {
-            ExecutableProbe::Installed(executable) => {
-                results.push(self.scan_claude(Some(executable), None, false));
+        self.scan_selected(None)
+    }
+
+    /// Fresh discovery for one known installation; never scan neighboring Agents.
+    pub fn scan_agent(&self, agent_id: &str) -> Option<FilesystemAgentDiscoveryV1> {
+        self.scan_selected(Some(agent_id)).into_iter().next()
+    }
+
+    fn scan_selected(&self, selected: Option<&str>) -> Vec<FilesystemAgentDiscoveryV1> {
+        let mut results = Vec::new();
+        for agent_id in [
+            "agent_codex_default",
+            "agent_qoder_default",
+            "agent_pi_default",
+            "agent_dsh_default",
+            "agent_dsh_desktop",
+            "agent_opencode_default",
+            "agent_claude_default",
+        ] {
+            if selected.is_some_and(|selected| selected != agent_id) {
+                continue;
             }
-            other => {
-                let report = probe_report("agent_claude_default", AgentKindV1::ClaudeCode, other);
-                results.push(self.scan_claude(None, Some(report.outcome), false));
-            }
+            let discovery = match agent_id {
+                "agent_codex_default" => self.scan_codex(),
+                "agent_qoder_default" => self.qoder_settings_discovery(false),
+                "agent_pi_default" => self.pi_settings_discovery(),
+                "agent_dsh_default" => self.scan_dsh(),
+                "agent_dsh_desktop" => self.scan_dsh_desktop(),
+                "agent_opencode_default" => self.opencode_settings_discovery(),
+                _ => match executable_probe(&self.layout.claude_executable) {
+                    ExecutableProbe::Installed(executable) => {
+                        self.scan_claude(Some(executable), None, false)
+                    }
+                    other => {
+                        let report =
+                            probe_report("agent_claude_default", AgentKindV1::ClaudeCode, other);
+                        self.scan_claude(None, Some(report.outcome), false)
+                    }
+                },
+            };
+            results.push(discovery);
         }
         results.sort_by(|left, right| {
             outcome_agent_id(&left.outcome).cmp(outcome_agent_id(&right.outcome))
@@ -597,6 +644,7 @@ impl FilesystemAgentScannerV1 {
             | hiroute_domain::AgentModelSurfaceV2::QoderCli
             | hiroute_domain::AgentModelSurfaceV2::PiCli
             | hiroute_domain::AgentModelSurfaceV2::DshCli
+            | hiroute_domain::AgentModelSurfaceV2::DshDesktop
             | hiroute_domain::AgentModelSurfaceV2::OpenCodeCli
             | hiroute_domain::AgentModelSurfaceV2::HermesCli => None,
         }
@@ -635,6 +683,9 @@ impl FilesystemAgentScannerV1 {
             }
             "agent_dsh_default" if self.dsh_executable_target().is_some() => {
                 [hiroute_domain::AgentModelSurfaceV2::DshCli].into()
+            }
+            "agent_dsh_desktop" if self.dsh_desktop_executable_target().is_some() => {
+                [hiroute_domain::AgentModelSurfaceV2::DshDesktop].into()
             }
             "agent_pi_default" if self.pi_executable_target().is_some() => {
                 [hiroute_domain::AgentModelSurfaceV2::PiCli].into()

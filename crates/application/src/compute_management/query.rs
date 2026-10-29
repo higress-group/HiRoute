@@ -236,7 +236,15 @@ fn project_source<T: ComputeRuntimeStateStoreV1>(
             let (availability, reason_code) = model_availability(
                 source,
                 model_binding_health[index],
-                &keys,
+                &keys
+                    .iter()
+                    .filter(|key| key.enabled)
+                    .filter_map(|key| {
+                        key.model_statuses
+                            .get(index)
+                            .map(|status| status.availability)
+                    })
+                    .collect::<Vec<_>>(),
                 index,
                 PresentationAvailabilityFacts {
                     requested: presentation.is_some(),
@@ -385,7 +393,7 @@ struct PresentationAvailabilityFacts {
 fn model_availability(
     source: &ComputeManagementSourceV2,
     binding: ReadHealth,
-    keys: &[ComputeManagedKeyViewV2],
+    statuses: &[ComputeManagedKeyAvailabilityV2],
     model_index: usize,
     presentation: PresentationAvailabilityFacts,
 ) -> (
@@ -503,18 +511,12 @@ fn model_availability(
     ) {
         return (ComputeModelAvailabilityV1::Available, None);
     }
-    let participating = keys.iter().filter(|key| key.enabled).collect::<Vec<_>>();
-    if participating.is_empty() {
+    if statuses.is_empty() {
         return (
             ComputeModelAvailabilityV1::NeedsCredentials,
             Some(ComputeModelAvailabilityReasonV1::CredentialsMissing),
         );
     }
-    let statuses = participating
-        .iter()
-        .filter_map(|key| key.model_statuses.get(model_index))
-        .map(|status| status.availability)
-        .collect::<Vec<_>>();
     if statuses.contains(&ComputeManagedKeyAvailabilityV2::Available) {
         return (ComputeModelAvailabilityV1::Available, None);
     }
@@ -670,6 +672,107 @@ pub(super) fn source_actions(source: &ComputeManagementSourceV2) -> Vec<ComputeM
         ComputeManagementActionV2::Disable
     });
     actions
+}
+
+/// Project only the saved identity and current health needed by trial setup. The caller supplies
+/// connector facts from the same routing batch, never a later independent discovery.
+pub fn project_trial_source<T: ComputeRuntimeStateStoreV1>(
+    source: &ComputeManagementSourceV2,
+    runtime: &T,
+    candidates: &std::collections::HashMap<&str, &crate::compiler::CandidateCompilationFactV1>,
+    access_kind: ComputeConnectionAccessKindV1,
+    connector_runtime: Option<ComputeManagementModelRuntimeAvailabilityFactV1>,
+) -> Result<hiroute_application_api::TrialSourceViewV1, ComputeManagementQueryErrorV2> {
+    use crate::compiler::CandidateFactAuthorityV1;
+    use hiroute_application_api::{TrialModelViewV1, TrialSourceViewV1};
+    source
+        .validate()
+        .map_err(|_| ComputeManagementQueryErrorV2::Corrupt)?;
+    let mut partial = false;
+    let mut models = Vec::with_capacity(source.models.len());
+    for (index, model) in source.models.iter().enumerate() {
+        let binding = read_health(
+            runtime,
+            RuntimeStateIdentityV1::binding(model.binding_id.clone())
+                .map_err(|_| ComputeManagementQueryErrorV2::Corrupt)?,
+            &mut partial,
+        );
+        let mut statuses = Vec::new();
+        for credential in source.credentials.iter().filter(|entry| entry.enabled) {
+            let identity = RuntimeStateIdentityV1::credential(
+                model.binding_id.clone(),
+                credential.credential.credential_id(),
+                credential.key_id.clone(),
+                credential.credential.generation(),
+            )
+            .map_err(|_| ComputeManagementQueryErrorV2::Corrupt)?;
+            let health = read_health(runtime, identity, &mut partial);
+            statuses.push(key_availability(source.state, true, binding, health).0);
+        }
+        let candidate = candidates
+            .get(model.binding_id.as_str())
+            .copied()
+            .filter(|candidate| {
+                candidate.binding.source_id == source.source_id
+                    && candidate.binding.revision == model.revision
+            });
+        let runtime_availability = connector_runtime.map(|value| {
+            if value == ComputeManagementModelRuntimeAvailabilityFactV1::Available
+                && !candidate.is_some_and(|candidate| candidate.is_routable())
+            {
+                ComputeManagementModelRuntimeAvailabilityFactV1::ModelNotAllowed
+            } else {
+                value
+            }
+        });
+        let (availability, reason_code) = model_availability(
+            source,
+            binding,
+            &statuses,
+            index,
+            PresentationAvailabilityFacts {
+                requested: true,
+                complete: true,
+                source_identity_available: access_kind != ComputeConnectionAccessKindV1::Unknown,
+                model_fact_available: true,
+                runtime_availability,
+            },
+        );
+        models.push(TrialModelViewV1 {
+            model_ref: model.model_ref.clone(),
+            binding_id: model.binding_id.clone(),
+            revision: model.revision,
+            upstream_model_id: model.upstream_model_id.clone(),
+            display_name: model.display_name.clone(),
+            catalog_configuration_id: model.catalog_configuration_id.clone(),
+            membership: match model.membership {
+                ComputeManagementMembershipV2::Catalog => ComputeModelMembershipV2::Catalog,
+                ComputeManagementMembershipV2::Observed => ComputeModelMembershipV2::Observed,
+                ComputeManagementMembershipV2::UserDeclared => {
+                    ComputeModelMembershipV2::UserDeclared
+                }
+            },
+            catalog_admitted: access_kind != ComputeConnectionAccessKindV1::Unknown
+                && candidate.is_some_and(|candidate| {
+                    candidate.authority == CandidateFactAuthorityV1::RegisteredCatalog
+                        && candidate.is_routable()
+                        && model.catalog_configuration_id.as_deref()
+                            == Some(candidate.model.model_configuration_id.as_str())
+                }),
+            availability,
+            reason_code,
+        });
+    }
+    Ok(TrialSourceViewV1 {
+        source_id: source.source_id.clone(),
+        revision: source.revision,
+        display_name: source.display_name.clone(),
+        provenance: provenance_kind(&source.provenance),
+        access_kind,
+        state: source.state,
+        models,
+        actions: source_actions(source),
+    })
 }
 
 fn fingerprint_hint(value: &str) -> String {

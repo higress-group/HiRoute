@@ -79,7 +79,8 @@ pub async fn replay_capture(
             context.streaming && (200..300).contains(&status),
             context.chat_tools,
             budget,
-        )?;
+        )?
+        .with_function_encoding(context.function_encoding_projection);
         let mut event_count = 0u64;
         for chunk in chunks {
             drain(&mut decoder, chunk, false, &mut event_count)?;

@@ -165,39 +165,7 @@ fn handle_connection(
     role: &hiroute_daemon::RoleAllHandle,
     mut stream: LocalStream,
 ) -> Result<(), String> {
-    stream
-        .set_read_timeout(Some(IO_TIMEOUT))
-        .map_err(|_| "protected input read timeout setup failed")?;
-    stream
-        .set_write_timeout(Some(IO_TIMEOUT))
-        .map_err(|_| "protected input write timeout setup failed")?;
-    #[cfg(windows)]
-    stream
-        .set_deadline(Some(std::time::Instant::now() + IO_TIMEOUT))
-        .map_err(|_| "protected input deadline setup failed")?;
-    #[cfg(unix)]
-    let mut bytes = Zeroizing::new(Vec::new());
-    #[cfg(unix)]
-    Read::by_ref(&mut stream)
-        .take(STANDALONE_PROTECTED_INPUT_MAX_FRAME_BYTES_V1 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| "protected input request read failed")?;
-    #[cfg(windows)]
-    let bytes = hiroute_platform::local_record::read(
-        &mut stream,
-        hiroute_platform::local_record::Channel::ProtectedInput,
-        hiroute_platform::local_record::Direction::Request,
-        STANDALONE_PROTECTED_INPUT_MAX_FRAME_BYTES_V1 as usize,
-    )
-    .map_err(|_| "protected input request read failed")?;
-    if bytes.is_empty() || bytes.len() as u64 > STANDALONE_PROTECTED_INPUT_MAX_FRAME_BYTES_V1 {
-        return Err("protected input request size is invalid".into());
-    }
-    let mut request: StandaloneProtectedInputRequestV1 =
-        serde_json::from_slice(&bytes).map_err(|_| "protected input request is invalid")?;
-    if request.schema != STANDALONE_PROTECTED_INPUT_REQUEST_SCHEMA_V1 {
-        return Err("protected input request schema is invalid".into());
-    }
+    let mut request = read_request(&mut stream)?;
     match request.action.as_str() {
         "register" => {
             if request.candidate_revision != Some(1) {
@@ -259,6 +227,49 @@ fn handle_connection(
         }
         _ => Err("protected input action is invalid".into()),
     }
+}
+
+fn read_request(stream: &mut LocalStream) -> Result<StandaloneProtectedInputRequestV1, String> {
+    // BSD sockets can inherit O_NONBLOCK from the polling listener. The bounded
+    // frame reader needs a blocking accepted stream for its I/O timeout to apply.
+    #[cfg(unix)]
+    stream
+        .set_nonblocking(false)
+        .map_err(|_| "protected input blocking setup failed")?;
+    stream
+        .set_read_timeout(Some(IO_TIMEOUT))
+        .map_err(|_| "protected input read timeout setup failed")?;
+    stream
+        .set_write_timeout(Some(IO_TIMEOUT))
+        .map_err(|_| "protected input write timeout setup failed")?;
+    #[cfg(windows)]
+    stream
+        .set_deadline(Some(std::time::Instant::now() + IO_TIMEOUT))
+        .map_err(|_| "protected input deadline setup failed")?;
+    #[cfg(unix)]
+    let mut bytes = Zeroizing::new(Vec::new());
+    #[cfg(unix)]
+    Read::by_ref(stream)
+        .take(STANDALONE_PROTECTED_INPUT_MAX_FRAME_BYTES_V1 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "protected input request read failed")?;
+    #[cfg(windows)]
+    let bytes = hiroute_platform::local_record::read(
+        stream,
+        hiroute_platform::local_record::Channel::ProtectedInput,
+        hiroute_platform::local_record::Direction::Request,
+        STANDALONE_PROTECTED_INPUT_MAX_FRAME_BYTES_V1 as usize,
+    )
+    .map_err(|_| "protected input request read failed")?;
+    if bytes.is_empty() || bytes.len() as u64 > STANDALONE_PROTECTED_INPUT_MAX_FRAME_BYTES_V1 {
+        return Err("protected input request size is invalid".into());
+    }
+    let request: StandaloneProtectedInputRequestV1 =
+        serde_json::from_slice(&bytes).map_err(|_| "protected input request is invalid")?;
+    if request.schema != STANDALONE_PROTECTED_INPUT_REQUEST_SCHEMA_V1 {
+        return Err("protected input request schema is invalid".into());
+    }
+    Ok(request)
 }
 
 fn write_response(
@@ -378,6 +389,53 @@ fn shutdown_signal() -> Result<Receiver<()>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn protected_input_waits_for_fragmented_request_from_connected_client() {
+        let directory = tempfile::tempdir_in(std::fs::canonicalize("/tmp").unwrap()).unwrap();
+        let server = ProtectedInputServer::bind_path(directory.path().join("input.sock")).unwrap();
+        let mut client = UnixStream::connect(&server.path).unwrap();
+        let (mut stream, _) = server.listener.accept().unwrap();
+        // Exercise the BSD inherited flag on every Unix test host.
+        stream.set_nonblocking(true).unwrap();
+        let (started, ready) = mpsc::sync_channel(1);
+        let reader = std::thread::spawn(move || {
+            started.send(()).unwrap();
+            read_request(&mut stream)
+        });
+        ready.recv_timeout(IO_TIMEOUT).unwrap();
+        let frame = br#"{"schema":"hiroute.standalone-protected-input-request/v1","action":"register","candidate_ref":"candidate/manual","candidate_revision":1,"secret":"isolated-fixture"}"#;
+        std::thread::sleep(Duration::from_millis(50));
+        let first = client.write_all(&frame[..frame.len() / 2]);
+        std::thread::sleep(Duration::from_millis(50));
+        let second = client.write_all(&frame[frame.len() / 2..]);
+        let eof = client.shutdown(std::net::Shutdown::Write);
+        let request = reader.join().unwrap().unwrap();
+        first.unwrap();
+        second.unwrap();
+        eof.unwrap();
+        assert_eq!(request.candidate_ref.as_deref(), Some("candidate/manual"));
+        assert_eq!(request.candidate_revision, Some(1));
+        assert_eq!(request.secret.as_deref(), Some("isolated-fixture"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn protected_input_stalled_connected_client_retains_read_timeout() {
+        let directory = tempfile::tempdir_in(std::fs::canonicalize("/tmp").unwrap()).unwrap();
+        let server = ProtectedInputServer::bind_path(directory.path().join("input.sock")).unwrap();
+        let _client = UnixStream::connect(&server.path).unwrap();
+        let (mut stream, _) = server.listener.accept().unwrap();
+        stream.set_nonblocking(true).unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(
+            read_request(&mut stream).unwrap_err(),
+            "protected input request read failed"
+        );
+        assert!(started.elapsed() >= Duration::from_millis(100));
+        assert!(started.elapsed() < IO_TIMEOUT + Duration::from_secs(3));
+    }
 
     #[test]
     fn protocol_rejects_authority_fields_and_invalid_candidate_shapes() {

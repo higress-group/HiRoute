@@ -17,6 +17,9 @@ pub struct StoredProtocolChoiceV1 {
     pub native_target: Option<GatewayNativeProfileTargetV2>,
     /// Credential destinations bind this source profile identity. It is not a decoder revision.
     pub credential_profile_identity: Option<String>,
+    /// Absent in retained plans: preserve the native dialect, never infer plaintext on reopen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub responses_dialect: Option<ResponsesDialectV1>,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -36,6 +39,11 @@ pub struct StoredConnectorFactsV1 {
 
 impl StoredProtocolChoiceV1 {
     fn freeze(profile: &GatewayCandidateProtocolProfileV1) -> Result<Self, CompiledPlanError> {
+        if profile.adapter_revision == STANDARD_RESPONSES_JSON_ADAPTER_V1
+            && profile.connector.upstream_protocol != UpstreamProtocol::Responses
+        {
+            return Err(CompiledPlanError::InvalidCandidate);
+        }
         let headers = profile
             .connector
             .headers
@@ -61,6 +69,8 @@ impl StoredProtocolChoiceV1 {
                 .native_target
                 .as_ref()
                 .map(|_| profile.adapter_revision.clone()),
+            responses_dialect: (profile.adapter_revision == STANDARD_RESPONSES_JSON_ADAPTER_V1)
+                .then_some(ResponsesDialectV1::StandardJson),
         })
     }
 
@@ -68,7 +78,22 @@ impl StoredProtocolChoiceV1 {
         if self.native_target.is_some() != self.credential_profile_identity.is_some() {
             return Err(CompiledPlanError::InvalidCandidate);
         }
+        if self.responses_dialect.is_none()
+            && self.credential_profile_identity.as_deref()
+                == Some(STANDARD_RESPONSES_JSON_ADAPTER_V1)
+        {
+            return Err(CompiledPlanError::InvalidCandidate);
+        }
         let c = &self.connector;
+        if self.responses_dialect.is_some()
+            && (c.upstream_protocol != UpstreamProtocol::Responses
+                || self
+                    .credential_profile_identity
+                    .as_deref()
+                    .is_some_and(|id| id != STANDARD_RESPONSES_JSON_ADAPTER_V1))
+        {
+            return Err(CompiledPlanError::InvalidCandidate);
+        }
         let mut forbidden = vec!["authorization".to_owned(), "x-api-key".to_owned()];
         if let GatewayCriticalFactV1::Exact(GatewayAuthenticationSemanticsV1::ApiKeyHeader {
             header,
@@ -85,9 +110,13 @@ impl StoredProtocolChoiceV1 {
                 protocol_name(c.upstream_protocol)
             ),
             ingress_protocol: self.ingress_protocol,
-            adapter_revision: self.credential_profile_identity.clone().unwrap_or_else(|| {
-                format!("adapter/native/{}@1", protocol_name(c.upstream_protocol))
-            }),
+            adapter_revision: self
+                .responses_dialect
+                .map(|_| STANDARD_RESPONSES_JSON_ADAPTER_V1.to_owned())
+                .or_else(|| self.credential_profile_identity.clone())
+                .unwrap_or_else(|| {
+                    format!("adapter/native/{}@1", protocol_name(c.upstream_protocol))
+                }),
             serializer_revision: "hiroute-target-json/v1".into(),
             decoder_revision: "hiroute-native-response/v1".into(),
             capability: self.capability.compile(c.upstream_protocol),
@@ -553,5 +582,91 @@ mod storage_tests {
         let mut raw = serde_json::to_value(&facts).unwrap();
         raw["compiler_revision"] = serde_json::json!("injected");
         assert!(serde_json::from_value::<StoredPlanV1>(raw).is_err());
+    }
+}
+
+#[cfg(test)]
+mod responses_dialect_storage_tests {
+    use super::*;
+    fn profile() -> GatewayCandidateProtocolProfileV1 {
+        let input: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+        ))
+        .unwrap();
+        let plan: CompiledAgentPlanV1 = serde_json::from_value(input["plans"][0].clone()).unwrap();
+        plan.body
+            .materialized
+            .attempt_owned
+            .groups
+            .iter()
+            .flat_map(|g| &g.candidates)
+            .flat_map(|c| &c.protocol_profiles)
+            .find(|p| p.connector.upstream_protocol == UpstreamProtocol::Responses)
+            .unwrap()
+            .clone()
+    }
+    #[test]
+    fn codex_v2_complete_stored_plan_rebuilds_encoding_choice_after_reopen() {
+        let input: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+        ))
+        .unwrap();
+        let plan: CompiledAgentPlanV1 = serde_json::from_value(input["plans"][0].clone()).unwrap();
+        let mut stored = StoredPlanV1::freeze(&plan).unwrap();
+        for choice in stored
+            .groups
+            .iter_mut()
+            .flat_map(|g| &mut g.candidates)
+            .flat_map(|c| &mut c.protocols)
+        {
+            assert!(choice.native_target.is_none());
+            choice.responses_dialect = Some(ResponsesDialectV1::StandardJson);
+        }
+        let bytes = serde_json::to_vec(&stored).unwrap();
+        drop(stored);
+        let reopened: StoredPlanV1 = serde_json::from_slice(&bytes).unwrap();
+        let executable = reopened.build().unwrap();
+        executable.validate().unwrap();
+        for p in executable
+            .body
+            .materialized
+            .attempt_owned
+            .groups
+            .iter()
+            .flat_map(|g| &g.candidates)
+            .flat_map(|c| &c.protocol_profiles)
+        {
+            assert_eq!(p.adapter_revision, STANDARD_RESPONSES_JSON_ADAPTER_V1);
+        }
+        let current = StoredPlanV1::freeze(&executable).unwrap();
+        assert_eq!(serde_json::to_vec(&current).unwrap(), bytes);
+    }
+
+    #[test]
+    fn codex_v2_standard_dialect_survives_storage_and_native_missing_stays_native() {
+        let mut p = profile();
+        p.native_target = None;
+        p.adapter_revision = STANDARD_RESPONSES_JSON_ADAPTER_V1.into();
+        let stored = StoredProtocolChoiceV1::freeze(&p).unwrap();
+        let bytes = serde_json::to_vec(&stored).unwrap();
+        let loaded: StoredProtocolChoiceV1 = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            loaded.build().unwrap().adapter_revision,
+            STANDARD_RESPONSES_JSON_ADAPTER_V1
+        );
+        assert_eq!(serde_json::to_vec(&loaded).unwrap(), bytes);
+        let mut legacy = serde_json::to_value(stored).unwrap();
+        legacy.as_object_mut().unwrap().remove("responses_dialect");
+        let old_bytes = serde_json::to_vec(&legacy).unwrap();
+        let loaded: StoredProtocolChoiceV1 = serde_json::from_slice(&old_bytes).unwrap();
+        assert_eq!(serde_json::to_value(&loaded).unwrap(), legacy);
+        assert_ne!(
+            loaded.build().unwrap().adapter_revision,
+            STANDARD_RESPONSES_JSON_ADAPTER_V1
+        );
+        let mut invalid = loaded;
+        invalid.responses_dialect = Some(ResponsesDialectV1::StandardJson);
+        invalid.connector.upstream_protocol = UpstreamProtocol::Messages;
+        assert!(invalid.build().is_err());
     }
 }

@@ -73,6 +73,11 @@ pub enum EventErrorCode {
     OverrideActive,
     UnsupportedPlatform,
     DiagnosticsUnavailable,
+    ResidentUnavailable,
+    ClientContextInvalid,
+    ReadSnapshotChanged,
+    ConfirmationStale,
+    ResponseDataMissing,
     // Stable business/action rejections: the first eight mirror the product error
     // categories, the rest describe confirmation-gated and cancelled work.
     Usage,
@@ -113,6 +118,11 @@ impl EventErrorCode {
             EventErrorCode::OverrideActive => "override_active",
             EventErrorCode::UnsupportedPlatform => "unsupported_platform",
             EventErrorCode::DiagnosticsUnavailable => "diagnostics_unavailable",
+            EventErrorCode::ResidentUnavailable => "resident_unavailable",
+            EventErrorCode::ClientContextInvalid => "client_context_invalid",
+            EventErrorCode::ReadSnapshotChanged => "read_snapshot_changed",
+            EventErrorCode::ConfirmationStale => "confirmation_stale",
+            EventErrorCode::ResponseDataMissing => "response_data_missing",
             EventErrorCode::Usage => "usage",
             EventErrorCode::Conflict => "conflict",
             EventErrorCode::Authorization => "authorization",

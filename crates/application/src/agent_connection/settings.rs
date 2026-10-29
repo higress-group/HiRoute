@@ -144,6 +144,8 @@ pub fn preview_agent_settings(
             SettingsBlockReason::QoderDefaultInUse
                 | SettingsBlockReason::QoderModelFileConflict
                 | SettingsBlockReason::AdditionalDefaultInUse
+                | SettingsBlockReason::NativeRoutingAdapterRestoreRequired
+                | SettingsBlockReason::NativeRoutingAdapterExternalResource
                 | SettingsBlockReason::HermesModelFileConflict
         ) {
             return Err(SettingsPlanningError::InvalidSelection);
@@ -219,10 +221,13 @@ pub fn preview_agent_settings(
                 return Err(SettingsPlanningError::InvalidSelection);
             }
             if matches!(settings, AgentModelSelectionV2::DshAdditional { .. })
-                && !model
-                    .common
-                    .available_surfaces
-                    .contains(&hiroute_domain::AgentModelSurfaceV2::DshCli)
+                && !model.common.available_surfaces.iter().any(|surface| {
+                    matches!(
+                        surface,
+                        hiroute_domain::AgentModelSurfaceV2::DshCli
+                            | hiroute_domain::AgentModelSurfaceV2::DshDesktop
+                    )
+                })
             {
                 return Err(SettingsPlanningError::InvalidSelection);
             }

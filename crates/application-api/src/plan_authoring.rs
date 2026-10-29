@@ -320,7 +320,38 @@ pub struct PlanEditorOptionsRequestV1 {
     /// Explicitly requested authoring policy; absent preserves released response bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authoring: Option<PlanAuthoringRequestV1>,
+    /// A newer client explicitly requests only its own capability preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_agent: Option<PlanPreviewAgentV1>,
 }
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanPreviewAgentV1 {
+    Dsh,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DshClientCapabilityPreviewV1 {
+    Available {
+        protocol: hiroute_domain::AgentIngressProtocolV1,
+        context_window: u64,
+        max_output_tokens: u64,
+    },
+    Unavailable {
+        reason: DshCapabilityUnavailableReasonV1,
+    },
+}
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DshCapabilityUnavailableReasonV1 {
+    InvalidPlan,
+    ResponsesUnavailable,
+    BudgetUnavailable,
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanEditorOptionsV1 {
@@ -338,6 +369,8 @@ pub struct PlanEditorOptionsV1 {
     pub free_suggestions: Option<FreeSuggestionsV1>,
     pub ratings: Option<crate::ResolveModelRatingsResultV1>,
     pub codex_capabilities: Option<CodexClientCapabilityPreviewV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dsh_capabilities: Option<DshClientCapabilityPreviewV1>,
     pub revisions: RevisionSetV1,
 }
 

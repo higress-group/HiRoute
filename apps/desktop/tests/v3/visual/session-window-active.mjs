@@ -26,6 +26,35 @@ try {
         process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
     }
+    const agentLabels = [];
+    for (const [width, height] of [[1200, 813], [755, 600]]) for (const language of ['zh', 'en']) {
+      await navigate(client, new URL('session-window.html', baseUrl).href, { width, height });
+      await waitFor(client, 'Boolean(window.sessionWindow)');
+      await evaluate(client, `(() => {
+        const control = window.sessionWindow;
+        control.reset(); control.language = ${JSON.stringify(language)};
+        const session = 'observation-session/dsh-name';
+        control.requests[session] = [control.makeRequest(session, 0, Date.now() - 1000)];
+        control.views.sessions = query => {
+          const page = control.defaultRead('sessions', query);
+          return { ...page, sessions: page.sessions.map(row => ({ ...row, agent_id: 'agent_dsh_default' })) };
+        };
+      })()`);
+      await waitFor(client, 'document.querySelector(".session-item")?.textContent.includes("DeepSeek Harness")');
+      await evaluate(client, 'document.querySelector(".session-item").click()');
+      await waitFor(client, 'document.querySelector(".transcript-head p")?.textContent.includes("DeepSeek Harness")');
+      const geometry = await evaluate(client, `(() => {
+        const el = document.querySelector('.transcript-head p'), b = el.getBoundingClientRect();
+        return { text: el.textContent, left: b.left, right: b.right, width: b.width,
+          visible: b.width > 0 && b.height > 0, horizontalOverflow: el.scrollWidth > el.clientWidth + 1,
+          outside: b.left < -1 || b.right > innerWidth + 1 };
+      })()`);
+      const screenshot = `session-agent-dsh-${language}-${width}x${height}.png`;
+      const capture = await client.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(path.join(outputRoot, screenshot), Buffer.from(capture.data, 'base64'));
+      agentLabels.push({ name: `DSH label ${language} ${width}x${height}`, screenshot, geometry,
+        state: geometry.visible && !geometry.horizontalOverflow && !geometry.outside ? 'green' : 'red' });
+    }
     const layout = [];
     for (const [width, height] of [[1200, 813], [755, 600]]) {
       for (const language of ['zh', 'en']) {
@@ -85,11 +114,12 @@ try {
       generatedAt: new Date().toISOString(),
       evidence: 'React components + mock IPC (window and cursor binding mirrored) only; not native/Tauri and not the real daemon',
       checks,
+      agentLabels,
       layout,
       summary: { total: checks.length, green: checks.filter(check => check.state === 'green').length, red: checks.filter(check => check.state === 'red').length },
     };
     await writeFile(path.join(outputRoot, 'session-window-report.json'), `${JSON.stringify(report, null, 2)}\n`);
-    if (report.summary.total !== count || report.summary.red > 0 || layout.some(item => item.state !== 'green')) process.exitCode = 1;
+    if (report.summary.total !== count || report.summary.red > 0 || [...layout, ...agentLabels].some(item => item.state !== 'green')) process.exitCode = 1;
   } finally {
     client.close();
   }

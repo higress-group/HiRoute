@@ -126,6 +126,12 @@ impl FilesystemAgentScannerV1 {
         .map_err(|_| AgentFilesystemScanError::InvalidConfig)
     }
     pub fn dsh_settings_discovery(&self) -> FilesystemAgentDiscoveryV1 {
+        self.dsh_discovery(false)
+    }
+    pub(super) fn scan_dsh(&self) -> FilesystemAgentDiscoveryV1 {
+        self.dsh_discovery(true)
+    }
+    fn dsh_discovery(&self, version_diagnostic: bool) -> FilesystemAgentDiscoveryV1 {
         let Some(executable) = self.dsh_executable_target() else {
             return probe_report(
                 "agent_dsh_default",
@@ -133,9 +139,15 @@ impl FilesystemAgentScannerV1 {
                 ExecutableProbe::NotFound,
             );
         };
-        let version = match executable_probe(&executable) {
-            ExecutableProbe::Installed(value) => value.version,
-            _ => String::new(),
+        // Version output is diagnostic, not configuration authority. Settings
+        // snapshots recheck the native files/path without launching the engine.
+        let version = if version_diagnostic {
+            match executable_probe(&executable) {
+                ExecutableProbe::Installed(value) => value.version,
+                _ => String::new(),
+            }
+        } else {
+            "not-probed".into()
         };
         let mut outcome = resolve_agent_observation(base_observation(
             "agent_dsh_default",
@@ -187,9 +199,24 @@ impl FilesystemAgentScannerV1 {
         }
     }
     #[cfg(any(unix, windows))]
-    pub fn check_dsh_model_configuration(&self) -> Result<(), AgentFilesystemScanError> {
-        self.dsh_native_contract(true)?;
-        self.check_dsh_public_cli(&["llm-pi-ai"])
+    pub fn check_dsh_model_configuration(
+        &self,
+    ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
+        let before = self.dsh_native_contract(true)?;
+        self.check_dsh_public_cli(&["llm-pi-ai"])?;
+        if before != self.dsh_native_contract(true)? {
+            return Err(AgentFilesystemScanError::SourceChanged);
+        }
+        Ok(before)
+    }
+    /// Revalidate the exact installation/configuration observed by this capture.
+    /// This proof is scoped to the caller's capture and is never a persisted grant.
+    pub fn dsh_model_configuration_is_current(
+        &self,
+        checked: &CanonicalDigest,
+    ) -> Result<bool, AgentFilesystemScanError> {
+        self.dsh_native_contract(true)
+            .map(|current| current == *checked)
     }
     #[cfg(any(unix, windows))]
     pub fn check_dsh_collaboration(&self, cli: &Path) -> Result<(), AgentFilesystemScanError> {
@@ -221,28 +248,57 @@ impl FilesystemAgentScannerV1 {
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)? = Some((cli, before));
         Ok(())
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     fn check_dsh_public_cli(&self, required: &[&str]) -> Result<(), AgentFilesystemScanError> {
+        let mut command = std::process::Command::new(
+            self.dsh_executable_target()
+                .ok_or(AgentFilesystemScanError::SourceUnavailable)?,
+        );
+        command.args(["--profile", "acp", "--dump-default-config"]);
+        check_composition(&dsh_public_probe(command)?, required)
+    }
+}
+
+pub(super) fn check_composition(
+    bytes: &[u8],
+    required: &[&str],
+) -> Result<(), AgentFilesystemScanError> {
+    let text = std::str::from_utf8(bytes).map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
+    if required.iter().any(|id| {
+        !text
+            .lines()
+            .any(|line| line.trim() == format!("- id: {id}"))
+    }) {
+        return Err(AgentFilesystemScanError::InvalidConfig);
+    }
+    Ok(())
+}
+
+/// Inspect shipped composition without loading native user plugins or credentials.
+#[cfg(any(unix, windows))]
+pub(super) fn dsh_public_probe(
+    mut command: std::process::Command,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, AgentFilesystemScanError> {
+    let root = tempfile::tempdir().map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
+    command
+        .current_dir(root.path())
+        .env("HOME", root.path())
+        .env("USERPROFILE", root.path())
+        .env("DSH_HOME", root.path());
+    #[cfg(unix)]
+    {
         use std::os::unix::process::CommandExt;
-        use std::process::{Command, Stdio};
-        let root = tempfile::tempdir().map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
+        use std::process::Stdio;
         let output = root.path().join("config");
         let file = std::fs::File::create(&output)
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
-        // Dumping the shipped composition is public and does not activate plugins or model calls.
-        // Its profile initialization is contained here; the real HOME and settings stay intact.
-        let child = Command::new(
-            self.dsh_executable_target()
-                .ok_or(AgentFilesystemScanError::SourceUnavailable)?,
-        )
-        .args(["--profile", "acp", "--dump-default-config"])
-        .env("DSH_HOME", root.path())
-        .stdin(Stdio::null())
-        .stdout(file)
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
+        let child = command
+            .stdin(Stdio::null())
+            .stdout(file)
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
         let mut child = super::super::NativeProbeProcess::new(child);
         let started = std::time::Instant::now();
         loop {
@@ -264,29 +320,11 @@ impl FilesystemAgentScannerV1 {
         child
             .stop()
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
-        let bytes = super::super::native_probe_process::read_bounded(&output, 2 * 1024 * 1024)
-            .map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
-        let text =
-            std::str::from_utf8(&bytes).map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
-        if required.iter().any(|id| {
-            !text
-                .lines()
-                .any(|line| line.trim() == format!("- id: {id}"))
-        }) {
-            return Err(AgentFilesystemScanError::InvalidConfig);
-        }
-        Ok(())
+        super::super::native_probe_process::read_bounded(&output, 2 * 1024 * 1024)
+            .map_err(|_| AgentFilesystemScanError::InvalidConfig)
     }
     #[cfg(windows)]
-    fn check_dsh_public_cli(&self, required: &[&str]) -> Result<(), AgentFilesystemScanError> {
-        let root = tempfile::tempdir().map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
-        let mut command = std::process::Command::new(
-            self.dsh_executable_target()
-                .ok_or(AgentFilesystemScanError::SourceUnavailable)?,
-        );
-        command
-            .args(["--profile", "acp", "--dump-default-config"])
-            .env("DSH_HOME", root.path());
+    {
         let result = super::super::windows_runtime::bounded(
             &command,
             true,
@@ -299,16 +337,6 @@ impl FilesystemAgentScannerV1 {
         {
             let _ = root.keep();
         }
-        let bytes = result.map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
-        let text =
-            std::str::from_utf8(&bytes).map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
-        if required.iter().any(|id| {
-            !text
-                .lines()
-                .any(|line| line.trim() == format!("- id: {id}"))
-        }) {
-            return Err(AgentFilesystemScanError::InvalidConfig);
-        }
-        Ok(())
+        result.map_err(|_| AgentFilesystemScanError::SourceUnavailable)
     }
 }

@@ -15,7 +15,7 @@ pub fn additional_model_kind(intent: &ExternalEffectIntentV1) -> PortResult<Agen
     match intent.desired()["subject"]["agent_id"].as_str() {
         Some("agent_qoder_default") => Ok(AgentKindV1::Qoder),
         Some("agent_pi_default") => Ok(AgentKindV1::Pi),
-        Some("agent_dsh_default") => Ok(AgentKindV1::DeepseekHarness),
+        Some("agent_dsh_default" | "agent_dsh_desktop") => Ok(AgentKindV1::DeepseekHarness),
         Some("agent_opencode_default") => Ok(AgentKindV1::OpenCode),
         _ => Err(invalid()),
     }
@@ -78,7 +78,10 @@ pub fn settings_additional_model_file_intent(
         schema: schema(
             if control.subject().agent_id() == "agent_opencode_default" {
                 AgentKindV1::OpenCode
-            } else if control.subject().agent_id() == "agent_dsh_default" {
+            } else if matches!(
+                control.subject().agent_id(),
+                "agent_dsh_default" | "agent_dsh_desktop"
+            ) {
                 AgentKindV1::DeepseekHarness
             } else if control.subject().agent_id() == "agent_pi_default" {
                 AgentKindV1::Pi
@@ -127,7 +130,7 @@ pub fn decode_settings_additional_model_file(
             "builtin/opencode-responses/v1",
         ),
         AgentKindV1::DeepseekHarness => (
-            "agent_dsh_default",
+            value["subject"]["agent_id"].as_str().ok_or_else(invalid)?,
             "dsh-responses-v1",
             "builtin/dsh-responses/v1",
         ),

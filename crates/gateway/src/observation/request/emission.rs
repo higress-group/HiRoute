@@ -139,6 +139,9 @@ impl RequestObservation {
 
 fn execution_kind(fact: &ExecutionFactV1) -> &'static str {
     match fact {
+        ExecutionFactV1::RequestInputSelection(_) => "request_input_selection",
+        ExecutionFactV1::StageAssessmentRecorded(_) => "stage_assessment_recorded",
+        ExecutionFactV1::AgentTurnAdmitted(..) => "agent_turn_admitted",
         ExecutionFactV1::RouteDecision { .. } => "route_decision",
         ExecutionFactV1::CandidateDecision(..) => "candidate_decision",
         ExecutionFactV1::CredentialLease { .. } => "credential_lease",

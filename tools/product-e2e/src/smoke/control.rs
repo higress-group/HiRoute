@@ -22,6 +22,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "control_preparation.rs"]
+mod preparation;
+
 fn command(binary: &Path, root: &Path) -> Command {
     let mut c = Command::new(binary);
     c.env_clear()
@@ -49,7 +52,7 @@ fn prepare(ctx: &mut Context<'_>) -> Result<(Artifact, Artifact)> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(ctx.runtime.join(dir), fs::Permissions::from_mode(0o700))?;
     }
-    ctx.product_deadline();
+    preparation::initialize_storage(ctx, &daemon)?;
     Ok((cli, daemon))
 }
 struct CliObservation {
@@ -238,6 +241,7 @@ pub(super) fn discover(ctx: &mut Context<'_>) -> Result<()> {
     let (home, bin) = fixtures::discovery(&ctx.runtime, &secret)?;
     let settings = home.join(".claude/settings.json");
     let original = fs::read(&settings)?;
+    ctx.product_deadline();
     let endpoint = ctx.runtime.join("control-runtime/hiroute/control.sock");
     let mut c = command(&daemon.path, &ctx.runtime);
     c.args(["--role", "control", "--storage-root"])
@@ -416,14 +420,8 @@ pub(super) fn embedded_catalog(ctx: &mut Context<'_>) -> Result<()> {
         .arg("--runtime-root")
         .arg(ctx.runtime.join("control-runtime"))
         .args(["--diagnostic-level-override", "debug"]);
-    fixtures::initialize_current_storage(
-        &daemon.path,
-        &ctx.runtime.join("storage"),
-        &ctx.private.join("embedded-catalog-initialize"),
-        ctx.cancel.clone(),
-        ctx.step_deadline(),
-    )?;
     fixtures::install_storage_catalog_tampering(&ctx.runtime.join("storage"))?;
+    ctx.product_deadline();
     ctx.enter("embedded_catalog_ready");
     ctx.verify_artifact(&daemon)?;
     let mut child = Process::spawn(

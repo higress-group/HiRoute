@@ -31,7 +31,52 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:5f42929cdb812799e4e4a10885324debb21e6489bde5e935599de57b54b8ab23";
+    "sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295";
+
+/// Exact bounded membership of an immutable captured stage revision. Source
+/// uncertainty and association uncertainty do not mean execution is missing.
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryMembershipV1 {
+    pub version: u8,
+    pub branch_id: String,
+    pub revision: u64,
+    pub request_ids: Vec<String>,
+    pub clipped: bool,
+    pub relation: HistoryRelationV1,
+    pub source_unverified: bool,
+    pub association_unverified: bool,
+    pub capture_partial: bool,
+}
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryRelationV1 {
+    Root,
+    ExactPrefix,
+    AmbiguousPrefix,
+    Contextual,
+}
+
+impl HistoryMembershipV1 {
+    pub fn validate(&self) -> Result<(), ExecutionFactError> {
+        let mut seen = std::collections::BTreeSet::new();
+        if self.version != 1
+            || self.branch_id.is_empty()
+            || self.branch_id.len() > 128
+            || self.branch_id.chars().any(char::is_control)
+            || self.revision == 0
+            || self.request_ids.len() > 128
+            || self
+                .request_ids
+                .iter()
+                .any(|id| LogicalRequestId::parse(id).is_err() || !seen.insert(id))
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
+        Ok(())
+    }
+}
 
 /// What the Gateway observed when it opened an agent turn. This is not proof
 /// of human authorship or of a particular native compaction command.
@@ -528,6 +573,10 @@ pub enum RouteDecisionOutcomeCodeV1 {
 #[serde(deny_unknown_fields)]
 pub struct RouteDecisionFactV1 {
     pub planner_version: String,
+    /// An explicitly recognized native maintenance call, never a user turn.
+    /// Old records omit this field and remain unclassified.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub native_auxiliary: bool,
     pub plan_id: Option<AgentPlanId>,
     pub route: crate::ModelRequestRouteV2,
     pub input_digest: CanonicalDigest,
@@ -658,6 +707,8 @@ pub enum AgentTurnStatusV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ExecutionFactV1 {
+    AgentTurnAdmitted(super::AgentTurnAdmissionV1),
+    RequestInputSelection(super::RequestInputSelectionV1),
     RouteDecision(Box<RouteDecisionFactV1>),
     CandidateDecision(Box<CandidateDecisionFactV1>),
     CredentialLease {
@@ -731,6 +782,8 @@ pub enum ExecutionFactV1 {
     },
     AgentTurnFinished {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        history_membership: Option<HistoryMembershipV1>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         opening_cause: Option<AgentTurnOpeningCauseV1>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch_execution: Option<crate::BranchExecutionV1>,
@@ -752,6 +805,8 @@ pub enum ExecutionFactV1 {
         last_request_id: Option<LogicalRequestId>,
     },
     BranchAssessmentRecorded {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        history_membership: Option<HistoryMembershipV1>,
         segment_id: String,
         plan_id: AgentPlanId,
         plan_revision: u64,
@@ -767,6 +822,7 @@ pub enum ExecutionFactV1 {
         partial: bool,
         reason: Option<String>,
     },
+    StageAssessmentRecorded(super::StageAssessmentRecordedV1),
     /// Product-owned immutable value input. Gateway mapping never aggregates into this event.
     ValueSnapshot {
         traffic_kind: TrafficKind,

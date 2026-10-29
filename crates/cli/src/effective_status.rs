@@ -24,6 +24,7 @@ pub(crate) fn payload(options: &[String]) -> Result<Value, ErrorCode> {
             .map_err(|_| ErrorCode::Internal);
         }
         AgentSettingsStatusRequestV2 {
+            projection: Default::default(),
             include_skills: true,
             native_target: None,
             schema_version: AGENT_SETTINGS_SCHEMA_V2,
@@ -60,6 +61,7 @@ pub(crate) fn payload(options: &[String]) -> Result<Value, ErrorCode> {
             return Err(ErrorCode::InvalidArguments);
         }
         AgentSettingsStatusRequestV2 {
+            projection: Default::default(),
             include_skills: true,
             native_target: None,
             schema_version: AGENT_SETTINGS_SCHEMA_V2,

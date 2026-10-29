@@ -14,6 +14,7 @@ fn parse(options: &[String]) -> Result<RoutingTimelineQueryV1, ErrorCode> {
         return Err(ErrorCode::InvalidArguments);
     };
     let mut query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: session.clone(),
         after_watermark: None,
         limit: 50,

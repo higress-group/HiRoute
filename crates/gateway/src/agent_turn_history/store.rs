@@ -1,5 +1,6 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::mem::size_of;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -22,8 +23,21 @@ use crate::server::core_runtime::profiles::BranchDecisionV1;
 
 type HmacSha256 = Hmac<Sha256>;
 
+#[path = "store/gap.rs"]
+mod gap;
 #[path = "store/output.rs"]
 mod output;
+#[path = "store/records.rs"]
+mod records;
+use records::*;
+#[path = "store/branches.rs"]
+mod branches;
+#[path = "store/evaluation.rs"]
+mod evaluation;
+#[path = "store/opening.rs"]
+mod opening;
+#[path = "store/retry.rs"]
+mod retry;
 
 pub(crate) const DEFAULT_MAX_MEMORY_BYTES: usize = 500_000_000;
 pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
@@ -32,11 +46,13 @@ pub(crate) struct AgentTurnHistoryStore {
     max_memory_bytes: usize,
     idle_ttl: Duration,
     instance_nonce: [u8; 32],
+    capture_gap_epochs: [AtomicU64; 256],
     inner: Arc<Mutex<StoreInner>>,
 }
 
 pub(super) struct StoreInner {
     entries: BTreeMap<AgentTurnHistoryKey, SessionEntry>,
+    scopes: BTreeMap<AgentTurnHistoryKey, BTreeSet<AgentTurnHistoryKey>>,
     next_token: u64,
     next_request_token: u64,
     next_id: u64,
@@ -45,14 +61,22 @@ pub(super) struct StoreInner {
 }
 
 struct SessionEntry {
+    scope: AgentTurnHistoryKey,
+    branch_id: String,
+    admission_sequence: u64,
+    branch_relation: branches::HistoryRelation,
     entry_token: u64,
     revision: u64,
     last_access: Instant,
     history_partial: bool,
+    capture_gap_epoch: u64,
     checkpoint: TranscriptCheckpoint,
+    response_boundary: Option<super::boundary::BoundaryEvidence>,
+    branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
     current_segment: Option<SegmentState>,
+    referenced_segment: Option<SegmentState>,
     next_turn_ordinal: u64,
     pending_request: Option<u64>,
     snapshot_pins: u32,
@@ -63,6 +87,7 @@ pub(crate) struct SnapshotPin {
     inner: Weak<Mutex<StoreInner>>,
     key: AgentTurnHistoryKey,
     entry_token: u64,
+    reserved_bytes: usize,
 }
 
 impl std::fmt::Debug for SnapshotPin {
@@ -79,6 +104,7 @@ impl Drop for SnapshotPin {
             return;
         };
         let mut inner = inner.lock();
+        inner.accounted_bytes = inner.accounted_bytes.saturating_sub(self.reserved_bytes);
         if let Some(entry) = inner.entries.get_mut(&self.key)
             && entry.entry_token == self.entry_token
         {
@@ -91,15 +117,30 @@ impl Drop for SnapshotPin {
 struct TranscriptCheckpoint {
     active_user_index: usize,
     message_count: usize,
+    digest: Option<[u8; 32]>,
+    retry_setup: Option<[u8; 32]>,
+}
+
+struct CaptureAdmission {
+    scope: AgentTurnHistoryKey,
+    now: Instant,
+    gap_epoch: u64,
 }
 
 struct ActiveTurn {
+    completed_requests: usize,
+    request_ids: Vec<String>,
+    request_ids_clipped: bool,
+    source_unverified: bool,
+    association_unverified: bool,
     opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
     agent_turn_id: String,
+    native_turn: Option<[u8; 32]>,
     ordinal: u64,
     user: Vec<VisibleContentPart>,
     steps: Vec<Vec<VisibleContentPart>>,
     output: output::AcceptedOutput,
+    boundary: super::boundary::BoundaryCapture,
     plan: PlanSnapshot,
     decision: Option<BranchDecisionV1>,
     executions: Vec<AcceptedExecution>,
@@ -107,14 +148,20 @@ struct ActiveTurn {
     first_request_id: Option<String>,
     last_request_id: Option<String>,
     last_request_status: AgentTurnStatus,
+    request_output_accepted: bool,
+    // Provider outcomes are facts about every actual request, independent of
+    // whether the routing stage is still waiting for a tool continuation.
+    provider_outcomes_known: bool,
     capture_partial: bool,
     finalized: bool,
 }
 
+#[derive(Clone)]
 struct ClosedTurn {
     decision: BranchDecisionV1,
     wire: Arc<VisibleAgentTurn>,
     completed: CompletedAgentTurn,
+    closure_proven: bool,
 }
 
 #[derive(Clone)]
@@ -134,8 +181,9 @@ struct SegmentKey {
     plan: PlanSnapshot,
     selected_branch_id: String,
     executed_branch_id: String,
-    model_configuration_id: String,
-    profile_digest: String,
+    model_configuration_id: Option<String>,
+    profile_digest: Option<String>,
+    evaluation_scope: Option<hiroute_domain::StageEvaluationScopeV1>,
 }
 
 impl Default for AgentTurnHistoryStore {
@@ -156,6 +204,24 @@ impl Default for AgentTurnHistoryStore {
 }
 
 impl AgentTurnHistoryStore {
+    #[cfg(test)]
+    pub(crate) fn with_lock_for_runtime_test<T>(&self, action: impl FnOnce() -> T) -> T {
+        let _guard = self.inner.lock();
+        action()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn clear_decision_for_runtime_test(&self, ticket: &AgentTurnTicket) {
+        let mut inner = self.inner.lock();
+        let entry = inner
+            .entries
+            .get_mut(&ticket.key)
+            .expect("retained session");
+        assert_eq!(entry.entry_token, ticket.entry_token);
+        assert_eq!(entry.active.agent_turn_id, ticket.agent_turn_id);
+        entry.active.decision = None;
+    }
+
     pub(crate) fn new(max_memory_bytes: usize, idle_ttl: Duration) -> Self {
         let mut instance_nonce = [0_u8; 32];
         let _ = getrandom::fill(&mut instance_nonce);
@@ -163,8 +229,10 @@ impl AgentTurnHistoryStore {
             max_memory_bytes: max_memory_bytes.max(1),
             idle_ttl,
             instance_nonce,
+            capture_gap_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
             inner: Arc::new(Mutex::new(StoreInner {
                 entries: BTreeMap::new(),
+                scopes: BTreeMap::new(),
                 next_token: 1,
                 next_request_token: 1,
                 next_id: 1,
@@ -204,6 +272,7 @@ impl AgentTurnHistoryStore {
             request,
             replay,
             TurnDecisionInputs {
+                native_turn: None,
                 history_continuity: crate::context_hold::HistoryContinuity::Continuing,
                 reselect_on_user_message: true,
             },
@@ -211,6 +280,7 @@ impl AgentTurnHistoryStore {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn begin_with_context(
         &self,
         key: AgentTurnHistoryKey,
@@ -220,31 +290,132 @@ impl AgentTurnHistoryStore {
         decision_inputs: TurnDecisionInputs,
         now: Instant,
     ) -> Result<AgentTurnBegin, AgentTurnHistoryError> {
-        let analyzed = analyze_request(request, replay)?;
+        self.begin_with_admission(
+            key,
+            plan,
+            Self::prepare_request(request, replay)?,
+            decision_inputs,
+            now,
+            || Some(()),
+        )
+        .map(|result| result.expect("unconditional test admission").0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prepare_request(
+        request: &ModelRequestIRV1,
+        replay: &ReplayStore,
+    ) -> Result<super::projection::AnalyzedRequest, AgentTurnHistoryError> {
+        analyze_request(request, replay)
+    }
+
+    pub(crate) fn begin_with_admission<T>(
+        &self,
+        key: AgentTurnHistoryKey,
+        plan: PlanSnapshot,
+        analyzed: super::projection::AnalyzedRequest,
+        decision_inputs: TurnDecisionInputs,
+        now: Instant,
+        admit: impl FnOnce() -> Option<T>,
+    ) -> Result<Option<(AgentTurnBegin, T)>, AgentTurnHistoryError> {
+        if analyzed.turns.is_empty() {
+            return Err(AgentTurnHistoryError::NoUserTurn);
+        }
+        let gap_epoch = self.capture_gap_epoch(&key).load(Ordering::Acquire);
+        let mut inner = self
+            .inner
+            .try_lock()
+            .ok_or(AgentTurnHistoryError::Resource)?;
+        inner.purge_expired(now, self.idle_ttl);
+        self.observe_capture_gap_epoch(&mut inner, &key, gap_epoch);
+        // Projection ran before either cache lock. Validate and reserve the
+        // checkpoint before changing active turns, tool outcomes or snapshots.
+        // The callback must not wait: both stores use try_lock admission.
+        let Some(admission) = admit() else {
+            inner.note_capture_gap(&key);
+            return Ok(None);
+        };
+        if !inner.reserve_scope_record(&key) {
+            return Err(AgentTurnHistoryError::Resource);
+        }
+        let selection = self.select_branch(&mut inner, &key, &analyzed, decision_inputs)?;
+        let branch_key = selection.key.clone();
+        match self.begin_locked(
+            &mut inner,
+            branch_key.clone(),
+            plan,
+            analyzed,
+            selection.inputs,
+            CaptureAdmission {
+                scope: selection.scope.clone(),
+                now,
+                gap_epoch,
+            },
+        ) {
+            Ok(mut begin) => {
+                if let Err(error) = self.finish_branch_admission(&mut inner, selection, &mut begin)
+                {
+                    // No lease has escaped yet. Keep an explicit scope gap and
+                    // release only this failed admission's slot.
+                    let ticket = match &begin {
+                        AgentTurnBegin::NewTurn { ticket, .. }
+                        | AgentTurnBegin::Continuation { ticket, .. } => ticket,
+                    };
+                    self.abort_locked(&mut inner, ticket);
+                    inner.note_capture_gap(&key);
+                    drop(inner);
+                    drop(begin);
+                    return Err(error);
+                }
+                Ok(Some((begin, admission)))
+            }
+            Err(error) => {
+                inner.note_capture_gap(&key);
+                Err(error)
+            }
+        }
+    }
+
+    fn begin_locked(
+        &self,
+        inner: &mut StoreInner,
+        key: AgentTurnHistoryKey,
+        plan: PlanSnapshot,
+        analyzed: super::projection::AnalyzedRequest,
+        decision_inputs: TurnDecisionInputs,
+        admission: CaptureAdmission,
+    ) -> Result<AgentTurnBegin, AgentTurnHistoryError> {
+        let CaptureAdmission {
+            scope,
+            now,
+            gap_epoch,
+        } = admission;
+        self.observe_capture_gap_epoch(inner, &key, gap_epoch);
         let latest = analyzed
             .turns
             .last()
-            .ok_or(AgentTurnHistoryError::Integrity)?;
-        let mut inner = self.inner.lock();
-        inner.purge_expired(now, self.idle_ttl);
-        if inner
-            .entries
-            .get(&key)
-            .is_some_and(|entry| entry.pending_request.is_some())
-        {
-            return Err(AgentTurnHistoryError::SessionTurnConflict);
-        }
+            .ok_or(AgentTurnHistoryError::NoUserTurn)?;
 
         if !inner.entries.contains_key(&key) {
+            if decision_inputs.history_continuity.uses_saved_user() {
+                return Err(AgentTurnHistoryError::TurnContextUnavailable);
+            }
             // A client may bring older messages when HiRoute first joins a session.
             // That prefix is missing from our history, but does not make the current
             // stage partial unless output after its user message was already missed.
-            let missing_current_output = analyzed.message_count > latest.user_index + 1;
-            let missing_history = analyzed.turns.len() > 1 || missing_current_output;
+            let missing_current_output = analyzed.output_after_latest_user;
+            let missing_history = analyzed.prior_history_missing
+                || analyzed.turns.len() > 1
+                || missing_current_output;
             let entry_token = inner.allocate_token()?;
             let request_token = inner.allocate_request_token()?;
-            let turn_id = self.allocate_id(&mut inner, "turn")?;
+            let turn_id = self.allocate_id(inner, "turn")?;
             let active = ActiveTurn {
+                completed_requests: 0,
+                request_ids: Vec::new(),
+                request_ids_clipped: false,
+                source_unverified: analyzed.user_origin_unverified,
+                association_unverified: false,
                 opening_cause: match decision_inputs.history_continuity {
                     crate::context_hold::HistoryContinuity::Shortened => {
                         hiroute_domain::AgentTurnOpeningCauseV1::HistoryShortened
@@ -255,10 +426,12 @@ impl AgentTurnHistoryStore {
                     _ => hiroute_domain::AgentTurnOpeningCauseV1::NoComparableHistory,
                 },
                 agent_turn_id: turn_id.clone(),
+                native_turn: decision_inputs.native_turn,
                 ordinal: 1,
                 user: latest.user.clone(),
                 steps: Vec::new(),
                 output: Default::default(),
+                boundary: Default::default(),
                 plan,
                 decision: None,
                 executions: Vec::new(),
@@ -266,22 +439,34 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
+                request_output_accepted: false,
+                provider_outcomes_known: true,
                 capture_partial: missing_current_output,
                 finalized: false,
             };
             let checkpoint = TranscriptCheckpoint {
                 active_user_index: latest.user_index,
                 message_count: analyzed.message_count,
+                digest: analyzed.anchors.as_ref().map(|a| a.complete),
+                retry_setup: analyzed.retry_setup,
             };
             let mut entry = SessionEntry {
+                scope: scope.clone(),
+                branch_id: hex(&key.0),
+                admission_sequence: request_token,
+                branch_relation: branches::HistoryRelation::Root,
                 entry_token,
                 revision: 1,
                 last_access: now,
                 history_partial: missing_history,
+                capture_gap_epoch: gap_epoch,
                 checkpoint,
+                response_boundary: None,
+                branch_cursor: analyzed.branch_cursor,
                 active,
                 closed: VecDeque::new(),
                 current_segment: None,
+                referenced_segment: None,
                 next_turn_ordinal: 2,
                 pending_request: Some(request_token),
                 snapshot_pins: 0,
@@ -300,6 +485,7 @@ impl AgentTurnHistoryStore {
                 return Err(AgentTurnHistoryError::Resource);
             }
             inner.accounted_bytes = inner.accounted_bytes.saturating_add(entry.accounted_bytes);
+            inner.scopes.entry(scope).or_default().insert(key.clone());
             inner.entries.insert(key.clone(), entry);
             inner.evict_to_budget(self.max_memory_bytes, Some(&key));
             if inner.accounted_bytes > self.max_memory_bytes {
@@ -314,6 +500,7 @@ impl AgentTurnHistoryStore {
                 request_token,
                 agent_turn_id: turn_id,
                 new_turn: true,
+                allow_affinity: true,
             };
             return Ok(AgentTurnBegin::NewTurn {
                 ticket,
@@ -334,13 +521,59 @@ impl AgentTurnHistoryStore {
             .entries
             .get(&key)
             .ok_or(AgentTurnHistoryError::Integrity)?;
-        let appended_user = decision_inputs.history_continuity
-            == crate::context_hold::HistoryContinuity::Continuing
-            && latest.user_index > entry.checkpoint.active_user_index;
+        if decision_inputs.history_continuity.uses_saved_user() {
+            let original_user = if entry.active.finalized {
+                entry
+                    .closed
+                    .back()
+                    .filter(|turn| turn.completed.agent_turn_id == entry.active.agent_turn_id)
+                    .map(|turn| turn.wire.user.as_slice())
+            } else {
+                Some(entry.active.user.as_slice())
+            };
+            if decision_inputs.native_turn.is_none()
+                || decision_inputs.native_turn != entry.active.native_turn
+                || entry.active.plan != plan
+                || entry.active.decision.is_none()
+                || original_user.is_none_or(|user| user.is_empty())
+            {
+                return Err(AgentTurnHistoryError::TurnContextUnavailable);
+            }
+        }
+        let missed_user = !decision_inputs.history_continuity.uses_saved_user()
+            && decision_inputs.history_continuity.semantic_continuity()
+            && analyzed.turns.iter().any(|turn| {
+                turn.user_index >= entry.checkpoint.message_count
+                    && turn.user_index < latest.user_index
+            });
+        if missed_user {
+            // An optional admission/adapter miss may have executed normally.
+            // Native transcripts can expose its intervening user turn when
+            // capture resumes; retain accepted output, but close that gap's
+            // assessment boundary instead of claiming complete history.
+            inner.note_capture_gap(&key);
+        }
+        let entry = inner
+            .entries
+            .get(&key)
+            .ok_or(AgentTurnHistoryError::Integrity)?;
+        let appended_user = if analyzed.measured {
+            // An exact response edge permits continuation; a changed native ID
+            // does not turn that continuation into a new observed input.
+            decision_inputs.history_continuity.semantic_continuity()
+                && opening::has_appended_input(&entry.checkpoint, &analyzed)
+        } else {
+            decision_inputs.history_continuity
+                == crate::context_hold::HistoryContinuity::NativeNewTurn
+                || matches!(
+                    decision_inputs.history_continuity,
+                    crate::context_hold::HistoryContinuity::Continuing
+                        | crate::context_hold::HistoryContinuity::NativeSameTurn
+                ) && latest.user_index > entry.checkpoint.active_user_index
+        };
         let inheritable_decision = entry.active.decision.is_some() && entry.active.plan == plan;
         let needs_decision = !inheritable_decision
-            || decision_inputs.history_continuity
-                != crate::context_hold::HistoryContinuity::Continuing
+            || !decision_inputs.history_continuity.semantic_continuity()
             || (appended_user && decision_inputs.reselect_on_user_message);
         let starts_new_turn = appended_user || needs_decision;
         let opening_cause = match decision_inputs.history_continuity {
@@ -353,15 +586,20 @@ impl AgentTurnHistoryStore {
             crate::context_hold::HistoryContinuity::NoCheckpoint => {
                 hiroute_domain::AgentTurnOpeningCauseV1::NoComparableHistory
             }
-            crate::context_hold::HistoryContinuity::Continuing if appended_user => {
+            crate::context_hold::HistoryContinuity::NativeNewTurn
+            | crate::context_hold::HistoryContinuity::Continuing
+                if appended_user =>
+            {
                 hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
             }
-            crate::context_hold::HistoryContinuity::Continuing => {
+            crate::context_hold::HistoryContinuity::Continuing
+            | crate::context_hold::HistoryContinuity::NativeSameTurn
+            | crate::context_hold::HistoryContinuity::NativeContinuation
+            | crate::context_hold::HistoryContinuity::NativeNewTurn => {
                 hiroute_domain::AgentTurnOpeningCauseV1::Other
             }
         };
-        let reset_branch_context = decision_inputs.history_continuity
-            != crate::context_hold::HistoryContinuity::Continuing
+        let reset_branch_context = !decision_inputs.history_continuity.semantic_continuity()
             && entry
                 .active
                 .decision
@@ -387,19 +625,35 @@ impl AgentTurnHistoryStore {
                     .ok_or(AgentTurnHistoryError::Resource)?;
                 entry.last_access = now;
                 entry.pending_request = Some(request_token);
+                entry.admission_sequence = request_token;
                 if entry.active.finalized {
                     output::reopen_finalized(entry, &latest.user);
                 }
-                output::apply_tool_results(
-                    &mut entry.active,
-                    &analyzed.tool_results,
-                    entry.checkpoint.message_count,
-                );
+                if decision_inputs.history_continuity.retains_message_prefix() {
+                    output::apply_tool_results(
+                        &mut entry.active,
+                        &analyzed.tool_results,
+                        entry.checkpoint.message_count,
+                    );
+                }
+                entry.branch_cursor = analyzed.branch_cursor;
+                if analyzed.measured
+                    && let Some(native_turn) = decision_inputs.native_turn
+                {
+                    // Exact continuation proves the execution association. Keep
+                    // its latest native hint without changing stage or input.
+                    entry.active.native_turn = Some(native_turn);
+                }
                 entry.active.output.next_step();
+                entry.active.boundary = Default::default();
+                entry.response_boundary = None;
                 entry.active.last_request_status = AgentTurnStatus::Unknown;
+                entry.active.request_output_accepted = false;
                 entry.checkpoint = TranscriptCheckpoint {
                     active_user_index: latest.user_index,
                     message_count: analyzed.message_count,
+                    digest: analyzed.anchors.as_ref().map(|a| a.complete),
+                    retry_setup: analyzed.retry_setup,
                 };
                 let ticket = AgentTurnTicket {
                     key: key.clone(),
@@ -408,6 +662,7 @@ impl AgentTurnHistoryStore {
                     request_token,
                     agent_turn_id: entry.active.agent_turn_id.clone(),
                     new_turn: false,
+                    allow_affinity: true,
                 };
                 let old_bytes = entry.accounted_bytes;
                 entry.accounted_bytes = entry_bytes(&key, entry);
@@ -432,9 +687,9 @@ impl AgentTurnHistoryStore {
                 inner.replace_accounting(old_bytes, new_bytes);
             }
             while inner.accounted_bytes > self.max_memory_bytes {
-                let changed = trim_oldest_closed_turn(&mut inner, &key)?;
+                let changed = trim_oldest_closed_turn(inner, &key)?;
                 if !changed {
-                    self.abort_locked(&mut inner, &ticket);
+                    self.abort_locked(inner, &ticket);
                     return Err(AgentTurnHistoryError::Resource);
                 }
             }
@@ -448,7 +703,7 @@ impl AgentTurnHistoryStore {
                 && entry.active.decision.is_some()
         });
         let next_segment_id = close_previous
-            .then(|| self.allocate_id(&mut inner, "segment"))
+            .then(|| self.allocate_id(inner, "segment"))
             .transpose()?;
         let completed = {
             let entry = inner
@@ -465,15 +720,39 @@ impl AgentTurnHistoryStore {
                 );
             }
             if let Some(next_segment_id) = next_segment_id {
-                if appended_user && entry.active.last_request_status == AgentTurnStatus::Unknown {
-                    entry.active.last_request_status = AgentTurnStatus::Interrupted;
-                }
-                Some(close_active(entry, next_segment_id, unix_ms())?)
+                // A new activation closes this routing stage, not the logical task.
+                // Only a witnessed interruption may claim Interrupted.
+                let closure = if appended_user {
+                    StageClosure::NewActivation
+                } else if entry.active.plan != plan {
+                    StageClosure::ConfigurationChanged
+                } else {
+                    StageClosure::AssociationLost
+                };
+                Some(close_active(entry, next_segment_id, unix_ms(), closure)?)
             } else {
                 None
             }
         };
-        let turn_id = self.allocate_id(&mut inner, "turn")?;
+        // Unverified native input may rewrite its prefix on every question.
+        // Assess only the actual stage we captured before that rewrite. Keep
+        // the new segment separate and never restore a segment fenced by a gap.
+        let observed_assessment_segment = if analyzed.user_origin_unverified && reset_branch_context
+        {
+            inner
+                .entries
+                .get(&key)
+                .filter(|entry| {
+                    entry
+                        .closed
+                        .back()
+                        .is_some_and(|turn| turn.completed.status == AgentTurnStatus::Completed)
+                })
+                .and_then(|entry| entry.current_segment.clone())
+        } else {
+            None
+        };
+        let turn_id = self.allocate_id(inner, "turn")?;
         let (ticket, old_bytes, new_bytes) = {
             let entry = inner
                 .entries
@@ -494,18 +773,28 @@ impl AgentTurnHistoryStore {
                 .ok_or(AgentTurnHistoryError::Resource)?;
             entry.last_access = now;
             entry.pending_request = Some(request_token);
+            entry.admission_sequence = request_token;
             if reset_branch_context {
                 // Keep visible history, but a new context cannot extend the old
                 // task's competence segment, even when it starts on the same model.
                 entry.current_segment = None;
             }
+            entry.branch_cursor = analyzed.branch_cursor;
+            entry.response_boundary = None;
             entry.active = ActiveTurn {
+                completed_requests: 0,
+                request_ids: Vec::new(),
+                request_ids_clipped: false,
+                source_unverified: analyzed.user_origin_unverified,
+                association_unverified: false,
                 opening_cause,
                 agent_turn_id: turn_id.clone(),
+                native_turn: decision_inputs.native_turn,
                 ordinal,
                 user: latest.user.clone(),
                 steps: Vec::new(),
                 output: Default::default(),
+                boundary: Default::default(),
                 plan,
                 decision: None,
                 executions: Vec::new(),
@@ -513,12 +802,16 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
+                request_output_accepted: false,
+                provider_outcomes_known: true,
                 capture_partial: false,
                 finalized: false,
             };
             entry.checkpoint = TranscriptCheckpoint {
                 active_user_index: latest.user_index,
                 message_count: analyzed.message_count,
+                digest: analyzed.anchors.as_ref().map(|a| a.complete),
+                retry_setup: analyzed.retry_setup,
             };
             let ticket = AgentTurnTicket {
                 key: key.clone(),
@@ -527,6 +820,7 @@ impl AgentTurnHistoryStore {
                 request_token,
                 agent_turn_id: turn_id,
                 new_turn: true,
+                allow_affinity: true,
             };
             let old_bytes = entry.accounted_bytes;
             entry.accounted_bytes = entry_bytes(&key, entry);
@@ -536,7 +830,7 @@ impl AgentTurnHistoryStore {
         inner.evict_to_budget(self.max_memory_bytes, Some(&key));
         inner.note_peak();
         while inner.accounted_bytes > self.max_memory_bytes {
-            if !trim_oldest_closed_turn(&mut inner, &key)? {
+            if !trim_oldest_closed_turn(inner, &key)? {
                 break;
             }
         }
@@ -558,7 +852,7 @@ impl AgentTurnHistoryStore {
             inner.replace_accounting(old_bytes, new_bytes);
         }
         if inner.accounted_bytes > self.max_memory_bytes {
-            self.abort_locked(&mut inner, &ticket);
+            self.abort_locked(inner, &ticket);
             return Err(AgentTurnHistoryError::Resource);
         }
         if let Some(inherited_decision) = inherited_decision {
@@ -576,29 +870,15 @@ impl AgentTurnHistoryStore {
                 inherited_decision: Some(inherited_decision),
             });
         }
-        let pin = {
-            let entry = inner
-                .entries
-                .get_mut(&key)
-                .ok_or(AgentTurnHistoryError::Resource)?;
-            entry.snapshot_pins = entry
-                .snapshot_pins
-                .checked_add(1)
-                .ok_or(AgentTurnHistoryError::Resource)?;
-            Arc::new(SnapshotPin {
-                inner: Arc::downgrade(&self.inner),
-                key: key.clone(),
-                entry_token: entry.entry_token,
-            })
-        };
         let history = {
+            let mut history = self
+                .pinned_snapshot(inner, &key, observed_assessment_segment.as_ref())
+                .unwrap_or_else(|| AgentTurnHistorySnapshot::empty(true));
             let entry = inner
                 .entries
                 .get(&key)
                 .ok_or(AgentTurnHistoryError::Resource)?;
-            let mut history = snapshot(entry, pin);
-            let new_branch_task = decision_inputs.history_continuity
-                != crate::context_hold::HistoryContinuity::Continuing
+            let new_branch_task = !decision_inputs.history_continuity.semantic_continuity()
                 && history
                     .previous_decision
                     .as_ref()
@@ -611,7 +891,7 @@ impl AgentTurnHistoryStore {
                     .assessment_target
                     .as_ref()
                     .is_some_and(|target| target.plan != entry.active.plan);
-            if new_branch_task || new_version {
+            if (new_branch_task && observed_assessment_segment.is_none()) || new_version {
                 history.assessment_from = None;
                 history.assessment_target = None;
             }
@@ -633,13 +913,91 @@ impl AgentTurnHistoryStore {
         ticket: &AgentTurnTicket,
         decision: BranchDecisionV1,
     ) -> Result<(), AgentTurnHistoryError> {
-        let mut inner = self.inner.lock();
-        let entry = matching_entry_mut(&mut inner, ticket)?;
+        let mut inner = self
+            .inner
+            .try_lock()
+            .ok_or(AgentTurnHistoryError::Resource)?;
+        self.commit_decision_locked(&mut inner, ticket, decision)
+    }
+
+    /// Only called after downstream delivery has ended. This uses the same
+    /// bounded store lock as finalization, never a retry loop on the output path.
+    pub(crate) fn commit_decision_after_delivery(
+        &self,
+        ticket: &AgentTurnTicket,
+        decision: BranchDecisionV1,
+    ) -> Result<(), AgentTurnHistoryError> {
+        self.commit_decision_locked(&mut self.inner.lock(), ticket, decision)
+    }
+
+    fn commit_decision_locked(
+        &self,
+        inner: &mut StoreInner,
+        ticket: &AgentTurnTicket,
+        decision: BranchDecisionV1,
+    ) -> Result<(), AgentTurnHistoryError> {
+        let entry = matching_entry_mut(inner, ticket)?;
         if !ticket.new_turn || entry.active.decision.is_some() {
             return Err(AgentTurnHistoryError::Integrity);
         }
+        let charge = decision_bytes(&decision);
+        inner.evict_to_budget(
+            self.max_memory_bytes.saturating_sub(charge),
+            Some(&ticket.key),
+        );
+        if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
+            return Err(AgentTurnHistoryError::Resource);
+        }
+        let entry = matching_entry_mut(inner, ticket)?;
+        let old = entry.accounted_bytes;
         entry.active.decision = Some(decision);
+        entry.accounted_bytes = entry_bytes(&ticket.key, entry);
+        let new = entry.accounted_bytes;
+        inner.replace_accounting(old, new);
+        inner.note_peak();
         Ok(())
+    }
+
+    pub(crate) fn bind_request(
+        &self,
+        ticket: &AgentTurnTicket,
+        request_id: &str,
+    ) -> Option<hiroute_domain::AgentTurnAdmissionV1> {
+        let mut inner = self.inner.lock();
+        let charge = request_id.len().saturating_mul(3).saturating_add(256);
+        inner.evict_to_budget(
+            self.max_memory_bytes.saturating_sub(charge),
+            Some(&ticket.key),
+        );
+        let fits = inner.accounted_bytes.saturating_add(charge) <= self.max_memory_bytes;
+        let entry = matching_entry_mut(&mut inner, ticket).ok()?;
+        // Admission identity exists independently of bounded membership storage,
+        // decision success and the optional affinity cache. Clipping the index
+        // must not erase which actual stage admitted this request.
+        let admission = hiroute_domain::AgentTurnAdmissionV1 {
+            version: 1,
+            agent_turn_id: entry.active.agent_turn_id.clone(),
+            branch_id: entry.branch_id.clone(),
+            revision: entry.revision,
+            ordinal: entry.active.ordinal,
+            opening_cause: entry.active.opening_cause,
+        };
+        if !fits || entry.active.request_ids.len() >= 128 {
+            entry.active.request_ids_clipped = true;
+            return Some(admission);
+        }
+        entry.active.request_ids.push(request_id.to_owned());
+        entry
+            .active
+            .first_request_id
+            .get_or_insert_with(|| request_id.to_owned());
+        entry.active.last_request_id = Some(request_id.to_owned());
+        let old = entry.accounted_bytes;
+        entry.accounted_bytes = entry_bytes(&ticket.key, entry);
+        let new = entry.accounted_bytes;
+        inner.replace_accounting(old, new);
+        inner.note_peak();
+        Some(admission)
     }
 
     pub(crate) fn finish_request(
@@ -652,6 +1010,28 @@ impl AgentTurnHistoryStore {
         now: Instant,
     ) -> Result<Option<CompletedAgentTurn>, AgentTurnHistoryError> {
         let mut inner = self.inner.lock();
+        let charge = executions
+            .iter()
+            .map(|e| {
+                e.model_configuration_id.len()
+                    + e.profile_digest.len()
+                    + e.executed_branch_id.len()
+                    + e.request_id.len()
+                    + 512
+            })
+            .sum::<usize>()
+            .saturating_mul(3)
+            .saturating_add(request_id.len() * 3 + 4096);
+        inner.evict_to_budget(
+            self.max_memory_bytes.saturating_sub(charge),
+            Some(&ticket.key),
+        );
+        if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
+            let entry = matching_entry_mut(&mut inner, ticket)?;
+            entry.pending_request = None;
+            inner.note_capture_gap(&ticket.key);
+            return Err(AgentTurnHistoryError::Resource);
+        }
         let next_segment_id = terminal
             .then(|| self.allocate_id(&mut inner, "segment"))
             .transpose()?;
@@ -665,15 +1045,32 @@ impl AgentTurnHistoryStore {
             if entry.active.first_request_id.is_none() {
                 entry.active.first_request_id = Some(request_id.clone());
             }
+            if entry.active.request_ids.contains(&request_id) {
+                // The Gateway identifier was already bound before classification.
+            } else if entry.active.request_ids.len() < 128 {
+                entry.active.request_ids.push(request_id.clone());
+            } else {
+                entry.active.request_ids_clipped = true;
+            }
             entry.active.last_request_id = Some(request_id);
+            entry.active.provider_outcomes_known &= status != AgentTurnStatus::Unknown;
             entry.active.last_request_status = if terminal {
                 status
             } else {
                 AgentTurnStatus::Unknown
             };
+            entry.active.completed_requests += 1;
             entry.active.executions.extend(executions);
+            entry.response_boundary = (!entry.active.capture_partial)
+                .then(|| entry.active.boundary.evidence())
+                .flatten();
             let completed = if let Some(next_segment_id) = next_segment_id {
-                Some(close_active(entry, next_segment_id, unix_ms())?)
+                Some(close_active(
+                    entry,
+                    next_segment_id,
+                    unix_ms(),
+                    StageClosure::RequestTerminal,
+                )?)
             } else {
                 None
             };
@@ -682,6 +1079,8 @@ impl AgentTurnHistoryStore {
             (old, entry.accounted_bytes, completed)
         };
         inner.replace_accounting(old, new);
+        let scope = inner.entries.get(&ticket.key).unwrap().scope.clone();
+        inner.limit_terminal_records(&scope);
         inner.evict_to_budget(self.max_memory_bytes, Some(&ticket.key));
         inner.note_peak();
         Ok(completed)
@@ -711,13 +1110,9 @@ impl AgentTurnHistoryStore {
             && entry.pending_request == Some(ticket.request_token)
         {
             entry.pending_request = None;
-            if active_is_empty(&entry.active) {
-                return;
-            }
             // An externally dropped request cannot drain its capture worker.
             // Keep the accepted prefix, but never advertise a complete turn.
-            entry.active.capture_partial = true;
-            entry.history_partial = true;
+            inner.note_capture_gap(&ticket.key);
         }
     }
 
@@ -732,484 +1127,6 @@ impl AgentTurnHistoryStore {
             .ok_or(AgentTurnHistoryError::Resource)?;
         opaque_id(kind, &self.instance_nonce, value)
     }
-}
-
-fn active_is_empty(active: &ActiveTurn) -> bool {
-    active.first_request_id.is_none()
-        && active.last_request_id.is_none()
-        && active.steps.is_empty()
-        && active.executions.is_empty()
-}
-
-fn trim_oldest_closed_turn(
-    inner: &mut StoreInner,
-    key: &AgentTurnHistoryKey,
-) -> Result<bool, AgentTurnHistoryError> {
-    let changed = {
-        let entry = inner
-            .entries
-            .get_mut(key)
-            .ok_or(AgentTurnHistoryError::Resource)?;
-        if entry.closed.is_empty() {
-            None
-        } else {
-            entry.history_partial = true;
-            if let Some(removed) = entry.closed.front()
-                && let Some(segment) = entry.current_segment.as_mut()
-                && removed.completed.segment_id == segment.segment_id
-            {
-                segment.partial = true;
-            }
-            entry.closed.pop_front();
-            let old = entry.accounted_bytes;
-            entry.accounted_bytes = entry_bytes(key, entry);
-            Some((old, entry.accounted_bytes))
-        }
-    };
-    let Some((old, new)) = changed else {
-        return Ok(false);
-    };
-    inner.replace_accounting(old, new);
-    Ok(true)
-}
-
-fn matching_entry_mut<'a>(
-    inner: &'a mut StoreInner,
-    ticket: &AgentTurnTicket,
-) -> Result<&'a mut SessionEntry, AgentTurnHistoryError> {
-    let entry = inner
-        .entries
-        .get_mut(&ticket.key)
-        .ok_or(AgentTurnHistoryError::TurnContextUnavailable)?;
-    if entry.entry_token != ticket.entry_token
-        || entry.revision != ticket.revision
-        || entry.pending_request != Some(ticket.request_token)
-        || entry.active.agent_turn_id != ticket.agent_turn_id
-    {
-        return Err(AgentTurnHistoryError::TurnContextUnavailable);
-    }
-    Ok(entry)
-}
-
-fn close_active(
-    entry: &mut SessionEntry,
-    next_segment_id: String,
-    finished_at_ms: u64,
-) -> Result<CompletedAgentTurn, AgentTurnHistoryError> {
-    if entry.active.finalized
-        && entry
-            .closed
-            .back()
-            .is_some_and(|turn| turn.completed.agent_turn_id == entry.active.agent_turn_id)
-    {
-        entry.closed.pop_back();
-    }
-    let decision = entry
-        .active
-        .decision
-        .as_ref()
-        .ok_or(AgentTurnHistoryError::TurnContextUnavailable)?;
-    let selected_branch_id = decision.branch_id.clone();
-    let attribution = execution_attribution(&entry.active.executions, &selected_branch_id);
-    let (segment_id, segment_partial) = match &attribution {
-        ExecutionAttribution::Single {
-            executed_branch_id,
-            model_configuration_id,
-            profile_digest,
-            ..
-        } => {
-            let segment_key = SegmentKey {
-                branch_execution: entry
-                    .active
-                    .executions
-                    .first()
-                    .and_then(|e| e.branch_execution.clone()),
-                plan: entry.active.plan.clone(),
-                selected_branch_id: selected_branch_id.clone(),
-                executed_branch_id: executed_branch_id.clone(),
-                model_configuration_id: model_configuration_id.clone(),
-                profile_digest: profile_digest.clone(),
-            };
-            if entry
-                .current_segment
-                .as_ref()
-                .is_some_and(|segment| segment.key == segment_key)
-            {
-                let segment = entry.current_segment.as_mut().expect("checked");
-                segment.through_turn_id = entry.active.agent_turn_id.clone();
-                segment.through_ordinal = entry.active.ordinal;
-                segment.partial |= entry.active.capture_partial;
-                (segment.segment_id.clone(), segment.partial)
-            } else {
-                let segment_id = next_segment_id;
-                entry.current_segment = Some(SegmentState {
-                    segment_id: segment_id.clone(),
-                    key: segment_key,
-                    first_turn_id: entry.active.agent_turn_id.clone(),
-                    through_turn_id: entry.active.agent_turn_id.clone(),
-                    first_ordinal: entry.active.ordinal,
-                    through_ordinal: entry.active.ordinal,
-                    partial: entry.active.capture_partial,
-                });
-                (segment_id, entry.active.capture_partial)
-            }
-        }
-        ExecutionAttribution::Mixed | ExecutionAttribution::Unknown => {
-            entry.current_segment = None;
-            (next_segment_id, true)
-        }
-    };
-    let status = entry.active.last_request_status;
-    let executed_branch_id = match &attribution {
-        ExecutionAttribution::Single {
-            executed_branch_id, ..
-        } if executed_branch_id != &selected_branch_id => Some(executed_branch_id.clone()),
-        _ => None,
-    };
-    let wire = Arc::new(VisibleAgentTurn {
-        branch_id: Some(selected_branch_id.clone()),
-        executed_branch_id,
-        user: std::mem::take(&mut entry.active.user),
-        status,
-        steps: std::mem::take(&mut entry.active.steps),
-    });
-    let completed = CompletedAgentTurn {
-        opening_cause: entry.active.opening_cause,
-        branch_execution: if matches!(attribution, ExecutionAttribution::Single { .. }) {
-            entry
-                .active
-                .executions
-                .first()
-                .and_then(|e| e.branch_execution.clone())
-        } else {
-            None
-        },
-        agent_turn_id: entry.active.agent_turn_id.clone(),
-        segment_id,
-        ordinal: entry.active.ordinal,
-        plan: entry.active.plan.clone(),
-        selected_branch_id,
-        attribution,
-        started_at_ms: entry.active.started_at_ms,
-        finished_at_ms,
-        status,
-        history_partial: entry.active.capture_partial || segment_partial,
-        first_request_id: entry.active.first_request_id.clone(),
-        last_request_id: entry.active.last_request_id.clone(),
-    };
-    entry.closed.push_back(ClosedTurn {
-        decision: decision.clone(),
-        wire,
-        completed: completed.clone(),
-    });
-    entry.active.finalized = true;
-    entry.active.output = Default::default();
-    Ok(completed)
-}
-
-fn execution_attribution(
-    executions: &[AcceptedExecution],
-    selected_branch_id: &str,
-) -> ExecutionAttribution {
-    let Some(first) = executions.first() else {
-        return ExecutionAttribution::Unknown;
-    };
-    if executions.iter().skip(1).any(|execution| {
-        execution.model_configuration_id != first.model_configuration_id
-            || execution.profile_digest != first.profile_digest
-            || execution.executed_branch_id != first.executed_branch_id
-            || execution.branch_execution != first.branch_execution
-    }) {
-        return ExecutionAttribution::Mixed;
-    }
-    ExecutionAttribution::Single {
-        selected_branch_id: selected_branch_id.to_owned(),
-        executed_branch_id: first.executed_branch_id.clone(),
-        model_configuration_id: first.model_configuration_id.clone(),
-        profile_digest: first.profile_digest.clone(),
-    }
-}
-
-fn snapshot(entry: &SessionEntry, pin: Arc<SnapshotPin>) -> AgentTurnHistorySnapshot {
-    let visible_conversation = entry
-        .closed
-        .iter()
-        .map(|turn| Arc::clone(&turn.wire))
-        .collect::<Vec<_>>();
-    let target_segment = entry.current_segment.as_ref();
-    let assessment_from = target_segment.and_then(|segment| {
-        entry
-            .closed
-            .iter()
-            .position(|turn| turn.completed.segment_id == segment.segment_id)
-    });
-    let assessment_target = target_segment.and_then(|segment| {
-        let last = entry
-            .closed
-            .iter()
-            .rev()
-            .find(|turn| turn.completed.segment_id == segment.segment_id)?;
-        match &last.completed.attribution {
-            ExecutionAttribution::Single { .. } => Some(AssessmentTarget {
-                branch_execution: last.completed.branch_execution.clone(),
-                segment_id: segment.segment_id.clone(),
-                first_turn_id: segment.first_turn_id.clone(),
-                through_turn_id: segment.through_turn_id.clone(),
-                first_ordinal: segment.first_ordinal,
-                through_ordinal: segment.through_ordinal,
-                target_partial: segment.partial,
-                plan: last.completed.plan.clone(),
-                attribution: last.completed.attribution.clone(),
-            }),
-            ExecutionAttribution::Mixed | ExecutionAttribution::Unknown => None,
-        }
-    });
-    AgentTurnHistorySnapshot {
-        previous_decision: entry
-            .closed
-            .back()
-            .map(|turn| (turn.completed.plan.clone(), turn.decision.clone())),
-        visible_conversation,
-        history_partial: entry.history_partial,
-        assessment_from,
-        assessment_target,
-        _pin: Some(pin),
-    }
-}
-
-impl StoreInner {
-    fn allocate_token(&mut self) -> Result<u64, AgentTurnHistoryError> {
-        let token = self.next_token;
-        self.next_token = token
-            .checked_add(1)
-            .ok_or(AgentTurnHistoryError::Resource)?;
-        Ok(token)
-    }
-
-    fn allocate_request_token(&mut self) -> Result<u64, AgentTurnHistoryError> {
-        let token = self.next_request_token;
-        self.next_request_token = token
-            .checked_add(1)
-            .ok_or(AgentTurnHistoryError::Resource)?;
-        Ok(token)
-    }
-
-    fn purge_expired(&mut self, now: Instant, ttl: Duration) {
-        let expired = self
-            .entries
-            .iter()
-            .filter(|(_, entry)| {
-                entry.pending_request.is_none()
-                    && entry.snapshot_pins == 0
-                    && now.saturating_duration_since(entry.last_access) >= ttl
-            })
-            .map(|(key, _)| key.clone())
-            .collect::<Vec<_>>();
-        for key in expired {
-            self.remove(&key);
-        }
-    }
-
-    fn evict_to_budget(&mut self, budget: usize, protected: Option<&AgentTurnHistoryKey>) {
-        while self.accounted_bytes > budget {
-            let victim = self
-                .entries
-                .iter()
-                .filter(|(key, entry)| {
-                    protected.is_none_or(|protected| protected != *key)
-                        && entry.pending_request.is_none()
-                        && entry.snapshot_pins == 0
-                })
-                .min_by_key(|(_, entry)| entry.last_access)
-                .map(|(key, _)| key.clone());
-            let Some(victim) = victim else {
-                break;
-            };
-            self.remove(&victim);
-        }
-    }
-
-    fn remove(&mut self, key: &AgentTurnHistoryKey) {
-        if let Some(entry) = self.entries.remove(key) {
-            self.accounted_bytes = self.accounted_bytes.saturating_sub(entry.accounted_bytes);
-        }
-    }
-
-    fn replace_accounting(&mut self, old: usize, new: usize) {
-        self.accounted_bytes = self.accounted_bytes.saturating_sub(old).saturating_add(new);
-    }
-
-    fn note_peak(&mut self) {
-        self.peak_accounted_bytes = self.peak_accounted_bytes.max(self.accounted_bytes);
-    }
-}
-
-fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> usize {
-    size_of::<SessionEntry>()
-        + size_of_val(key)
-        + entry.active.decision.as_ref().map_or(0, decision_bytes)
-        + entry.active.agent_turn_id.capacity()
-        + entry
-            .active
-            .first_request_id
-            .as_ref()
-            .map_or(0, String::capacity)
-        + entry
-            .active
-            .last_request_id
-            .as_ref()
-            .map_or(0, String::capacity)
-        + entry.active.user.capacity() * size_of::<VisibleContentPart>()
-        + entry
-            .active
-            .user
-            .iter()
-            .map(VisibleContentPart::retained_bytes)
-            .sum::<usize>()
-        + entry.active.steps.capacity() * size_of::<Vec<VisibleContentPart>>()
-        + entry.active.output.retained_bytes()
-        + entry
-            .active
-            .steps
-            .iter()
-            .map(|step| step.capacity() * size_of::<VisibleContentPart>())
-            .sum::<usize>()
-        + entry
-            .active
-            .steps
-            .iter()
-            .flat_map(|step| step.iter())
-            .map(VisibleContentPart::retained_bytes)
-            .sum::<usize>()
-        + entry
-            .active
-            .executions
-            .iter()
-            .map(|execution| {
-                size_of::<AcceptedExecution>()
-                    + execution
-                        .branch_execution
-                        .as_ref()
-                        .map_or(0, |e| e.policy.name.capacity() + 80)
-                    + execution.model_configuration_id.capacity()
-                    + execution.profile_digest.capacity()
-                    + execution.executed_branch_id.capacity()
-                    + execution.request_id.capacity()
-            })
-            .sum::<usize>()
-        + entry
-            .closed
-            .iter()
-            .map(|turn| {
-                turn.wire.retained_bytes()
-                    + completed_bytes(&turn.completed)
-                    + decision_bytes(&turn.decision)
-            })
-            .sum::<usize>()
-        + entry.current_segment.as_ref().map_or(0, segment_bytes)
-}
-
-fn decision_bytes(value: &BranchDecisionV1) -> usize {
-    size_of::<BranchDecisionV1>()
-        + value.strategy_id.capacity()
-        + value.schema_version.capacity()
-        + value.payload_digest.capacity()
-        + value.branch_id.capacity()
-        + value.reason_codes.capacity()
-            * size_of::<crate::server::core_runtime::profiles::ComplexityReasonCodeV1>()
-        + value.matched_user_phrase_ids.capacity() * size_of::<String>()
-        + value
-            .matched_user_phrase_ids
-            .iter()
-            .map(String::capacity)
-            .sum::<usize>()
-        + value
-            .policy
-            .as_ref()
-            .map_or(0, |policy| policy.name.capacity() + 80)
-        + value
-            .competence_trigger
-            .as_ref()
-            .map_or(0, |trigger| trigger.segment_id.capacity())
-}
-
-fn completed_bytes(value: &CompletedAgentTurn) -> usize {
-    size_of::<CompletedAgentTurn>()
-        + value
-            .branch_execution
-            .as_ref()
-            .map_or(0, |e| e.policy.name.capacity() + 80)
-        + value.agent_turn_id.capacity()
-        + value.segment_id.capacity()
-        + value.plan.plan_id.capacity()
-        + value.selected_branch_id.capacity()
-        + attribution_bytes(&value.attribution)
-        + value.first_request_id.as_ref().map_or(0, String::capacity)
-        + value.last_request_id.as_ref().map_or(0, String::capacity)
-}
-
-fn attribution_bytes(value: &ExecutionAttribution) -> usize {
-    match value {
-        ExecutionAttribution::Single {
-            selected_branch_id,
-            executed_branch_id,
-            model_configuration_id,
-            profile_digest,
-        } => {
-            selected_branch_id.capacity()
-                + executed_branch_id.capacity()
-                + model_configuration_id.capacity()
-                + profile_digest.capacity()
-        }
-        ExecutionAttribution::Mixed | ExecutionAttribution::Unknown => 0,
-    }
-}
-
-fn segment_bytes(value: &SegmentState) -> usize {
-    size_of::<SegmentState>()
-        + value
-            .key
-            .branch_execution
-            .as_ref()
-            .map_or(0, |e| e.policy.name.capacity() + 80)
-        + value.segment_id.capacity()
-        + value.first_turn_id.capacity()
-        + value.through_turn_id.capacity()
-        + value.key.plan.plan_id.capacity()
-        + value.key.selected_branch_id.capacity()
-        + value.key.executed_branch_id.capacity()
-        + value.key.model_configuration_id.capacity()
-        + value.key.profile_digest.capacity()
-}
-
-fn store_fixed_bytes() -> usize {
-    size_of::<AgentTurnHistoryStore>() + size_of::<StoreInner>() + 2_048
-}
-
-fn opaque_id(kind: &str, nonce: &[u8; 32], value: u64) -> Result<String, AgentTurnHistoryError> {
-    let mut mac =
-        HmacSha256::new_from_slice(nonce).map_err(|_| AgentTurnHistoryError::Integrity)?;
-    mac.update(kind.as_bytes());
-    mac.update(&value.to_be_bytes());
-    Ok(format!("{kind}-{}", hex(&mac.finalize().into_bytes())))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut value = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        let _ = write!(&mut value, "{byte:02x}");
-    }
-    value
-}
-
-fn unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .try_into()
-        .unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

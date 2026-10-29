@@ -34,6 +34,27 @@ def upgrade(product, action):
     return result
 
 
+def wait_for_drain(product, timeout=5):
+    # Prepare pauses admission and reports a snapshot, not completion. Receiving
+    # an HTTP body does not join its server-side request guard. Follow the same
+    # Status protocol as the Desktop updater and retain bounded state evidence.
+    deadline = time.monotonic() + timeout
+    status = upgrade(product, 'prepare')
+    transitions = []
+    while True:
+        state = {key: status[key] for key in ['paused', 'active_calls', 'active_tasks']}
+        if not transitions or transitions[-1] != state:
+            transitions.append(state)
+            transitions = transitions[-16:]
+        assert status['paused'], f'upgrade admission unexpectedly resumed: {transitions}'
+        if status['active_calls'] == 0 and status['active_tasks'] == 0:
+            print(json.dumps({'scenario': 'upgrade-drain-progress', 'states': transitions}), flush=True)
+            return status
+        assert time.monotonic() < deadline, f'upgrade did not drain: {transitions}'
+        time.sleep(.02)
+        status = upgrade(product, 'status')
+
+
 def run(repository):
     candidate = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repository, text=True).strip()
     product = Product(repository)
@@ -68,7 +89,7 @@ def run(repository):
             (product.cpa_fixture / 'release').touch()
             status, body = old.result(timeout=15)
             assert status == 200 and b'fixture answer' in body, (status, body)
-        drained = upgrade(product, 'prepare')
+        drained = wait_for_drain(product)
         assert drained['paused'] and drained['active_calls'] == 0 and drained['active_tasks'] == 0
         product.stop()
         assert product.process is None, 'exact daemon did not exit'

@@ -178,6 +178,7 @@ impl ClaudeSource {
                                     .map(|value| (key.to_owned(), value.as_str().to_owned()))
                             })
                             .collect(),
+                        gateway_hints: std::env::var("CLAUDE_CODE_GATEWAY_HINT_HEADERS").ok(),
                         present_environment_fields: process_presence.clone(),
                     },
                     api_key_helper_present: false,
@@ -257,6 +258,7 @@ impl ClaudeSource {
                                     .map(|value| (key.to_owned(), value.as_str().to_owned()))
                             })
                             .collect(),
+                        gateway_hints: std::env::var("CLAUDE_CODE_GATEWAY_HINT_HEADERS").ok(),
                         present_environment_fields: process_presence.clone(),
                     },
                     api_key_helper_present: false,
@@ -298,6 +300,7 @@ pub(super) struct ClaudeSettingsSubset {
 #[derive(Clone, Default)]
 pub(super) struct ClaudeEnvironmentSubset {
     pub(super) context_environment: BTreeMap<String, String>,
+    pub(super) gateway_hints: Option<String>,
     pub(super) base_url: Option<String>,
     pub(super) model: Option<String>,
     pub(super) default_opus_model: Option<String>,
@@ -382,6 +385,9 @@ impl<'de> Deserialize<'de> for ClaudeEnvironmentSubset {
                             result
                                 .context_environment
                                 .insert(key.to_owned(), map.next_value()?);
+                        }
+                        "CLAUDE_CODE_GATEWAY_HINT_HEADERS" => {
+                            result.gateway_hints = Some(map.next_value()?)
                         }
                         "ANTHROPIC_BASE_URL" => {
                             result.base_url = Some(map.next_value()?);

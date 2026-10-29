@@ -398,9 +398,34 @@ mod tests {
         }
         let selected = selected_hermes_executable(Ok(None), Some(home.path())).unwrap();
         assert_eq!(selected, executable.canonicalize().unwrap());
-        let support = inspect_installation([selected]);
+        let support = inspect_installation([selected.clone()]);
         assert!(support.middleware && support.skills && support.chat_sdk);
         assert!(!support.responses_sdk && !support.messages_sdk);
+        // Whole-turn hooks and reasoning replay are optional on supported older
+        // SDKs. All required request-header interfaces remain independently usable.
+        for resource in [
+            "openai/resources/responses/responses.py",
+            "anthropic/resources/messages/messages.py",
+        ] {
+            let path = site.join(resource);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "def create(self, *, extra_headers: dict): pass").unwrap();
+        }
+        for version in ["0.19.1", "0.20.0", "0.0.0"] {
+            std::fs::write(
+                site.join("pyproject.toml"),
+                format!("[project]\nversion = \"{version}\"\n"),
+            )
+            .unwrap();
+            let support = inspect_installation([selected.clone()]);
+            assert!(
+                support.middleware
+                    && support.chat_sdk
+                    && support.responses_sdk
+                    && support.messages_sdk
+            );
+            assert_eq!(support.version, version);
+        }
         assert!(!sentinel.exists());
         // Preserve first-command selection, even if another package would pass inspection.
         let first = home.path().join("selected/hermes");

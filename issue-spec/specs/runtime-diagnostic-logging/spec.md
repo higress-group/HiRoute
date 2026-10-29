@@ -36,6 +36,15 @@ Redundant native endpoint aliases cannot fabricate separate credential failures.
 Observation being disabled does not make the diagnostic model outcome automatically
 successful or unknown if the runtime has an authoritative result.
 
+#### Scenario: A Home read is rejected after successful Local Control calls
+
+- **WHEN** Desktop snapshot or observation transport succeeds but the final product
+  read fails its context, session, epoch or snapshot check
+- **THEN** diagnostics MUST record the final read rejection separately from transport
+  success, using a fixed operation and error vocabulary without response contents.
+  The original failure and read fences MUST remain unchanged; diagnostic delivery
+  failure MUST NOT replace the read result or authorize a retry.
+
 ### Requirement: Every level excludes raw sensitive values before enqueue
 
 Allowlisted typed construction MUST exclude credentials, recoverable credential

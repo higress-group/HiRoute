@@ -21,8 +21,15 @@ pub(super) const PUBLICATION_TARGET: &str = "publication/current";
 const PUBLICATION_MARKER_SCHEMA: &str = "hiroute.product-publication-marker/v2";
 const LEGACY_MARKER_SCHEMA: &str = "hiroute.product-publication-marker/v1";
 
+#[cfg(test)]
+thread_local! { pub(super) static MARKER_DECODES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+#[cfg(test)]
+thread_local! { pub(super) static SETTINGS_RECORD_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
 mod lifecycle;
+mod settings_candidate;
 use lifecycle::target_error;
+pub(super) use settings_candidate::SettingsCandidate;
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -33,7 +40,7 @@ enum InstallationDecision {
     Abort,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PublicationEffectMarkerV1 {
     schema: String,
@@ -47,6 +54,25 @@ struct PublicationEffectMarkerV1 {
     record: Option<PublicationRecordV1>,
     #[serde(default)]
     decision: InstallationDecision,
+}
+
+// One immutable parsed marker. Holding the Arc means a caller's Arc::make_mut
+// produces a different allocation; pointer equality never accepts changed content.
+// The operation, current journal and publication bindings are rechecked by callers.
+pub(super) struct DecodedMarker {
+    effect: OwnedEffectV1,
+    operation_id: OperationId,
+    marker: PublicationEffectMarkerV1,
+}
+impl DecodedMarker {
+    fn matches(&self, effect: &OwnedEffectV1) -> bool {
+        std::sync::Arc::ptr_eq(&self.effect.compensation, &effect.compensation)
+            && self.effect.effect_id == effect.effect_id
+            && self.effect.kind == effect.kind
+            && self.effect.target == effect.target
+            && self.effect.before_fingerprint == effect.before_fingerprint
+            && self.effect.after_fingerprint == effect.after_fingerprint
+    }
 }
 
 impl LocalControlAdapter {
@@ -76,8 +102,7 @@ impl LocalControlAdapter {
                 return Err(invalid("publication.agent.source-grant-kind"));
             }
             let effect = operation
-                .step(OperationStepKind::ApplySecrets)
-                .effects
+                .grant_effects()
                 .iter()
                 .find(|effect| is_agent_access_grant_effect(effect))
                 .ok_or_else(|| invalid("publication.agent.source-grant-effect"))?;
@@ -124,7 +149,7 @@ impl LocalControlAdapter {
             .iter()
             .find(|effect| effect.effect_id == intent.effect_id())
         {
-            let (_, marker) = Self::decode_publication_marker(effect)?;
+            let (_, marker) = self.decode_publication_marker(effect)?;
             if let Some(record) = marker.record {
                 return Ok(record);
             }
@@ -172,13 +197,7 @@ impl LocalControlAdapter {
             .find(|record| Some(&record.digest) == intent.before_fingerprint())
             .ok_or_else(|| PortError::new(PortErrorCode::Conflict, "publication.agent.base"))?;
         if settings {
-            return hiroute_domain::settings_model_publication_record(
-                operation,
-                intent,
-                base,
-                &grant_effect,
-            )
-            .map_err(|_| invalid("publication.settings.decode"));
+            return self.settings_publication_record(operation, intent, base, &grant_effect);
         }
         let record = match mutation.kind() {
             AgentAccessGrantMutationKindV1::Ensure => {
@@ -198,6 +217,7 @@ impl LocalControlAdapter {
     }
 
     fn publication_effect(
+        &self,
         operation_id: &OperationId,
         intent: &ExternalEffectIntentV1,
         record: &PublicationRecordV1,
@@ -206,26 +226,50 @@ impl LocalControlAdapter {
             .verify()
             .map_err(|_| invalid("publication.record.verify"))?;
         let no_op = intent.before_fingerprint() == Some(&record.digest);
-        Ok(OwnedEffectV1 {
+        let marker = PublicationEffectMarkerV1 {
+            schema: PUBLICATION_MARKER_SCHEMA.to_owned(),
+            operation_id: operation_id.to_string(),
+            workspace_id: record.workspace_id.clone(),
+            publication_revision: record.publication_revision.get(),
+            before_digest: intent.before_fingerprint().cloned(),
+            after_digest: record.digest.clone(),
+            no_op,
+            record: Some(record.clone()),
+            decision: InstallationDecision::Prepared,
+        };
+        let effect = OwnedEffectV1 {
             effect_id: intent.effect_id().to_owned(),
             kind: OwnedEffectKind::Publication,
             target: PUBLICATION_TARGET.to_owned(),
             before_fingerprint: intent.before_fingerprint().cloned(),
             after_fingerprint: Some(record.digest.clone()),
-            compensation: serde_json::to_value(PublicationEffectMarkerV1 {
-                schema: PUBLICATION_MARKER_SCHEMA.to_owned(),
-                operation_id: operation_id.to_string(),
-                workspace_id: record.workspace_id.clone(),
-                publication_revision: record.publication_revision.get(),
-                before_digest: intent.before_fingerprint().cloned(),
-                after_digest: record.digest.clone(),
-                no_op,
-                record: Some(record.clone()),
-                decision: InstallationDecision::Prepared,
-            })
+            compensation: serde_json::Value::Null.into(),
+        };
+        self.encode_publication_marker(effect, marker)
+    }
+
+    // Preserve the authenticated typed record while encoding a local marker. The
+    // existing single-slot exact-Arc decoder cache still rechecks journal binding
+    // on use; changed or reopened bytes take the full cold authentication path.
+    fn encode_publication_marker(
+        &self,
+        mut effect: OwnedEffectV1,
+        marker: PublicationEffectMarkerV1,
+    ) -> PortResult<OwnedEffectV1> {
+        let operation_id = OperationId::parse(marker.operation_id.clone())
+            .map_err(|_| invalid("publication.effect.operation"))?;
+        effect.compensation = serde_json::to_value(&marker)
             .map_err(|_| invalid("publication.effect.encode"))?
-            .into(),
-        })
+            .into();
+        *self
+            .publication_marker_cache
+            .lock()
+            .map_err(|_| invalid("publication.marker-cache.lock"))? = Some(DecodedMarker {
+            effect: effect.clone(),
+            operation_id,
+            marker,
+        });
+        Ok(effect)
     }
 
     fn publication_marker(
@@ -242,7 +286,7 @@ impl LocalControlAdapter {
         operation: &OperationV1,
         effect: &OwnedEffectV1,
     ) -> PortResult<(OperationId, PublicationEffectMarkerV1)> {
-        let (operation_id, mut marker) = Self::decode_publication_marker(effect)?;
+        let (operation_id, mut marker) = self.decode_publication_marker(effect)?;
         if operation_id != operation.operation_id {
             return Err(invalid("publication.effect.operation-binding"));
         }
@@ -286,8 +330,32 @@ impl LocalControlAdapter {
     }
 
     fn decode_publication_marker(
+        &self,
         effect: &OwnedEffectV1,
     ) -> PortResult<(OperationId, PublicationEffectMarkerV1)> {
+        let mut cache = self
+            .publication_marker_cache
+            .lock()
+            .map_err(|_| invalid("publication.marker-cache.lock"))?;
+        if let Some(cached) = cache.as_ref()
+            && cached.matches(effect)
+        {
+            return Ok((cached.operation_id.clone(), cached.marker.clone()));
+        }
+        let (operation_id, marker) = Self::decode_publication_marker_uncached(effect)?;
+        *cache = Some(DecodedMarker {
+            effect: effect.clone(),
+            operation_id: operation_id.clone(),
+            marker: marker.clone(),
+        });
+        Ok((operation_id, marker))
+    }
+
+    fn decode_publication_marker_uncached(
+        effect: &OwnedEffectV1,
+    ) -> PortResult<(OperationId, PublicationEffectMarkerV1)> {
+        #[cfg(test)]
+        MARKER_DECODES.with(|count| count.set(count.get() + 1));
         if effect.kind != OwnedEffectKind::Publication || effect.target != PUBLICATION_TARGET {
             return Err(invalid("publication.effect.kind"));
         }
@@ -366,13 +434,14 @@ impl LocalControlAdapter {
                     .cloned();
                 let effect = match recorded {
                     Some(effect) => effect,
-                    None => Self::publication_effect(operation_id, intent, &record)?,
+                    None => self.publication_effect(operation_id, intent, &record)?,
                 };
                 let (_, marker) = self.publication_marker_from_operation(operation, &effect)?;
-                let mut effect = effect;
-                effect.compensation = serde_json::to_value(marker)
-                    .map_err(|_| invalid("publication.observe.marker-encode"))?
-                    .into();
+                let effect = if effect.compensation["schema"] == PUBLICATION_MARKER_SCHEMA {
+                    effect
+                } else {
+                    self.encode_publication_marker(effect, marker)?
+                };
                 if active.as_ref() == Some(&record) {
                     return if self.publication_is_installed(&record)? {
                         Ok(EffectReconciliation::Applied(effect))
@@ -427,7 +496,7 @@ impl LocalControlAdapter {
                     )?;
                 }
                 crate::publication_failpoint::crash("after_prepare");
-                Self::publication_effect(operation_id, intent, &record)
+                self.publication_effect(operation_id, intent, &record)
             },
         )
     }
@@ -469,7 +538,7 @@ impl LocalControlAdapter {
                 let publication = record
                     .verify()
                     .map_err(|_| invalid("publication.activate.verify"))?;
-                publication
+                record
                     .gateway_snapshot()
                     .map_err(|_| invalid("publication.activate.projection"))?;
                 self.register_operation_agent_grants(

@@ -37,6 +37,8 @@ mod completion;
 mod emission;
 #[path = "request/planner.rs"]
 mod planner;
+#[path = "request/stage_assessment.rs"]
+mod stage_assessment;
 #[derive(Clone, Debug)]
 pub struct RequestObservationMetadata {
     pub workspace_id: String,
@@ -853,6 +855,10 @@ impl RequestObservation {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    pub(crate) fn logical_request_id(&self) -> &str {
+        &self.inner.metadata.request_id
+    }
+
     pub fn has_accepted_attempt(&self) -> bool {
         self.lock_state().accepted_attempt.is_some()
     }
@@ -879,6 +885,10 @@ impl RequestObservation {
         })
     }
 
+    pub(crate) fn agent_turn_admitted(&self, admission: &hiroute_domain::AgentTurnAdmissionV1) {
+        self.emit_execution(ExecutionFactV1::AgentTurnAdmitted(admission.clone()), None);
+    }
+
     pub(crate) fn agent_turn_finished(&self, turn: &CompletedAgentTurn) {
         let (executed_branch_id, model_configuration_id, profile_digest, attribution) =
             match &turn.attribution {
@@ -898,6 +908,7 @@ impl RequestObservation {
             };
         self.emit_execution(
             ExecutionFactV1::AgentTurnFinished {
+                history_membership: turn.history_membership.clone(),
                 opening_cause: Some(turn.opening_cause),
                 branch_execution: turn.branch_execution.clone(),
                 agent_turn_id: turn.agent_turn_id.clone(),
@@ -928,6 +939,10 @@ impl RequestObservation {
     }
 
     pub(crate) fn branch_assessment_recorded(&self, assessment: &BoundAssessment) {
+        if matches!(assessment.target.attribution, ExecutionAttribution::Mixed) {
+            self.record_composite_assessment(assessment);
+            return;
+        }
         let ExecutionAttribution::Single {
             model_configuration_id,
             profile_digest,
@@ -938,6 +953,7 @@ impl RequestObservation {
         };
         self.emit_execution(
             ExecutionFactV1::BranchAssessmentRecorded {
+                history_membership: assessment.target.history_membership.clone(),
                 segment_id: assessment.target.segment_id.clone(),
                 plan_id: assessment.target.plan.plan_id.clone(),
                 plan_revision: assessment.target.plan.plan_revision,
@@ -1076,7 +1092,9 @@ fn fallback_reason(start_reason: &str) -> FallbackReason {
         | "quota"
         | "binding_overload" => FallbackReason::RateLimited,
         "credential" => FallbackReason::AuthenticationRejected,
-        "permanent_client" | "reasoning_history" => FallbackReason::InputRejected,
+        "permanent_client" | "reasoning_history" | "context_length" => {
+            FallbackReason::InputRejected
+        }
         "timeout" => FallbackReason::Timeout,
         "protocol" => FallbackReason::InvalidOutput,
         "connector_unavailable" | "connector_not_ready" => FallbackReason::ConnectorUnavailable,

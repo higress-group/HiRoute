@@ -41,6 +41,8 @@
 .routing-lane-label.purple strong { color: var(--purple); }
 .routing-lane-cell { position: relative; display: grid; min-width: 0; min-height: calc(104px * var(--hr-text-scale)); }
 .routing-lane-cell::before { content: ''; position: absolute; top: 50%; left: -5px; right: -5px; height: 2px; background: var(--border); }
+.routing-pending-cell::before { display: none; }
+.routing-pending-cell { align-items: center; }
 .routing-cell-empty { border: 0; }
 .routing-lanes-notice { display: flex; justify-content: flex-end; }
 .routing-new-turns { color: var(--accent-bright); border-color: var(--accent); }

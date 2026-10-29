@@ -203,6 +203,22 @@ impl ManagedCpaRuntime {
         inner: &mut RuntimeInner,
         expected: Option<&BorrowedSubscriptionEvidence>,
     ) -> Result<Vec<CpaAccountMaterializationV1>, CpaLifecycleError> {
+        self.discover_materializations_locked_with_refresh(
+            inner,
+            expected,
+            false,
+            self.spec.control_timeout,
+        )
+    }
+
+    pub(super) fn discover_materializations_locked_with_refresh(
+        &self,
+        inner: &mut RuntimeInner,
+        expected: Option<&BorrowedSubscriptionEvidence>,
+        refresh_models: bool,
+        control_timeout: Duration,
+    ) -> Result<Vec<CpaAccountMaterializationV1>, CpaLifecycleError> {
+        inner.catalog_recovery.clear_observation();
         let admission = self.admission.snapshot();
         if expected.is_none() {
             // A stale batch or passive inventory read cannot reopen a retiring
@@ -278,11 +294,12 @@ impl ManagedCpaRuntime {
             &managed_identities,
             &live.secrets,
             &live.artifact.version().to_string(),
-            self.spec.control_timeout,
-            expected.is_some(),
+            control_timeout,
+            expected.is_some() || refresh_models,
             &self.diagnostics.handle().context(),
         ) {
             Ok(discovered) => {
+                inner.catalog_recovery = Default::default();
                 self.emit_stage(
                     CpaStageKind::ControlCall,
                     CpaStageOutcome::Completed,
@@ -292,6 +309,7 @@ impl ManagedCpaRuntime {
                 discovered
             }
             Err(error) => {
+                inner.catalog_recovery.observe(&error, Instant::now());
                 self.emit_stage(
                     CpaStageKind::ControlCall,
                     CpaStageOutcome::Failed {

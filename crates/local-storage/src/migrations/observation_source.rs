@@ -147,7 +147,7 @@ impl MigrationSetCoordinator {
             durable::directory_barrier(root)?;
         }
         if let Some(progress) = &options.upgrade_progress {
-            let _ = progress.send(hiroute_host_runtime::StorageUpgradePhase::Backup);
+            progress.report(hiroute_host_runtime::StorageUpgradePhase::Backup);
         }
         set.publish_coordinated_source(barrier, root, &options)?;
         Ok(())

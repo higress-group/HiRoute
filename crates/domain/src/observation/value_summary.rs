@@ -93,6 +93,18 @@ pub struct ApiEquivalentPriceV1 {
     pub execution_model_configuration_id: Option<String>,
     pub quote: crate::FrozenPriceQuoteV1,
 }
+
+/// Bounds for a same-usage scenario when the exclusive cache-write split was
+/// not reported. They do not assert an observed write count or actual bill.
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ApiEquivalentBoundsV1 {
+    pub reference_min_micros: u64,
+    pub reference_max_micros: u64,
+    /// Routed amount minus reference; a negative value is cheaper routing.
+    pub difference_min_micros: i64,
+    pub difference_max_micros: i64,
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 pub struct ApiEquivalentValueReportV1 {
     pub schema: String,
@@ -112,6 +124,8 @@ pub struct ApiEquivalentValueReportV1 {
     pub routed_estimate_micros: Option<u64>,
     pub reference_estimate_micros: Option<u64>,
     pub estimated_savings_micros: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub same_usage_bounds: Option<ApiEquivalentBoundsV1>,
     pub compared_routed_subtotal_micros: Option<u64>,
     pub compared_reference_subtotal_micros: Option<u64>,
     pub actual_cash_micros: Option<u64>,

@@ -154,6 +154,65 @@ HiRoute SHALL provide bounded backend-ranked session and request spending querie
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/125#issuecomment-6229105150
 
+### Requirement: Cost comparison presents exact amounts or complete bounded ranges
+
+A same-usage cost comparison SHALL show each available metric as exact, otherwise a valid full-scope bound, otherwise unknown. A known routed estimate remains visible when the reference is unknown. Bounds must cover the same population and maintain routed-minus-reference consistency; partial paired subtotals cannot stand in for totals. Retention/overflow or inconsistent counts remain explicit, not false complete values. Main card, evidence tiles and timeline SHALL preserve nonzero small amounts, currency, signs and unknown contributions using consistent precision; bound rounding cannot narrow the interval. True zero, missing value and unavailable comparison are distinct. Essential estimate/same-usage limitations remain visible, while detailed calculations are accessible. No display action changes prices, usage, retained records or calls a model. Range endpoints retain separate signs and use an unambiguous localized separator, including Chinese 至, so two negative endpoints are not read as subtraction.
+
+#### Scenario: A full bound exists without exact reference
+
+- **WHEN** routed=2764, reference bounds 92400..115200 and difference bounds -112436..-89636 micros cover the full scope despite compared=0
+- **THEN** the main result and tile show routed $0.0028, reference $0.0924 to $0.1152 and outward difference −$0.1125 to −$0.0896 (Chinese uses 至), not a contradictory Unknown; signs and bounds remain unchanged.
+
+#### Scenario: Exact, tiny and zero amounts
+
+- **WHEN** exact and bound data coexist, or a value is zero/one micro/a small nonzero amount
+- **THEN** exact has priority without duplicate ranges; true zero is zero and nonzero never rounds to displayed zero.
+
+#### Scenario: Incomplete or inconsistent evidence
+
+- **WHEN** bounds are missing/inverted/unsafe/inconsistent, counts conflict, or retention/overflow exists
+- **THEN** the affected totals remain unknown with their real reason; known routed is preserved except where total scope itself is invalid, and subsets are labelled subsets.
+
+#### Scenario: Unavailable reference conditions
+
+- **WHEN** Primary, currency or price basis is not uniquely available
+- **THEN** the specific unavailable condition remains visible; no inferred currency, zero usage or new comparison population is invented.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/229#issuecomment-6440856870
+
+### Requirement: Evidence counts disclose their actual routing cohorts
+
+The evidence view SHALL label the selected display scope separately from suggestion evidence. Header stage/scored/unrated counts follow the display filters. Step-up evidence remains the active-revision, per-category Regular complete-scoring cohort within retention and its applicable model-update cutoff, independent of the display time window; labels remain visible even when the suggestion is keep. When complete authoritative evidence proves no announcement applies, use retention-only wording, not a fabricated update date. If the published per-category identities or applicability cannot be established, the model-update basis SHALL remain unconfirmed; incomplete or refreshed editor options cannot prove applicability or absence. The reported effective cohort start remains visible. Required thresholds and cohorts remain unchanged; noncurrent/all-version actions retain existing restrictions. Counts, original model identity, unscored last stages and protection/release distinctions are not changed to appear consistent. Keep a compact visible step-up sample count and explicit active-revision/category/Regular scope; place retention and model-update cutoff details in an accessible disclosure. Do not refer to the header as the scope above or hide the difference between display counts and suggestion counts.
+
+#### Scenario: Different legitimate counts
+
+- **WHEN** the header has four scored stages but the active Regular step-up cohort has two
+- **THEN** both values remain unchanged and their different scopes are explicitly stated.
+
+#### Scenario: Period and announcement scope
+
+- **WHEN** the user changes seven days to all, another branch has an announcement, or retention is later than the applicable announcement
+- **THEN** suggestion population keeps its actual scope and labels do not attribute another branch or retention date to a model update.
+
+#### Scenario: Incomplete or refreshed editor options
+
+- **WHEN** a published Regular binding is absent from current editor options or its current model identity differs from the published identity while the report contains model-update announcements
+- **THEN** the view describes the model-update basis as unconfirmed and displays the reported effective cohort start without asserting applicability or absence from those options.
+
+#### Scenario: Proven absence of model updates
+
+- **WHEN** the complete report contains no model-update announcements
+- **THEN** the view identifies retention as the bound on the step-up scope without inventing an announcement date.
+
+#### Scenario: No later assessment or historical view
+
+- **WHEN** the final stage is unrated or a historical/all-revision view is open
+- **THEN** unrated evidence and active-revision-only action restrictions remain visible; no score or scope is fabricated.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/229#issuecomment-6440858265
+
 ## Implementation references
 
 - [Value projection](../../../crates/observation/src/value/mod.rs),

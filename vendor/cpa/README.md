@@ -67,6 +67,15 @@ deadline. Removal, disable, lost access and a different registration epoch canno
 request this handoff. Transport failure alone does not retry. Continued churn
 remains bounded and observable; an old account cannot populate a replacement.
 
+HiRoute's saved-source maintenance separately recovers an empty directory after a
+current, quiescent transient failure. It may issue one existing control PATCH after
+rechecking the exact enabled source, sharing the original 20-second control budget;
+CPA's five-second discovery deadline remains unchanged. Repeated failures back off
+from five seconds to one minute. Passive reads and inference do not initiate this
+retry. Authentication/authorization rejection, invalid catalogs, successful empty
+lists and missing diagnostics remain unavailable without an automatic refresh.
+This does not add a catalog cache, an OAuth refresh chain or a new polling owner.
+
 HiRoute's ordinary routing compilation and Codex preview read and verify the
 registered catalog without repeating an already-correct auth control PATCH.
 An explicit subscription check refreshes it; credential/version changes use the
@@ -147,13 +156,24 @@ is not part of this contract; configure HTTPS_PROXY for subscription endpoints.
 
 The checked-in `development-cpa-artifacts.v1.json` identifies a historical
 `.1` binary; its hash is retained as measured, not relabeled as the current
-`.3` build. Do not stage that old binary with the current daemon.
+pinned build. Do not stage that old binary with the current daemon.
 
 On macOS, `python3 scripts/package-desktop.py build --cpa-source-repo /absolute/CPA-checkout`
 generates the current patched CPA and a measured `cpa-artifacts.json` in its
-candidate output directory. For a Debug Desktop build, set
+candidate output directory. To prepare only that component, without rebuilding
+Desktop or claiming installation acceptance, use the same producer:
+
+```sh
+python3 scripts/package-desktop.py prepare-cpa \
+  --cpa-source-repo /absolute/CPA-checkout \
+  --output /absolute/new-component-output
+```
+
+This builds the pinned source and patch, signs and probes the actual binary,
+and measures its architecture, dependencies and digest. It never promotes an
+existing development manifest by changing its flag. For either Debug or Release, set
 `HIROUTE_CPA_MANIFEST=/absolute/candidate-output/cpa-artifacts.json` and use that
-same output's `HiRoute.app/Contents/MacOS/cliproxyapi` beside the Debug `hirouted`:
+same output's `HiRoute.app/Contents/MacOS/cliproxyapi` beside `hirouted`:
 
 ```sh
 python3 scripts/stage-desktop-cpa.py \
@@ -166,6 +186,11 @@ Use the default ad-hoc package identity for this development staging path.
 The staging tool rejects stale versions before copying; it still verifies the
 exact digest, architecture, signature, dependencies and version of the binary.
 A Linux backend test does not validate this native macOS build/install path.
+Release Desktop rejects development-only, invalid or wrong-target manifests in
+its build script, using the same parser as native launch. An optional launch-time
+artifact rejection emits the closed CPA `artifact_validate` failure rather than
+silently disappearing. A missing subscription runtime remains unavailable in
+management and routing; it does not establish that native authentication failed.
 
 ## Managed OAuth authentication recovery and execution evidence
 
@@ -191,19 +216,36 @@ bridge uses that path. WebSocket inference is outside this metadata contract.
 
 Before the first downstream header/body/flush commit, a response-writer wrapper
 sets the reserved `X-HiRoute-CPA-Execution` header to
-`v1;<inference_attempts>;<http_401_responses>;<auth_recovery_attempts>;<auth_recovery_successes>`.
-Each count is at most 32; overflow is `v1;unknown`. The trace carries no account
+`v2;<inference_attempts>;<http_401_responses>;<auth_recovery_attempts>;<auth_recovery_successes>;<downstream_status>;<first>;<last>`.
+Each count is at most 32; overflow is `v2;unknown`. The trace carries no account
 identifier, token, prompt, provider error body or usage. The upstream header
 filter excludes this reserved name, and the local writer overwrites any supplied
 value at commit. The same rule covers success and error replies. The existing
 stream bootstrap recovery finishes before downstream commit; forwarded stream
 failures do not trigger this auth recovery.
 
+The fixed first/last slots contain `<ordinal>,<upstream_status>,<phase>,<reason>`;
+an absent slot is `-` and an unobserved upstream status is `0`. Ordinals correlate
+status and failure to the same transport attempt. Intermediate attempts contribute
+to the count without allocating more slots. Phases are `started`, `headers`,
+`transport` and `body`; reasons are the closed values `none`, `cancelled`, `timeout`,
+`eof`, `unexpected_eof`, `dns`, `tls`, `network` and `other`. Classification uses
+typed errors, never error text. The downstream status is the actual response
+writer status and must match the HTTP response seen by Gateway. An upstream 500,
+a transport failure without headers, and a 200 followed by a body read failure
+are therefore distinct observations. A 200 plus normal EOF does not establish
+successful protocol completion or identify a response-conversion failure.
+
+The snapshot freezes at the first downstream commit. Later stream failures and
+cancellations are outside this snapshot, even if another diagnostic observes
+them. No new polling endpoint or retained per-request ledger is introduced.
+
 Gateway trusts these facts only for a validated CPA connector whose current
 credential lease resolved to loopback. Other upstreams' identically named headers
 are ignored. Missing, malformed, duplicate, unsupported-version or overflow
 metadata is explicitly unknown, not zero or one. The typed `upstream_wire`
-diagnostic carries the counters under `cpa_execution`; the ordinary logical
+diagnostic carries the counters and optional inference observations under
+`cpa_execution`; the ordinary logical
 attempt/usage producer remains unchanged. Gateway reconstructs public response
 headers and does not forward the private bridge header.
 
@@ -214,7 +256,8 @@ mutex, before reading/updating credentials or invoking a refresher. The stock
 mutex wait itself remains non-interruptible; it can retain a canceled goroutine
 until the active refresher exits, but must not cause another refresh/send.
 
-The additive diagnostic field defaults to absent for historical records. No
+Gateway still reads the old four-counter `v1` header, without inventing inference
+detail. The additive diagnostic field defaults to absent for historical records. No
 persisted business-data migration or public response-contract change is needed;
 the private CPA handshake is delivered by the matching managed artifact version.
 
@@ -227,5 +270,7 @@ go test ./sdk/cliproxy/executor ./internal/runtime/executor/helps ./sdk/api/hand
 These cover the HTTP counter against a controlled upstream ledger, OAuth
 exclusion, spoofed/error response headers, metadata commit, pinned same-account
 401 recovery, no-refresh-token rejection, no recovery loop, canceled refresh
-waiters, and stream payload followed by 401 without replay. Controlled tests do
+waiters, stream payload followed by 401 without replay, real loopback HTTP/transport
+failures, truncated response bodies, cancellation, first/last attempt correlation
+and commit-time freezing. Controlled tests do
 not replace independent real-account expiry/refresh and restart acceptance.

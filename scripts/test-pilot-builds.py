@@ -103,6 +103,12 @@ print('fixture build completed')
         admission = patch.object(m.local.remote, 'admit_cache_server', return_value={'state': 'ready'})
         admission.start()
         self.addCleanup(admission.stop)
+        # Tiny fixture builds have a declared disk budget. Exercise real space
+        # admission without depending on the CI host's available capacity.
+        capacity = patch.object(m.local.shutil, 'disk_usage', return_value=types.SimpleNamespace(
+            total=100 * m.local.GIB, used=10 * m.local.GIB, free=90 * m.local.GIB))
+        capacity.start()
+        self.addCleanup(capacity.stop)
         self.store = m.local.Store(self.root / 'state', self.root / 'host.lock')
         self.manager = m.Builds(self.store)
 
@@ -156,6 +162,14 @@ print('fixture build completed')
         first = self.acquire(jobs=2)
         second = self.acquire(jobs=3)
         self.assertNotEqual(first['build_run'], second['build_run'])
+
+    def test_low_fixture_capacity_refuses_before_creating_a_build(self):
+        low = types.SimpleNamespace(total=100 * m.local.GIB, used=99 * m.local.GIB, free=m.local.GIB)
+        with patch.object(m.local.shutil, 'disk_usage', return_value=low):
+            with self.assertRaisesRegex(ValueError, 'Less than 30 GiB free; build not started'):
+                self.acquire()
+        self.assertEqual(list((self.store.root / 'runs').iterdir()), [])
+        self.assertEqual(list((self.store.root / 'checkouts').iterdir()), [])
 
     def test_changed_build_environment_cannot_share_bundle(self):
         first = self.acquire()

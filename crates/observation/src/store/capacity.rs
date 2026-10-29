@@ -4,6 +4,8 @@ use super::LocalObservationStore;
 #[cfg(test)]
 pub(super) mod probe;
 #[cfg(test)]
+mod quality_tests;
+#[cfg(test)]
 mod tests;
 use hiroute_domain::{ObservationCapacityStatusV1 as Status, ObservationQueryError as Error};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -490,8 +492,10 @@ impl LocalObservationStore {
         sql(crate::query_v2::invalidate_visibility(&tx))?;
         // Do not call increment_store_revision: its 200-request analysis drain
         // would transfer capacity work to the unrelated accelerated catch-up loop.
+        // Quality pages and trust generations also change at this logical
+        // barrier, rather than waiting for physical projection cleanup.
         sql(tx.execute(
-            "UPDATE observation_meta SET value=CAST(value AS INTEGER)+1 WHERE key='store_revision'",
+            "UPDATE observation_meta SET value=CAST(value AS INTEGER)+1 WHERE key IN('store_revision','plan_quality_generation')",
             [],
         ))?;
         sql(tx.commit())

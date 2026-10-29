@@ -300,6 +300,7 @@ pub(crate) fn trust(plan_id: &str) -> FrozenExecutionTrustV1 {
 
 pub(crate) fn route_decision(plan_id: &str) -> ExecutionFactV1 {
     ExecutionFactV1::RouteDecision(Box::new(RouteDecisionFactV1 {
+        native_auxiliary: false,
         planner_version: "planner-v1".to_owned(),
         plan_id: Some(AgentPlanId::parse(plan_id).unwrap()),
         route: hiroute_domain::ModelRequestRouteV2::Plan {

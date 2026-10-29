@@ -14,10 +14,20 @@ their HiRoute connection token as `Authorization: Bearer <token>`. The current
 publication still verifies the issued grant, protocol and aliases. Retained
 `X-HiRoute-Token` clients keep explicit-header precedence, including when native
 SDKs also send Authorization; an invalid explicit token never falls back to it.
+Messages SDKs may send the same issued model-grant token through a single
+`x-api-key` when both higher-priority carriers are absent. This carrier still uses
+current grant/protocol/alias verification; arbitrary provider keys grant no access.
 Qoder's dedicated entry and delegated run authority keep their existing rules.
 Upstream authorization is rebuilt from the selected provider lease. The
 [listener scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/bearer_auth.rs)
 covers admission, rejection, token rotation and outbound isolation.
+
+[Context overflow classification](src/runtime/driver/context_overflow.rs)
+preserves a closed HTTP 400 cause for native compaction recovery after bounded
+candidate relay is exhausted. It emits static sanitized error text and does not
+infer overflow from generic errors or replay committed output. The
+[listener scenarios](../../tools/e2e-harness/tests/p0_gateway_runtime/context_overflow.rs)
+cover all three ingress protocols, successful relay and stale-cause rejection.
 
 Branch candidates may use distinct execution keys for different reasoning settings
 on the same model. Publication freezes `source_binding_id` for their current Native
@@ -37,6 +47,90 @@ reports transport writes only after they succeed, including an empty end-stream 
 zero byte count and frame identity; the [bounded receiver](../observation/src/writer/lifecycle.rs)
 ACKs it in sequence before RequestFinished. These transport events describe delivery;
 semantic output, usage and the business receipt retain their own facts.
+An accepted Attempt means its output was delivered. A later native model failure
+or truncation retains that identity and its failed model event; the Request and
+history stage remain failed, allowing the receipt to preserve actual execution.
+
+The registered Codex subscription request dialect omits redundant completed or
+explicit-null reasoning-item status that its input parser rejects; null conveys
+no completion proof. Public Responses paths keep the field, and unfinished states
+are never normalized into completed history. [Native request projection](src/adapters/request/native.rs) applies
+this normalization per candidate without changing the original request, reasoning
+payload or other item metadata. Cross-protocol Responses output uses one shared,
+response-scoped synthetic item identity across incremental and buffered renderers;
+provider-native item IDs stay exact. The [request regression](src/adapters/tests/codex_replay.rs)
+and [response lifecycle scenarios](src/adapters/response/client_stream_tests.rs)
+cover endpoint isolation, replay and identity consistency.
+[The standard Responses JSON dialect](src/adapters/responses_dialect.rs) is an explicit
+request/attempt adapter contract. New registered Token Plan sources select it through
+their exact Responses endpoint, including the ordinary source-local `UserDeclared`
+model path. The endpoint registry does not imply executable catalog model qualification;
+the [save/reopen regression](../daemon/src/control/runtime/model_connections/registered_token_plan_tests.rs)
+uses the real registered check and durable source transaction without inventing catalog capabilities.
+Native Codex subscriptions and old saved sources keep
+their original dialect. It consumes boolean `encrypted` annotations only at JSON Schema
+nodes, retains the complete tool declarations, and projects all-plaintext `agent_message`
+content into assistant blocks carrying the original author/recipient and ordered text.
+The [schema-position owner](src/adapters/schema_encoding.rs) is shared with
+[ingress compaction](src/content_ref/ingress/schema.rs): schema nodes retain their protocol structure
+for encoding negotiation and shape validation, while large descriptions, defaults and examples
+remain Replay content. Business keys with the same names are not annotations. The canonical
+IR and all request templates collect nested content references; the request memory budget
+still charges retained nodes, keys and strings, including schema containers named `type` or
+`role`; only string tags use the inline identity path. The shared
+[template JSON value locator](src/adapters/request/template_json.rs) excludes literal object
+keys from reference substitution without changing serde's wire bytes. Retained structure and
+Replay-backed data keep equivalent output; value-reference counts and encoding validation
+remain strict.
+Peer author/recipient/item identities stay budgeted inline, and peer body text remains independently backed. Reserved Replay-marker
+literals in those identities are preserved on native passthrough but rejected by this
+metadata-text projection, which cannot embed a backed identity safely.
+[Production-path Replay controls](src/adapters/responses_dialect_replay_tests.rs) compare
+scan/parse/compact/IR/template output with inline bytes across native Responses, standard
+Responses and portable Chat/Messages tools, including large data and budget refusal.
+Original ingress history/source evidence is untouched. Cipher/mixed peer content and
+historical function calls explicitly declaring encrypted paths cannot cross this boundary.
+Such a function-call replay uses the same closed candidate-local portability failure;
+malformed declarations remain ingress errors and encrypted source responses remain strict.
+For reasoning history, [native request projection](src/adapters/request/native.rs)
+uses the retained canonical encrypted state classified by ingress. Missing, null and
+empty-string carriers keep their original shape; nonempty or Replay-backed opaque state
+excludes the standard target, including legacy provider state without a sidecar.
+Authorized prefix cleanup uses original canonical positions and excludes tool declarations.
+The [reasoning regressions](src/adapters/responses_dialect_reasoning_tests.rs) and
+[Replay checks](src/adapters/responses_dialect_reasoning_replay_tests.rs) cover these
+boundaries without rewriting original history. The [preflight owner](src/composition/ports.rs)
+records this closed portability failure per candidate so a compatible native member can
+still execute; [listener controls](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_nullable_reasoning.rs)
+also cover the standard-only no-candidate result and subsequent tool-stage assessment.
+Standard Responses function-call replay may omit vendor encoding metadata even when
+schema annotations negotiated the response extension. Codex 0.147's
+[custom-provider request builder](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/core/src/client.rs#L837)
+intentionally removes this optional field from its outgoing history. That omission
+does not rewrite the native record or supply trusted origin evidence. A fresh native session, or native compaction which actually removes unsupported
+items, is required before choosing the new source for such a conversation; no history is
+rewritten and compaction itself may require a call through the old source.
+
+The selected translator declares `encrypted_function_args: []` only when this actual
+request negotiated the encoding extension. Chat/Message JSON tool producers use the same
+request-bound result when mapped to Responses. Ordinary Responses clients receive no new
+encoding field, so dropping unknown extensions cannot create an artificial history break.
+The prepared request passes the same projection to the successful attempt, native/JSON
+renderers and observation tracker; retry and fallback attempts derive their own result. Native Responses preserves missing, empty and nonempty declarations; malformed
+or contradictory declarations fail without a successful terminal claim. Input replay and
+accepted-boundary digests retain those distinctions. Nonempty encoding remains native-only
+and its exact replay is contextual; it grants neither cross-protocol/cleanup permission nor
+candidate affinity. [Encoding tests](src/adapters/responses_dialect_tests.rs)
+cover the full Codex V2 declaration shape, complete SSE lifecycle, buffered JSON, peer
+Replay, producer-specific conversions and negative cases. [Stored choices](../domain/src/routing/stored.rs)
+persist the standard dialect across restart; old missing choices are never upgraded.
+These deterministic checks do not establish real model child-task execution or scoring.
+
+Request history and response rendering share the
+[phase representation rule](src/adapters/mod.rs): `final_answer` maps to the ordinary
+assistant channel on Chat and Messages; other named phases require Responses.
+Native Responses keeps the original phases. The
+[history projection cases](src/adapters/tests/message_phase.rs) cover this boundary.
 
 Messages thinking computation is projected in
 [request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
@@ -47,15 +141,73 @@ renderers omit foreign reasoning without inventing signatures. The
 [production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
 covers the listener boundary, including tool continuation.
 
+Authenticated request intake uses the same request-owned [Replay backing](src/replay.rs)
+before and after alias selection. The [model locator](src/dispatch/selector.rs)
+retains only bounded lexical state and the alias; canonical JSON/protocol validation
+still runs before Provider admission. [Real listener regressions](../../tools/e2e-harness/tests/p0_gateway_replay/ingress.rs)
+cover large model-last bodies across all ingress protocols and partial-owner cleanup.
+
+Same-protocol Responses forwarding preserves provider tool names and namespaces
+even when they disagree across snapshots of the same call. The call ID and
+native carrier (function, custom or provider-run web search) must remain stable.
+Conflicting metadata makes completion unknown; canonical capture remains strict
+and the affected history stays partial. The projector neither buffers the whole
+response nor replaces an already delivered instruction with the final snapshot.
+This keeps delivery available without claiming the upstream semantics are valid.
+The [native tool conflict scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/native_tool_conflict.rs)
+checks unmodified delivery, partial history and recovery of later complete work.
+Cross-protocol conversion and Messages/Chat identity checks retain their existing
+rules. A client that cannot consume a contradictory native stream may still fail.
+Native Chat argument deltas retain empty, null or absent tool IDs on the wire.
+The bound index supplies identity for validation only; repeating the full ID in
+each delta would make Chat clients concatenate it. The [Chat delta regression](src/adapters/response/chat_tool_delta_tests.rs)
+checks client-side accumulation against canonical capture and tool-result replay.
+
+[Historical request projection](src/adapters/request/history.rs) separates completed
+Responses commentary replay to Chat from the live response renderer's phase rules.
+The adapter returns candidate-local phase loss; actual materialization and rejected
+candidate diagnostics use the closed `request_projection` event without rewriting
+native history or assessment facts. The [mixed-protocol return scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches/responses_chat_history.rs)
+checks that a later Regular Chat execution remains possible after Primary Responses
+commentary, tools and a final answer.
+
+Response-side [moderation notifications](src/adapters/response/responses_sideband.rs)
+are validated separately from model output. The known `response.metadata` moderation
+shape keeps its exact native wire and does not add canonical content or change a
+terminal, refusal or error. Unknown variants, including safety-control siblings,
+remain unsupported; [stream regressions](src/adapters/response/moderation_metadata_tests.rs)
+cover fragmentation, lifecycle placement, tool completion and negative controls.
+
+Responses reasoning history is admitted by
+[the ingress shape owner](src/adapters/responses_options.rs) before Replay
+externalization. Known summary/content text and encrypted state keep their declared
+protocol mappings and actual-projection WARN accounting. Unknown item/part fields
+or plaintext variants remain intact for native forwarding, exclude cross-protocol
+candidates and cannot authorize provider-prefix affinity or cleanup. The
+[reasoning-extension regressions](src/adapters/tests/reasoning_extensions.rs)
+check inline/Replay equivalence and known signed/redacted/encrypted controls.
+
 ## Native session correlation
 
-[context_hold/identity.rs](src/context_hold/identity.rs) resolves one identity for
-ContextHold, decision history and observation before request content is externalized.
+The `native_routing_evidence` debug event records the bounded inbound adapter
+header's presence, a local HMAC token, the actual V2 consumer verdict and applied
+history hints. The projection verdict comes from the actual input consumer and
+distinguishes applied/rejected message windows from correlation-only hints.
+An accepted envelope does not by itself prove that its window was adopted.
+It retains no raw headers, native IDs or credentials. A present header without
+a consumer verdict does not prove that the adapter was accepted.
+The event shares the model request token with execution diagnostics; internal
+headers remain removed upstream. Disabled or saturated diagnostics cannot change
+routing or capture. See the [identity diagnostic boundary](src/context_hold/identity/diagnostic.rs).
+
+[context_hold/identity.rs](src/context_hold/identity.rs) resolves native identity
+before request content is externalized. Routing purpose and validated lineage
+select history branches; observations retain the native physical identity.
 Verified Worker tasks take precedence. Ordinary clients supply these native fields:
 
 | Client | Accepted native identity |
 | --- | --- |
-| Claude Code | `X-Claude-Code-Session-Id`; Messages also retains the JSON session inside `metadata.user_id` |
+| Claude Code | Coherent `X-Claude-Code-Session-Id` / Messages JSON session inside `metadata.user_id`; optional actual `X-Claude-Code-Agent-Id` separates native agents |
 | Codex | `thread-id` / `session-id`, with matching Responses `client_metadata` dimensions |
 | Qoder | `session-id`, retaining its existing generic session namespace |
 | Pi | pi-ai session headers scoped by `pi (...)` User-Agent |
@@ -87,9 +239,193 @@ stay request-scoped. Coherent generic Codex dimensions retain their historical
 namespace, including Pi's Codex transport. Claude header and metadata share the
 existing Claude namespace. Session storage uses the producer's scoped HMAC;
 raw IDs are not persisted and existing observations are not rewritten.
+Chat user messages may also carry a client `message_id` annotation: a nonempty,
+ASCII graphic string of at most 128 bytes. The adapter retains it in the native
+payload and excludes it from normalized history. It supplies no session identity
+or model-state authority. Opaque values, other roles and unknown semantic fields
+retain the conservative history boundary.
+
+[Claude identity](src/context_hold/identity/claude.rs) retains the released session
+namespace, requires header/metadata agreement and rejects duplicate metadata
+session claims. Its actual agent ID is a separate scope dimension; missing agent
+identity is never replaced with an invented main or child.
 [p0_gateway_native_sessions.rs](../../tools/e2e-harness/tests/p0_gateway_native_sessions.rs)
 covers the real listener and observation boundary across Responses and Messages,
 plus OpenCode's native identity across Chat Completions and shared cache affinity.
+
+[decision_history.rs](src/core_runtime/decision_history.rs) derives optional capture
+scope from authorization independently of ContextHold. One native session can have
+multiple concurrent executions. [Branch resolution](src/agent_turn_history/store/branches.rs)
+combines the typed request prefix with captured accepted response boundaries;
+identical text, native request IDs and completion order do not establish parentage.
+The response comparison ignores zero-byte text placeholders added to a tool-only
+response by a native client, after checking any Replay reference. Whitespace and
+other actual content remain significant; original requests and capture are preserved.
+Semantic JSON uses one [canonical Replay producer](src/replay.rs). Only an exact
+registered range with that provenance can prove canonical tool-output equivalence;
+raw argument strings retained under memory pressure remain forwardable. Branch
+lookup can bind such an old prefix by distinct raw-byte evidence, with contextual
+association and no provider affinity, so later normal tool stages still recover.
+The [JSON boundary regressions](src/agent_turn_history/boundary/json_reference_tests.rs)
+and [capacity recovery cases](src/agent_turn_history/boundary/json_reference_budget_tests.rs)
+cover both protocol decoding and the actual shared allocation refusal.
+The `e2e-test-control` feature enables the JSON map-order feature used by the
+shipped daemon through ACP, including separately built listener processes.
+Outer test-runner flags alone do not establish a child executable's feature graph;
+the prepared SUT recipe binds its manifest and source revision. Default-feature
+library checks separately cover the standalone Gateway's JSON representation.
+Bounded Responses reasoning summaries and encrypted content are compared with
+the actual accepted reasoning events, including empty-summary placeholders.
+The [boundary owner](src/agent_turn_history/boundary.rs) also computes one bounded
+plaintext function-encoding proof from the already measured tool digests. It permits
+missing versus explicit-empty encoding only as contextual association, binding the
+whole ordered reasoning/text/tool boundary and canonical arguments. Original full and
+visible digests stay unchanged; opaque state, changed content and ambiguous concurrent
+predecessors do not gain an edge. [Encoding boundary cases](src/agent_turn_history/boundary/function_encoding_compat_tests.rs)
+cover both directions and production Replay; the listener tool-stage case checks two
+actual members followed by a new input's assessment. No request or execution fact is rewritten.
+Encrypted content is compared only by its exact bounded digest after Replay
+integrity verification. It is never decrypted or projected into assessment;
+equality provides contextual continuity without provider affinity. Changed or
+uncaptured ciphertext, changed summaries and unsupported native fields lose the
+edge. [Encrypted continuation cases](src/agent_turn_history/boundary/encrypted_tests.rs)
+include a failed tool result followed by recovery in the same execution stage.
+Known native maintenance calls retain
+their receipts and costs but carry an explicit optional auxiliary marker so the
+timeline does not manufacture pending user turns. Older unmarked facts remain
+visible under their original conservative interpretation.
+Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
+commits are branch-scoped; optional cache misses cannot discard execution capture.
+Freezing request membership does not prove that the stage ended. The store keeps
+capture coverage, actual provider outcomes and stage-closure proof independently.
+A known successful tool response can leave its stage open; an unknown provider
+outcome cannot be repaired by a later activation or final answer. A proven new
+activation or terminal can close a known stage, while association loss leaves
+evaluation partial. A later independently complete stage recovers normally.
+[Opening evidence](src/agent_turn_history/store/opening.rs)
+compares the old request and actual current input separately. Reused branches
+also require an appended current input to prove a new activation; a changed native
+identifier alone leaves an exact tool continuation in its existing stage. Conversely,
+a repeated identifier cannot suppress a witnessed new current input. Explicit
+continuation metadata makes that input unavailable before boundary selection. Missing response
+completion does not prove a rewritten request. New-message evidence cannot reuse
+the old execution or repair its partial score; missing comparison remains unknown.
+[Closure regressions](src/agent_turn_history/stage_closure_tests.rs) check both
+directions and preserve previously frozen snapshots.
+Request JSON observation uses the same Replay-aware canonical serialization as
+comparison, with bounded chunks and integrity checks instead of retaining internal
+locators. [Observation regressions](src/observation/content/request_json_replay_tests.rs)
+cover nested strings, tool JSON, literal-marker isolation and missing backing.
+Response ciphertext remains excluded from retained observation content.
+The response tracker retains accepted lifecycle evidence separately from that
+presentation policy. Converted responses use the protocol renderer's omission
+rules: upstream-only content cannot become an accepted client boundary, while
+deferred events are bound to the later accepted wire unit. Buffered conversion rejects a failure that would discard previously
+decoded content; it cannot certify that content as delivered.
+Native passthrough keeps the evidence of its actual accepted bytes.
+An admitted request keeps its capture ticket if publishing its frozen decision
+temporarily lacks history resources. The [request guard](src/core_runtime/decision_history/deferred_decision.rs)
+retries that publication once after downstream delivery, under the same store
+budget and ticket checks. This loses optional provider affinity while the result
+is pending. A final capacity failure leaves a gap; it cannot turn already delivered
+output into a model error. Initial capture admission remains bounded and may fail
+independently, so this does not promise lossless capture under every resource fault.
+Same-scope actual completed stages remain contextual candidates with disclosed
+association uncertainty when no unique predecessor is established. Unknown association
+never grants provider-prefix affinity. Unsupported response shapes may lose an exact
+edge while retaining capture and evaluation.
+
+The store retains a 500 MB total budget and a one-hour idle lifetime, with 32 live
+requests/heads and 128 retained terminal records per scope. Snapshot pins and indexes
+are charged. A full budget or optional capture fault records a recoverable gap and
+cannot replace delivered model output. Scope-hash gap stripes are fixed at 256;
+collisions disclose extra uncertainty rather than false complete capture. Authorization,
+Replay integrity, provider failures and source cancellation retain their own behavior.
+Core preserves request cancellation as a typed transport result even before an
+upstream attempt starts. Product observation records that request as cancelled and
+its admitted stage as interrupted; complete request capture can remain complete.
+Ordinary preparation failures remain failed. Neither a final cancelled token nor
+error text replaces the actual termination cause, and late cancellation cannot
+rewrite completed delivery.
+The [ingress coverage map](src/model_ir/native_history.rs), shared by all three
+protocols, to keep conversion eligibility separate from execution association.
+An unmodeled prior item binds its complete native content into the original
+request prefix. Later fully modeled accepted text/tool output can continue its
+actual stage with contextual association; unknown replayed output cannot.
+Position metadata is ephemeral and cannot authorize provider affinity or cleanup.
+The [cross-protocol coverage cases](src/agent_turn_history/boundary/coverage_tests.rs)
+and [retained-peer stages](src/core_runtime/decision_history/retained_peer_tests.rs)
+exercise fresh recovery without removing old input.
+Native Codex peer `agent_message` items use the
+[Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
+forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion
+and provider-prefix affinity remain unavailable. The
+[Codex current-input codec](src/core_runtime/native_routing_view/codex.rs) selects
+the latest plaintext peer batch at its canonical event position, including when no
+wire User exists, without changing original roles or history. A later User event
+supersedes old peer context. Classification and capture disclose source uncertainty;
+mixed plaintext/ciphertext stays opaque and cannot recover encrypted intent from
+a wrapper or ancestor User. The
+[native protocol regressions](src/adapters/tests/native_responses.rs) cover forwarding
+without fabricating a user role for peer content.
+[Codex metadata admission](src/context_hold/routing/codex.rs) checks coherent native
+channels before purpose, accepts memory without thread/turn IDs, and detaches only
+known memory/prewarm/compaction calls. Unknown kinds remain observed. Positive
+session/thread contradictions discard association; malformed optional enrichment
+alone does not erase independently valid identity. Parent/fork references remain
+separate from the current thread's scope.
+[Claude native routing](src/context_hold/routing/claude.rs) recognizes only its
+supported `auxiliary` and `compaction` request classes before optional identity and
+prompt enrichment. Unknown classes stay observed and routable. A prompt ID enables
+a routing activation without proving human origin, a clean input instance or prior
+task completion; the complete native User batch remains visible with uncertainty.
+The observed Claude Code 2.1.287 runtime sends messages queued during an active
+tool call as native System context with the same prompt ID. Those bytes still
+reach the upstream, but the observed-User classifier and assessment context can
+miss their intent. This is a current producer capability limit: no English
+wrapper is extracted or promoted into a new User. A later actual User activation
+in that same live session restores classification, capture and exact-target
+evaluation. Other Claude versions need their own producer evidence.
+[Native routing admission](src/context_hold/routing.rs) separates usable input from
+source proof. Known auxiliary purposes remain detached. Missing or unsupported
+metadata instead uses an observed-input lane, with
+`unverified_request_user_origin` in both current classifier input and captured
+history. Complete accepted output stays eligible for cross-turn evaluation. This
+covers Claude main/subagent/workflow, Hermes, Qoder and cold compressed Codex;
+unknown provenance cannot permanently pin an Agent to Primary. Qoder's shared
+main/child identity remains an accepted association limit. Hermes compression roots
+still require complete native lineage and fresh current-state evidence.
+That lineage is validated independently of the optional routing-context envelope.
+A missing, malformed or unsupported envelope preserves an independently valid
+compression root while leaving task/input origin unverified; it cannot move the
+captured request to a different scope merely because the adapter recovers.
+Conflicting native identities, invalid lineage and known auxiliary purposes keep
+their existing isolation. The [Hermes listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/hermes_identity.rs)
+verify exact assessment membership across context failure and recovery.
+The [continuity guard](src/context_hold/continuity.rs) retains saved native tasks for
+known continuations without granting provider/KV affinity. A known summary with no
+captured original input uses the temporary unavailable-input route; subsequent real
+new A and B must restore classification, capture and evaluation in the same session.
+Gateway restart never imports claimed prior client execution as captured history.
+Partial old stages remain partial; a fully captured independent new input can start
+a complete stage even on the same model. Retries cannot repair missing execution.
+The [current input view](src/core_runtime/native_routing_view.rs) uses a validated
+final-wire v2 event window, or the complete latest observed User envelope. It keeps
+all original message roles and content. Legacy DSH v1 proofs can select their last
+validated input batch without demoting other Users; Hermes clean-text v1 hints are
+non-authoritative and cannot reposition input. Source, association and capture
+uncertainty are disclosed separately using existing decision content markers.
+Known summary input is never recorded as an executed original user task. Its actual
+accepted output can still be captured with unavailable-input evidence. New real A/B
+must restore ordinary classification, history and evaluation after compaction,
+optional faults or Gateway restart. Logical task completion is separate from
+response delivery. These boundaries preserve availability without claiming scoring
+accuracy for ambiguous callbacks or Qoder's shared main/child identity.
+[Native listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
+cover these boundaries; the managed producer hooks live in `assets/agents/`.
+[history_bypass.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
+covers same-identity overlap across the supported native identity families, main
+tool continuation, capacity exhaustion and observation faults through the listener.
 
 ## Decision operation
 
@@ -169,6 +505,16 @@ assertions and private helper names are not substitutes for these behaviors.
 
 ## Native controls and completed responses
 
+[Message phase reconciliation](src/adapters/response/message_phase.rs) separates
+provisional added-item metadata from authoritative item completion. Text/refusal
+completion carries an optional final-phase envelope: missing preserves released
+event semantics, while a present empty value clears the provisional phase.
+[Client completion](src/adapters/response/client_message_phase.rs) uses the same
+value for done-item rendering and retains cross-protocol capability checks.
+Identity, accepted-content prefixes and sealed terminal metadata still reconcile
+strictly. The [phase regressions](src/adapters/response/message_phase_tests.rs)
+cover correction, late/missing metadata, native preservation and conflicting data.
+
 [Reasoning serialization](src/adapters/request/reasoning.rs) owns protocol-level
 switch semantics and normalizes supported released projections without rewriting
 frozen publication identities. The daemon produces current profiles; explicit
@@ -182,7 +528,31 @@ request and Agent turn observations even when its native bytes were delivered.
 The decision diagnostic uses closed error codes; provider text is not a public
 error message or a substitute for evidence of credential failure.
 
+[Runtime health](src/runtime/state.rs) keeps the kernel's default shared Binding
+backoff. The production Gateway explicitly selects request-local soft Binding
+feedback for authenticated Agent model grants and verified Workers sharing the
+same target keys, including unmarked native auxiliary requests. A transient
+failure still relays and returns its original
+normalized error within that request, but cannot cool the next independent main
+call or invalidate its in-flight permit. An owned expired probe releases neutrally
+with exact-generation CAS. Credential authentication/quota state remains shared.
+Main calls, Worker calls and ordinary API calls using that grant consequently may retry an
+unavailable source more often across requests. The [owning contract](../../issue-spec/specs/p0-gateway-execution-plane/spec.md)
+and [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/auxiliary_failure_isolation.rs)
+cover both immediate recovery and concurrent main completion.
+
 ## Response failure evidence
+
+The [Pingora response adapter](../gateway-core/src/transport/pingora/server.rs)
+selects chunked framing for an unknown-length HTTP/1.1 body, including when the
+client requests connection close. A post-commit deadline or failure closes the
+incomplete entity; only an actual end-stream write emits its final chunk. This
+lets native SDKs detect truncation instead of accepting ordinary close-delimited
+EOF. Known lengths, body-forbidden responses, HTTP/1.0 and HTTP/2 retain their
+protocol boundaries. Model-terminal proof and partial history remain independent
+of HTTP entity completion. The [socket regressions](../gateway-core/tests/gateway_lifecycle/downstream_completion.rs)
+and [full listener cases](../../tools/e2e-harness/tests/p0_gateway_commit_boundary.rs)
+cover completion, deadline and disconnect delivery without another attempt.
 
 ### Candidate preparation errors
 
@@ -221,7 +591,24 @@ for disable, restart, independent-source isolation and re-enable evidence.
 
 `runtime/driver/response_diagnostics.rs` owns the closed, payload-free failure
 classification; `adapters/response/decoder.rs` reports SSE event ordinal and
-received-byte upper bound without per-token logs. Unix Debug-only
+received-byte upper bound without per-token logs. An observation-side decoder
+failure adds an optional `capture` context to the same diagnostic: actual protocol
+pair and the last Responses event's closed kind, indexes and array counts. The
+capture worker records only its first failure against the ordinal frozen at
+materialization, with no IDs, body text, hashes or dynamic error strings. This
+diagnostic preserves the original capture abort and cannot certify completion.
+Native delivery separately emits `native_completion_unknown` when its terminal
+proof is incomplete. The protocol projector retains only the first closed reason,
+frame ordinal and event shape; the driver attributes it to the actual attempt.
+This diagnostic carries no content or native identities and cannot change the
+provider result, optional capture or downstream output. Native snapshot equality
+uses complete canonical JSON values, independent of object key order; pure SSE
+comments retain the model's terminal state across transport fragmentation.
+The shared SSE framer also preserves a comment-only EOF tail without a final
+separator; unfinished data/control fields still fail strict EOF, and a comment
+does not supply missing model-terminal evidence.
+See [transport and value regressions](src/adapters/response/native_transport_tests.rs).
+Unix Debug-only
 `runtime/stream_capture.rs` can capture an explicitly enabled private session;
 its `stream_replay` example restores the actual attempt profile and tool mapping.
 This is offline decoder evidence, not proof of network timing or task completion.

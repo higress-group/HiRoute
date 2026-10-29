@@ -2,6 +2,64 @@
 use super::*;
 use crate::routing::CANDIDATE_VALIDATIONS;
 
+#[test]
+fn selecting_many_agent_routes_authenticates_the_publication_once() {
+    let publication = serde_json::from_slice::<GatewayPublicationV1>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap()
+    .into_current()
+    .unwrap();
+    let ids: BTreeSet<_> = publication
+        .published_agent_plans()
+        .unwrap()
+        .into_iter()
+        .filter(|plan| {
+            plan.active
+                && plan
+                    .supported_ingress
+                    .contains(&AgentIngressProtocolV1::Responses)
+        })
+        .map(|plan| plan.agent_plan_id)
+        .collect();
+    assert!(
+        ids.len() > 1,
+        "the regression must select multiple real Plans"
+    );
+    let expected = crate::AgentModelGrantV2::from_plan_ids(
+        AgentIngressProtocolV1::Responses,
+        ids.clone(),
+        &publication,
+    )
+    .unwrap();
+    let selection = crate::AgentModelSelectionV2::DshAdditional {
+        allowed_plan_ids: ids,
+        plan_protocols: BTreeMap::new(),
+    };
+    AGGREGATE_VALIDATIONS.with(|calls| calls.set(0));
+    let grant = crate::AgentModelGrantV2::derive(
+        AgentIngressProtocolV1::Responses,
+        &selection,
+        &publication,
+        &BTreeMap::new(),
+    )
+    .unwrap();
+    assert_eq!(grant, expected);
+    assert_eq!(AGGREGATE_VALIDATIONS.with(|calls| calls.get()), 1);
+    grant.validate_selection(&selection).unwrap();
+    let mut corrupted = publication;
+    corrupted.authority_epoch = 0;
+    assert!(
+        crate::AgentModelGrantV2::derive(
+            AgentIngressProtocolV1::Responses,
+            &selection,
+            &corrupted,
+            &BTreeMap::new(),
+        )
+        .is_err()
+    );
+}
+
 fn current_catalog_only(count: usize) -> GatewayPublicationV1 {
     let mut publication = serde_json::from_slice::<crate::GatewayPublicationV1>(include_bytes!(
         "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
@@ -55,6 +113,35 @@ fn publication_decode_validates_each_candidate_once_for_1_5_10() {
         assert_eq!(decoded.into_current().unwrap(), publication);
         assert_eq!(CANDIDATE_VALIDATIONS.with(|calls| calls.get()), 0);
     }
+}
+
+#[test]
+fn cold_publication_decode_does_not_repeat_completed_aggregate_validation() {
+    let publication = serde_json::from_slice::<GatewayPublicationV1>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap()
+    .into_current()
+    .unwrap();
+    assert!(!publication.grants.is_empty());
+    assert!(!publication.aliases.is_empty());
+    let bytes = publication.canonical_bytes().unwrap();
+    AGGREGATE_VALIDATIONS.with(|calls| calls.set(0));
+    let restored = GatewayPublicationV1::decode(&bytes).unwrap();
+    assert_eq!(restored, publication);
+    assert!(
+        AGGREGATE_VALIDATIONS.with(|calls| calls.get()) <= 2,
+        "cold decode needs base and final-head validation, not repeated checks during encoding"
+    );
+    AGGREGATE_VALIDATIONS.with(|calls| calls.set(0));
+    assert_eq!(restored.canonical_bytes().unwrap(), bytes);
+    assert_eq!(AGGREGATE_VALIDATIONS.with(|calls| calls.get()), 1);
+
+    // An unrelated caller can mutate the public aggregate. No proof may escape this call.
+    let mut changed = restored;
+    changed.aliases.clear();
+    assert!(changed.canonical_bytes().is_err());
+    assert!(StoredPublicationV1::freeze(&changed).is_err());
 }
 
 #[test]
@@ -179,4 +266,59 @@ fn publication_record_proof_is_value_owned_and_storage_reads_authenticate_again(
     changed.digest = CanonicalDigest::of_bytes(b"wrong");
     assert!(changed.verify().is_err());
     assert_eq!(record.verify_current().unwrap(), publication);
+}
+
+#[test]
+fn publication_gateway_projection_is_shared_only_for_exact_immutable_record() {
+    let publication = current_catalog_only(10);
+    let record =
+        PublicationRecordV1::from_publication(publication.workspace_id.clone(), &publication)
+            .unwrap();
+    let first = record.gateway_snapshot().unwrap();
+    assert_eq!(*first, publication.gateway_snapshot().unwrap());
+    for _ in 0..20 {
+        assert!(std::sync::Arc::ptr_eq(
+            &first,
+            &record.clone().gateway_snapshot().unwrap()
+        ));
+    }
+    for change in 0..4 {
+        let mut changed = record.clone();
+        match change {
+            0 => {
+                std::sync::Arc::make_mut(&mut changed.bytes)[0] = b'[';
+                changed.digest = CanonicalDigest::of_bytes(&changed.bytes);
+            }
+            1 => changed.digest = CanonicalDigest::of_bytes(b"wrong"),
+            2 => {
+                changed.publication_revision =
+                    GatewayPublicationRevision::new(record.publication_revision.get() + 1).unwrap()
+            }
+            _ => changed.workspace_id = WorkspaceId::parse("workspace/other").unwrap(),
+        }
+        assert!(changed.gateway_snapshot().is_err());
+    }
+    let cold: PublicationRecordV1 =
+        serde_json::from_slice(&serde_json::to_vec(&record).unwrap()).unwrap();
+    assert_eq!(*cold.gateway_snapshot().unwrap(), *first);
+    assert!(!std::sync::Arc::ptr_eq(
+        &first,
+        &cold.gateway_snapshot().unwrap()
+    ));
+    // A legitimate detached record must be authenticated as its own value.
+    let mut next = publication;
+    next.publication_revision =
+        GatewayPublicationRevision::new(record.publication_revision.get() + 1).unwrap();
+    let mut detached = record.clone();
+    detached.bytes = std::sync::Arc::new(next.canonical_bytes().unwrap());
+    detached.digest = CanonicalDigest::of_bytes(&detached.bytes);
+    detached.publication_revision = next.publication_revision;
+    assert_eq!(
+        *detached.gateway_snapshot().unwrap(),
+        next.gateway_snapshot().unwrap()
+    );
+    assert!(std::sync::Arc::ptr_eq(
+        &first,
+        &record.gateway_snapshot().unwrap()
+    ));
 }

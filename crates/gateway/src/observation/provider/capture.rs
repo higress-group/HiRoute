@@ -73,10 +73,13 @@ enum CaptureJob {
         profile: Arc<CandidateProtocolProfile>,
         tool_id_projection: crate::server::core_runtime::adapters::ToolIdProjection,
         chat_tool_projection: Option<crate::server::core_runtime::adapters::ChatToolProjection>,
+        function_encoding_projection:
+            crate::server::core_runtime::adapters::FunctionEncodingProjection,
         streaming: bool,
         alias: String,
         status: Arc<CaptureStatus>,
         reservation: CaptureReservation,
+        failure_context: Box<hiroute_diagnostics::event::ResponseFailure>,
     },
     Native {
         id: u64,
@@ -174,8 +177,8 @@ impl CanonicalCaptureProducer {
         profile: Arc<CandidateProtocolProfile>,
         tool_id_projection: crate::server::core_runtime::adapters::ToolIdProjection,
         chat_tool_projection: Option<&crate::server::core_runtime::adapters::ChatToolProjection>,
+        function_encoding_projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
         streaming: bool,
-        alias: String,
     ) -> Option<CanonicalCaptureHandle> {
         let shared = Arc::clone(self.shared.get_or_init(|| self.start_worker()).as_ref()?);
         let projection_bytes = match chat_tool_projection {
@@ -196,12 +199,15 @@ impl CanonicalCaptureProducer {
                 reason: Mutex::new(None),
             }),
         };
+        let alias = request.metadata().served_model_id.clone();
         let job = CaptureJob::Begin {
             id: handle.id,
+            failure_context: Box::new(request.capture_response_failure_context()),
             request,
             profile,
             tool_id_projection,
             chat_tool_projection,
+            function_encoding_projection,
             streaming,
             alias,
             status: Arc::clone(&handle.status),
@@ -419,10 +425,12 @@ fn process_job(
             profile,
             tool_id_projection,
             chat_tool_projection,
+            function_encoding_projection,
             streaming,
             alias,
             status,
             reservation,
+            failure_context,
         } => {
             if status.failed.load(Ordering::Acquire) {
                 status.finish();
@@ -439,7 +447,9 @@ fn process_job(
                         streaming,
                         alias,
                         budget.clone(),
-                    ),
+                    )
+                    .with_function_encoding(function_encoding_projection)
+                    .with_failure_context(*failure_context),
                     status,
                     _reservation: reservation,
                     accepted_started: false,
@@ -455,6 +465,9 @@ fn process_job(
                 return;
             };
             if let Err(reason) = state.tracker.observe(event) {
+                if let Some(failure) = state.tracker.take_decode_failure() {
+                    state.request.capture_response_failure(failure);
+                }
                 mark_failed(&state.status, reason);
             }
         }
@@ -552,6 +565,7 @@ impl RequestObservation {
         &self,
         stable_binding_id: &str,
         chat_tool_projection: Option<&crate::server::core_runtime::adapters::ChatToolProjection>,
+        function_encoding_projection: crate::server::core_runtime::adapters::FunctionEncodingProjection,
     ) -> Option<CanonicalCaptureHandle> {
         let (profile, tool_id_projection, streaming) = {
             let state = self.lock_state();
@@ -567,8 +581,8 @@ impl RequestObservation {
             profile,
             tool_id_projection,
             chat_tool_projection,
+            function_encoding_projection,
             streaming,
-            self.metadata().served_model_id.clone(),
         )
     }
 
@@ -602,6 +616,13 @@ impl RequestObservation {
             }
             return;
         };
+        if !self.has_accepted_attempt() {
+            // Rejected upstream attempts have no delivered model output to
+            // capture. Retire their decoder without inventing an output gap;
+            // the failed request and unknown execution attribution remain facts.
+            capture.cancel_unless_terminal("agent_turn_no_accepted_response");
+            return;
+        }
         capture.cancel_unless_terminal("agent_turn_response_incomplete");
         // Only drain the existing bounded worker. A stuck decoder must never hold
         // the session lease indefinitely; late events are rejected by its ticket.

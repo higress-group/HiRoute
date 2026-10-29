@@ -35,10 +35,10 @@ pub(super) struct Restore {
     provider_digest: Option<CanonicalDigest>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     providers: std::collections::BTreeMap<String, CanonicalDigest>,
-    rendered_digest: CanonicalDigest,
+    pub(super) rendered_digest: CanonicalDigest,
     original_exists: bool,
     #[serde(skip)]
-    original: Vec<u8>,
+    pub(super) original: Vec<u8>,
 }
 
 impl Drop for Restore {
@@ -355,12 +355,30 @@ fn render_provider(
             // A unique custom route has no ambient catalog auth. Both public wire implementations
             // accept explicit Authorization; X-HiRoute-Token binds the independent local grant.
             serde_json::json!({"api":api,"baseURL":base_url,
-                "headers":{"Authorization":format!("Bearer {credential}"),"X-HiRoute-Token":credential},"models":models})
+                "headers":{"Authorization":format!("Bearer {credential}"),"X-HiRoute-Token":credential,"X-HiRoute-Agent":"dsh"},"models":models})
         } else {
             serde_json::json!({"api":api,"baseUrl":base_url,"apiKey":credential,
-            "headers":{"X-HiRoute-Token":credential},"models":models})
+            "headers":{"X-HiRoute-Token":credential,"X-HiRoute-Agent":"pi"},"models":models})
         }
     })
+}
+
+pub(super) fn attach_routing_adapter(
+    bytes: &[u8],
+    path: &std::path::Path,
+    original: Option<&[u8]>,
+) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
+    let uri = reqwest::Url::from_file_path(
+        path.parent()
+            .ok_or_else(|| qoder_error("DSH adapter parent"))?
+            .join("hiroute-routing.mjs"),
+    )
+    .map_err(|_| qoder_error("DSH adapter path"))?;
+    let patch = super::dsh_config::Patch::parse(Some(bytes))?;
+    let original = original
+        .map(|bytes| super::dsh_config::Patch::parse(Some(bytes)))
+        .transpose()?;
+    patch.edit_routing_adapter(uri.as_str(), original.as_ref())
 }
 
 impl Restore {

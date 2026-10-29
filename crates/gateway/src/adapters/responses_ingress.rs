@@ -43,6 +43,18 @@ pub(super) fn decode_responses_input(
                 name: optional_string(object, "name")?,
             });
         }
+        "agent_message" => {
+            decode_agent_message(context, object)?;
+            // Native peer messages carry their own author/recipient and can
+            // contain ciphertext. Keep the original Responses item intact;
+            // neither invent a portable role nor use it as routing history.
+            context.mark_native_only();
+            messages.push(CanonicalMessage {
+                role: MessageRole::Assistant,
+                content: Vec::new(),
+                name: None,
+            });
+        }
         "function_call" => {
             ensure_keys(
                 context,
@@ -53,12 +65,20 @@ pub(super) fn decode_responses_input(
                     "namespace",
                     "name",
                     "arguments",
+                    "encrypted_function_args",
                     "id",
                     "status",
                     "internal_chat_message_metadata_passthrough",
                 ],
                 "responses function_call",
             )?;
+            let encrypted_function_args = super::super::responses_dialect::encoding(object)?;
+            if encrypted_function_args
+                .as_ref()
+                .is_some_and(|paths| !paths.is_empty())
+            {
+                context.mark_modeled_native_only();
+            }
             let (arguments, raw_arguments) =
                 parse_tool_arguments(content_string(object, "arguments")?);
             messages.push(CanonicalMessage {
@@ -70,6 +90,7 @@ pub(super) fn decode_responses_input(
                     name: historical_tool_name(context, object)?,
                     arguments,
                     raw_arguments,
+                    encrypted_function_args,
                 }],
                 name: None,
             });
@@ -103,7 +124,7 @@ pub(super) fn decode_responses_input(
                         Some("incomplete") => ToolResultStatusV1::Failed,
                         Some("in_progress") | None => ToolResultStatusV1::Unknown,
                         Some(_) => {
-                            context.native_only.set(true);
+                            context.mark_native_only();
                             ToolResultStatusV1::Unknown
                         }
                     },
@@ -130,6 +151,7 @@ pub(super) fn decode_responses_input(
             messages.push(CanonicalMessage {
                 role: MessageRole::Assistant,
                 content: vec![ContentPart::ToolCall {
+                    encrypted_function_args: None,
                     logical_id: required_string(object, "call_id")?,
                     tool_kind: ToolKindV1::Custom,
                     namespace: optional_string(object, "namespace")?,
@@ -201,6 +223,44 @@ pub(super) fn decode_responses_input(
     Ok(())
 }
 
+fn decode_agent_message(
+    context: &DecodeContext,
+    object: &Map<String, Value>,
+) -> Result<(), ModelIrError> {
+    ensure_keys(
+        context,
+        object,
+        &[
+            "type",
+            "id",
+            "author",
+            "recipient",
+            "content",
+            "internal_chat_message_metadata_passthrough",
+        ],
+        "responses agent_message",
+    )?;
+    required_string(object, "author")?;
+    required_string(object, "recipient")?;
+    for part in required_array(object, "content")? {
+        let part = part
+            .as_object()
+            .ok_or(ModelIrError::InvalidField("agent_message content[]"))?;
+        let field = match required_string(part, "type")?.as_str() {
+            "input_text" => "text",
+            "encrypted_content" => "encrypted_content",
+            _ => {
+                return Err(ModelIrError::UnsupportedField(
+                    "agent_message content".into(),
+                ));
+            }
+        };
+        ensure_keys(context, part, &["type", field], "agent_message content")?;
+        content_string(part, field)?;
+    }
+    Ok(())
+}
+
 fn historical_tool_name(
     context: &DecodeContext,
     object: &Map<String, Value>,
@@ -209,7 +269,7 @@ fn historical_tool_name(
     if name.is_empty() {
         // Native clients retain failed model-generated calls in history. Keep
         // that payload for the provider without treating it as portable Tool IR.
-        context.native_only.set(true);
+        context.mark_native_only();
     }
     Ok(name)
 }

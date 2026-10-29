@@ -91,7 +91,7 @@ export type HomePlans = {
   drafts: HomeDraft[];
 };
 
-export type HomeFacetState = 'unconfigured' | 'configured' | 'verified' | 'pending' | 'degraded' | 'unavailable' | 'unsupported' | 'unknown';
+export type HomeFacetState = 'unconfigured' | 'recorded' | 'restored' | 'configured' | 'verified' | 'pending' | 'degraded' | 'unavailable' | 'unsupported' | 'unknown';
 
 export type HomeAgent = {
   agentId: string;
@@ -112,6 +112,7 @@ export type HomeSession = {
   sessionId: string | null;
   requestId?: string;
   title: string;
+  agentId?: string;
   agentName?: string;
   modelLabel?: string;
   occurredAtMs?: number;

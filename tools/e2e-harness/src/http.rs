@@ -214,11 +214,16 @@ fn parse_response(wire: &[u8]) -> Result<HttpResponse, HttpError> {
 }
 
 fn decode_chunked(wire: &[u8]) -> Result<Option<Vec<u8>>, HttpError> {
+    let (body, complete) = decode_chunked_prefix(wire)?;
+    Ok(complete.then_some(body))
+}
+
+pub(crate) fn decode_chunked_prefix(wire: &[u8]) -> Result<(Vec<u8>, bool), HttpError> {
     let mut cursor = 0;
     let mut decoded = Vec::new();
     loop {
         let Some(relative_end) = find_bytes(&wire[cursor..], b"\r\n") else {
-            return Ok(None);
+            return Ok((decoded, false));
         };
         let size_end = cursor + relative_end;
         let size_text = std::str::from_utf8(&wire[cursor..size_end])
@@ -228,13 +233,26 @@ fn decode_chunked(wire: &[u8]) -> Result<Option<Vec<u8>>, HttpError> {
                 .map_err(|_| HttpError::Malformed("invalid chunk size"))?;
         cursor = size_end + 2;
         if size == 0 {
-            if wire.len() < cursor + 2 {
-                return Ok(None);
+            // The zero-size line is not the entity terminator: trailers must
+            // also end in an empty line, including when there are none.
+            loop {
+                let Some(end) = find_bytes(&wire[cursor..], b"\r\n") else {
+                    return Ok((decoded, false));
+                };
+                if end == 0 {
+                    return Ok((decoded, true));
+                }
+                if !wire[cursor..cursor + end].contains(&b':') {
+                    return Err(HttpError::Malformed("invalid chunk trailer"));
+                }
+                cursor += end + 2;
             }
-            return Ok(Some(decoded));
         }
-        if wire.len() < cursor + size + 2 {
-            return Ok(None);
+        let data_end = cursor.checked_add(size).ok_or(HttpError::TooLarge)?;
+        let chunk_end = data_end.checked_add(2).ok_or(HttpError::TooLarge)?;
+        if wire.len() < chunk_end {
+            decoded.extend_from_slice(&wire[cursor..wire.len().min(data_end)]);
+            return Ok((decoded, false));
         }
         decoded.extend_from_slice(&wire[cursor..cursor + size]);
         cursor += size;
@@ -261,5 +279,26 @@ mod tests {
         let response = parse_response(wire).unwrap();
         assert_eq!(response.status, 200);
         assert_eq!(response.body, b"data: x\n");
+    }
+
+    #[test]
+    fn incomplete_chunked_prefix_retains_bytes_without_completion() {
+        for wire in [
+            b"3\r\nabc\r\n".as_slice(),
+            b"3\r\nabc\r\n0\r\n",
+            b"3\r\nabc\r\n0\r\nX-Trace: present\r\n",
+            b"3\r\nabc",
+        ] {
+            assert_eq!(
+                decode_chunked_prefix(wire).unwrap(),
+                (b"abc".to_vec(), false)
+            );
+            assert!(decode_chunked(wire).unwrap().is_none());
+        }
+        assert_eq!(
+            decode_chunked_prefix(b"3\r\nabc\r\n0\r\nX-Trace: present\r\n\r\n").unwrap(),
+            (b"abc".to_vec(), true)
+        );
+        assert!(decode_chunked_prefix(b"3\r\nabc\r\n0\r\ninvalid\r\n\r\n").is_err());
     }
 }

@@ -87,3 +87,25 @@ pub enum GatewayExecutionError {
     #[error(transparent)]
     Executor(#[from] ExecutorError),
 }
+
+impl GatewayExecutionError {
+    pub(super) fn is_cancelled(&self) -> bool {
+        matches!(
+            self,
+            Self::Cancelled
+                | Self::Attempt(AttemptError::Cancelled)
+                | Self::Transport(TransportError::Cancelled)
+        )
+    }
+
+    /// Keep the request's termination cause across the transport boundary.
+    /// Cancellation tokens also stop deadline and cleanup work, so their
+    /// final state cannot recover this information after execution finishes.
+    pub(super) fn into_transport_error(self) -> TransportError {
+        if self.is_cancelled() {
+            TransportError::Cancelled
+        } else {
+            TransportError::Io(self.to_string().into())
+        }
+    }
+}

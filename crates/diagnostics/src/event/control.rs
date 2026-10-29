@@ -109,6 +109,17 @@ pub struct ControlCallEnd {
     pub elapsed_ms: u64,
 }
 
+/// Final product read result, after native context and snapshot fences. A successful
+/// Local Control response alone does not establish that this read reached the UI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductReadEnd {
+    pub operation: ControlOperation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<EventErrorCode>,
+    pub elapsed_ms: u64,
+}
+
 /// A closed attribution label, never an arbitrary client-supplied string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

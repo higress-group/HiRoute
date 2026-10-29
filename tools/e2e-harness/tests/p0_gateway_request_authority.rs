@@ -813,22 +813,92 @@ fn read_wire_response(mut stream: TcpStream) -> WireResponse {
         .map(|line| line.split_once(':').unwrap())
         .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().to_owned()))
         .collect::<BTreeMap<_, _>>();
+    if matches!(status, 100..=199 | 204 | 304) {
+        assert_eq!(
+            wire.len(),
+            split + 4,
+            "body-forbidden authority reply has data"
+        );
+    } else if let Some(length) = headers.get("content-length") {
+        assert_eq!(
+            length
+                .parse::<usize>()
+                .expect("invalid authority Content-Length"),
+            wire.len() - split - 4,
+            "authority reply must satisfy Content-Length even on normal EOF"
+        );
+    }
     if let Some(error) = read_error {
         let complete = headers
             .get("content-length")
             .and_then(|value| value.parse::<usize>().ok())
             .is_some_and(|length| length == wire.len() - split - 4)
-            || (status == 304 && wire.len() == split + 4);
+            || (status == 304 && wire.len() == split + 4)
+            || (headers
+                .get("transfer-encoding")
+                .is_some_and(|value| value.eq_ignore_ascii_case("chunked"))
+                && hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[split + 4..])
+                    .is_ok_and(|(_, complete)| complete));
         assert!(
             error.kind() == std::io::ErrorKind::ConnectionReset && complete,
             "incomplete HTTP response ended with {error}: {}",
             String::from_utf8_lossy(&wire)
         );
     }
+    let body = if headers
+        .get("transfer-encoding")
+        .is_some_and(|value| value.eq_ignore_ascii_case("chunked"))
+    {
+        let (body, complete) =
+            hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[split + 4..]).unwrap();
+        assert!(complete, "authority reply must have complete HTTP framing");
+        body
+    } else {
+        wire[split + 4..].to_vec()
+    };
     WireResponse {
         status,
         headers,
-        body: wire[split + 4..].to_vec(),
+        body,
+    }
+}
+
+#[test]
+fn authority_success_reader_rejects_normal_eof_before_declared_length() {
+    for (wire, complete) in [
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n{}".as_slice(),
+            false,
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".as_slice(),
+            true,
+        ),
+        (
+            b"HTTP/1.1 304 Not Modified\r\nContent-Length: 42\r\n\r\n".as_slice(),
+            true,
+        ),
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                stream.read_exact(&mut byte).unwrap();
+                head.push(byte[0]);
+                assert!(head.len() < 1024);
+            }
+            stream.write_all(wire).unwrap();
+            stream.flush().unwrap();
+        });
+        let response = std::panic::catch_unwind(|| request(address, "GET", "/", &[], b""));
+        server.join().unwrap();
+        assert_eq!(response.is_ok(), complete);
     }
 }
 

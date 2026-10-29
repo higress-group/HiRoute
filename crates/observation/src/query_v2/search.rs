@@ -4,7 +4,7 @@ use hiroute_domain::{
 };
 use rusqlite::{Connection, OpenFlags, params};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -154,7 +154,7 @@ impl crate::LocalObservationStore {
             'candidates: while let Some(row) = rows.next()? {
                 if candidates == 200
                     || bytes >= 8 * 1024 * 1024
-                    || started.elapsed() >= Duration::from_millis(500)
+                    || started.elapsed() >= hiroute_domain::ObservationReaderContext::QUERY_BUDGET
                 {
                     if candidates == 0 {
                         return Err(ObservationV2Error::Unavailable);

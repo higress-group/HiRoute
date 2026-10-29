@@ -133,5 +133,45 @@ pub(super) fn latest_is_terminal(value: &Value) -> bool {
     })
 }
 
+/// Only a quiescent, current transport failure can request saved-source recovery.
+/// Authentication, malformed catalogs, revocation and incomplete evidence cannot.
+pub(super) fn retryable_failure(value: &Value) -> Option<u32> {
+    use hiroute_diagnostics::event::CpaDiscoveryReason;
+    let (pending, observations) = parse(value).ok()?;
+    if pending != Some(false) {
+        return None;
+    }
+    observations.into_iter().find_map(|observation| {
+        let CpaDiscoveryObservation::Observed {
+            process_id,
+            retained_first_failure: false,
+            attempt,
+            ..
+        } = observation
+        else {
+            return None;
+        };
+        let transient = match attempt.reason {
+            Some(
+                CpaDiscoveryReason::Timeout
+                | CpaDiscoveryReason::DnsFailure
+                | CpaDiscoveryReason::ConnectFailure
+                | CpaDiscoveryReason::BodyReadFailure,
+            ) => true,
+            Some(CpaDiscoveryReason::HttpRejected) => {
+                matches!(attempt.http_status, Some(408 | 500 | 502 | 503 | 504))
+            }
+            _ => false,
+        };
+        (attempt.outcome == CpaDiscoveryOutcome::Failed
+            && matches!(
+                attempt.phase,
+                CpaDiscoveryPhase::Request | CpaDiscoveryPhase::Response
+            )
+            && transient)
+            .then_some(process_id)
+    })
+}
+
 #[cfg(test)]
 mod tests;
