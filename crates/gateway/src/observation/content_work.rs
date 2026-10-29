@@ -272,6 +272,11 @@ impl RequestObservation {
                 .saturating_add(JOB_OVERHEAD)
                 .saturating_add(queue_storage_bytes()),
         ) {
+            #[cfg(feature = "e2e-test-control")]
+            eprintln!(
+                "capture request fallback: reason=snapshot_size bytes={bytes} state={:?}",
+                self.inner.channels.content.work_state()
+            );
             self.capture_request_fallback(request, replay);
             return;
         }
@@ -284,15 +289,27 @@ impl RequestObservation {
             .budget()
             .reserve(MemoryRole::ModelIrBacking, retained)
         else {
+            #[cfg(feature = "e2e-test-control")]
+            eprintln!(
+                "capture request fallback: reason=request_budget bytes={bytes} retained={retained} available={:?}",
+                replay.budget().available_bytes()
+            );
             self.capture_request_fallback(request, replay);
             return;
         };
         let Ok(lease) = replay.content_lease() else {
+            #[cfg(feature = "e2e-test-control")]
+            eprintln!("capture request fallback: reason=content_lease bytes={bytes}");
             drop(memory);
             self.capture_request_fallback(request, replay);
             return;
         };
         let Some((queue, reservation)) = self.content_work_reservation(bytes) else {
+            #[cfg(feature = "e2e-test-control")]
+            eprintln!(
+                "capture request fallback: reason=shared_credit bytes={bytes} state={:?}",
+                self.inner.channels.content.work_state()
+            );
             // Another request can occupy the optional snapshot allowance even
             // when this snapshot fits alone. No content has been queued for
             // this request yet: keep the original nonblocking encoder instead
