@@ -1314,6 +1314,10 @@ impl ProductionGatewayRuntime {
             let execution = adapters::with_active_response_delivery(active_continuation, execution);
             let execution = Box::pin(with_active_request(request_observation.clone(), execution));
             let result = execution.await;
+            #[cfg(feature = "e2e-test-control")]
+            if let Err(error) = &result {
+                eprintln!("Gateway fixture execution failed: {error:?}");
+            }
             let response_started = core_session.response_started;
             drop(core_session);
             let runtime_state_authority_failed =
