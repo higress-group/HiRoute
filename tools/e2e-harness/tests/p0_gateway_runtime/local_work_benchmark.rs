@@ -69,7 +69,7 @@ fn local_work_reference_assesses_each_sessions_actual_predecessor() {
 #[test]
 fn native_raw_forwarding_keeps_context_admission_and_actual_assessment_on_the_listener() {
     let wire = json!({"messages":[{"role":"user","content":"x".repeat(50000)}],
-    "tools":[{"type":"function","function":{"name":"lookup","parameters":{
+    "tools":[{"type":"function","function":{"name":"lookup","description":"d".repeat(20000),"parameters":{
         "type":"object","properties":{"n":{"type":"number","default":100.0}}
     }}}]});
     // 100.0 -> two spaces + 1e2 keeps the exact compact wire length while
