@@ -928,8 +928,51 @@ python3 scripts/install-standalone.py uninstall
 
 ## 决策服务与分支路由
 
-Desktop 在“模型 → 决策模型”管理这些连接；已发布 CLI 沿用 `decision services list/apply/test`。
-决策模型和自定义扩展独立于实际执行任务的通用模型来源。先发现当前安装的合同：
+Desktop 在“模型 → 决策模型”管理这些连接。原生决策模型既可以复用已有 Native API 接入中的
+Key，也可以独立填写 Key。OpenAI Decisions 和 System One 使用各自明确的协议，共用同一套
+路由问题、连续评分和选组规则。自定义扩展仍是单独的连接类型。
+
+### 复用已有 API 接入
+
+先查看当前安装版本的预设和本地接入，再创建决策连接：
+
+```sh
+hiroute decision sources list --output json
+hiroute decision connections options --provider openai --output json
+hiroute decision connections apply --id routing-decision --name "Routing decision" \
+  --provider openai --source SOURCE_ID --apply-file decision-connection-apply.json
+hiroute decision connections apply --request-file decision-connection-apply.json
+hiroute decision connections list --output json
+hiroute decision connections test --service routing-decision@SAVED_REVISION --output json
+```
+
+第一次 `apply` 只预览并生成私有的精确 Apply 请求；检查后提交同一个文件。共用接入时直接使用
+该来源当前允许调用的 Key，不复制凭据。`ready` 表示本地已启用且有已配置的 Key，不代表上游已授权。
+来源里的 Key 变化会影响后续调用，无需重新发布。更改决策模型、完整地址、协议或来源，会生成
+新的不可变版本，需要在路由中选中该版本并发布；已发布路由仍保留原来选定的版本和来源。
+
+通过 `--endpoint`、`--model` 和 `--wire-protocol system_one|openai_decisions` 指定完整请求配置。
+使用任意 `compatible` 接入时必须明确选择协议。百炼应选择对应的 Token Plan 或业务空间地址，
+预设不代表账号已有访问权限。不复用来源时，用受保护输入登记的 `--candidate` 替代 `--source`，
+为决策模型独立配置 Key；Typesafe 可以继续使用这种方式。来源查询不会返回 Key 内容。
+
+保存并测试后，通过已有的路由编辑流程引用返回的版本：
+
+```sh
+hiroute routing preview --plan PLAN_ID --decision-service routing-decision@SAVED_REVISION \
+  --apply-file decision-route-apply.json
+hiroute routing apply --request-file decision-route-apply.json
+```
+
+保存连接不会调用供应商或发布路由。测试会发送固定示例，可能消耗配额；它不读取真实会话，也不
+证明全部 Key 都可用。来源或决策服务发生版本冲突时，应刷新后核对并保留非敏感编辑，不要自动
+重放过期变更。完整请求结构可通过 `schema show` 查询。
+
+### 已有 V1 决策服务命令
+
+已发布的 `decision services list/apply/test` 保留严格的 V1 合同。带标签的 V2 连接（包括共用凭据）
+使用 `decision connections list/apply/test`。已有 V1 内容和发布快照仍然可读，无需改写哈希。
+下面示例展示原有 V1 请求格式：
 
 ```sh
 hiroute decision services list --output json
