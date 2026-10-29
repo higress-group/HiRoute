@@ -137,6 +137,24 @@ fn measure_complete_local_work_with_continuity_and_capture() {
             }
         }
         let records = request_timing::summaries(&fixture, count);
+        let capture_backing: Vec<_> = std::fs::read_to_string(
+            fixture
+                .diagnostics_root
+                .as_ref()
+                .unwrap()
+                .join("daemon/current.jsonl"),
+        )
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter_map(|record| record["event"].get("spill_begin").cloned())
+        .map(|event| event["mode"].clone())
+        .collect();
+        assert_eq!(
+            capture_backing.len(),
+            count,
+            "one input capture per drained request"
+        );
         let timings = records
             .iter()
             .skip(warmup)
@@ -151,7 +169,8 @@ fn measure_complete_local_work_with_continuity_and_capture() {
             let complete_local_us = local_us + timing["wait"]["local_work_us"].as_u64().unwrap();
             println!(
                 "local_work_benchmark {}",
-                json!({"variant":variant,"sample":index,
+                json!({"variant":variant,"sample":index,"replay_threshold_bytes":threshold,
+                "capture_backing":capture_backing[index + warmup],
                 "wire_bytes":wire_bytes,"messages":original.len(),"complete_local_us":complete_local_us,
                 "timing":timing})
             );

@@ -9,7 +9,7 @@ branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
 
-The small memory-backed ingress path feeds the existing parser from a temporary,
+The [model selector](src/dispatch/selector.rs) and [structural scanner](src/content_ref/ingress/scanner.rs) skip ordinary string runs while preserving scalar escape, control and boundary transitions. The small memory-backed ingress path feeds the existing parser from a temporary,
 budgeted slice; disk-backed and pressured inputs retain the bounded reader.
 [Runtime fingerprints](src/runtime_fingerprint.rs) reuse complete normalized
 content within one request. MD5 here is an ephemeral equality check with framed
