@@ -126,3 +126,14 @@ test('manifest generation failures stop OSS scripts before any remote command', 
     assert.equal(fs.existsSync(data.curlLog), false);
   }
 });
+
+test('website upload refuses a feed prefix before inspecting or replacing any remote object', () => {
+  const data = fixture();
+  fs.mkdirSync(path.join(data.dist, 'model-feed'));
+  fs.writeFileSync(path.join(data.dist, 'model-feed/v2.json'), '{"sequence":1}');
+  const result = execute('.github/scripts/deploy-website-oss.sh', [data.dist, data.manifestPath], data);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /independently published model feed/);
+  assert.equal(readLog(data.log), '');
+  assert.equal(readLog(data.curlLog), '');
+});

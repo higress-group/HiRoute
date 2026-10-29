@@ -131,14 +131,21 @@ preview or unlisted candidate and never starts the service automatically.
 
 ## Model feed
 
-The website build validates the generated model feed with the shared Rust admission
-code and Node structural checks. The validated payload travels in its own artifact,
-outside `dist`. Only the production deploy checks the current HTTPS publication and
-stages the exact payload at `/model-feed/v2.json` before upload. PR builds publish
-nothing. An unchanged payload writes no feed file, so the served object stays intact.
-Before the first feed-capable release, the JSON null payload skips publication and
-ordinary website deployment continues. No feed signing key or client public key is
-required; the fixed HTTPS origin and production pipeline are the trust boundary.
+The independent `model-feed` workflow checks the complete metadata source and its
+generated projections, then validates the publication with shared Rust admission
+and Node structural checks. Metadata or announcement changes merged to `main`
+trigger feed deployment without rebuilding the website. The validated payload
+travels in its own artifact, outside the website `dist`. Its production job checks
+the current HTTPS publication and uploads only `/model-feed/v2.json`, using the same
+`website-production` environment and deployment lock as website/release uploads.
+PR builds publish nothing. Unchanged and bootstrap-null payloads skip upload;
+the first publication requires a recorded compatible client release. No feed
+signing key is required. Static website uploads refuse a `model-feed` prefix.
+
+The feed contains the complete model metadata; `featured.json` controls optional
+recommendations separately. Clients have no bundled recommendations, so an absent
+or empty selected feed list leaves Home/trial recommendations empty while model
+metadata retains its installed fallback.
 
 See the [feed maintainer guide](../../assets/model-feed/README.md) for regeneration,
 sequence rules and release compatibility. OSS upload credentials are described below.
