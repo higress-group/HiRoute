@@ -59,10 +59,10 @@ fn check_service(
             "decision.v2.service_revision",
         ));
     }
-    if change.service.is_none() {
-        if super::decision_services::references(connection, workspace, &change.id)? {
-            return Err(error(PortErrorCode::Conflict, "decision_service.in_use"));
-        }
+    if change.service.is_none()
+        && super::decision_services::references(connection, workspace, &change.id)?
+    {
+        return Err(error(PortErrorCode::Conflict, "decision_service.in_use"));
     }
     Ok(())
 }

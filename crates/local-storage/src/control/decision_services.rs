@@ -170,15 +170,15 @@ fn check(
             return Err(client_version_required());
         }
     }
-    if change.service.is_none() {
-        if references(connection, workspace, &change.id)? {
-            return Err(PortError::new(
-                PortErrorCode::Conflict,
-                "decision_service.in_use",
-            ));
-        }
-    } else if change.input_slot.is_some() {
-        let service = change.service.as_ref().ok_or_else(invalid)?;
+    if change.service.is_none() && references(connection, workspace, &change.id)? {
+        return Err(PortError::new(
+            PortErrorCode::Conflict,
+            "decision_service.in_use",
+        ));
+    }
+    if let Some(service) = &change.service
+        && change.input_slot.is_some()
+    {
         let reference = &service
             .connection
             .transport()

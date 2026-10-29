@@ -112,6 +112,23 @@ pub(super) fn refresh_locator(
 }
 
 #[cfg(test)]
+pub(super) fn remove_test_shape(db: &rusqlite::Connection) {
+    db.execute_batch(
+        "DROP TRIGGER IF EXISTS decision_version_references_insert;
+         DROP TRIGGER IF EXISTS decision_version_references_update;
+         DROP TRIGGER IF EXISTS decision_version_references_delete;
+         DROP TRIGGER IF EXISTS decision_draft_references_insert;
+         DROP TRIGGER IF EXISTS decision_draft_references_update;
+         DROP TRIGGER IF EXISTS decision_draft_references_delete;
+         DROP TABLE IF EXISTS decision_plan_references;
+         DROP TABLE IF EXISTS decision_consumer_runtime;
+         DROP TABLE IF EXISTS decision_source_runtime;
+         DROP TABLE IF EXISTS decision_source_effects;",
+    )
+    .unwrap();
+}
+
+#[cfg(test)]
 mod tests {
     use super::super::{DatabaseKind, migration_sql};
     use rusqlite::{Connection, params};
