@@ -28,6 +28,19 @@ pub(crate) struct IngressDocumentStats {
     pub(crate) max_string_bytes: usize,
 }
 
+/// Retention bound for an already serde-validated inline JSON tree and its
+/// encoded bytes. Sizing uncertainty disables optional reuse, never admission.
+pub(crate) fn inline_document_retention_bytes(bytes: &[u8]) -> Option<usize> {
+    let mut scanner = StructuralScanner::default();
+    scanner.feed(bytes).ok()?;
+    let stats = scanner.finish().ok()?;
+    stats
+        .structure_units
+        .checked_mul(STRUCTURE_RESERVATION_BYTES)?
+        .checked_add(bytes.len().checked_mul(4)?)?
+        .checked_add(4096)
+}
+
 impl IngressDocumentStats {
     fn reserve_workspace(
         self,

@@ -19,7 +19,8 @@ mod schema;
 #[cfg(test)]
 pub(crate) use ingress::compact_ingress_document;
 pub(crate) use ingress::{
-    compact_ingress_document_with_markers, parse_ingress_document, scan_ingress_document,
+    compact_ingress_document_with_markers, inline_document_retention_bytes, parse_ingress_document,
+    scan_ingress_document,
 };
 
 /// Stable, path-free locator for one range in the request's replay owner. It

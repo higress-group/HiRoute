@@ -28,6 +28,16 @@ struct Entry {
 }
 
 impl RequestTemplates {
+    pub(crate) fn uses_raw_stream(&self, raw: &crate::content_ref::ContentRef) -> bool {
+        self.entries.values().any(|entry| {
+            entry
+                .template
+                .replacements
+                .iter()
+                .any(|replacement| replacement.content.stream_ordinal() == raw.stream_ordinal())
+        })
+    }
+
     pub(crate) fn prepare_native_ranges(
         &mut self,
         replay: &crate::replay::ReplayStore,

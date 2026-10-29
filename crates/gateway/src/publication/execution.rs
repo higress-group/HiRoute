@@ -93,16 +93,7 @@ impl PreparedCandidateExecution {
             .map_err(|_| Arc::from("protocol_failed"))?;
         // Reuse ingress's structural bound, plus encoded/string storage and
         // fixed DTO/map overhead. A sizing refusal only disables reuse.
-        let retained_bytes =
-            crate::content_ref::scan_ingress_document(std::io::Cursor::new(bytes.as_ref()))
-                .ok()
-                .and_then(|stats| {
-                    stats
-                        .structure_units
-                        .checked_mul(128)?
-                        .checked_add(bytes.len().checked_mul(4)?)?
-                        .checked_add(4096)
-                });
+        let retained_bytes = crate::content_ref::inline_document_retention_bytes(&bytes);
         Ok(Arc::new(Self {
             execution,
             bytes,

@@ -185,10 +185,14 @@ pub(super) fn consume_request_body(
         if logical.observed_body_bytes != logical.raw_body.byte_len() {
             return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
         }
-        logical
-            .replay
-            .release_stream(&logical.raw_body)
-            .map_err(safe_error)?;
+        // Native root replacements are legitimate readers of this same owner.
+        // Terminal cleanup releases it after attempts; generic paths release now.
+        if !logical.templates.uses_raw_stream(&logical.raw_body) {
+            logical
+                .replay
+                .release_stream(&logical.raw_body)
+                .map_err(safe_error)?;
+        }
         logical.body_eos = true;
     }
     Ok(())
