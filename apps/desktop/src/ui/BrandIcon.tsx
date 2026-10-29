@@ -27,15 +27,17 @@ export function BrandIcon({
   kind,
   label,
   size = 'medium',
+  className,
 }: {
   kind: BrandKind;
   label?: string;
   size?: 'small' | 'medium' | 'large';
+  className?: string;
 }) {
   const accessibility = label
     ? { role: 'img', 'aria-label': label }
     : { 'aria-hidden': true as const };
-  const classes = `hr-brand-icon agent-avatar v3-brand-avatar${kind === 'agent' || kind === 'model' ? ' hr-brand-icon--fallback' : ''}`;
+  const classes = `hr-brand-icon agent-avatar v3-brand-avatar${kind === 'agent' || kind === 'model' ? ' hr-brand-icon--fallback' : ''}${className ? ` ${className}` : ''}`;
 
   if (kind === 'codex') {
     return (
