@@ -41,7 +41,7 @@ impl StoreInner {
     fn expiry_keys(&self) -> Vec<AgentTurnHistoryKey> {
         let start = self.expiry_cursor.as_ref().map_or(Unbounded, Excluded);
         self.entries
-            .range((start, Unbounded))
+            .range::<AgentTurnHistoryKey, _>((start, Unbounded))
             .take(EXPIRY_BATCH)
             .map(|(key, _)| key.clone())
             .collect()
