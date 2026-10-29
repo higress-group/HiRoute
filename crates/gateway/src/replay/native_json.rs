@@ -8,7 +8,7 @@ use std::sync::{Arc, Weak};
 use hiroute_gateway_core::runtime::body::{ChargedBytesBuilder, MemoryRole, Reservation};
 use serde::{
     Deserialize, Deserializer,
-    de::{self, MapAccess, Visitor},
+    de::{self, MapAccess, SeqAccess, Visitor},
 };
 use serde_json::value::RawValue;
 
@@ -19,11 +19,13 @@ use crate::content_ref::ContentRef;
 
 const MAX_ROOTS: usize = 256;
 const MAX_INPUT: usize = 1024 * 1024;
+const MAX_MESSAGES: usize = 1024;
 
 pub(crate) struct RawJsonIndex {
     owner: Weak<StoreInner>,
     source: ContentRef,
     roots: BTreeMap<String, ContentRef>,
+    messages: Vec<Option<ContentRef>>,
     _workspace: Reservation,
 }
 
@@ -41,7 +43,7 @@ impl RawJsonIndex {
             .budget()
             .reserve(
                 MemoryRole::ModelIrBacking,
-                length.checked_add(MAX_ROOTS * 256)?,
+                length.checked_add(MAX_ROOTS * 256 + MAX_MESSAGES * 128)?,
             )
             .ok()?;
         let mut input =
@@ -52,8 +54,36 @@ impl RawJsonIndex {
         reader.verify_terminal().ok()?;
         let bytes = input.finish();
         let ranges = root_ranges(bytes.bytes())?;
+        let mut messages = Vec::new();
+        if let Some(span) = ranges.get("messages") {
+            let input = &bytes.bytes()[span.clone()];
+            for part in array_ranges(input)? {
+                let message = &input[part.clone()];
+                // Flat native messages need no nested argument normalization.
+                // Duplicate decoded keys or nested shapes use the generic path.
+                let flat = root_ranges(message).is_some_and(|fields| {
+                    fields
+                        .values()
+                        .all(|value| !matches!(message[value.start], b'{' | b'['))
+                });
+                messages.push(if flat {
+                    Some(ContentRef::new(
+                        raw.stream_ordinal(),
+                        raw.byte_offset()
+                            .checked_add((span.start + part.start) as u64)?,
+                        message.len() as u64,
+                        super::stream::json_escaped_len(message).ok()?,
+                    ))
+                } else {
+                    None
+                });
+            }
+        }
         let mut roots = BTreeMap::new();
         for (key, range) in ranges {
+            if key == "messages" {
+                continue;
+            }
             let value = &bytes.bytes()[range.clone()];
             roots.insert(
                 key,
@@ -69,6 +99,7 @@ impl RawJsonIndex {
             owner: Arc::downgrade(&store.inner),
             source: raw.clone(),
             roots,
+            messages,
             _workspace: workspace,
         })
     }
@@ -77,7 +108,15 @@ impl RawJsonIndex {
         self.roots.get(key)
     }
 
-    pub(crate) fn register(&self, store: &ReplayStore) -> Result<(), ReplayError> {
+    pub(crate) fn message(&self, index: usize) -> Option<&ContentRef> {
+        self.messages.get(index)?.as_ref()
+    }
+
+    pub(crate) fn register(
+        &self,
+        store: &ReplayStore,
+        references: &[ContentRef],
+    ) -> Result<(), ReplayError> {
         if !Weak::ptr_eq(&self.owner, &Arc::downgrade(&store.inner)) {
             return Err(ReplayError::Integrity);
         }
@@ -93,8 +132,16 @@ impl RawJsonIndex {
             .byte_offset()
             .checked_add(self.source.byte_len())
             .ok_or(ReplayError::LengthOverflow)?;
-        if self.roots.values().any(|range| {
-            range.byte_offset() < self.source.byte_offset()
+        let references: std::collections::BTreeSet<_> = references.iter().cloned().collect();
+        let mut previous_end = self.source.byte_offset();
+        if references.iter().any(|range| {
+            let known = self.roots.values().any(|value| value == range)
+                || self.messages.iter().flatten().any(|value| value == range);
+            let overlaps = range.byte_offset() < previous_end;
+            previous_end = range.byte_offset().saturating_add(range.byte_len());
+            !known
+                || overlaps
+                || range.byte_offset() < self.source.byte_offset()
                 || range
                     .byte_offset()
                     .checked_add(range.byte_len())
@@ -103,9 +150,8 @@ impl RawJsonIndex {
             return Err(ReplayError::Integrity);
         }
         let mut aliases = lock(&store.inner.raw_json_aliases);
-        let count = self
-            .roots
-            .values()
+        let count = references
+            .iter()
             .filter(|range| !aliases.contains_key(*range))
             .count();
         if count == 0 {
@@ -120,7 +166,7 @@ impl RawJsonIndex {
                     .ok_or(ReplayError::LengthOverflow)?,
             )?,
         );
-        for reference in self.roots.values() {
+        for reference in &references {
             aliases
                 .entry(reference.clone())
                 .or_insert_with(|| RawJsonAlias {
@@ -165,6 +211,45 @@ pub(crate) fn root_ranges(bytes: &[u8]) -> Option<BTreeMap<String, Range<usize>>
             let end = start.checked_add(value.get().len())?;
             bytes.get(start..end)?;
             Some((key, start..end))
+        })
+        .collect()
+}
+
+pub(crate) fn array_ranges(bytes: &[u8]) -> Option<Vec<Range<usize>>> {
+    struct Items<'a>(Vec<&'a RawValue>);
+    impl<'de> Deserialize<'de> for Items<'de> {
+        fn deserialize<D: Deserializer<'de>>(decoder: D) -> Result<Self, D::Error> {
+            struct ItemVisitor;
+            impl<'de> Visitor<'de> for ItemVisitor {
+                type Value = Items<'de>;
+                fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.write_str("a bounded JSON array")
+                }
+                fn visit_seq<S: SeqAccess<'de>>(self, mut seq: S) -> Result<Self::Value, S::Error> {
+                    let mut values = Vec::new();
+                    while let Some(value) = seq.next_element::<&'de RawValue>()? {
+                        if values.len() == MAX_MESSAGES {
+                            return Err(de::Error::custom("too many native message ranges"));
+                        }
+                        values.push(value);
+                    }
+                    Ok(Items(values))
+                }
+            }
+            decoder.deserialize_seq(ItemVisitor)
+        }
+    }
+    let mut decoder = serde_json::Deserializer::from_slice(bytes);
+    let values = Items::deserialize(&mut decoder).ok()?;
+    decoder.end().ok()?;
+    values
+        .0
+        .into_iter()
+        .map(|value| {
+            let start = (value.get().as_ptr() as usize).checked_sub(bytes.as_ptr() as usize)?;
+            let end = start.checked_add(value.get().len())?;
+            bytes.get(start..end)?;
+            Some(start..end)
         })
         .collect()
 }
@@ -243,18 +328,52 @@ mod tests {
     }
 
     #[test]
+    fn message_range_index_is_bounded_and_declines_duplicate_or_nested_message_shapes() {
+        assert_eq!(array_ranges(b"[null,1,{},[]]").unwrap().len(), 4);
+        for invalid in [b"[1,]".as_slice(), b"[1] false", b"{\"n\":1}"] {
+            assert!(array_ranges(invalid).is_none());
+        }
+        let full = serde_json::to_vec(&vec![json!({}); MAX_MESSAGES]).unwrap();
+        assert_eq!(array_ranges(&full).unwrap().len(), MAX_MESSAGES);
+        let over = serde_json::to_vec(&vec![json!({}); MAX_MESSAGES + 1]).unwrap();
+        assert!(array_ranges(&over).is_none());
+        let fixture = Fixture::new();
+        let text = "x".repeat(40000);
+        let bytes = format!(r#"{{"messages":[{{"role":"user","content":"{text}"}},{{"role":"assistant","content":"first","content":"second"}},{{"role":"assistant","content":null,"tool_calls":[]}}]}}"#).into_bytes();
+        let raw = fixture.capture(&bytes);
+        let index = RawJsonIndex::capture(&fixture.store, &raw).unwrap();
+        assert!(index.message(0).is_some());
+        assert!(index.message(1).is_none());
+        assert!(index.message(2).is_none());
+        let valid = index.message(0).unwrap();
+        let forged = ContentRef::new(
+            valid.stream_ordinal(),
+            valid.byte_offset(),
+            valid.byte_len() - 1,
+            valid.json_escaped_len(),
+        );
+        assert!(index.register(&fixture.store, &[forged]).is_err());
+    }
+
+    #[test]
     fn raw_ranges_require_their_current_owner_and_never_authorize_semantic_content() {
         let fixture = Fixture::new();
         let value = json!({"messages":[{"role":"user","content":"x".repeat(40000)}]});
         let bytes = serde_json::to_vec(&value).unwrap();
         let raw = fixture.capture(&bytes);
         let index = RawJsonIndex::capture(&fixture.store, &raw).unwrap();
-        let reference = index.get("messages").unwrap();
+        let reference = index.message(0).unwrap();
         assert!(fixture.store.reader(reference).is_err());
         let foreign = Fixture::new();
         let _same = foreign.capture(&bytes);
-        assert!(index.register(&foreign.store).is_err());
-        index.register(&fixture.store).unwrap();
+        assert!(
+            index
+                .register(&foreign.store, std::slice::from_ref(reference))
+                .is_err()
+        );
+        index
+            .register(&fixture.store, std::slice::from_ref(reference))
+            .unwrap();
         assert!(!fixture.store.has_reference(reference));
         assert!(!fixture.store.is_canonical_json(reference));
         assert!(fixture.store.runtime_fingerprint(reference).is_err());
@@ -264,7 +383,7 @@ mod tests {
         reader.verify_terminal().unwrap();
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&actual).unwrap(),
-            value["messages"]
+            value["messages"][0]
         );
         fixture
             .store
@@ -274,7 +393,11 @@ mod tests {
         assert!(lease.reader(reference).is_err());
         fixture.store.release_stream(&raw).unwrap();
         assert!(fixture.store.reader(reference).is_err());
-        assert!(index.register(&fixture.store).is_err());
+        assert!(
+            index
+                .register(&fixture.store, std::slice::from_ref(reference))
+                .is_err()
+        );
         drop(reader);
     }
 }

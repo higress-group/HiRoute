@@ -458,3 +458,64 @@ fn native_raw_ranges_decline_noncompact_lengths_and_prefix_cleanup() {
         project_candidate_request_template_with_cleanup(&request, &profile, Some(1)).unwrap();
     assert!(!cleanup.use_native_ranges(&fixture.store, &index));
 }
+
+#[test]
+fn native_raw_messages_preserve_tool_argument_normalization_between_flat_text_spans() {
+    use crate::replay::native_json::RawJsonIndex;
+    let wire = json!({"model":"alias","messages":[
+        {"role":"user","content":"a路由\\\"\n".repeat(8000)},
+        {"role":"assistant","content":null,"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup","arguments":"{ \"n\" : 1 }"}}]},
+        {"role":"tool","tool_call_id":"call-1","content":"result".repeat(5000)},
+        {"role":"user","content":"continue"}
+    ]});
+    let input = serde_json::to_vec(&wire).unwrap();
+    let fixture = Fixture::new(1024 * 1024, 16 * 1024);
+    let request = fixture.parse_protocol(IngressProtocol::ChatCompletions, &input);
+    let mut writer = fixture.store.begin_raw().unwrap();
+    writer.append(&input).unwrap();
+    let raw = writer.seal().unwrap();
+    let index = RawJsonIndex::capture(&fixture.store, &raw).unwrap();
+    assert!(index.message(0).is_some());
+    assert!(
+        index.message(1).is_none(),
+        "nested tool arguments require canonical projection"
+    );
+    assert!(index.message(2).is_some());
+    let profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::ChatCompletions,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let original = project_candidate_request_template(&request, &profile).unwrap();
+    let mut optimized = original.clone();
+    assert!(optimized.use_native_ranges(&fixture.store, &index));
+    assert!(
+        optimized
+            .replacements
+            .iter()
+            .filter(|replacement| replacement.content.stream_ordinal() == raw.stream_ordinal())
+            .count()
+            >= 2
+    );
+    assert!(
+        optimized
+            .replacements
+            .iter()
+            .any(|replacement| replacement.encoding == ReplacementEncoding::RawJsonInJsonString)
+    );
+    assert_eq!(optimized.wire_len, original.wire_len);
+    assert_eq!(optimized.context, original.context);
+    fixture
+        .store
+        .prevalidate(&model_content_refs(&request))
+        .unwrap();
+    let expected = encode(&fixture, original, 8192);
+    for quantum in [1, 2, 7, 127, 8192] {
+        let actual = encode(&fixture, optimized.clone(), quantum);
+        assert_eq!(
+            actual, expected,
+            "only unchanged raw messages may replace compact spans"
+        );
+    }
+}

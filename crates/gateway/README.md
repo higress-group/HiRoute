@@ -32,10 +32,12 @@ domains; authorization, native proofs and persisted observation HMACs retain
 their cryptographic algorithms. [Prepared input](src/composition/prepared.rs)
 may retain bounded candidate templates until the selected attempt uses them;
 current authority/profile checks still run, and cleanup rebuilds the template.
-Eligible native Chat templates may replace unchanged complete root values with
+Eligible native Chat templates may replace unchanged root values or flat native
+messages with
 [validated raw ranges](src/replay/native_json.rs) from the current request.
 The [existing encoder](src/adapters/request/native_ranges.rs) uses those ranges
-only when the final wire length equals the original compact projection length;
+only when each selected value and the final wire length equal their original
+compact projection lengths. Nested tool arguments retain their existing normalization;
 cleanup, ambiguity, disk backing or optional budget pressure retain that projection.
 These raw ranges are never canonical content or history evidence.
 Template serialization borrows the existing JSON tree while expanding its wire
