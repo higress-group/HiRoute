@@ -1,5 +1,6 @@
 //! Versioned decision-service content. Existing V1 bytes remain a separate variant.
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 use super::{ClassifierAuthHeaderV1, DecisionServiceV1};
 use crate::CanonicalDigest;
@@ -55,6 +56,49 @@ pub struct DecisionServiceV2 {
     pub revision: u64,
     pub name: String,
     pub connection: DecisionConnectionV2,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionExpectedSourceRevisionV1 {
+    pub source_id: String,
+    pub revision: u64,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionServiceChangeV2 {
+    pub id: String,
+    pub expected_revision: u64,
+    pub service: Option<DecisionServiceV2>,
+    pub expected_source_revisions: Vec<DecisionExpectedSourceRevisionV1>,
+}
+
+impl DecisionServiceChangeV2 {
+    pub fn validate(&self) -> bool {
+        if !super::strategy::valid_reference(&self.id) || self.id.len() > 128 {
+            return false;
+        }
+        match &self.service {
+            Some(service) => {
+                if !service.validate()
+                    || service.id != self.id
+                    || self.expected_revision.checked_add(1) != Some(service.revision)
+                {
+                    return false;
+                }
+            }
+            None if self.expected_revision == 0 => return false,
+            None => {}
+        }
+        let mut sources = BTreeSet::new();
+        self.expected_source_revisions.iter().all(|source| {
+            super::strategy::valid_reference(&source.source_id)
+                && source.source_id.len() <= 128
+                && source.revision > 0
+                && sources.insert(&source.source_id)
+        })
+    }
 }
 
 impl DecisionConnectionV2 {

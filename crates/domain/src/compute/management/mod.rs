@@ -19,6 +19,8 @@ mod defaults;
 pub use defaults::*;
 mod decision_target;
 pub use decision_target::*;
+mod decision_transition;
+pub use decision_transition::*;
 
 pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2: &str = "hiroute.compute-management-source/v3";
 pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V4: &str = "hiroute.compute-management-source/v4";

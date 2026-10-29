@@ -222,6 +222,128 @@ fn decision_targets_are_distinct_from_models_and_preserve_legacy_source_bytes() 
 }
 
 #[test]
+fn shared_decision_registration_rebinds_only_when_destination_union_changes() {
+    let source = source(GatewayAuthenticationSemanticsV1::Bearer);
+    let service = |id: &str, revision, model: &str| crate::DecisionServiceV2 {
+        schema: crate::DecisionServiceSchemaV2::V2,
+        id: id.into(),
+        revision,
+        name: "Decision".into(),
+        connection: crate::DecisionConnectionV2::Native {
+            provider: "example".into(),
+            wire_protocol: crate::DecisionWireProtocolV2::OpenaiDecisions,
+            model: model.into(),
+            endpoint: "https://example.test/v1/decisions".into(),
+            timeout_ms: 1000,
+            authentication: crate::DecisionAuthenticationV2::SharedSource {
+                source_id: source.source_id.clone(),
+                source_lineage_digest: source.lineage_digest.clone(),
+            },
+        },
+    };
+    let first = register_decision_consumer(&source, &service("decision/a", 1, "model-a")).unwrap();
+    assert_eq!(first.secrets.len(), 1);
+    assert_eq!(first.secrets[0].kind(), crate::SecretMutationKind::Rebind);
+    assert!(first.secrets[0].input_slot().is_none());
+    assert_eq!(
+        first.after.credentials[0].key_id,
+        source.credentials[0].key_id
+    );
+    assert_eq!(
+        first.after.credentials[0].fingerprint,
+        source.credentials[0].fingerprint
+    );
+    assert_eq!(first.after.credentials[0].credential.generation(), 2);
+
+    let second =
+        register_decision_consumer(&first.after, &service("decision/b", 1, "model-b")).unwrap();
+    assert!(second.secrets.is_empty());
+    assert_eq!(second.after.credentials[0].credential.generation(), 2);
+    assert_eq!(second.after.decision_targets[0].consumers.len(), 2);
+    let removed_one = remove_decision_consumers(&second.after, "decision/a")
+        .unwrap()
+        .unwrap();
+    assert!(removed_one.secrets.is_empty());
+    assert_eq!(removed_one.after.decision_targets[0].consumers.len(), 1);
+    let removed_last = remove_decision_consumers(&removed_one.after, "decision/b")
+        .unwrap()
+        .unwrap();
+    assert_eq!(removed_last.secrets.len(), 1);
+    assert_eq!(removed_last.after.credentials[0].credential.generation(), 3);
+    assert!(removed_last.after.decision_targets.is_empty());
+    assert_eq!(
+        removed_last.after.native_destinations().unwrap(),
+        source.native_destinations().unwrap()
+    );
+}
+
+#[test]
+fn compound_decision_plan_rejects_missing_rebind_and_membership_tampering() {
+    let source = source(GatewayAuthenticationSemanticsV1::Bearer);
+    let service = crate::DecisionServiceV2 {
+        schema: crate::DecisionServiceSchemaV2::V2,
+        id: "decision/a".into(),
+        revision: 1,
+        name: "Decision".into(),
+        connection: crate::DecisionConnectionV2::Native {
+            provider: "example".into(),
+            wire_protocol: crate::DecisionWireProtocolV2::SystemOne,
+            model: "model-a".into(),
+            endpoint: "https://example.test/decision".into(),
+            timeout_ms: 1000,
+            authentication: crate::DecisionAuthenticationV2::SharedSource {
+                source_id: source.source_id.clone(),
+                source_lineage_digest: source.lineage_digest.clone(),
+            },
+        },
+    };
+    let transition = register_decision_consumer(&source, &service).unwrap();
+    let input = crate::DecisionServiceOperationInputV2 {
+        change: crate::DecisionServiceChangeV2 {
+            id: service.id.clone(),
+            expected_revision: 0,
+            service: Some(service),
+            expected_source_revisions: vec![crate::DecisionExpectedSourceRevisionV1 {
+                source_id: source.source_id.clone(),
+                revision: source.revision,
+            }],
+        },
+        input_slot: None,
+    };
+    let spec = crate::ChangeSpecV1 {
+        schema_version: crate::CHANGE_SPEC_SCHEMA_V1,
+        command_id: "decision.connections.apply".into(),
+        resource_id: Some(input.change.id.clone()),
+        desired_state: serde_json::to_value(&input).unwrap(),
+    };
+    let operation = crate::DecisionServiceOperationV2 {
+        schema: crate::operation::DECISION_SERVICE_OPERATION_SCHEMA_V2.into(),
+        input,
+        sources: vec![crate::DecisionSourceMutationV1 {
+            before: transition.before,
+            after: transition.after,
+        }],
+    };
+    let control = serde_json::json!({"decision_service_operation_v2":operation});
+    let make = |control, secrets| {
+        crate::TransactionPlanV1::from_registered_typed_planner(
+            spec.clone(),
+            control,
+            None,
+            secrets,
+            vec![],
+            vec![],
+        )
+    };
+    assert!(make(control.clone(), transition.secrets.clone()).is_ok());
+    assert!(make(control.clone(), vec![]).is_err());
+    let mut tampered = control;
+    tampered["decision_service_operation_v2"]["sources"][0]["after"]["decision_targets"][0]["consumers"]
+        [0]["model"] = serde_json::json!("other");
+    assert!(make(tampered, transition.secrets).is_err());
+}
+
+#[test]
 fn disabled_source_may_retain_ordered_keys_without_becoming_ready() {
     let mut disabled = source(GatewayAuthenticationSemanticsV1::Bearer);
     disabled.state = MaterializationState::Disabled;

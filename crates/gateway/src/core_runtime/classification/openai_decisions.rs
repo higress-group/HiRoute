@@ -53,7 +53,7 @@ pub(super) fn prepare_template(
         .ok_or(CallFailure::RejectedInput)?;
     let state = object
         .get("state")
-        .filter(Value::is_object)
+        .filter(|value| value.is_object())
         .ok_or(CallFailure::RejectedInput)?;
     let mut values = 1; // The outer input_json object contains the state.
     check_json_limits(state, 2, &mut values)?;

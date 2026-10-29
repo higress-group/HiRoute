@@ -60,6 +60,9 @@ pub use operation::{
     settings_model_publication_record, valid_user_agent_token, validate_idempotency_key,
     validate_settings_model_publication_intent,
 };
+pub use operation::{
+    DecisionServiceOperationInputV2, DecisionServiceOperationV2, DecisionSourceMutationV1,
+};
 pub use publication::*;
 pub use revision::{RevisionMismatch, compare_revisions};
 pub use routing::*;

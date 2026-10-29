@@ -1,7 +1,6 @@
 //! Safe, versioned decision connection DTOs shared by the product hosts and CLI.
-use hiroute_domain::{
-    CanonicalDigest, DecisionServiceRecord, DecisionServiceV2, DecisionWireProtocolV2,
-};
+use hiroute_domain::{CanonicalDigest, DecisionServiceRecord, DecisionWireProtocolV2};
+pub use hiroute_domain::{DecisionExpectedSourceRevisionV1, DecisionServiceChangeV2};
 use serde::{Deserialize, Serialize};
 
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -64,22 +63,6 @@ pub struct DecisionServiceViewV2 {
 #[serde(deny_unknown_fields)]
 pub struct DecisionServicesV2 {
     pub services: Vec<DecisionServiceViewV2>,
-}
-
-#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DecisionExpectedSourceRevisionV1 {
-    pub source_id: String,
-    pub revision: u64,
-}
-
-#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DecisionServiceChangeV2 {
-    pub id: String,
-    pub expected_revision: u64,
-    pub service: Option<DecisionServiceV2>,
-    pub expected_source_revisions: Vec<DecisionExpectedSourceRevisionV1>,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
