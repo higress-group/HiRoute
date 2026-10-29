@@ -13,6 +13,9 @@ use hiroute_gateway_core::runtime::body::{
 use super::secure_path;
 use super::{ReplayConfig, ReplayError, ReplayRange, ReplayStore};
 
+#[path = "stream/json_buffer.rs"]
+mod json_buffer;
+
 pub(super) struct ReplayStreamBuilder {
     directory: Arc<secure_path::SecureDirectory>,
     ordinal: u64,
@@ -307,7 +310,10 @@ impl ReplayStreamBuilder {
         let gate = Arc::clone(&self.memory_gate);
         let _guard = lock(&gate);
         let mut range = ReplayRangeSink::new(self);
-        let result = write_canonical_json(&mut range, value);
+        let result = {
+            let mut writer = json_buffer::JsonBuffer::new(&mut range);
+            write_canonical_json(&mut writer, value).and_then(|_| writer.flush())
+        };
         if result.is_err() {
             return Err(range.error.take().unwrap_or(ReplayError::InvalidJson));
         }
