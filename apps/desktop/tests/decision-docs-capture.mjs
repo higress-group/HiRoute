@@ -59,7 +59,7 @@ try {
     await evaluate(client, 'new Promise(r=>setTimeout(r,350))');
     const state = await evaluate(client, `({overflow:document.documentElement.scrollWidth>innerWidth,errors:[...document.querySelectorAll('[role=alert]')].filter(e=>e.checkVisibility()).map(e=>e.innerText),calls:__DECISION_DOCS__.captureCalls})`);
     assert.equal(state.overflow, false);assert.deepEqual(state.errors, []);
-    assert(state.calls.every(c=>['observation_read','compute_management_snapshot','plan_editor_options','decision_services'].includes(c)));
+    assert(state.calls.every(c=>['observation_read','compute_management_snapshot','plan_editor_options','decision_services_v2','decision_connection_sources'].includes(c)));
     if (capture) {
       const shot=await client.send('Page.captureScreenshot',{format:'png'});
       fs.writeFileSync(new URL(`${view}-${language==='zh'?'zh-CN':'en'}.png`,assets),Buffer.from(shot.data,'base64'));

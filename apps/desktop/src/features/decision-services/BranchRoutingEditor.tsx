@@ -5,13 +5,14 @@ import type { OpenDecisionConnection } from './presentation';
 import { useState, type ReactNode } from 'react';
 import { Disclosure, UiIcon } from '../../ui';
 import type { Selection } from '../../plan-editor';
-import { isCustomExtension, newBranch, type BranchRouting, type DecisionService, type RouteBranch } from './types';
+import { isCustomExtension, isNativeDecision, newBranch, type BranchRouting, type RouteBranch } from './types';
+import type { DecisionServiceView } from './contracts';
 import { JudgmentFields, judgmentSummary } from './JudgmentSettings';
 
 export type DecisionModelGroup = (title: string, subtitle: string, values: Selection[], replace: (values: Selection[]) => void, options: { groupId: string; preferred?: 'low' | 'high' }) => ReactNode;
 export function BranchRoutingEditor({ routing, services, language, onChange, onOpenServices, group, errorGroup, error, evidence, evidenceError, newPlan, replayPlan }: {
   replayPlan?: { planId: string; revision: number; savedThresholds: Record<string, number>; active: boolean }; evidence?: TrustBranch[]; evidenceError?: boolean; newPlan?: boolean;
-  routing: BranchRouting; services: DecisionService[]; language: 'zh' | 'en';
+  routing: BranchRouting; services: DecisionServiceView[]; language: 'zh' | 'en';
   onChange(value: BranchRouting): void; onOpenServices?: OpenDecisionConnection; errorGroup?: string; error?: string; group: DecisionModelGroup;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
@@ -34,12 +35,12 @@ export function BranchRoutingEditor({ routing, services, language, onChange, onO
         {dual && !extension && <TrustLevelControl classifier={routing.classifier} value={judgment} onChange={judgment => put(branch, { judgment })} id={`branch-${index}`} language={language} replayScope={replayPlan ? { ...replayPlan, branchId: branch.id, savedThreshold: replayPlan.savedThresholds[branch.id] ?? judgment.degree.simple_threshold_millis } : undefined} complete={newPlan ? 0 : evidence?.find(item => item.branch_id === branch.id)?.full_history.complete} evidenceError={evidenceError} />}
         {!extension && <Disclosure label={t(`判断设置 · ${branch.judgment ? '单独调整' : '使用计划默认'} · ${judgmentSummary(judgment, dual, language)}`, `Judgment settings · ${branch.judgment ? 'Customized' : 'Plan defaults'} · ${judgmentSummary(judgment, dual, language)}`)} language={language}>
           <div className="field-actions"><p className="field-help">{branch.judgment ? t('本分支使用独立的完整判断设置。', 'This branch uses its own complete judgment settings.') : t('跟随计划默认，单独调整后整套设置独立生效。', 'Follows plan defaults. Customize to make all settings independent.')}</p><button className="btn" type="button" onClick={() => put(branch, { judgment: branch.judgment ? null : structuredClone(routing.judgment) })}>{branch.judgment ? t('恢复计划默认', 'Restore plan defaults') : t('单独调整', 'Customize')}</button></div>
-          <JudgmentFields native={routing.classifier.kind === 'decision_service' && routing.classifier.service.connection.kind === 'system_one'} value={judgment} onChange={judgment => put(branch, { judgment })} id={`branch-${index}`} dual={dual} hideThreshold={dual} disabled={!branch.judgment} language={language} />
+          <JudgmentFields native={isNativeDecision(routing.classifier)} value={judgment} onChange={judgment => put(branch, { judgment })} id={`branch-${index}`} dual={dual} hideThreshold={dual} disabled={!branch.judgment} language={language} />
         </Disclosure>}
       </section>;
     })}
     <section className="editor-section"><button className="btn" type="button" disabled={routing.branches.length >= 16} onClick={() => patch({ branches: [...routing.branches, newBranch(t(`分支 ${routing.branches.length + 1}`, `Branch ${routing.branches.length + 1}`))] })}><UiIcon name="plus" />{t('添加分支', 'Add branch')}</button></section>
-    {!extension && <section className="editor-section"><Disclosure label={t(`计划默认判断设置 · ${judgmentSummary(routing.judgment, true, language)}`, `Plan default judgment · ${judgmentSummary(routing.judgment, true, language)}`)} language={language}><JudgmentFields native={routing.classifier.kind === 'decision_service' && routing.classifier.service.connection.kind === 'system_one'} value={routing.judgment} onChange={judgment => patch({ judgment })} id="global" language={language} /></Disclosure></section>}
+    {!extension && <section className="editor-section"><Disclosure label={t(`计划默认判断设置 · ${judgmentSummary(routing.judgment, true, language)}`, `Plan default judgment · ${judgmentSummary(routing.judgment, true, language)}`)} language={language}><JudgmentFields native={isNativeDecision(routing.classifier)} value={routing.judgment} onChange={judgment => patch({ judgment })} id="global" language={language} /></Disclosure></section>}
     <section className="editor-section"><Disclosure label={t('默认分支', 'Default branch')} language={language}>
       <label className="field"><span className="field-label">{t('默认分支', 'Default branch')}</span><select className="input" value={routing.default_branch_id} onChange={e => patch({ default_branch_id: e.target.value })}>{routing.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select><span className="field-help">{t('没有匹配的任务条件时使用。整体决策失败时也使用此分支，有主力则使用主力。', 'Used when no task condition matches. Decision failures also use this branch, preferring its primary group when present.')}</span></label>
     </Disclosure></section>

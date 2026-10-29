@@ -120,6 +120,8 @@ export function DesktopApp() {
   const trialOpen = Boolean(trialIntent) && !trialModelsOpen;
   const [page, setPage] = useState<Page>('home');
   const [modelTab, setModelTab] = useState<'general' | 'decisions'>('general');
+  // Managing an API connection from a decision draft keeps that draft mounted behind the model page.
+  const [decisionDetour, setDecisionDetour] = useState(false), [sourceRefreshKey, setSourceRefreshKey] = useState(0);
   const [decisionIntent, setDecisionIntent] = useState<DecisionIntent | null>(null);
   const decisionReturn = useRef<((service: DecisionService) => void) | null>(null);
   const [returningToRoute, setReturningToRoute] = useState(false);
@@ -370,7 +372,7 @@ export function DesktopApp() {
     if (next === 'home' && page !== 'home') void Promise.allSettled([home.refreshActivity(), home.refreshValue()]);
     setVisited(current => current.has(next) ? current : new Set([...current, next]));
     setPage(next);
-    if (next !== 'models') { decisionReturn.current = null; setReturningToRoute(false); }
+    if (next !== 'models') { decisionReturn.current = null; setReturningToRoute(false); setDecisionDetour(false); }
   }
 
   function editorScope(value: Page): 'decisions' | 'models' | 'routing' | 'agents' | null {
@@ -384,6 +386,7 @@ export function DesktopApp() {
     // resolve that retained draft before replacing or abandoning it.
     if (decisionReturn.current && next !== 'routing' && (next !== 'models' || replaceTarget)
       && !await requestEditorReplacement('routing')) return false;
+    if (decisionDetour && next !== 'models' && !await requestEditorReplacement('decisions')) return false;
     const targetScope = editorScope(next);
     if (replaceTarget && targetScope && targetScope !== currentScope && !await requestEditorReplacement(targetScope)) return false;
     return true;
@@ -398,6 +401,14 @@ export function DesktopApp() {
   async function switchModelTab(next: 'general' | 'decisions') {
     if (next === modelTab || !await requestEditorReplacement(modelTab === 'general' ? 'models' : 'decisions')) return;
     setModelTab(next);
+    if (next === 'decisions' && decisionDetour) { setDecisionDetour(false); setSourceRefreshKey(key => key + 1); }
+  }
+
+  async function manageDecisionSource(sourceId: string) {
+    if (!await requestEditorReplacement('models')) return;
+    setModelIntent({ key: `models/${randomId()}`, sourceId });
+    setDecisionDetour(true);
+    setModelTab('general');
   }
 
   const addDecisionForRoute: OpenDecisionConnection = async (kind, select) => {
@@ -777,7 +788,7 @@ export function DesktopApp() {
             key={modelIntent.key}
             language={language}
             active={!trialOpen && page === 'models' && modelTab === 'general'}
-            tabs={modelTabs}
+            tabs={<>{modelTabs}{decisionDetour && <div className="decision-detour" role="note"><button type="button" className="btn" onClick={() => void switchModelTab('decisions')}><UiIcon name="arrowLeft" />{language === 'zh' ? '返回决策模型 — 草稿已保留' : 'Back to decision model — draft retained'}</button></div>}</>}
             trustedAuthority={mutationAllowed}
             refreshVersion={refreshVersion}
             initialSourceId={modelIntent.sourceId}
@@ -805,6 +816,7 @@ export function DesktopApp() {
           onOpenRoute={(plan, draft) => void showRouting({ key: draft?.draft_id ?? plan!.agent_plan_id, plan, draft })}
           onReturn={returningToRoute ? () => void openPageSafely('routing') : undefined}
           onUse={returningToRoute ? useDecisionInRoute : undefined}
+          sourceRefreshKey={sourceRefreshKey} onManageSource={sourceId => void manageDecisionSource(sourceId)}
         /></div>}
         {visited.has('routing') && <div hidden={trialOpen || page !== 'routing'}><RoutingPage
             key={routingIntent.key}
