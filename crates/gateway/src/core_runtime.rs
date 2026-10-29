@@ -585,10 +585,9 @@ impl ProductionGatewayRuntime {
             }
             set_phase(LocalPhase::Parse);
             let parse_started = Instant::now();
-            let mut canonical_request = match adapters::decode_ingress_request_with_replay(
-                protocol,
-                &document,
-                Some(&replay),
+            let identity_document = crate::context_hold::context_document(&document);
+            let mut canonical_request = match adapters::decode_owned_ingress_request_with_replay(
+                protocol, document, &replay,
             )
             .map(Box::new)
             {
@@ -661,7 +660,7 @@ impl ProductionGatewayRuntime {
                 ContextRequest {
                     ingress: protocol,
                     headers: &request.headers,
-                    document: &document,
+                    document: &identity_document,
                     request: &canonical_request,
                     semantic_request: Some(routing_request),
                     user_origin_unverified: routing_view.origin_unverified()
@@ -674,7 +673,7 @@ impl ProductionGatewayRuntime {
             );
             let current_input_origin_unverified = routing_view.origin_unverified()
                 || identity.input_origin_unverified(prepared_hold.as_ref());
-            drop(document);
+            drop(identity_document);
             drop(ingress_workspace);
             set_phase(LocalPhase::Prevalidate);
             let prevalidate_started = Instant::now();

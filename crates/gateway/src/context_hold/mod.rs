@@ -47,6 +47,22 @@ pub(crate) struct ContextRequest<'a, 'request> {
     pub(crate) replay: &'a ReplayStore,
 }
 
+/// Native identity and routing enrichment read only these metadata roots. Keep
+/// their pre-externalization values while moving the full document into the IR.
+/// Prompt/history content still comes exclusively from the current request.
+pub(crate) fn context_document(document: &Value) -> Value {
+    Value::Object(
+        ["metadata", "client_metadata"]
+            .into_iter()
+            .filter_map(|key| {
+                document
+                    .get(key)
+                    .map(|value| (key.to_owned(), value.clone()))
+            })
+            .collect(),
+    )
+}
+
 pub(crate) fn prepare_context<'request>(
     store: &ContextHoldStore,
     observation_key: &[u8; 32],

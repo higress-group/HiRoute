@@ -70,6 +70,46 @@ impl Fixture {
 }
 
 #[test]
+fn owned_ingress_keeps_protocol_meaning_and_moves_the_original_native_tree() {
+    for (protocol, wire) in [
+        (
+            IngressProtocol::Responses,
+            json!({"model":"alias","input":[{"role":"user","content":"hello"}],"client_metadata":{"session_id":"native-session"}}),
+        ),
+        (
+            IngressProtocol::ChatCompletions,
+            json!({"model":"alias","messages":[{"role":"user","content":"hello","message_id":"platform-row"}]}),
+        ),
+        (
+            IngressProtocol::Messages,
+            json!({"model":"alias","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"metadata":{"user_id":"{\"session_id\":\"native-session\"}"}}),
+        ),
+    ] {
+        let fixture = Fixture::new(1024 * 1024, 16 * 1024);
+        let expected = decode_ingress_request(protocol, &wire).unwrap();
+        // Vec/String storage, rather than the stack address of the moved map,
+        // witnesses that this path retained the original native allocation.
+        let model = wire["model"].as_str().unwrap().as_ptr();
+        let identity = crate::context_hold::context_document(&wire);
+        let actual =
+            super::super::decode_owned_ingress_request_with_replay(protocol, wire, &fixture.store)
+                .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(
+            actual.native_body.as_ref().unwrap()["model"]
+                .as_str()
+                .unwrap()
+                .as_ptr(),
+            model
+        );
+        assert_eq!(
+            crate::context_hold::context_document(actual.native_body.as_ref().unwrap()),
+            identity
+        );
+    }
+}
+
+#[test]
 fn borrowed_wire_json_matches_the_existing_owned_expansion_exactly() {
     use crate::content_ref::{ContentRef, JsonValueExt, borrowed_wire_value};
     let reference = ContentRef::new(7, 13, 29, 31);
