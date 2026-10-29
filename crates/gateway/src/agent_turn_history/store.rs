@@ -325,11 +325,13 @@ impl AgentTurnHistoryStore {
         if analyzed.turns.is_empty() {
             return Err(AgentTurnHistoryError::NoUserTurn);
         }
-        let gap_epoch = self.capture_gap_epoch(&key).load(Ordering::Acquire);
         // Contention is not capacity exhaustion. Only this in-memory admission
         // is serialized; projection/Replay reads happened before taking the lock
         // and the request's external execution never owns it.
         let mut inner = self.inner.lock();
+        // Include gaps reported while this entrance was waiting. A later gap
+        // still advances the fence and cannot be acknowledged by this admission.
+        let gap_epoch = self.capture_gap_epoch(&key).load(Ordering::Acquire);
         inner.purge_expired(now, self.idle_ttl, &key);
         self.observe_capture_gap_epoch(&mut inner, &key, gap_epoch);
         // Projection ran before either cache lock. Validate and reserve the
