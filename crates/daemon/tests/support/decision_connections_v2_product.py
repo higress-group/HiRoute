@@ -1,5 +1,6 @@
 """Versioned CLI and real Gateway against a local Decisions endpoint; no paid service."""
 import hashlib
+import copy
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -8,6 +9,8 @@ import threading
 
 from publication_product import Product, SENTINEL, V1, encoded
 from publication_process import bootstrap
+from model_connections_product import (MODEL, NATIVE_TOKEN, NativeUpstream, gateway_request,
+                                       publish_plan_and_agent, save_native_source)
 
 
 class Endpoint(BaseHTTPRequestHandler):
@@ -59,6 +62,7 @@ def run(repository):
     thread.start()
     secondary = 'decision-fixture-secondary-token'
     product.secrets.add(secondary)
+    model_upstream = None
 
     def data(command, payload=None):
         return product.public_cli(command, payload)[1]['data']
@@ -155,10 +159,79 @@ def run(repository):
         product.stop()
         product.start()
         assert test(current(shared['id']))['outcome'] == 'passed'
+
+        # Publish an actual Agent route. Its model and Decisions calls each use
+        # their own local counted upstream, so no paid provider is contacted.
+        model_upstream = NativeUpstream()
+        product.install_codex_fixture(MODEL, 'medium', model_upstream.base_url, NATIVE_TOKEN)
+        model_source = save_native_source(product, model_upstream, NATIVE_TOKEN, cli_input=True)
+        before = len(Endpoint.requests)
+        publish_plan_and_agent(product, model_source['binding_id'],
+                               native_model_mode='hiroute_only', branch_service=shared)
+        assert len(Endpoint.requests) == before, 'publication called the decision provider'
+        gateway_request(product)
+        assert len(Endpoint.requests) == before + 1
+        assert Endpoint.requests[-1][1]['model'] == shared['connection']['model']
+        assert model_upstream.requests[-1]['path'] == '/v1/responses'
+
+        # Switch A to B with only B's revision. A remains the authority for the
+        # already published version, while the new version joins B.
+        newer = copy.deepcopy(shared)
+        newer['revision'] = 2
+        newer['connection']['model'] = 'gpt-6-luna-next'
+        sources = {row['source_id']: row for row in data('decision sources list')['sources']}
+        before_a = sources[product.source_id]['revision']
+        source_b = sources[model_source['source_id']]
+        newer['connection']['authentication'] = {'kind': 'shared_source',
+            'source_id': source_b['source_id'], 'source_lineage_digest': source_b['lineage_digest']}
+        mutate({'id': shared['id'], 'expected_revision': 1, 'service': newer,
+                'expected_source_revisions': [{'source_id': source_b['source_id'], 'revision': source_b['revision']}]}, 'decision-switch-source')
+        sources = {row['source_id']: row for row in data('decision sources list')['sources']}
+        assert sources[product.source_id]['revision'] == before_a
+        assert sources[source_b['source_id']]['revision'] > source_b['revision']
+        before = len(Endpoint.requests)
+        gateway_request(product)
+        assert len(Endpoint.requests) == before + 1
+        assert Endpoint.requests[-1][1]['model'] == shared['connection']['model']
+
+        # Shared to independent needs no source revisions; both old memberships
+        # remain available to their frozen versions.
+        independent = copy.deepcopy(newer)
+        independent['revision'] = 3
+        independent['connection']['authentication'] = {'kind': 'independent', 'auth_header': {
+            'name': 'Authorization', 'value_secret_ref': 'decision/shared/independent'}}
+        independent_token = 'Bearer decision-fixture-independent-token'
+        product.secrets.add(independent_token)
+        product.register_protected_frame({'schema': 'hiroute.protected-input/v1',
+            'registration_id': hashlib.sha256(b'decision-independent').hexdigest(),
+            'candidate_ref': 'candidate/decision-independent', 'candidate_revision': 1,
+            'secret': independent_token})
+        mutate({'id': shared['id'], 'expected_revision': 2, 'service': independent,
+                'expected_source_revisions': []}, 'decision-switch-independent', 'candidate/decision-independent')
+        after = {row['source_id']: row for row in data('decision sources list')['sources']}
+        assert after[product.source_id]['revision'] == sources[product.source_id]['revision']
+        assert after[source_b['source_id']]['revision'] == sources[source_b['source_id']]['revision']
+        assert {row['source_id'] for row in current(shared['id'])['related_sources']} == {product.source_id, source_b['source_id']}
+        assert test(current(shared['id']))['outcome'] == 'passed'
+        assert Endpoint.requests[-1][0] == independent_token
+        save_source('save_disabled', [], 'decision-disable-published-source')
+        before = len(Endpoint.requests)
+        gateway_request(product)
+        assert len(Endpoint.requests) == before, 'disabled decision source reached provider'
+        save_source('save_ready', [], 'decision-enable-published-source')
+        product.stop()
+        product.start()
+        gateway_request(product)
+        assert len(Endpoint.requests) == before + 1
+        assert Endpoint.requests[-1][1]['model'] == shared['connection']['model']
         print(json.dumps({'scenario': 'decision-v2-real-source-loopback', 'state': 'green',
             'cases': ['save-without-network', 'exact-admission', '401-key-failover', '400-no-retry',
-                      'stale-digest', 'disabled-source', 'restart']}), flush=True)
+                      'stale-digest', 'disabled-source', 'restart', 'published-gateway-route',
+                      'frozen-revision', 'source-switch', 'independent-switch',
+                      'published-source-disable']}), flush=True)
     finally:
+        if model_upstream is not None:
+            model_upstream.close()
         endpoint.shutdown()
         endpoint.server_close()
         thread.join(timeout=5)
