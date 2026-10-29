@@ -475,7 +475,10 @@ impl ProvisionalDisk {
     }
 
     fn seal(self, total_len: u64) -> Result<StreamBacking, ReplayError> {
-        self.file.sync_all()?;
+        // This file belongs only to the live request. Completed writes are
+        // readable through its pinned handle; restart removes orphaned spill
+        // instead of recovering an in-flight request. A durability barrier here
+        // blocks unrelated requests without protecting any recoverable state.
         if self.file.metadata()?.len() != total_len {
             return Err(ReplayError::Integrity);
         }

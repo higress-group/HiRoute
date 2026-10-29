@@ -768,3 +768,7 @@ Canonical JSON range construction coalesces the existing serializer's small writ
 through a fixed 8 KiB stack buffer. It seals a range only after a successful final
 flush; partial writes, interruptions and errors retain the existing Replay failure
 semantics. It adds no heap admission, retained body or alternative serializer.
+Request-local spill seals completed writes with the existing handle/length checks,
+without a durable flush. Independent readers retain their pinned handles; restart
+cleans orphaned spill rather than recovering in-flight requests. Observation storage
+and recoverable publication keep their own durability barriers.

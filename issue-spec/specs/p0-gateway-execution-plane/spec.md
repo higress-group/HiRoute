@@ -442,6 +442,13 @@ and read sequentially through pinned handles. System-temp aliases are canonicali
 explicit/replay leaf symlinks remain rejected, and ordinary OS-access policy is not
 an owner/mode repair operation.
 
+Spill belongs only to the live request and its existing readers. Sealing SHALL
+finish all writes and validate the pinned handle and exact length before publishing
+ranges; it SHALL NOT synchronously force these temporary bytes to durable storage.
+Restart removes orphaned spill instead of resuming an in-flight request. This
+temporary-file boundary does not relax durable observation acknowledgements,
+publication, installation or recovery barriers.
+
 Replay cannot encrypt/authenticate/hash/fingerprint the entire raw body, pre-scan it
 again before provider solely for integrity, or seal-copy a second full representation.
 Existing syntax/depth/structure checks remain. ContentRef contains request-local
