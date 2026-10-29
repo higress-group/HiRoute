@@ -34,6 +34,16 @@ permitted relay or failure; unobserved upstream permission changes may still rea
 provider and receive its final rejection. A later revoke never automatically replays
 an already sent Attempt or expands source membership.
 
+Immutable policy/profile and sealed execution facts MAY be validated and retained
+by their owning compiled execution. Consumption SHALL still match the current
+config generation and exact bytes, binding, effective request profile and target.
+A bounded request-local handoff may reuse the same sealed allocation; copied or
+changed envelopes SHALL use full validation. Request-specific reasoning receives
+its own existing digest and validation. Reuse SHALL NOT pin unrelated candidate
+generations, cache secrets or bypass current credential/grant/attempt authority.
+Resource refusal SHALL retain the ordinary validated path and existing limits;
+this adds no public or persisted format.
+
 ### Requirement: Cross-protocol projection preserves declared semantics
 
 Responses, Messages, and Chat requests parse once into bounded ModelRequestIR,

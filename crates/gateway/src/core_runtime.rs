@@ -66,9 +66,7 @@ use crate::server::composition::{
 use crate::server::dispatch::{
     DispatchError, GatewayRequestAuthority, ModelSelector, RunRequestAuthorityPort,
 };
-use crate::server::publication::{
-    CatalogError, GatewayCatalog, SEALED_CANDIDATE_EXECUTION_SCHEMA_V1, SealedCandidateExecutionV1,
-};
+use crate::server::publication::{CatalogError, GatewayCatalog};
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
 use self::observation::{
@@ -1067,36 +1065,16 @@ impl ProductionGatewayRuntime {
                     .ok_or_else(|| {
                         TransportError::Io("sealed candidate config is invalid".into())
                     })?;
-                let candidate = &compiled.binding;
-                let profile_is_member = compiled.profiles.values().any(|published| {
-                    published
-                        .protocol_profile
-                        .for_request_reasoning(&planner_input.request)
-                        .is_ok_and(|profile| profile == facts.protocol_profile)
-                });
-                if candidate.local_id != binding.local_id()
-                    || candidate.stable_target_key != frozen.stable_binding_id
-                    || !profile_is_member
+                if compiled.binding.local_id != binding.local_id()
+                    || compiled.binding.stable_target_key != frozen.stable_binding_id
                 {
                     return Err(TransportError::Io(
                         "sealed candidate profile mismatch".into(),
                     ));
                 }
-                let execution = SealedCandidateExecutionV1 {
-                    schema_version: SEALED_CANDIDATE_EXECUTION_SCHEMA_V1.into(),
-                    stable_target_key: candidate.stable_target_key.clone(),
-                    source_binding_id: candidate.source_binding_id.clone(),
-                    credential_destination_ref: candidate.credential_destination_ref.clone(),
-                    logical_endpoint: candidate.endpoint.clone(),
-                    upstream_model_id: candidate.upstream_model_id.clone(),
-                    native_transport_model: candidate.native_transport_model.clone(),
-                    connector_runtime: candidate.connector_runtime,
-                    operational_target: candidate.operational_target.clone(),
-                    operational_target_digest: candidate.operational_target_digest.clone(),
-                    protocol_set_digest: candidate.protocol_profile_digest.clone(),
-                    profile_digest: facts.profile_digest.clone(),
-                    protocol_profile: facts.protocol_profile.clone(),
-                };
+                let execution = compiled
+                    .execution_for(facts, &planner_input.request)
+                    .map_err(|_| TransportError::Io("sealed candidate profile mismatch".into()))?;
                 let pool = with_active_request(request_observation.clone(), async {
                     credentials::bind_current(&self.ports, &mut authorized, binding, &execution)
                 })
@@ -1137,9 +1115,8 @@ impl ProductionGatewayRuntime {
                     .map_err(|_| {
                         TransportError::Io("current candidate binding unavailable".into())
                     })?;
-                let profile = serde_json::to_vec(&execution).map_err(|_| {
-                    TransportError::Io("planner profile serialization failed".into())
-                })?;
+                let profile = execution.bytes().clone();
+                prepared_templates.insert_execution(binding.local_id(), execution);
                 frozen_candidates.push(DecisionCandidateAuthority {
                     binding,
                     stable_target: ObservationLabel::new(frozen.stable_binding_id.clone())
@@ -1158,7 +1135,7 @@ impl ProductionGatewayRuntime {
                         })?,
                     ),
                     reason_ledger_identity: Some(reason_ledger_identity.clone()),
-                    provider_profile: Some(profile.into()),
+                    provider_profile: Some(profile),
                 });
                 hold_candidates.push((
                     binding,

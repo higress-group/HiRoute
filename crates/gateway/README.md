@@ -13,6 +13,12 @@ and their existing digests per execution. Requests still acquire current core
 configuration and compare its exact bytes/generation before consuming those
 facts. Planner reuses a digest only when every corresponding immutable field
 matches; its ordinary untrusted-input entry retains complete digest validation.
+[Prepared execution facts](src/publication/execution.rs) also retain the existing
+sealed envelope, exact lease target and their canonical digests. A bounded
+request-local handoff can reuse them only for the same binding and exact sealed
+byte allocation. Copied or changed envelopes retain full validation; request
+reasoning derives a separately checked profile. The current attempt still checks
+its target, profile identity, protocol, credentials and operational authority.
 Live credential/grant checks stay at their existing request/attempt boundaries.
 
 The [model selector](src/dispatch/selector.rs) and

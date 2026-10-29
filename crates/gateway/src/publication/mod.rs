@@ -4,6 +4,8 @@ mod candidate;
 mod catalog;
 pub(crate) use candidate::{CompiledCandidate, PublishedPlannerFacts};
 mod compiler;
+mod execution;
+pub(crate) use execution::PreparedCandidateExecution;
 mod installer;
 pub(crate) mod lease_target;
 mod run;

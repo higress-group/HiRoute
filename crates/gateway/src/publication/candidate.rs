@@ -8,13 +8,14 @@ use crate::server::core_runtime::profiles::{
 };
 use crate::server::request_plan::IngressProtocol;
 
-use super::{CandidateBindingV1, PublicationInstallError};
+use super::{CandidateBindingV1, PreparedCandidateExecution, PublicationInstallError};
 
 #[derive(Debug)]
 pub(crate) struct CompiledCandidate {
     pub(crate) binding: CandidateBindingV1,
     pub(crate) config_bytes: Arc<[u8]>,
     pub(crate) profiles: BTreeMap<IngressProtocol, PlannerCandidateFactsV1>,
+    executions: BTreeMap<IngressProtocol, Arc<PreparedCandidateExecution>>,
 }
 
 impl CompiledCandidate {
@@ -60,11 +61,48 @@ impl CompiledCandidate {
                 ));
             }
         }
+        let executions = profiles
+            .iter()
+            .filter_map(|(ingress, facts)| {
+                // An invalid envelope retains the existing request-time rejection.
+                PreparedCandidateExecution::compile(&binding, facts)
+                    .ok()
+                    .map(|value| (*ingress, value))
+            })
+            .collect();
         Ok(Arc::new(Self {
             binding,
             config_bytes,
             profiles,
+            executions,
         }))
+    }
+
+    pub(crate) fn execution_for(
+        &self,
+        facts: &PlannerCandidateFactsV1,
+        request: &crate::server::core_runtime::model_ir::ModelRequestIRV1,
+    ) -> Result<Arc<PreparedCandidateExecution>, Arc<str>> {
+        let published = self
+            .profiles
+            .get(&request.ingress_protocol)
+            .ok_or_else(|| Arc::from("protocol_failed"))?;
+        if facts.stable_binding_id != self.binding.stable_target_key
+            || !published
+                .protocol_profile
+                .for_request_reasoning(request)
+                .is_ok_and(|profile| profile == facts.protocol_profile)
+        {
+            return Err(Arc::from("protocol_failed"));
+        }
+        if published.protocol_profile == facts.protocol_profile
+            && published.profile_digest == facts.profile_digest
+        {
+            if let Some(prepared) = self.executions.get(&request.ingress_protocol) {
+                return Ok(prepared.clone());
+            }
+        }
+        PreparedCandidateExecution::compile(&self.binding, facts)
     }
 }
 
