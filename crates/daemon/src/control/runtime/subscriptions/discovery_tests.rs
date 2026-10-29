@@ -37,6 +37,7 @@ fn regression_maintenance_keeps_cold_catalog_outage_available_for_fallback() {
         CpaAttemptError, CpaDownstreamCredentialPort, ExactCpaAttemptRequest,
         ExactCpaCredentialRequest,
     };
+    use hiroute_integrations::CpaSupervisorPort;
     let mut fixture = Fixture::new();
     save_login(&fixture, SubscriptionLoginProviderV1::Codex);
     let before = fixture
