@@ -438,6 +438,7 @@ HiRoute does not implement or stack another OAuth refresh chain.
 
 - **WHEN** an authorized saved subscription candidate cannot prepare its CPA runtime and a later candidate in the same published plan remains usable
 - **THEN** the Gateway skips the unavailable subscription and tries the later candidate within the existing order, deadline and cancellation boundary, without changing saved model choices or creating an upstream attempt for the failed preparation.
+- **AND** a failed runtime directory read keeps subscription execution suspended while reporting temporary unavailability; it does not assert that the saved credential was revoked. Only saved-source recovery can restore execution, and disable, removal or shutdown keeps its revocation authority.
 - **AND** rejected credentials, mismatched targets and unavailable shared authorization state retain their fail-closed behavior.
 
 ### Requirement: Proxy configuration is scoped and reports actual application

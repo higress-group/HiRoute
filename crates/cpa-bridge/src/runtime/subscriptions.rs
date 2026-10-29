@@ -128,7 +128,10 @@ impl ManagedCpaRuntime {
             // saved authorization is invalid. Keep its enabled revision retryable;
             // cleanup_only already prevents health or capability admission.
             if !inner.live.as_ref().is_some_and(|live| live.cleanup_only) {
-                self.reject_preparation(preparation_generation);
+                self.reject_preparation_with_availability(
+                    preparation_generation,
+                    matches!(result, Err(CpaLifecycleError::ControlUnavailable)),
+                );
             }
         }
         result
@@ -248,6 +251,7 @@ impl ManagedCpaRuntime {
     /// projection is the only way to reopen admission.
     pub fn suspend_subscription_execution(&self) {
         let mut admission = self.admission.state.lock();
+        admission.preparation_unavailable = false;
         if !admission.subscription_execution_suspended {
             admission.subscription_execution_suspended = true;
             let accounts = admission
@@ -283,6 +287,7 @@ impl ManagedCpaRuntime {
         let resumed = state == CpaSourceManagementState::Enabled
             && std::mem::replace(&mut admission.subscription_execution_suspended, false);
         if changed || resumed {
+            admission.preparation_unavailable = false;
             if state == CpaSourceManagementState::Enabled {
                 admission.needs_account_validation = true;
             } else {
@@ -299,8 +304,13 @@ impl ManagedCpaRuntime {
     }
 
     pub(crate) fn reject_preparation(&self, generation: u64) {
+        self.reject_preparation_with_availability(generation, false);
+    }
+
+    fn reject_preparation_with_availability(&self, generation: u64, unavailable: bool) {
         let mut admission = self.admission.state.lock();
         if self.reject_preparation_locked(&mut admission, generation) {
+            admission.preparation_unavailable = unavailable;
             drop(admission);
             // Best-effort cached projection; revocation above never waits for
             // the owner. A newer admitted operation must not be invalidated.
@@ -324,10 +334,12 @@ impl ManagedCpaRuntime {
         admission: &mut super::admission::AdmissionState,
         generation: u64,
     ) -> bool {
-        if crate::request_context::check().is_ok()
-            && admission.auth_generation == generation
-            && !admission.subscription_execution_suspended
-        {
+        let current =
+            crate::request_context::check().is_ok() && admission.auth_generation == generation;
+        if current {
+            admission.preparation_unavailable = false;
+        }
+        if current && !admission.subscription_execution_suspended {
             admission.subscription_execution_suspended = true;
             let accounts = admission
                 .source_management
