@@ -54,7 +54,7 @@ export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, 
     try { result = await backend.getComputeSaveResult(accepted.operation); }
     catch { onUncertain(); return 'uncertain'; }
     if (result.disposition === 'pending') { onUncertain(); return 'uncertain'; }
-    if (result.disposition !== 'saved') throw new Error('API_LINK_SAVE_FAILED');
+    if (result.disposition !== 'saved' || result.source_id !== sourceId) throw new Error('API_LINK_SAVE_FAILED');
     if (alive.current) await onRefresh();
     return 'saved';
   }

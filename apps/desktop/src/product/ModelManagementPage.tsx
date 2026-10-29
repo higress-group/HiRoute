@@ -1251,7 +1251,7 @@ export function ModelManagementPage({
       priceRefresh={priceRefresh}
       onReauthorize={repairSubscription}
       onManageSubscriptionLogin={() => { setAdding(true); setAddStage('subscription-login'); }}
-      renderSubscriptionApi={source => isCodexSubscription(source) ? <SavedSubscriptionApi
+      renderSubscriptionApi={source => isCodexSubscription(source) ? <SavedSubscriptionApi key={source.source_id}
         language={language} snapshot={management} source={source} mutable={trustedAuthority}
         busy={subscriptionApi.busy.has(source.source_id)} result={subscriptionApi.results[source.source_id]}
         onAssociate={apiSourceId => subscriptionApi.associate(source.source_id, apiSourceId)}

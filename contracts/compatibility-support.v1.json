@@ -2183,6 +2183,18 @@
         "crates/observation/src/store/tests/fixtures/routing-timeline-base-952917.json",
         "crates/observation/src/store/tests/plan_quality/stage_admission.rs"
       ]
+    },
+    {
+      "contract": "hiroute.compute-management-mutation/v2",
+      "field": "pre-schema34 compute_management_effects has SQL NULL api_link_before and api_link_after",
+      "mode": "recovery_read_only",
+      "owner": "compute-management",
+      "allowed_paths": [
+        "crates/local-storage/src/control/compute/management/api_link.rs",
+        "crates/local-storage/src/control/compute/management/tests/released_lifecycle.rs"
+      ],
+      "reason": "Supported released V2 and retained pre-schema34 V3 source effects did not own association metadata. SQL NULL in both new columns means no association witness; witnessed absence is the JSON string null. Never infer a V4 association change from a historical effect or rewrite its canonical source proof.",
+      "removal_condition": "Remove only after all supported sources and retained unfinished pre-schema34 operations are explicitly retired under the release support policy. Current writes always record both witnesses and V4 requires exact sealed witnesses."
     }
   ]
 }

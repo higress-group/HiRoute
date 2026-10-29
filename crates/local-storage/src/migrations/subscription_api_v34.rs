@@ -40,6 +40,8 @@ pub(crate) fn validate_links(
     connection: &rusqlite::Connection,
 ) -> Result<(), crate::LocalStorageError> {
     use hiroute_domain::ComputeSubscriptionApiLinkV1;
+    connection
+        .prepare("SELECT api_link_before,api_link_after FROM compute_management_effects LIMIT 0")?;
     let mut statement =
         connection.prepare("SELECT source_id,api_source_id FROM compute_subscription_api_links")?;
     for row in statement.query_map([], |row| {
