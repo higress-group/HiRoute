@@ -542,7 +542,10 @@ without waiting for AgentTurnFinished.
 
 Content encoding MAY run on a shared bounded worker before the existing storage
 producers. Additional snapshot/job memory and encoded records share the Content
-channel's byte ceiling. The optional extended lifetime of shared semantic Replay
+channel's byte ceiling. When a snapshot becomes the single active encoding job,
+its snapshot charge transfers to its existing request/process reservation;
+queued job metadata and encoded records retain their Content charges. The
+optional extended lifetime of shared semantic Replay
 backing, including disk bytes, is charged to the existing request/process budget;
 it is not a second payload in the Content queue. If this retention cannot be
 reserved, request capture uses its original synchronous path without introducing

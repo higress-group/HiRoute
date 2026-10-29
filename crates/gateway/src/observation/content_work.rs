@@ -145,13 +145,20 @@ impl ContentWorkProducer {
             .name("hiroute-content-capture".into())
             .spawn(move || {
                 let _slots = slots;
-                while let Ok(job) = receiver.recv() {
+                while let Ok(mut job) = receiver.recv() {
                     #[cfg(test)]
                     if let Some(gate) = &gate {
                         let mut open = gate.0.lock().unwrap();
                         while !*open {
                             open = gate.1.wait(open).unwrap();
                         }
+                    }
+                    if matches!(&job.command, Command::Request { .. }) {
+                        // The active snapshot remains fully charged by its
+                        // request/process reservation. Transfer its queue
+                        // charge before emitting encoded records; otherwise
+                        // the same payload unnecessarily occupies both slots.
+                        job._retained.shrink_to(JOB_OVERHEAD);
                     }
                     let started = Instant::now();
                     let request = job.request.clone();

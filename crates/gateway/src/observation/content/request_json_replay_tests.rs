@@ -710,3 +710,78 @@ fn optional_retention_pressure_preserves_the_original_synchronous_capture() {
     }
     drop(guard);
 }
+
+#[test]
+fn active_snapshot_does_not_reduce_encoded_capacity_while_the_sink_is_blocked() {
+    use crate::server::core_runtime::adapters::decode_ingress_request;
+    struct SinkGate(Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>);
+    impl Drop for SinkGate {
+        fn drop(&mut self) {
+            *self.0.0.lock().unwrap() = true;
+            self.0.1.notify_all();
+        }
+    }
+    struct BlockedSink {
+        gate: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+        records: mpsc::Sender<Value>,
+    }
+    impl ObservationRecordSink for BlockedSink {
+        fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack> {
+            let mut open = self.gate.0.lock().unwrap();
+            while !*open {
+                open = self.gate.1.wait(open).unwrap();
+            }
+            self.records
+                .send(serde_json::from_slice(record.payload()).unwrap())
+                .unwrap();
+            Ok(accounted_acknowledgement(record))
+        }
+    }
+    let fixture = ReplayFixture::new(1024 * 1024);
+    let text = "x".repeat(200 * 1024);
+    let input = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"route","input":text}),
+    )
+    .unwrap();
+    fixture.store.prevalidate(&[]).unwrap();
+    let gate = SinkGate(Arc::new((
+        std::sync::Mutex::new(false),
+        std::sync::Condvar::new(),
+    )));
+    let (sender, receiver) = mpsc::channel();
+    let observation = request_with_sinks_capacity(
+        OtelContentPolicy::Disabled,
+        DiagnosticsPort::default(),
+        true,
+        GatewayObservationSinks {
+            conversation_content: Arc::new(BlockedSink {
+                gate: Arc::clone(&gate.0),
+                records: sender,
+            }),
+            ..GatewayObservationSinks::discard()
+        },
+        512 * 1024,
+    );
+    observation.capture_request_async(&input, &fixture.store);
+    assert!(observation.inner.async_content.get().is_some());
+    observation.inner.channels.content_work.flush(&observation);
+    // All encoding completes while the existing sink is still blocked. The
+    // snapshot remains charged by the request budget until its job is done.
+    assert!(receiver.try_recv().is_err());
+    drop(gate);
+    let mut captured = Vec::new();
+    loop {
+        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(record["loss_watermark"].is_null(), "{record}");
+        if record["phase"] == "append" {
+            captured.extend(decoded_base64(
+                record["canonical_bytes_base64"].as_str().unwrap(),
+            ));
+        }
+        if record["phase"] == "finish" {
+            break;
+        }
+    }
+    assert_eq!(captured, text.as_bytes());
+}
