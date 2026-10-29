@@ -24,7 +24,8 @@ use super::schema::LifecycleFactV1;
 const JOB_SLOTS: usize = 256;
 const JOB_OVERHEAD: usize = 1024;
 // Optional capture may park for credit; it never extends a model deadline.
-// Bound a stalled sink's retention by one active job, with no polling/retry loop.
+// Bound each stalled credit wait; successful records keep making progress without
+// an arbitrary whole-transcript deadline or a polling/retry loop.
 const CREDIT_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(1);
 
 fn queue_storage_bytes() -> usize {
@@ -175,7 +176,7 @@ impl ContentWorkProducer {
                     }
                     let started = Instant::now();
                     let mut request = job.request.clone();
-                    request.content_credit_deadline = Some(started + CREDIT_WAIT_LIMIT);
+                    request.content_credit_wait = Some(CREDIT_WAIT_LIMIT);
                     let failed = job.status.failed.load(Ordering::Acquire);
                     if !failed {
                         let result =

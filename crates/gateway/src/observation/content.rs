@@ -373,7 +373,7 @@ impl RequestObservation {
     }
 
     fn emit_content(&self, event: ContentEvent) {
-        if self.content_credit_deadline.is_some()
+        if self.content_credit_wait.is_some()
             && self
                 .inner
                 .async_content
@@ -389,7 +389,8 @@ impl RequestObservation {
         let occurred_at_unix_nanos = self.content_occurred_at.unwrap_or_else(unix_nanos);
         let published = self.inner.channels.content.publish_with_credit(
             self.inner.latency.clone(),
-            self.content_credit_deadline,
+            self.content_credit_wait
+                .map(|limit| std::time::Instant::now() + limit),
             move |producer, sequence, loss| {
                 let sequence_bytes = sequence.to_be_bytes();
                 ConversationContentEnvelopeV1 {
@@ -440,7 +441,7 @@ impl RequestObservation {
             },
         );
         if !published
-            && self.content_credit_deadline.is_some()
+            && self.content_credit_wait.is_some()
             && let Some(status) = self.inner.async_content.get()
         {
             // The producer has already declared the exact lost sequence.
