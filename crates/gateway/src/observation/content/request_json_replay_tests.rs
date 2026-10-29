@@ -493,6 +493,7 @@ fn async_content_keeps_the_request_root_before_fast_response_after_foreground_dr
         store.prevalidate(&model_content_refs(&input)).unwrap();
         let oracle = capture(&input, &store);
         let (mut observation, receiver, gate) = asynchronous_observation();
+        observation.content_occurred_at = Some(123_456);
         Arc::get_mut(&mut observation.inner).unwrap().key = oracle.key;
         observation.capture_request_async(&input, &store);
         let attempt = content_attempt();
@@ -533,6 +534,11 @@ fn async_content_keeps_the_request_root_before_fast_response_after_foreground_dr
             }
         }
         observation.inner.channels.content_work.flush(&observation);
+        assert!(
+            records
+                .iter()
+                .all(|record| record["occurred_at_unix_nanos"] == 123_456)
+        );
         assert_eq!(budget.snapshot().unwrap().live, 0);
         let request_records = records
             .iter()

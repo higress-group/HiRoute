@@ -63,6 +63,9 @@ pub struct RequestObservationMetadata {
 #[derive(Clone)]
 pub struct RequestObservation {
     pub(super) inner: Arc<RequestObservationInner>,
+    // A worker-local view freezes the enqueue boundary without mutating shared
+    // request state or changing lifecycle/execution timestamps.
+    pub(super) content_occurred_at: Option<u64>,
 }
 
 pub(super) struct RequestObservationInner {
@@ -221,6 +224,7 @@ impl RequestObservation {
             timing.bind(request_token);
         }
         let value = Self {
+            content_occurred_at: None,
             inner: Arc::new(RequestObservationInner {
                 async_content: OnceLock::new(),
                 agent_turn_output: OnceLock::new(),

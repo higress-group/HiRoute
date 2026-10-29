@@ -377,6 +377,7 @@ impl RequestObservation {
         let request_id = self.metadata().request_id.clone();
         let key = self.inner.key;
         let event_kind = event.phase;
+        let occurred_at_unix_nanos = self.content_occurred_at.unwrap_or_else(unix_nanos);
         self.inner.channels.content.publish_timed(
             self.inner.latency.clone(),
             move |producer, sequence, loss| {
@@ -419,7 +420,7 @@ impl RequestObservation {
                     content_ref: event.content_ref,
                     downstream_delivery: event.downstream_delivery,
                     abort_reason: event.abort_reason,
-                    occurred_at_unix_nanos: unix_nanos(),
+                    occurred_at_unix_nanos,
                     completeness_delta: loss
                         .as_ref()
                         .map(|_| "partial".into())

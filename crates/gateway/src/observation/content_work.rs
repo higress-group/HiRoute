@@ -424,8 +424,12 @@ impl RequestObservation {
         reservation: ObservationWorkReservation,
         command: Command,
     ) {
+        let mut request = self.clone();
+        request
+            .content_occurred_at
+            .get_or_insert_with(super::unix_nanos);
         let job = Job {
-            request: self.clone(),
+            request,
             status: Arc::clone(status),
             queued: Instant::now(),
             command,
