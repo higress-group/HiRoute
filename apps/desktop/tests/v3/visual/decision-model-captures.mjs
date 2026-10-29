@@ -17,6 +17,14 @@ const driver = `(() => {
   const shared = { schema: 'hiroute.decision-service/v2', id: 'decision/team', revision: 1, name: 'Team decisions', connection: { kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model: 'gpt-6-luna', endpoint: 'https://api.openai.test/v1/decisions', timeout_ms: 10000, authentication: { kind: 'shared_source', source_id: sourceId, source_lineage_digest: c.decisionSource(sourceId).lineage_digest } } };
   function store(services, sources) {
     const state = { services, sources };
+    for (const source of sources) {
+      if (c.management.sources.some(item => item.source_id === source.source_id)) continue;
+      const native = structuredClone(c.management.sources.find(item => item.authentication.kind === 'bearer'));
+      c.management.sources.push({ ...native, source_id: source.source_id, display_name: source.display_name,
+      models: native.models.map((model, index) => ({ ...model, model_ref: source.source_id + '/model/' + index, binding_id: source.source_id + '/binding/' + index })),
+      keys: native.keys.map((key, index) => ({ ...key, key_id: source.source_id + '/key/' + index, model_statuses: [] })),
+        target: { ...native.target, authority: source.endpoint_host } });
+    }
     c.handlers.decision_services_v2 = () => ({ services: state.services.map(service => c.decisionView(service, state.sources)) });
     c.handlers.decision_connection_sources = () => ({ sources: structuredClone(state.sources) });
     c.handlers.save_decision_service_v2 = ({ input }) => {
@@ -44,6 +52,7 @@ const driver = `(() => {
     if (step === 'route') return '.decision-connection-form';
     await click(label('管理 API 接入', 'Manage API connection'));
     await until(() => document.querySelector('.decision-detour') && all('.model-category-tabs').some(item => item.offsetParent !== null), 'detour');
+    await until(() => all('.detail-identity').some(item => item.offsetParent !== null && item.textContent.includes('Team OpenAI')), 'selected API connection');
     if (step === 'connection') return '.decision-detour';
     document.querySelector('.decision-detour button').click();
     await until(() => field('name')?.value === label('嵌套决策模型', 'Nested decisions'), 'decision draft after detour');

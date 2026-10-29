@@ -47,7 +47,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   const [unverifiedSave, setUnverifiedSave] = useState<{ id: string; revision: number } | null>(null);
   const [query, setQuery] = useState(''), [showList, setShowList] = useState(false);
   const [protocol, setProtocol] = useState(false), [menu, setMenu] = useState(false), [deleting, setDeleting] = useState(false);
-  const sourceGeneration = useRef(0), testSequence = useRef<Record<string, number>>({});
+  const sourceGeneration = useRef(0), serviceGeneration = useRef(0), testSequence = useRef<Record<string, number>>({});
   const selected = views.find(view => view.service.id === selectedId);
   const editingView = editing && !editing.isNew ? views.find(view => view.service.id === editing.key) ?? null : null;
   useDiscardGuard('decisions', busy, language, async () => false);
@@ -57,9 +57,17 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     setUnverifiedSave(pending => pending && !next.some(view => view.service.id === pending.id && view.service.revision >= pending.revision) ? pending : null);
     return next;
   }
-  async function refresh() {
-    try { return accept((await invoke<DecisionServices>('decision_services_v2', {})).services); }
-    catch (cause) { setFactsCurrent(false); throw cause; }
+  async function refresh(): Promise<DecisionServiceView[] | null> {
+    const generation = ++serviceGeneration.current;
+    setFactsCurrent(false);
+    try {
+      const value = await invoke<DecisionServices>('decision_services_v2', {});
+      // A slower earlier read must not replace state confirmed after a Key change or a test.
+      return generation === serviceGeneration.current ? accept(value.services) : null;
+    } catch (cause) {
+      if (generation !== serviceGeneration.current) return null;
+      setFactsCurrent(false); throw cause;
+    }
   }
   /** Only the newest read applies; a failed read keeps earlier summaries as unavailable. */
   async function loadSources() {
@@ -72,26 +80,19 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       if (generation === sourceGeneration.current) setSources(current => ({ status: 'error', code: planErrorCode(cause), previous: current.status === 'loading' ? current.previous : undefined }));
     }
   }
+  // Activation and a management return share one read. Keep draft bundles intact.
   useEffect(() => {
     if (!active) return;
     let current = true;
     setLoading(true);
-    void invoke<DecisionServices>('decision_services_v2', {}).then(value => {
-      if (!current) return;
-      accept(value.services);
-      setSelectedId(id => value.services.some(view => view.service.id === id) ? id : value.services[0]?.service.id ?? null);
+    void refresh().then(next => {
+      if (!current || !next) return;
+      setSelectedId(id => next.some(view => view.service.id === id) ? id : next[0]?.service.id ?? null);
     }).catch(() => { if (current) setError({ message: t('暂时无法读取决策模型，请刷新重试。', 'Unable to read decision models. Refresh and try again.') }); })
       .finally(() => { if (current) setLoading(false); });
     void loadSources();
-    return () => { current = false; };
-  }, [active]);
-  // Returning from API connection management refreshes facts only. Bundles, mode and source stay as authored.
-  // A failed read leaves earlier passes unverified; nothing is retested automatically.
-  useEffect(() => {
-    if (!sourceRefreshKey || !active) return;
-    void loadSources();
-    void refresh().catch(() => {});
-  }, [sourceRefreshKey]);
+    return () => { current = false; serviceGeneration.current++; sourceGeneration.current++; };
+  }, [active, sourceRefreshKey]);
   function startNew(kind: DecisionEntry) {
     const id = 'decision-' + randomId();
     setEditing(kind === 'custom' ? { key: id, isNew: true, expected: 0, kind: 'custom', record: { ...newDecisionConnection('custom', language), id } }
@@ -124,7 +125,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       next = testRecord(value, Date.now());
     } catch (cause) { next = { outcome: 'failed', code: planErrorCode(cause), at: Date.now() }; }
     // Credentials may rotate during the call; the pass counts only against state read back afterwards.
-    const latest = await refresh().then(all => all.find(item => testKey(item.service) === key), () => undefined);
+    const latest = await refresh().then(all => all?.find(item => testKey(item.service) === key), () => undefined);
     // A later test or edit supersedes this result.
     if (testSequence.current[key] !== sequence) return false;
     setTesting(current => current === key ? null : current);
@@ -163,7 +164,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       setEditing(null); setSelectedId(service.id);
       setUnverifiedSave({ id: service.id, revision: expected + 1 });
       const latest = await refresh();
-      const saved = latest.find(item => item.service.id === service.id && item.service.revision === expected + 1);
+      const saved = latest?.find(item => item.service.id === service.id && item.service.revision === expected + 1);
       if (!saved) throw { code: 'DECISION_SERVICE_REFRESH_REQUIRED' };
       onChanged?.();
       setNotice(t('配置已保存。路由选用后需发布才会生效。', 'Configuration saved. Publish a route to use this version.'));
@@ -199,7 +200,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
         expected_source_revisions: expectedSourceRevisions(selected.related_sources.map(source => source.source_id), sources, selected) };
       const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v2', { input: { change, secret: null } });
       if (value.state !== 'succeeded') throw { code: 'DECISION_SERVICE_' + value.state.toUpperCase() };
-      const remaining = await refresh(); setSelectedId(remaining[0]?.service.id ?? null); onChanged?.();
+      const remaining = await refresh(); if (remaining) setSelectedId(remaining[0]?.service.id ?? null); onChanged?.();
       setNotice(t('已删除。', 'Deleted.'));
     } catch (cause) { setError({ message: t('删除未完成。当前路由、草稿或保留的历史版本仍引用时不能删除；下方列出当前可见引用。', 'Deletion did not complete. Items referenced by current routes, drafts or retained historical versions cannot be deleted. Current visible references are listed below.'), code: planErrorCode(cause) }); }
     finally { setBusy(false); setDeleting(false); }

@@ -56,6 +56,14 @@ const decisionOrder = () => c().commands.map(item => item.command).filter(comman
 const sharedSourceOf = service => service?.connection.kind === 'native' && service.connection.authentication.kind === 'shared_source' ? service.connection.authentication.source_id : null;
 function decisionStore(services = [], sources = []) {
   const store = { services: structuredClone(services), sources: structuredClone(sources), retained: structuredClone(services), rejected: [], test: () => ({ outcome: 'passed' }) };
+  for (const source of sources) {
+    if (c().management.sources.some(item => item.source_id === source.source_id)) continue;
+    const native = structuredClone(c().management.sources.find(item => item.authentication.kind === 'bearer'));
+    c().management.sources.push({ ...native, source_id: source.source_id, display_name: source.display_name,
+      models: native.models.map((model, index) => ({ ...model, model_ref: source.source_id + '/model/' + index, binding_id: source.source_id + '/binding/' + index })),
+      keys: native.keys.map((key, index) => ({ ...key, key_id: source.source_id + '/key/' + index, model_statuses: [] })),
+      target: { ...native.target, authority: source.endpoint_host } });
+  }
   const related = id => [...new Set(store.retained.filter(item => item.id === id).map(sharedSourceOf).filter(Boolean))];
   store.view = id => {
     const service = store.services.find(item => item.id === id);
@@ -982,6 +990,20 @@ const scenarios = [
     c().handlers.decision_services_v2 = read;
     await click('刷新'); await until(() => state() === 'passed', 'successful readback confirms the admitted state');
     assert(tests() === 2, 'Recovery retested implicitly');
+    // An older activation read must not overwrite state refreshed after an explicit new test.
+    await detour();
+    const earlier = structuredClone(read());
+    rotate(9);
+    let defer = true;
+    const releaseEarlier = [];
+    c().handlers.decision_services_v2 = () => defer
+      ? new Promise(resolve => { releaseEarlier.push(() => resolve(earlier)); }) : read();
+    await back(); defer = false;
+    await click(button('测试连接') ? '测试连接' : '重新测试');
+    await until(() => tests() === 3 && state() === 'passed', 'test against the current Key');
+    releaseEarlier.forEach(release => release()); await pause(120);
+    assert(state() === 'passed', 'An older read overwrote the state confirmed by a newer test');
+    assert(tests() === 3, 'Overlapping refreshes retested implicitly');
   }),
   scenario('desktop.decisions.source-read-states', ['decision-services'], 'Slow or failed connection reads never block independent setup, and a late read never overrides an explicit choice', async () => {
     let release;
@@ -1073,6 +1095,7 @@ const scenarios = [
     mode(0).click(); await pause(40);
     await click('管理 API 接入');
     await until(() => button('返回决策模型 — 草稿已保留') && !all('.decision-connection-form').length, 'API connection management with explicit return');
+    await until(() => all('.detail-identity').some(item => item.textContent.includes('Team OpenAI')), 'the selected API connection is open');
     await click('首页');
     await until(() => document.querySelector('dialog.discard-dialog[open]') && button('继续编辑'), 'leaving the detour is guarded');
     await click('继续编辑');
