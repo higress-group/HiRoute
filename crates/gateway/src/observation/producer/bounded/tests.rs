@@ -179,7 +179,7 @@ fn optional_worker_parks_for_credit_without_spinning_and_ack_releases_it() {
     let producer =
         ByteBoundedObservationProducer::new(identity("credit"), CAPACITY, 128, sink.clone())
             .unwrap();
-    let work = producer.reserve_work(3 * CAPACITY / 4).unwrap();
+    let work = producer.reserve_work(producer.work_capacity()).unwrap();
     assert!(
         producer.reserve_work(1).is_none(),
         "queued work must leave record headroom"
@@ -216,6 +216,56 @@ fn optional_worker_parks_for_credit_without_spinning_and_ack_releases_it() {
 }
 
 #[test]
+fn background_record_credit_leaves_room_for_a_concurrent_foreground_job() {
+    const CAPACITY: usize = 512 * 1024;
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer = ByteBoundedObservationProducer::new(
+        identity("foreground-credit"),
+        CAPACITY,
+        128,
+        sink.clone(),
+    )
+    .unwrap();
+    let active_work = producer.reserve_work(5 * CAPACITY / 8).unwrap();
+    let worker = producer.clone();
+    let thread = std::thread::spawn(move || {
+        for _ in 0..8 {
+            assert!(matches!(
+                worker.publish_timed(None, Some(Instant::now() + Duration::from_secs(1)), |_| {
+                    vec![b'x'; 32 * 1024]
+                }),
+                ObservationPublishOutcome::Enqueued { .. }
+            ));
+        }
+    });
+    producer.wait_until_credit_blocked();
+    let foreground = producer.reserve_work(64 * 1024);
+    // Release the sink even if the assertion below fails, keeping the failed
+    // negative-control run bounded instead of stranding a delivery thread.
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    assert!(
+        foreground.is_some(),
+        "optional encoded bursts displaced an admissible foreground job"
+    );
+    thread.join().unwrap();
+    producer.flush(Duration::from_secs(2)).unwrap();
+    drop(foreground);
+    drop(active_work);
+    assert_eq!(producer.stats().queued_bytes, 0);
+    assert_eq!(producer.stats().dropped, 0);
+    assert_eq!(sink.records.lock().unwrap().len(), 8);
+    assert!(producer.stats().queue_high_water_bytes <= CAPACITY);
+}
+
+#[test]
 fn exhausted_background_credit_deadline_keeps_explicit_loss_and_releases_work() {
     let gate = Arc::new((Mutex::new(false), Condvar::new()));
     let sink = Arc::new(SlowOnceSink {
@@ -228,7 +278,7 @@ fn exhausted_background_credit_deadline_keeps_explicit_loss_and_releases_work() 
     let producer =
         ByteBoundedObservationProducer::new(identity("credit-stalled"), 65536, 128, sink.clone())
             .unwrap();
-    let work = producer.reserve_work(49152).unwrap();
+    let work = producer.reserve_work(producer.work_capacity()).unwrap();
     producer.try_publish(|_| vec![0; 8192]);
     assert!(matches!(
         producer.publish_timed(None, Some(Instant::now()), |_| vec![1; 8192]),

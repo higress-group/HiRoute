@@ -211,9 +211,10 @@ impl ByteBoundedObservationProducer {
     }
 
     fn work_capacity(&self) -> usize {
-        // Keep an encoded-record window inside the same byte ceiling. Queued
-        // optional jobs must not consume every byte needed by their own worker.
-        self.shared.capacity_bytes - self.shared.capacity_bytes / 4
+        // At the default 512 KiB, 96 KiB covers a canonical 64 KiB chunk's
+        // base64 plus envelope. Keep that record headroom, while admitting
+        // concurrent snapshot and response jobs within the same total ceiling.
+        self.shared.capacity_bytes - 3 * (self.shared.capacity_bytes / 16)
     }
 
     pub(super) fn work_can_fit(&self, bytes: usize) -> bool {
@@ -382,12 +383,15 @@ impl ByteBoundedObservationProducer {
 
     fn reserve_record(&self, bytes: usize, deadline: Option<Instant>) -> bool {
         let mut gate = lock(&self.shared.credit_gate);
-        // Reserve a small window for foreground response/terminal jobs without
-        // shrinking the normal single-input encoded working set to one quarter.
-        let ceiling = self.shared.capacity_bytes - self.shared.capacity_bytes / 16;
-        let can_wait = deadline.is_some() && bytes <= ceiling - self.work_capacity();
+        // Keep room for concurrent foreground jobs. Borrow enough of that
+        // window for one record when queued work is large, so the sole encoder
+        // can still progress without waiting for itself to consume another job.
+        let record_window = self.shared.capacity_bytes - self.work_capacity();
+        let can_wait = deadline.is_some() && bytes <= record_window;
         loop {
             let total = self.shared.queued_bytes.load(Ordering::Relaxed);
+            let work = self.shared.work_bytes.load(Ordering::Relaxed);
+            let ceiling = self.work_capacity().max(work.saturating_add(bytes));
             if (!can_wait || total.saturating_add(bytes) <= ceiling)
                 && reserve_bytes(&self.shared, bytes)
             {

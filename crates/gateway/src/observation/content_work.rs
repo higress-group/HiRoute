@@ -267,12 +267,6 @@ impl RequestObservation {
             return;
         }
         let bytes = snapshot_bytes(request);
-        #[cfg(feature = "e2e-test-control")]
-        eprintln!(
-            "capture snapshot bytes={bytes} queue_slots={} state={:?}",
-            queue_storage_bytes(),
-            self.inner.channels.content.work_state()
-        );
         if !self.inner.channels.content.work_can_fit(
             bytes
                 .saturating_add(JOB_OVERHEAD)

@@ -49,7 +49,9 @@ failure reports a gap and stops dependent capture for that request. The final
 Replay owner releases files and reservations on all paths.
 The existing content queue splits its byte ceiling between optional jobs and
 encoded records. Only the content worker can park on record credit, with a
-bounded stalled-record wait; foreground producers remain nonblocking. Delivery
+bounded stalled-record wait; foreground producers remain nonblocking. Encoded
+bursts leave room for concurrent foreground jobs; queued work still leaves room
+for one complete chunk record. Both use the same unchanged byte ceiling. Delivery
 releases credit through a condition variable, and a stalled job reports loss
 without publishing dependent completion roots.
 
