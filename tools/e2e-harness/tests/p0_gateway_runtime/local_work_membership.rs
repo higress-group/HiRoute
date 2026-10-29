@@ -50,6 +50,59 @@ pub(super) fn verify_pairs(records: &[Value], count: usize) -> Result<(), &'stat
     Ok(())
 }
 
+/// Concurrent waves preserve order within each session, not across sessions.
+/// Keep exact predecessor checks after requiring two requests per actual scope.
+pub(super) fn verify_scoped_pairs(records: &[Value], count: usize) -> Result<(), &'static str> {
+    let mut sessions = BTreeMap::<&str, Vec<Value>>::new();
+    for record in records
+        .iter()
+        .filter(|record| record["fact"]["kind"] == "route_decision")
+    {
+        let scope = record["correlation"]["conversation_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or("missing conversation identity")?;
+        sessions.entry(scope).or_default().push(record.clone());
+    }
+    if sessions.len() != count / 2 || sessions.values().any(|requests| requests.len() != 2) {
+        return Err("concurrent reference requires independent complete pairs");
+    }
+    let mut ordered: Vec<_> = sessions.into_values().flatten().collect();
+    ordered.extend(
+        records
+            .iter()
+            .filter(|record| record["fact"]["kind"] == "branch_assessment_recorded")
+            .cloned(),
+    );
+    verify_pairs(&ordered, count)
+}
+
+#[test]
+fn concurrent_oracle_rejects_scope_and_member_substitution() {
+    let mut records = [("a", "a0"), ("b", "b0"), ("b", "b1"), ("a", "a1")].into_iter()
+        .map(|(scope,id)| json!({"correlation":{"request_id":id,"conversation_id":scope},"fact":{"kind":"route_decision"}})).collect::<Vec<_>>();
+    for (id, predecessor) in [("a1", "a0"), ("b1", "b0")] {
+        records.push(json!({"correlation":{"request_id":id},"fact":{"kind":"branch_assessment_recorded","partial":false,
+            "history_membership":{"request_ids":[predecessor],"capture_partial":false}}}));
+    }
+    assert!(
+        verify_pairs(&records, 4).is_err(),
+        "arrival order is not pair order"
+    );
+    assert_eq!(verify_scoped_pairs(&records, 4), Ok(()));
+    for mutation in 0..4 {
+        let mut changed = records.clone();
+        match mutation {
+            0 => changed[3]["correlation"]["conversation_id"] = json!("b"),
+            1 => changed[4]["fact"]["history_membership"]["request_ids"] = json!(["b0"]),
+            2 => changed[0]["correlation"]["conversation_id"] = Value::Null,
+            3 => changed[4]["fact"]["partial"] = json!(true),
+            _ => unreachable!(),
+        }
+        assert!(verify_scoped_pairs(&changed, 4).is_err());
+    }
+}
+
 #[test]
 fn paired_membership_oracle_rejects_wrong_identity_and_incomplete_evidence() {
     let mut valid = (0..4)

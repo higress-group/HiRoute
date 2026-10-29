@@ -40,13 +40,17 @@ fn process_usage(_pid: u32) -> Option<(u64, u64)> {
 #[test]
 #[ignore = "release whole-listener performance experiment, not a unit timing gate"]
 fn measure_complete_local_work_with_continuity_and_capture() {
+    let concurrency = std::env::var("HIROUTE_LOCAL_WORK_CONCURRENCY")
+        .map(|value| value.parse::<usize>().unwrap())
+        .unwrap_or(1);
+    assert!(matches!(concurrency, 1 | 2));
     let measured = std::env::var("HIROUTE_LOCAL_WORK_SAMPLES")
         .ok()
         .map(|value| value.parse::<usize>().unwrap())
         .unwrap_or(100)
         .max(2)
-        .next_multiple_of(2);
-    let warmup = 10;
+        .next_multiple_of(2 * concurrency);
+    let warmup = if concurrency == 1 { 10 } else { 12 };
     let wire: Value = match std::env::var("HIROUTE_LOCAL_WORK_INPUT") {
         Ok(path) => serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap(),
         Err(_) => json!({"messages": (0..384).map(|index| json!({
@@ -55,7 +59,14 @@ fn measure_complete_local_work_with_continuity_and_capture() {
         })).chain(std::iter::once(json!({"role":"user","content":"Return 42."}))).collect::<Vec<_>>() }),
     };
     let backing = std::env::var("HIROUTE_LOCAL_WORK_BACKING").ok();
-    run_reference(&wire, measured, warmup, backing.as_deref(), None);
+    run_reference(
+        &wire,
+        measured,
+        warmup,
+        backing.as_deref(),
+        None,
+        concurrency,
+    );
 }
 
 #[test]
@@ -63,7 +74,7 @@ fn local_work_reference_assesses_each_sessions_actual_predecessor() {
     let wire = json!({"messages":[
         {"role":"user","content":"Return 42."}
     ]});
-    run_reference(&wire, 4, 0, Some("memory"), None);
+    run_reference(&wire, 4, 0, Some("memory"), None, 1);
 }
 
 #[test]
@@ -75,8 +86,18 @@ fn native_raw_forwarding_keeps_context_admission_and_actual_assessment_on_the_li
     // 100.0 -> two spaces + 1e2 keeps the exact compact wire length while
     // witnessing raw forwarding. One space changes length and must fall back.
     for spelling in ["  1e2", " 1e2"] {
-        run_reference(&wire, 4, 0, Some("memory"), Some(spelling));
+        run_reference(&wire, 4, 0, Some("memory"), Some(spelling), 1);
     }
+}
+
+#[test]
+fn concurrent_local_work_reference_assesses_each_actual_session_predecessor() {
+    let wire = json!({"messages":[{"role":"user","content":"Return 42."}]});
+    run_reference(&wire, 8, 0, Some("memory"), None, 2);
+}
+
+fn is_followup(index: usize, concurrency: usize) -> bool {
+    index % (2 * concurrency) >= concurrency
 }
 
 fn run_reference(
@@ -85,6 +106,7 @@ fn run_reference(
     warmup: usize,
     backing: Option<&str>,
     native_number: Option<&str>,
+    concurrency: usize,
 ) {
     let count = measured + warmup;
     let original = wire["messages"].as_array().expect("Chat messages");
@@ -110,7 +132,7 @@ fn run_reference(
                 .map(|index| ProviderReply::Complete {
                     status: 200,
                     error_kind: None,
-                    body: if index % 2 == 0 {
+                    body: if !is_followup(index, concurrency) {
                         plain
                     } else {
                         decision_branches::c_answer(true, false)
@@ -150,63 +172,82 @@ fn run_reference(
             .consumer = Some(hiroute_domain::AgentModelConsumerV1::Hermes);
         decision_branches::enable_c_in_publication_with(&mut publication, &protocol);
         fixture.publish(&mut publication);
-        let mut wire_bytes = 0;
+        let mut wire_sizes = Vec::with_capacity(count);
         let mut resource_start = None;
-        for index in 0..count {
-            if index == warmup {
+        for wave in (0..count).step_by(concurrency) {
+            if wave == warmup {
                 resource_start = process_usage(fixture.process.id());
             }
-            let mut input = wire.clone();
-            let mut history = original.clone();
-            if index % 2 == 1 {
-                history.extend([
-                    json!({"role":"assistant","content":"42"}),
-                    json!({"role":"user","content":"Repeat the answer."}),
-                ]);
-            }
-            input["messages"] = json!(history);
-            input["model"] = json!(MODEL);
-            input["stream"] = json!(true);
-            let mut body = serde_json::to_vec(&input).unwrap();
-            if let Some(number) = native_number {
-                let text = String::from_utf8(body).unwrap();
-                assert_eq!(text.matches("\"default\":100.0").count(), 1);
-                body = text
-                    .replace("\"default\":100.0", &format!("\"default\":{number}"))
-                    .into_bytes();
-            }
-            wire_bytes = body.len();
-            let session = format!("local-work-{variant}-{}", index / 2);
-            let context = json!({"version":1,"agent":"hermes","session_id":session,
+            let address = fixture.address;
+            let sizes = std::thread::scope(|scope| {
+                let handles = (wave..wave + concurrency)
+                    .map(|index| {
+                        scope.spawn(move || {
+                            let mut input = wire.clone();
+                            let mut history = original.clone();
+                            if is_followup(index, concurrency) {
+                                history.extend([
+                                    json!({"role":"assistant","content":"42"}),
+                                    json!({"role":"user","content":"Repeat the answer."}),
+                                ]);
+                            }
+                            input["messages"] = json!(history);
+                            input["model"] = json!(MODEL);
+                            input["stream"] = json!(true);
+                            let mut body = serde_json::to_vec(&input).unwrap();
+                            if let Some(number) = native_number {
+                                let text = String::from_utf8(body).unwrap();
+                                assert_eq!(text.matches("\"default\":100.0").count(), 1);
+                                body = text
+                                    .replace("\"default\":100.0", &format!("\"default\":{number}"))
+                                    .into_bytes();
+                            }
+                            let body_len = body.len();
+                            let pair =
+                                index / (2 * concurrency) * concurrency + index % concurrency;
+                            let session = format!("local-work-{variant}-{pair}");
+                            let context = json!({"version":1,"agent":"hermes","session_id":session,
                 "purpose":"main","turn_id":format!("turn-{index}"),
                 "continuation_requires_existing_turn":false})
-            .to_string();
-            let response = request(
-                fixture.address,
-                "POST",
-                "/v1/chat/completions",
-                &[
-                    ("X-HiRoute-Token", CHAT_TOKEN),
-                    ("x-hermes-session-id", &session),
-                    ("x-hiroute-agent", "hermes"),
-                    ("x-hiroute-routing-context", &context),
-                ],
-                &body,
-            );
-            assert_eq!(
-                response.status,
-                200,
-                "{}",
-                String::from_utf8_lossy(&response.body)
-            );
-            assert!(String::from_utf8_lossy(&response.body).contains("[DONE]"));
+                            .to_string();
+                            let response = request(
+                                address,
+                                "POST",
+                                "/v1/chat/completions",
+                                &[
+                                    ("X-HiRoute-Token", CHAT_TOKEN),
+                                    ("x-hermes-session-id", &session),
+                                    ("x-hiroute-agent", "hermes"),
+                                    ("x-hiroute-routing-context", &context),
+                                ],
+                                &body,
+                            );
+                            assert_eq!(
+                                response.status,
+                                200,
+                                "{}",
+                                String::from_utf8_lossy(&response.body)
+                            );
+                            assert!(String::from_utf8_lossy(&response.body).contains("[DONE]"));
+                            body_len
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                handles
+                    .into_iter()
+                    .map(|handle| handle.join().unwrap())
+                    .collect::<Vec<_>>()
+            });
+            wire_sizes.extend(sizes);
             // End drained for each reference cell. Async work stays outside
             // foreground timings, but missing capture must fail the experiment.
-            let records = request_timing::summaries(&fixture, index + 1);
-            let timing = &records.last().unwrap()["event"]["request_timing_summary"];
-            assert_eq!(timing["asynchronous"]["dropped"], 0, "{timing}");
-            if let Some(dropped) = timing["asynchronous"]["capture_dropped_jobs"].as_u64() {
-                assert_eq!(dropped, 0, "{timing}");
+            let records = request_timing::summaries(&fixture, wave + concurrency);
+            for record in &records[wave..wave + concurrency] {
+                let timing = &record["event"]["request_timing_summary"];
+                assert_eq!(timing["asynchronous"]["dropped"], 0, "{timing}");
+                if let Some(dropped) = timing["asynchronous"]["capture_dropped_jobs"].as_u64() {
+                    assert_eq!(dropped, 0, "{timing}");
+                }
             }
         }
         if let Some((cpu_before, _)) = resource_start {
@@ -225,7 +266,7 @@ fn run_reference(
                 "local_work_resources {}",
                 json!({
                     "variant":variant,"native_protocol":protocol.schema,
-                    "samples":measured,"process_cpu_ticks":cpu_after-cpu_before,
+                    "samples":measured,"concurrency":concurrency,"process_cpu_ticks":cpu_after-cpu_before,
                     "clock_ticks_per_second":ticks_per_second,"peak_rss_kib":peak_rss_kib,
                     "includes_async_capture_cpu":true
                 })
@@ -233,8 +274,12 @@ fn run_reference(
         }
         let records = request_timing::summaries(&fixture, count);
         let facts = wait_execution_facts(&fixture, count);
-        membership::verify_pairs(&facts, count)
-            .expect("each follow-up must assess its own complete captured predecessor");
+        if concurrency == 1 {
+            membership::verify_pairs(&facts, count)
+        } else {
+            membership::verify_scoped_pairs(&facts, count)
+        }
+        .expect("each follow-up must assess its own complete captured predecessor");
         let diagnostic_bytes = std::fs::read(
             fixture
                 .diagnostics_root
@@ -268,10 +313,12 @@ fn run_reference(
             let complete_local_us = local_us + timing["wait"]["local_work_us"].as_u64().unwrap();
             println!(
                 "local_work_benchmark {}",
-                json!({"variant":variant,"sample":index,"replay_threshold_bytes":threshold,
+                json!({"variant":variant,"sample":index,"concurrency":concurrency,
+                "turn": if is_followup(index, concurrency) { "followup" } else { "new_session" },
+                "replay_threshold_bytes":threshold,
                 "native_protocol":protocol.schema,
                 "capture_backing":capture_backing[index + warmup],
-                "wire_bytes":wire_bytes,"messages":original.len(),"complete_local_us":complete_local_us,
+                "wire_bytes":wire_sizes[index + warmup],"messages":original.len() + usize::from(is_followup(index, concurrency)) * 2,"complete_local_us":complete_local_us,
                 "timing":timing})
             );
         }
