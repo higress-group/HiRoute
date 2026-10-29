@@ -724,14 +724,52 @@ impl Drop for ReplayStream {
 }
 
 fn json_escaped_len(bytes: &[u8]) -> Result<u64, ReplayError> {
-    bytes.iter().try_fold(0_u64, |total, byte| {
-        let width = match byte {
-            b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t' => 2,
-            0x00..=0x1f => 6,
-            _ => 1,
-        };
-        total.checked_add(width).ok_or(ReplayError::LengthOverflow)
-    })
+    // Counts are bounded by the slice length. Reductions can be vectorized;
+    // overflow is checked once on the result rather than on every input byte.
+    let short = bytes
+        .iter()
+        .filter(|&&byte| {
+            matches!(
+                byte,
+                b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t'
+            )
+        })
+        .count() as u64;
+    let long = bytes
+        .iter()
+        .filter(|&&byte| {
+            matches!(byte, 0x00..=0x1f)
+                && !matches!(byte, b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t')
+        })
+        .count() as u64;
+    (bytes.len() as u64)
+        .checked_add(short)
+        .and_then(|len| long.checked_mul(5).and_then(|extra| len.checked_add(extra)))
+        .ok_or(ReplayError::LengthOverflow)
+}
+
+#[cfg(test)]
+mod escaped_length_tests {
+    use super::*;
+
+    #[test]
+    fn reduced_counts_match_scalar_widths_for_every_byte_and_fragment() {
+        let mut bytes = (0..=255u8).cycle().take(512 * 1024).collect::<Vec<_>>();
+        bytes.extend_from_slice("plain Unicode 路由🦀 \"\\\n".repeat(1024).as_bytes());
+        for size in [1, 2, 7, 31, 8192, 16384, bytes.len()] {
+            for chunk in bytes.chunks(size) {
+                let expected = chunk.iter().fold(0u64, |sum, byte| {
+                    sum + match byte {
+                        b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t' => 2,
+                        0x00..=0x1f => 6,
+                        _ => 1,
+                    }
+                });
+                assert_eq!(json_escaped_len(chunk).unwrap(), expected);
+            }
+        }
+        assert_eq!(json_escaped_len(&[]).unwrap(), 0);
+    }
 }
 
 struct ReplayRangeSink<'a> {
