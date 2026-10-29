@@ -386,3 +386,74 @@ fn benchmark_local_text_processing() {
         );
     }
 }
+
+#[test]
+fn native_raw_ranges_keep_wire_context_and_fresh_independent_cursors() {
+    use crate::replay::native_json::RawJsonIndex;
+    let wire = json!({"model":"alias","stream":true,"reasoning_effort":"high", "stream_options":{"include_usage":true},
+        "messages":[{"role":"system","content":"policy"},{"role":"user","content":"a路由🦀\\\"\n".repeat(10000)}],
+        "tools":[{"type":"function","function":{"name":"lookup","description":"lookup","parameters":{"type":"object","properties":{}}}}]});
+    let input = serde_json::to_vec(&wire).unwrap();
+    let fixture = Fixture::new(1024 * 1024, 16 * 1024);
+    let request = fixture.parse_protocol(IngressProtocol::ChatCompletions, &input);
+    let mut writer = fixture.store.begin_raw().unwrap();
+    writer.append(&input).unwrap();
+    let raw = writer.seal().unwrap();
+    let index = RawJsonIndex::capture(&fixture.store, &raw).unwrap();
+    let profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::ChatCompletions,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let original = project_candidate_request_template(&request, &profile).unwrap();
+    let mut optimized = original.clone();
+    assert!(optimized.use_native_ranges(&fixture.store, &index));
+    assert!(
+        optimized
+            .replacements
+            .iter()
+            .any(|replacement| replacement.content.stream_ordinal() == raw.stream_ordinal())
+    );
+    assert_eq!(optimized.wire_len, original.wire_len);
+    assert_eq!(optimized.context, original.context);
+    fixture
+        .store
+        .prevalidate(&model_content_refs(&request))
+        .unwrap();
+    let expected = encode(&fixture, original, 8192);
+    for quantum in [1, 2, 7, 127, 8192] {
+        let actual = encode(&fixture, optimized.clone(), quantum);
+        assert_eq!(actual.len(), optimized.wire_len);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&actual).unwrap(),
+            serde_json::from_slice::<Value>(&expected).unwrap()
+        );
+    }
+}
+
+#[test]
+fn native_raw_ranges_decline_noncompact_lengths_and_prefix_cleanup() {
+    use crate::replay::native_json::RawJsonIndex;
+    let wire = json!({"model":"alias","messages":[{"role":"user","content":"x".repeat(50000)}]});
+    let input = serde_json::to_vec_pretty(&wire).unwrap();
+    let fixture = Fixture::new(1024 * 1024, 16 * 1024);
+    let request = fixture.parse_protocol(IngressProtocol::ChatCompletions, &input);
+    let mut writer = fixture.store.begin_raw().unwrap();
+    writer.append(&input).unwrap();
+    let raw = writer.seal().unwrap();
+    let index = RawJsonIndex::capture(&fixture.store, &raw).unwrap();
+    let profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::ChatCompletions,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let mut template = project_candidate_request_template(&request, &profile).unwrap();
+    let original = template.replacements.clone();
+    assert!(!template.use_native_ranges(&fixture.store, &index));
+    assert!(std::sync::Arc::ptr_eq(&original, &template.replacements));
+    let mut cleanup =
+        project_candidate_request_template_with_cleanup(&request, &profile, Some(1)).unwrap();
+    assert!(!cleanup.use_native_ranges(&fixture.store, &index));
+}

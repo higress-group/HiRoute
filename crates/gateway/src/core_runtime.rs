@@ -897,7 +897,8 @@ impl ProductionGatewayRuntime {
                     }
                 };
             let mut planner_input = Box::new(prepared_planner_input.input);
-            let prepared_templates = prepared_planner_input.templates;
+            let mut prepared_templates = prepared_planner_input.templates;
+            prepared_templates.prepare_native_ranges(&replay, &raw_body);
             planner_input.context_hold =
                 hold_ticket.as_ref().and_then(|ticket| ticket.hint.clone());
             if let Some(previous) = hold_ticket

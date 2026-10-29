@@ -25,6 +25,32 @@ struct Entry {
 }
 
 impl RequestTemplates {
+    pub(crate) fn prepare_native_ranges(
+        &mut self,
+        replay: &crate::replay::ReplayStore,
+        raw: &crate::content_ref::ContentRef,
+    ) {
+        if !self
+            .entries
+            .values()
+            .any(|entry| !entry.template.preserved_native_roots.is_empty())
+        {
+            return;
+        }
+        let Ok(_scratch) = self
+            .budget
+            .reserve(MemoryRole::ModelIrBacking, self.retained)
+        else {
+            return;
+        };
+        let Some(index) = crate::replay::native_json::RawJsonIndex::capture(replay, raw) else {
+            return;
+        };
+        for entry in self.entries.values_mut() {
+            entry.template.use_native_ranges(replay, &index);
+        }
+    }
+
     pub(crate) fn new(budget: StreamBudget) -> Self {
         Self {
             entries: BTreeMap::new(),

@@ -16,6 +16,7 @@ use thiserror::Error;
 
 use crate::content_ref::ContentRef;
 
+pub(crate) mod native_json;
 mod secure_path;
 mod stream;
 #[cfg(windows)]
@@ -111,6 +112,7 @@ struct StoreInner {
     directory: Arc<secure_path::SecureDirectory>,
     budget: StreamBudget,
     streams: Mutex<BTreeMap<u64, Arc<ReplayStream>>>,
+    raw_json_aliases: Mutex<BTreeMap<ContentRef, native_json::RawJsonAlias>>,
     metadata: Mutex<Vec<Arc<Reservation>>>,
     cleanup: Arc<RequestDirectoryCleanup>,
     next_stream: AtomicU64,
@@ -182,6 +184,7 @@ impl ReplayManager {
                 directory,
                 budget,
                 streams: Mutex::new(BTreeMap::new()),
+                raw_json_aliases: Mutex::new(BTreeMap::new()),
                 metadata: Mutex::new(vec![Arc::new(base_metadata)]),
                 cleanup,
                 next_stream: AtomicU64::new(0),
@@ -233,6 +236,7 @@ impl ReplayStore {
                 directory: Arc::clone(&self.inner.directory),
                 budget: self.inner.budget.clone(),
                 streams: Mutex::new(streams),
+                raw_json_aliases: Mutex::new(BTreeMap::new()),
                 metadata: Mutex::new(metadata),
                 cleanup: Arc::clone(&self.inner.cleanup),
                 next_stream: AtomicU64::new(0),
@@ -310,10 +314,14 @@ impl ReplayStore {
             .get(&reference.stream_ordinal())
             .cloned()
             .ok_or(ReplayError::UnknownContentRef)?;
-        if !stream.contains(reference) {
+        if !stream.contains(reference) && !self.is_raw_json_alias(reference) {
             return Err(ReplayError::Integrity);
         }
         ReplayReader::open(self.clone(), stream, reference.clone())
+    }
+
+    fn is_raw_json_alias(&self, reference: &ContentRef) -> bool {
+        lock(&self.inner.raw_json_aliases).contains_key(reference)
     }
 
     pub(crate) fn has_reference(&self, reference: &ContentRef) -> bool {
@@ -376,6 +384,8 @@ impl ReplayStore {
             Some(stream) if stream.reference != *reference => Err(ReplayError::Integrity),
             Some(_) => {
                 streams.remove(&reference.stream_ordinal());
+                lock(&self.inner.raw_json_aliases)
+                    .retain(|alias, _| alias.stream_ordinal() != reference.stream_ordinal());
                 Ok(())
             }
             None => Ok(()),

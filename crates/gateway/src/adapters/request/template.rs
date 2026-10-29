@@ -21,6 +21,7 @@ pub struct PreparedNativeTemplate {
     pub path: String,
     pub(crate) bytes: Arc<[u8]>,
     pub(crate) replacements: Arc<[TemplateReplacement]>,
+    pub(crate) preserved_native_roots: Arc<[String]>,
     pub wire_len: usize,
     pub context: Option<CandidateContextDemand>,
     pub capability_id: String,
@@ -68,6 +69,11 @@ impl PreparedNativeTemplate {
             self.replacements
                 .len()
                 .checked_mul(std::mem::size_of::<TemplateReplacement>())?,
+            self.preserved_native_roots
+                .iter()
+                .try_fold(0usize, |size, key| {
+                    size.checked_add(std::mem::size_of::<String>() + key.capacity())
+                })?,
             self.path.capacity(),
             self.capability_id.capacity(),
             self.connector_id.capacity(),
@@ -155,6 +161,25 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
     };
     let (body, function_encoding_projection) =
         super::native::project(request, profile, body, omit_reasoning_prefix)?;
+    let preserved_native_roots = if native
+        && request.ingress_protocol == IngressProtocol::ChatCompletions
+        && omit_reasoning_prefix.is_none()
+    {
+        body.as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(key, value)| {
+                request
+                    .native_body
+                    .as_ref()
+                    .and_then(|native| native.get(*key))
+                    == Some(*value)
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
     {
@@ -201,6 +226,7 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         path: profile.connector.request_path.clone(),
         bytes,
         replacements,
+        preserved_native_roots: preserved_native_roots.into(),
         wire_len,
         context,
         capability_id: profile.capability.capability_id.clone(),
@@ -327,25 +353,9 @@ pub(crate) fn prepare_replay_json_template(
             "ContentRef template replacements overlap".into(),
         ));
     }
-    let wire_len = replacements
-        .iter()
-        .try_fold(bytes.len() as u64, |length, replacement| {
-            length
-                .checked_sub((replacement.end - replacement.start) as u64)
-                .and_then(|value| {
-                    value.checked_add(match replacement.encoding {
-                        ReplacementEncoding::JsonString
-                        | ReplacementEncoding::RawJsonInJsonString => {
-                            replacement.content.json_escaped_len()
-                        }
-                        ReplacementEncoding::RawJson => replacement.content.byte_len(),
-                    })
-                })
-        })
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or_else(|| {
-            ProtocolAdapterError::Serialization("native request length overflow".into())
-        })?;
+    let wire_len = replacement_wire_len(bytes.len(), &replacements).ok_or_else(|| {
+        ProtocolAdapterError::Serialization("native request length overflow".into())
+    })?;
     Ok(PreparedReplayTemplate {
         bytes: bytes.into(),
         replacements: replacements.into(),
@@ -561,4 +571,32 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
         .windows(needle.len())
         .position(|window| window == needle)
+}
+
+pub(super) fn replacement_wire_len(
+    bytes: usize,
+    replacements: &[TemplateReplacement],
+) -> Option<usize> {
+    if replacements
+        .windows(2)
+        .any(|pair| pair[0].end > pair[1].start)
+        || replacements
+            .iter()
+            .any(|replacement| replacement.start > replacement.end || replacement.end > bytes)
+    {
+        return None;
+    }
+    replacements
+        .iter()
+        .try_fold(bytes as u64, |length, replacement| {
+            length
+                .checked_sub((replacement.end - replacement.start) as u64)?
+                .checked_add(match replacement.encoding {
+                    ReplacementEncoding::JsonString | ReplacementEncoding::RawJsonInJsonString => {
+                        replacement.content.json_escaped_len()
+                    }
+                    ReplacementEncoding::RawJson => replacement.content.byte_len(),
+                })
+        })
+        .and_then(|length| usize::try_from(length).ok())
 }
