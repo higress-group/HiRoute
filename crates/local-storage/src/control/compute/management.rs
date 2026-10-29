@@ -388,7 +388,7 @@ fn mutation_from_control(control: &Value) -> PortResult<Option<ComputeManagement
     Ok(Some(envelope.compute_management_mutation))
 }
 
-fn read_source(
+pub(in crate::control) fn read_source(
     connection: &rusqlite::Connection,
     workspace: &WorkspaceId,
     source_id: &str,

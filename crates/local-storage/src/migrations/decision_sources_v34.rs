@@ -33,6 +33,7 @@ CREATE TABLE decision_consumer_runtime (
     UNIQUE(workspace_id, source_id, service_id, service_revision),
     FOREIGN KEY(workspace_id, source_id) REFERENCES decision_source_runtime(workspace_id, source_id) ON DELETE CASCADE
 );
+CREATE INDEX decision_consumer_service_idx ON decision_consumer_runtime(workspace_id, service_id, source_id);
 "#;
 
 #[cfg(test)]

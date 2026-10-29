@@ -150,8 +150,6 @@ struct Output {
 #[derive(Deserialize)]
 struct NamedAnswer {
     name: String,
-    #[serde(rename = "type")]
-    kind: String,
 }
 #[derive(Deserialize)]
 struct ChoiceAnswer {
@@ -197,10 +195,12 @@ pub(super) fn parse_response(
         }
         // An invalid or refused answer remains local to its question. The existing
         // reducer decides whether that question belongs to the selected path.
-        let converted = match named.kind.as_str() {
-            "choice" => convert_choice(raw.get(), &named.name, bindings),
-            "score" => convert_score(raw.get(), &named.name, bindings),
-            "refusal" => Some(json!({"type":"refusal"})),
+        let value: Value =
+            serde_json::from_str(raw.get()).map_err(|_| CallFailure::InvalidOutput)?;
+        let converted = match value.get("type").and_then(Value::as_str) {
+            Some("choice") => convert_choice(raw.get(), &named.name, bindings),
+            Some("score") => convert_score(raw.get(), &named.name, bindings),
+            Some("refusal") => Some(json!({"type":"refusal"})),
             _ => None,
         }
         .unwrap_or_else(|| json!({"type":"invalid"}));

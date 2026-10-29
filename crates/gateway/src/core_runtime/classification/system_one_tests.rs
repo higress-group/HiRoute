@@ -382,7 +382,7 @@ fn openai_maximum_branch_request_is_one_call_and_ignores_unused_invalid_degree()
         {"value":0,"label":"0","probability":0.25}, {"value":1,"label":"1","probability":0.55}, {"value":2,"label":"2","probability":0.2}]}));
     answers.push(json!({"type":"refusal","name":"q18"}));
     let result = super::super::openai_decisions::parse_response(
-        &serde_json::to_vec(&json!({"answers":answers})).unwrap(),
+        &serde_json::to_vec(&json!({"answers":answers.clone()})).unwrap(),
         prepared.bindings.as_ref().unwrap(),
     )
     .unwrap();
@@ -391,6 +391,36 @@ fn openai_maximum_branch_request_is_one_call_and_ignores_unused_invalid_degree()
     assert_eq!(result.probabilities.unwrap()["simple"], 0.8);
     assert_eq!(result.assessment.unwrap().score, 0.475);
     assert_eq!(result.applicability, None);
+
+    // Name framing is global; the type and contents of an unselected degree are local.
+    for malformed in [json!({"name":"q2"}), json!({"name":"q2","type":7})] {
+        let mut changed = answers.clone();
+        changed[2] = malformed;
+        let result = super::super::openai_decisions::parse_response(
+            &serde_json::to_vec(&json!({"answers":changed})).unwrap(),
+            prepared.bindings.as_ref().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result.branch_id, "branch-0");
+        assert!(!result.degree_failed);
+    }
+    let mut changed = answers.clone();
+    changed[1] = json!({"name":"q1","type":false});
+    let result = super::super::openai_decisions::parse_response(
+        &serde_json::to_vec(&json!({"answers":changed})).unwrap(),
+        prepared.bindings.as_ref().unwrap(),
+    )
+    .unwrap();
+    assert!(result.degree_failed);
+    let mut missing_name = answers;
+    missing_name[2] = json!({"type":"score"});
+    assert!(
+        super::super::openai_decisions::parse_response(
+            &serde_json::to_vec(&json!({"answers":missing_name})).unwrap(),
+            prepared.bindings.as_ref().unwrap(),
+        )
+        .is_err()
+    );
 }
 
 #[test]

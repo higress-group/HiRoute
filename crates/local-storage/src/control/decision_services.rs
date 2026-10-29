@@ -194,7 +194,7 @@ fn check(
     Ok(())
 }
 
-fn references(value: &Value, id: &str) -> bool {
+pub(super) fn references(value: &Value, id: &str) -> bool {
     match value {
         Value::Object(map) => {
             (matches!(
