@@ -38,13 +38,19 @@ keeps branch/reasoning execution keys distinct from source binding identities.
 attempt leases use the frozen source binding to check current Native membership.
 
 [Decision domain types](../../crates/domain/src/routing/decision.rs) own immutable
-saved connection revisions and judgment settings; [definition types](../../crates/domain/src/routing/decision_definition.rs)
+legacy connection revisions and judgment settings; [V2 connection types](../../crates/domain/src/routing/decision_v2.rs)
+separate wire protocol from independent/shared-source authentication, and
+[safe Product Session contracts](../../crates/application-api/src/decision_connections.rs)
+own source state, saved identities and test results. The
+[frontend contract](../../apps/desktop/src/features/decision-services/CONTRACT.md)
+maps the four current host calls. [Definition types](../../crates/domain/src/routing/decision_definition.rs)
 own categorical/ordinal questions. Plans freeze the selected connection. Built-in execution freezes prompts, thresholds and rubric; new custom execution omits judgment while source drafts keep parked values. Editing a connection or draft does not reinterpret a
 published plan or historical stage. Branch overrides are complete copies; a
 category without primary candidates needs no degree question.
 
-Desktop calls connections decision models or custom extensions; CLI retains
-`decision services list/apply/test`. Writes reuse Operations, protected input and
+Desktop calls connections decision models or custom extensions; current CLI uses
+`decision connections list/apply/test` and `decision sources list`, while
+`decision services list/apply/test` remains a strict legacy interface. Writes reuse Operations, protected input and
 existing Secret storage. Custom HTTP belongs to a saved connection, not inline
 `rest` authoring. Current development v1 replaces the earlier decision shape;
 the custom-extension v1 shape has no old-format negotiation. New native publications freeze historical problem applicability in the existing System One
@@ -75,7 +81,13 @@ Bailian, OpenRouter Jev, TypeSafe and compatible connections share the typed
 See [System One mapping](../../decision-extensions/api/system-one-design.md) for
 provider-specific configuration and [custom v1](../../decision-extensions/api/README.md)
 for the extension boundary. Add a separate adapter only for an actual incompatible
-wire protocol; a provider name alone does not justify one.
+wire protocol; a provider name alone does not justify one. OpenAI Decisions uses
+its explicit `openai_decisions` codec with named questions and shared input JSON;
+both codecs consume the same frozen logical questions and selected-path policy.
+Shared authentication reuses source-owned Native API Keys under exact decision
+target membership. Independent connections retain their narrow protected header.
+The complete configuration/lifecycle boundary belongs to the
+[decision specification](../../issue-spec/specs/decision-services/spec.md).
 
 The native adapter binds each question to a category, degree or historical assessment, then reduces only the selected path. Custom extensions receive route shape and safe history, choose category/group directly, and own their policy and context trimming. HiRoute retains candidate selection and relay. The custom codec verifies actual preceding-stage Plan/connection identity locally and discards assessment if the response changes category. Trimming inside the assessment target marks that assessment
 partial; loss of an earlier prefix does not by itself invalidate the scored stage.
