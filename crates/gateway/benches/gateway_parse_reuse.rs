@@ -119,10 +119,9 @@ fn synthetic() -> Value {
 }
 
 fn main() {
-    assert!(
-        !cfg!(debug_assertions),
-        "run this diagnostic in release mode"
-    );
+    if cfg!(debug_assertions) {
+        panic!("run this diagnostic in release mode");
+    }
     let bytes = match std::env::var_os("HIROUTE_PARSE_REUSE_INPUT") {
         Some(path) => std::fs::read(path).unwrap(),
         None => serde_json::to_vec(&synthetic()).unwrap(),
