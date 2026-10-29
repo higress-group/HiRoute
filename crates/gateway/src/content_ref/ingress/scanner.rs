@@ -147,7 +147,7 @@ mod tests {
             )
             .unwrap(),
             br#"{"text":"\uD83D\uDE80 \\"\u0041\n","n":0}"#.to_vec(),
-            (0..=255).chain([b'"', b'\\', b'u', b'0', b'0']).collect(),
+            (0..=255).chain(*b"\"\\u00").collect(),
             br#"{"text":"unfinished\uD8"#.to_vec(),
         ];
         for body in bodies {

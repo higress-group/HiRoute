@@ -274,7 +274,6 @@ fn strict_semantic_and_branch_evidence_reuse_full_request_content() {
             branch_anchors(&input, &[37; 32], Some(&store), &[2]).unwrap();
             assert_eq!(store.runtime_fingerprint_computations(), measured);
         }
-        drop(history);
         drop((input, store, manager));
         assert_eq!(budget.snapshot().unwrap().live, 0);
         std::fs::remove_dir_all(root).unwrap();

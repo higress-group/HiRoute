@@ -748,30 +748,6 @@ fn json_escaped_len(bytes: &[u8]) -> Result<u64, ReplayError> {
         .ok_or(ReplayError::LengthOverflow)
 }
 
-#[cfg(test)]
-mod escaped_length_tests {
-    use super::*;
-
-    #[test]
-    fn reduced_counts_match_scalar_widths_for_every_byte_and_fragment() {
-        let mut bytes = (0..=255u8).cycle().take(512 * 1024).collect::<Vec<_>>();
-        bytes.extend_from_slice("plain Unicode 路由🦀 \"\\\n".repeat(1024).as_bytes());
-        for size in [1, 2, 7, 31, 8192, 16384, bytes.len()] {
-            for chunk in bytes.chunks(size) {
-                let expected = chunk.iter().fold(0u64, |sum, byte| {
-                    sum + match byte {
-                        b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t' => 2,
-                        0x00..=0x1f => 6,
-                        _ => 1,
-                    }
-                });
-                assert_eq!(json_escaped_len(chunk).unwrap(), expected);
-            }
-        }
-        assert_eq!(json_escaped_len(&[]).unwrap(), 0);
-    }
-}
-
 struct ReplayRangeSink<'a> {
     builder: &'a mut ReplayStreamBuilder,
     byte_offset: u64,
@@ -867,4 +843,28 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(test)]
+mod escaped_length_tests {
+    use super::*;
+
+    #[test]
+    fn reduced_counts_match_scalar_widths_for_every_byte_and_fragment() {
+        let mut bytes = (0..=255u8).cycle().take(512 * 1024).collect::<Vec<_>>();
+        bytes.extend_from_slice("plain Unicode 路由🦀 \"\\\n".repeat(1024).as_bytes());
+        for size in [1, 2, 7, 31, 8192, 16384, bytes.len()] {
+            for chunk in bytes.chunks(size) {
+                let expected = chunk.iter().fold(0u64, |sum, byte| {
+                    sum + match byte {
+                        b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t' => 2,
+                        0x00..=0x1f => 6,
+                        _ => 1,
+                    }
+                });
+                assert_eq!(json_escaped_len(chunk).unwrap(), expected);
+            }
+        }
+        assert_eq!(json_escaped_len(&[]).unwrap(), 0);
+    }
 }

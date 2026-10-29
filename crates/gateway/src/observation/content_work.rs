@@ -406,18 +406,21 @@ impl RequestObservation {
         if status.failed.load(Ordering::Acquire) {
             return None;
         }
-        let result = self
+        let Some(queue) = self
             .inner
             .channels
             .content_work
             .queue(&self.inner.channels.content)
-            .and_then(|queue| {
-                self.inner
-                    .channels
-                    .content
-                    .reserve_work(bytes.saturating_add(JOB_OVERHEAD))
-                    .map(|reservation| (queue, reservation))
-            });
+        else {
+            self.fail_content_work(status, "content_capture_queue_unavailable");
+            return None;
+        };
+        let result = self
+            .inner
+            .channels
+            .content
+            .reserve_work(bytes.saturating_add(JOB_OVERHEAD))
+            .map(|reservation| (queue, reservation));
         if result.is_none() {
             self.fail_content_work(status, "content_capture_queue_unavailable");
         }

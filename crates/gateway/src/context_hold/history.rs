@@ -827,9 +827,9 @@ fn frame(mac: &mut RuntimeHash, kind: &[u8], value: &[u8]) {
 }
 
 fn frame_header(mac: &mut RuntimeHash, kind: &[u8], length: u64) {
-    mac.update(&(kind.len() as u64).to_be_bytes());
+    mac.update((kind.len() as u64).to_be_bytes());
     mac.update(kind);
-    mac.update(&length.to_be_bytes());
+    mac.update(length.to_be_bytes());
 }
 
 pub(crate) fn write_canonical_json_with_replay(
