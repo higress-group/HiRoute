@@ -244,7 +244,7 @@ pub(crate) fn initialize(db: &Connection) -> Result<(), LocalStorageError> {
 
 /// A missing marker, missing producer guard, schema change or projection mutation
 /// is damage; none of these is evidence that a context has no saved settings.
-pub(super) fn validate_coverage(db: &Connection) -> PortResult<()> {
+pub(crate) fn validate_coverage(db: &Connection) -> PortResult<()> {
     let temporary_shadow: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_temp_schema WHERE
            name IN ('operations','operation_steps','operation_payloads','storage_meta',

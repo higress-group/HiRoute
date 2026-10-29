@@ -170,28 +170,15 @@ fn check(
             return Err(client_version_required());
         }
     }
-    if change.service.is_none() {
-        for sql in [
-            "SELECT version_json FROM plan_versions WHERE workspace_id=?1",
-            "SELECT draft_json FROM plan_drafts WHERE workspace_id=?1",
-        ] {
-            let mut statement = connection.prepare(sql).map_err(|_| storage())?;
-            let rows = statement
-                .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
-                .map_err(|_| storage())?;
-            for row in rows {
-                let value: Value =
-                    serde_json::from_str(&row.map_err(|_| storage())?).map_err(|_| invalid())?;
-                if references(&value, &change.id) {
-                    return Err(PortError::new(
-                        PortErrorCode::Conflict,
-                        "decision_service.in_use",
-                    ));
-                }
-            }
-        }
-    } else if change.input_slot.is_some() {
-        let service = change.service.as_ref().ok_or_else(invalid)?;
+    if change.service.is_none() && references(connection, workspace, &change.id)? {
+        return Err(PortError::new(
+            PortErrorCode::Conflict,
+            "decision_service.in_use",
+        ));
+    }
+    if let Some(service) = &change.service
+        && change.input_slot.is_some()
+    {
         let reference = &service
             .connection
             .transport()
@@ -219,22 +206,16 @@ fn check(
     Ok(())
 }
 
-pub(super) fn references(value: &Value, id: &str) -> bool {
-    match value {
-        Value::Object(map) => {
-            (matches!(
-                map.get("kind").and_then(Value::as_str),
-                Some("decision_service" | "decision_service_v2")
-            ) && map
-                .get("service")
-                .and_then(|s| s.get("id"))
-                .and_then(Value::as_str)
-                == Some(id))
-                || map.values().any(|v| references(v, id))
-        }
-        Value::Array(values) => values.iter().any(|v| references(v, id)),
-        _ => false,
-    }
+pub(super) fn references(
+    connection: &Connection,
+    workspace: &WorkspaceId,
+    id: &str,
+) -> PortResult<bool> {
+    connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM decision_plan_references WHERE workspace_id=?1 AND service_id=?2)",
+        params![workspace.as_str(), id],
+        |row| row.get(0),
+    ).map_err(|_| storage())
 }
 
 pub(super) fn finish(connection: &Connection, operation: &OperationV1) -> PortResult<()> {
@@ -294,7 +275,10 @@ mod tests {
 
     fn connection() -> Connection {
         let connection = Connection::open_in_memory().unwrap();
-        connection.execute_batch("CREATE TABLE decision_services(workspace_id TEXT,service_id TEXT,revision INTEGER,service_json TEXT); CREATE TABLE plan_versions(workspace_id TEXT,version_json TEXT); CREATE TABLE plan_drafts(workspace_id TEXT,draft_json TEXT);").unwrap();
+        connection.execute_batch("CREATE TABLE decision_services(workspace_id TEXT,service_id TEXT,revision INTEGER,service_json TEXT); CREATE TABLE plan_versions(workspace_id TEXT,plan_id TEXT,content_revision INTEGER,version_json TEXT); CREATE TABLE plan_drafts(workspace_id TEXT,draft_id TEXT,draft_json TEXT);").unwrap();
+        connection
+            .execute_batch(crate::migrations::decision_sources_v34::CONTROL)
+            .unwrap();
         connection
     }
     fn service() -> DecisionServiceV1 {
@@ -465,11 +449,13 @@ mod tests {
             };
             check(&connection, &workspace, &change).unwrap();
             let frozen = json!({"strategy":{"routing":{"classifier":{"kind":"decision_service","service":service}}}});
+            let sql = if table == "plan_drafts" {
+                "INSERT INTO plan_drafts(workspace_id,draft_id,draft_json) VALUES(?1,'draft/one',?2)"
+            } else {
+                "INSERT INTO plan_versions(workspace_id,plan_id,content_revision,version_json) VALUES(?1,'plan/one',1,?2)"
+            };
             connection
-                .execute(
-                    &format!("INSERT INTO {table} VALUES(?1,?2)"),
-                    params![workspace.as_str(), frozen.to_string()],
-                )
+                .execute(sql, params![workspace.as_str(), frozen.to_string()])
                 .unwrap();
             assert!(check(&connection, &workspace, &change).is_err());
             connection

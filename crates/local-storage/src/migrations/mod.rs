@@ -35,7 +35,7 @@ mod compute_v8;
 mod convergence_v15;
 mod convergence_v17;
 mod decision_services_v28;
-mod decision_sources_v34;
+pub(crate) mod decision_sources_v34;
 mod delegation_native_lifecycle_v21;
 mod delegation_v10;
 #[cfg(test)]
@@ -306,6 +306,10 @@ fn migrate(
 
     for version in (current + 1)..=target {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if kind == DatabaseKind::Control && version == 34 {
+            crate::control::agent_locator::validate_coverage(&transaction)
+                .map_err(|_| LocalStorageError::InvalidData)?;
+        }
         transaction.execute_batch(migration_sql(kind, version)?)?;
         if kind == DatabaseKind::Control && version == 8 {
             compute_v8::migrate_semantic_identities(&transaction)?;
@@ -316,6 +320,9 @@ fn migrate(
         }
         if kind == DatabaseKind::Control && version == 33 {
             agent_locator_v33::initialize(&transaction)?;
+        }
+        if kind == DatabaseKind::Control && version == 34 {
+            decision_sources_v34::refresh_locator(&transaction)?;
         }
         if kind == DatabaseKind::Secrets && version == 15 {
             convergence_v15::ensure_collaboration_preparation_column(&transaction)?;

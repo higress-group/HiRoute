@@ -110,6 +110,7 @@ pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::Lo
 
 #[cfg(test)]
 pub(super) fn remove_test_shape(db: &rusqlite::Connection) {
+    super::decision_sources_v34::remove_test_shape(db);
     super::agent_locator_v33::remove_test_shape(db);
     super::routing_read_v32::remove_test_shape(db);
     db.execute_batch("DROP TRIGGER operation_recovery_insert;
