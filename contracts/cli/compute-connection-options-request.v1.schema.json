@@ -34,6 +34,10 @@
             }
           ],
           "description": "Opt in to the existing candidate registry's exact, non-secret public view."
+        },
+        "include_request_model_ids": {
+          "description": "Return exact catalog-to-request IDs only to callers that opt in. Ordinary\nresponses retain their original shape for strict released readers.",
+          "type": "boolean"
         }
       },
       "title": "ComputeConnectionOptionsRequestV1",

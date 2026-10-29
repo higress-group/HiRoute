@@ -98,20 +98,31 @@ pub(crate) fn dispatch_connection_options(
     match compute::connection_options(port) {
         Ok(mut result) => {
             result.candidate = candidate;
-            result.subscriptions = service
-                .ports
-                .as_ref()
-                .and_then(|ports| ports.compute_management.as_deref())
-                .map(|management| {
-                    management.compute_subscriptions().unwrap_or_else(|_| {
-                        ComputeSubscriptionCandidatesV2 {
-                            candidates: Vec::new(),
-                            discovery_state:
-                                ComputeSubscriptionDiscoveryStateV2::RuntimeUnavailable,
-                            reason_code: Some("subscription_discovery_failed".into()),
-                        }
+            if !input.include_request_model_ids {
+                for option in &mut result.options {
+                    option.request_model_ids = None;
+                }
+            }
+            // Mapping-only readers do not need a device/subscription discovery.
+            // Default callers retain the released response and discovery behavior.
+            result.subscriptions = if input.include_request_model_ids {
+                None
+            } else {
+                service
+                    .ports
+                    .as_ref()
+                    .and_then(|ports| ports.compute_management.as_deref())
+                    .map(|management| {
+                        management.compute_subscriptions().unwrap_or_else(|_| {
+                            ComputeSubscriptionCandidatesV2 {
+                                candidates: Vec::new(),
+                                discovery_state:
+                                    ComputeSubscriptionDiscoveryStateV2::RuntimeUnavailable,
+                                reason_code: Some("subscription_discovery_failed".into()),
+                            }
+                        })
                     })
-                });
+            };
             succeeded(result, request.request_id)
         }
         Err(error) => failed(map_compute_error(error), request.request_id),

@@ -44,6 +44,7 @@ pub(super) mod maintenance;
 pub(in crate::control::runtime) use maintenance::SubscriptionMaintenance;
 mod presentation;
 mod record;
+mod reuse;
 pub(in crate::control::runtime) mod source;
 pub(super) mod target;
 use source::{SubscriptionSource, pending_candidate, subscription_candidate_ref};

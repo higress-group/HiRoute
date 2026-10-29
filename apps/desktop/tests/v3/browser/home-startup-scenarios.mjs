@@ -12,6 +12,98 @@ export function homeStartupScenarios({ until, control }) {
     await until(() => routeButton() && !routeButton().disabled, 'writable routing page');
   };
   return [
+    scenario('desktop.home.observation-reader-bound', ['home-startup'], 'Home shares the bounded observation reader with its other visible surfaces', async () => {
+      const c = control(); const pending = []; let active = 0; let maximum = 0; let released = false;
+      try {
+        c.reset(); await until(() => health()?.querySelector('.good'), 'initial Home ready'); await settled();
+        c.handlers.observation_read = payload => {
+          const result = payload.request?.intent?.view === 'sessions'
+            ? { sessions: [], next_cursor: null } : c.fixtureResponse('observation_read', payload);
+          if (released) return result;
+          active++; maximum = Math.max(maximum, active);
+          return new Promise(resolve => pending.push(() => { active--; resolve(result); }));
+        };
+        c.remount();
+        await until(() => active >= 2, 'concurrent Home readers');
+        await settled();
+        assert(maximum <= 2, 'Home bypassed the shared observation-reader bound');
+      } finally {
+        released = true;
+        for (const release of pending.splice(0)) release();
+        c.reset(); await settled();
+      }
+    }),
+    scenario('desktop.home.observation-busy-recovers', ['home-startup'], 'A transient busy Home read completes without leaving a failed first-use warning', async () => {
+      const c = control(); let attempts = 0;
+      try {
+        c.reset(); await until(() => health()?.querySelector('.good'), 'initial Home ready'); await settled();
+        c.handlers.observation_read = payload => {
+          if (payload.request?.intent?.view === 'sessions') assert(payload.request.read_failure_details === true, 'Home did not opt into typed busy errors');
+          if (payload.request?.intent?.view === 'sessions' && ++attempts === 1) throw {
+            source: 'backend', envelope: { error: { category: 'unavailable', code: 'E_UNAVAILABLE',
+              observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } },
+          };
+          return c.fixtureResponse('observation_read', payload);
+        };
+        c.remount();
+        await until(() => attempts === 2 && !document.querySelector('.home-read-error'), 'Home recovered its busy read');
+        assert(health()?.querySelector('.good'), 'A busy session read lost actual service readiness');
+      } finally { c.reset(); await settled(); }
+    }),
+    scenario('desktop.home.observation-busy-exhausted', ['home-startup'], 'Persistent busy reads stop after a bounded retry and remain explicitly unavailable', async () => {
+      const c = control(); let attempts = 0;
+      try {
+        c.reset(); await until(() => health()?.querySelector('.good'), 'initial Home ready'); await settled();
+        c.handlers.observation_read = payload => {
+          if (payload.request?.intent?.view === 'sessions') {
+            attempts++;
+            throw { source: 'backend', envelope: { error: { category: 'unavailable', code: 'E_UNAVAILABLE',
+              observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } } };
+          }
+          return c.fixtureResponse('observation_read', payload);
+        };
+        c.remount();
+        await until(() => document.querySelector('.home-read-error'), 'persistent busy warning');
+        assert(attempts === 3, `Home did not use exactly its bounded three read attempts: ${attempts}`);
+        assert(document.querySelector('.home-read-error button')?.textContent.includes('会话'), 'Persistent failure has no exact-domain retry');
+      } finally { c.reset(); await settled(); }
+    }),
+    scenario('desktop.home.observation-terminal-no-retry', ['home-startup'], 'A non-busy Home read error remains visible without automatic replay', async () => {
+      const c = control(); let attempts = 0;
+      try {
+        c.reset(); await until(() => health()?.querySelector('.good'), 'initial Home ready'); await settled();
+        c.handlers.observation_read = payload => {
+          if (payload.request?.intent?.view === 'sessions') {
+            attempts++;
+            throw { source: 'backend', envelope: { error: { category: 'denied', code: 'E_DENIED' } } };
+          }
+          return c.fixtureResponse('observation_read', payload);
+        };
+        c.remount();
+        await until(() => document.querySelector('.home-read-error'), 'terminal session read error');
+        assert(attempts === 1, 'Home replayed a non-busy read failure');
+      } finally { c.reset(); await settled(); }
+    }),
+    scenario('desktop.home.observation-superseded-retry', ['home-startup'], 'A newer focus refresh cancels obsolete busy retries', async () => {
+      const c = control(); let attempts = 0; let rejectFirst;
+      const busy = { source: 'backend', envelope: { error: { category: 'unavailable', code: 'E_UNAVAILABLE',
+        observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } } };
+      try {
+        c.reset(); await until(() => health()?.querySelector('.good'), 'initial Home ready'); await settled();
+        c.handlers.observation_read = payload => {
+          if (payload.request?.intent?.view === 'sessions' && ++attempts === 1) return new Promise((_, reject) => { rejectFirst = reject; });
+          return c.fixtureResponse('observation_read', payload);
+        };
+        c.remount();
+        await until(() => rejectFirst, 'first session read held');
+        window.dispatchEvent(new Event('focus'));
+        await until(() => attempts === 2 && !document.querySelector('.home-read-error'), 'replacement focus read');
+        rejectFirst(busy); rejectFirst = null;
+        await new Promise(resolve => setTimeout(resolve, 150));
+        assert(attempts === 2, 'Obsolete Home read retried after a newer refresh');
+        assert(!document.querySelector('.home-read-error'), 'Obsolete failure replaced the current successful read');
+      } finally { rejectFirst?.(busy); c.reset(); await settled(); }
+    }),
     scenario('desktop.home.no-full-agent-scan', ['home-startup'], 'Cold Home uses a lightweight Agent summary', async () => {
       const c = control();
       try {

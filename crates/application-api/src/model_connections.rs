@@ -26,6 +26,22 @@ pub const APPLY_SUBSCRIPTION_CHECK_OPERATION_V2: &str = "ApplySubscriptionCheck"
 pub const GET_SUBSCRIPTION_CHECK_RESULT_OPERATION_V2: &str = "GetSubscriptionCheckResult";
 pub const RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2: &str = "ReleaseSubscriptionCheck";
 
+/// Empty/default callers retain full discovery. Saved-source reuse opts in to
+/// the exact persisted credential owner, without exposing its private identity.
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeSubscriptionCandidatesQueryV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<ComputeSavedSubscriptionSourceV1>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeSavedSubscriptionSourceV1 {
+    pub source_id: String,
+    pub expected_source_revision: u64,
+}
+
 /// Web-safe base interpretation for a user-configured Native API endpoint.
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -437,6 +453,30 @@ mod tests {
     use super::*;
     use hiroute_domain::{GatewayAuthenticationSemanticsV1, UpstreamProtocol};
     use serde_json::json;
+
+    #[test]
+    fn saved_subscription_lookup_is_opt_in_and_revision_bound() {
+        let empty: ComputeSubscriptionCandidatesQueryV1 =
+            serde_json::from_value(json!({})).unwrap();
+        assert_eq!(serde_json::to_value(empty).unwrap(), json!({}));
+        let scoped: ComputeSubscriptionCandidatesQueryV1 = serde_json::from_value(json!({
+            "source": {"source_id":"source/saved", "expected_source_revision":7}
+        }))
+        .unwrap();
+        assert_eq!(scoped.source.unwrap().expected_source_revision, 7);
+        assert!(
+            serde_json::from_value::<ComputeSubscriptionCandidatesQueryV1>(json!({
+                "source": {"source_id":"source/saved"}
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<ComputeSubscriptionCandidatesQueryV1>(
+                json!({"unexpected":true})
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn released_public_registered_probe_preserves_omitted_name() {

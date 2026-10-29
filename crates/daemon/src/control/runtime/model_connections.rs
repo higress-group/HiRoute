@@ -211,6 +211,13 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         })
     }
 
+    fn saved_subscription_candidate(
+        &self,
+        source: hiroute_application_api::ComputeSavedSubscriptionSourceV1,
+    ) -> Result<ComputeSubscriptionCandidatesV2, ComputeManagementControlError> {
+        self.saved_subscription_candidates(source)
+    }
+
     fn preview_subscription_check(
         &self,
         candidate: ComputeCandidateRefV2,

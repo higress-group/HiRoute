@@ -6,6 +6,7 @@ import { nativeConnectionScenarios } from './native-connection-scenarios.mjs';
 import { presentationScenarios } from './presentation-interactions.mjs';
 import { trustProgressScenarios } from './trust-progress-scenarios.mjs';
 import { homeStartupScenarios } from './home-startup-scenarios.mjs';
+import { trialModelNavigationScenarios } from './trial-model-navigation-scenarios.mjs';
 import { operationRecoveryScenarios } from './operation-recovery-scenarios.mjs';
 const c = () => window.productShell;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -62,6 +63,7 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  ...trialModelNavigationScenarios(scenario),
   scenario('desktop.operation.hidden-summaries-defer', ['operation-feedback'], 'Terminal confirmation does not scan a hidden Agent page or unrelated Home summaries', async () => {
     await fresh();
     await click('Agent');

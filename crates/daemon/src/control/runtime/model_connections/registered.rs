@@ -530,6 +530,54 @@ mod tests {
             .unwrap();
         assert_eq!(legacy_draft.display_name, option.display_name);
         let app = hiroute_application::ApplicationService::new(runtime.application_ports());
+        let options_query = |payload| {
+            hiroute_application_api::LocalControlWireRequestV2 {
+                schema_version: hiroute_application_api::SchemaVersion::new(2, 0),
+                request_id: "trial-request-model-defaults".into(),
+                operation_id: "ListConnectionOptions".into(),
+                payload,
+                protected_grant: None,
+            }
+            .authenticate_ambient()
+        };
+        let ordinary = app.dispatch(options_query(serde_json::json!({})));
+        assert!(ordinary.error.is_none());
+        assert!(
+            ordinary.data.unwrap()["options"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|option| option.get("request_model_ids").is_none())
+        );
+        let opted_in = app.dispatch(options_query(
+            serde_json::json!({"include_request_model_ids": true}),
+        ));
+        assert!(opted_in.error.is_none());
+        let opted_in = opted_in.data.unwrap();
+        let mut mapping_count = 0;
+        for option in opted_in["options"].as_array().unwrap() {
+            let resolved = catalog
+                .resolve_connection_option(option["connection_option_id"].as_str().unwrap())
+                .unwrap();
+            for (model_id, ids) in option["request_model_ids"].as_object().unwrap() {
+                for id in ids.as_array().unwrap() {
+                    mapping_count += 1;
+                    assert!(catalog.model_data().model_endpoint_capabilities.iter().any(
+                        |capability| {
+                            capability.model_configuration_id == *model_id
+                                && capability.upstream_model_id == id.as_str().unwrap()
+                                && capability.connector_id == resolved.connector.connector_id
+                                && capability.connector_revision == resolved.connector.revision
+                                && capability.endpoint_profile_id
+                                    == resolved.endpoint_profile.endpoint_profile_id
+                                && capability.endpoint_profile_revision
+                                    == resolved.endpoint_profile.revision
+                        }
+                    ));
+                }
+            }
+        }
+        assert!(mapping_count > 0);
         let protected = |payload| {
             hiroute_application_api::LocalControlWireRequestV2 {
                 schema_version: hiroute_application_api::SchemaVersion::new(2, 0),
