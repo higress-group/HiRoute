@@ -86,7 +86,8 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
     const independentSecret = draft.mode === 'independent' && (replacing || !retained) ? secret.current?.value ?? null : null;
     setBusy(true);
     try {
-      const outcome = await onSave(service, independentSecret || null, test, [draft.mode === 'shared' ? draft.sourceId : null, view?.source?.source_id].filter((id): id is string => !!id));
+      // Only the newly selected source is registered; a previously used source stays retained untouched.
+      const outcome = await onSave(service, independentSecret || null, test, draft.mode === 'shared' && draft.sourceId ? [draft.sourceId] : []);
       // Conflicts and uncertain outcomes keep non-secret edits; a Key is never resubmitted implicitly.
       if (outcome !== 'committed') clearSecret(t('未保存的 Key 已清除，请核对后重新填写。', 'The unsaved key was cleared. Review and enter it again.'));
     } finally { setBusy(false); }

@@ -266,19 +266,20 @@ export type TestRecord = {
   outcome: 'passed' | 'failed'; code?: string; duration?: number | null; at: number;
   tested_configuration_digest?: string; tested_credential_state_revision?: string | null; savedBeforeTest?: boolean;
 };
-export type TestPresentation = 'untested' | 'testing' | 'passed' | 'failed' | 'stale';
+/** `unverified`: a prior pass whose current credential state could not be read back; never shown as passed. */
+export type TestPresentation = 'untested' | 'testing' | 'passed' | 'failed' | 'stale' | 'unverified';
 export function testRecord(result: DecisionServiceTestResult, at: number): TestRecord {
   return { outcome: result.outcome, code: result.failure_code ?? undefined, duration: result.duration_millis, at,
     tested_configuration_digest: result.tested_configuration_digest, tested_credential_state_revision: result.tested_credential_state_revision };
 }
-/** A pass is current only for the configuration and credential state it admitted. */
-export function testPresentation(record: TestRecord | undefined, view: DecisionServiceView, testing: boolean): TestPresentation {
+/** A pass is current only for the configuration and credential state it admitted, checked against a successful readback. */
+export function testPresentation(record: TestRecord | undefined, view: DecisionServiceView, testing: boolean, current = true): TestPresentation {
   if (testing) return 'testing';
   if (!record) return 'untested';
   if (record.outcome === 'failed') return 'failed';
   const changed = (record.tested_configuration_digest !== undefined && record.tested_configuration_digest !== view.configuration_digest)
     || (record.tested_credential_state_revision !== undefined && record.tested_credential_state_revision !== view.credential_state_revision);
-  return changed ? 'stale' : 'passed';
+  return changed ? 'stale' : current ? 'passed' : 'unverified';
 }
 export function testKey(service: Pick<DecisionServiceRecord, 'id' | 'revision'>): string { return `${service.id}/${service.revision}`; }
 

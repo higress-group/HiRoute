@@ -51,26 +51,45 @@ const nativeField = name => all('.decision-connection-form')[0]?.querySelector(`
 function choose(select, value) { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })); }
 const decisionOrder = () => c().commands.map(item => item.command).filter(command => ['save_decision_service_v2', 'decision_services_v2', 'test_decision_service_v2'].includes(command));
 // Synthetic daemon state for the V2 decision commands; a submitted key becomes an opaque reference.
+// Retained revisions keep their sources related. Saves must name exactly the newly selected source,
+// deletions exactly the related sources, so an over- or under-registering request is rejected.
+const sharedSourceOf = service => service?.connection.kind === 'native' && service.connection.authentication.kind === 'shared_source' ? service.connection.authentication.source_id : null;
 function decisionStore(services = [], sources = []) {
-  const store = { services: structuredClone(services), sources: structuredClone(sources), test: () => ({ outcome: 'passed' }) };
-  store.view = id => { const service = store.services.find(item => item.id === id); return service && c().decisionView(service, store.sources); };
-  c().handlers.decision_services_v2 = () => ({ services: store.services.map(service => c().decisionView(service, store.sources)) });
+  const store = { services: structuredClone(services), sources: structuredClone(sources), retained: structuredClone(services), rejected: [], test: () => ({ outcome: 'passed' }) };
+  const related = id => [...new Set(store.retained.filter(item => item.id === id).map(sharedSourceOf).filter(Boolean))];
+  store.view = id => {
+    const service = store.services.find(item => item.id === id);
+    if (!service) return undefined;
+    const view = c().decisionView(service, store.sources);
+    // The fixture projection resolves a source summary (or its missing form) from current sources.
+    const summary = sourceId => c().decisionView({ id, revision: 0, name: '', connection: { kind: 'native', authentication: { kind: 'shared_source', source_id: sourceId } } }, store.sources).source;
+    return { ...view, related_sources: related(id).map(summary) };
+  };
+  c().handlers.decision_services_v2 = () => ({ services: store.services.map(service => store.view(service.id)) });
   c().handlers.decision_connection_sources = () => ({ sources: structuredClone(store.sources) });
   c().handlers.save_decision_service_v2 = ({ input }) => {
     const { change, secret } = input;
     if ((store.services.find(item => item.id === change.id)?.revision ?? 0) !== change.expected_revision) throw { code: 'DECISION_REVISION_CONFLICT' };
+    const closure = change.service ? [sharedSourceOf(change.service)].filter(Boolean) : related(change.id);
+    const submitted = change.expected_source_revisions.map(item => item.source_id);
+    if (submitted.length !== closure.length || closure.some(id => !submitted.includes(id))) {
+      store.rejected.push({ expected: closure, submitted });
+      throw { code: 'FIXTURE_SOURCE_CLOSURE_MISMATCH' };
+    }
+    if (change.expected_source_revisions.some(item => store.sources.find(source => source.source_id === item.source_id)?.revision !== item.revision)) throw { code: 'DECISION_SOURCE_REVISION_CONFLICT' };
     store.services = store.services.filter(item => item.id !== change.id);
     if (change.service) {
       const saved = structuredClone(change.service);
       const header = saved.connection.kind === 'native' ? saved.connection.authentication.auth_header : saved.connection.auth_header;
       if (header && secret) header.value_secret_ref = `protected/${saved.id}/r${saved.revision}`;
-      store.services.push(saved);
-    }
+      store.services.push(saved); store.retained.push(structuredClone(saved));
+    } else store.retained = store.retained.filter(item => item.id !== change.id);
     return { operation_id: 'operation/decision', accepted_digest: 'sha256:' + '5'.repeat(64), state: 'succeeded' };
   };
   c().handlers.test_decision_service_v2 = ({ input }) => {
     const view = store.view(input.id);
     if (!view || view.service.revision !== input.revision || view.configuration_digest !== input.expected_configuration_digest) throw { code: 'DECISION_REVISION_CONFLICT' };
+    // `store.test` may change credentials mid-call; the result still names the state it admitted.
     return { schema: 'hiroute.decision-service-test-result/v2', failure_code: null, duration_millis: 20, ...store.test(input),
       tested_configuration_digest: view.configuration_digest, tested_credential_state_revision: view.credential_state_revision };
   };
@@ -833,7 +852,7 @@ const scenarios = [
     const saved = calls('save_decision_service_v2').at(-1).payload.input;
     assert(saved.change.expected_revision === 0 && saved.change.service.revision === 1 && saved.change.service.schema === 'hiroute.decision-service/v2', 'New connection did not use the V2 revision transaction');
     assert(saved.secret === 'synthetic-test-key' && saved.change.service.connection.authentication.kind === 'independent', 'Independent key was not sent once as the save secret');
-    assert(decisionOrder().slice(-3).join() === 'save_decision_service_v2,decision_services_v2,test_decision_service_v2', 'Test did not follow readback of the saved revision');
+    assert(decisionOrder().slice(-4).join() === 'save_decision_service_v2,decision_services_v2,test_decision_service_v2,decision_services_v2', 'Test did not follow readback of the saved revision or skipped the post-test readback');
     const tested = calls('test_decision_service_v2').at(-1).payload.input;
     assert(tested.revision === 1 && tested.id === saved.change.service.id && tested.expected_configuration_digest === store.view(saved.change.service.id).configuration_digest, 'Test used the unsaved editor or an old digest');
     assert(text().includes('请核对模型、完整地址和协议') && !text().includes('DECISION_INPUT_REJECTED') && !text().includes('sha256:'), 'Failure is not actionable or exposes codes and digests by default');
@@ -889,7 +908,7 @@ const scenarios = [
     const auth = saved.change.service.connection.authentication;
     assert(saved.secret === null && auth.kind === 'shared_source' && auth.source_id === sourceId && auth.source_lineage_digest === store.sources[0].lineage_digest, 'Shared save carried a key or the wrong source lineage');
     assert(JSON.stringify(saved.change.expected_source_revisions) === JSON.stringify([{ source_id: sourceId, revision: 1 }]), 'Shared save omitted the source revision precondition');
-    assert(decisionOrder().slice(-3).join() === 'save_decision_service_v2,decision_services_v2,test_decision_service_v2', 'Test did not follow readback of the saved revision');
+    assert(decisionOrder().slice(-4).join() === 'save_decision_service_v2,decision_services_v2,test_decision_service_v2,decision_services_v2', 'Test did not follow readback of the saved revision or skipped the post-test readback');
     assert(calls('test_decision_service_v2').at(-1).payload.input.expected_configuration_digest === store.view(saved.change.id).configuration_digest, 'Test did not use the read-back digest');
     assert(!text().includes('sha256:') && calls('preview_plan_editor').length === 0, 'Digest shown outside diagnostics or save published a route');
     await click('编辑'); setInput(input('name'), 'Edited during detour'); await pause(40);
@@ -913,6 +932,56 @@ const scenarios = [
     store.sources[0] = { ...store.sources[0], state: 'disabled' };
     await click('返回决策模型 — 草稿已保留');
     await until(() => all('.decision-source-callout').length && text().includes('没有可用的 Key 或已停用'), 'disabled source repair');
+  }),
+  scenario('desktop.decisions.source-closure', ['decision-services', 'model-connections'], 'A save registers only the newly selected API connection, independent setup registers none, and only deletion names every related connection', async () => {
+    let store;
+    const a = 'source/team-a', b = 'source/team-b';
+    const record = { schema: 'hiroute.decision-service/v2', id: 'decision/closure', revision: 1, name: 'Closure decisions', connection: { kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model: 'gpt-6-luna', endpoint: 'https://api.openai.test/v1/decisions', timeout_ms: 10000, authentication: { kind: 'shared_source', source_id: a, source_lineage_digest: c().decisionSource(a).lineage_digest } } };
+    await fresh(() => { store = decisionStore([record], [c().decisionSource(a, { display_name: 'Team A', revision: 3 }), c().decisionSource(b, { display_name: 'Team B', revision: 7 })]); });
+    await click('模型'); await click('决策模型');
+    const input = nativeField, sent = () => calls('save_decision_service_v2').at(-1).payload.input.change;
+    const sources = () => JSON.stringify(sent().expected_source_revisions);
+    await click('编辑'); await until(() => input('source')?.value === a, 'shared edit');
+    choose(input('source'), b); await pause(40);
+    await click('仅保存'); await until(() => store.services[0].revision === 2, 'A -> B save');
+    assert(sources() === JSON.stringify([{ source_id: b, revision: 7 }]), `A -> B registered other sources: ${sources()}`);
+    assert(store.view(record.id).related_sources.map(item => item.source_id).join() === `${a},${b}`, 'Retained revision no longer relates its source');
+    await click('编辑'); await until(() => input('source')?.value === b, 'shared edit on B');
+    all('.decision-mode')[1].click(); await until(() => input('credential'), 'independent setup');
+    setInput(input('credential'), 'synthetic-closure-key'); await pause(40);
+    await click('仅保存'); await until(() => store.services[0].revision === 3, 'shared -> independent save');
+    assert(sent().service.connection.authentication.kind === 'independent' && sources() === '[]', `Independent save registered sources: ${sources()}`);
+    all('summary').find(item => item.textContent.includes('详情与更多操作')).click(); await pause(40); await click('删除决策模型'); await click('删除');
+    await until(() => !store.services.length, 'whole-service deletion');
+    assert(sent().service === null && sources() === JSON.stringify([{ source_id: a, revision: 3 }, { source_id: b, revision: 7 }]), `Deletion did not name every related source: ${sources()}`);
+    assert(!store.rejected.length, `The store rejected a request shape: ${JSON.stringify(store.rejected)}`);
+  }),
+  scenario('desktop.decisions.test-freshness', ['decision-services', 'model-connections'], 'A pass counts only against credential state read back afterwards; a failed readback leaves it unverified and nothing retests automatically', async () => {
+    let store;
+    const sourceId = 'source/openai/decisions';
+    const record = { schema: 'hiroute.decision-service/v2', id: 'decision/fresh', revision: 1, name: 'Fresh decisions', connection: { kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model: 'gpt-6-luna', endpoint: 'https://api.openai.test/v1/decisions', timeout_ms: 10000, authentication: { kind: 'shared_source', source_id: sourceId, source_lineage_digest: c().decisionSource(sourceId).lineage_digest } } };
+    await fresh(() => { store = decisionStore([record], [c().decisionSource(sourceId)]); });
+    await click('模型'); await click('决策模型');
+    const rotate = n => { store.sources[0] = { ...store.sources[0], credential_state_revision: 'sha256:' + String(n).repeat(64) }; };
+    const state = () => document.querySelector('.decision-test-result')?.dataset.testState;
+    const tests = () => calls('test_decision_service_v2').length;
+    store.test = () => { rotate(8); return { outcome: 'passed' }; };
+    await click('测试连接'); await until(() => state() && state() !== 'testing', 'test with rotation');
+    assert(state() === 'stale' && text().includes('凭据或配置已变化') && !text().includes('连接测试通过'), `Key rotation during the test still showed a current pass: ${state()}`);
+    store.test = () => ({ outcome: 'passed' });
+    await click('重新测试'); await until(() => state() === 'passed', 'test on unchanged state');
+    const detour = async () => { await click('编辑'); await click('管理 API 接入'); await until(() => button('返回决策模型 — 草稿已保留'), 'detour'); };
+    const back = async () => { const reads = calls('decision_services_v2').length; await click('返回决策模型 — 草稿已保留'); await until(() => calls('decision_services_v2').length > reads, 'return readback'); await pause(60); await click('取消'); };
+    await detour(); await back();
+    await until(() => state() === 'passed', 'unchanged readback keeps the pass');
+    const read = c().handlers.decision_services_v2;
+    await detour(); c().handlers.decision_services_v2 = () => { throw { code: 'DAEMON_UNAVAILABLE' }; }; await back();
+    await until(() => state() === 'unverified', 'failed readback leaves the pass unverified');
+    assert(text().includes('未能读取当前凭据状态') && !text().includes('连接测试通过') && all('.decision-test-state.stale').length === 1, 'Failed readback still presented a current pass');
+    assert(tests() === 2, 'Returning from management retested implicitly');
+    c().handlers.decision_services_v2 = read;
+    await click('刷新'); await until(() => state() === 'passed', 'successful readback confirms the admitted state');
+    assert(tests() === 2, 'Recovery retested implicitly');
   }),
   scenario('desktop.decisions.source-read-states', ['decision-services'], 'Slow or failed connection reads never block independent setup, and a late read never overrides an explicit choice', async () => {
     let release;
@@ -985,6 +1054,50 @@ const scenarios = [
     assert(all('.decision-selector select')[0].options.length === 1, 'Extension leaked into decision model choices');
     await click('添加决策模型'); await click('返回路由'); await click('放弃修改');
     assert(routeName()?.value === 'Preserved route draft', 'Cancelling detour discarded the route draft');
+  }),
+  scenario('desktop.decisions.nested-detour', ['decision-services', 'routing-editor', 'model-connections'], 'Route -> decision model -> API connection -> decision model -> route returns explicitly at each level, keeps every non-secret bundle and still guards discards', async () => {
+    let store;
+    const sourceId = 'source/openai/decisions';
+    await fresh(() => { store = decisionStore([], [c().decisionSource(sourceId, { display_name: 'Team OpenAI' })]); });
+    await routing();
+    const routeName = () => all('.plan-identity-fields input')[0];
+    setInput(routeName(), 'Nested route draft'); await pause(40);
+    await click('决策模型'); await click('添加决策模型');
+    assert(!document.querySelector('dialog[open]') && text().includes('路由草稿已保留'), 'Opening the decision model tried to discard the route');
+    const input = nativeField, mode = index => all('.decision-mode')[index];
+    await until(() => mode(0)?.getAttribute('aria-pressed') === 'true', 'reuse default');
+    choose(input('source'), sourceId); await pause(40);
+    setInput(input('model'), 'gpt-6-luna-mini'); setInput(input('name'), 'Nested decisions'); await pause(40);
+    mode(1).click(); await until(() => input('credential'), 'independent bundle');
+    setInput(input('model'), 'independent-nested-model'); setInput(input('credential'), 'nested-pending-key'); await pause(40);
+    mode(0).click(); await pause(40);
+    await click('管理 API 接入');
+    await until(() => button('返回决策模型 — 草稿已保留') && !all('.decision-connection-form').length, 'API connection management with explicit return');
+    await click('首页');
+    await until(() => document.querySelector('dialog.discard-dialog[open]') && button('继续编辑'), 'leaving the detour is guarded');
+    await click('继续编辑');
+    assert(button('返回决策模型 — 草稿已保留'), 'Keep editing left the detour');
+    await click('返回决策模型 — 草稿已保留');
+    await until(() => input('name')?.value === 'Nested decisions', 'decision model draft after the API connection');
+    assert(mode(0).getAttribute('aria-pressed') === 'true' && input('source').value === sourceId && input('model').value === 'gpt-6-luna-mini', 'Shared bundle changed across the detour');
+    assert(button('返回路由') && text().includes('路由草稿已保留'), 'The route return was lost inside the nested detour');
+    mode(1).click(); await until(() => input('credential'), 'independent bundle after detour');
+    assert(input('model').value === 'independent-nested-model' && input('credential').value === '', 'Independent non-secret bundle lost or pending key resurrected');
+    mode(0).click(); await pause(40);
+    await click('首页');
+    await until(() => document.querySelector('dialog.discard-dialog[open]') && button('继续编辑'), 'decision model discard guard');
+    await click('继续编辑');
+    assert(input('name')?.value === 'Nested decisions', 'Keep editing lost the decision draft');
+    await click('仅保存');
+    await until(() => routeName()?.value === 'Nested route draft', 'explicit return to the route draft');
+    const saved = calls('save_decision_service_v2').at(-1).payload.input;
+    assert(saved.secret === null && saved.change.service.connection.model === 'gpt-6-luna-mini' && JSON.stringify(saved.change.expected_source_revisions) === JSON.stringify([{ source_id: sourceId, revision: 1 }]), 'Nested save submitted the wrong bundle, a key or the wrong source closure');
+    assert(all('.decision-selector select')[0]?.value === store.services[0].id, 'Saved decision model was not selected in the route');
+    assert(calls('preview_plan_editor').length === 0 && calls('test_decision_service_v2').length === 0 && !store.rejected.length, 'Nested flow published, tested or sent a rejected request');
+    await click('首页');
+    await until(() => document.querySelector('dialog.discard-dialog[open]') && button('继续编辑'), 'route draft discard guard after return');
+    await click('继续编辑');
+    assert(routeName()?.value === 'Nested route draft', 'Keep editing lost the route draft');
   }),
   scenario('desktop.decisions.discard-navigation', ['decision-services'], 'Discarding decision edits clears retained editors and credentials across navigation', async () => {
     const saved = { id: 'decision/saved', revision: 1, name: 'Saved decision', connection: {

@@ -175,6 +175,10 @@ test('a previous pass becomes stale when configuration or credential state chang
   assert.equal(testPresentation(undefined, sharedView, false), 'untested');
   assert.equal(testPresentation(record, sharedView, true), 'testing');
   assert.equal(testPresentation({ ...record, outcome: 'failed' }, sharedView, false), 'failed');
+  // Without a successful readback a pass is never current; a proven change still reads as stale.
+  assert.equal(testPresentation(record, sharedView, false, false), 'unverified');
+  assert.equal(testPresentation(record, { ...sharedView, credential_state_revision: 'sha256:rotated' }, false, false), 'stale');
+  assert.equal(testPresentation({ ...record, outcome: 'failed' }, sharedView, false, false), 'failed');
 });
 
 test('repair actions follow the failure fact and credential ownership', () => {

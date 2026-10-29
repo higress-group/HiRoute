@@ -41,6 +41,8 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   const [error, setError] = useState<{ message: string; code?: string } | null>(null), [notice, setNotice] = useState('');
   const [tests, setTests] = useState<Record<string, TestRecord>>({});
   const [testing, setTesting] = useState<string | null>(null);
+  // False after a failed readback: earlier passes cannot be confirmed against current credential state.
+  const [factsCurrent, setFactsCurrent] = useState(true);
   const [savedBeforeTest, setSavedBeforeTest] = useState<string | null>(null);
   const [unverifiedSave, setUnverifiedSave] = useState<{ id: string; revision: number } | null>(null);
   const [query, setQuery] = useState(''), [showList, setShowList] = useState(false);
@@ -51,11 +53,14 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   useDiscardGuard('decisions', busy, language, async () => false);
 
   function accept(next: DecisionServiceView[]) {
-    setViews(next);
+    setViews(next); setFactsCurrent(true);
     setUnverifiedSave(pending => pending && !next.some(view => view.service.id === pending.id && view.service.revision >= pending.revision) ? pending : null);
     return next;
   }
-  async function refresh() { return accept((await invoke<DecisionServices>('decision_services_v2', {})).services); }
+  async function refresh() {
+    try { return accept((await invoke<DecisionServices>('decision_services_v2', {})).services); }
+    catch (cause) { setFactsCurrent(false); throw cause; }
+  }
   /** Only the newest read applies; a failed read keeps earlier summaries as unavailable. */
   async function loadSources() {
     const generation = ++sourceGeneration.current;
@@ -81,6 +86,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     return () => { current = false; };
   }, [active]);
   // Returning from API connection management refreshes facts only. Bundles, mode and source stay as authored.
+  // A failed read leaves earlier passes unverified; nothing is retested automatically.
   useEffect(() => {
     if (!sourceRefreshKey || !active) return;
     void loadSources();
@@ -117,11 +123,13 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       const value = await invoke<DecisionServiceTestResult>('test_decision_service_v2', { input: { id: view.service.id, revision: view.service.revision, expected_configuration_digest: view.configuration_digest } });
       next = testRecord(value, Date.now());
     } catch (cause) { next = { outcome: 'failed', code: planErrorCode(cause), at: Date.now() }; }
+    // Credentials may rotate during the call; the pass counts only against state read back afterwards.
+    const latest = await refresh().then(all => all.find(item => testKey(item.service) === key), () => undefined);
     // A later test or edit supersedes this result.
     if (testSequence.current[key] !== sequence) return false;
     setTesting(current => current === key ? null : current);
     setTests(current => ({ ...current, [key]: next }));
-    return next.outcome === 'passed';
+    return !!latest && testPresentation(next, latest, false) === 'passed';
   }
   async function reconcile(id: string) {
     await loadSources();
@@ -136,9 +144,14 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   async function save(service: DecisionServiceV2, secret: string | null, runTest: boolean, sourceIds: string[]): Promise<NativeSaveOutcome> {
     if (!editing || busy) return 'failed';
     const expected = editing.isNew ? 0 : editing.expected;
+    const expected_source_revisions = expectedSourceRevisions(sourceIds, sources, editingView);
+    // A selected source without an observed revision cannot be registered safely.
+    if (expected_source_revisions.length !== sourceIds.length) {
+      setError({ message: t('暂时无法读取所选 API 接入的状态，当前输入已保留。请刷新后再保存。', 'The selected API connection could not be read. Your input is retained. Refresh, then save again.'), code: 'DECISION_SOURCE_UNAVAILABLE' });
+      return 'failed';
+    }
     const change: DecisionServiceChange = {
-      id: service.id, expected_revision: expected, service: { ...service, revision: expected + 1 },
-      expected_source_revisions: expectedSourceRevisions(sourceIds, sources, editingView),
+      id: service.id, expected_revision: expected, service: { ...service, revision: expected + 1 }, expected_source_revisions,
     };
     let committed = false;
     setBusy(true); setError(null); setNotice('');
@@ -193,8 +206,8 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   }
   const sourceLabel = (view: DecisionServiceView) => view.source ? sourceName(view.source, language) : '';
   const visible = views.filter(view => `${view.service.name} ${providerLabel(view.service.connection, language)} ${recordModel(view.service) ?? ''} ${sourceLabel(view)}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  const rowState = (view: DecisionServiceView) => testPresentation(tests[testKey(view.service)], view, testing === testKey(view.service));
-  const rowText = { untested: t('本次尚未测试', 'Not tested this visit'), testing: t('正在测试…', 'Testing…'), passed: t('本次测试通过', 'Test passed this visit'), failed: t('本次测试失败', 'Test failed this visit'), stale: t('上次通过 · 已变化未重测', 'Passed earlier · changed, not retested') };
+  const rowState = (view: DecisionServiceView) => testPresentation(tests[testKey(view.service)], view, testing === testKey(view.service), factsCurrent);
+  const rowText = { untested: t('本次尚未测试', 'Not tested this visit'), testing: t('正在测试…', 'Testing…'), passed: t('本次测试通过', 'Test passed this visit'), failed: t('本次测试失败', 'Test failed this visit'), stale: t('上次通过 · 已变化未重测', 'Passed earlier · changed, not retested'), unverified: t('上次通过 · 当前状态未能读取', 'Passed earlier · current state unreadable') };
   const selectedShared = !!selected && selected.service.connection.kind === 'native' && selected.service.connection.authentication.kind === 'shared_source';
   return <ProductPage title={t('模型', 'Models')} subtitle={t('管理已连接的模型与接入', 'Manage connected models and access')} tabs={tabs} flush className="routing-page decision-models-page" actions={
     <div className="decision-add-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setMenu(false); }} onKeyDown={event => { if (event.key === 'Escape') setMenu(false); }}>
@@ -207,7 +220,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     {notice && <div className="decision-notice field-help" role="status">{notice}</div>}
     <div className={'split-view' + (showList || (!editing && !selected) ? ' show-list' : '')}>
       <aside className="master-pane"><div className="decision-search"><UiIcon name="search" /><input className="input" aria-label={t('搜索决策模型与扩展', 'Search decision models and extensions')} placeholder={t('搜索名称、供应商或模型', 'Search name, provider or model')} value={query} onChange={event => setQuery(event.target.value)} /></div><nav className="master-list native-list" aria-label={t('决策模型与扩展', 'Decision models and extensions')}>
-        {visible.map(view => { const service = view.service, state = rowState(view); return <button className={'list-row' + (!editing && selected?.service.id === service.id ? ' active' : '')} key={service.id} disabled={busy} aria-current={!editing && selected?.service.id === service.id ? 'page' : undefined} onClick={() => void choose(view)}><DecisionIcon provider={recordProvider(service)} language={language} /><span className="row-main"><span className="row-title">{service.name}</span><span className="row-meta">{providerLabel(service.connection, language)}{view.source ? ` · ${sourceLabel(view)}` : ''}</span>{recordModel(service) && <span className="row-meta">{recordModel(service)}</span>}<span className={'decision-test-state' + (state === 'passed' ? ' passed' : state === 'failed' ? ' failed' : state === 'stale' ? ' stale' : '')}>{rowText[state]}</span></span><UiIcon name="chevronRight" /></button>; })}
+        {visible.map(view => { const service = view.service, state = rowState(view); return <button className={'list-row' + (!editing && selected?.service.id === service.id ? ' active' : '')} key={service.id} disabled={busy} aria-current={!editing && selected?.service.id === service.id ? 'page' : undefined} onClick={() => void choose(view)}><DecisionIcon provider={recordProvider(service)} language={language} /><span className="row-main"><span className="row-title">{service.name}</span><span className="row-meta">{providerLabel(service.connection, language)}{view.source ? ` · ${sourceLabel(view)}` : ''}</span>{recordModel(service) && <span className="row-meta">{recordModel(service)}</span>}<span className={'decision-test-state' + (state === 'passed' ? ' passed' : state === 'failed' ? ' failed' : state === 'stale' || state === 'unverified' ? ' stale' : '')}>{rowText[state]}</span></span><UiIcon name="chevronRight" /></button>; })}
         {!visible.length && <div className="empty-state"><p>{loading ? t('正在读取…', 'Loading…') : query ? t('没有匹配的连接', 'No matching connections') : t('添加决策模型，为路由判断任务分支。', 'Add a decision model to select task branches.')}</p></div>}
       </nav></aside>
       <section className="detail-pane"><div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => setShowList(true)}><UiIcon name="arrowLeft" />{t('返回列表', 'Back to list')}</button></div>
