@@ -54,6 +54,53 @@ where
         Err(PortError::Unavailable("exact CredentialResolver required"))
     }
 
+    fn admit_decision_credentials(
+        &self,
+        binding: &hiroute_domain::DecisionCredentialBindingV1,
+    ) -> Result<hiroute_domain::DecisionCredentialAdmissionV1, PortError> {
+        binding.validate().map_err(|_| PortError::Rejected)?;
+        self.native
+            .admit_decision_credentials(binding)
+            .map_err(native_error)
+    }
+
+    async fn lease_decision_credential(
+        &self,
+        request: &hiroute_domain::DecisionCredentialLeaseRequestV1,
+        scope: &ExecutionScope,
+    ) -> Result<Option<CredentialLease>, PortError> {
+        scope.ensure_active().map_err(|_| PortError::Rejected)?;
+        request.validate().map_err(|_| PortError::Rejected)?;
+        let Some(lease) = self
+            .native
+            .lease_decision_credential(request)
+            .map_err(native_error)?
+        else {
+            return Ok(None);
+        };
+        let generation = request
+            .admitted_keys
+            .iter()
+            .find(|key| key.key_id == request.key_id)
+            .map(|key| key.generation)
+            .ok_or(PortError::Rejected)?;
+        if lease.credential_id() != request.key_id
+            || lease.key_id() != request.key_id
+            || lease.generation() != generation
+        {
+            return Err(PortError::Rejected);
+        }
+        let result = CredentialLease::from_capability(
+            request.key_id.as_str(),
+            request.key_id.as_str(),
+            generation,
+            Arc::new(NativeAuthorization(lease)),
+        )
+        .map_err(|_| PortError::Rejected)?;
+        scope.ensure_active().map_err(|_| PortError::Rejected)?;
+        Ok(Some(result))
+    }
+
     fn current_credential_refs(
         &self,
         request: CredentialLeaseRequest<'_>,

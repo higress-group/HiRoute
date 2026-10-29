@@ -35,6 +35,7 @@ mod compute_v8;
 mod convergence_v15;
 mod convergence_v17;
 mod decision_services_v28;
+mod decision_sources_v34;
 mod delegation_native_lifecycle_v21;
 mod delegation_v10;
 #[cfg(test)]
@@ -60,7 +61,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 33;
+pub const LATEST_SCHEMA_VERSION: u32 = 34;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -522,7 +523,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | 31 | 32 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | 31 | 32 | 33 | LATEST_SCHEMA_VERSION
         ) || (set.target_schema_version() == 24
             && [
                 set.control.manifest(),
@@ -573,6 +574,21 @@ impl MigrationSetCoordinator {
                 ]
                 .iter()
                 .all(|source| source.schema_version == 32)
+        })
+    }
+
+    pub(crate) fn is_admitted_decision_index_only_batch(&self) -> bool {
+        self.set.as_ref().is_some_and(|set| {
+            set.target_schema_version() == 34
+                && [32, 33].iter().any(|version| {
+                    [
+                        set.control.manifest(),
+                        set.runtime.manifest(),
+                        set.secrets.manifest(),
+                    ]
+                    .iter()
+                    .all(|source| source.schema_version == *version)
+                })
         })
     }
 
@@ -941,6 +957,8 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 32) => Ok(NOOP_V9),
         (DatabaseKind::Control, 33) => Ok(agent_locator_v33::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 33) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 34) => Ok(decision_sources_v34::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 34) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }
