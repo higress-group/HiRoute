@@ -10,7 +10,8 @@ const driver = `(() => {
   const all = selector => [...document.querySelectorAll(selector)];
   const until = async (check, what) => { for (let i = 0; i < 400; i++) { if (check()) return; await pause(25); } throw new Error('Timed out: ' + what); };
   const button = name => all('button').find(item => item.textContent.trim() === name && item.offsetParent !== null);
-  const click = async name => { await until(() => button(name) && !button(name).disabled, name); button(name).click(); await pause(60); };
+  // A return refresh can disable the enclosing fieldset while button.disabled stays false.
+  const click = async name => { await until(() => button(name) && !button(name).matches(':disabled'), name); button(name).click(); await pause(60); };
   const field = name => all('.decision-connection-form')[0]?.querySelector('[data-native-field="' + name + '"]');
   const choose = (select, value) => { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })); };
   const sourceId = 'source/openai/decisions';
@@ -136,6 +137,7 @@ export async function decisionModelCaptures(client, baseUrl, output) {
     const anchor = await evaluate(client, `${driver}[${JSON.stringify(state)}]()`).catch(async cause => {
       const shot = await client.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(path.join(output, `failed-${state}.png`), Buffer.from(shot.data, 'base64'));
+      await writeFile(path.join(output, `failed-${state}.txt`), await evaluate(client, `document.body.innerText`));
       throw new Error(`Decision model capture ${state} (${language}/${theme}/${viewport.width}): ${cause.message}`);
     });
     // Test results and the route selector sit below the fold; centring keeps it clear of the sticky list header.
