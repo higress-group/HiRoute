@@ -413,7 +413,7 @@ fn locator_upgrade_from_admitted_32_preserves_unrelated_publication_damage() {
     let upgraded = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
     assert_eq!(
         database_version(&root.join("live/control.db")).unwrap(),
-        Some(33)
+        Some(LATEST_SCHEMA_VERSION)
     );
     assert_eq!(
         upgraded

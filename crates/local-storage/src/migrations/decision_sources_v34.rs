@@ -36,6 +36,23 @@ CREATE TABLE decision_consumer_runtime (
 CREATE INDEX decision_consumer_service_idx ON decision_consumer_runtime(workspace_id, service_id, source_id);
 "#;
 
+/// The preceding locator was checked before the schema change. Advance only its
+/// schema cookie in the same transaction, then recheck its unchanged coverage.
+pub(super) fn refresh_locator(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), crate::LocalStorageError> {
+    let schema: i64 = transaction.query_row("PRAGMA main.schema_version", [], |row| row.get(0))?;
+    let updated = transaction.execute(
+        "UPDATE agent_locator_coverage SET schema_version=?1 WHERE singleton=1 AND tampered=0",
+        [schema],
+    )?;
+    if updated != 1 {
+        return Err(crate::LocalStorageError::InvalidData);
+    }
+    crate::control::agent_locator::validate_coverage(transaction)
+        .map_err(|_| crate::LocalStorageError::InvalidData)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{DatabaseKind, migration_sql};
