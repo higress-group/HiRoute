@@ -86,13 +86,18 @@ impl ReplayStream {
     }
 
     #[cfg(test)]
-    pub(super) fn truncate_last_byte(&self) -> Result<(), ReplayError> {
+    pub(super) fn truncate_last_byte(&self, reference: &ContentRef) -> Result<(), ReplayError> {
         let StreamBacking::Disk { file, .. } = &self.backing else {
             return Err(ReplayError::Integrity);
         };
         let file = lock(file);
         let file = file.as_ref().ok_or(ReplayError::Integrity)?;
-        let len = file.metadata()?.len();
+        // One stream can contain several authenticated ranges. Corrupt the
+        // supplied range, not a possibly unrelated trailing range in the file.
+        let len = reference
+            .byte_offset()
+            .checked_add(reference.byte_len())
+            .ok_or(ReplayError::LengthOverflow)?;
         file.set_len(len.checked_sub(1).ok_or(ReplayError::Integrity)?)?;
         file.sync_all()?;
         Ok(())

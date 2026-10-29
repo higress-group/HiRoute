@@ -459,7 +459,7 @@ impl ReplayStore {
         streams
             .get(&reference.stream_ordinal())
             .ok_or(ReplayError::UnknownContentRef)?
-            .truncate_last_byte()
+            .truncate_last_byte(reference)
     }
 
     #[cfg(test)]

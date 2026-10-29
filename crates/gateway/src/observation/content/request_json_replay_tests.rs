@@ -647,6 +647,14 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
     };
     let reference = state.value.content_ref().unwrap();
     fixture.store.truncate_stream_last_byte(&reference).unwrap();
+    assert!(
+        std::io::copy(
+            &mut fixture.store.reader(&reference).unwrap(),
+            &mut std::io::sink()
+        )
+        .is_err(),
+        "fault must corrupt the exact captured range"
+    );
     gate.release();
     observation.inner.channels.content_work.flush(&observation);
     let mut records = Vec::new();
