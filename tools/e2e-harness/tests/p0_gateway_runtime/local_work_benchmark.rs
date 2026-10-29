@@ -137,6 +137,24 @@ fn measure_complete_local_work_with_continuity_and_capture() {
             }
         }
         let records = request_timing::summaries(&fixture, count);
+        let facts = wait_execution_facts(&fixture, count);
+        let assessments = facts
+            .iter()
+            .filter(|record| {
+                record.pointer("/fact/kind").and_then(Value::as_str)
+                    == Some("branch_assessment_recorded")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            assessments.len(),
+            count / 2,
+            "every follow-up must actually assess its captured predecessor"
+        );
+        assert!(assessments.iter().all(|record| {
+            record["fact"]["history_membership"]["request_ids"]
+                .as_array()
+                .is_some_and(|requests| requests.len() == 1)
+        }));
         let capture_backing: Vec<_> = std::fs::read_to_string(
             fixture
                 .diagnostics_root
