@@ -76,6 +76,10 @@ name = "gateway_hash_paths"
 harness = false
 
 [[bench]]
+name = "gateway_parse_reuse"
+harness = false
+
+[[bench]]
 name = "gateway_product_paths"
 harness = false
 required-features = ["e2e-test-control"]
