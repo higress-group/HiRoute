@@ -426,3 +426,88 @@ fn subscription_api_effect_witness_tamper_is_rejected_without_changing_business_
     assert_eq!(sources(&stores), before);
     assert_eq!(links(&stores), association);
 }
+
+#[test]
+fn subscription_api_metadata_reproduces_full_saved_defaults_without_changing_them() {
+    use hiroute_domain::{ModelDefaultFieldV1, ModelDefaultPreferenceV1};
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let (sub, _) = connect(&stores, &registry, &api);
+    let preferences = std::collections::BTreeMap::from([(
+        sub.models[0].binding_id.clone(),
+        std::collections::BTreeMap::from([(
+            ModelDefaultFieldV1::Vision,
+            ModelDefaultPreferenceV1::PreserveSaved,
+        )]),
+    )]);
+    let input = ProtectedInput;
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    let preview = planner
+        .preview_v3(ComputeManagementChangeV3 {
+            schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+            change: lifecycle::edit(
+                &stores,
+                &sub,
+                ComputeManagementEditV1::Rename {
+                    display_name: sub.display_name.clone(),
+                },
+                &[],
+            ),
+            default_preferences: preferences.clone(),
+            api_link: None,
+        })
+        .unwrap();
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    coordinator.reconcile_startup_and_open().unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &WorkspaceId::default(),
+        preview,
+        "sub-defaults",
+    );
+    let sub = sources(&stores)
+        .into_iter()
+        .find(|s| s.source_id == sub.source_id)
+        .unwrap();
+    let preview = apply(
+        &stores,
+        &registry,
+        metadata(&stores, &sub),
+        ComputeSubscriptionApiLinkIntentV1::Remove,
+        "sub-defaults-detach",
+    );
+    assert_eq!(
+        preview.0.spec.desired_state["change"]["default_preferences"],
+        serde_json::to_value(&preferences).unwrap()
+    );
+    assert_eq!(
+        stores
+            .control()
+            .source_default_preferences(&sub.source_id)
+            .unwrap(),
+        preferences
+    );
+    assert_eq!(
+        sources(&stores)
+            .into_iter()
+            .find(|s| s.source_id == sub.source_id)
+            .unwrap()
+            .models,
+        sub.models
+    );
+}

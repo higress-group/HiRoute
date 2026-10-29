@@ -16,7 +16,12 @@ where
         if change.schema != COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3 {
             return Err(ComputeManagementPlanningErrorV2::InvalidChange);
         }
+        change
+            .change
+            .validate_shape()
+            .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
         let api_link = change.api_link.take();
+        let mut metadata_preferences = None;
         let metadata_source = if api_link.is_some()
             && let hiroute_application_api::ComputeManagementSubjectV2::SavedSource { source_id } =
                 &change.change.subject
@@ -33,7 +38,6 @@ where
             if !matches!(&saved.provenance, hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } if connector_id == "connector.cpa.codex")
                 || change.change.edit.is_some()
                 || !change.change.key_edits.is_empty()
-                || !change.default_preferences.is_empty()
                 || change.change.intent != intent
                 || change.change.validation.is_some()
                 || !change
@@ -44,6 +48,13 @@ where
             {
                 return Err(ComputeManagementPlanningErrorV2::InvalidChange);
             }
+            let preferences = self.repository.source_default_preferences(source_id)?;
+            // Reproduction receives the full sealed V3 preference map; an initial metadata
+            // request may omit it. Neither form may change any saved preference.
+            if !change.default_preferences.is_empty() && change.default_preferences != preferences {
+                return Err(ComputeManagementPlanningErrorV2::InvalidChange);
+            }
+            metadata_preferences = Some(preferences);
             Some(saved)
         } else {
             None
@@ -83,9 +94,12 @@ where
                 .ok_or(ComputeManagementPlanningErrorV2::InvalidChange)?,
         )
         .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
-        let before = self
-            .repository
-            .source_default_preferences(mutation.source_id())?;
+        let before = match metadata_preferences {
+            Some(preferences) => preferences,
+            None => self
+                .repository
+                .source_default_preferences(mutation.source_id())?,
+        };
         let mut after = before.clone();
         for (binding, fields) in change.default_preferences {
             after.entry(binding).or_default().extend(fields);
