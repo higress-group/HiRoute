@@ -91,6 +91,11 @@ The opt-in [whole-listener experiment](../../tools/e2e-harness/tests/p0_gateway_
 keeps multi-turn decisions, history and capture enabled with Info timing. It
 includes local readiness waits and rejects capture loss. Run release binaries on
 the target CPU; component timings and fixture success are not native acceptance.
+Its ordinary four-request regression verifies the same listener path, and the
+[membership oracle](../../tools/e2e-harness/tests/p0_gateway_runtime/local_work_membership.rs)
+requires each follow-up assessment to name its own actual predecessor, with no
+partial capture. Negative controls reject cross-session, self, duplicate and
+missing identities even when the number of assessment members is correct.
 
 | Layer | Appropriate assertion | Evidence limit |
 | --- | --- | --- |

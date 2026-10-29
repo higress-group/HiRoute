@@ -3,6 +3,9 @@ use super::*;
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
 
+#[path = "local_work_membership.rs"]
+mod membership;
+
 const CHAT_STREAM: &[u8] = b"data: {\"id\":\"bench\",\"model\":\"runtime-native-model-1\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"42\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"bench\",\"model\":\"runtime-native-model-1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\ndata: [DONE]\n\n";
 
 #[cfg(target_os = "linux")]
@@ -44,7 +47,6 @@ fn measure_complete_local_work_with_continuity_and_capture() {
         .max(2)
         .next_multiple_of(2);
     let warmup = 10;
-    let count = measured + warmup;
     let wire: Value = match std::env::var("HIROUTE_LOCAL_WORK_INPUT") {
         Ok(path) => serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap(),
         Err(_) => json!({"messages": (0..384).map(|index| json!({
@@ -52,18 +54,27 @@ fn measure_complete_local_work_with_continuity_and_capture() {
             "content":format!("message {index}: {}", "a路由🦀\\\"\n".repeat(48))
         })).chain(std::iter::once(json!({"role":"user","content":"Return 42."}))).collect::<Vec<_>>() }),
     };
+    let backing = std::env::var("HIROUTE_LOCAL_WORK_BACKING").ok();
+    run_reference(&wire, measured, warmup, backing.as_deref());
+}
+
+#[test]
+fn local_work_reference_assesses_each_sessions_actual_predecessor() {
+    let wire = json!({"messages":[
+        {"role":"user","content":"Return 42."}
+    ]});
+    run_reference(&wire, 4, 0, Some("memory"));
+}
+
+fn run_reference(wire: &Value, measured: usize, warmup: usize, backing: Option<&str>) {
+    let count = measured + warmup;
     let original = wire["messages"].as_array().expect("Chat messages");
     // Freeze the shared stock protocol for before/after measurements; a later
     // product default must not change the workload or reject the older binary.
     let protocol = hiroute_domain::NativeProtocolV1::c_v1();
-    let backing = std::env::var("HIROUTE_LOCAL_WORK_BACKING").ok();
-    assert!(
-        backing
-            .as_deref()
-            .is_none_or(|v| matches!(v, "memory" | "disk"))
-    );
+    assert!(backing.is_none_or(|v| matches!(v, "memory" | "disk")));
     for (variant, threshold) in [("memory", 1024 * 1024), ("disk", 16 * 1024)] {
-        if backing.as_deref().is_some_and(|value| value != variant) {
+        if backing.is_some_and(|value| value != variant) {
             continue;
         }
         let regular = NativeProvider::start(vec![
@@ -196,23 +207,8 @@ fn measure_complete_local_work_with_continuity_and_capture() {
         }
         let records = request_timing::summaries(&fixture, count);
         let facts = wait_execution_facts(&fixture, count);
-        let assessments = facts
-            .iter()
-            .filter(|record| {
-                record.pointer("/fact/kind").and_then(Value::as_str)
-                    == Some("branch_assessment_recorded")
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(
-            assessments.len(),
-            count / 2,
-            "every follow-up must actually assess its captured predecessor"
-        );
-        assert!(assessments.iter().all(|record| {
-            record["fact"]["history_membership"]["request_ids"]
-                .as_array()
-                .is_some_and(|requests| requests.len() == 1)
-        }));
+        membership::verify_pairs(&facts, count)
+            .expect("each follow-up must assess its own complete captured predecessor");
         let diagnostic_bytes = std::fs::read(
             fixture
                 .diagnostics_root
