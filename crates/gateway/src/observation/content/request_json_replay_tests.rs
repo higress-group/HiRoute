@@ -809,7 +809,8 @@ fn two_queued_snapshots_use_the_existing_content_ceiling_without_sync_fallback()
     first.inner.channels.content_work.flush(&first);
     let mut bodies = BTreeMap::<String, Vec<u8>>::new();
     let mut finished = 0;
-    for record in receiver.try_iter() {
+    while finished < 2 {
+        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(record["loss_watermark"].is_null(), "{record}");
         assert_ne!(record["phase"], "abort");
         if record["phase"] == "append" {

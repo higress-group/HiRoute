@@ -48,7 +48,9 @@ at delivery; neither waits for content encoding or SQLite. Capacity or capture
 failure reports a gap and stops dependent capture for that request. The final
 Replay owner releases files and reservations on all paths.
 The existing content queue splits its byte ceiling between optional jobs and
-encoded records. Only the content worker can park on record credit, with a
+encoded records. Fixed slots hold pointers; each admitted job's existing charge
+covers its allocated header, rather than preallocating 256 maximum-size tasks.
+Only the content worker can park on record credit, with a
 bounded stalled-record wait; foreground producers remain nonblocking. Encoded
 bursts leave room for concurrent foreground jobs; queued work still leaves room
 for one complete chunk record. Both use the same unchanged byte ceiling. Delivery

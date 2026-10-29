@@ -29,7 +29,7 @@ const JOB_OVERHEAD: usize = 1024;
 const CREDIT_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(1);
 
 fn queue_storage_bytes() -> usize {
-    JOB_SLOTS * (std::mem::size_of::<Job>() + 2 * std::mem::size_of::<usize>()) + JOB_OVERHEAD
+    JOB_SLOTS * (std::mem::size_of::<Box<Job>>() + 2 * std::mem::size_of::<usize>()) + JOB_OVERHEAD
 }
 
 #[derive(Clone, Default)]
@@ -41,7 +41,7 @@ pub(super) struct ContentWorkProducer {
 }
 
 struct WorkQueue {
-    sender: SyncSender<Job>,
+    sender: SyncSender<Box<Job>>,
 }
 
 #[derive(Default)]
@@ -118,13 +118,13 @@ impl ContentWorkProducer {
             .content
             .reserve_work(JOB_OVERHEAD)
             .unwrap();
-        let mut job = Job {
+        let mut job = Box::new(Job {
             request: request.clone(),
             status: Arc::new(ContentStatus::default()),
             queued: Instant::now(),
             command: Command::Barrier(sender),
             _retained: reservation,
-        };
+        });
         let deadline = Instant::now() + std::time::Duration::from_secs(5);
         loop {
             match queue.sender.try_send(job) {
@@ -152,14 +152,15 @@ impl ContentWorkProducer {
             return Some(Arc::clone(queue));
         }
         let slots = content.reserve_work(queue_storage_bytes())?;
-        let (sender, receiver) = sync_channel::<Job>(JOB_SLOTS);
+        let (sender, receiver) = sync_channel::<Box<Job>>(JOB_SLOTS);
         #[cfg(test)]
         let gate = self.gate.clone();
         std::thread::Builder::new()
             .name("hiroute-content-capture".into())
             .spawn(move || {
                 let _slots = slots;
-                while let Ok(mut job) = receiver.recv() {
+                while let Ok(job) = receiver.recv() {
+                    let mut job = *job;
                     #[cfg(test)]
                     if let Some(gate) = &gate {
                         let mut open = gate.0.lock().unwrap();
@@ -484,13 +485,15 @@ impl RequestObservation {
         request
             .content_occurred_at
             .get_or_insert_with(super::unix_nanos);
-        let job = Job {
+        // Allocate only admitted jobs. JOB_OVERHEAD covers this allocation;
+        // the bounded channel retains pointers instead of 256 maximum-size jobs.
+        let job = Box::new(Job {
             request,
             status: Arc::clone(status),
             queued: Instant::now(),
             command,
             _retained: reservation,
-        };
+        });
         if queue.sender.try_send(job).is_err() {
             self.fail_content_work(status, "content_capture_queue_full");
         }
@@ -628,5 +631,15 @@ fn json_bytes(value: &Value) -> usize {
         }
         Value::Number(number) => number.to_string().len(),
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+
+    #[test]
+    fn admitted_job_header_and_allocation_fit_the_existing_per_job_charge() {
+        assert!(std::mem::size_of::<Job>() + 2 * std::mem::size_of::<usize>() <= JOB_OVERHEAD);
     }
 }
