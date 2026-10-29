@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const workflow = await readFile(new URL('../../../.github/workflows/model-feed.yml', import.meta.url), 'utf8');
 const website = await readFile(new URL('../../../.github/workflows/website.yml', import.meta.url), 'utf8');
+const release = await readFile(new URL('../../../.github/workflows/release.yml', import.meta.url), 'utf8');
 const backend = await readFile(new URL('../../../.github/workflows/gateway-core.yml', import.meta.url), 'utf8');
 const [, buildAndDeploy] = workflow.split('\njobs:\n');
 const [validate, deploy] = buildAndDeploy.split('\n  deploy:\n');
@@ -53,6 +54,16 @@ test('website build is independent and shares only the production deployment loc
   assert.doesNotMatch(deploy, /model-feed\.mjs publish|hiroute-model-feed/);
   assert.match(deploy, /concurrency:\n\s+group: hiroute-ai-production\n\s+cancel-in-progress: false/);
   assert.doesNotMatch(website, /'assets\/model-(?:feed|data)\/\*\*'/);
+});
+
+test('feed, website and release uploads keep every pending production deployment', () => {
+  for (const [name, source] of [['model-feed', workflow], ['website', website], ['release', release]]) {
+    const production = [...source.matchAll(/^([ ]*)concurrency:\n((?:\1[ ]+[^\n]*(?:\n|$))+)/gm)]
+      .map(match => match[2]).filter(block => /^ +group: hiroute-ai-production$/m.test(block));
+    assert.equal(production.length, 1, `${name}: expected one production concurrency group`);
+    assert.match(production[0], /^ +cancel-in-progress: false$/m, `${name}: running uploads must finish`);
+    assert.match(production[0], /^ +queue: max$/m, `${name}: pending uploads must not replace each other`);
+  }
 });
 
 test('backend metadata validation also uses the shared feed check with full release history', () => {

@@ -103,6 +103,15 @@ checks the complete metadata source, model-data and release-bundle projections,
 then validates the publication with Rust client admission and Node on the same
 revision. Model metadata, editorial announcements and recorded release changes
 trigger it on PRs and pushes to `main`; it can also be dispatched on `main`.
+After the workflow reaches the default branch, run it independently from
+Actions → `model-feed` → **Run workflow**, selecting `main`, or with:
+
+```sh
+gh workflow run model-feed.yml --repo higress-group/HiRoute --ref main
+```
+
+Dispatching another branch validates its artifacts but does not publish. A manual
+run retains the same bootstrap, compatibility and publication checks as a push.
 Reviewed changes must include regenerated artifacts and the required semantic
 revision/publication sequence increases. CI checks those bytes rather than
 editing the catalog or committing generated changes.
@@ -110,6 +119,7 @@ editing the catalog or committing generated changes.
 Only its production deployment may upload the exact validated artifact to
 `model-feed/v2.json`. It uses `website-production` and the existing OSS credentials,
 serializing uploads with website/release deployment through `hiroute-ai-production`.
+All three publishers queue pending uploads instead of canceling one another.
 It needs no static website build, experiment downloads or release-package checks.
 Ordinary website uploads refuse a `model-feed` prefix. PR builds publish nothing.
 Bootstrap `null` skips network access, feed staging and OSS CLI installation while
