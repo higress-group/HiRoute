@@ -373,20 +373,20 @@ impl ByteBoundedObservationProducer {
 
     fn reserve_record(&self, bytes: usize, deadline: Option<Instant>) -> bool {
         let mut gate = lock(&self.shared.credit_gate);
-        // A larger record cannot be guaranteed progress while queued jobs own
-        // the rest of the budget. It keeps the original nonblocking outcome.
+        // Reserve a small window for foreground response/terminal jobs without
+        // shrinking the normal single-input encoded working set to one quarter.
+        let ceiling = self.shared.capacity_bytes - self.shared.capacity_bytes / 16;
+        let can_wait = deadline.is_some() && bytes <= ceiling - self.work_capacity();
         loop {
             let total = self.shared.queued_bytes.load(Ordering::Relaxed);
-            let work = self.shared.work_bytes.load(Ordering::Relaxed);
-            let records_fit = deadline.is_none()
-                || bytes > self.shared.capacity_bytes / 4
-                || total.saturating_sub(work).saturating_add(bytes)
-                    <= self.shared.capacity_bytes / 4;
-            if records_fit && reserve_bytes(&self.shared, bytes) {
+            if (!can_wait || total.saturating_add(bytes) <= ceiling)
+                && reserve_bytes(&self.shared, bytes)
+            {
                 return true;
             }
-            let Some(deadline) = deadline.filter(|_| bytes <= self.shared.capacity_bytes / 4)
-            else {
+            // Larger records retain their original nonblocking outcome. They
+            // cannot be guaranteed room behind other retained optional jobs.
+            let Some(deadline) = deadline.filter(|_| can_wait) else {
                 return false;
             };
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -398,12 +398,12 @@ impl ByteBoundedObservationProducer {
                 self.shared.credit_waits.fetch_add(1, Ordering::Relaxed);
                 self.shared.credit_available.notify_all();
             }
-            let (next, _) = self
+            gate = self
                 .shared
                 .credit_available
                 .wait_timeout(gate, remaining)
-                .unwrap_or_else(|error| error.into_inner());
-            gate = next;
+                .unwrap_or_else(|error| error.into_inner())
+                .0;
         }
     }
 
