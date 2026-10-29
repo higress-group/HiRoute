@@ -54,7 +54,11 @@ impl CompiledCandidate {
                     binding.local_id,
                 ))
             })?;
-            profiles.insert(ingress, facts);
+            if profiles.insert(ingress, facts).is_some() {
+                return Err(PublicationInstallError::Schema(
+                    super::PublicationSchemaError::InvalidCandidate(binding.local_id),
+                ));
+            }
         }
         Ok(Arc::new(Self {
             binding,
@@ -108,6 +112,60 @@ mod tests {
         profiles::{Planner, PlannerError},
     };
     use serde_json::json;
+
+    #[test]
+    fn duplicate_ingress_profiles_cannot_become_a_last_wins_compiled_binding() {
+        let authorized = super::super::authorized_native_consumer_fixture(None);
+        let binding = authorized.core_binding().candidate_bindings().unwrap()[0];
+        let attempt = authorized.core_binding().resolve_attempt(binding).unwrap();
+        let configs = attempt.acquire_attempt_configs().unwrap();
+        let config = configs.value(attempt.plan().config_cell_ids[0]).unwrap();
+        let mut candidate = authorized
+            .candidate_config(binding.local_id(), config)
+            .unwrap()
+            .binding
+            .clone();
+        candidate
+            .protocol_profiles
+            .push(candidate.protocol_profiles[0].clone());
+        assert!(CompiledCandidate::compile(&candidate).is_err());
+    }
+
+    #[test]
+    fn an_active_request_does_not_pin_unrelated_compiled_candidate_generations() {
+        use super::super::{
+            GatewayPublicationInstaller,
+            tests::{TestDirectory, publish, snapshot},
+        };
+        let directory = TestDirectory::new();
+        let installer = Arc::new(
+            GatewayPublicationInstaller::open(directory.path().join("publication.json")).unwrap(),
+        );
+        publish(&installer, snapshot(1, "first"));
+        let original = installer.active().unwrap();
+        let beta = Arc::downgrade(
+            original.aliases["beta"]
+                .execution
+                .candidate_configs
+                .get(&2)
+                .unwrap(),
+        );
+        let authorized = crate::server::dispatch::GatewayRequestAuthority::new(installer.clone())
+            .authorize_bytes(
+                IngressProtocol::Responses,
+                Some("Bearer token-alpha"),
+                br#"{"model":"alpha"}"#,
+                std::time::Instant::now(),
+            )
+            .unwrap();
+        publish(&installer, snapshot(2, "second"));
+        drop(original);
+        assert!(
+            beta.upgrade().is_none(),
+            "an alpha request retained the old beta facts"
+        );
+        assert_eq!(authorized.publication_revision(), 1);
+    }
 
     #[test]
     fn published_planning_matches_full_validation_and_rejects_changed_profiles_and_policy() {
