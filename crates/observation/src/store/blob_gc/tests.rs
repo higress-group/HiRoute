@@ -298,3 +298,43 @@ fn incremental_collection_keeps_shared_bytes_in_another_workspace() {
         (0, false)
     );
 }
+
+#[test]
+fn retained_gc_reader_releases_each_snapshot_and_observes_later_commits() {
+    let root = tempdir().unwrap();
+    let store = open_store(root.path());
+    seed_live(&store, 300);
+    let mut cursor = BlobGcCursor::default();
+    assert_eq!(
+        store.collect_garbage_incremental(&mut cursor).unwrap(),
+        (0, true)
+    );
+    assert!(cursor.connection.as_ref().unwrap().is_autocommit());
+    orphan(&store, "tail");
+    // A retained connection must not leave a snapshot pinning the WAL between
+    // ticks. Capture commits and the existing page-release path remain usable.
+    let busy = store
+        .connection
+        .lock()
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap();
+    assert_eq!(busy, 0);
+    assert_eq!(
+        store.collect_garbage_incremental(&mut cursor).unwrap(),
+        (1, false)
+    );
+    assert!(!store.blob_path("tail").exists());
+    assert!(cursor.connection.as_ref().unwrap().is_autocommit());
+    // Reuse remains valid over a completed sweep and sees a new later commit.
+    orphan(&store, "tail-next");
+    assert_eq!(
+        store.collect_garbage_incremental(&mut cursor).unwrap(),
+        (0, true)
+    );
+    assert_eq!(
+        store.collect_garbage_incremental(&mut cursor).unwrap(),
+        (1, false)
+    );
+}

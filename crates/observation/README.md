@@ -33,7 +33,8 @@ completed sweeps and errors wait five seconds, while unfinished sweeps yield for
 least 250 ms. A large live history therefore spreads discovery over multiple ticks
 instead of rescanning it on every idle pass. Changes behind the cursor are revisited
 on the next sweep, and restart begins at the first identity. Candidate discovery
-uses its own read connection. The existing writer-transaction reference and capacity
+reuses one read connection per maintenance worker, releasing its snapshot after
+each page so capture and WAL page release remain independent. The existing writer-transaction reference and capacity
 protection checks still authorize every deletion. Explicit user deletion and capacity
 retirement retain their existing collection paths; no new persisted state is needed.
 

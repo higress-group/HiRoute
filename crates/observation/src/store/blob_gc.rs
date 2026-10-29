@@ -25,6 +25,7 @@ const SCAN_SQL: &str = "SELECT b.workspace_id,b.blob_digest,
 #[derive(Default)]
 pub(crate) struct BlobGcCursor {
     after: Option<(String, String)>,
+    connection: Option<Connection>,
 }
 
 impl LocalObservationStore {
@@ -34,9 +35,15 @@ impl LocalObservationStore {
         &self,
         cursor: &mut BlobGcCursor,
     ) -> Result<(u64, bool), ObservationQueryError> {
-        let connection =
-            Connection::open_with_flags(&self.activity_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-                .map_err(|_| ObservationQueryError::Unavailable)?;
+        // Keep one reader for this worker, but no transaction between pages.
+        // Reopening every 256 rows would repeatedly parse the entire SQL schema.
+        if cursor.connection.is_none() {
+            cursor.connection = Some(
+                Connection::open_with_flags(&self.activity_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+                    .map_err(|_| ObservationQueryError::Unavailable)?,
+            );
+        }
+        let connection = cursor.connection.as_ref().expect("GC reader initialized");
         let (workspace, digest) = cursor
             .after
             .as_ref()
@@ -57,7 +64,6 @@ impl LocalObservationStore {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_| ObservationQueryError::Corrupt)?;
         drop(statement);
-        drop(connection);
 
         let mut candidates = Vec::new();
         let mut consumed = 0;
