@@ -8,6 +8,14 @@ use crate::{
     DecisionWireProtocolV2, NativeCredentialContractErrorV1,
 };
 
+/// Opaque identity of the exact protected header generation admitted by a diagnostic.
+pub fn decision_header_state_revision(
+    secret_id: &str,
+    generation: u64,
+) -> Result<CanonicalDigest, crate::CanonicalDigestError> {
+    CanonicalDigest::of(&("hiroute.decision-header-state/v1", secret_id, generation))
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionCredentialBindingV1 {
@@ -24,6 +32,55 @@ pub struct DecisionCredentialBindingV1 {
 }
 
 impl DecisionCredentialBindingV1 {
+    pub fn for_service(
+        service: &crate::DecisionServiceV2,
+    ) -> Result<Option<Self>, NativeCredentialContractErrorV1> {
+        use crate::{DecisionAuthenticationV2, DecisionConnectionV2};
+        if !service.validate() {
+            return Err(NativeCredentialContractErrorV1::InvalidRequest);
+        }
+        let DecisionConnectionV2::Native {
+            model,
+            endpoint,
+            wire_protocol,
+            authentication:
+                DecisionAuthenticationV2::SharedSource {
+                    source_id,
+                    source_lineage_digest,
+                },
+            ..
+        } = &service.connection
+        else {
+            return Ok(None);
+        };
+        let invalid = || NativeCredentialContractErrorV1::InvalidRequest;
+        let target =
+            ComputeDecisionTargetV4::new(endpoint, *wire_protocol).map_err(|_| invalid())?;
+        let consumer = target
+            .consumer(
+                source_id,
+                source_lineage_digest,
+                &service.id,
+                service.revision,
+                model,
+            )
+            .map_err(|_| invalid())?;
+        let binding = Self {
+            source_id: source_id.clone(),
+            source_lineage_digest: source_lineage_digest.clone(),
+            service_id: service.id.clone(),
+            service_revision: service.revision,
+            consumer_binding_id: consumer.consumer_binding_id,
+            model: model.clone(),
+            endpoint: target.endpoint,
+            wire_protocol: *wire_protocol,
+            authentication: target.authentication,
+            destination_id: target.destination_id,
+        };
+        binding.validate()?;
+        Ok(Some(binding))
+    }
+
     pub fn validate(&self) -> Result<(), NativeCredentialContractErrorV1> {
         let invalid = || NativeCredentialContractErrorV1::InvalidRequest;
         if !matches!(CanonicalDigest::parse(self.source_lineage_digest.as_str()), Ok(parsed) if parsed == self.source_lineage_digest)

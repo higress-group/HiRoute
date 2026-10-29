@@ -83,6 +83,44 @@ impl LocalNativeCredentialAuthority {
 }
 
 impl LocalSecretStore {
+    /// Read the current protected-header generation without opening the Secret bytes.
+    pub fn decision_header_generation(&self, secret_id: &str) -> PortResult<Option<u64>> {
+        let connection = self.connection.borrow();
+        let Some(row) = read_entry(&connection, secret_id)? else {
+            return Ok(None);
+        };
+        let allowed: BTreeSet<String> = serde_json::from_str(&row.allowed_destinations_json)
+            .map_err(|_| {
+                port(
+                    PortErrorCode::Corrupt,
+                    "secret.decision_header.destinations",
+                )
+            })?;
+        let reference = CredentialRefV1::new(
+            row.credential_id.clone(),
+            row.owner_scope.clone(),
+            row.subject.clone(),
+            row.purpose.clone(),
+            allowed,
+            row.generation,
+        )
+        .map_err(|_| port(PortErrorCode::Corrupt, "secret.decision_header.reference"))?;
+        self.validate_reference(&reference, &row)?;
+        if row.kind != "provider-api-key"
+            || reference.owner_scope() != "personal/default"
+            || reference.subject() != "hirouted"
+            || reference.purpose() != "http-header"
+            || !reference.allowed_destinations().is_empty()
+            || read_head(&connection, secret_id)? != reference.generation()
+        {
+            return Err(port(
+                PortErrorCode::PermissionDenied,
+                "secret.decision_header.binding",
+            ));
+        }
+        Ok(Some(reference.generation()))
+    }
+
     /// Resolve a previously admitted source Key for exactly one registered decision destination.
     /// The composition-owned store guard remains held across the source recheck and this read.
     pub(crate) fn lease_decision_credential_exact(

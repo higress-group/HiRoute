@@ -74,6 +74,8 @@ pub struct ClassifierDiagnosticOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClassifierDiagnosticError {
     InvalidConfig,
+    SourceDisabled,
+    NoUsableCredentials,
     Timeout,
     Unavailable,
     RejectedInput,
@@ -90,6 +92,8 @@ impl ClassifierDiagnosticError {
     pub const fn code(self) -> &'static str {
         match self {
             Self::InvalidConfig => "CLASSIFIER_CONFIG_INVALID",
+            Self::SourceDisabled => "DECISION_SOURCE_DISABLED",
+            Self::NoUsableCredentials => "DECISION_NO_USABLE_CREDENTIALS",
             Self::Timeout => "CLASSIFIER_TIMEOUT",
             Self::Unavailable => "CLASSIFIER_UNAVAILABLE",
             Self::RejectedInput => "CLASSIFIER_INPUT_REJECTED",
@@ -184,6 +188,8 @@ pub(crate) struct BoundAssessment {
 enum CallFailure {
     Timeout,
     Unavailable,
+    SourceDisabled,
+    NoUsableCredentials,
     RejectedInput,
     AuthenticationRejected,
     RateLimited,
@@ -196,7 +202,7 @@ impl CallFailure {
         use hiroute_domain::ApplicabilityReasonV1 as R;
         match self {
             Self::Timeout => R::Timeout,
-            Self::Unavailable => R::Unavailable,
+            Self::Unavailable | Self::SourceDisabled | Self::NoUsableCredentials => R::Unavailable,
             Self::RejectedInput => R::RejectedInput,
             Self::AuthenticationRejected => R::AuthenticationRejected,
             Self::RateLimited => R::RateLimited,
@@ -608,6 +614,8 @@ impl ProductionGatewayRuntime {
                 fallback.fallback_reason = Some(match failure {
                     CallFailure::Timeout => ClassifierFallbackReasonV1::Timeout,
                     CallFailure::Unavailable
+                    | CallFailure::SourceDisabled
+                    | CallFailure::NoUsableCredentials
                     | CallFailure::AuthenticationRejected
                     | CallFailure::RateLimited => ClassifierFallbackReasonV1::Unavailable,
                     CallFailure::RejectedInput | CallFailure::EndpointRejected => {
@@ -654,6 +662,7 @@ impl ProductionGatewayRuntime {
                     fixed_timeout_wins,
                     cancellation,
                     None,
+                    admitted_state,
                 )
                 .await;
         };
@@ -674,13 +683,19 @@ impl ProductionGatewayRuntime {
         if let Some(state) = admitted_state {
             *state = Some(admission.credential_state_revision.clone());
         }
+        if admission.state == hiroute_domain::MaterializationState::Disabled {
+            return Ok(Err(CallFailure::SourceDisabled));
+        }
+        if admission.keys.is_empty() {
+            return Ok(Err(CallFailure::NoUsableCredentials));
+        }
         let store = crate::runtime::ProductionStateAdapter {
             inner: Arc::clone(&self.ports.runtime_state),
         };
         let policy = crate::runtime::RuntimeCooldownPolicy::for_gateway_model_execution();
         let binding_key = RuntimeStateKey::binding(binding.consumer_binding_id.clone());
         let mut excluded = Vec::new();
-        let mut last_failure = CallFailure::Unavailable;
+        let mut last_failure = CallFailure::NoUsableCredentials;
         for key in &admission.keys {
             ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
             let binding_permit =
@@ -778,6 +793,7 @@ impl ProductionGatewayRuntime {
                     fixed_timeout_wins,
                     cancellation.clone(),
                     Some(&lease),
+                    None,
                 )
                 .await;
             let class = match &result {
@@ -841,6 +857,7 @@ impl ProductionGatewayRuntime {
         fixed_timeout_wins: bool,
         cancellation: CancellationToken,
         shared_lease: Option<&CredentialLease>,
+        admitted_state: Option<&mut Option<hiroute_domain::CanonicalDigest>>,
     ) -> Result<Result<ClassifierResponse, CallFailure>, ClassificationError> {
         let template = &prepared.template;
         let mut diagnostic = CallDiagnostic::new(self.observation.diagnostic_context());
@@ -892,6 +909,13 @@ impl ProductionGatewayRuntime {
                 || lease.apply_authorization(&mut headers).is_err()
             {
                 return Ok(Err(CallFailure::Unavailable));
+            }
+            if let Some(state) = admitted_state {
+                *state = hiroute_domain::decision_header_state_revision(
+                    lease.credential_ref(),
+                    lease.generation(),
+                )
+                .ok();
             }
         } else if let ClassifierAuthenticationAuthorityV1::SharedDecision { .. } =
             &classifier.authentication

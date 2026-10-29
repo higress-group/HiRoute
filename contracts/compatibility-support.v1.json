@@ -73,6 +73,7 @@
     "hiroute.claude-subscription-discovery-evidence/v1",
     "hiroute.claude-subscription-source/v1",
     "hiroute.cli-decision-options/v1",
+    "hiroute.cli-decision-options/v2",
     "hiroute.cli-input-diagnostic/v1",
     "hiroute.cli-prepared-preview/v1",
     "hiroute.cli-quickstart/v1",
@@ -173,10 +174,15 @@
     "hiroute.daemon-ready/v1",
     "hiroute.daemon-startup-failure/v1",
     "hiroute.daemon-upgrade-progress/v1",
+    "hiroute.decision-connection-sources/v1",
+    "hiroute.decision-header-state/v1",
     "hiroute.decision-service-operation/v2",
+    "hiroute.decision-service-test-request/v2",
     "hiroute.decision-service-test-result/v2",
     "hiroute.decision-service/v2",
     "hiroute.decision-services/v1",
+    "hiroute.decision-services/v2",
+    "hiroute.decision-source-state/v1",
     "hiroute.delegation-accepted/v1",
     "hiroute.delegation-cancel-request/v1",
     "hiroute.delegation-cancel/v1",
@@ -506,6 +512,24 @@
     "hiroute.worker-wait-request/v1"
   ],
   "subjects": [
+    {
+      "subject": "decision_service_lists",
+      "audited_prefixes": ["hiroute.decision-services"],
+      "current_contracts": ["hiroute.decision-services/v1", "hiroute.decision-services/v2"],
+      "legacy_support": [],
+      "owner": "decision-foundation",
+      "reason": "The released V1 query remains explicit and rejects a V2 latest record; the V2 query returns both strict retained service versions and safe source state.",
+      "removal_condition": "Retire the V1 query only with an explicit supported-client compatibility decision."
+    },
+    {
+      "subject": "decision_cli_options",
+      "audited_prefixes": ["hiroute.cli-decision-options"],
+      "current_contracts": ["hiroute.cli-decision-options/v1", "hiroute.cli-decision-options/v2"],
+      "legacy_support": [],
+      "owner": "decision-foundation",
+      "reason": "V1 options retain System One semantics while V2 options expose the same preset catalog with an explicit wire codec.",
+      "removal_condition": "Retire V1 options only with an explicit supported-client compatibility decision."
+    },
     {
       "subject": "system_one_native_applicability",
       "audited_prefixes": [

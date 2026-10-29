@@ -44,7 +44,7 @@ impl Session {
         secret: Option<zeroize::Zeroizing<String>>,
     ) -> Result<ApplyResultV1, DesktopFailure> {
         let candidate = if let Some(secret) = secret {
-            if secret.is_empty() || secret.contains(['\r', '\n']) {
+            if secret.trim().is_empty() || secret.contains(['\r', '\n']) {
                 return Err("DECISION_CREDENTIAL_INVALID".into());
             }
             let service = change.service.as_mut().ok_or("DECISION_SERVICE_INVALID")?;

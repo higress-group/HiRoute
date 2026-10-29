@@ -21,6 +21,7 @@ pub mod compiler;
 pub mod compute_management;
 pub mod control;
 mod control_plane;
+mod decision_v2;
 pub mod delegation;
 pub mod model_catalog;
 pub mod model_feed;
@@ -146,6 +147,10 @@ impl ApplicationService {
             "CancelOperation" => self.cancel_operation(request),
             "CheckAgentConnection" => self.check_agent(request),
             "TestClassifierDecision" => self.test_classifier_decision(request),
+            "ListDecisionConnectionSourcesV1" | "ListDecisionServicesV2" => {
+                self.list_decision_v2(request)
+            }
+            "TestDecisionServiceV2" => self.test_decision_v2(request),
             "ListDecisionServices" => {
                 if serde_json::from_value::<hiroute_application_api::ClientEmptyRequestV1>(
                     request.payload.clone(),

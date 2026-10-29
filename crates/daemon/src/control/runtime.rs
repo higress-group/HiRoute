@@ -85,6 +85,7 @@ mod native_model;
 mod observation_key;
 mod trust;
 use observation_key::observation_workspace_key;
+mod decision_connections;
 mod plan_content;
 mod plan_content_snapshot;
 mod plan_versions;

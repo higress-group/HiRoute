@@ -10,6 +10,8 @@ pub(super) fn prepare(
         "compute.connection.preview" => compute(client, options),
         "decision.services.apply" => super::decision::prepare(client, options),
         "decision.services.test" => super::decision::test(client, options),
+        "decision.connections.apply" => super::decision_v2::prepare(client, options),
+        "decision.connections.test" => super::decision_v2::test(client, options),
         "agents.connect.preview" | "agents.restore.preview" => {
             settings::prepare(client, command, options)
         }
@@ -90,17 +92,24 @@ fn routing(client: &LocalControlClient, options: &[String]) -> Result<Value> {
         let revision = revision
             .parse::<u64>()
             .map_err(|_| error(ErrorCode::InvalidArguments))?;
-        let services = data(client, "ListDecisionServices", json!({}))?;
+        let services = data(client, "ListDecisionServicesV2", json!({}))
+            .or_else(|_| data(client, "ListDecisionServices", json!({})))?;
         let matches = services["services"]
             .as_array()
             .ok_or_else(|| error(ErrorCode::Internal))?
             .iter()
+            .map(|row| row.get("service").unwrap_or(row))
             .filter(|service| service["id"] == id && service["revision"] == revision)
             .collect::<Vec<_>>();
         let [service] = matches.as_slice() else {
             return Err(choices(&["--decision-service"], services));
         };
-        authoring["classifier"] = json!({"kind":"decision_service","service":service});
+        let kind = if service["schema"] == "hiroute.decision-service/v2" {
+            "decision_service_v2"
+        } else {
+            "decision_service"
+        };
+        authoring["classifier"] = json!({"kind":kind,"service":service});
     }
     let authoring: PlanAuthoringRequestV1 =
         serde_json::from_value(authoring).map_err(|_| error(ErrorCode::InvalidArguments))?;

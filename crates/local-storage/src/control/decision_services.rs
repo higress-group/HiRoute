@@ -21,6 +21,31 @@ fn client_version_required() -> PortError {
 }
 
 impl ControlStore {
+    pub fn decision_service_versions(
+        &self,
+        workspace: &WorkspaceId,
+        id: &str,
+    ) -> PortResult<Vec<DecisionServiceRecord>> {
+        let connection = self.connection.borrow();
+        let mut statement = connection.prepare("SELECT revision,service_json FROM decision_services WHERE workspace_id=?1 AND service_id=?2 ORDER BY revision")
+            .map_err(|_| storage())?;
+        let rows = statement
+            .query_map(params![workspace.as_str(), id], |row| {
+                Ok((row.get::<_, u64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|_| storage())?;
+        rows.map(|row| {
+            let (revision, encoded) = row.map_err(|_| storage())?;
+            let record: DecisionServiceRecord =
+                serde_json::from_str(&encoded).map_err(|_| invalid())?;
+            if !record.validate() || record.id() != id || record.revision() != revision {
+                return Err(invalid());
+            }
+            Ok(record)
+        })
+        .collect()
+    }
+
     pub fn decision_service(
         &self,
         workspace: &WorkspaceId,

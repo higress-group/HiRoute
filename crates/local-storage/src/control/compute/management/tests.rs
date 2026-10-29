@@ -32,6 +32,7 @@ use super::super::super::ControlStore;
 use crate::{LocalSecretStore, LocalStorageSet, RuntimeStore};
 
 mod compensation_guards;
+mod decision;
 mod defaults;
 mod lifecycle;
 mod recovery;
@@ -153,6 +154,19 @@ fn unexpected(context: &'static str) -> PortError {
 }
 
 impl ConnectionOptionAuthorizationPort for ControlStore {
+    fn decision_source(
+        &self,
+        source_id: &str,
+    ) -> PortResult<Option<hiroute_domain::ComputeManagementSourceV2>> {
+        hiroute_domain::ComputeManagementRepositoryPort::compute_management_source(self, source_id)
+    }
+    fn decision_service_record(
+        &self,
+        id: &str,
+        revision: u64,
+    ) -> PortResult<Option<hiroute_domain::DecisionServiceRecord>> {
+        ControlStore::decision_service_record(self, &WorkspaceId::default(), id, revision)
+    }
     fn connection_option_authorization(
         &self,
         _connection_option_id: &str,
