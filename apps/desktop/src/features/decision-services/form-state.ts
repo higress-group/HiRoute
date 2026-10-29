@@ -186,7 +186,8 @@ export function sameEndpointOrigin(left: string, right: string): boolean {
   try { return new URL(left).origin === new URL(right).origin; } catch { return false; }
 }
 export function endpointHost(endpoint: string): string | null {
-  try { return new URL(endpoint).host || null; } catch { return null; }
+  // Source summaries expose the hostname, without the port. Origin checks remain separate.
+  try { return new URL(endpoint).hostname || null; } catch { return null; }
 }
 
 /** The saved protected reference survives only for the same provider and permitted origin. */

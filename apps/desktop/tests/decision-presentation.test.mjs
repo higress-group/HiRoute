@@ -66,13 +66,21 @@ test('decision diagnostics distinguish confirmed causes without exposing arbitra
 import {
   applySourceDefault, chooseMode, chooseProvider, chooseSource, comparable, currentBundle, draftFromRecord, editBundle, expectedSourceRevisions,
   lineageChanged, nativeIssues, nativeService, newNativeDraft, repairActions, resetToSuggested, retainedIndependentAuth, serviceChoiceLabels,
-  sourceChoiceLabels, sourceFor, testPresentation, testRecord, displayName,
+  sourceChoiceLabels, sourceFor, testPresentation, testRecord, displayName, endpointHost,
 } from '../src/features/decision-services/form-state.ts';
 import { classifierFor, isCustomExtension, isNativeDecision } from '../src/features/decision-services/types.ts';
 
 const contract = JSON.parse(readFileSync(new URL('./decision-services-v2-contract.json', import.meta.url), 'utf8'));
 const [legacyView, sharedView] = contract.decision_services_v2.result.services;
 const exampleSource = contract.decision_connection_sources.result.sources[0];
+
+test('host warnings compare the same hostname projection as source summaries without relaxing credential origins', () => {
+  assert.equal(endpointHost('http://127.0.0.1:50038/v1/decisions'), '127.0.0.1');
+  assert.equal(endpointHost('https://API.example.test:8443/v1/decisions'), 'api.example.test');
+  assert.equal(endpointHost('http://[::1]:50038/v1/decisions'), '[::1]');
+  assert.notEqual(endpointHost('https://other.test/v1/decisions'), 'api.example.test');
+  assert.equal(sameEndpointOrigin('https://api.example.test:8443/a', 'https://api.example.test/b'), false);
+});
 const sourceB = { ...exampleSource, source_id: 'source/b', lineage_digest: 'sha256:b', revision: 3, display_name: 'Second API', endpoint_host: 'second.test', suggestion: { model: 'model-b', endpoint: 'https://second.test/v1/decisions', wire_protocol: 'system_one' } };
 const ready = sources => ({ status: 'ready', sources });
 
