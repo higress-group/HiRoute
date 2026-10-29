@@ -616,11 +616,17 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     {reuseConnection && <TrialReuseConnection visible={!reuseHidden} key={`${reuseConnection.sourceId}:${reuseConnection.epoch}`} model={reuseConnection.model} sourceId={reuseConnection.sourceId} options={reuseConnection.options} language={language} mutable={mutable} onOperation={operationRef} onClose={recoverable => { if (recoverable) setReuseHidden(true); else { ++selectionEpoch.current; setReuseConnection(null); } }} onUse={async (selected: ReusedTrialBinding) => {
         const context = reuseConnection;
         const current = await refresh(false, true);
-        if (!live.current || context.epoch !== selectionEpoch.current) return false;
+        if (!live.current) return false;
         const source = current?.management.sources.find(source => source.source_id === selected.sourceId);
         const member = source?.models.find(member => member.binding_id === selected.bindingId && member.model_ref === selected.modelRef && member.revision === selected.revision);
         const candidate = current?.options.candidates.find(candidate => candidate.binding_id === selected.bindingId);
-        if (!source || !member || !candidate || !bindingUsable(source, member, candidate, current)) return false;
+        if (!source || !member || !candidate) return false;
+        if (context.epoch !== selectionEpoch.current) {
+          setSavedConnections(values => [...new Set([...values, source.display_name])]);
+          setReuseConnection(active => active?.epoch === context.epoch ? null : active);
+          void onRefresh(); return true;
+        }
+        if (!bindingUsable(source, member, candidate, current)) return false;
         setTrialId(candidate.model_configuration_id); setTrialBinding(selected.bindingId); setTrialChosen(undefined);
         setUnlinked(member.catalog_admitted && member.catalog_configuration_id === candidate.model_configuration_id ? '' : selected.bindingId);
         setSavedConnections(values => [...new Set([...values, source.display_name])]);

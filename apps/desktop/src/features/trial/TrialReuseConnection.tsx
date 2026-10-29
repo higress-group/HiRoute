@@ -73,7 +73,9 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
   async function checkSource(current: ManagedSource): Promise<Checked> {
     await releaseCheck();
     if (current.provenance === 'connector_owned') {
-      const scan = await invoke<{ candidates: SubscriptionCandidate[] }>('compute_subscriptions');
+      const scan = await invoke<{ candidates: SubscriptionCandidate[] }>('compute_subscriptions', {
+        sourceId, expectedSourceRevision: current.revision,
+      });
       if (!live.current) throw Error('CHECK_CANCELLED');
       const candidates = scan.candidates.filter(candidate => candidate.existing_source_id === sourceId);
       if (candidates.length !== 1) throw Error('SUBSCRIPTION_NOT_FOUND');

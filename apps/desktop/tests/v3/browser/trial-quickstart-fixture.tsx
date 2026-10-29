@@ -236,6 +236,12 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   return {rows:[],branches:[],sessions:[],announcements:[]};
  }
  if(params.has('reuse-target')) {
+  if(command==='compute_subscriptions' && params.has('reuse-multiple-logins')) {
+   const value:any=await mockProductInvoke(command,payload,'ready');
+   const owner=value.candidates.find((candidate:any)=>candidate.existing_source_id==='source/codex/subscription');
+   if(payload.sourceId==='source/codex/subscription' && payload.expectedSourceRevision===trialManagement.sources[0].revision) return {...value,candidates:[owner]};
+   return {...value,candidates:[owner,...['native-other','managed-other'].map(id=>({...structuredClone(owner),candidate:{candidate_ref:id,candidate_revision:1}}))]};
+  }
   if(command==='compute_connection_options') {
    const value:any=await mockProductInvoke(command,payload,'ready');
    for (const [id,requestId,origin] of [['fixture.reuse-api','fixture-added-model','native_api'],['fixture.reuse-subscription','fixture-sub-added','agent_subscription']]) value.options.push({...structuredClone(value.options[0]),connection_option_id:id,origin,model_configuration_ids:['model.trial'],request_model_ids:params.has('reuse-no-default')?{}:{'model.trial':[requestId]}});

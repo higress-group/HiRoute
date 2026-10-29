@@ -736,6 +736,17 @@ choices. Other trial selections, explicit route name and exact trust remain inta
 - **WHEN** a submitted append has an unknown result or its saved binding cannot be reread
 - **THEN** Refresh reconciles only that submission and never repeats Apply
 
+#### Scenario: Several subscription sign-ins exist
+
+- **WHEN** both native and independently authorized subscription sign-ins are available
+- **THEN** saved-source reuse locates only the persisted source's original candidate and credential owner, bound to its current source revision; it does not choose the first provider match or request a different sign-in
+- **AND** the original owner still performs a new Check and the normal Preview/Apply; consumed saved validation is not reused as new approval
+
+#### Scenario: Selection changes while a save is unconfirmed
+
+- **WHEN** the user returns to setup, selects another trial model or Agent, and later confirms the original save succeeded
+- **THEN** confirmation ends the original recovery state without replacing the newer selection or repeating Apply; unresolved or mismatched receipts remain protected
+
 ### Requirement: Trial guidance progressively explains routing and protection
 
 The trial setup SHALL initially show a concise explanation matching the active classifier and an accessible disclosure of the complete current protection explanation and applicable trial supplement. System One explains suitable work for the trial model, complex work for Primary, and Primary for a turn when low-score protection applies. Local rules explain current task signals and no low-score protection. Custom extensions explain their own choice and that HiRoute adds no trust threshold or low-score protection. The full explanation retains score eligibility, the previous actual stage, problem relevance, conservative protection when unknown, difficulty selection after resolution or irrelevance, conditional continuation of Primary and mode-specific exceptions. Toggling, changing language or classifier SHALL preserve other input and cause no backend action. The candidate area and existing protection policy remain unchanged.

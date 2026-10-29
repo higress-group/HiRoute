@@ -132,6 +132,9 @@ mismatched evidence keep the existing unavailable-state assertions above.
 
 The targeted trial connection-reuse cases run with
 `node tests/v3/visual/new-model-trial.mjs /path/to/evidence --trial-reuse`.
+The same production-component group checks several available subscription logins
+against a source/revision-scoped lookup and confirms a saved original operation
+after later model or Agent changes without overwriting those choices.
 They retain the chosen model while reusing an API/subscription, verify exact saved
 binding reuse without writes, one-target append and automatic selection, editable
 or missing defaults, failure and original-save recovery, and localized form geometry.

@@ -3,6 +3,8 @@ use super::*;
 pub async fn compute_subscriptions(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
+    source_id: Option<String>,
+    expected_source_revision: Option<u64>,
 ) -> Result<WebComputeSubscriptionCandidatesV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -30,7 +32,13 @@ pub async fn compute_subscriptions(
         &state.2,
         &state.3,
     );
-    hiroute_product_session::commands::compute_subscriptions(&context, &product_state).await
+    hiroute_product_session::commands::compute_subscriptions(
+        &context,
+        &product_state,
+        source_id,
+        expected_source_revision,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn check_subscription(

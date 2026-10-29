@@ -77,6 +77,16 @@ try {
     await waitFor(client,`!document.querySelector('.trial-reuse-connection')`);
     assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='apply_compute_save').length`),0);
   });
+  await run('subscription-reuses-saved-owner-with-multiple-logins',async()=>{
+    await open('reuse-multiple-logins=1');await source('source/codex/subscription');
+    await click('.trial-reuse-connection button','Check and add');
+    await waitFor(client,`!document.querySelector('.trial-reuse-connection') && document.querySelector('[data-trial-target=trial]').textContent.includes('Actual saved trial model')`);
+    const scan=await evaluate(client,`trialTrace.find(x=>x.command==='compute_subscriptions')`);
+    assert.equal(scan.payload.sourceId,'source/codex/subscription');
+    assert.equal(typeof scan.payload.expectedSourceRevision,'number');
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='check_subscription').length`),1);
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
   await run('missing-default-and-unsupported-id',async()=>{
     await open('reuse-no-default=1');await source();
     assert.equal(await evaluate(client,`document.querySelector('[data-trial-request-model]').value`),'');
@@ -114,6 +124,31 @@ try {
     await evaluate(client,`trialSetupControl.pendingSaveReleased=true;true`);
     await click('.trial-reuse-connection button','Refresh result');
     await waitFor(client,`!document.querySelector('.trial-reuse-connection')`);
+  });
+  await run('confirmed-save-does-not-replace-newer-trial-selection',async()=>{
+    await open('reuse-lost=1');await source();await click('.trial-reuse-connection button','Check and add');
+    await waitFor(client,`[...document.querySelectorAll('.trial-reuse-connection button')].some(e=>e.textContent.includes('Refresh result'))`);
+    await click('.trial-reuse-connection button','Back to trial');
+    await waitFor(client,`!document.querySelector('.trial-reuse-connection')`);
+    await click('[data-trial-connected-model]');await click('.trial-picker .trial-choice','Qwen3-Coder-Plus');
+    await waitFor(client,`!document.querySelector('.trial-picker')`);
+    const chosen=await evaluate(client,`document.querySelector('[data-trial-connected-model]').textContent`);
+    await click('button','Review connection result');await click('.trial-reuse-connection button','Refresh result');
+    await waitFor(client,`!document.querySelector('.trial-reuse-connection') && ![...document.querySelectorAll('button')].some(e=>e.textContent.includes('Review connection result'))`);
+    assert.equal(await evaluate(client,`document.querySelector('[data-trial-connected-model]').textContent`),chosen);
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('confirmed-save-after-agent-change-finishes-recovery',async()=>{
+    await open('reuse-lost=1');await source();await click('.trial-reuse-connection button','Check and add');
+    await waitFor(client,`[...document.querySelectorAll('.trial-reuse-connection button')].some(e=>e.textContent.includes('Refresh result'))`);
+    await click('.trial-reuse-connection button','Back to trial');
+    await waitFor(client,`!document.querySelector('.trial-reuse-connection')`);
+    await evaluate(client,`(()=>{const e=document.querySelector('.trial-agent-choice select');e.value='agent_dsh_default';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+    await click('button','Review connection result');await click('.trial-reuse-connection button','Refresh result');
+    await waitFor(client,`!document.querySelector('.trial-reuse-connection') && ![...document.querySelectorAll('button')].some(e=>e.textContent.includes('Review connection result'))`);
+    assert.equal(await evaluate(client,`document.querySelector('.trial-agent-choice select').value`),'agent_dsh_default');
+    assert.ok(await evaluate(client,`document.querySelector('.trial-model-card.selected').textContent.includes('Kimi')`));
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
   });
   await run('definite-save-failure-is-not-unknown',async()=>{
     await open('reuse-save-failed=1');await source();await click('.trial-reuse-connection button','Check and add');
