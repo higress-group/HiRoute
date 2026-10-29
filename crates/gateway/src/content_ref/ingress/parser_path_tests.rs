@@ -123,3 +123,48 @@ fn disk_backing_never_gathers_a_whole_parser_input() {
         parse_ingress_document(IngressProtocol::Responses, &fixture.store, &raw, stats).unwrap();
     assert_eq!(document, serde_json::from_slice::<Value>(&body).unwrap());
 }
+
+#[test]
+fn nested_arguments_keep_value_semantics_on_slice_disk_and_pressure_paths() {
+    for threshold in [31, 1024 * 1024] {
+        for pressure in [false, true] {
+            let fixture = Fixture::new(threshold);
+            let _pressure = pressure.then(|| {
+                fixture
+                    .budget
+                    .reserve(
+                        MemoryRole::AttemptWire,
+                        fixture.budget.available_bytes().unwrap() - 32 * 1024,
+                    )
+                    .unwrap()
+            });
+            for body in [
+                br#"{"array":[null,true,1.25],"text":"\uD83D\uDE80\n\\\""}"#.as_slice(),
+                br#"{"number":1e999}"#,
+                br#"{"x":1} []"#,
+                br#"{"text":"\uD800"}"#,
+                b"{\"text\":\"\xff\"}",
+                br#"{"text":"unfinished"#,
+            ] {
+                let raw = fixture.raw(body);
+                // The original serde Value is the independent syntax/number
+                // authority. Sizing does not assert JSON validity.
+                let stats = IngressDocumentStats {
+                    structure_units: 32,
+                    max_depth: 4,
+                    max_string_bytes: body.len(),
+                };
+                let before = fixture.budget.snapshot().unwrap().live;
+                let expected = serde_json::from_slice::<Value>(body);
+                let actual = decode_json_argument::<Value>(&fixture.store, &raw, stats);
+                let valid = decode_json_argument::<ValidModelJson>(&fixture.store, &raw, stats);
+                assert_eq!(valid.is_ok(), expected.is_ok());
+                match expected {
+                    Ok(expected) => assert_eq!(actual.unwrap(), expected),
+                    Err(_) => assert!(matches!(actual, Err(ReplayError::InvalidJson))),
+                }
+                assert_eq!(fixture.budget.snapshot().unwrap().live, before);
+            }
+        }
+    }
+}

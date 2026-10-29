@@ -516,8 +516,28 @@ fn valid_json_argument(
         Err(ReplayError::Body(_)) => return Ok(true),
         Err(error) => return Err(error),
     };
-    // Serde's IoRead asks for individual bytes. Keep the mandatory Replay
-    // reader admitted first; optional buffering must not create a new refusal.
+    // Validate with the same number/string semantics as serde_json::Value,
+    // without materializing a second copy of a large tool argument.
+    match decode_json_argument::<ValidModelJson>(replay, reference, stats) {
+        Ok(_) => Ok(true),
+        Err(ReplayError::InvalidJson) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+fn decode_json_argument<T: serde::de::DeserializeOwned>(
+    replay: &ReplayStore,
+    reference: &super::ContentRef,
+    stats: IngressDocumentStats,
+) -> Result<T, ReplayError> {
+    // Reuse ingress's charged, optional small-memory path. Disk and pressure
+    // keep the same bounded Reader, syntax/end check and terminal verification.
+    if let Some(bytes) = memory_parse_input(replay, reference, stats)? {
+        let mut decoder = serde_json::Deserializer::from_slice(bytes.bytes());
+        return T::deserialize(&mut decoder)
+            .and_then(|value| decoder.end().map(|()| value))
+            .map_err(|_| ReplayError::InvalidJson);
+    }
     let source = replay.reader(reference)?;
     let capacity = reference.byte_len().min(8 * 1024) as usize;
     let buffer = replay
@@ -525,15 +545,11 @@ fn valid_json_argument(
         .reserve(MemoryRole::ModelIrBacking, capacity)
         .ok();
     let mut reader = BufReader::with_capacity(if buffer.is_some() { capacity } else { 0 }, source);
-    // Validate with the same number/string semantics as serde_json::Value,
-    // without materializing a second copy of a large tool argument.
-    let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
-    let valid = ValidModelJson::deserialize(&mut deserializer)
-        .and_then(|_| deserializer.end())
-        .is_ok();
-    drop(deserializer);
+    let mut decoder = serde_json::Deserializer::from_reader(&mut reader);
+    let parsed = T::deserialize(&mut decoder).and_then(|value| decoder.end().map(|()| value));
+    drop(decoder);
     reader.get_mut().verify_terminal()?;
-    Ok(valid)
+    parsed.map_err(|_| ReplayError::InvalidJson)
 }
 
 struct ValidModelJson;
@@ -904,28 +920,12 @@ impl Compactor<'_> {
             Err(ReplayError::Body(_)) => return Ok(()),
             Err(error) => return Err(error),
         };
-        let source = self.replay.reader(&reference)?;
-        let capacity = reference.byte_len().min(8 * 1024) as usize;
-        let buffer = self
-            .replay
-            .budget()
-            .reserve(MemoryRole::ModelIrBacking, capacity)
-            .ok();
-        let mut reader =
-            BufReader::with_capacity(if buffer.is_some() { capacity } else { 0 }, source);
-        let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
-        let parsed = Value::deserialize(&mut deserializer).and_then(|value| {
-            deserializer.end()?;
-            Ok(value)
-        });
-        drop(deserializer);
-        reader.get_mut().verify_terminal()?;
-        drop(reader);
-        drop(buffer);
-        let Ok(parsed) = parsed else {
+        let parsed = match decode_json_argument::<Value>(self.replay, &reference, stats) {
+            Ok(parsed) => parsed,
             // Syntax-only validation must never turn a native raw argument
             // into a request failure if Value rejects its numeric shape.
-            return Ok(());
+            Err(ReplayError::InvalidJson) => return Ok(()),
+            Err(error) => return Err(error),
         };
         let canonical = self.pool()?.append_canonical_json(&parsed)?.wire_marker();
         self.generated_markers.remove(&(value.as_ptr() as usize));
