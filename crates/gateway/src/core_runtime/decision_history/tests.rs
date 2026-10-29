@@ -346,7 +346,9 @@ fn p2_failed_history_admission_cannot_apply_an_unadmitted_tool_result() {
     let bypassed = fixture
         .runtime
         .agent_turn_history
-        .with_lock_for_runtime_test(|| fixture.begin(&rejected, prepared));
+        // Token exhaustion is a real Resource refusal before admission. Holding
+        // the mutex on this same thread is no longer an admission failure.
+        .with_exhausted_request_tokens_for_runtime_test(|| fixture.begin(&rejected, prepared));
     assert!(bypassed.guard.is_none());
     drop(bypassed);
 

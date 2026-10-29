@@ -214,6 +214,20 @@ impl AgentTurnHistoryStore {
     }
 
     #[cfg(test)]
+    pub(crate) fn with_exhausted_request_tokens_for_runtime_test<T>(
+        &self,
+        action: impl FnOnce() -> T,
+    ) -> T {
+        let previous = {
+            let mut inner = self.inner.lock();
+            std::mem::replace(&mut inner.next_request_token, u64::MAX)
+        };
+        let result = action();
+        self.inner.lock().next_request_token = previous;
+        result
+    }
+
+    #[cfg(test)]
     pub(crate) fn clear_decision_for_runtime_test(&self, ticket: &AgentTurnTicket) {
         let mut inner = self.inner.lock();
         let entry = inner
