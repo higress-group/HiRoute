@@ -238,6 +238,14 @@ impl ReplayStreamBuilder {
     }
 
     pub(super) fn append(&mut self, bytes: &[u8]) -> Result<(), ReplayError> {
+        let gate = Arc::clone(&self.memory_gate);
+        let _guard = lock(&gate);
+        self.append_under_memory_gate(bytes)
+    }
+
+    // Callers hold the request's memory gate for the complete append or range.
+    // A JSON serializer can issue thousands of tiny writes for one value.
+    fn append_under_memory_gate(&mut self, bytes: &[u8]) -> Result<(), ReplayError> {
         self.total_len = self
             .total_len
             .checked_add(bytes.len() as u64)
@@ -247,8 +255,6 @@ impl ReplayStreamBuilder {
             .checked_add(json_escaped_len(bytes)?)
             .ok_or(ReplayError::LengthOverflow)?;
         if matches!(self.mode, BuilderMode::Memory(_)) {
-            let gate = Arc::clone(&self.memory_gate);
-            let _guard = lock(&gate);
             let memory_can_retain = match &self.mode {
                 BuilderMode::Memory(memory) => {
                     let global_remaining = self
@@ -285,6 +291,8 @@ impl ReplayStreamBuilder {
     }
 
     pub(super) fn append_range(&mut self, bytes: &[u8]) -> Result<ContentRef, ReplayError> {
+        let gate = Arc::clone(&self.memory_gate);
+        let _guard = lock(&gate);
         let mut range = ReplayRangeSink::new(self);
         range
             .write_all(bytes)
@@ -296,6 +304,8 @@ impl ReplayStreamBuilder {
         &mut self,
         value: &serde_json::Value,
     ) -> Result<ContentRef, ReplayError> {
+        let gate = Arc::clone(&self.memory_gate);
+        let _guard = lock(&gate);
         let mut range = ReplayRangeSink::new(self);
         let result = write_canonical_json(&mut range, value);
         if result.is_err() {
@@ -727,19 +737,18 @@ fn json_escaped_len(bytes: &[u8]) -> Result<u64, ReplayError> {
 struct ReplayRangeSink<'a> {
     builder: &'a mut ReplayStreamBuilder,
     byte_offset: u64,
-    byte_len: u64,
-    json_escaped_len: u64,
+    escaped_offset: u64,
     error: Option<ReplayError>,
 }
 
 impl<'a> ReplayRangeSink<'a> {
     fn new(builder: &'a mut ReplayStreamBuilder) -> Self {
         let byte_offset = builder.total_len;
+        let escaped_offset = builder.json_escaped_len;
         Self {
             builder,
             byte_offset,
-            byte_len: 0,
-            json_escaped_len: 0,
+            escaped_offset,
             error: None,
         }
     }
@@ -751,8 +760,8 @@ impl<'a> ReplayRangeSink<'a> {
         Ok(ContentRef::new(
             self.builder.ordinal,
             self.byte_offset,
-            self.byte_len,
-            self.json_escaped_len,
+            self.builder.total_len - self.byte_offset,
+            self.builder.json_escaped_len - self.escaped_offset,
         ))
     }
 }
@@ -762,29 +771,12 @@ impl Write for ReplayRangeSink<'_> {
         if self.error.is_some() {
             return Err(std::io::Error::other("replay range is poisoned"));
         }
-        let byte_len = self
-            .byte_len
-            .checked_add(bytes.len() as u64)
-            .ok_or(ReplayError::LengthOverflow);
-        let escaped = json_escaped_len(bytes).and_then(|value| {
-            self.json_escaped_len
-                .checked_add(value)
-                .ok_or(ReplayError::LengthOverflow)
-        });
-        let result = byte_len.and_then(|byte_len| escaped.map(|escaped| (byte_len, escaped)));
-        let (byte_len, escaped) = match result {
-            Ok(lengths) => lengths,
-            Err(error) => {
-                self.error = Some(error);
-                return Err(std::io::Error::other("replay range length overflow"));
-            }
-        };
-        if let Err(error) = self.builder.append(bytes) {
+        // The builder already checks both counters. Their deltas describe
+        // this range exactly, without scanning every serializer write twice.
+        if let Err(error) = self.builder.append_under_memory_gate(bytes) {
             self.error = Some(error);
             return Err(std::io::Error::other("replay range backing write failed"));
         }
-        self.byte_len = byte_len;
-        self.json_escaped_len = escaped;
         Ok(bytes.len())
     }
 
