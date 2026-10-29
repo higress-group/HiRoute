@@ -266,6 +266,58 @@ fn background_record_credit_leaves_room_for_a_concurrent_foreground_job() {
 }
 
 #[test]
+fn background_credit_wait_does_not_claim_the_sequence_needed_to_drain() {
+    const CAPACITY: usize = 512 * 1024;
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer = ByteBoundedObservationProducer::new(
+        identity("sequence-credit"),
+        CAPACITY,
+        128,
+        sink.clone(),
+    )
+    .unwrap();
+    let _work = producer.reserve_work(320 * 1024).unwrap();
+    assert!(matches!(
+        producer.try_publish(|_| vec![0; 96 * 1024 - RECORD_ACCOUNTING_BYTES]),
+        ObservationPublishOutcome::Enqueued { sequence: 1 }
+    ));
+    let worker = producer.clone();
+    let thread = std::thread::spawn(move || {
+        worker.publish_timed(None, Some(Instant::now() + Duration::from_secs(1)), |_| {
+            vec![1; 90 * 1024]
+        })
+    });
+    producer.wait_until_credit_blocked();
+    let foreground = producer.try_publish(|_| vec![2; 32 * 1024]);
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    // The waiting background builder must not leave a hole ahead of this
+    // foreground record, whose ACK is needed to make that credit available.
+    assert_eq!(
+        foreground,
+        ObservationPublishOutcome::Enqueued { sequence: 2 }
+    );
+    assert_eq!(
+        thread.join().unwrap(),
+        ObservationPublishOutcome::Enqueued { sequence: 3 }
+    );
+    producer.flush(Duration::from_secs(2)).unwrap();
+    assert_eq!(
+        *sink.deliveries.lock().unwrap(),
+        [(1, false), (2, false), (3, false)]
+    );
+    assert_eq!(producer.stats().dropped, 0);
+    assert!(producer.stats().queue_high_water_bytes <= CAPACITY);
+}
+
+#[test]
 fn exhausted_background_credit_deadline_keeps_explicit_loss_and_releases_work() {
     let gate = Arc::new((Mutex::new(false), Condvar::new()));
     let sink = Arc::new(SlowOnceSink {

@@ -568,7 +568,10 @@ optional extended lifetime of shared semantic Replay
 backing, including disk bytes, is charged to the existing request/process budget;
 it is not a second payload in the Content queue. If this retention cannot be
 reserved, request capture uses its original synchronous path without introducing
-a capture gap solely for that optimization. Request content closes before response content begins, preserving the
+a capture gap solely for that optimization. The optional encoder SHALL reserve
+record capacity before assigning its sequence; waiting for capacity with an earlier
+sequence must not prevent the ordered sink from acknowledging later ready records.
+Request content closes before response content begins, preserving the
 request transcript root as the response parent. Accepted runtime history and
 usage keep their actual delivery boundary and do not wait for content encoding
 or SQLite. Queue/worker failure records bounded loss and explicit partial content;

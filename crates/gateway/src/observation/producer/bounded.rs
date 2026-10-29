@@ -88,6 +88,32 @@ pub struct ObservationWorkReservation {
     bytes: usize,
 }
 
+/// Reserved before assigning a sequence to background encoding. Until transfer,
+/// early return or unwinding returns the unused record credit.
+struct RecordCredit {
+    shared: Arc<ProducerShared>,
+    bytes: usize,
+}
+
+impl Drop for RecordCredit {
+    fn drop(&mut self) {
+        if self.bytes != 0 {
+            release_bytes(&self.shared, self.bytes);
+        }
+    }
+}
+
+impl RecordCredit {
+    fn shrink_to(&mut self, bytes: usize) {
+        release_bytes(&self.shared, self.bytes - bytes);
+        self.bytes = bytes;
+    }
+
+    fn transfer(mut self) {
+        self.bytes = 0;
+    }
+}
+
 impl Drop for ObservationWorkReservation {
     fn drop(&mut self) {
         release_work_bytes(&self.shared, self.bytes);
@@ -322,6 +348,22 @@ impl ByteBoundedObservationProducer {
     where
         F: FnOnce(ObservationSequenceStamp) -> Vec<u8>,
     {
+        // Wait before taking a sequence. Otherwise a later foreground record
+        // can consume the remaining credit while the ordered sink waits for
+        // this earlier sequence, preventing both sides from making progress.
+        // Canonical chunks fit this existing window; return unused credit once
+        // the envelope is encoded. Larger envelopes retain nonblocking admission.
+        let mut credit = credit_deadline.and_then(|deadline| {
+            self.record_credit(
+                self.shared.capacity_bytes - self.work_capacity(),
+                Some(deadline),
+            )
+        });
+        if credit_deadline.is_some() && credit.is_none() {
+            let sequence = self.shared.next_sequence.fetch_add(1, Ordering::Relaxed);
+            self.restore_and_drop(sequence, ObservationLossReason::QueueBytesExceeded);
+            return ObservationPublishOutcome::Dropped { sequence };
+        }
         // Concurrent builders can enqueue out of order. The worker holds
         // those records in sequence order before delivery, so a CPU-bound
         // build in one request does not turn another healthy request into a
@@ -343,10 +385,18 @@ impl ByteBoundedObservationProducer {
             self.restore_and_drop(sequence, ObservationLossReason::EventTooLarge);
             return ObservationPublishOutcome::Dropped { sequence };
         }
-        if !self.reserve_record(accounted_bytes, credit_deadline) {
+        if let Some(reserved) = credit.as_mut()
+            && accounted_bytes <= reserved.bytes
+        {
+            reserved.shrink_to(accounted_bytes);
+        } else {
+            drop(credit.take());
+            credit = self.record_credit(accounted_bytes, None);
+        }
+        let Some(credit) = credit else {
             self.restore_and_drop(sequence, ObservationLossReason::QueueBytesExceeded);
             return ObservationPublishOutcome::Dropped { sequence };
-        }
+        };
         let record = ObservationRecord {
             stamp,
             payload,
@@ -356,16 +406,19 @@ impl ByteBoundedObservationProducer {
         };
         match self.sender.try_send(ProducerMessage::Record(record)) {
             Ok(()) => {
+                credit.transfer();
                 self.shared.enqueued.fetch_add(1, Ordering::Relaxed);
                 ObservationPublishOutcome::Enqueued { sequence }
             }
             Err(TrySendError::Full(ProducerMessage::Record(record))) => {
-                release_bytes(&self.shared, record.accounted_bytes);
+                drop(record);
+                drop(credit);
                 self.restore_and_drop(sequence, ObservationLossReason::QueueEventsExceeded);
                 ObservationPublishOutcome::Dropped { sequence }
             }
             Err(TrySendError::Disconnected(ProducerMessage::Record(record))) => {
-                release_bytes(&self.shared, record.accounted_bytes);
+                drop(record);
+                drop(credit);
                 self.restore_and_drop(sequence, ObservationLossReason::WorkerDisconnected);
                 ObservationPublishOutcome::Dropped { sequence }
             }
@@ -379,6 +432,13 @@ impl ByteBoundedObservationProducer {
                 unreachable!("try_publish sends only records")
             }
         }
+    }
+
+    fn record_credit(&self, bytes: usize, deadline: Option<Instant>) -> Option<RecordCredit> {
+        self.reserve_record(bytes, deadline).then(|| RecordCredit {
+            shared: Arc::clone(&self.shared),
+            bytes,
+        })
     }
 
     fn reserve_record(&self, bytes: usize, deadline: Option<Instant>) -> bool {
