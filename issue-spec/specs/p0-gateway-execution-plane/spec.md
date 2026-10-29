@@ -454,21 +454,6 @@ Nested native JSON arguments MAY reuse this same optional small-memory path,
 retaining the existing Value-compatible syntax, number and terminal checks.
 Failure to admit optional scratch SHALL retain the bounded Reader path.
 
-Native request preparation MAY reuse this same bounded temporary-slice technique
-to index original JSON root values and bounded native message values after ingress
-parsing has released its scratch. Flat messages with unique decoded keys may be
-forwarded independently; nested/ambiguous messages retain their generic projection
-and tool-argument normalization. Each selected value must independently preserve
-its compact serialized length.
-The index SHALL use the existing syntax authority, remain request-owned and
-budget-charged, and release its slice before provider encoding. Only validated
-ranges in the current sealed raw owner may be forwarded through the existing raw
-JSON encoder; they SHALL NOT acquire canonical-content provenance or runtime
-history authority. Optional admission, duplicate/ambiguous roots, unsupported
-projection, or a changed serialized context length SHALL retain the generic
-projection and its existing admission decision. This adds no retained body copy,
-larger spill threshold, disk gathering, persisted format or history cache.
-
 Semantic JSON ranges have one canonical writer: object keys are ordered
 recursively, while values and array order remain significant. Canonical provenance
 belongs to the exact registered request-owned range; a locator, containing range,

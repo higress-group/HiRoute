@@ -59,14 +59,7 @@ fn measure_complete_local_work_with_continuity_and_capture() {
         })).chain(std::iter::once(json!({"role":"user","content":"Return 42."}))).collect::<Vec<_>>() }),
     };
     let backing = std::env::var("HIROUTE_LOCAL_WORK_BACKING").ok();
-    run_reference(
-        &wire,
-        measured,
-        warmup,
-        backing.as_deref(),
-        None,
-        concurrency,
-    );
+    run_reference(&wire, measured, warmup, backing.as_deref(), concurrency);
 }
 
 #[test]
@@ -74,26 +67,13 @@ fn local_work_reference_assesses_each_sessions_actual_predecessor() {
     let wire = json!({"messages":[
         {"role":"user","content":"Return 42."}
     ]});
-    run_reference(&wire, 4, 0, Some("memory"), None, 1);
-}
-
-#[test]
-fn native_raw_forwarding_keeps_context_admission_and_actual_assessment_on_the_listener() {
-    let wire = json!({"messages":[{"role":"user","content":"x".repeat(50000)}],
-    "tools":[{"type":"function","function":{"name":"lookup","description":"d".repeat(20000),"parameters":{
-        "type":"object","properties":{"n":{"type":"number","default":100.0}}
-    }}}]});
-    // 100.0 -> two spaces + 1e2 keeps the exact compact wire length while
-    // witnessing raw forwarding. One space changes length and must fall back.
-    for spelling in ["  1e2", " 1e2"] {
-        run_reference(&wire, 4, 0, Some("memory"), Some(spelling), 1);
-    }
+    run_reference(&wire, 4, 0, Some("memory"), 1);
 }
 
 #[test]
 fn concurrent_local_work_reference_assesses_each_actual_session_predecessor() {
     let wire = json!({"messages":[{"role":"user","content":"Return 42."}]});
-    run_reference(&wire, 8, 0, Some("memory"), None, 2);
+    run_reference(&wire, 8, 0, Some("memory"), 2);
 }
 
 fn is_followup(index: usize, concurrency: usize) -> bool {
@@ -105,7 +85,6 @@ fn run_reference(
     measured: usize,
     warmup: usize,
     backing: Option<&str>,
-    native_number: Option<&str>,
     concurrency: usize,
 ) {
     let count = measured + warmup;
@@ -194,14 +173,7 @@ fn run_reference(
                             input["messages"] = json!(history);
                             input["model"] = json!(MODEL);
                             input["stream"] = json!(true);
-                            let mut body = serde_json::to_vec(&input).unwrap();
-                            if let Some(number) = native_number {
-                                let text = String::from_utf8(body).unwrap();
-                                assert_eq!(text.matches("\"default\":100.0").count(), 1);
-                                body = text
-                                    .replace("\"default\":100.0", &format!("\"default\":{number}"))
-                                    .into_bytes();
-                            }
+                            let body = serde_json::to_vec(&input).unwrap();
                             let body_len = body.len();
                             let pair =
                                 index / (2 * concurrency) * concurrency + index % concurrency;
@@ -326,20 +298,5 @@ fn run_reference(
             (regular.calls(), primary.calls(), decider.calls()),
             (count, 0, count)
         );
-        if let Some(number) = native_number {
-            let expected = if number.len() == "100.0".len() {
-                number
-            } else {
-                "100.0"
-            };
-            for raw in regular.requests() {
-                assert!(
-                    String::from_utf8(raw)
-                        .unwrap()
-                        .contains(&format!("\"default\":{expected}")),
-                    "equal-length native input must use raw ranges; a length change must use compact projection"
-                );
-            }
-        }
     }
 }

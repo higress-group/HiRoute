@@ -13,7 +13,6 @@ use super::{ChatToolProjection, ProtocolAdapterError, RequestProjectionLoss};
 mod history;
 use history::validate_message_shapes;
 mod native;
-mod native_ranges;
 mod reader;
 mod reasoning;
 use reasoning::render_reasoning;

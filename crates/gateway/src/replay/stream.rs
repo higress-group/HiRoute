@@ -487,7 +487,7 @@ impl ReplayReader {
         stream: Arc<ReplayStream>,
         reference: ContentRef,
     ) -> Result<Self, ReplayError> {
-        if !stream.contains(&reference) && !store.is_raw_json_alias(&reference) {
+        if !stream.contains(&reference) {
             return Err(ReplayError::Integrity);
         }
         let state = match &stream.backing {
@@ -723,7 +723,7 @@ impl Drop for ReplayStream {
     }
 }
 
-pub(super) fn json_escaped_len(bytes: &[u8]) -> Result<u64, ReplayError> {
+fn json_escaped_len(bytes: &[u8]) -> Result<u64, ReplayError> {
     // Counts are bounded by the slice length. Reductions can be vectorized;
     // overflow is checked once on the result rather than on every input byte.
     let short = bytes
