@@ -28,6 +28,122 @@ fn save_login(
 }
 
 #[test]
+fn regression_maintenance_keeps_cold_catalog_outage_available_for_fallback() {
+    if isolated_discovery("regression_maintenance_keeps_cold_catalog_outage_available_for_fallback")
+    {
+        return;
+    }
+    use hiroute_cpa_bridge::{
+        CpaAttemptError, CpaDownstreamCredentialPort, ExactCpaAttemptRequest,
+        ExactCpaCredentialRequest,
+    };
+    use hiroute_integrations::CpaSupervisorPort;
+    let mut fixture = Fixture::new();
+    save_login(&fixture, SubscriptionLoginProviderV1::Codex);
+    let before = fixture
+        .adapter()
+        .stores_lock()
+        .unwrap()
+        .control()
+        .compute_management_snapshot(&WorkspaceId::default())
+        .unwrap();
+    let source = before
+        .sources
+        .iter()
+        .find(|s| s.state == MaterializationState::Ready)
+        .unwrap();
+    let runtime = fixture
+        .runtimes
+        .runtime_for_candidate(&source.last_candidate_ref)
+        .unwrap();
+    let material = runtime
+        .materialize_account("connector.cpa.codex", "endpoint.cpa.codex")
+        .unwrap();
+    let batch = runtime.begin_routing_batch().unwrap();
+    let target = batch
+        .prepare_target(ExactCpaAttemptRequest {
+            credential_ref: &material.credential_ref,
+            upstream_model_id: material.observed_model_ids.iter().next().unwrap(),
+            protocol: hiroute_domain::UpstreamProtocol::Responses,
+        })
+        .unwrap();
+    assert!(batch.finish().unwrap());
+    let lease = || {
+        fixture
+            .runtimes
+            .lease_downstream_capability(ExactCpaCredentialRequest {
+                credential_id: target.credential_ref().credential_id(),
+                connector_id: target.connector_id(),
+                upstream_model_id: target.upstream_model_id(),
+                protocol: target.protocol(),
+                address: target.address(),
+                request_path: target.request_path(),
+                native_transport_model: target.native_transport_model(),
+                runtime_epoch: target.runtime_epoch(),
+                target_epoch: target.target_epoch(),
+                excluded_key_ids: &[],
+            })
+    };
+    assert!(lease().unwrap().is_some());
+    // Both startup projection and the later maintenance cycle run while CPA's
+    // model directory is unavailable, with the actual saved source and target.
+    let fault = fixture.root.path().join("block-model-catalog");
+    fs::write(&fault, b"blocked").unwrap();
+    fixture.reopen(true);
+    // This case owns the maintenance clock. Stop the background real-time
+    // writer before advancing the two explicit scan timestamps below.
+    drop(
+        fixture
+            .runtime
+            .as_mut()
+            .unwrap()
+            ._observation_maintenance
+            .take(),
+    );
+    fixture.adapter().enable_subscription_maintenance();
+    fixture
+        .adapter()
+        .scan_subscription_maintenance(10_000)
+        .unwrap();
+    assert!(matches!(
+        fixture
+            .runtimes
+            .lease_downstream_capability(ExactCpaCredentialRequest {
+                credential_id: target.credential_ref().credential_id(),
+                connector_id: target.connector_id(),
+                upstream_model_id: target.upstream_model_id(),
+                protocol: target.protocol(),
+                address: target.address(),
+                request_path: target.request_path(),
+                native_transport_model: target.native_transport_model(),
+                runtime_epoch: target.runtime_epoch(),
+                target_epoch: target.target_epoch(),
+                excluded_key_ids: &[],
+            }),
+        Err(CpaAttemptError::Unavailable)
+    ));
+    let after = fixture
+        .adapter()
+        .stores_lock()
+        .unwrap()
+        .control()
+        .compute_management_snapshot(&WorkspaceId::default())
+        .unwrap();
+    assert_eq!(before, after);
+    fs::remove_file(fault).unwrap();
+    fixture
+        .adapter()
+        .scan_subscription_maintenance(20_000)
+        .unwrap();
+    assert!(
+        fixture
+            .adapter()
+            .subscription_maintenance_presentation(&source.source_id)
+            .is_none()
+    );
+}
+
+#[test]
 fn saved_reuse_resolves_original_owner_among_multiple_logins() {
     if isolated_discovery("saved_reuse_resolves_original_owner_among_multiple_logins") {
         return;

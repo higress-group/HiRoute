@@ -562,6 +562,11 @@ or Key denial retains its closed cause through the daemon adapter; an empty leas
 means only that the exact credential is exhausted. Neither outcome starts an upstream
 attempt or broadens the frozen fallback policy.
 
+Temporary CPA runtime unavailability excludes only that subscription candidate and
+allows the next saved candidate to run, including after a cold service start.
+Rejected CPA capabilities and unavailable shared native credential authority retain
+their fail-closed behavior. Skipped preparation creates no upstream attempt.
+
 When preparation terminates with no upstream attempt, the core asks the existing
 decision-session local-reply port for the product response. HiRoute returns HTTP 502
 with `Content-Type: application/json`, `schema_version: hiroute.gateway.error/v1`,

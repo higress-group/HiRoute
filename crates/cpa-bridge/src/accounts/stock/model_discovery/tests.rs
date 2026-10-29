@@ -16,6 +16,11 @@ fn payload() -> Value {
 
 #[test]
 fn recovery_requires_current_quiescent_transient_failure() {
+    assert_eq!(
+        retryable_failure(&payload()),
+        Some(123),
+        "a temporary proxy rejection must allow bounded saved-source recovery"
+    );
     for reason in [
         "timeout",
         "dns_failure",
@@ -37,14 +42,20 @@ fn recovery_requires_current_quiescent_transient_failure() {
             "retained failure cannot trigger recovery"
         );
     }
-    for status in [200, 400, 401, 403, 408, 429, 500, 502, 503, 504] {
-        let mut value = payload();
-        value["hiroute_model_discovery"]["latest"]["reason"] = json!("http_rejected");
-        value["hiroute_model_discovery"]["latest"]["http_status"] = json!(status);
-        assert_eq!(
-            retryable_failure(&value).is_some(),
-            matches!(status, 408 | 500 | 502 | 503 | 504)
-        );
+    for (reason, status_field) in [
+        ("http_rejected", "http_status"),
+        ("proxy_rejected", "proxy_status"),
+    ] {
+        for status in [200, 400, 401, 403, 407, 408, 429, 500, 502, 503, 504] {
+            let mut value = payload();
+            value["hiroute_model_discovery"]["latest"]["reason"] = json!(reason);
+            value["hiroute_model_discovery"]["latest"][status_field] = json!(status);
+            assert_eq!(
+                retryable_failure(&value).is_some(),
+                matches!(status, 408 | 500 | 502 | 503 | 504),
+                "{reason} {status}"
+            );
+        }
     }
     for reason in [
         "missing_access_token",

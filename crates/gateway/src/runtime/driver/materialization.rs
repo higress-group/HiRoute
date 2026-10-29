@@ -379,13 +379,9 @@ pub(super) async fn materialize_attempt(
                 ))
                 .await
                 .map_err(|_| Arc::from(MATERIALIZATION_AUTHORITY_FAILED))?
-                .map_err(|error| Arc::from(match error {
-                    crate::server::composition::PortError::CredentialDenied(reason) => match reason {
-                        hiroute_domain::NativeCredentialAccessDeniedV1::SourceDisabled => MATERIALIZATION_SOURCE_DISABLED,
-                        hiroute_domain::NativeCredentialAccessDeniedV1::CredentialDisabled => MATERIALIZATION_KEY_DISABLED,
-                    },
-                    _ => MATERIALIZATION_AUTHORITY_FAILED,
-                }))?
+                .map_err(|error| {
+                    credential_materialization_error(error, execution.connector_runtime)
+                })?
                 .ok_or_else(|| Arc::from(MATERIALIZATION_CREDENTIAL_EXHAUSTED))?,
         )
     };
@@ -632,6 +628,30 @@ pub(super) fn resolved_transport_target(
 ) -> Option<TransportTarget> {
     (state.resolved_target != binding.plan().transport_target)
         .then(|| state.resolved_target.clone())
+}
+
+pub(super) fn credential_materialization_error(
+    error: PortError,
+    connector_runtime: hiroute_domain::ConnectorRuntimeKind,
+) -> Arc<str> {
+    Arc::from(match error {
+        PortError::CredentialDenied(reason) => match reason {
+            hiroute_domain::NativeCredentialAccessDeniedV1::SourceDisabled => {
+                MATERIALIZATION_SOURCE_DISABLED
+            }
+            hiroute_domain::NativeCredentialAccessDeniedV1::CredentialDisabled => {
+                MATERIALIZATION_KEY_DISABLED
+            }
+        },
+        // CPA runtime availability belongs to this candidate. A native authority
+        // read failure or a rejected CPA capability still fails closed.
+        PortError::Unavailable(_)
+            if connector_runtime == hiroute_domain::ConnectorRuntimeKind::CpaBridge =>
+        {
+            MATERIALIZATION_BINDING_UNAVAILABLE
+        }
+        _ => MATERIALIZATION_AUTHORITY_FAILED,
+    })
 }
 
 pub(super) fn classify_materialization_failure(error: &Arc<str>) -> AttemptMaterializationFailure {
