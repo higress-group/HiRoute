@@ -6,6 +6,7 @@ use crate::content_ref::{
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use hiroute_gateway_core::runtime::body::StreamBudget;
+use serde_json::Value;
 use std::time::{Duration, Instant};
 
 struct Fixture {
