@@ -24,6 +24,7 @@ async function open(query = '', language = 'en', width = 755, height = 600, reco
   }
   await click('[data-trial-target=trial] button', recommended ? language==='zh'?'在此接入':'Connect here' : language==='zh'?'连接其他接入点':'Connect another source');
   await waitFor(client,`!!document.querySelector('[data-trial-source-choice]')`);
+  assert.equal(await evaluate(client,`document.querySelectorAll('[data-trial-source-choice]').length`),1,'the merged connection chooser renders once');
 }
 async function source(id='source/bailian/coding') {
   await evaluate(client,`(()=>{const e=document.querySelector('[data-trial-source-choice]');e.value=${JSON.stringify(id)};e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
